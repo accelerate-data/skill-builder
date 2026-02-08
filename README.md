@@ -4,12 +4,17 @@ A Claude Code plugin that provides a multi-agent workflow for creating domain-sp
 
 ## Installation
 
-```bash
-# Install from local directory
-claude --plugin-dir /path/to/skill-builder
+### From GitHub
 
-# Or install from GitHub (future)
-# claude plugin install owner/skill-builder
+```
+/plugin marketplace add hbanerjee74/skill-builder
+/plugin install skill-builder@skill-builder-marketplace
+```
+
+### From local directory (development)
+
+```bash
+claude --plugin-dir /path/to/skill-builder
 ```
 
 ## Usage
