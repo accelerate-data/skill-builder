@@ -101,6 +101,28 @@ export const resetWorkflowStep = (
   fromStepId: number,
 ) => invoke("reset_workflow_step", { workspacePath, skillName, fromStepId });
 
+export interface WorkflowStateFile {
+  skill_name: string | null;
+  domain: string | null;
+  current_step: string | null;
+  status: string | null;
+  completed_steps: string | null;
+  timestamp: string | null;
+  notes: string | null;
+}
+
+export const getWorkflowState = (workspacePath: string, skillName: string) =>
+  invoke<WorkflowStateFile>("get_workflow_state", { workspacePath, skillName });
+
+export const saveWorkflowState = (
+  workspacePath: string,
+  skillName: string,
+  domain: string,
+  currentStep: number,
+  completedSteps: number[],
+  status: string,
+) => invoke("save_workflow_state", { workspacePath, skillName, domain, currentStep, completedSteps, status });
+
 // --- Files ---
 
 export const saveRawFile = (filePath: string, content: string) =>

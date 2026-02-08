@@ -31,6 +31,8 @@ import {
   packageSkill,
   resetWorkflowStep,
   readFile,
+  getWorkflowState,
+  saveWorkflowState,
   type PackageResult,
 } from "@/lib/tauri";
 
@@ -114,6 +116,7 @@ export default function WorkflowPage() {
     updateStepStatus,
     setRunning,
     rerunFromStep,
+    loadWorkflowState,
   } = useWorkflowStore();
 
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
@@ -140,12 +143,60 @@ export default function WorkflowPage() {
   const isParallelStep = stepConfig?.type === "parallel";
   const isPackageStep = stepConfig?.type === "package";
 
-  // Initialize workflow if not already set
+  // Initialize workflow and restore state from workflow.md
   useEffect(() => {
-    if (!useWorkflowStore.getState().skillName) {
+    const store = useWorkflowStore.getState();
+    if (store.skillName === skillName) return; // already loaded for this skill
+
+    if (!workspacePath) {
       initWorkflow(skillName, skillName.replace(/-/g, " "));
+      return;
     }
-  }, [skillName, initWorkflow]);
+
+    // Read workflow.md to get domain and completed steps
+    getWorkflowState(workspacePath, skillName)
+      .then((state) => {
+        const domainName = state.domain ?? skillName.replace(/-/g, " ");
+        initWorkflow(skillName, domainName);
+
+        // Parse completed steps: "Step 1: ..., Step 3: ..." → [0, 2]
+        if (state.completed_steps) {
+          const stepRegex = /Step\s+(\d+)/g;
+          const ids: number[] = [];
+          let match;
+          while ((match = stepRegex.exec(state.completed_steps)) !== null) {
+            const id = parseInt(match[1], 10) - 1; // 1-indexed → 0-indexed
+            if (id >= 0 && id < 10) ids.push(id);
+          }
+          if (ids.length > 0) {
+            loadWorkflowState(ids);
+          }
+        }
+      })
+      .catch(() => {
+        // No workflow.md yet — fresh skill
+        initWorkflow(skillName, skillName.replace(/-/g, " "));
+      });
+  }, [skillName, workspacePath, initWorkflow, loadWorkflowState]);
+
+  // Persist workflow state to workflow.md when steps change
+  useEffect(() => {
+    if (!workspacePath || !domain) return;
+    const { steps: currentSteps, currentStep: step } = useWorkflowStore.getState();
+    const completedIds = currentSteps
+      .filter((s) => s.status === "completed")
+      .map((s) => s.id);
+
+    const status = currentSteps[step]?.status === "in_progress"
+      ? "in_progress"
+      : completedIds.length === currentSteps.length
+        ? "completed"
+        : "pending";
+
+    saveWorkflowState(workspacePath, skillName, domain, currentStep, completedIds, status).catch(
+      () => {} // silent — workflow.md is best-effort
+    );
+  }, [steps, currentStep, workspacePath, skillName, domain]);
 
   // Load file content when entering a human review step
   useEffect(() => {

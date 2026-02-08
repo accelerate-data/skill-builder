@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::agents::sidecar::{self, AgentRegistry, SidecarConfig};
 use crate::db::Db;
+use crate::markdown::workflow_state;
 use crate::types::{PackageResult, ParallelAgentResult, StepConfig};
 
 const DEFAULT_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"];
@@ -365,6 +366,80 @@ fn add_dir_to_zip(
         }
     }
 
+    Ok(())
+}
+
+// --- Workflow state persistence ---
+
+/// Step names used in workflow.md (1-indexed for human readability)
+const STEP_NAMES: &[&str] = &[
+    "Step 1: Research Domain Concepts",
+    "Step 2: Domain Concepts Review",
+    "Step 3: Research Patterns & Data Modeling",
+    "Step 4: Merge Clarifications",
+    "Step 5: Human Review",
+    "Step 6: Reasoning",
+    "Step 7: Build Skill",
+    "Step 8: Validate",
+    "Step 9: Test",
+    "Step 10: Package",
+];
+
+#[tauri::command]
+pub fn get_workflow_state(
+    workspace_path: String,
+    skill_name: String,
+) -> Result<workflow_state::WorkflowState, String> {
+    let workflow_file = Path::new(&workspace_path)
+        .join(&skill_name)
+        .join("workflow.md");
+    if !workflow_file.exists() {
+        return Err("workflow.md not found".to_string());
+    }
+    let content = std::fs::read_to_string(&workflow_file).map_err(|e| e.to_string())?;
+    Ok(workflow_state::parse_workflow_state(&content))
+}
+
+#[tauri::command]
+pub fn save_workflow_state(
+    workspace_path: String,
+    skill_name: String,
+    domain: String,
+    current_step: u32,
+    completed_steps: Vec<u32>,
+    status: String,
+) -> Result<(), String> {
+    let skill_dir = Path::new(&workspace_path).join(&skill_name);
+    if !skill_dir.exists() {
+        return Err(format!("Skill directory not found: {}", skill_dir.display()));
+    }
+
+    let step_name = STEP_NAMES
+        .get(current_step as usize)
+        .unwrap_or(&"Unknown");
+
+    let completed_str = if completed_steps.is_empty() {
+        String::new()
+    } else {
+        let mut names: Vec<String> = completed_steps
+            .iter()
+            .filter_map(|&id| STEP_NAMES.get(id as usize).map(|n| n.to_string()))
+            .collect();
+        names.sort();
+        names.join(", ")
+    };
+
+    let content = format!(
+        "## Workflow State\n- **Skill name**: {}\n- **Domain**: {}\n- **Current step**: {}\n- **Status**: {}\n- **Completed steps**: {}\n- **Timestamp**: {}\n",
+        skill_name,
+        domain,
+        step_name,
+        status,
+        completed_str,
+        chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+    );
+
+    std::fs::write(skill_dir.join("workflow.md"), content).map_err(|e| e.to_string())?;
     Ok(())
 }
 
