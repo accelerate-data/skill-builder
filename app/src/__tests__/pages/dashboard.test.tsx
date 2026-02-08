@@ -83,7 +83,7 @@ describe("DashboardPage", () => {
     mockNavigate.mockReset();
   });
 
-  it("shows loading spinner while fetching skills", async () => {
+  it("shows loading skeletons while fetching skills", async () => {
     // Make get_settings resolve immediately but list_skills hang
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
@@ -94,8 +94,8 @@ describe("DashboardPage", () => {
     render(<DashboardPage />);
 
     await waitFor(() => {
-      const spinner = document.querySelector(".animate-spin");
-      expect(spinner).toBeTruthy();
+      const skeletons = document.querySelectorAll(".animate-pulse");
+      expect(skeletons.length).toBeGreaterThan(0);
     });
   });
 

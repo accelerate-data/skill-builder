@@ -11,6 +11,8 @@ import {
   FileText,
   Pencil,
   ArrowRight,
+  AlertCircle,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -567,6 +569,37 @@ export default function WorkflowPage() {
             <p className="text-sm">
               Press "Package" to create a .skill file
             </p>
+          </div>
+        </div>
+      );
+    }
+
+    // Error state with retry
+    if (currentStepDef?.status === "error" && !activeAgentId) {
+      return (
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
+          <AlertCircle className="size-8 text-destructive/50" />
+          <div className="text-center">
+            <p className="font-medium text-destructive">Step {currentStep + 1} failed</p>
+            <p className="mt-1 text-sm">
+              An error occurred. You can retry this step or view the editor for details.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                updateStepStatus(currentStep, "pending");
+              }}
+            >
+              <RotateCcw className="size-3.5" />
+              Reset Step
+            </Button>
+            <Button size="sm" onClick={handleStartStep}>
+              <Play className="size-3.5" />
+              Retry
+            </Button>
           </div>
         </div>
       );

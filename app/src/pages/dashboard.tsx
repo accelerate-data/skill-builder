@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
 import { Link } from "@tanstack/react-router"
-import { Loader2, FolderOpen, TriangleAlert } from "lucide-react"
+import { FolderOpen, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import SkillCard from "@/components/skill-card"
 import NewSkillDialog from "@/components/new-skill-dialog"
 import DeleteSkillDialog from "@/components/delete-skill-dialog"
@@ -111,8 +112,22 @@ export default function DashboardPage() {
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Card key={i}>
+              <CardHeader>
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-4 w-24" />
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Skeleton className="h-2 w-full" />
+                <div className="flex gap-2">
+                  <Skeleton className="h-8 w-20" />
+                  <Skeleton className="h-8 w-16" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       ) : skills.length === 0 ? (
         <Card>

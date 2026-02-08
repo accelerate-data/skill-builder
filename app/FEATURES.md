@@ -125,20 +125,20 @@
 - [x] Frontend: Conversational editing mode — free-form chat, Claude modifies files
 - [x] Frontend: Chat store (sessions, messages, streaming)
 - [x] Frontend: Chat page with message bubbles and agent streaming
-- [ ] Rust: Inline diff generation for file changes
-- [ ] Frontend: Review + suggest mode — numbered suggestions with diff previews
-- [ ] Frontend: Accept/Reject/Discuss buttons per suggestion
-- [ ] Frontend: Mode toggle switch (conversational vs review)
+- [x] Rust: Inline diff generation for file changes
+- [x] Frontend: Review + suggest mode — numbered suggestions with diff previews
+- [x] Frontend: Accept/Reject/Discuss buttons per suggestion
+- [x] Frontend: Mode toggle switch (conversational vs review)
 
 ## Phase 8: Polish
 
 - [x] Error boundaries + error state components
-- [ ] Retry UX for failed operations
-- [ ] Loading states / skeleton components
-- [ ] Keyboard shortcuts
+- [x] Retry UX for failed operations
+- [x] Loading states / skeleton components
+- [x] Keyboard shortcuts
 - [x] Toast notifications for all async operations
 - [x] Empty states with guidance
-- [ ] Responsive layout adjustments
+- [x] Responsive layout adjustments
 - [ ] App icon and branding
 - [x] First-run onboarding flow
 - [x] Onboarding: prompt for API key + workspace folder on first launch

@@ -201,3 +201,18 @@ export const getChatMessages = (sessionId: string) =>
 
 export const runChatAgent = (skillName: string, sessionId: string, message: string, workspacePath: string) =>
   invoke<string>("run_chat_agent", { skillName, sessionId, message, workspacePath });
+
+// --- Diff ---
+
+export interface DiffResult {
+  file_path: string;
+  old_content: string;
+  new_content: string;
+  has_changes: boolean;
+}
+
+export const generateDiff = (filePath: string, newContent: string) =>
+  invoke<DiffResult>("generate_diff", { filePath, newContent });
+
+export const applySuggestion = (filePath: string, newContent: string) =>
+  invoke("apply_suggestion", { filePath, newContent });

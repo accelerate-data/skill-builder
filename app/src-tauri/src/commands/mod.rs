@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod chat;
 pub mod clarification;
+pub mod diff;
 pub mod files;
 pub mod lifecycle;
 pub mod node;

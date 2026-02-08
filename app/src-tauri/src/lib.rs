@@ -47,6 +47,8 @@ pub fn run() {
             commands::chat::run_chat_agent,
             commands::lifecycle::check_workspace_path,
             commands::lifecycle::has_running_agents,
+            commands::diff::generate_diff,
+            commands::diff::apply_suggestion,
         ])
         .on_window_event(|window, event| {
             use tauri::Emitter;

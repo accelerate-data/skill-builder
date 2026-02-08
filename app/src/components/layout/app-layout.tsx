@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Outlet } from "@tanstack/react-router";
+import { Outlet, useNavigate } from "@tanstack/react-router";
 import { Sidebar } from "./sidebar";
 import { Header } from "./header";
 import { CloseGuard } from "@/components/close-guard";
@@ -8,6 +8,7 @@ import { getSettings } from "@/lib/tauri";
 
 export function AppLayout() {
   const setSettings = useSettingsStore((s) => s.setSettings);
+  const navigate = useNavigate();
 
   // Hydrate settings store from Tauri backend on app startup
   useEffect(() => {
@@ -20,6 +21,25 @@ export function AppLayout() {
       // Settings may not exist yet
     });
   }, [setSettings]);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+, (Mac) or Ctrl+, (Win/Linux) -> Settings
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        navigate({ to: "/settings" });
+      }
+      // Cmd+1 -> Dashboard
+      if ((e.metaKey || e.ctrlKey) && e.key === "1") {
+        e.preventDefault();
+        navigate({ to: "/" });
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [navigate]);
 
   return (
     <div className="flex h-screen overflow-hidden">

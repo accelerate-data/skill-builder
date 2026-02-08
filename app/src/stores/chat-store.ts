@@ -7,11 +7,22 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+export interface Suggestion {
+  id: string;
+  title: string;
+  description: string;
+  filePath: string;
+  oldContent: string;
+  newContent: string;
+  status: "pending" | "accepted" | "rejected";
+}
+
 interface ChatState {
   sessionId: string | null;
   skillName: string | null;
   mode: "conversational" | "review";
   messages: ChatMessage[];
+  suggestions: Suggestion[];
   isStreaming: boolean;
   activeAgentId: string | null;
 
@@ -21,6 +32,10 @@ interface ChatState {
   setStreaming: (streaming: boolean) => void;
   setActiveAgentId: (id: string | null) => void;
   setMode: (mode: "conversational" | "review") => void;
+  addSuggestion: (s: Suggestion) => void;
+  setSuggestions: (s: Suggestion[]) => void;
+  updateSuggestionStatus: (id: string, status: Suggestion["status"]) => void;
+  clearSuggestions: () => void;
   reset: () => void;
 }
 
@@ -29,6 +44,7 @@ export const useChatStore = create<ChatState>((set) => ({
   skillName: null,
   mode: "conversational",
   messages: [],
+  suggestions: [],
   isStreaming: false,
   activeAgentId: null,
 
@@ -38,6 +54,7 @@ export const useChatStore = create<ChatState>((set) => ({
       skillName,
       mode: mode as "conversational" | "review",
       messages: [],
+      suggestions: [],
       isStreaming: false,
       activeAgentId: null,
     }),
@@ -53,12 +70,27 @@ export const useChatStore = create<ChatState>((set) => ({
 
   setMode: (mode) => set({ mode }),
 
+  addSuggestion: (s) =>
+    set((state) => ({ suggestions: [...state.suggestions, s] })),
+
+  setSuggestions: (suggestions) => set({ suggestions }),
+
+  updateSuggestionStatus: (id, status) =>
+    set((state) => ({
+      suggestions: state.suggestions.map((s) =>
+        s.id === id ? { ...s, status } : s
+      ),
+    })),
+
+  clearSuggestions: () => set({ suggestions: [] }),
+
   reset: () =>
     set({
       sessionId: null,
       skillName: null,
       mode: "conversational",
       messages: [],
+      suggestions: [],
       isStreaming: false,
       activeAgentId: null,
     }),

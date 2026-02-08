@@ -105,3 +105,9 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
 }
+
+/* Safety net for minimum dimensions (Tauri enforces via minWidth/minHeight) */
+html, body, #root {
+  min-width: 900px;
+  min-height: 600px;
+}
