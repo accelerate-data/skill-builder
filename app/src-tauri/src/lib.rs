@@ -40,6 +40,11 @@ pub fn run() {
             commands::workflow::reset_workflow_step,
             commands::workflow::get_workflow_state,
             commands::workflow::save_workflow_state,
+            commands::chat::create_chat_session,
+            commands::chat::list_chat_sessions,
+            commands::chat::add_chat_message,
+            commands::chat::get_chat_messages,
+            commands::chat::run_chat_agent,
             commands::lifecycle::check_workspace_path,
             commands::lifecycle::has_running_agents,
         ])

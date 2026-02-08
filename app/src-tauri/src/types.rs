@@ -65,6 +65,70 @@ pub struct SkillFileEntry {
     pub size_bytes: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowRunRow {
+    pub skill_name: String,
+    pub domain: String,
+    pub current_step: i32,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowStepRow {
+    pub skill_name: String,
+    pub step_id: i32,
+    pub status: String,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentRunRow {
+    pub agent_id: String,
+    pub skill_name: String,
+    pub step_id: i32,
+    pub model: String,
+    pub status: String,
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
+    pub total_cost: Option<f64>,
+    pub session_id: Option<String>,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatSessionRow {
+    pub id: String,
+    pub skill_name: String,
+    pub mode: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessageRow {
+    pub id: String,
+    pub session_id: String,
+    pub role: String,
+    pub content: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowStateResponse {
+    pub run: Option<WorkflowRunRow>,
+    pub steps: Vec<WorkflowStepRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StepStatusUpdate {
+    pub step_id: i32,
+    pub status: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

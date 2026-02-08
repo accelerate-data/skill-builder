@@ -3,8 +3,9 @@ use std::path::{Path, PathBuf};
 
 use crate::agents::sidecar::{self, AgentRegistry, SidecarConfig};
 use crate::db::Db;
-use crate::markdown::workflow_state;
-use crate::types::{PackageResult, ParallelAgentResult, StepConfig};
+use crate::types::{
+    PackageResult, ParallelAgentResult, StepConfig, StepStatusUpdate, WorkflowStateResponse,
+};
 
 const DEFAULT_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"];
 
@@ -369,77 +370,33 @@ fn add_dir_to_zip(
     Ok(())
 }
 
-// --- Workflow state persistence ---
-
-/// Step names used in workflow.md (1-indexed for human readability)
-const STEP_NAMES: &[&str] = &[
-    "Step 1: Research Domain Concepts",
-    "Step 2: Domain Concepts Review",
-    "Step 3: Research Patterns & Data Modeling",
-    "Step 4: Merge Clarifications",
-    "Step 5: Human Review",
-    "Step 6: Reasoning",
-    "Step 7: Build Skill",
-    "Step 8: Validate",
-    "Step 9: Test",
-    "Step 10: Package",
-];
+// --- Workflow state persistence (SQLite-backed) ---
 
 #[tauri::command]
 pub fn get_workflow_state(
-    workspace_path: String,
     skill_name: String,
-) -> Result<workflow_state::WorkflowState, String> {
-    let workflow_file = Path::new(&workspace_path)
-        .join(&skill_name)
-        .join("workflow.md");
-    if !workflow_file.exists() {
-        return Err("workflow.md not found".to_string());
-    }
-    let content = std::fs::read_to_string(&workflow_file).map_err(|e| e.to_string())?;
-    Ok(workflow_state::parse_workflow_state(&content))
+    db: tauri::State<'_, Db>,
+) -> Result<WorkflowStateResponse, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let run = crate::db::get_workflow_run(&conn, &skill_name)?;
+    let steps = crate::db::get_workflow_steps(&conn, &skill_name)?;
+    Ok(WorkflowStateResponse { run, steps })
 }
 
 #[tauri::command]
 pub fn save_workflow_state(
-    workspace_path: String,
     skill_name: String,
     domain: String,
-    current_step: u32,
-    completed_steps: Vec<u32>,
+    current_step: i32,
     status: String,
+    step_statuses: Vec<StepStatusUpdate>,
+    db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    let skill_dir = Path::new(&workspace_path).join(&skill_name);
-    if !skill_dir.exists() {
-        return Err(format!("Skill directory not found: {}", skill_dir.display()));
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::save_workflow_run(&conn, &skill_name, &domain, current_step, &status)?;
+    for step in &step_statuses {
+        crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status)?;
     }
-
-    let step_name = STEP_NAMES
-        .get(current_step as usize)
-        .unwrap_or(&"Unknown");
-
-    let completed_str = if completed_steps.is_empty() {
-        String::new()
-    } else {
-        let mut names: Vec<String> = completed_steps
-            .iter()
-            .filter_map(|&id| STEP_NAMES.get(id as usize).map(|n| n.to_string()))
-            .collect();
-        names.sort();
-        names.join(", ")
-    };
-
-    let content = format!(
-        "## Workflow State\n- **Skill name**: {}\n- **Domain**: {}\n- **Current step**: {}\n- **Status**: {}\n- **Completed steps**: {}\n- **Timestamp**: {}\n",
-        skill_name,
-        domain,
-        step_name,
-        status,
-        completed_str,
-        chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-    );
-
-    std::fs::write(skill_dir.join("workflow.md"), content).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -463,18 +420,14 @@ fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     }
 }
 
-#[tauri::command]
-pub fn reset_workflow_step(
-    workspace_path: String,
-    skill_name: String,
-    from_step_id: u32,
-) -> Result<(), String> {
-    let skill_dir = Path::new(&workspace_path).join(&skill_name);
+/// Delete output files for the given step and all subsequent steps.
+/// Extracted as a helper so it can be tested without `tauri::State`.
+fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id: u32) {
+    let skill_dir = Path::new(workspace_path).join(skill_name);
     if !skill_dir.exists() {
-        return Ok(()); // Nothing to clean
+        return;
     }
 
-    // Delete output files for this step and all subsequent steps
     for step_id in from_step_id..=9 {
         for file in get_step_output_files(step_id) {
             let path = skill_dir.join(file);
@@ -498,6 +451,31 @@ pub fn reset_workflow_step(
                 let _ = std::fs::remove_file(&skill_file);
             }
         }
+    }
+}
+
+#[tauri::command]
+pub fn reset_workflow_step(
+    workspace_path: String,
+    skill_name: String,
+    from_step_id: u32,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    delete_step_output_files(&workspace_path, &skill_name, from_step_id);
+
+    // Reset steps in SQLite
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::reset_workflow_steps_from(&conn, &skill_name, from_step_id as i32)?;
+
+    // Update the workflow run's current step
+    if let Some(run) = crate::db::get_workflow_run(&conn, &skill_name)? {
+        crate::db::save_workflow_run(
+            &conn,
+            &skill_name,
+            &run.domain,
+            from_step_id as i32,
+            "pending",
+        )?;
     }
 
     Ok(())
@@ -702,9 +680,9 @@ mod tests {
     }
 
     #[test]
-    fn test_reset_workflow_step_deletes_outputs_from_step_onwards() {
+    fn test_delete_step_output_files_from_step_onwards() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap().to_string();
+        let workspace = tmp.path().to_str().unwrap();
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
         std::fs::create_dir_all(skill_dir.join("references")).unwrap();
@@ -726,7 +704,7 @@ mod tests {
         std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
 
         // Reset from step 3 onwards — steps 0, 2 should be preserved
-        reset_workflow_step(workspace, "my-skill".into(), 3).unwrap();
+        delete_step_output_files(workspace, "my-skill", 3);
 
         // Steps 0 and 2 outputs should still exist
         assert!(skill_dir.join("context/clarifications-concepts.md").exists());
@@ -742,9 +720,8 @@ mod tests {
     }
 
     #[test]
-    fn test_reset_workflow_step_nonexistent_dir_is_ok() {
-        let result =
-            reset_workflow_step("/tmp/nonexistent".into(), "no-skill".into(), 0);
-        assert!(result.is_ok());
+    fn test_delete_step_output_files_nonexistent_dir_is_ok() {
+        // Should not panic on nonexistent directory
+        delete_step_output_files("/tmp/nonexistent", "no-skill", 0);
     }
 }

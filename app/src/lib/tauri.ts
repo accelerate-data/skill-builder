@@ -101,27 +101,45 @@ export const resetWorkflowStep = (
   fromStepId: number,
 ) => invoke("reset_workflow_step", { workspacePath, skillName, fromStepId });
 
-export interface WorkflowStateFile {
-  skill_name: string | null;
-  domain: string | null;
-  current_step: string | null;
-  status: string | null;
-  completed_steps: string | null;
-  timestamp: string | null;
-  notes: string | null;
+// --- Workflow State (SQLite) ---
+
+export interface WorkflowRunRow {
+  skill_name: string;
+  domain: string;
+  current_step: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
 }
 
-export const getWorkflowState = (workspacePath: string, skillName: string) =>
-  invoke<WorkflowStateFile>("get_workflow_state", { workspacePath, skillName });
+export interface WorkflowStepRow {
+  skill_name: string;
+  step_id: number;
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface WorkflowStateResponse {
+  run: WorkflowRunRow | null;
+  steps: WorkflowStepRow[];
+}
+
+export interface StepStatusUpdate {
+  step_id: number;
+  status: string;
+}
+
+export const getWorkflowState = (skillName: string) =>
+  invoke<WorkflowStateResponse>("get_workflow_state", { skillName });
 
 export const saveWorkflowState = (
-  workspacePath: string,
   skillName: string,
   domain: string,
   currentStep: number,
-  completedSteps: number[],
   status: string,
-) => invoke("save_workflow_state", { workspacePath, skillName, domain, currentStep, completedSteps, status });
+  stepStatuses: StepStatusUpdate[],
+) => invoke("save_workflow_state", { skillName, domain, currentStep, status, stepStatuses });
 
 // --- Files ---
 
@@ -150,3 +168,36 @@ export const checkWorkspacePath = (workspacePath: string) =>
 
 export const hasRunningAgents = () =>
   invoke<boolean>("has_running_agents");
+
+// --- Chat ---
+
+export interface ChatSessionRow {
+  id: string;
+  skill_name: string;
+  mode: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessageRow {
+  id: string;
+  session_id: string;
+  role: string;
+  content: string;
+  created_at: string;
+}
+
+export const createChatSession = (skillName: string, mode: string) =>
+  invoke<ChatSessionRow>("create_chat_session", { skillName, mode });
+
+export const listChatSessions = (skillName: string) =>
+  invoke<ChatSessionRow[]>("list_chat_sessions", { skillName });
+
+export const addChatMessage = (sessionId: string, role: string, content: string) =>
+  invoke<ChatMessageRow>("add_chat_message", { sessionId, role, content });
+
+export const getChatMessages = (sessionId: string) =>
+  invoke<ChatMessageRow[]>("get_chat_messages", { sessionId });
+
+export const runChatAgent = (skillName: string, sessionId: string, message: string, workspacePath: string) =>
+  invoke<string>("run_chat_agent", { skillName, sessionId, message, workspacePath });

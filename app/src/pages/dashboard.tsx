@@ -14,6 +14,7 @@ import {
 import SkillCard from "@/components/skill-card"
 import NewSkillDialog from "@/components/new-skill-dialog"
 import DeleteSkillDialog from "@/components/delete-skill-dialog"
+import { OnboardingDialog } from "@/components/onboarding-dialog"
 import type { SkillSummary, AppSettings } from "@/lib/types"
 
 export default function DashboardPage() {
@@ -164,6 +165,8 @@ export default function DashboardPage() {
         }}
         onDeleted={loadSkills}
       />
+
+      <OnboardingDialog onComplete={() => { loadSettings(); loadSkills(); }} />
     </div>
   )
 }

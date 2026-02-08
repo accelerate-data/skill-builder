@@ -102,6 +102,11 @@
 - [x] Frontend: Simplified settings (API key + workspace folder only)
 - [x] Frontend: Simplified close guard (agents-only check, no git)
 - [x] Frontend: Removed git status from editor file tree
+- [x] Added: workflow_runs, workflow_steps tables for workflow state persistence
+- [x] Added: agent_runs table for agent execution history
+- [x] Added: chat_sessions, chat_messages tables for chat interface
+- [x] Removed: workflow.md file-based state persistence
+- [x] Rust: get_workflow_state/save_workflow_state rewritten for SQLite
 
 ## Phase 6: Editor
 
@@ -115,31 +120,32 @@
 
 ## Phase 7: Chat Interface
 
-- [ ] Rust: Chat session management (create, list, messages)
-- [ ] Sidecar: Chat agent mode — SDK query with skill file tools + conversational context
+- [x] Rust: Chat session management (create, list, messages) via SQLite
+- [x] Sidecar: Chat agent mode — same SDK sidecar with skill-editing prompt
+- [x] Frontend: Conversational editing mode — free-form chat, Claude modifies files
+- [x] Frontend: Chat store (sessions, messages, streaming)
+- [x] Frontend: Chat page with message bubbles and agent streaming
 - [ ] Rust: Inline diff generation for file changes
-- [ ] Frontend: Conversational editing mode — free-form chat, Claude modifies files
 - [ ] Frontend: Review + suggest mode — numbered suggestions with diff previews
 - [ ] Frontend: Accept/Reject/Discuss buttons per suggestion
 - [ ] Frontend: Mode toggle switch (conversational vs review)
-- [ ] Frontend: Chat store (sessions, messages, streaming)
 
 ## Phase 8: Polish
 
-- [ ] Error boundaries + error state components
+- [x] Error boundaries + error state components
 - [ ] Retry UX for failed operations
 - [ ] Loading states / skeleton components
 - [ ] Keyboard shortcuts
-- [ ] Toast notifications for all async operations
-- [ ] Empty states with guidance
+- [x] Toast notifications for all async operations
+- [x] Empty states with guidance
 - [ ] Responsive layout adjustments
 - [ ] App icon and branding
-- [ ] First-run onboarding flow
-- [ ] Onboarding: prompt for API key + workspace folder on first launch
+- [x] First-run onboarding flow
+- [x] Onboarding: prompt for API key + workspace folder on first launch
 
 ### App Lifecycle
-- [ ] Rust: `check_workspace_path` — validate workspace folder exists on disk
-- [ ] Rust: `has_running_agents` — check if any agent processes are running
-- [ ] Rust: Window close interceptor (on_window_event + CloseRequested)
-- [ ] Frontend: Workspace folder missing warning banner on dashboard
-- [ ] Frontend: Close guard — block close while agents running
+- [x] Rust: `check_workspace_path` — validate workspace folder exists on disk
+- [x] Rust: `has_running_agents` — check if any agent processes are running
+- [x] Rust: Window close interceptor (on_window_event + CloseRequested)
+- [x] Frontend: Workspace folder missing warning banner on dashboard
+- [x] Frontend: Close guard — block close while agents running

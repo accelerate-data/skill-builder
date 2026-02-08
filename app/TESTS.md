@@ -21,8 +21,10 @@ npm run test:all
 
 **Automated test files:**
 - `src/__tests__/` — Vitest unit tests (stores, utils, pages)
+- `src/__tests__/stores/chat-store.test.ts` — Chat store unit tests
 - `e2e/` — Playwright E2E tests (navigation, settings, dashboard)
 - `src-tauri/src/` — Rust `#[cfg(test)]` modules (workflow_state, node, skill, db)
+  - `db.rs` — SQLite schema, workflow CRUD, chat CRUD, agent run CRUD (new tests)
 
 ---
 

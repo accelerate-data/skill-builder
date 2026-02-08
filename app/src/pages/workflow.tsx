@@ -144,7 +144,7 @@ export default function WorkflowPage() {
   const isParallelStep = stepConfig?.type === "parallel";
   const isPackageStep = stepConfig?.type === "package";
 
-  // Initialize workflow and restore state from workflow.md
+  // Initialize workflow and restore state from SQLite
   useEffect(() => {
     let cancelled = false;
     const store = useWorkflowStore.getState();
@@ -155,57 +155,50 @@ export default function WorkflowPage() {
     // Reset immediately so stale state from another skill doesn't linger
     initWorkflow(skillName, skillName.replace(/-/g, " "));
 
-    if (!workspacePath) return;
-
-    // Read workflow.md to get domain and completed steps
-    getWorkflowState(workspacePath, skillName)
+    // Read workflow state from SQLite
+    getWorkflowState(skillName)
       .then((state) => {
-        if (cancelled) return; // navigated away before resolve
-        const domainName = state.domain ?? skillName.replace(/-/g, " ");
+        if (cancelled) return;
+        if (!state.run) return; // No saved state yet
+
+        const domainName = state.run.domain || skillName.replace(/-/g, " ");
         initWorkflow(skillName, domainName);
 
-        // Parse completed steps: "Step 1: ..., Step 3: ..." → [0, 2]
-        if (state.completed_steps) {
-          const stepRegex = /Step\s+(\d+)/g;
-          const ids: number[] = [];
-          let match;
-          while ((match = stepRegex.exec(state.completed_steps)) !== null) {
-            const id = parseInt(match[1], 10) - 1; // 1-indexed → 0-indexed
-            if (id >= 0 && id < 10) ids.push(id);
-          }
-          if (ids.length > 0) {
-            loadWorkflowState(ids);
-          }
+        const completedIds = state.steps
+          .filter((s) => s.status === "completed")
+          .map((s) => s.step_id);
+        if (completedIds.length > 0) {
+          loadWorkflowState(completedIds);
         }
       })
       .catch(() => {
-        // No workflow.md yet — fresh skill (initWorkflow already called above)
+        // No saved state — fresh skill
       });
 
     return () => { cancelled = true; };
-  }, [skillName, workspacePath, initWorkflow, loadWorkflowState]);
+  }, [skillName, initWorkflow, loadWorkflowState]);
 
-  // Persist workflow state to workflow.md when steps change
+  // Persist workflow state to SQLite when steps change
   useEffect(() => {
-    if (!workspacePath || !domain) return;
-    // Only save when the store's skill matches the URL skill
+    if (!domain) return;
     const store = useWorkflowStore.getState();
     if (store.skillName !== skillName) return;
 
-    const completedIds = store.steps
-      .filter((s) => s.status === "completed")
-      .map((s) => s.id);
+    const stepStatuses = store.steps.map((s) => ({
+      step_id: s.id,
+      status: s.status,
+    }));
 
     const status = store.steps[store.currentStep]?.status === "in_progress"
       ? "in_progress"
-      : completedIds.length === store.steps.length
+      : store.steps.every((s) => s.status === "completed")
         ? "completed"
         : "pending";
 
-    saveWorkflowState(workspacePath, skillName, domain, currentStep, completedIds, status).catch(
-      () => {} // silent — workflow.md is best-effort
+    saveWorkflowState(skillName, domain, currentStep, status, stepStatuses).catch(
+      () => {} // silent — best-effort persistence
     );
-  }, [steps, currentStep, workspacePath, skillName, domain]);
+  }, [steps, currentStep, skillName, domain]);
 
   // Load file content when entering a human review step
   useEffect(() => {
@@ -639,6 +632,12 @@ export default function WorkflowPage() {
               <Button variant="outline" size="sm">
                 <Pencil className="size-3.5" />
                 Editor
+              </Button>
+            </Link>
+            <Link to="/skill/$skillName/chat" params={{ skillName }}>
+              <Button variant="outline" size="sm">
+                <MessageSquare className="size-3.5" />
+                Chat
               </Button>
             </Link>
             {isRunning && (

@@ -8,6 +8,7 @@ import DashboardPage from "./pages/dashboard";
 import SettingsPage from "./pages/settings";
 import WorkflowPage from "./pages/workflow";
 import EditorPage from "./pages/editor";
+import ChatPage from "./pages/chat";
 
 const rootRoute = createRootRoute({
   component: AppLayout,
@@ -37,11 +38,18 @@ const editorRoute = createRoute({
   component: EditorPage,
 });
 
+const chatRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/skill/$skillName/chat",
+  component: ChatPage,
+});
+
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
   settingsRoute,
   workflowRoute,
   editorRoute,
+  chatRoute,
 ]);
 
 export const router = createRouter({ routeTree });

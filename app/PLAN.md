@@ -1,6 +1,6 @@
 # Plan: Skill Builder Desktop UI Application
 
-> **Note:** This document is the original architecture plan. Some sections are outdated — in particular, **GitHub OAuth, git2, and tauri-plugin-store have been removed** and replaced with rusqlite (SQLite) for local settings persistence. There is no login page or git integration. See `FEATURES.md` for the current feature checklist and `TESTS.md` for the current test plan.
+> **Note:** This document is the original architecture plan. Some sections are outdated — in particular, **GitHub OAuth, git2, and tauri-plugin-store have been removed** and replaced with rusqlite (SQLite) for local settings persistence. There is no login page or git integration. **Workflow state** is now persisted in SQLite (tables: workflow_runs, workflow_steps, agent_runs) instead of workflow.md files. **Chat sessions** are stored in SQLite (tables: chat_sessions, chat_messages). See `FEATURES.md` for the current feature checklist and `TESTS.md` for the current test plan.
 
 ## Context
 
@@ -56,9 +56,9 @@ The skill-builder is currently a CLI-only multi-agent workflow (orchestrated by 
 | Zip | zip crate |
 
 ### Storage
-- **No database** — the file system IS the database (same `skills/<name>/` structure as CLI)
-- **In-memory state** via Zustand, persisted to tauri-plugin-store for session resume
-- **Git** is the history/versioning layer, authenticated via GitHub
+- **SQLite** via rusqlite (bundled): settings, workflow state, agent run history, chat sessions/messages
+- **File system** for skill files (same `skills/<name>/` structure as CLI)
+- **In-memory state** via Zustand, synced to SQLite for persistence
 
 ---
 
