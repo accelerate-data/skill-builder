@@ -98,7 +98,7 @@
 - [x] Frontend: Step 7-9 — agent output + summary display
 - [x] Frontend: Step 10 — package confirmation
 - [x] Frontend: Workflow resume (load state, skip completed steps)
-- [ ] Full 10-step workflow end-to-end
+- [x] Full 10-step workflow end-to-end
 
 ## Phase 5: Git Integration
 
@@ -127,7 +127,7 @@
 - [x] Frontend: CodeMirror source editor with markdown syntax highlighting
 - [x] Frontend: Live markdown preview (react-markdown)
 - [x] Frontend: Auto-save with debounce
-- [ ] Frontend: Git status indicators in file tree
+- [x] Frontend: Git status indicators in file tree
 - [x] Frontend: `use-skill-files` hook
 
 ## Phase 7: Chat Interface

@@ -8,6 +8,7 @@ import {
   Lock,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { GitStatusBadge } from "@/components/git-status-badge";
 import { cn } from "@/lib/utils";
 import type { FileEntry } from "@/lib/types";
 
@@ -67,11 +68,13 @@ function TreeItem({
   depth,
   activeFilePath,
   onFileSelect,
+  getGitStatus,
 }: {
   node: TreeNode;
   depth: number;
   activeFilePath: string | null;
   onFileSelect: (entry: FileEntry) => void;
+  getGitStatus?: (path: string) => string;
 }) {
   const [expanded, setExpanded] = useState(true);
   const isActive = node.entry?.absolute_path === activeFilePath;
@@ -110,6 +113,7 @@ function TreeItem({
                 depth={depth + 1}
                 activeFilePath={activeFilePath}
                 onFileSelect={onFileSelect}
+                getGitStatus={getGitStatus}
               />
             ))}
           </div>
@@ -133,6 +137,9 @@ function TreeItem({
       {node.isReadonly && (
         <Lock className="size-3 shrink-0 text-muted-foreground/60" />
       )}
+      {getGitStatus && node.entry && (
+        <GitStatusBadge status={getGitStatus(node.entry.relative_path)} className="ml-auto" />
+      )}
     </button>
   );
 }
@@ -141,9 +148,10 @@ interface FileTreeProps {
   files: FileEntry[];
   activeFilePath: string | null;
   onFileSelect: (entry: FileEntry) => void;
+  getGitStatus?: (path: string) => string;
 }
 
-export function FileTree({ files, activeFilePath, onFileSelect }: FileTreeProps) {
+export function FileTree({ files, activeFilePath, onFileSelect, getGitStatus }: FileTreeProps) {
   const tree = useMemo(() => buildTree(files), [files]);
 
   if (files.length === 0) {
@@ -164,6 +172,7 @@ export function FileTree({ files, activeFilePath, onFileSelect }: FileTreeProps)
             depth={0}
             activeFilePath={activeFilePath}
             onFileSelect={onFileSelect}
+            getGitStatus={getGitStatus}
           />
         ))}
       </div>
