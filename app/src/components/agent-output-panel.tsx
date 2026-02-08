@@ -186,8 +186,8 @@ export function AgentOutputPanel({ agentId }: { agentId: string }) {
   }[run.status];
 
   return (
-    <Card className="flex flex-1 flex-col overflow-hidden">
-      <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+    <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <CardHeader className="shrink-0 flex-row items-center justify-between space-y-0 pb-3">
         <CardTitle className="flex items-center gap-2 text-sm font-medium">
           <Cpu className="size-4" />
           Agent Output
@@ -228,7 +228,7 @@ export function AgentOutputPanel({ agentId }: { agentId: string }) {
         </div>
       </CardHeader>
       <Separator />
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1">
         <div ref={scrollRef} className="flex flex-col gap-2 p-4">
           {run.messages.map((msg, i) => (
             <MessageItem key={i} message={msg} />
