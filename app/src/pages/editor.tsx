@@ -12,7 +12,6 @@ import { useEditorStore } from "@/stores/editor-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useSkillFiles } from "@/hooks/use-skill-files";
 import { useAutoSave } from "@/hooks/use-auto-save";
-import { useGitStatus } from "@/hooks/use-git-status";
 import { readFile, saveRawFile } from "@/lib/tauri";
 import type { FileEntry } from "@/lib/types";
 
@@ -35,8 +34,6 @@ export default function EditorPage() {
     markSaved,
     reset,
   } = useEditorStore();
-
-  const { getStatus: getGitStatus } = useGitStatus(workspacePath);
 
   useSkillFiles(workspacePath, skillName);
   useAutoSave();
@@ -143,7 +140,6 @@ export default function EditorPage() {
             files={files.filter((f) => !f.is_directory)}
             activeFilePath={activeFile?.absolute_path ?? null}
             onFileSelect={handleFileSelect}
-            getGitStatus={getGitStatus}
           />
         </div>
 

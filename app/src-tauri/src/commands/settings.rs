@@ -1,26 +1,16 @@
+use crate::db::Db;
 use crate::types::AppSettings;
-use tauri_plugin_store::StoreExt;
-
-const STORE_FILE: &str = "settings.json";
-const SETTINGS_KEY: &str = "app_settings";
 
 #[tauri::command]
-pub fn get_settings(app: tauri::AppHandle) -> Result<AppSettings, String> {
-    let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
-    let value = store.get(SETTINGS_KEY);
-    match value {
-        Some(v) => serde_json::from_value(v.clone()).map_err(|e| e.to_string()),
-        None => Ok(AppSettings::default()),
-    }
+pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::read_settings(&conn)
 }
 
 #[tauri::command]
-pub fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Result<(), String> {
-    let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
-    let value = serde_json::to_value(&settings).map_err(|e| e.to_string())?;
-    store.set(SETTINGS_KEY, value);
-    store.save().map_err(|e| e.to_string())?;
-    Ok(())
+pub fn save_settings(db: tauri::State<'_, Db>, settings: AppSettings) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::write_settings(&conn, &settings)
 }
 
 #[tauri::command]
@@ -44,7 +34,5 @@ pub async fn test_api_key(api_key: String) -> Result<bool, String> {
         .map_err(|e| e.to_string())?;
 
     let status = resp.status().as_u16();
-    // 200 = valid key, 401 = invalid key, other statuses mean the key format is valid
-    // but there may be other issues (rate limit, etc.) - treat as valid
     Ok(status != 401)
 }

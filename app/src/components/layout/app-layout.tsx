@@ -14,10 +14,7 @@ export function AppLayout() {
     getSettings().then((s) => {
       setSettings({
         anthropicApiKey: s.anthropic_api_key,
-        githubRepo: s.github_repo,
         workspacePath: s.workspace_path,
-        autoCommit: s.auto_commit,
-        autoPush: s.auto_push,
       });
     }).catch(() => {
       // Settings may not exist yet

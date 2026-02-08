@@ -29,7 +29,6 @@ import {
   packageSkill,
   parseClarifications,
   saveClarificationAnswers,
-  autoCommitStep,
   type ClarificationFile,
   type PackageResult,
 } from "@/lib/tauri";
@@ -186,34 +185,20 @@ export default function WorkflowPage() {
     }
   }, [currentStep, steps.length, setCurrentStep, updateStepStatus]);
 
-  // Auto-commit helper — fires after any step completes
-  const handleStepAutoCommit = useCallback(
-    (stepName: string) => {
-      if (workspacePath) {
-        autoCommitStep(skillName, stepName, workspacePath)
-          .then((result) => {
-            if (result) toast.info(result);
-          })
-          .catch(() => {});
-      }
-    },
-    [skillName, workspacePath]
-  );
-
   // Watch for single agent completion
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
   const activeRunStatus = activeRun?.status;
 
   useEffect(() => {
     if (!activeRunStatus || isParallelStep) return;
-    // Guard: read current step status directly from store to avoid re-triggering
+    // Guard: only complete steps that are actively running an agent
     const { steps: currentSteps, currentStep: step } = useWorkflowStore.getState();
-    if (currentSteps[step]?.status === "completed" || currentSteps[step]?.status === "error") return;
+    if (currentSteps[step]?.status !== "in_progress") return;
 
     if (activeRunStatus === "completed") {
       updateStepStatus(step, "completed");
       setRunning(false);
-      handleStepAutoCommit(currentSteps[step]?.name ?? `Step ${step + 1}`);
+
       toast.success(`Step ${step + 1} completed`);
       advanceToNextStep();
     } else if (activeRunStatus === "error") {
@@ -221,7 +206,7 @@ export default function WorkflowPage() {
       setRunning(false);
       toast.error(`Step ${step + 1} failed`);
     }
-  }, [activeRunStatus, isParallelStep, updateStepStatus, setRunning, advanceToNextStep, handleStepAutoCommit]);
+  }, [activeRunStatus, isParallelStep, updateStepStatus, setRunning, advanceToNextStep]);
 
   // Watch for parallel agents completion (Step 2)
   const parallelRunA = parallelAgentIds ? runs[parallelAgentIds[0]] : null;
@@ -237,15 +222,15 @@ export default function WorkflowPage() {
     const bFinished = parallelStatusB === "completed" || parallelStatusB === "error";
     if (!aFinished || !bFinished) return;
 
-    // Guard: read current step status directly from store
+    // Guard: only complete steps that are actively running parallel agents
     const { steps: currentSteps, currentStep: step } = useWorkflowStore.getState();
-    if (currentSteps[step]?.status === "completed" || currentSteps[step]?.status === "error") return;
+    if (currentSteps[step]?.status !== "in_progress") return;
 
     if (parallelStatusA === "completed" && parallelStatusB === "completed") {
       updateStepStatus(step, "completed");
       setRunning(false);
       setParallelAgents(null);
-      handleStepAutoCommit(currentSteps[step]?.name ?? `Step ${step + 1}`);
+
       toast.success(`Step ${step + 1} completed`);
       advanceToNextStep();
     } else {
@@ -254,7 +239,7 @@ export default function WorkflowPage() {
       setParallelAgents(null);
       toast.error(`Step ${step + 1} failed`);
     }
-  }, [parallelAgentIds, isParallelStep, parallelStatusA, parallelStatusB, updateStepStatus, setRunning, setParallelAgents, advanceToNextStep, handleStepAutoCommit]);
+  }, [parallelAgentIds, isParallelStep, parallelStatusA, parallelStatusB, updateStepStatus, setRunning, setParallelAgents, advanceToNextStep]);
 
   // --- Step handlers ---
 
@@ -327,7 +312,7 @@ export default function WorkflowPage() {
       setPackageResult(result);
       updateStepStatus(currentStep, "completed");
       setRunning(false);
-      handleStepAutoCommit("Package");
+
       toast.success("Skill packaged successfully");
     } catch (err) {
       updateStepStatus(currentStep, "error");
@@ -362,7 +347,7 @@ export default function WorkflowPage() {
       toast.success("Answers saved");
 
       updateStepStatus(currentStep, "completed");
-      handleStepAutoCommit(steps[currentStep]?.name ?? `Step ${currentStep + 1}`);
+
       advanceToNextStep();
     } catch (err) {
       toast.error(

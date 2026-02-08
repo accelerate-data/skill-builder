@@ -1,8 +1,6 @@
 pub mod agent;
-pub mod auth;
 pub mod clarification;
 pub mod files;
-pub mod git;
 pub mod lifecycle;
 pub mod node;
 pub mod settings;

@@ -2,10 +2,7 @@ import { create } from "zustand";
 
 interface SettingsState {
   anthropicApiKey: string | null;
-  githubRepo: string | null;
   workspacePath: string | null;
-  autoCommit: boolean;
-  autoPush: boolean;
   isConfigured: boolean;
   setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset">>) => void;
   reset: () => void;
@@ -13,10 +10,7 @@ interface SettingsState {
 
 const initialState = {
   anthropicApiKey: null,
-  githubRepo: null,
   workspacePath: null,
-  autoCommit: false,
-  autoPush: false,
   isConfigured: false,
 };
 
@@ -27,7 +21,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       const next = { ...state, ...settings };
       return {
         ...next,
-        isConfigured: !!(next.anthropicApiKey && next.githubRepo),
+        isConfigured: !!next.anthropicApiKey,
       };
     }),
   reset: () => set(initialState),

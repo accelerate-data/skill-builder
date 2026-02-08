@@ -1,47 +1,16 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeviceFlowResponse {
-    pub device_code: String,
-    pub user_code: String,
-    pub verification_uri: String,
-    pub expires_in: u64,
-    pub interval: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeviceFlowPollResult {
-    pub status: String,
-    pub token: Option<String>,
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GitHubUser {
-    pub login: String,
-    pub avatar_url: String,
-    pub name: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub anthropic_api_key: Option<String>,
-    pub github_token: Option<String>,
-    pub github_repo: Option<String>,
     pub workspace_path: Option<String>,
-    pub auto_commit: bool,
-    pub auto_push: bool,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
             anthropic_api_key: None,
-            github_token: None,
-            github_repo: None,
             workspace_path: None,
-            auto_commit: true,
-            auto_push: false,
         }
     }
 }
@@ -87,54 +56,6 @@ pub struct PackageResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PullResult {
-    pub commits_pulled: u32,
-    pub up_to_date: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CommitResult {
-    pub oid: String,
-    pub message: String,
-    pub changed_files: u32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GitDiff {
-    pub files: Vec<GitDiffEntry>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GitDiffEntry {
-    pub path: String,
-    pub status: String,
-    pub hunks: Option<Vec<DiffHunk>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DiffHunk {
-    pub old_start: u32,
-    pub old_lines: u32,
-    pub new_start: u32,
-    pub new_lines: u32,
-    pub content: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GitLogEntry {
-    pub oid: String,
-    pub message: String,
-    pub author: String,
-    pub timestamp: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GitFileStatusEntry {
-    pub path: String,
-    pub status: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillFileEntry {
     pub name: String,
     pub relative_path: String,
@@ -142,4 +63,55 @@ pub struct SkillFileEntry {
     pub is_directory: bool,
     pub is_readonly: bool,
     pub size_bytes: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_settings_default() {
+        let settings = AppSettings::default();
+        assert!(settings.anthropic_api_key.is_none());
+        assert!(settings.workspace_path.is_none());
+    }
+
+    #[test]
+    fn test_app_settings_serde_roundtrip() {
+        let settings = AppSettings {
+            anthropic_api_key: Some("sk-ant-test-key".to_string()),
+            workspace_path: Some("/home/user/skills".to_string()),
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        let deserialized: AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            deserialized.anthropic_api_key.as_deref(),
+            Some("sk-ant-test-key")
+        );
+        assert_eq!(
+            deserialized.workspace_path.as_deref(),
+            Some("/home/user/skills")
+        );
+    }
+
+    #[test]
+    fn test_sidecar_config_serde() {
+        let config = crate::agents::sidecar::SidecarConfig {
+            prompt: "test prompt".to_string(),
+            model: "sonnet".to_string(),
+            api_key: "sk-test".to_string(),
+            cwd: "/tmp".to_string(),
+            allowed_tools: Some(vec!["Read".to_string(), "Write".to_string()]),
+            max_turns: Some(10),
+            permission_mode: Some("bypassPermissions".to_string()),
+            session_id: None,
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("\"apiKey\""));
+        assert!(json.contains("\"allowedTools\""));
+        assert!(json.contains("\"maxTurns\""));
+        assert!(json.contains("\"permissionMode\""));
+        // session_id is None with skip_serializing_if, so should not appear
+        assert!(!json.contains("\"sessionId\""));
+    }
 }

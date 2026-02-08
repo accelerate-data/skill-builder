@@ -13,9 +13,8 @@
 - [x] Dashboard — skill cards grid with progress, status badges, actions
 - [x] New Skill dialog — domain input with auto-derived kebab-case name
 - [x] Delete Skill dialog — confirmation with invoke
-- [x] Settings page — API key (with test), GitHub PAT (with test), repo picker, folder picker
-- [x] Rust: GitHub PAT validation (fetch user from token)
-- [x] Rust: Token storage via tauri-plugin-store
+- [x] Settings page — API key (with test), workspace folder picker
+- [x] Rust: Settings storage via rusqlite (SQLite)
 - [x] Rust: Settings CRUD (get/save/test API key)
 - [x] Rust: Skill CRUD (list/create/delete from filesystem)
 - [x] Rust: Workflow state markdown parser
@@ -51,15 +50,6 @@
 - [x] Agent store (run state, streaming events, cost tracking)
 - [x] `use-agent-stream` hook (subscribe to Tauri agent-message/agent-exit events)
 - [x] Workflow wizard page — step progression sidebar + content area
-
-### Git Integration (pulled forward from Phase 5)
-- [x] Rust: `list_github_repos` — paginated GitHub API fetch of user repos
-- [x] Rust: `clone_repo` — clone via HTTPS + token auth, seed README.md + .gitignore
-- [x] Rust: `commit_and_push` — stage all, commit, push to remote
-- [x] Frontend: Repo picker — searchable dropdown of GitHub repos with refresh
-- [x] Frontend: Folder picker — native OS dialog via tauri-plugin-dialog
-- [x] Frontend: Clone & Setup button (turns green on success)
-- [x] Frontend: Save commits and pushes to repo
 
 ### UI Polish (pulled forward from Phase 8)
 - [x] Test buttons turn green with checkmark on success (API key, GitHub token)
@@ -100,24 +90,18 @@
 - [x] Frontend: Workflow resume (load state, skip completed steps)
 - [x] Full 10-step workflow end-to-end
 
-## Phase 5: Git Integration
+## Phase 5: SQLite Migration (replaced Git Integration)
 
-- [x] Rust: git2 — clone repo (HTTPS + GitHub token)
-- [x] Rust: git2 — commit with message
-- [x] Rust: git2 — push to remote
-- [x] Rust: git2 — seed README.md + .gitignore on empty repos
-- [x] Rust: Clone/init on first setup after repo selection
-- [x] Rust: git2 — pull from remote
-- [x] Rust: git2 — diff (file-level + line-level)
-- [x] Rust: git2 — log (commit history)
-- [x] Rust: git2 — file status (modified, untracked)
-- [x] Rust: git2 — commit without push (git_commit)
-- [x] Rust: Auto-commit after each workflow step (configurable)
-- [x] Rust: Auto-push after commit (optional)
-- [x] Frontend: Push/pull toolbar buttons
-- [x] Frontend: Diff viewer for file history (react-diff-viewer-continued)
-- [x] Frontend: Git status indicators per file (GitStatusBadge)
-- [x] Frontend: `use-git-status` hook
+- [x] Removed: GitHub OAuth, clone, push, pull, commit, diff, log, status
+- [x] Removed: git2 dependency, tauri-plugin-store
+- [x] Added: rusqlite with bundled SQLite for settings persistence
+- [x] Rust: db.rs — connection init, migrations, read/write settings helpers
+- [x] Rust: Settings commands rewritten to use SQLite (Db state)
+- [x] Rust: Workflow commands use Db state for API key lookup
+- [x] Frontend: Removed login page, auth store, git hooks, git components
+- [x] Frontend: Simplified settings (API key + workspace folder only)
+- [x] Frontend: Simplified close guard (agents-only check, no git)
+- [x] Frontend: Removed git status from editor file tree
 
 ## Phase 6: Editor
 
@@ -127,7 +111,6 @@
 - [x] Frontend: CodeMirror source editor with markdown syntax highlighting
 - [x] Frontend: Live markdown preview (react-markdown)
 - [x] Frontend: Auto-save with debounce
-- [x] Frontend: Git status indicators in file tree
 - [x] Frontend: `use-skill-files` hook
 
 ## Phase 7: Chat Interface
@@ -152,7 +135,7 @@
 - [ ] Responsive layout adjustments
 - [ ] App icon and branding
 - [ ] First-run onboarding flow
-- [ ] Onboarding: prompt for GitHub PAT + API key on first launch
+- [ ] Onboarding: prompt for API key + workspace folder on first launch
 
 ### App Lifecycle
 - [ ] Rust: `check_workspace_path` — validate workspace folder exists on disk
@@ -160,5 +143,3 @@
 - [ ] Rust: Window close interceptor (on_window_event + CloseRequested)
 - [ ] Frontend: Workspace folder missing warning banner on dashboard
 - [ ] Frontend: Close guard — block close while agents running
-- [ ] Frontend: Close guard — commit & push dirty worktree before exit
-- [ ] Frontend: Close guard — confirmation dialog for uncommitted changes

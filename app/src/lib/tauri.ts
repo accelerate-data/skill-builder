@@ -2,32 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 
 // --- Types ---
 
-export interface GitHubUser {
-  login: string;
-  avatar_url: string;
-  name: string | null;
-}
-
-export interface DeviceFlowResponse {
-  device_code: string;
-  user_code: string;
-  verification_uri: string;
-  expires_in: number;
-  interval: number;
-}
-
-export interface DeviceFlowPollResult {
-  status: "pending" | "complete";
-  token?: string;
-}
-
 export interface AppSettings {
   anthropic_api_key: string | null;
-  github_token: string | null;
-  github_repo: string | null;
   workspace_path: string | null;
-  auto_commit: boolean;
-  auto_push: boolean;
 }
 
 export interface SkillSummary {
@@ -37,19 +14,6 @@ export interface SkillSummary {
   status: string | null;
   last_modified: string | null;
 }
-
-// --- Auth ---
-
-export const startDeviceFlow = () =>
-  invoke<DeviceFlowResponse>("start_login");
-
-export const pollDeviceFlow = (deviceCode: string) =>
-  invoke<DeviceFlowPollResult>("poll_login", { deviceCode });
-
-export const getCurrentUser = (token: string) =>
-  invoke<GitHubUser>("get_current_user", { token });
-
-export const logoutUser = () => invoke("logout");
 
 // --- Settings ---
 
@@ -74,91 +38,6 @@ export const createSkill = (
 
 export const deleteSkill = (workspacePath: string, name: string) =>
   invoke("delete_skill", { workspacePath, name });
-
-// --- GitHub Repos ---
-
-export interface GitHubRepo {
-  full_name: string;
-  name: string;
-  private: boolean;
-  description: string | null;
-  clone_url: string;
-}
-
-export const listGithubRepos = (token: string) =>
-  invoke<GitHubRepo[]>("list_github_repos", { token });
-
-// --- Git ---
-
-export interface CloneResult {
-  path: string;
-  created_readme: boolean;
-  created_gitignore: boolean;
-}
-
-export const cloneRepo = (repoUrl: string, destPath: string, token: string) =>
-  invoke<CloneResult>("clone_repo", { repoUrl, destPath, token });
-
-export const commitAndPush = (repoPath: string, message: string, token: string) =>
-  invoke<string>("commit_and_push", { repoPath, message, token });
-
-// --- Git (extended) ---
-
-export interface PullResult {
-  commits_pulled: number;
-  up_to_date: boolean;
-}
-
-export interface CommitResult {
-  oid: string;
-  message: string;
-  changed_files: number;
-}
-
-export interface GitDiff {
-  files: GitDiffEntry[];
-}
-
-export interface GitDiffEntry {
-  path: string;
-  status: string;
-  hunks?: DiffHunk[];
-}
-
-export interface DiffHunk {
-  old_start: number;
-  old_lines: number;
-  new_start: number;
-  new_lines: number;
-  content: string;
-}
-
-export interface GitLogEntry {
-  oid: string;
-  message: string;
-  author: string;
-  timestamp: string;
-}
-
-export interface GitFileStatusEntry {
-  path: string;
-  status: string;
-}
-
-export const gitPull = (repoPath: string, token: string) =>
-  invoke<PullResult>("git_pull", { repoPath, token });
-
-export const gitCommit = (repoPath: string, message: string) =>
-  invoke<CommitResult>("git_commit", { repoPath, message });
-
-export const gitDiff = (repoPath: string, filePath?: string) =>
-  invoke<GitDiff>("git_diff", { repoPath, filePath });
-
-export const gitLog = (repoPath: string, limit?: number, filePath?: string) =>
-  invoke<GitLogEntry[]>("git_log", { repoPath, limit, filePath });
-
-export const gitFileStatus = (repoPath: string) =>
-  invoke<GitFileStatusEntry[]>("git_file_status", { repoPath });
 
 // --- Node.js ---
 
@@ -215,12 +94,6 @@ export const packageSkill = (
   skillName: string,
   workspacePath: string,
 ) => invoke<PackageResult>("package_skill", { skillName, workspacePath });
-
-export const autoCommitStep = (
-  skillName: string,
-  stepName: string,
-  workspacePath: string,
-) => invoke<string | null>("auto_commit_step", { skillName, stepName, workspacePath });
 
 // --- Clarifications ---
 

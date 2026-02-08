@@ -24,15 +24,6 @@ vi.mock("@/lib/tauri", () => ({
       error: null,
     })
   ),
-  listGithubRepos: vi.fn(() => Promise.resolve([])),
-  cloneRepo: vi.fn(() =>
-    Promise.resolve({
-      path: "/some/path",
-      created_readme: false,
-      created_gitignore: false,
-    })
-  ),
-  commitAndPush: vi.fn(() => Promise.resolve("No changes to commit")),
 }));
 
 // Import after mocks are set up
@@ -40,20 +31,12 @@ import SettingsPage from "@/pages/settings";
 
 const defaultSettings: AppSettings = {
   anthropic_api_key: null,
-  github_token: null,
-  github_repo: null,
   workspace_path: null,
-  auto_commit: false,
-  auto_push: false,
 };
 
 const populatedSettings: AppSettings = {
   anthropic_api_key: "sk-ant-existing-key",
-  github_token: "ghp_existingtoken",
-  github_repo: "owner/repo",
   workspace_path: "/home/user/workspace",
-  auto_commit: true,
-  auto_push: false,
 };
 
 function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
@@ -62,7 +45,6 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
     get_settings: settings,
     save_settings: undefined,
     test_api_key: true,
-    get_current_user: { login: "testuser" },
     check_node: {
       available: true,
       version: "20.0.0",
@@ -87,9 +69,8 @@ describe("SettingsPage", () => {
     });
 
     expect(screen.getByText("API Configuration")).toBeInTheDocument();
-    expect(screen.getByText("GitHub Token")).toBeInTheDocument();
+    expect(screen.getByText("Workspace Folder")).toBeInTheDocument();
     expect(screen.getByText("Node.js Runtime")).toBeInTheDocument();
-    expect(screen.getByText("GitHub Repository")).toBeInTheDocument();
   });
 
   it("shows loading spinner initially", () => {
@@ -116,10 +97,6 @@ describe("SettingsPage", () => {
     const apiKeyInput = screen.getByPlaceholderText("sk-ant-...");
     expect(apiKeyInput).toHaveValue("sk-ant-existing-key");
 
-    // GitHub token field
-    const ghTokenInput = screen.getByPlaceholderText("ghp_...");
-    expect(ghTokenInput).toHaveValue("ghp_existingtoken");
-
     // Workspace path
     const workspaceInput = screen.getByPlaceholderText("Select a folder...");
     expect(workspaceInput).toHaveValue("/home/user/workspace");
@@ -135,12 +112,8 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    // There are two "Test" buttons (one for API key, one for GH token).
-    // The first "Test" button is for the API key.
-    const testButtons = screen.getAllByRole("button", { name: /Test/i });
-    const apiTestButton = testButtons[0];
-
-    await user.click(apiTestButton);
+    const testButton = screen.getByRole("button", { name: /Test/i });
+    await user.click(testButton);
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("test_api_key", {

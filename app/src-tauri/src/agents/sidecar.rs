@@ -177,3 +177,47 @@ fn resolve_sidecar_path(app_handle: &tauri::AppHandle) -> Result<String, String>
 
     Err("Could not find agent-runner.js — run 'npm run build' in app/sidecar/ first".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_cancel_sidecar_not_found() {
+        let registry = create_registry();
+        let result = cancel_sidecar("nonexistent-agent".into(), registry).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn test_sidecar_config_serialization() {
+        let config = SidecarConfig {
+            prompt: "Analyze this codebase".to_string(),
+            model: "sonnet".to_string(),
+            api_key: "sk-ant-test".to_string(),
+            cwd: "/home/user/project".to_string(),
+            allowed_tools: Some(vec!["Read".to_string(), "Glob".to_string()]),
+            max_turns: Some(25),
+            permission_mode: Some("bypassPermissions".to_string()),
+            session_id: None,
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        // Verify camelCase field names from serde rename
+        assert_eq!(parsed["apiKey"], "sk-ant-test");
+        assert_eq!(parsed["allowedTools"][0], "Read");
+        assert_eq!(parsed["maxTurns"], 25);
+        assert_eq!(parsed["permissionMode"], "bypassPermissions");
+        // session_id is None + skip_serializing_if — should be absent
+        assert!(parsed.get("sessionId").is_none());
+    }
+
+    #[test]
+    fn test_create_registry() {
+        // Ensure registry creation doesn't panic and returns usable type
+        let _registry = create_registry();
+    }
+}

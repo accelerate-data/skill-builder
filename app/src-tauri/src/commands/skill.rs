@@ -167,4 +167,32 @@ mod tests {
         let skills = list_skills("/tmp/nonexistent-workspace-path-abc123".into()).unwrap();
         assert!(skills.is_empty());
     }
+
+    #[test]
+    fn test_delete_skill_directory_traversal() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap().to_string();
+
+        // Create a legitimate skill so the traversal target resolves
+        create_skill(workspace.clone(), "legit".into(), "domain".into()).unwrap();
+
+        // Attempt to delete using ".." to escape the workspace
+        let result = delete_skill(workspace.clone(), "../../../etc".into());
+        assert!(result.is_err());
+
+        // The legitimate skill should still exist
+        let skills = list_skills(workspace).unwrap();
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "legit");
+    }
+
+    #[test]
+    fn test_delete_nonexistent_skill() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap().to_string();
+
+        let result = delete_skill(workspace, "no-such-skill".into());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
 }

@@ -2,12 +2,8 @@ use std::io::{Read, Write};
 use std::path::Path;
 
 use crate::agents::sidecar::{self, AgentRegistry, SidecarConfig};
-use crate::types::{AppSettings, PackageResult, ParallelAgentResult, StepConfig};
-use git2::{Cred, RemoteCallbacks, Repository};
-use tauri_plugin_store::StoreExt;
-
-const STORE_FILE: &str = "settings.json";
-const SETTINGS_KEY: &str = "app_settings";
+use crate::db::Db;
+use crate::types::{PackageResult, ParallelAgentResult, StepConfig};
 
 const DEFAULT_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"];
 
@@ -88,12 +84,9 @@ fn build_prompt(
     )
 }
 
-fn read_api_key(app: &tauri::AppHandle) -> Result<String, String> {
-    let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
-    let settings: AppSettings = match store.get(SETTINGS_KEY) {
-        Some(v) => serde_json::from_value(v.clone()).map_err(|e| e.to_string())?,
-        None => AppSettings::default(),
-    };
+fn read_api_key(db: &tauri::State<'_, Db>) -> Result<String, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let settings = crate::db::read_settings(&conn)?;
     settings
         .anthropic_api_key
         .ok_or_else(|| "Anthropic API key not configured".to_string())
@@ -111,13 +104,14 @@ fn make_agent_id(skill_name: &str, label: &str) -> String {
 pub async fn run_workflow_step(
     app: tauri::AppHandle,
     state: tauri::State<'_, AgentRegistry>,
+    db: tauri::State<'_, Db>,
     skill_name: String,
     step_id: u32,
     domain: String,
     workspace_path: String,
 ) -> Result<String, String> {
     let step = get_step_config(step_id)?;
-    let api_key = read_api_key(&app)?;
+    let api_key = read_api_key(&db)?;
     let prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain);
     let agent_id = make_agent_id(&skill_name, &format!("step{}", step_id));
 
@@ -140,11 +134,12 @@ pub async fn run_workflow_step(
 pub async fn run_parallel_agents(
     app: tauri::AppHandle,
     state: tauri::State<'_, AgentRegistry>,
+    db: tauri::State<'_, Db>,
     skill_name: String,
     domain: String,
     workspace_path: String,
 ) -> Result<ParallelAgentResult, String> {
-    let api_key = read_api_key(&app)?;
+    let api_key = read_api_key(&db)?;
     let tools: Vec<String> = DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect();
 
     let agent_id_a = make_agent_id(&skill_name, "step2a");
@@ -219,7 +214,6 @@ pub async fn package_skill(
 
     let output_path = skill_dir.join(format!("{}.skill", skill_name));
 
-    // Run in a blocking task since zip I/O is synchronous
     let result = tokio::task::spawn_blocking(move || {
         create_skill_zip(&skill_dir, &output_path)
     })
@@ -239,13 +233,11 @@ fn create_skill_zip(
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
 
-    // Add SKILL.md if it exists
     let skill_md = skill_dir.join("SKILL.md");
     if skill_md.exists() {
         add_file_to_zip(&mut zip, &skill_md, "SKILL.md", options)?;
     }
 
-    // Add references/ directory recursively
     let references_dir = skill_dir.join("references");
     if references_dir.exists() && references_dir.is_dir() {
         add_dir_to_zip(&mut zip, &references_dir, "references", options)?;
@@ -309,92 +301,6 @@ fn add_dir_to_zip(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn auto_commit_step(
-    app: tauri::AppHandle,
-    skill_name: String,
-    step_name: String,
-    workspace_path: String,
-) -> Result<Option<String>, String> {
-    let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
-    let settings: AppSettings = match store.get(SETTINGS_KEY) {
-        Some(v) => serde_json::from_value(v.clone()).map_err(|e| e.to_string())?,
-        None => AppSettings::default(),
-    };
-
-    if !settings.auto_commit {
-        return Ok(None);
-    }
-
-    let message = format!("skill-builder: [{}] {}", skill_name, step_name);
-
-    let repo = Repository::open(&workspace_path)
-        .map_err(|e| format!("Failed to open repo: {}", e))?;
-
-    let mut index = repo.index().map_err(|e| e.to_string())?;
-    index
-        .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
-        .map_err(|e| e.to_string())?;
-    index
-        .update_all(["*"].iter(), None)
-        .map_err(|e| e.to_string())?;
-    index.write().map_err(|e| e.to_string())?;
-
-    let tree_oid = index.write_tree().map_err(|e| e.to_string())?;
-    let tree = repo.find_tree(tree_oid).map_err(|e| e.to_string())?;
-
-    let sig = repo
-        .signature()
-        .or_else(|_| git2::Signature::now("Skill Builder", "noreply@skill-builder.app"))
-        .map_err(|e| e.to_string())?;
-
-    let parent = repo
-        .head()
-        .ok()
-        .and_then(|h| h.peel_to_commit().ok());
-
-    // No changes to commit
-    if let Some(ref p) = parent {
-        if p.tree_id() == tree_oid {
-            return Ok(None);
-        }
-    }
-
-    let parents: Vec<&git2::Commit> = parent.iter().collect();
-
-    repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &parents)
-        .map_err(|e| e.to_string())?;
-
-    // Auto-push if enabled and token available
-    if settings.auto_push {
-        if let Some(token) = settings.github_token {
-            let mut callbacks = RemoteCallbacks::new();
-            callbacks.credentials(move |_url, _username, _allowed| {
-                Cred::userpass_plaintext("x-access-token", &token)
-            });
-
-            let mut push_opts = git2::PushOptions::new();
-            push_opts.remote_callbacks(callbacks);
-
-            let mut remote = repo
-                .find_remote("origin")
-                .map_err(|e| e.to_string())?;
-
-            let head = repo.head().map_err(|e| e.to_string())?;
-            let branch = head.shorthand().unwrap_or("main");
-            let refspec = format!("refs/heads/{}:refs/heads/{}", branch, branch);
-
-            remote
-                .push(&[&refspec], Some(&mut push_opts))
-                .map_err(|e| format!("Push failed: {}", e))?;
-
-            return Ok(Some(format!("Committed and pushed: {}", message)));
-        }
-    }
-
-    Ok(Some(format!("Committed: {}", message)))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -447,7 +353,6 @@ mod tests {
     fn test_make_agent_id() {
         let id = make_agent_id("test-skill", "step0");
         assert!(id.starts_with("test-skill-step0-"));
-        // Should have a timestamp suffix
         let parts: Vec<&str> = id.rsplitn(2, '-').collect();
         assert!(parts[0].parse::<u128>().is_ok());
     }
@@ -459,7 +364,6 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("references")).unwrap();
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Create files that should be included
         std::fs::write(skill_dir.join("SKILL.md"), "# My Skill").unwrap();
         std::fs::write(
             skill_dir.join("references").join("deep-dive.md"),
@@ -467,7 +371,6 @@ mod tests {
         )
         .unwrap();
 
-        // Create files that should NOT be included
         std::fs::write(
             skill_dir.join("context").join("decisions.md"),
             "# Decisions",
@@ -481,7 +384,6 @@ mod tests {
         assert!(Path::new(&result.file_path).exists());
         assert!(result.size_bytes > 0);
 
-        // Verify zip contents
         let file = std::fs::File::open(&result.file_path).unwrap();
         let mut archive = zip::ZipArchive::new(file).unwrap();
 
@@ -491,7 +393,6 @@ mod tests {
 
         assert!(names.contains(&"SKILL.md".to_string()));
         assert!(names.contains(&"references/deep-dive.md".to_string()));
-        // context/ and workflow.md should not be in the zip
         assert!(!names.iter().any(|n| n.starts_with("context/")));
         assert!(!names.contains(&"workflow.md".to_string()));
     }

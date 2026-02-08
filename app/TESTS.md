@@ -22,7 +22,7 @@ npm run test:all
 **Automated test files:**
 - `src/__tests__/` — Vitest unit tests (stores, utils, pages)
 - `e2e/` — Playwright E2E tests (navigation, settings, dashboard)
-- `src-tauri/src/` — Rust `#[cfg(test)]` modules (workflow_state, node, skill, git)
+- `src-tauri/src/` — Rust `#[cfg(test)]` modules (workflow_state, node, skill, db)
 
 ---
 
@@ -46,16 +46,8 @@ The checklists below cover manual QA scenarios not yet covered by automated test
 ### Settings
 - [ ] API key field is password-masked with show/hide toggle
 - [ ] "Test" button validates API key → turns green on success, error toast on failure
-- [ ] GitHub PAT field is password-masked with show/hide toggle
-- [ ] "Test" button validates PAT → turns green on success, shows username in toast
-- [ ] Repo picker: click → fetches repos from GitHub → searchable dropdown
-- [ ] Repo picker: refresh button re-fetches repos (catches newly created repos)
-- [ ] Repo picker: shows lock/globe icons for private/public repos
-- [ ] Folder picker: "Browse" opens native OS folder dialog
-- [ ] Clone & Setup: clones repo, seeds README + .gitignore, turns green on success
-- [ ] Auto-commit toggle switches on/off
-- [ ] Auto-push toggle switches on/off
-- [ ] Save → settings persisted + commits & pushes to repo if configured
+- [ ] Workspace folder: "Browse" opens native OS folder dialog, path saved
+- [ ] Save → settings persisted to SQLite
 - [ ] Save button turns green "Saved" for 3 seconds
 - [ ] Node.js status indicator: green badge with version, or red badge with download link
 - [ ] Load existing settings on page mount
@@ -65,18 +57,10 @@ The checklists below cover manual QA scenarios not yet covered by automated test
 - [ ] Active route highlighted in sidebar
 - [ ] 3-way theme toggle works (System / Light / Dark)
 - [ ] Theme persists across page navigation
-- [ ] Header shows GitHub avatar + username when PAT is configured
 
 ### Rust Backend
-- [ ] `get_current_user` returns GitHub user info from PAT
-- [ ] `list_github_repos` returns paginated list of user repos
-- [ ] `clone_repo` clones repo via HTTPS + token auth
-- [ ] `clone_repo` seeds README.md + .gitignore on empty repo, commits, pushes
-- [ ] `clone_repo` rejects if directory already contains .git
-- [ ] `commit_and_push` stages all changes, commits, pushes
-- [ ] `commit_and_push` returns "No changes to commit" when tree unchanged
-- [ ] `get_settings` returns default settings on first run
-- [ ] `save_settings` persists and `get_settings` retrieves them
+- [ ] `get_settings` returns default settings from SQLite on first run
+- [ ] `save_settings` persists to SQLite and `get_settings` retrieves them
 - [ ] `test_api_key` returns true for valid key, false for invalid
 - [ ] `list_skills` returns empty array when no skills
 - [ ] `create_skill` creates directory structure on disk
@@ -183,21 +167,17 @@ The checklists below cover manual QA scenarios not yet covered by automated test
 - [ ] In-progress step re-runs from beginning
 - [ ] Review steps (2, 5) show form with previous answers on resume
 
-## Phase 5: Git Integration
+## Phase 5: SQLite Migration
 
-- [ ] Repo picker → select repo → Clone & Setup → repo cloned to selected folder
-- [ ] Clone empty repo → README.md + .gitignore seeded, committed, pushed
-- [ ] Clone repo with existing README → no seed files created
-- [ ] Clone & Setup button turns green on success
-- [ ] Clone to folder that already has .git → error message shown
-- [ ] Save settings → changes committed and pushed to repo
-- [ ] Save when no repo changes → toast says "no repo changes to push"
-- [ ] Save when repo not cloned yet → just saves settings (no error)
-- [ ] Select repo with skills → skills appear in dashboard
-- [ ] Push button → changes appear on GitHub
-- [ ] Pull button → remote changes appear locally
-- [ ] Diff viewer shows file changes between commits
-- [ ] Git status shows modified/untracked per file
+- [ ] First run → SQLite database created in app data directory
+- [ ] `get_settings` returns defaults when no settings saved
+- [ ] `save_settings` → `get_settings` returns saved values
+- [ ] Settings survive app restart (persisted in SQLite)
+- [ ] Login page removed — app loads directly to dashboard
+- [ ] Settings page shows only: API key, workspace folder, Node.js status
+- [ ] No GitHub-related UI anywhere in the app
+- [ ] Close app with no agents → closes immediately (no git check)
+- [ ] Editor file tree has no git status badges
 
 ## Phase 6: Editor
 
@@ -207,7 +187,6 @@ The checklists below cover manual QA scenarios not yet covered by automated test
 - [ ] Live preview updates as you type
 - [ ] Auto-save triggers after typing pause (debounce)
 - [ ] Context files are read-only in editor
-- [ ] Git status indicators show in file tree
 
 ## Phase 7: Chat Interface
 
@@ -239,9 +218,5 @@ The checklists below cover manual QA scenarios not yet covered by automated test
 - [ ] Warning banner has link to Settings page
 - [ ] Close app while agent running → "Agents Still Running" dialog shown
 - [ ] "Go Back" dismisses dialog, app stays open
-- [ ] Close app with uncommitted changes → "Uncommitted Changes" dialog shown
-- [ ] "Commit & Close" → changes committed and pushed, app closes
-- [ ] "Close Without Saving" → app closes without commit
-- [ ] "Cancel" → dialog dismissed, app stays open
-- [ ] Close app with clean worktree → closes immediately (no dialog)
+- [ ] Close app with no agents running → closes immediately
 - [ ] Close app with no workspace configured → closes immediately

@@ -47,32 +47,7 @@ describe("CloseGuard", () => {
     });
   });
 
-  it("shows dirty-worktree dialog when workspace has changes", async () => {
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "has_running_agents") return Promise.resolve(false);
-      if (cmd === "get_settings")
-        return Promise.resolve({
-          workspace_path: "/some/path",
-          github_token: "token",
-          anthropic_api_key: null,
-          github_repo: null,
-          auto_commit: true,
-          auto_push: false,
-        });
-      if (cmd === "git_file_status")
-        return Promise.resolve([{ path: "file.txt", status: "modified" }]);
-      return Promise.reject(new Error(`Unmocked: ${cmd}`));
-    });
-
-    render(<CloseGuard />);
-    closeRequestedCallback?.();
-
-    await waitFor(() => {
-      expect(screen.getByText("Uncommitted Changes")).toBeInTheDocument();
-    });
-  });
-
-  it("closes immediately when no agents and clean worktree", async () => {
+  it("closes immediately when no agents running", async () => {
     const destroyFn = vi.fn(() => Promise.resolve());
     mockGetCurrentWindow.mockReturnValue({
       close: vi.fn(() => Promise.resolve()),
@@ -80,44 +55,6 @@ describe("CloseGuard", () => {
     });
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "has_running_agents") return Promise.resolve(false);
-      if (cmd === "get_settings")
-        return Promise.resolve({
-          workspace_path: "/some/path",
-          github_token: "token",
-          anthropic_api_key: null,
-          github_repo: null,
-          auto_commit: true,
-          auto_push: false,
-        });
-      if (cmd === "git_file_status") return Promise.resolve([]);
-      return Promise.reject(new Error(`Unmocked: ${cmd}`));
-    });
-
-    render(<CloseGuard />);
-    closeRequestedCallback?.();
-
-    await waitFor(() => {
-      expect(destroyFn).toHaveBeenCalled();
-    });
-  });
-
-  it("closes immediately when no workspace path configured", async () => {
-    const destroyFn = vi.fn(() => Promise.resolve());
-    mockGetCurrentWindow.mockReturnValue({
-      close: vi.fn(() => Promise.resolve()),
-      destroy: destroyFn,
-    });
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "has_running_agents") return Promise.resolve(false);
-      if (cmd === "get_settings")
-        return Promise.resolve({
-          workspace_path: null,
-          github_token: null,
-          anthropic_api_key: null,
-          github_repo: null,
-          auto_commit: true,
-          auto_push: false,
-        });
       return Promise.reject(new Error(`Unmocked: ${cmd}`));
     });
 

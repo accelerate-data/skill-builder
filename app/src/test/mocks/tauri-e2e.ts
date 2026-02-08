@@ -8,18 +8,13 @@
 
 const defaultSettings = {
   anthropic_api_key: null,
-  github_token: null,
-  github_repo: null,
   workspace_path: null,
-  auto_commit: false,
-  auto_push: false,
 };
 
 const mockResponses: Record<string, unknown> = {
   get_settings: defaultSettings,
   save_settings: undefined,
   test_api_key: true,
-  get_current_user: { login: "testuser", avatar_url: "", name: "Test User" },
   check_node: {
     available: true,
     version: "v20.11.0",
@@ -29,17 +24,6 @@ const mockResponses: Record<string, unknown> = {
   list_skills: [],
   create_skill: undefined,
   delete_skill: undefined,
-  list_github_repos: [
-    {
-      full_name: "testuser/my-skills",
-      name: "my-skills",
-      private: false,
-      description: "Test repo",
-      clone_url: "https://github.com/testuser/my-skills.git",
-    },
-  ],
-  clone_repo: { path: "/tmp/test", created_readme: true, created_gitignore: true },
-  commit_and_push: "Committed and pushed",
   parse_clarifications: {
     sections: [
       {
@@ -63,6 +47,15 @@ const mockResponses: Record<string, unknown> = {
   },
   save_clarification_answers: undefined,
   save_raw_file: undefined,
+  list_skill_files: [],
+  read_file: "",
+  check_workspace_path: true,
+  has_running_agents: false,
+  start_agent: "agent-001",
+  cancel_agent: undefined,
+  run_workflow_step: "agent-001",
+  run_parallel_agents: { agent_id_a: "agent-001", agent_id_b: "agent-002" },
+  package_skill: { file_path: "/tmp/test/my-skill.skill", size_bytes: 12345 },
 };
 
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {

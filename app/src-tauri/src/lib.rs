@@ -1,6 +1,6 @@
 mod agents;
-mod auth;
 mod commands;
+mod db;
 mod markdown;
 mod types;
 
@@ -10,22 +10,18 @@ pub use types::*;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            use tauri::Manager;
+            let db = db::init_db(app).expect("failed to initialize database");
+            app.manage(db);
+            Ok(())
+        })
         .manage(agents::sidecar::create_registry())
         .invoke_handler(tauri::generate_handler![
             commands::agent::start_agent,
             commands::agent::cancel_agent,
-            commands::auth::get_current_user,
-            commands::auth::list_github_repos,
-            commands::git::clone_repo,
-            commands::git::commit_and_push,
-            commands::git::git_pull,
-            commands::git::git_commit,
-            commands::git::git_diff,
-            commands::git::git_log,
-            commands::git::git_file_status,
             commands::node::check_node,
             commands::settings::get_settings,
             commands::settings::save_settings,
@@ -41,7 +37,6 @@ pub fn run() {
             commands::workflow::run_workflow_step,
             commands::workflow::run_parallel_agents,
             commands::workflow::package_skill,
-            commands::workflow::auto_commit_step,
             commands::lifecycle::check_workspace_path,
             commands::lifecycle::has_running_agents,
         ])
