@@ -14,7 +14,11 @@ Set the plugin root at the start of the session:
 PLUGIN_ROOT=$(echo $CLAUDE_PLUGIN_ROOT)
 
 The shared context file is at: ${PLUGIN_ROOT}/references/shared-context.md
-Output files go to the user's CWD: ./skills/<skillname>/
+
+Output layout in the user's CWD:
+- `./workflow-state.md` — session state
+- `./context/` — working files (clarifications, decisions, logs)
+- `./<skillname>/` — the deployable skill (SKILL.md + references/)
 
 ## Context Conservation Rules
 
@@ -38,30 +42,30 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 3. Confirm with the user: "I'll create the skill as `<skillname>`. Does this name work?"
 4. **Detect start mode** by checking the filesystem:
 
-   **Mode A — Resume** (`./skills/<skillname>/workflow-state.md` exists):
+   **Mode A — Resume** (`./workflow-state.md` exists):
    The user is continuing a previous session.
    - Read `workflow-state.md`, show the last completed step.
    - Ask: "Continue from step N, or start fresh (this deletes all progress)?"
    - If continue: skip to the recorded step + 1.
-   - If start fresh: delete the entire `./skills/<skillname>/` directory and fall through to Mode C.
+   - If start fresh: delete `./workflow-state.md`, `./context/`, and `./<skillname>/` then fall through to Mode C.
 
-   **Mode B — Modify existing skill** (`./skills/<skillname>/SKILL.md` exists but `workflow-state.md` does NOT):
+   **Mode B — Modify existing skill** (`./<skillname>/SKILL.md` exists but `./workflow-state.md` does NOT):
    The user has a finished skill and wants to improve it.
-   - Tell the user: "Found an existing skill at `./skills/<skillname>/`. I'll start from the reasoning step so you can refine it."
-   - Create `./skills/<skillname>/context/` if it doesn't exist.
-   - Create `workflow-state.md` at Step 6.
+   - Tell the user: "Found an existing skill at `./<skillname>/`. I'll start from the reasoning step so you can refine it."
+   - Create `./context/` if it doesn't exist.
+   - Create `./workflow-state.md` at Step 6.
    - Skip to Step 6 (Reasoning). The reasoning agent will read the existing skill files + any context/ files to identify gaps and produce updated decisions, then the build agent will revise the skill.
 
-   **Mode C — Scratch** (no `./skills/<skillname>/` directory, or it was just deleted):
+   **Mode C — Scratch** (no `./<skillname>/` directory and no `./workflow-state.md`):
    Fresh start — full workflow.
    - Create the directory structure:
      ```
-     ./skills/<skillname>/
-     ├── workflow-state.md
-     ├── context/
+     ./workflow-state.md
+     ./context/
+     ./<skillname>/
      └── references/
      ```
-   - Write initial `workflow-state.md`:
+   - Write initial `./workflow-state.md`:
      ```
      # Workflow State: <skillname>
      ## Current Step: 0 (Initialization)
@@ -79,7 +83,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 1. Update workflow-state.md: Step 1
 2. Create a task in the team task list:
    ```
-   TaskCreate(subject: "Research domain concepts for <domain>", description: "Research key entities, metrics, KPIs. Write to ./skills/<skillname>/context/clarifications-concepts.md")
+   TaskCreate(subject: "Research domain concepts for <domain>", description: "Research key entities, metrics, KPIs. Write to ./context/clarifications-concepts.md")
    ```
 3. Spawn the research-concepts agent as a teammate:
    ```
@@ -91,7 +95,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 
      Domain: <domain>
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
-     Write your output to: ./skills/<skillname>/context/clarifications-concepts.md
+     Write your output to: ./context/clarifications-concepts.md
 
      Return a 5-10 bullet summary of the key questions you generated."
    )
@@ -102,7 +106,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 
 1. Update workflow-state.md: Step 2
 2. Tell the user:
-   "Please review and answer the questions in `./skills/<skillname>/context/clarifications-concepts.md`.
+   "Please review and answer the questions in `./context/clarifications-concepts.md`.
 
    Open the file, fill in the **Answer:** field for each question, then tell me when you're done."
 3. Wait for the user to confirm they've answered the questions.
@@ -112,8 +116,8 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 1. Update workflow-state.md: Step 3
 2. Create two tasks in the team task list:
    ```
-   TaskCreate(subject: "Research business patterns for <domain>", description: "Research business patterns and write to ./skills/<skillname>/context/clarifications-patterns.md")
-   TaskCreate(subject: "Research data modeling for <domain>", description: "Research data modeling and write to ./skills/<skillname>/context/clarifications-data.md")
+   TaskCreate(subject: "Research business patterns for <domain>", description: "Research business patterns and write to ./context/clarifications-patterns.md")
+   TaskCreate(subject: "Research data modeling for <domain>", description: "Research data modeling and write to ./context/clarifications-data.md")
    ```
 3. Spawn BOTH agents in a single message (parallel):
    ```
@@ -125,8 +129,8 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 
      Domain: <domain>
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
-     Answered concepts file: ./skills/<skillname>/context/clarifications-concepts.md
-     Write your output to: ./skills/<skillname>/context/clarifications-patterns.md
+     Answered concepts file: ./context/clarifications-concepts.md
+     Write your output to: ./context/clarifications-patterns.md
 
      Return a 5-10 bullet summary."
    )
@@ -139,8 +143,8 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 
      Domain: <domain>
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
-     Answered concepts file: ./skills/<skillname>/context/clarifications-concepts.md
-     Write your output to: ./skills/<skillname>/context/clarifications-data.md
+     Answered concepts file: ./context/clarifications-concepts.md
+     Write your output to: ./context/clarifications-data.md
 
      Return a 5-10 bullet summary."
    )
@@ -158,11 +162,11 @@ Only one skill is active at a time. The coordinator works on the skill the user 
      name: "merge",
      prompt: "You are on the skill-builder-<skillname> team.
 
-     Context directory: ./skills/<skillname>/context/
+     Context directory: ./context/
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
      Read clarifications-patterns.md and clarifications-data.md from the context directory.
-     Write merged output to: ./skills/<skillname>/context/clarifications.md
+     Write merged output to: ./context/clarifications.md
 
      Return a summary: how many questions total, how many duplicates removed, how many final questions."
    )
@@ -173,7 +177,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 
 1. Update workflow-state.md: Step 5
 2. Tell the user:
-   "Please review and answer the merged questions in `./skills/<skillname>/context/clarifications.md`.
+   "Please review and answer the merged questions in `./context/clarifications.md`.
 
    Open the file, fill in the **Answer:** field for each question, then tell me when you're done."
 3. Wait for the user to confirm.
@@ -190,11 +194,11 @@ Only one skill is active at a time. The coordinator works on the skill the user 
      model: "opus",
      prompt: "You are on the skill-builder-<skillname> team.
 
-     Context directory: ./skills/<skillname>/context/
+     Context directory: ./context/
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
      Analyze all answered clarifications and produce decisions.
-     Write/update: ./skills/<skillname>/context/decisions.md
+     Write/update: ./context/decisions.md
 
      Return your reasoning summary (key conclusions, assumptions, conflicts, follow-ups)."
    )
@@ -216,8 +220,8 @@ Only one skill is active at a time. The coordinator works on the skill the user 
      prompt: "You are on the skill-builder-<skillname> team.
 
      Domain: <domain>
-     Context directory: ./skills/<skillname>/context/
-     Skill directory: ./skills/<skillname>/
+     Context directory: ./context/
+     Skill directory: ./<skillname>/
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
      Read decisions.md and create the skill files.
@@ -238,17 +242,17 @@ Only one skill is active at a time. The coordinator works on the skill the user 
      name: "validate",
      prompt: "You are on the skill-builder-<skillname> team.
 
-     Skill directory: ./skills/<skillname>/
-     Context directory: ./skills/<skillname>/context/
+     Skill directory: ./<skillname>/
+     Context directory: ./context/
 
      Validate the skill against best practices. Auto-fix straightforward issues.
-     Write validation log to: ./skills/<skillname>/context/agent-validation-log.md
+     Write validation log to: ./context/agent-validation-log.md
 
      Return summary: total checks, passed, fixed, needs review."
    )
    ```
 3. Relay pass/fail counts to the user.
-4. **Human Gate**: "Review the validation log at `./skills/<skillname>/context/agent-validation-log.md`. Proceed to testing?"
+4. **Human Gate**: "Review the validation log at `./context/agent-validation-log.md`. Proceed to testing?"
 
 ### Step 9: Test
 
@@ -262,18 +266,18 @@ Only one skill is active at a time. The coordinator works on the skill the user 
      prompt: "You are on the skill-builder-<skillname> team.
 
      Domain: <domain>
-     Skill directory: ./skills/<skillname>/
-     Context directory: ./skills/<skillname>/context/
+     Skill directory: ./<skillname>/
+     Context directory: ./context/
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
      Generate test prompts, evaluate skill coverage, identify gaps.
-     Write test report to: ./skills/<skillname>/context/test-skill.md
+     Write test report to: ./context/test-skill.md
 
      Return summary: total tests, passed, partial, failed, and top gaps found."
    )
    ```
 3. Relay test results to the user.
-4. **Human Gate**: "Review test results at `./skills/<skillname>/context/test-skill.md`. Would you like to loop back to the build step to address gaps, or proceed to packaging?"
+4. **Human Gate**: "Review test results at `./context/test-skill.md`. Would you like to loop back to the build step to address gaps, or proceed to packaging?"
 5. If rebuild: go back to Step 7.
 
 ### Step 10: Package
@@ -281,7 +285,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 1. Update workflow-state.md: Step 10
 2. Package the skill:
    ```bash
-   cd ./skills/<skillname>/skill && zip -r ../../../<skillname>.skill . && cd -
+   cd ./<skillname> && zip -r ../<skillname>.skill . && cd -
    ```
 3. Clean up the team:
    ```
@@ -290,9 +294,9 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 4. Update workflow-state.md: Complete
 5. Tell the user:
    "Skill built successfully!
-   - Skill files: `./skills/<skillname>/`
+   - Skill files: `./<skillname>/`
    - Archive: `./<skillname>.skill`
-   - Working files: `./skills/<skillname>/context/`"
+   - Working files: `./context/`"
 
 ## Error Recovery
 

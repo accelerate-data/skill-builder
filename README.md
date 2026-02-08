@@ -92,10 +92,10 @@ skill-builder/
 
 ## Output
 
-Skills are created in your current working directory:
+All output is created in your current working directory:
 
 ```
-skills/<skillname>/
+./                               # Your CWD
 ├── workflow-state.md            # Session resume checkpoint
 ├── context/                     # Working files
 │   ├── clarifications-*.md      # Research outputs
@@ -103,15 +103,16 @@ skills/<skillname>/
 │   ├── decisions.md             # Confirmed decisions
 │   ├── agent-validation-log.md  # Validation results
 │   └── test-skill.md            # Test results
-├── SKILL.md                     # Entry point (<500 lines)
-└── references/                  # Deep-dive content
+└── <skillname>/                 # Deployable skill
+    ├── SKILL.md                 # Entry point (<500 lines)
+    └── references/              # Deep-dive content
 ```
 
 A `.skill` zip archive is also created at the project root after Step 10.
 
 ## Session Resume
 
-The workflow supports resuming from any step. State is tracked in `skills/<skillname>/workflow-state.md`. On restart, you'll be asked whether to continue or start fresh.
+The workflow supports resuming from any step. State is tracked in `./workflow-state.md`. On restart, you'll be asked whether to continue or start fresh.
 
 ## Development
 

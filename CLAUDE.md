@@ -74,8 +74,11 @@ Rules:
 ### Path Resolution
 
 - Plugin files: `${CLAUDE_PLUGIN_ROOT}/references/shared-context.md` (resolved by coordinator skill via shell injection)
-- Output files: `./skills/<skillname>/` in the user's current working directory (not the plugin directory)
-- Coordinator passes both paths to agents when spawning them
+- Output files in the user's CWD (not the plugin directory):
+  - `./workflow-state.md` — session state
+  - `./context/` — working files
+  - `./<skillname>/` — deployable skill (SKILL.md + references/)
+- Coordinator passes skill directory, context directory, and shared context paths to agents when spawning them
 
 ### Agent Orchestration
 
@@ -94,7 +97,7 @@ Task(
   team_name: "skill-builder-<skillname>",
   name: "research-concepts",
   model: "sonnet",
-  prompt: "Domain: <domain>. Shared context: <plugin_root>/references/shared-context.md. Write to ./skills/<name>/context/clarifications-concepts.md. Claim your task from the task list, mark it complete when done, and return a 5-10 bullet summary."
+  prompt: "Domain: <domain>. Shared context: <plugin_root>/references/shared-context.md. Write to ./context/clarifications-concepts.md. Claim your task from the task list, mark it complete when done, and return a 5-10 bullet summary."
 )
 
 # 4. Coordinate via messages
@@ -148,7 +151,7 @@ Only one skill is active at a time. The coordinator detects which mode to use ba
 ## Output Data Model (in user's CWD)
 
 ```
-skills/<skillname>/
+./                                       # User's CWD
 ├── workflow-state.md                    # Session resume checkpoint
 ├── context/                             # Working files
 │   ├── clarifications-concepts.md       # Step 1 output
@@ -158,8 +161,9 @@ skills/<skillname>/
 │   ├── decisions.md                     # Step 6 output
 │   ├── agent-validation-log.md          # Step 8 output
 │   └── test-skill.md                    # Step 9 output
-├── SKILL.md                             # Entry point (<500 lines)
-└── references/                          # Deep-dive files
+└── <skillname>/                         # Deployable skill
+    ├── SKILL.md                         # Entry point (<500 lines)
+    └── references/                      # Deep-dive files
 ```
 
 ## Development Guide

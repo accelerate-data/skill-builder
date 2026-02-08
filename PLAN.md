@@ -64,7 +64,7 @@ Each agent file:
   - Replace `subagent_type: "general-purpose"` with `subagent_type: "skill-builder:<agent-name>"` and add `team_name` + `name` parameters
   - Remove "Read prompts/X.md" from spawn prompts (instructions are now in agent definitions)
   - Add shared context path to all spawn prompts: `{plugin_root}/references/shared-context.md`
-  - Output paths remain relative to user's CWD: `./skills/<skillname>/`
+  - Output paths remain relative to user's CWD: `./workflow-state.md`, `./context/`, `./<skillname>/`
   - Session resume logic unchanged
   - All 10 workflow steps preserved
   - Coordinator role, rules, error recovery preserved
@@ -89,7 +89,8 @@ Each agent file:
 1. The coordinator skill uses `!`echo $CLAUDE_PLUGIN_ROOT`` to get the absolute plugin install path
 2. When spawning agents, the coordinator passes:
    - `shared_context_path`: `{plugin_root}/references/shared-context.md`
-   - Output paths: `./skills/<skillname>/context/<filename>` (relative to user's CWD)
+   - Skill directory: `./<skillname>/` (for SKILL.md + references/)
+   - Context directory: `./context/` (for working files)
    - `domain`: the user's chosen domain
 3. Agents read shared context from the absolute path and write outputs to CWD-relative paths
 
