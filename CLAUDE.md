@@ -126,7 +126,7 @@ Only one skill is active at a time. The coordinator detects which mode to use ba
 | Mode | Condition | Behavior |
 |---|---|---|
 | **A — Resume** | `workflow-state.md` exists | Continue from last completed step, or start fresh |
-| **B — Modify existing** | `skill/SKILL.md` exists but no `workflow-state.md` | Skip to Step 6 (reasoning) to refine the existing skill |
+| **B — Modify existing** | `SKILL.md` exists but no `workflow-state.md` | Skip to Step 6 (reasoning) to refine the existing skill |
 | **C — Scratch** | No skill directory | Full workflow from Step 0 |
 
 ## Workflow (10 Steps)
@@ -158,9 +158,8 @@ skills/<skillname>/
 │   ├── decisions.md                     # Step 6 output
 │   ├── agent-validation-log.md          # Step 8 output
 │   └── test-skill.md                    # Step 9 output
-└── skill/                               # Deployable skill
-    ├── SKILL.md                         # Entry point (<500 lines)
-    └── references/                      # Deep-dive files
+├── SKILL.md                             # Entry point (<500 lines)
+└── references/                          # Deep-dive files
 ```
 
 ## Development Guide

@@ -68,7 +68,7 @@
 - Coordinator asks for domain
 - User provides domain (e.g., "sales pipeline")
 - Coordinator derives skill name, asks for confirmation
-- Coordinator creates `skills/<name>/context/` and `skills/<name>/skill/` directories
+- Coordinator creates `skills/<name>/context/` and `skills/<name>/references/` directories
 - Coordinator writes `workflow-state.md`
 - **How to test**: Run `/skill-builder:start`, provide a domain, verify directories created
 

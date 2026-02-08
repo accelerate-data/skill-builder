@@ -30,7 +30,7 @@ You validate a completed skill against Anthropic's published best practices. You
 
 The skill directory must follow this structure:
 ```
-skill/
+<skillname>/
 ├── SKILL.md              # Entry point (<500 lines)
 └── references/           # Deep-dive reference files
     ├── <topic>.md

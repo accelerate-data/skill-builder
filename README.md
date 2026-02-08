@@ -103,9 +103,8 @@ skills/<skillname>/
 │   ├── decisions.md             # Confirmed decisions
 │   ├── agent-validation-log.md  # Validation results
 │   └── test-skill.md            # Test results
-└── skill/                       # Deployable skill
-    ├── SKILL.md                 # Entry point (<500 lines)
-    └── references/              # Deep-dive content
+├── SKILL.md                     # Entry point (<500 lines)
+└── references/                  # Deep-dive content
 ```
 
 A `.skill` zip archive is also created at the project root after Step 10.

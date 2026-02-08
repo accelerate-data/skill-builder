@@ -45,9 +45,9 @@ Only one skill is active at a time. The coordinator works on the skill the user 
    - If continue: skip to the recorded step + 1.
    - If start fresh: delete the entire `./skills/<skillname>/` directory and fall through to Mode C.
 
-   **Mode B — Modify existing skill** (`./skills/<skillname>/skill/SKILL.md` exists but `workflow-state.md` does NOT):
+   **Mode B — Modify existing skill** (`./skills/<skillname>/SKILL.md` exists but `workflow-state.md` does NOT):
    The user has a finished skill and wants to improve it.
-   - Tell the user: "Found an existing skill at `./skills/<skillname>/skill/`. I'll start from the reasoning step so you can refine it."
+   - Tell the user: "Found an existing skill at `./skills/<skillname>/`. I'll start from the reasoning step so you can refine it."
    - Create `./skills/<skillname>/context/` if it doesn't exist.
    - Create `workflow-state.md` at Step 6.
    - Skip to Step 6 (Reasoning). The reasoning agent will read the existing skill files + any context/ files to identify gaps and produce updated decisions, then the build agent will revise the skill.
@@ -59,8 +59,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
      ./skills/<skillname>/
      ├── workflow-state.md
      ├── context/
-     └── skill/
-         └── references/
+     └── references/
      ```
    - Write initial `workflow-state.md`:
      ```
@@ -218,7 +217,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 
      Domain: <domain>
      Context directory: ./skills/<skillname>/context/
-     Skill directory: ./skills/<skillname>/skill/
+     Skill directory: ./skills/<skillname>/
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
      Read decisions.md and create the skill files.
@@ -239,7 +238,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
      name: "validate",
      prompt: "You are on the skill-builder-<skillname> team.
 
-     Skill directory: ./skills/<skillname>/skill/
+     Skill directory: ./skills/<skillname>/
      Context directory: ./skills/<skillname>/context/
 
      Validate the skill against best practices. Auto-fix straightforward issues.
@@ -263,7 +262,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
      prompt: "You are on the skill-builder-<skillname> team.
 
      Domain: <domain>
-     Skill directory: ./skills/<skillname>/skill/
+     Skill directory: ./skills/<skillname>/
      Context directory: ./skills/<skillname>/context/
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
@@ -291,7 +290,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 4. Update workflow-state.md: Complete
 5. Tell the user:
    "Skill built successfully!
-   - Skill files: `./skills/<skillname>/skill/`
+   - Skill files: `./skills/<skillname>/`
    - Archive: `./<skillname>.skill`
    - Working files: `./skills/<skillname>/context/`"
 

@@ -27,7 +27,7 @@ The skill **must** be structured for progressive disclosure — Claude reads onl
 Required layout:
 
 ```
-skill/
+<skillname>/
 ├── SKILL.md                  # Layer 1: Entry point — overview, quick reference, pointers (<500 lines)
 └── references/               # Layer 2: Deep-dive content loaded only when needed
     ├── <topic-a>.md
@@ -79,4 +79,4 @@ Each reference file in `references/` should:
 
 ## Output Files
 - `SKILL.md` in the skill directory root
-- Reference files in `skill/references/`
+- Reference files in `references/` (inside the skill directory)
