@@ -1,5 +1,4 @@
 import { query } from "@anthropic-ai/claude-code";
-import { createInterface } from "readline";
 
 interface SidecarConfig {
   prompt: string;
@@ -12,20 +11,6 @@ interface SidecarConfig {
   sessionId?: string;
 }
 
-function readLineFromStdin(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const rl = createInterface({ input: process.stdin });
-    rl.once("line", (line) => {
-      rl.close();
-      resolve(line);
-    });
-    rl.once("close", () => {
-      reject(new Error("stdin closed before receiving config"));
-    });
-    rl.once("error", reject);
-  });
-}
-
 let aborted = false;
 const abortController = new AbortController();
 
@@ -36,18 +21,24 @@ function handleShutdown() {
 
 process.on("SIGTERM", handleShutdown);
 process.on("SIGINT", handleShutdown);
-process.stdin.on("close", handleShutdown);
 
 async function main() {
-  let config: SidecarConfig;
+  // Config is passed as a CLI argument (JSON string)
+  const configArg = process.argv[2];
+  if (!configArg) {
+    process.stdout.write(
+      JSON.stringify({ type: "error", error: "Missing config argument" }) + "\n"
+    );
+    process.exit(1);
+  }
 
+  let config: SidecarConfig;
   try {
-    const line = await readLineFromStdin();
-    config = JSON.parse(line) as SidecarConfig;
+    config = JSON.parse(configArg) as SidecarConfig;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     process.stdout.write(
-      JSON.stringify({ type: "error", error: `Failed to read config: ${message}` }) + "\n"
+      JSON.stringify({ type: "error", error: `Failed to parse config: ${message}` }) + "\n"
     );
     process.exit(1);
   }
@@ -66,6 +57,9 @@ async function main() {
         maxTurns: config.maxTurns ?? 50,
         permissionMode: (config.permissionMode || "bypassPermissions") as "default" | "acceptEdits" | "bypassPermissions" | "plan",
         abortController,
+        // Use the same Node binary that's running this sidecar process,
+        // so the SDK spawns cli.js with a compatible Node version.
+        executable: process.execPath,
         ...(config.sessionId ? { resume: config.sessionId } : {}),
       },
     });

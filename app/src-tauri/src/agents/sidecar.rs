@@ -1,8 +1,9 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
@@ -38,36 +39,19 @@ pub async fn spawn_sidecar(
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let sidecar_path = resolve_sidecar_path(&app_handle)?;
+    let node_bin = resolve_node_binary().await?;
 
-    let mut child = Command::new("node")
+    // Pass config as a CLI argument to avoid stdin pipe race conditions.
+    let config_json = serde_json::to_string(&config).map_err(|e| e.to_string())?;
+
+    let mut child = Command::new(&node_bin)
         .arg(&sidecar_path)
+        .arg(&config_json)
         .current_dir(&config.cwd)
-        .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
-
-    // Write config as JSON line to stdin
-    let mut stdin = child.stdin.take().ok_or("Failed to open stdin")?;
-    let config_json = serde_json::to_string(&config).map_err(|e| e.to_string())?;
-    stdin
-        .write_all(config_json.as_bytes())
-        .await
-        .map_err(|e| format!("Failed to write config to stdin: {}", e))?;
-    stdin
-        .write_all(b"\n")
-        .await
-        .map_err(|e| format!("Failed to write newline to stdin: {}", e))?;
-    // Keep stdin open — don't drop it yet. The sidecar will exit on its own when done.
-    // We store it back so we can kill the process later if needed.
-    // Actually, Child doesn't let us put stdin back, so we just let it stay open
-    // by leaking the handle into a background task.
-    tokio::spawn(async move {
-        // Hold stdin open until the sidecar exits
-        let _ = stdin;
-        tokio::signal::ctrl_c().await.ok();
-    });
 
     let stdout = child.stdout.take().ok_or("Failed to open stdout")?;
     let stderr = child.stderr.take().ok_or("Failed to open stderr")?;
@@ -133,6 +117,74 @@ pub async fn cancel_sidecar(agent_id: String, registry: AgentRegistry) -> Result
     } else {
         Err(format!("Agent '{}' not found", agent_id))
     }
+}
+
+/// Find a compatible Node.js binary. The Claude Code SDK's bundled CLI currently
+/// crashes on Node.js 25+ (TypeError in minified bundle). Try the PATH `node`
+/// first; if its major version is >= 25, fall back to well-known alternate paths
+/// looking for a version in the 18–24 range.
+async fn resolve_node_binary() -> Result<String, String> {
+    // Candidates: PATH node first, then common macOS/Linux locations
+    let candidates: Vec<PathBuf> = {
+        let mut v = vec![PathBuf::from("node")];
+        for p in &[
+            "/usr/local/bin/node",
+            "/opt/homebrew/bin/node",
+            "/usr/bin/node",
+        ] {
+            v.push(PathBuf::from(p));
+        }
+        v
+    };
+
+    let mut first_available: Option<String> = None;
+
+    for candidate in &candidates {
+        let output = Command::new(candidate)
+            .arg("--version")
+            .output()
+            .await;
+
+        if let Ok(out) = output {
+            if out.status.success() {
+                let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                let path_str = candidate.to_string_lossy().to_string();
+
+                if first_available.is_none() {
+                    first_available = Some(path_str.clone());
+                }
+
+                if is_node_compatible(&version) {
+                    log::info!("Using Node.js {} at {}", version, path_str);
+                    return Ok(path_str);
+                } else {
+                    log::warn!(
+                        "Node.js {} at {} is not compatible with Claude Code SDK (need 18-24), trying next",
+                        version, path_str
+                    );
+                }
+            }
+        }
+    }
+
+    // If no compatible version found, use whatever was first available with a warning
+    if let Some(path) = first_available {
+        log::warn!("No Node.js 18-24 found, falling back to {}", path);
+        return Ok(path);
+    }
+
+    Err("Node.js not found. Please install Node.js 18+ from https://nodejs.org".to_string())
+}
+
+/// Check if a node version string (e.g. "v24.13.0") is in the compatible range 18-24.
+fn is_node_compatible(version: &str) -> bool {
+    let trimmed = version.strip_prefix('v').unwrap_or(version);
+    if let Some(major_str) = trimmed.split('.').next() {
+        if let Ok(major) = major_str.parse::<u32>() {
+            return major >= 18 && major <= 24;
+        }
+    }
+    false
 }
 
 fn resolve_sidecar_path(app_handle: &tauri::AppHandle) -> Result<String, String> {
@@ -219,5 +271,19 @@ mod tests {
     fn test_create_registry() {
         // Ensure registry creation doesn't panic and returns usable type
         let _registry = create_registry();
+    }
+
+    #[test]
+    fn test_is_node_compatible() {
+        assert!(is_node_compatible("v18.0.0"));
+        assert!(is_node_compatible("v20.11.0"));
+        assert!(is_node_compatible("v22.0.0"));
+        assert!(is_node_compatible("v24.13.0"));
+        assert!(!is_node_compatible("v25.0.0"));
+        assert!(!is_node_compatible("v25.6.0"));
+        assert!(!is_node_compatible("v16.0.0"));
+        assert!(!is_node_compatible("v17.9.0"));
+        assert!(!is_node_compatible(""));
+        assert!(!is_node_compatible("abc"));
     }
 }
