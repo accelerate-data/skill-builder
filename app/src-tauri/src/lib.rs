@@ -42,7 +42,16 @@ pub fn run() {
             commands::workflow::run_parallel_agents,
             commands::workflow::package_skill,
             commands::workflow::auto_commit_step,
+            commands::lifecycle::check_workspace_path,
+            commands::lifecycle::has_running_agents,
         ])
+        .on_window_event(|window, event| {
+            use tauri::Emitter;
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.emit("close-requested", ());
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

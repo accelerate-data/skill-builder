@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Outlet } from "@tanstack/react-router";
 import { Sidebar } from "./sidebar";
 import { Header } from "./header";
+import { CloseGuard } from "@/components/close-guard";
 import { useSettingsStore } from "@/stores/settings-store";
 import { getSettings } from "@/lib/tauri";
 
@@ -32,6 +33,7 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+      <CloseGuard />
     </div>
   );
 }

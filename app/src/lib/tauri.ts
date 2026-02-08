@@ -275,3 +275,11 @@ export const listSkillFiles = (workspacePath: string, skillName: string) =>
 
 export const readFile = (filePath: string) =>
   invoke<string>("read_file", { filePath });
+
+// --- Lifecycle ---
+
+export const checkWorkspacePath = (workspacePath: string) =>
+  invoke<boolean>("check_workspace_path", { workspacePath });
+
+export const hasRunningAgents = () =>
+  invoke<boolean>("has_running_agents");

@@ -153,3 +153,12 @@
 - [ ] App icon and branding
 - [ ] First-run onboarding flow
 - [ ] Onboarding: prompt for GitHub PAT + API key on first launch
+
+### App Lifecycle
+- [ ] Rust: `check_workspace_path` — validate workspace folder exists on disk
+- [ ] Rust: `has_running_agents` — check if any agent processes are running
+- [ ] Rust: Window close interceptor (on_window_event + CloseRequested)
+- [ ] Frontend: Workspace folder missing warning banner on dashboard
+- [ ] Frontend: Close guard — block close while agents running
+- [ ] Frontend: Close guard — commit & push dirty worktree before exit
+- [ ] Frontend: Close guard — confirmation dialog for uncommitted changes

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
-import { Loader2, FolderOpen } from "lucide-react"
+import { Link } from "@tanstack/react-router"
+import { Loader2, FolderOpen, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -20,12 +21,25 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [workspacePath, setWorkspacePath] = useState("")
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
+  const [workspaceWarning, setWorkspaceWarning] = useState(false)
   const navigate = useNavigate()
 
   const loadSettings = useCallback(async () => {
     try {
       const settings = await invoke<AppSettings>("get_settings")
-      setWorkspacePath(settings.workspace_path || "")
+      const wp = settings.workspace_path || ""
+      setWorkspacePath(wp)
+
+      if (wp) {
+        try {
+          const exists = await invoke<boolean>("check_workspace_path", { workspacePath: wp })
+          setWorkspaceWarning(!exists)
+        } catch {
+          setWorkspaceWarning(false)
+        }
+      } else {
+        setWorkspaceWarning(false)
+      }
     } catch {
       // Settings may not exist yet
     }
@@ -73,6 +87,27 @@ export default function DashboardPage() {
           />
         )}
       </div>
+
+      {workspaceWarning && (
+        <Card className="border-amber-500/50 bg-amber-500/10">
+          <CardHeader className="flex-row items-center gap-3 py-3">
+            <TriangleAlert className="size-5 shrink-0 text-amber-500" />
+            <div className="flex-1 space-y-1">
+              <CardTitle className="text-sm font-medium">
+                Workspace folder not found
+              </CardTitle>
+              <CardDescription className="text-sm">
+                The configured workspace path no longer exists on disk. Please reconfigure it in Settings.
+              </CardDescription>
+            </div>
+            <Link to="/settings">
+              <Button variant="outline" size="sm">
+                Open Settings
+              </Button>
+            </Link>
+          </CardHeader>
+        </Card>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-12">

@@ -233,3 +233,15 @@ The checklists below cover manual QA scenarios not yet covered by automated test
 - [ ] Empty states have helpful guidance text
 - [ ] App works at minimum window size (900x600)
 - [ ] Keyboard shortcuts functional (if implemented)
+
+### App Lifecycle
+- [ ] Configured workspace path deleted from disk → warning banner on dashboard
+- [ ] Warning banner has link to Settings page
+- [ ] Close app while agent running → "Agents Still Running" dialog shown
+- [ ] "Go Back" dismisses dialog, app stays open
+- [ ] Close app with uncommitted changes → "Uncommitted Changes" dialog shown
+- [ ] "Commit & Close" → changes committed and pushed, app closes
+- [ ] "Close Without Saving" → app closes without commit
+- [ ] "Cancel" → dialog dismissed, app stays open
+- [ ] Close app with clean worktree → closes immediately (no dialog)
+- [ ] Close app with no workspace configured → closes immediately
