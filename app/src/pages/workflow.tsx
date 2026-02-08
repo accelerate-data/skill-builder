@@ -123,6 +123,7 @@ export default function WorkflowPage() {
   const parallelAgentIds = useAgentStore((s) => s.parallelAgentIds);
   const runs = useAgentStore((s) => s.runs);
   const agentStartRun = useAgentStore((s) => s.startRun);
+  const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
   const setParallelAgents = useAgentStore((s) => s.setParallelAgents);
   const clearRuns = useAgentStore((s) => s.clearRuns);
 
@@ -250,15 +251,17 @@ export default function WorkflowPage() {
     if (activeRunStatus === "completed") {
       updateStepStatus(step, "completed");
       setRunning(false);
+      setActiveAgent(null);
 
       toast.success(`Step ${step + 1} completed`);
       advanceToNextStep();
     } else if (activeRunStatus === "error") {
       updateStepStatus(step, "error");
       setRunning(false);
+      setActiveAgent(null);
       toast.error(`Step ${step + 1} failed`);
     }
-  }, [activeRunStatus, isParallelStep, updateStepStatus, setRunning, advanceToNextStep]);
+  }, [activeRunStatus, isParallelStep, updateStepStatus, setRunning, setActiveAgent, advanceToNextStep]);
 
   // Watch for parallel agents completion (Step 2)
   const parallelRunA = parallelAgentIds ? runs[parallelAgentIds[0]] : null;
@@ -281,6 +284,7 @@ export default function WorkflowPage() {
     if (parallelStatusA === "completed" && parallelStatusB === "completed") {
       updateStepStatus(step, "completed");
       setRunning(false);
+      setActiveAgent(null);
       setParallelAgents(null);
 
       toast.success(`Step ${step + 1} completed`);
@@ -288,10 +292,11 @@ export default function WorkflowPage() {
     } else {
       updateStepStatus(step, "error");
       setRunning(false);
+      setActiveAgent(null);
       setParallelAgents(null);
       toast.error(`Step ${step + 1} failed`);
     }
-  }, [parallelAgentIds, isParallelStep, parallelStatusA, parallelStatusB, updateStepStatus, setRunning, setParallelAgents, advanceToNextStep]);
+  }, [parallelAgentIds, isParallelStep, parallelStatusA, parallelStatusB, updateStepStatus, setRunning, setActiveAgent, setParallelAgents, advanceToNextStep]);
 
   // --- Step handlers ---
 
