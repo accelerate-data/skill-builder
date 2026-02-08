@@ -463,12 +463,14 @@ export default function WorkflowPage() {
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
           <MessageSquare className="size-8 text-muted-foreground/50" />
           <p className="text-sm">
-            Waiting for the previous step to generate clarification questions.
+            No clarification file found. You can edit it in the Editor or continue to the next step.
           </p>
-          <Button variant="outline" size="sm" onClick={handleSkipHumanStep}>
-            <SkipForward className="size-3.5" />
-            Skip
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleSkipHumanStep}>
+              <ArrowRight className="size-3.5" />
+              Continue
+            </Button>
+          </div>
         </div>
       );
     }
