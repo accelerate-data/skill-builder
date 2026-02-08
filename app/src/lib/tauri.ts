@@ -95,44 +95,16 @@ export const packageSkill = (
   workspacePath: string,
 ) => invoke<PackageResult>("package_skill", { skillName, workspacePath });
 
-// --- Clarifications ---
+export const resetWorkflowStep = (
+  workspacePath: string,
+  skillName: string,
+  fromStepId: number,
+) => invoke("reset_workflow_step", { workspacePath, skillName, fromStepId });
 
-export interface ClarificationChoice {
-  letter: string;
-  text: string;
-  rationale: string;
-}
-
-export interface ClarificationQuestion {
-  id: string;
-  title: string;
-  question: string;
-  choices: ClarificationChoice[];
-  recommendation: string | null;
-  answer: string | null;
-}
-
-export interface ClarificationSection {
-  heading: string;
-  questions: ClarificationQuestion[];
-}
-
-export interface ClarificationFile {
-  sections: ClarificationSection[];
-}
-
-export const parseClarifications = (filePath: string) =>
-  invoke<ClarificationFile>("parse_clarifications", { filePath });
-
-export const saveClarificationAnswers = (
-  filePath: string,
-  file: ClarificationFile
-) => invoke("save_clarification_answers", { filePath, file });
+// --- Files ---
 
 export const saveRawFile = (filePath: string, content: string) =>
   invoke("save_raw_file", { filePath, content });
-
-// --- Files ---
 
 export interface FileEntry {
   name: string;

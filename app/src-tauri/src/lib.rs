@@ -37,6 +37,7 @@ pub fn run() {
             commands::workflow::run_workflow_step,
             commands::workflow::run_parallel_agents,
             commands::workflow::package_skill,
+            commands::workflow::reset_workflow_step,
             commands::lifecycle::check_workspace_path,
             commands::lifecycle::has_running_agents,
         ])

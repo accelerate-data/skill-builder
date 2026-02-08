@@ -368,6 +368,66 @@ fn add_dir_to_zip(
     Ok(())
 }
 
+/// Output files produced by each step, relative to the skill directory.
+fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
+    match step_id {
+        0 => vec!["context/clarifications-concepts.md"],
+        1 => vec![], // Human review — no output files to delete
+        2 => vec![
+            "context/clarifications-patterns.md",
+            "context/clarifications-data.md",
+        ],
+        3 => vec!["context/clarifications.md"],
+        4 => vec![], // Human review
+        5 => vec!["context/decisions.md"],
+        6 => vec!["SKILL.md"], // Also has references/ dir
+        7 => vec!["context/agent-validation-log.md"],
+        8 => vec!["context/test-skill.md"],
+        9 => vec![], // Package step — .skill file
+        _ => vec![],
+    }
+}
+
+#[tauri::command]
+pub fn reset_workflow_step(
+    workspace_path: String,
+    skill_name: String,
+    from_step_id: u32,
+) -> Result<(), String> {
+    let skill_dir = Path::new(&workspace_path).join(&skill_name);
+    if !skill_dir.exists() {
+        return Ok(()); // Nothing to clean
+    }
+
+    // Delete output files for this step and all subsequent steps
+    for step_id in from_step_id..=9 {
+        for file in get_step_output_files(step_id) {
+            let path = skill_dir.join(file);
+            if path.exists() {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+
+        // Step 6 also produces a references/ directory
+        if step_id == 6 {
+            let refs_dir = skill_dir.join("references");
+            if refs_dir.is_dir() {
+                let _ = std::fs::remove_dir_all(&refs_dir);
+            }
+        }
+
+        // Step 9 produces a .skill zip
+        if step_id == 9 {
+            let skill_file = skill_dir.join(format!("{}.skill", skill_name));
+            if skill_file.exists() {
+                let _ = std::fs::remove_file(&skill_file);
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -564,5 +624,52 @@ mod tests {
             prompts_dir.join("shared-context.md").exists(),
             "shared-context.md should exist in repo prompts/"
         );
+    }
+
+    #[test]
+    fn test_reset_workflow_step_deletes_outputs_from_step_onwards() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap().to_string();
+        let skill_dir = tmp.path().join("my-skill");
+        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+        std::fs::create_dir_all(skill_dir.join("references")).unwrap();
+
+        // Create output files for steps 0, 2, 3, 5, 6
+        std::fs::write(
+            skill_dir.join("context/clarifications-concepts.md"),
+            "step0",
+        )
+        .unwrap();
+        std::fs::write(
+            skill_dir.join("context/clarifications-patterns.md"),
+            "step2a",
+        )
+        .unwrap();
+        std::fs::write(skill_dir.join("context/clarifications.md"), "step3").unwrap();
+        std::fs::write(skill_dir.join("context/decisions.md"), "step5").unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "step6").unwrap();
+        std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
+
+        // Reset from step 3 onwards — steps 0, 2 should be preserved
+        reset_workflow_step(workspace, "my-skill".into(), 3).unwrap();
+
+        // Steps 0 and 2 outputs should still exist
+        assert!(skill_dir.join("context/clarifications-concepts.md").exists());
+        assert!(skill_dir
+            .join("context/clarifications-patterns.md")
+            .exists());
+
+        // Steps 3+ outputs should be deleted
+        assert!(!skill_dir.join("context/clarifications.md").exists());
+        assert!(!skill_dir.join("context/decisions.md").exists());
+        assert!(!skill_dir.join("SKILL.md").exists());
+        assert!(!skill_dir.join("references").exists());
+    }
+
+    #[test]
+    fn test_reset_workflow_step_nonexistent_dir_is_ok() {
+        let result =
+            reset_workflow_step("/tmp/nonexistent".into(), "no-skill".into(), 0);
+        assert!(result.is_ok());
     }
 }

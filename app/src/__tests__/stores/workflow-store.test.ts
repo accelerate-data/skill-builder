@@ -93,6 +93,49 @@ describe("useWorkflowStore", () => {
     });
   });
 
+  it("rerunFromStep resets target step and all subsequent steps to pending", () => {
+    const store = useWorkflowStore.getState();
+    // Complete steps 0 through 5
+    for (let i = 0; i <= 5; i++) {
+      store.updateStepStatus(i, "completed");
+    }
+    store.setCurrentStep(6);
+    store.setRunning(true);
+
+    // Rerun from step 3
+    useWorkflowStore.getState().rerunFromStep(3);
+
+    const state = useWorkflowStore.getState();
+    // Steps 0-2 should remain completed
+    expect(state.steps[0].status).toBe("completed");
+    expect(state.steps[1].status).toBe("completed");
+    expect(state.steps[2].status).toBe("completed");
+    // Steps 3-9 should be reset to pending
+    for (let i = 3; i <= 9; i++) {
+      expect(state.steps[i].status).toBe("pending");
+    }
+    // currentStep should be 3
+    expect(state.currentStep).toBe(3);
+    // isRunning should be false
+    expect(state.isRunning).toBe(false);
+  });
+
+  it("rerunFromStep from step 0 resets all steps", () => {
+    const store = useWorkflowStore.getState();
+    for (let i = 0; i <= 9; i++) {
+      store.updateStepStatus(i, "completed");
+    }
+    store.setCurrentStep(9);
+
+    useWorkflowStore.getState().rerunFromStep(0);
+
+    const state = useWorkflowStore.getState();
+    state.steps.forEach((step) => {
+      expect(step.status).toBe("pending");
+    });
+    expect(state.currentStep).toBe(0);
+  });
+
   it("steps have expected names", () => {
     const state = useWorkflowStore.getState();
     expect(state.steps[0].name).toBe("Research Domain Concepts");

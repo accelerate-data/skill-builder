@@ -27,8 +27,7 @@ vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: vi.fn(),
   runParallelAgents: vi.fn(),
   packageSkill: vi.fn(),
-  parseClarifications: vi.fn(() => Promise.reject("not found")),
-  saveClarificationAnswers: vi.fn(),
+  readFile: vi.fn(() => Promise.reject("not found")),
 }));
 
 // Mock heavy sub-components to isolate the effect lifecycle
@@ -43,12 +42,6 @@ vi.mock("@/components/parallel-agent-panel", () => ({
 }));
 vi.mock("@/components/workflow-step-complete", () => ({
   WorkflowStepComplete: () => <div data-testid="step-complete" />,
-}));
-vi.mock("@/components/clarification-form", () => ({
-  ClarificationForm: () => <div data-testid="clarification-form" />,
-}));
-vi.mock("@/components/clarification-raw", () => ({
-  ClarificationRaw: () => <div data-testid="clarification-raw" />,
 }));
 vi.mock("@/components/reasoning-chat", () => ({
   ReasoningChat: () => <div data-testid="reasoning-chat" />,

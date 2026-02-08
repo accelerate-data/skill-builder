@@ -1,10 +1,12 @@
-import { CheckCircle2, FileText, Clock, DollarSign } from "lucide-react";
+import { CheckCircle2, FileText, Clock, DollarSign, RotateCcw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface WorkflowStepCompleteProps {
   stepName: string;
   outputFiles: string[];
   duration?: number;
   cost?: number;
+  onRerun?: () => void;
 }
 
 function formatDuration(ms: number): string {
@@ -20,6 +22,7 @@ export function WorkflowStepComplete({
   outputFiles,
   duration,
   cost,
+  onRerun,
 }: WorkflowStepCompleteProps) {
   return (
     <div className="flex flex-1 items-center justify-center">
@@ -58,6 +61,13 @@ export function WorkflowStepComplete({
             </span>
           )}
         </div>
+
+        {onRerun && (
+          <Button variant="outline" size="sm" onClick={onRerun} className="mt-2">
+            <RotateCcw className="size-3.5" />
+            Rerun Step
+          </Button>
+        )}
       </div>
     </div>
   );

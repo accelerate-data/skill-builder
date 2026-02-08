@@ -19,6 +19,7 @@ interface WorkflowState {
   setCurrentStep: (step: number) => void;
   updateStepStatus: (stepId: number, status: WorkflowStep["status"]) => void;
   setRunning: (running: boolean) => void;
+  rerunFromStep: (stepId: number) => void;
   loadWorkflowState: (completedStepIds: number[]) => void;
   reset: () => void;
 }
@@ -119,6 +120,15 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
     })),
 
   setRunning: (running) => set({ isRunning: running }),
+
+  rerunFromStep: (stepId) =>
+    set((state) => ({
+      currentStep: stepId,
+      isRunning: false,
+      steps: state.steps.map((s) =>
+        s.id >= stepId ? { ...s, status: "pending" as const } : s
+      ),
+    })),
 
   loadWorkflowState: (completedStepIds) =>
     set((state) => {

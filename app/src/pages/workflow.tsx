@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, Link } from "@tanstack/react-router";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Loader2,
   Play,
@@ -8,16 +10,16 @@ import {
   SkipForward,
   FileText,
   Pencil,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { ParallelAgentPanel } from "@/components/parallel-agent-panel";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
-import { ClarificationForm } from "@/components/clarification-form";
-import { ClarificationRaw } from "@/components/clarification-raw";
 import { ReasoningChat } from "@/components/reasoning-chat";
 import { useAgentStream } from "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
@@ -27,9 +29,8 @@ import {
   runWorkflowStep,
   runParallelAgents,
   packageSkill,
-  parseClarifications,
-  saveClarificationAnswers,
-  type ClarificationFile,
+  resetWorkflowStep,
+  readFile,
   type PackageResult,
 } from "@/lib/tauri";
 
@@ -112,6 +113,7 @@ export default function WorkflowPage() {
     setCurrentStep,
     updateStepStatus,
     setRunning,
+    rerunFromStep,
   } = useWorkflowStore();
 
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
@@ -119,16 +121,14 @@ export default function WorkflowPage() {
   const runs = useAgentStore((s) => s.runs);
   const agentStartRun = useAgentStore((s) => s.startRun);
   const setParallelAgents = useAgentStore((s) => s.setParallelAgents);
+  const clearRuns = useAgentStore((s) => s.clearRuns);
 
   useAgentStream();
 
-  // Q&A form state
-  const [clarificationFile, setClarificationFile] =
-    useState<ClarificationFile | null>(null);
-  const [rawContent, setRawContent] = useState<string | null>(null);
-  const [clarificationFilePath, setClarificationFilePath] = useState("");
-  const [loadingClarifications, setLoadingClarifications] = useState(false);
-  const [savingClarifications, setSavingClarifications] = useState(false);
+  // Human review state
+  const [reviewContent, setReviewContent] = useState<string | null>(null);
+  const [reviewFilePath, setReviewFilePath] = useState("");
+  const [loadingReview, setLoadingReview] = useState(false);
 
   // Package result state
   const [packageResult, setPackageResult] = useState<PackageResult | null>(
@@ -147,30 +147,23 @@ export default function WorkflowPage() {
     }
   }, [skillName, initWorkflow]);
 
-  // Load clarification file when entering a human review step
+  // Load file content when entering a human review step
   useEffect(() => {
     if (!isHumanReviewStep || !workspacePath) {
-      setClarificationFile(null);
-      setRawContent(null);
+      setReviewContent(null);
       return;
     }
 
     const config = HUMAN_REVIEW_STEPS[currentStep];
     if (!config) return;
     const filePath = config.getFilePath(workspacePath, skillName);
-    setClarificationFilePath(filePath);
-    setLoadingClarifications(true);
+    setReviewFilePath(filePath);
+    setLoadingReview(true);
 
-    parseClarifications(filePath)
-      .then((file) => {
-        setClarificationFile(file);
-        setRawContent(null);
-      })
-      .catch(() => {
-        setClarificationFile(null);
-        setRawContent(null);
-      })
-      .finally(() => setLoadingClarifications(false));
+    readFile(filePath)
+      .then((content) => setReviewContent(content))
+      .catch(() => setReviewContent(null))
+      .finally(() => setLoadingReview(false));
   }, [currentStep, isHumanReviewStep, workspacePath, skillName]);
 
   // Advance to next step helper
@@ -339,37 +332,33 @@ export default function WorkflowPage() {
     }
   };
 
-  const handleClarificationSave = async (file: ClarificationFile) => {
-    setSavingClarifications(true);
+  const handleRerunStep = async () => {
+    if (!workspacePath) return;
     try {
-      await saveClarificationAnswers(clarificationFilePath, file);
-      setClarificationFile(file);
-      toast.success("Answers saved");
-
-      updateStepStatus(currentStep, "completed");
-
-      advanceToNextStep();
+      await resetWorkflowStep(workspacePath, skillName, currentStep);
+      clearRuns();
+      rerunFromStep(currentStep);
+      toast.success(`Reset to step ${currentStep + 1}`);
     } catch (err) {
       toast.error(
-        `Failed to save: ${err instanceof Error ? err.message : String(err)}`
+        `Failed to reset: ${err instanceof Error ? err.message : String(err)}`
       );
-    } finally {
-      setSavingClarifications(false);
     }
   };
 
-  const handleRawSaved = () => {
-    if (clarificationFilePath) {
-      parseClarifications(clarificationFilePath)
-        .then((file) => {
-          setClarificationFile(file);
-          setRawContent(null);
-        })
-        .catch(() => {
-          updateStepStatus(currentStep, "completed");
-          advanceToNextStep();
-        });
-    }
+  const handleReviewContinue = () => {
+    updateStepStatus(currentStep, "completed");
+    advanceToNextStep();
+  };
+
+  // Reload the file content (after user edits externally)
+  const handleReviewReload = () => {
+    if (!reviewFilePath) return;
+    setLoadingReview(true);
+    readFile(reviewFilePath)
+      .then((content) => setReviewContent(content))
+      .catch(() => toast.error("Failed to reload file"))
+      .finally(() => setLoadingReview(false));
   };
 
   const currentStepDef = steps[currentStep];
@@ -395,6 +384,7 @@ export default function WorkflowPage() {
           <WorkflowStepComplete
             stepName={currentStepDef.name}
             outputFiles={[packageResult.file_path]}
+            onRerun={handleRerunStep}
           />
         );
       }
@@ -403,14 +393,23 @@ export default function WorkflowPage() {
           <WorkflowStepComplete
             stepName={currentStepDef.name}
             outputFiles={stepConfig.outputFiles}
+            onRerun={handleRerunStep}
           />
         );
       }
+      // Human steps or steps without output files
+      return (
+        <WorkflowStepComplete
+          stepName={currentStepDef.name}
+          outputFiles={[]}
+          onRerun={handleRerunStep}
+        />
+      );
     }
 
-    // Human review step with Q&A form
+    // Human review step — read-only markdown preview
     if (isHumanReviewStep) {
-      if (loadingClarifications) {
+      if (loadingReview) {
         return (
           <div className="flex flex-1 items-center justify-center">
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -418,23 +417,44 @@ export default function WorkflowPage() {
         );
       }
 
-      if (clarificationFile) {
+      if (reviewContent !== null) {
         return (
-          <ClarificationForm
-            file={clarificationFile}
-            onSave={handleClarificationSave}
-            saving={savingClarifications}
-          />
-        );
-      }
-
-      if (rawContent !== null) {
-        return (
-          <ClarificationRaw
-            filePath={clarificationFilePath}
-            initialContent={rawContent}
-            onSaved={handleRawSaved}
-          />
+          <div className="flex h-full flex-col">
+            <div className="flex items-center justify-between pb-3">
+              <p className="text-xs text-muted-foreground font-mono">
+                {reviewFilePath}
+              </p>
+              <Button variant="ghost" size="sm" onClick={handleReviewReload}>
+                Reload
+              </Button>
+            </div>
+            <ScrollArea className="flex-1 rounded-md border p-4">
+              <div className="prose prose-sm dark:prose-invert max-w-none">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {reviewContent}
+                </ReactMarkdown>
+              </div>
+            </ScrollArea>
+            <div className="flex items-center justify-between border-t pt-4">
+              <p className="text-sm text-muted-foreground">
+                Edit this file directly, then continue to the next step.
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSkipHumanStep}
+                >
+                  <SkipForward className="size-3.5" />
+                  Skip
+                </Button>
+                <Button size="sm" onClick={handleReviewContinue}>
+                  <ArrowRight className="size-3.5" />
+                  Continue
+                </Button>
+              </div>
+            </div>
+          </div>
         );
       }
 
@@ -447,7 +467,7 @@ export default function WorkflowPage() {
           </p>
           <Button variant="outline" size="sm" onClick={handleSkipHumanStep}>
             <SkipForward className="size-3.5" />
-            Skip (Q&A not yet available)
+            Skip
           </Button>
         </div>
       );
