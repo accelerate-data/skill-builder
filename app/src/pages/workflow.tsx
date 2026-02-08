@@ -428,8 +428,8 @@ export default function WorkflowPage() {
                 Reload
               </Button>
             </div>
-            <ScrollArea className="flex-1 rounded-md border p-4">
-              <div className="prose prose-sm dark:prose-invert max-w-none">
+            <ScrollArea className="min-h-0 flex-1 rounded-md border">
+              <div className="prose prose-sm dark:prose-invert max-w-none p-4">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {reviewContent}
                 </ReactMarkdown>
