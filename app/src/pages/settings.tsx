@@ -17,6 +17,7 @@ import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import type { AppSettings } from "@/lib/types"
+import { useSettingsStore } from "@/stores/settings-store"
 import { checkNode, listGithubRepos, cloneRepo, commitAndPush, type NodeStatus, type GitHubRepo } from "@/lib/tauri"
 
 export default function SettingsPage() {
@@ -47,6 +48,7 @@ export default function SettingsPage() {
   const [cloning, setCloning] = useState(false)
   const [cloned, setCloned] = useState(false)
   const repoDropdownRef = useRef<HTMLDivElement>(null)
+  const setStoreSettings = useSettingsStore((s) => s.setSettings)
 
   useEffect(() => {
     let cancelled = false
@@ -169,6 +171,15 @@ export default function SettingsPage() {
       setSaved(true)
       setSaving(false)
       setTimeout(() => setSaved(false), 3000)
+
+      // Sync Zustand store so other pages see updated settings
+      setStoreSettings({
+        anthropicApiKey: settings.anthropic_api_key,
+        githubRepo: settings.github_repo,
+        workspacePath: settings.workspace_path,
+        autoCommit: settings.auto_commit,
+        autoPush: settings.auto_push,
+      })
 
       // Commit and push in background if we have a cloned repo with a token
       if (settings.workspace_path && settings.github_token) {

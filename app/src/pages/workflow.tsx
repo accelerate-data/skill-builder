@@ -595,9 +595,6 @@ export default function WorkflowPage() {
                 Editor
               </Button>
             </Link>
-            {currentStepDef?.agentModel && (
-              <Badge variant="secondary">{currentStepDef.agentModel}</Badge>
-            )}
             {isRunning && (
               <Badge variant="outline" className="gap-1">
                 <Loader2 className="size-3 animate-spin" />
