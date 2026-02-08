@@ -1,5 +1,5 @@
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::agents::sidecar::{self, AgentRegistry, SidecarConfig};
 use crate::db::Db;
@@ -70,6 +70,68 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     }
 }
 
+/// Locate the bundled prompts directory. In production this is in the
+/// Tauri resource dir; in dev mode we resolve relative to CARGO_MANIFEST_DIR.
+fn resolve_prompts_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    use tauri::Manager;
+
+    // Production: Tauri resource directory
+    if let Ok(resource_dir) = app_handle.path().resource_dir() {
+        let prompts = resource_dir.join("prompts");
+        if prompts.is_dir() {
+            return Ok(prompts);
+        }
+    }
+
+    // Dev mode: repo root relative to CARGO_MANIFEST_DIR (src-tauri/../../prompts)
+    let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent() // app/
+        .and_then(|p| p.parent()) // repo root
+        .map(|p| p.join("prompts"));
+    if let Some(path) = dev_path {
+        if path.is_dir() {
+            return Ok(path);
+        }
+    }
+
+    Err("Could not find bundled prompts directory".to_string())
+}
+
+/// Copy bundled prompt .md files into `<workspace_path>/prompts/`.
+/// Creates the directory if it doesn't exist. Overwrites existing files
+/// to keep them in sync with the app version.
+pub fn ensure_workspace_prompts(
+    app_handle: &tauri::AppHandle,
+    workspace_path: &str,
+) -> Result<(), String> {
+    let src_dir = resolve_prompts_dir(app_handle)?;
+    copy_prompts_from(&src_dir, workspace_path)
+}
+
+/// Copy .md files from `src_dir` into `<workspace_path>/prompts/`.
+fn copy_prompts_from(src_dir: &Path, workspace_path: &str) -> Result<(), String> {
+    let dest_dir = Path::new(workspace_path).join("prompts");
+
+    std::fs::create_dir_all(&dest_dir)
+        .map_err(|e| format!("Failed to create prompts directory: {}", e))?;
+
+    let entries = std::fs::read_dir(src_dir)
+        .map_err(|e| format!("Failed to read prompts source dir: {}", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            let dest = dest_dir.join(entry.file_name());
+            std::fs::copy(&path, &dest).map_err(|e| {
+                format!("Failed to copy {}: {}", path.display(), e)
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
 fn build_prompt(
     prompt_file: &str,
     output_file: &str,
@@ -110,6 +172,9 @@ pub async fn run_workflow_step(
     domain: String,
     workspace_path: String,
 ) -> Result<String, String> {
+    // Ensure prompt files exist in workspace before running
+    ensure_workspace_prompts(&app, &workspace_path)?;
+
     let step = get_step_config(step_id)?;
     let api_key = read_api_key(&db)?;
     let prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain);
@@ -139,6 +204,8 @@ pub async fn run_parallel_agents(
     domain: String,
     workspace_path: String,
 ) -> Result<ParallelAgentResult, String> {
+    ensure_workspace_prompts(&app, &workspace_path)?;
+
     let api_key = read_api_key(&db)?;
     let tools: Vec<String> = DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect();
 
@@ -437,5 +504,65 @@ mod tests {
             Path::new("/nonexistent/output.skill"),
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_copy_prompts_creates_dir_and_copies_md_files() {
+        let src = tempfile::tempdir().unwrap();
+        let dest = tempfile::tempdir().unwrap();
+
+        // Create source .md files
+        std::fs::write(src.path().join("shared-context.md"), "# Shared").unwrap();
+        std::fs::write(src.path().join("01-research.md"), "# Research").unwrap();
+        // Non-.md file should be ignored
+        std::fs::write(src.path().join("README.txt"), "ignore me").unwrap();
+
+        let workspace = dest.path().to_str().unwrap();
+        copy_prompts_from(src.path(), workspace).unwrap();
+
+        let prompts_dir = dest.path().join("prompts");
+        assert!(prompts_dir.is_dir());
+        assert!(prompts_dir.join("shared-context.md").exists());
+        assert!(prompts_dir.join("01-research.md").exists());
+        assert!(!prompts_dir.join("README.txt").exists());
+
+        // Verify content
+        let content = std::fs::read_to_string(prompts_dir.join("shared-context.md")).unwrap();
+        assert_eq!(content, "# Shared");
+    }
+
+    #[test]
+    fn test_copy_prompts_is_idempotent() {
+        let src = tempfile::tempdir().unwrap();
+        let dest = tempfile::tempdir().unwrap();
+
+        std::fs::write(src.path().join("test.md"), "v1").unwrap();
+
+        let workspace = dest.path().to_str().unwrap();
+        copy_prompts_from(src.path(), workspace).unwrap();
+
+        // Update source and copy again — should overwrite
+        std::fs::write(src.path().join("test.md"), "v2").unwrap();
+        copy_prompts_from(src.path(), workspace).unwrap();
+
+        let content =
+            std::fs::read_to_string(dest.path().join("prompts").join("test.md")).unwrap();
+        assert_eq!(content, "v2");
+    }
+
+    #[test]
+    fn test_resolve_prompts_dir_dev_mode() {
+        // In dev/test mode, CARGO_MANIFEST_DIR is set and the repo root has prompts/
+        let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|p| p.parent())
+            .map(|p| p.join("prompts"));
+        assert!(dev_path.is_some());
+        let prompts_dir = dev_path.unwrap();
+        assert!(prompts_dir.is_dir(), "Repo root prompts/ should exist");
+        assert!(
+            prompts_dir.join("shared-context.md").exists(),
+            "shared-context.md should exist in repo prompts/"
+        );
     }
 }
