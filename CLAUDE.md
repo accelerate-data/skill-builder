@@ -4,7 +4,7 @@ A Tauri v2 desktop application for building Claude skills. All code lives in `ap
 
 ## Design Plan
 
-Full architecture, data model, and UI specs: `.claude/plans/distributed-giggling-crab.md`
+Full architecture, data model, and UI specs: `app/PLAN.md`
 
 ## Architecture
 
@@ -221,7 +221,8 @@ GitHub OAuth Device Flow. Token stored encrypted via `tauri-plugin-store`. Used 
 - `prompts/shared-context.md` — markdown formats (used as-is by agents via SDK)
 - `prompts/06-reasoning-agent.md` — most complex agent (multi-turn with follow-ups)
 - `prompts/07-build-agent.md` — skill output structure (SKILL.md + references/)
-- `app/FEATURES.md` — feature checklist with status
+- `app/PLAN.md` — full architecture, data model, UI specs, implementation phases
+- `app/FEATURES.md` — feature checklist with status per phase
 - `app/TESTS.md` — test plan per phase
 
 ## Development

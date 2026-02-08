@@ -34,3 +34,18 @@ export interface SkillSummary {
   status: string | null
   last_modified: string | null
 }
+
+export interface NodeStatus {
+  available: boolean
+  version: string | null
+  meets_minimum: boolean
+  error: string | null
+}
+
+export interface WorkflowStep {
+  id: number
+  name: string
+  description: string
+  status: "pending" | "in_progress" | "waiting_for_user" | "completed" | "error"
+  agentModel?: string
+}

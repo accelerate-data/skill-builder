@@ -1,13 +1,18 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, Settings, Moon, Sun } from "lucide-react";
+import { Home, Settings, Moon, Sun, Monitor } from "lucide-react";
 import { useTheme } from "next-themes";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { to: "/" as const, label: "Dashboard", icon: Home },
   { to: "/settings" as const, label: "Settings", icon: Settings },
 ];
+
+const themeOptions = [
+  { value: "system", icon: Monitor, label: "System" },
+  { value: "light", icon: Sun, label: "Light" },
+  { value: "dark", icon: Moon, label: "Dark" },
+] as const;
 
 export function Sidebar() {
   const routerState = useRouterState();
@@ -42,24 +47,25 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="border-t p-4">
-        <label className="flex items-center justify-between text-sm">
-          <span className="flex items-center gap-2">
-            {theme === "dark" ? (
-              <Moon className="size-4" />
-            ) : (
-              <Sun className="size-4" />
-            )}
-            Dark mode
-          </span>
-          <Switch
-            checked={theme === "dark"}
-            onCheckedChange={(checked) =>
-              setTheme(checked ? "dark" : "light")
-            }
-            size="sm"
-          />
-        </label>
+      <div className="border-t p-3">
+        <div className="flex items-center rounded-md bg-muted p-1">
+          {themeOptions.map(({ value, icon: Icon, label }) => (
+            <button
+              key={value}
+              onClick={() => setTheme(value)}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-xs font-medium transition-colors",
+                theme === value
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              title={label}
+            >
+              <Icon className="size-3.5" />
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
     </aside>
   );

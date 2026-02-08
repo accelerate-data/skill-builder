@@ -47,6 +47,14 @@ impl Default for AppSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeStatus {
+    pub available: bool,
+    pub version: Option<String>,
+    pub meets_minimum: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillSummary {
     pub name: String,
     pub domain: Option<String>,

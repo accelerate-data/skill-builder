@@ -1,3 +1,4 @@
+mod agents;
 mod auth;
 mod commands;
 mod markdown;
@@ -11,11 +12,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
+        .manage(agents::sidecar::create_registry())
         .invoke_handler(tauri::generate_handler![
-            commands::auth::start_login,
-            commands::auth::poll_login,
+            commands::agent::start_agent,
+            commands::agent::cancel_agent,
             commands::auth::get_current_user,
-            commands::auth::logout,
+            commands::node::check_node,
             commands::settings::get_settings,
             commands::settings::save_settings,
             commands::settings::test_api_key,

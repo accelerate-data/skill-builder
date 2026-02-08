@@ -4,18 +4,12 @@ import {
   createRootRoute,
 } from "@tanstack/react-router";
 import { AppLayout } from "./components/layout/app-layout";
-import LoginPage from "./pages/login";
 import DashboardPage from "./pages/dashboard";
 import SettingsPage from "./pages/settings";
+import WorkflowPage from "./pages/workflow";
 
 const rootRoute = createRootRoute({
   component: AppLayout,
-});
-
-const loginRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/login",
-  component: LoginPage,
 });
 
 const dashboardRoute = createRoute({
@@ -33,11 +27,10 @@ const settingsRoute = createRoute({
 const workflowRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/skill/$skillName",
-  component: () => <div className="p-8">Workflow — coming in Phase 2</div>,
+  component: WorkflowPage,
 });
 
 const routeTree = rootRoute.addChildren([
-  loginRoute,
   dashboardRoute,
   settingsRoute,
   workflowRoute,

@@ -74,3 +74,28 @@ export const createSkill = (
 
 export const deleteSkill = (workspacePath: string, name: string) =>
   invoke("delete_skill", { workspacePath, name });
+
+// --- Node.js ---
+
+export interface NodeStatus {
+  available: boolean;
+  version: string | null;
+  meets_minimum: boolean;
+  error: string | null;
+}
+
+export const checkNode = () => invoke<NodeStatus>("check_node");
+
+// --- Agent ---
+
+export const startAgent = (
+  agentId: string,
+  prompt: string,
+  model: string,
+  cwd: string,
+  allowedTools?: string[],
+  maxTurns?: number,
+) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns });
+
+export const cancelAgent = (agentId: string) =>
+  invoke("cancel_agent", { agentId });
