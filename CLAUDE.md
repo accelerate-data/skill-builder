@@ -337,3 +337,79 @@ Single pass or split into `frontend-polish` (error boundaries, loading states, e
 - Types were defined by the backend agent; frontend agents used compatible interfaces
 - Integration step took ~5 minutes (wiring imports in router.tsx, lib.rs)
 - Verification caught 0 TypeScript errors and 0 Rust compilation errors
+
+## Testing
+
+Three tiers of automated tests. **Run all tests before committing.**
+
+### Commands
+
+```bash
+cd app
+
+# Tier 1: Frontend unit tests (Vitest + Testing Library)
+npm test              # Single run
+npm run test:watch    # Watch mode
+
+# Tier 2: Rust unit + integration tests
+cd src-tauri && cargo test    # (or use full path to cargo)
+
+# Tier 3: E2E tests (Playwright against Vite dev server)
+npm run test:e2e      # Starts Vite in E2E mode, runs Playwright
+
+# All frontend tests at once
+npm run test:all      # Vitest + Playwright
+```
+
+### Test structure
+
+```
+app/
+├── src/__tests__/                # Frontend unit tests (Vitest)
+│   ├── stores/                   # Zustand store logic
+│   ├── lib/                      # Utility functions
+│   └── pages/                    # Page component tests
+├── e2e/                          # E2E tests (Playwright)
+│   ├── navigation.spec.ts
+│   ├── settings.spec.ts
+│   └── dashboard.spec.ts
+├── src/test/                     # Test infrastructure
+│   ├── setup.ts                  # Vitest setup (jest-dom + mocks)
+│   └── mocks/                    # Tauri API mocks
+│       ├── tauri.ts              # Unit test mocks (vi.fn stubs)
+│       ├── tauri-e2e.ts          # E2E mocks (invoke replacement)
+│       └── tauri-e2e-dialog.ts   # E2E dialog mock
+├── vitest.config.ts
+├── playwright.config.ts
+└── src-tauri/src/                # Rust tests (inline #[cfg(test)] modules)
+    ├── markdown/workflow_state.rs
+    ├── commands/node.rs
+    ├── commands/skill.rs
+    └── commands/git.rs
+```
+
+### Mocking Tauri APIs
+
+**Unit tests (Vitest):** `@tauri-apps/api/core` is globally mocked in `src/test/setup.ts`. Use `mockInvoke` from `src/test/mocks/tauri.ts` to configure return values per command.
+
+**E2E tests (Playwright):** Vite aliases replace `@tauri-apps/api/core` with `src/test/mocks/tauri-e2e.ts` when `TAURI_E2E=true`. Override specific commands via `window.__TAURI_MOCK_OVERRIDES__` in tests.
+
+### Testing rule
+
+**When implementing a new feature or fixing a bug, evaluate whether tests should be added.** Follow this decision process:
+
+1. **New state logic** (Zustand store actions, derived state) → write store unit tests
+2. **New Rust command** with parseable/testable logic → add `#[cfg(test)]` tests
+3. **New UI interaction pattern** (button states, form validation, conditional rendering) → write component test
+4. **New page or major UI flow** → add E2E test covering the happy path
+5. **Bug fix** → write a regression test that would have caught the bug
+
+If the change is purely cosmetic (CSS tweaks, copy changes) or wiring-only (registering an existing command), tests are optional.
+
+**If unclear whether tests are needed, ask the user.**
+
+Always run existing tests (`npm test && cargo test`) before committing to catch regressions.
+
+### Manual test checklist
+
+See `app/TESTS.md` for a comprehensive manual test plan organized by phase. Use it for QA before releases.

@@ -1,0 +1,104 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { useWorkflowStore } from "@/stores/workflow-store";
+
+describe("useWorkflowStore", () => {
+  beforeEach(() => {
+    useWorkflowStore.getState().reset();
+  });
+
+  it("has correct initial state with 10 steps, all pending, currentStep=0", () => {
+    const state = useWorkflowStore.getState();
+    expect(state.skillName).toBeNull();
+    expect(state.domain).toBeNull();
+    expect(state.currentStep).toBe(0);
+    expect(state.isRunning).toBe(false);
+    expect(state.steps).toHaveLength(10);
+    state.steps.forEach((step) => {
+      expect(step.status).toBe("pending");
+    });
+    // Verify step IDs are 0-9
+    expect(state.steps.map((s) => s.id)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  });
+
+  it("initWorkflow sets skillName, domain, and resets steps", () => {
+    // First change some state
+    useWorkflowStore.getState().setCurrentStep(5);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setRunning(true);
+
+    // Now init a new workflow
+    useWorkflowStore.getState().initWorkflow("my-skill", "sales pipeline");
+
+    const state = useWorkflowStore.getState();
+    expect(state.skillName).toBe("my-skill");
+    expect(state.domain).toBe("sales pipeline");
+    expect(state.currentStep).toBe(0);
+    expect(state.isRunning).toBe(false);
+    // All steps should be reset to pending
+    state.steps.forEach((step) => {
+      expect(step.status).toBe("pending");
+    });
+  });
+
+  it("updateStepStatus changes a specific step's status", () => {
+    useWorkflowStore.getState().updateStepStatus(3, "in_progress");
+    const state = useWorkflowStore.getState();
+    expect(state.steps[3].status).toBe("in_progress");
+    // Other steps remain pending
+    expect(state.steps[0].status).toBe("pending");
+    expect(state.steps[2].status).toBe("pending");
+    expect(state.steps[4].status).toBe("pending");
+  });
+
+  it("updateStepStatus can set different statuses", () => {
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "waiting_for_user");
+    useWorkflowStore.getState().updateStepStatus(2, "error");
+
+    const state = useWorkflowStore.getState();
+    expect(state.steps[0].status).toBe("completed");
+    expect(state.steps[1].status).toBe("waiting_for_user");
+    expect(state.steps[2].status).toBe("error");
+  });
+
+  it("setCurrentStep changes currentStep", () => {
+    useWorkflowStore.getState().setCurrentStep(7);
+    expect(useWorkflowStore.getState().currentStep).toBe(7);
+  });
+
+  it("setRunning changes isRunning", () => {
+    useWorkflowStore.getState().setRunning(true);
+    expect(useWorkflowStore.getState().isRunning).toBe(true);
+    useWorkflowStore.getState().setRunning(false);
+    expect(useWorkflowStore.getState().isRunning).toBe(false);
+  });
+
+  it("reset clears everything back to initial state", () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "hr analytics");
+    useWorkflowStore.getState().setCurrentStep(4);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().setRunning(true);
+
+    useWorkflowStore.getState().reset();
+
+    const state = useWorkflowStore.getState();
+    expect(state.skillName).toBeNull();
+    expect(state.domain).toBeNull();
+    expect(state.currentStep).toBe(0);
+    expect(state.isRunning).toBe(false);
+    expect(state.steps).toHaveLength(10);
+    state.steps.forEach((step) => {
+      expect(step.status).toBe("pending");
+    });
+  });
+
+  it("steps have expected names", () => {
+    const state = useWorkflowStore.getState();
+    expect(state.steps[0].name).toBe("Research Domain Concepts");
+    expect(state.steps[3].name).toBe("Merge Clarifications");
+    expect(state.steps[5].name).toBe("Reasoning");
+    expect(state.steps[6].name).toBe("Build Skill");
+    expect(state.steps[9].name).toBe("Package");
+  });
+});

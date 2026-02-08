@@ -7,5 +7,10 @@
 # Skill working directories (context files, workflow state)
 skills/
 
+# Test results
+app/test-results/
+app/playwright-report/
+app/playwright-artifacts/
+
 # Claude Code
 .claude/

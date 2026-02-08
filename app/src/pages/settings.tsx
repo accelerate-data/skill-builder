@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { invoke } from "@tauri-apps/api/core"
+import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "sonner"
-import { Loader2, Eye, EyeOff, Save, CheckCircle2, XCircle, ExternalLink } from "lucide-react"
+import { Loader2, Eye, EyeOff, Save, CheckCircle2, XCircle, ExternalLink, FolderOpen, ChevronsUpDown, Search, Lock, Globe, RefreshCw, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -16,7 +17,7 @@ import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import type { AppSettings } from "@/lib/types"
-import { checkNode, type NodeStatus } from "@/lib/tauri"
+import { checkNode, listGithubRepos, cloneRepo, commitAndPush, type NodeStatus, type GitHubRepo } from "@/lib/tauri"
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>({
@@ -38,19 +39,36 @@ export default function SettingsPage() {
   const [showGhToken, setShowGhToken] = useState(false)
   const [nodeStatus, setNodeStatus] = useState<NodeStatus | null>(null)
   const [nodeLoading, setNodeLoading] = useState(true)
+  const [repos, setRepos] = useState<GitHubRepo[]>([])
+  const [reposLoading, setReposLoading] = useState(false)
+  const [repoSearch, setRepoSearch] = useState("")
+  const [repoDropdownOpen, setRepoDropdownOpen] = useState(false)
+  const [selectedRepoObj, setSelectedRepoObj] = useState<GitHubRepo | null>(null)
+  const [cloning, setCloning] = useState(false)
+  const [cloned, setCloned] = useState(false)
+  const repoDropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    let cancelled = false
     const load = async () => {
-      try {
-        const result = await invoke<AppSettings>("get_settings")
-        setSettings(result)
-      } catch {
-        // Settings may not exist yet — use defaults
-      } finally {
-        setLoading(false)
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const result = await invoke<AppSettings>("get_settings")
+          if (!cancelled) {
+            setSettings(result)
+            setLoading(false)
+          }
+          return
+        } catch (err) {
+          console.error(`Failed to load settings (attempt ${attempt}/3):`, err)
+          if (attempt < 3) await new Promise((r) => setTimeout(r, 500))
+        }
       }
+      // All retries exhausted
+      if (!cancelled) setLoading(false)
     }
     load()
+    return () => { cancelled = true }
   }, [])
 
   useEffect(() => {
@@ -68,20 +86,115 @@ export default function SettingsPage() {
     check()
   }, [])
 
+  // Close repo dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (repoDropdownRef.current && !repoDropdownRef.current.contains(e.target as Node)) {
+        setRepoDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  const handleFetchRepos = async () => {
+    if (!settings.github_token) {
+      toast.error("Enter and test a GitHub token first")
+      return
+    }
+    setReposLoading(true)
+    try {
+      const result = await listGithubRepos(settings.github_token)
+      setRepos(result)
+      setRepoDropdownOpen(true)
+    } catch (err) {
+      toast.error(`Failed to fetch repos: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setReposLoading(false)
+    }
+  }
+
+  const handleSelectRepo = (repo: GitHubRepo) => {
+    setSettings((s) => ({ ...s, github_repo: repo.full_name }))
+    setSelectedRepoObj(repo)
+    setRepoDropdownOpen(false)
+    setRepoSearch("")
+  }
+
+  const handleCloneRepo = async () => {
+    if (!selectedRepoObj || !settings.workspace_path || !settings.github_token) {
+      toast.error("Select a repo, folder, and ensure your GitHub token is set")
+      return
+    }
+    setCloning(true)
+    setCloned(false)
+    try {
+      const result = await cloneRepo(
+        selectedRepoObj.clone_url,
+        settings.workspace_path,
+        settings.github_token,
+      )
+      setCloned(true)
+      const seeded: string[] = []
+      if (result.created_readme) seeded.push("README.md")
+      if (result.created_gitignore) seeded.push(".gitignore")
+      if (seeded.length > 0) {
+        toast.success(`Cloned and seeded ${seeded.join(" & ")}`)
+      } else {
+        toast.success("Cloned successfully — README and .gitignore already existed")
+      }
+    } catch (err) {
+      toast.error(`${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setCloning(false)
+    }
+  }
+
+  const handleBrowseFolder = async () => {
+    const selected = await open({ directory: true, title: "Select workspace folder" })
+    if (selected) {
+      setSettings((s) => ({ ...s, workspace_path: selected }))
+    }
+  }
+
+  const filteredRepos = repos.filter((r) =>
+    r.full_name.toLowerCase().includes(repoSearch.toLowerCase())
+  )
+
   const handleSave = async () => {
     setSaving(true)
     setSaved(false)
     try {
       await invoke("save_settings", { settings })
       setSaved(true)
-      toast.success("Settings saved")
+      setSaving(false)
       setTimeout(() => setSaved(false), 3000)
+
+      // Commit and push in background if we have a cloned repo with a token
+      if (settings.workspace_path && settings.github_token) {
+        try {
+          const result = await commitAndPush(
+            settings.workspace_path,
+            "Update settings via Skill Builder",
+            settings.github_token,
+          )
+          if (result === "No changes to commit") {
+            toast.success("Settings saved — no repo changes to push")
+          } else {
+            toast.success("Settings saved, committed & pushed")
+          }
+        } catch {
+          // Repo may not be cloned yet — just save settings
+          toast.success("Settings saved")
+        }
+      } else {
+        toast.success("Settings saved")
+      }
     } catch (err) {
+      setSaving(false)
       toast.error(
         `Failed to save settings: ${err instanceof Error ? err.message : String(err)}`
       )
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -336,41 +449,130 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>GitHub Repository</CardTitle>
           <CardDescription>
-            Configure your GitHub repository for skill storage.
+            Select a repository and local folder for skill storage.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="repo">Repository</Label>
-            <Input
-              id="repo"
-              placeholder="e.g., myuser/skill-repo"
-              value={settings.github_repo || ""}
-              onChange={(e) =>
-                setSettings((s) => ({
-                  ...s,
-                  github_repo: e.target.value || null,
-                }))
-              }
-            />
+            <Label>Repository</Label>
+            <div className="relative" ref={repoDropdownRef}>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 justify-between font-normal"
+                  onClick={() => {
+                    if (repos.length > 0) {
+                      setRepoDropdownOpen(!repoDropdownOpen)
+                    } else {
+                      handleFetchRepos()
+                    }
+                  }}
+                  disabled={reposLoading || !settings.github_token}
+                >
+                  <span className={settings.github_repo ? "" : "text-muted-foreground"}>
+                    {reposLoading ? "Loading repos..." : settings.github_repo || "Select a repository"}
+                  </span>
+                  {reposLoading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <ChevronsUpDown className="size-4 opacity-50" />
+                  )}
+                </Button>
+              </div>
+              {repoDropdownOpen && (
+                <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+                  <div className="flex items-center border-b px-3">
+                    <Search className="size-4 text-muted-foreground" />
+                    <input
+                      className="flex-1 bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted-foreground"
+                      placeholder="Search repos..."
+                      value={repoSearch}
+                      onChange={(e) => setRepoSearch(e.target.value)}
+                    />
+                    <button
+                      className="rounded-sm p-1 text-muted-foreground hover:text-foreground"
+                      title="Refresh repos"
+                      onClick={handleFetchRepos}
+                      disabled={reposLoading}
+                    >
+                      <RefreshCw className={`size-3.5 ${reposLoading ? "animate-spin" : ""}`} />
+                    </button>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto p-1">
+                    {filteredRepos.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-muted-foreground">No repos found</p>
+                    ) : (
+                      filteredRepos.map((repo) => (
+                        <button
+                          key={repo.full_name}
+                          className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
+                          onClick={() => handleSelectRepo(repo)}
+                        >
+                          {repo.private ? (
+                            <Lock className="size-3.5 text-muted-foreground" />
+                          ) : (
+                            <Globe className="size-3.5 text-muted-foreground" />
+                          )}
+                          <span className="flex-1 text-left">{repo.full_name}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            {!settings.github_token && (
+              <p className="text-xs text-muted-foreground">
+                Add a GitHub token above to browse your repos
+              </p>
+            )}
           </div>
+
           <div className="flex flex-col gap-2">
-            <Label htmlFor="workspace-path">Workspace Path</Label>
-            <Input
-              id="workspace-path"
-              placeholder="~/skill-builder-workspace/repo-name"
-              value={settings.workspace_path || ""}
-              onChange={(e) =>
-                setSettings((s) => ({
-                  ...s,
-                  workspace_path: e.target.value || null,
-                }))
-              }
-            />
+            <Label htmlFor="workspace-path">Clone Destination</Label>
+            <div className="flex gap-2">
+              <Input
+                id="workspace-path"
+                placeholder="Select a folder..."
+                value={settings.workspace_path || ""}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    workspace_path: e.target.value || null,
+                  }))
+                }
+                className="flex-1"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleBrowseFolder}
+              >
+                <FolderOpen className="size-4" />
+                Browse
+              </Button>
+            </div>
             <p className="text-xs text-muted-foreground">
-              Local directory where skill files are stored
+              Local directory where the repo will be cloned
             </p>
           </div>
+
+          <Button
+            onClick={handleCloneRepo}
+            disabled={cloning || !settings.github_repo || !settings.workspace_path || !settings.github_token}
+            className={`w-full ${cloned ? "bg-green-600 hover:bg-green-700 text-white" : ""}`}
+          >
+            {cloning ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : cloned ? (
+              <CheckCircle2 className="size-4" />
+            ) : (
+              <Download className="size-4" />
+            )}
+            {cloning ? "Cloning..." : cloned ? "Cloned" : "Clone & Setup"}
+          </Button>
 
           <Separator />
 
@@ -412,7 +614,8 @@ export default function SettingsPage() {
         <Button
           onClick={handleSave}
           disabled={saving}
-          className={saved ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+          variant={saved ? "default" : "outline"}
+          className={saved ? "bg-green-600 hover:bg-green-600 text-white border-green-600" : ""}
         >
           {saving ? (
             <Loader2 className="size-4 animate-spin" />

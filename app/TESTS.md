@@ -1,20 +1,39 @@
 # Test Plan
 
+## Running Automated Tests
+
+```bash
+cd app
+
+# Frontend unit tests (Vitest)
+npm test                    # Single run
+npm run test:watch          # Watch mode
+
+# Rust unit + integration tests
+cd src-tauri && cargo test
+
+# E2E tests (Playwright)
+npm run test:e2e            # Starts Vite + runs Playwright
+
+# All frontend tests
+npm run test:all
+```
+
+**Automated test files:**
+- `src/__tests__/` — Vitest unit tests (stores, utils, pages)
+- `e2e/` — Playwright E2E tests (navigation, settings, dashboard)
+- `src-tauri/src/` — Rust `#[cfg(test)]` modules (workflow_state, node, skill, git)
+
+---
+
+## Manual Test Checklist
+
+The checklists below cover manual QA scenarios not yet covered by automated tests. Check items off as you verify them.
+
 ## Phase 1: Foundation
 
-### Login Flow
-- [ ] Launch app → login page shown (not dashboard)
-- [ ] Click "Sign in with GitHub" → device code displayed
-- [ ] User code is large, monospace, copyable
-- [ ] "Open GitHub" button opens browser to github.com/login/device
-- [ ] Polling indicator shows "Waiting for authorization..."
-- [ ] Cancel button returns to initial login state
-- [ ] After authorization → redirected to dashboard
-- [ ] App header shows GitHub avatar + username
-- [ ] Logout → returns to login page
-- [ ] Relaunch app → session persisted (auto-login if token valid)
-
 ### Dashboard
+- [ ] Launch app → dashboard shown directly (no login gate)
 - [ ] Empty state shown when no skills exist
 - [ ] "New Skill" button opens creation dialog
 - [ ] Create skill → card appears in grid
@@ -26,26 +45,36 @@
 
 ### Settings
 - [ ] API key field is password-masked with show/hide toggle
-- [ ] "Test" button validates API key (success/failure toast)
-- [ ] Repo field accepts `owner/repo` format
+- [ ] "Test" button validates API key → turns green on success, error toast on failure
+- [ ] GitHub PAT field is password-masked with show/hide toggle
+- [ ] "Test" button validates PAT → turns green on success, shows username in toast
+- [ ] Repo picker: click → fetches repos from GitHub → searchable dropdown
+- [ ] Repo picker: refresh button re-fetches repos (catches newly created repos)
+- [ ] Repo picker: shows lock/globe icons for private/public repos
+- [ ] Folder picker: "Browse" opens native OS folder dialog
+- [ ] Clone & Setup: clones repo, seeds README + .gitignore, turns green on success
 - [ ] Auto-commit toggle switches on/off
 - [ ] Auto-push toggle switches on/off
-- [ ] Save → settings persisted (survive app restart)
+- [ ] Save → settings persisted + commits & pushes to repo if configured
+- [ ] Save button turns green "Saved" for 3 seconds
+- [ ] Node.js status indicator: green badge with version, or red badge with download link
 - [ ] Load existing settings on page mount
 
 ### Navigation & Layout
 - [ ] Sidebar shows Dashboard + Settings links
 - [ ] Active route highlighted in sidebar
-- [ ] Dark mode toggle works (light → dark → light)
+- [ ] 3-way theme toggle works (System / Light / Dark)
 - [ ] Theme persists across page navigation
-- [ ] Header shows user info + logout dropdown
-- [ ] Unauthenticated user cannot access dashboard/settings (redirected to login)
+- [ ] Header shows GitHub avatar + username when PAT is configured
 
 ### Rust Backend
-- [ ] `start_login` returns valid device flow response
-- [ ] `poll_login` returns "pending" then "complete" with token
-- [ ] `get_current_user` returns GitHub user info from token
-- [ ] `logout` clears stored token
+- [ ] `get_current_user` returns GitHub user info from PAT
+- [ ] `list_github_repos` returns paginated list of user repos
+- [ ] `clone_repo` clones repo via HTTPS + token auth
+- [ ] `clone_repo` seeds README.md + .gitignore on empty repo, commits, pushes
+- [ ] `clone_repo` rejects if directory already contains .git
+- [ ] `commit_and_push` stages all changes, commits, pushes
+- [ ] `commit_and_push` returns "No changes to commit" when tree unchanged
 - [ ] `get_settings` returns default settings on first run
 - [ ] `save_settings` persists and `get_settings` retrieves them
 - [ ] `test_api_key` returns true for valid key, false for invalid
@@ -54,39 +83,38 @@
 - [ ] `list_skills` returns created skill with parsed state
 - [ ] `delete_skill` removes directory from disk
 - [ ] `list_skills` no longer shows deleted skill
+- [ ] `check_node` returns correct version or error
 
 ## Phase 2: Core Agent Loop (SDK Sidecar)
 
 ### Node.js Dependency Check
-- [ ] App startup with Node.js installed → proceeds normally
-- [ ] App startup without Node.js → shows install dialog with link
-- [ ] App startup with Node.js < 18 → shows upgrade dialog
 - [ ] Settings page shows Node.js version status (green/red indicator)
 - [ ] `check_node` command returns correct version or error
+- [ ] Node.js < 18 shows "Version too old" badge with download link
+- [ ] Node.js missing shows "Not found" badge with download link
 
 ### Sidecar
 - [ ] `agent-runner.js` bundled as Tauri resource (exists in app bundle)
 - [ ] Sidecar reads JSON config from stdin correctly
-- [ ] Sidecar calls SDK `query()` with correct options (model, cwd, tools, API key)
-- [ ] Sidecar streams system init message as first JSON line
+- [ ] Sidecar calls SDK `query()` with correct options (model, cwd, tools, API key via env)
 - [ ] Sidecar streams assistant messages as JSON lines during execution
 - [ ] Sidecar streams result message as final JSON line (with cost + usage)
 - [ ] Sidecar exits cleanly after query completes
-- [ ] Sidecar exits on stdin close (cancellation)
+- [ ] Sidecar exits on stdin close / SIGTERM / SIGINT (via AbortController)
 - [ ] SDK tools work: agent can Read, Write, Glob, Grep files in workspace
 
 ### Rust Agent Management
 - [ ] `start_agent` spawns Node.js sidecar process
-- [ ] Config (API key, model, prompt, cwd) passed correctly to sidecar stdin
+- [ ] Config (API key via env, model, prompt, cwd) passed correctly to sidecar stdin
 - [ ] JSON lines from sidecar stdout parsed into typed structs
-- [ ] Each parsed message emitted as Tauri event to frontend
+- [ ] Each parsed message emitted as Tauri event (`agent-message`, `agent-exit`)
 - [ ] `cancel_agent` kills the sidecar process
 - [ ] Multiple agents can run concurrently (different agent IDs)
 - [ ] Agent process cleanup on app exit (no orphan Node processes)
+- [ ] Dev-mode sidecar path resolution works via `CARGO_MANIFEST_DIR`
 
 ### Streaming UI
-- [ ] Text from assistant messages renders in real-time in output panel
-- [ ] Tool use activity shown (e.g., "Reading file...", "Writing file...")
+- [ ] Text from assistant messages renders in real-time in output panel (markdown)
 - [ ] Agent status shows model name + elapsed time
 - [ ] On completion: token usage + cost displayed from result message
 - [ ] Cancel button stops the agent (sidecar killed)
@@ -95,11 +123,10 @@
 - [ ] Create skill → navigate to workflow → Step 1 starts
 - [ ] Sidecar spawned with research prompt + correct workspace cwd
 - [ ] Streaming text appears in output panel
-- [ ] Agent reads `prompts/shared-context.md` and `prompts/01-research-domain-concepts.md` via SDK tools
+- [ ] Agent reads prompts via SDK tools
 - [ ] `clarifications-concepts.md` written to correct path by agent
 - [ ] File contains properly formatted Q&A sections
 - [ ] Result message received → step marked complete, workflow advances
-- [ ] Existing prompts work without modification
 
 ## Phase 3: Q&A Forms
 
@@ -158,11 +185,15 @@
 
 ## Phase 5: Git Integration
 
-- [ ] Select empty repo → cloned + initialized with README
+- [ ] Repo picker → select repo → Clone & Setup → repo cloned to selected folder
+- [ ] Clone empty repo → README.md + .gitignore seeded, committed, pushed
+- [ ] Clone repo with existing README → no seed files created
+- [ ] Clone & Setup button turns green on success
+- [ ] Clone to folder that already has .git → error message shown
+- [ ] Save settings → changes committed and pushed to repo
+- [ ] Save when no repo changes → toast says "no repo changes to push"
+- [ ] Save when repo not cloned yet → just saves settings (no error)
 - [ ] Select repo with skills → skills appear in dashboard
-- [ ] Auto-commit after Step 1 → `git log` shows commit
-- [ ] Commit message format: `skill-builder: [name] step description`
-- [ ] Auto-push enabled → commits pushed to GitHub
 - [ ] Push button → changes appear on GitHub
 - [ ] Pull button → remote changes appear locally
 - [ ] Diff viewer shows file changes between commits

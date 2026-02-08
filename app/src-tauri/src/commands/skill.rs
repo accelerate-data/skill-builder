@@ -116,3 +116,55 @@ pub fn delete_skill(workspace_path: String, name: String) -> Result<(), String> 
     fs::remove_dir_all(&base).map_err(|e| e.to_string())?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_create_and_list_skills() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap().to_string();
+
+        create_skill(workspace.clone(), "my-skill".into(), "sales pipeline".into()).unwrap();
+
+        let skills = list_skills(workspace).unwrap();
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "my-skill");
+        assert_eq!(skills[0].domain.as_deref(), Some("sales pipeline"));
+        assert_eq!(skills[0].status.as_deref(), Some("pending"));
+    }
+
+    #[test]
+    fn test_create_duplicate_skill() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap().to_string();
+
+        create_skill(workspace.clone(), "dup-skill".into(), "domain".into()).unwrap();
+        let result = create_skill(workspace, "dup-skill".into(), "domain".into());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("already exists"));
+    }
+
+    #[test]
+    fn test_delete_skill() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap().to_string();
+
+        create_skill(workspace.clone(), "to-delete".into(), "domain".into()).unwrap();
+        let skills = list_skills(workspace.clone()).unwrap();
+        assert_eq!(skills.len(), 1);
+
+        delete_skill(workspace.clone(), "to-delete".into()).unwrap();
+        let skills = list_skills(workspace).unwrap();
+        assert_eq!(skills.len(), 0);
+    }
+
+    #[test]
+    fn test_list_empty_workspace() {
+        // Use a path that does not exist — list_skills returns empty vec
+        let skills = list_skills("/tmp/nonexistent-workspace-path-abc123".into()).unwrap();
+        assert!(skills.is_empty());
+    }
+}

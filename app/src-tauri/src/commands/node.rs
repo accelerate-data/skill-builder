@@ -51,3 +51,38 @@ fn parse_meets_minimum(version: &str, min_major: u32) -> bool {
     }
     false
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_v20_meets_min_18() {
+        assert!(parse_meets_minimum("v20.11.0", 18));
+    }
+
+    #[test]
+    fn test_v18_meets_min_18() {
+        assert!(parse_meets_minimum("v18.0.0", 18));
+    }
+
+    #[test]
+    fn test_v16_does_not_meet_min_18() {
+        assert!(!parse_meets_minimum("v16.0.0", 18));
+    }
+
+    #[test]
+    fn test_no_v_prefix_meets_min() {
+        assert!(parse_meets_minimum("20.11.0", 18));
+    }
+
+    #[test]
+    fn test_empty_string() {
+        assert!(!parse_meets_minimum("", 18));
+    }
+
+    #[test]
+    fn test_garbage_string() {
+        assert!(!parse_meets_minimum("abc", 18));
+    }
+}

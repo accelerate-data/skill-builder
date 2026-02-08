@@ -145,6 +145,23 @@ npm run tauri dev
 
 Prerequisites: Node.js, Rust toolchain, platform-specific Tauri dependencies (see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)).
 
+### Testing
+
+```bash
+cd app
+
+# Frontend unit tests (Vitest + React Testing Library)
+npm test
+
+# Rust unit + integration tests
+cd src-tauri && cargo test
+
+# E2E tests (Playwright — launches Vite dev server automatically)
+npm run test:e2e
+```
+
+See `CLAUDE.md` for full testing documentation including mock strategies and the testing rule for new features.
+
 ### Implementation Phases
 
 | Phase | Scope | Status |

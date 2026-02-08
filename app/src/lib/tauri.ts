@@ -75,6 +75,33 @@ export const createSkill = (
 export const deleteSkill = (workspacePath: string, name: string) =>
   invoke("delete_skill", { workspacePath, name });
 
+// --- GitHub Repos ---
+
+export interface GitHubRepo {
+  full_name: string;
+  name: string;
+  private: boolean;
+  description: string | null;
+  clone_url: string;
+}
+
+export const listGithubRepos = (token: string) =>
+  invoke<GitHubRepo[]>("list_github_repos", { token });
+
+// --- Git ---
+
+export interface CloneResult {
+  path: string;
+  created_readme: boolean;
+  created_gitignore: boolean;
+}
+
+export const cloneRepo = (repoUrl: string, destPath: string, token: string) =>
+  invoke<CloneResult>("clone_repo", { repoUrl, destPath, token });
+
+export const commitAndPush = (repoPath: string, message: string, token: string) =>
+  invoke<string>("commit_and_push", { repoPath, message, token });
+
 // --- Node.js ---
 
 export interface NodeStatus {

@@ -5,17 +5,16 @@
 - [x] Tauri v2 scaffold with React 19 + TypeScript + Vite 7
 - [x] shadcn/ui component library (16 components)
 - [x] Tailwind CSS 4 with light/dark mode tokens
-- [x] TanStack Router with login, dashboard, settings, workflow routes
-- [x] Zustand stores (auth, skills, settings)
-- [x] App layout with sidebar navigation + header with user menu
-- [x] Dark mode toggle (next-themes)
+- [x] TanStack Router with dashboard, settings, workflow routes
+- [x] Zustand stores (auth, skills, settings, workflow, agent)
+- [x] App layout with sidebar navigation + header with user avatar
+- [x] 3-way theme toggle (System/Light/Dark) via next-themes
 - [x] Typed Tauri invoke wrappers for all backend commands
-- [x] Login page — GitHub Device Flow UI (code display, polling, error states)
 - [x] Dashboard — skill cards grid with progress, status badges, actions
 - [x] New Skill dialog — domain input with auto-derived kebab-case name
 - [x] Delete Skill dialog — confirmation with invoke
-- [x] Settings page — API key (with test), repo config, auto-commit/push toggles
-- [x] Rust: GitHub Device Flow (start, poll, fetch user)
+- [x] Settings page — API key (with test), GitHub PAT (with test), repo picker, folder picker
+- [x] Rust: GitHub PAT validation (fetch user from token)
 - [x] Rust: Token storage via tauri-plugin-store
 - [x] Rust: Settings CRUD (get/save/test API key)
 - [x] Rust: Skill CRUD (list/create/delete from filesystem)
@@ -24,39 +23,48 @@
 ## Phase 2: Core Agent Loop (SDK Sidecar)
 
 ### Node.js Dependency Check
-- [ ] Rust: `check_node` command — run `node --version`, parse version, return status
-- [ ] Frontend: Node.js status indicator on Settings page
-- [ ] Frontend: Startup dialog if Node.js missing — install instructions + link to nodejs.org
+- [x] Rust: `check_node` command — run `node --version`, parse version, return status
+- [x] Frontend: Node.js status indicator on Settings page (green/red badge)
 
 ### Sidecar (Node.js)
-- [ ] `sidecar/` directory with package.json, tsconfig.json
-- [ ] `@anthropic-ai/claude-agent-sdk` installed as dependency
-- [ ] `agent-runner.ts` — reads JSON config from stdin, runs `query()`, streams JSON lines to stdout
-- [ ] Handles all SDK message types (system, assistant, result)
-- [ ] Forwards tool activity (file reads/writes) as status events
-- [ ] Graceful shutdown on stdin close or SIGTERM
-- [ ] `build.ts` — esbuild bundles into single `dist/agent-runner.js`
-- [ ] Bundled JS file included as Tauri resource
+- [x] `sidecar/` directory with package.json, tsconfig.json
+- [x] `@anthropic-ai/claude-code` SDK installed as dependency
+- [x] `agent-runner.ts` — reads JSON config from stdin, runs `query()`, streams JSON lines to stdout
+- [x] Handles SDK message types (system, assistant, result)
+- [x] Graceful shutdown on stdin close, SIGTERM, SIGINT via AbortController
+- [x] `build.js` — esbuild bundles into single `dist/agent-runner.js` (417KB)
+- [x] Bundled JS file included as Tauri resource
 
 ### Rust: Agent Management
-- [ ] `commands/agent.rs` — `start_agent` and `cancel_agent` Tauri commands
-- [ ] `agents/sidecar.rs` — spawn `node agent-runner.js`, write config to stdin, read stdout
-- [ ] `agents/events.rs` — parse JSON lines from stdout → emit Tauri events
-- [ ] Pass API key, model, prompt, cwd, allowedTools, maxTurns, permissionMode to sidecar
-- [ ] Track running agent processes (HashMap of agent_id → child process)
-- [ ] Cancel: kill child process on `cancel_agent`
+- [x] `commands/agent.rs` — `start_agent` and `cancel_agent` Tauri commands
+- [x] `agents/sidecar.rs` — spawn `node agent-runner.js`, write config to stdin, read stdout
+- [x] `agents/events.rs` — parse JSON lines from stdout → emit Tauri events
+- [x] Pass API key (via env var), model, prompt, cwd, allowedTools, maxTurns to sidecar
+- [x] Track running agent processes (AgentRegistry: HashMap of agent_id → child process)
+- [x] Cancel: kill child process on `cancel_agent`
+- [x] Dev-mode sidecar path fallback via `CARGO_MANIFEST_DIR`
 
 ### Frontend: Streaming UI
-- [ ] Agent output streaming panel (real-time text display from Tauri events)
-- [ ] Agent status display (model, elapsed time, token usage from result message)
-- [ ] Workflow store (workflow state, step transitions)
-- [ ] Agent store (run state, streaming events)
-- [ ] `use-agent-stream` hook (subscribe to Tauri agent events)
-- [ ] Workflow wizard page — step progression sidebar
+- [x] Agent output streaming panel (real-time markdown display from Tauri events)
+- [x] Agent status display (model, elapsed time, token usage from result message)
+- [x] Workflow store (10 workflow steps with status tracking)
+- [x] Agent store (run state, streaming events, cost tracking)
+- [x] `use-agent-stream` hook (subscribe to Tauri agent-message/agent-exit events)
+- [x] Workflow wizard page — step progression sidebar + content area
 
-### End-to-End
-- [ ] Step 1: create skill → run research agent via sidecar → streaming output in UI → `clarifications-concepts.md` written
-- [ ] Existing `prompts/*.md` used as-is (no modification needed)
+### Git Integration (pulled forward from Phase 5)
+- [x] Rust: `list_github_repos` — paginated GitHub API fetch of user repos
+- [x] Rust: `clone_repo` — clone via HTTPS + token auth, seed README.md + .gitignore
+- [x] Rust: `commit_and_push` — stage all, commit, push to remote
+- [x] Frontend: Repo picker — searchable dropdown of GitHub repos with refresh
+- [x] Frontend: Folder picker — native OS dialog via tauri-plugin-dialog
+- [x] Frontend: Clone & Setup button (turns green on success)
+- [x] Frontend: Save commits and pushes to repo
+
+### UI Polish (pulled forward from Phase 8)
+- [x] Test buttons turn green with checkmark on success (API key, GitHub token)
+- [x] Save button turns green "Saved" for 3 seconds after save
+- [x] Toast notifications for all async operations
 
 ## Phase 3: Q&A Forms
 
@@ -92,17 +100,17 @@
 
 ## Phase 5: Git Integration
 
-- [ ] Rust: git2 — clone repo (HTTPS + GitHub token)
-- [ ] Rust: git2 — init empty repo
-- [ ] Rust: git2 — commit with message
-- [ ] Rust: git2 — push to remote
+- [x] Rust: git2 — clone repo (HTTPS + GitHub token)
+- [x] Rust: git2 — commit with message
+- [x] Rust: git2 — push to remote
+- [x] Rust: git2 — seed README.md + .gitignore on empty repos
+- [x] Rust: Clone/init on first setup after repo selection
 - [ ] Rust: git2 — pull from remote
 - [ ] Rust: git2 — diff (file-level + line-level)
 - [ ] Rust: git2 — log (commit history)
 - [ ] Rust: git2 — file status (modified, untracked)
 - [ ] Rust: Auto-commit after each workflow step (configurable)
 - [ ] Rust: Auto-push after commit (optional)
-- [ ] Rust: Clone/init on first setup after repo selection
 - [ ] Frontend: Push/pull toolbar buttons
 - [ ] Frontend: Diff viewer for file history (react-diff-viewer-continued)
 - [ ] Frontend: Git status indicators per file
@@ -141,4 +149,4 @@
 - [ ] Responsive layout adjustments
 - [ ] App icon and branding
 - [ ] First-run onboarding flow
-- [ ] GitHub OAuth App registration documentation
+- [ ] Onboarding: prompt for GitHub PAT + API key on first launch
