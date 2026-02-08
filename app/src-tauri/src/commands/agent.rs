@@ -15,6 +15,7 @@ pub async fn start_agent(
     cwd: String,
     allowed_tools: Option<Vec<String>>,
     max_turns: Option<u32>,
+    session_id: Option<String>,
 ) -> Result<String, String> {
     // Read API key from store
     let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
@@ -35,6 +36,7 @@ pub async fn start_agent(
         allowed_tools,
         max_turns,
         permission_mode: None,
+        session_id,
     };
 
     sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app).await?;

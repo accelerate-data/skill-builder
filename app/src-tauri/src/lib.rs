@@ -41,6 +41,7 @@ pub fn run() {
             commands::workflow::run_workflow_step,
             commands::workflow::run_parallel_agents,
             commands::workflow::package_skill,
+            commands::workflow::auto_commit_step,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

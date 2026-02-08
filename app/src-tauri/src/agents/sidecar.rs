@@ -27,6 +27,8 @@ pub struct SidecarConfig {
     pub max_turns: Option<u32>,
     #[serde(rename = "permissionMode", skip_serializing_if = "Option::is_none")]
     pub permission_mode: Option<String>,
+    #[serde(rename = "sessionId", skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
 }
 
 pub async fn spawn_sidecar(

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "@tanstack/react-router";
+import { useParams, Link } from "@tanstack/react-router";
 import {
   Loader2,
   Play,
@@ -7,6 +7,7 @@ import {
   MessageSquare,
   SkipForward,
   FileText,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import { ParallelAgentPanel } from "@/components/parallel-agent-panel";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ClarificationForm } from "@/components/clarification-form";
 import { ClarificationRaw } from "@/components/clarification-raw";
+import { ReasoningChat } from "@/components/reasoning-chat";
 import { useAgentStream } from "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
@@ -27,6 +29,7 @@ import {
   packageSkill,
   parseClarifications,
   saveClarificationAnswers,
+  autoCommitStep,
   type ClarificationFile,
   type PackageResult,
 } from "@/lib/tauri";
@@ -34,7 +37,7 @@ import {
 // --- Step config ---
 
 interface StepConfig {
-  type: "agent" | "parallel" | "human" | "package";
+  type: "agent" | "parallel" | "human" | "package" | "reasoning";
   model?: string;
   outputFiles?: string[];
 }
@@ -61,7 +64,7 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
   },
   4: { type: "human" },
   5: {
-    type: "agent",
+    type: "reasoning",
     model: "opus",
     outputFiles: ["context/decisions.md"],
   },
@@ -183,6 +186,20 @@ export default function WorkflowPage() {
     }
   }, [currentStep, steps.length, setCurrentStep, updateStepStatus]);
 
+  // Auto-commit helper — fires after any step completes
+  const handleStepAutoCommit = useCallback(
+    (stepName: string) => {
+      if (workspacePath) {
+        autoCommitStep(skillName, stepName, workspacePath)
+          .then((result) => {
+            if (result) toast.info(result);
+          })
+          .catch(() => {});
+      }
+    },
+    [skillName, workspacePath]
+  );
+
   // Watch for single agent completion
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
   const handleAgentComplete = useCallback(() => {
@@ -190,6 +207,7 @@ export default function WorkflowPage() {
     if (activeRun.status === "completed") {
       updateStepStatus(currentStep, "completed");
       setRunning(false);
+      handleStepAutoCommit(steps[currentStep]?.name ?? `Step ${currentStep + 1}`);
       toast.success(`Step ${currentStep + 1} completed`);
       advanceToNextStep();
     } else if (activeRun.status === "error") {
@@ -204,6 +222,8 @@ export default function WorkflowPage() {
     updateStepStatus,
     setRunning,
     advanceToNextStep,
+    handleStepAutoCommit,
+    steps,
     activeRun,
   ]);
 
@@ -232,6 +252,7 @@ export default function WorkflowPage() {
       updateStepStatus(currentStep, "completed");
       setRunning(false);
       setParallelAgents(null);
+      handleStepAutoCommit(steps[currentStep]?.name ?? `Step ${currentStep + 1}`);
       toast.success(`Step ${currentStep + 1} completed`);
       advanceToNextStep();
     } else {
@@ -250,6 +271,8 @@ export default function WorkflowPage() {
     setRunning,
     setParallelAgents,
     advanceToNextStep,
+    handleStepAutoCommit,
+    steps,
     parallelRunA,
     parallelRunB,
   ]);
@@ -329,6 +352,7 @@ export default function WorkflowPage() {
       setPackageResult(result);
       updateStepStatus(currentStep, "completed");
       setRunning(false);
+      handleStepAutoCommit("Package");
       toast.success("Skill packaged successfully");
     } catch (err) {
       updateStepStatus(currentStep, "error");
@@ -363,6 +387,7 @@ export default function WorkflowPage() {
       toast.success("Answers saved");
 
       updateStepStatus(currentStep, "completed");
+      handleStepAutoCommit(steps[currentStep]?.name ?? `Step ${currentStep + 1}`);
       advanceToNextStep();
     } catch (err) {
       toast.error(
@@ -391,6 +416,7 @@ export default function WorkflowPage() {
   const canStart =
     stepConfig &&
     stepConfig.type !== "human" &&
+    stepConfig.type !== "reasoning" &&
     !isRunning &&
     workspacePath &&
     currentStepDef?.status !== "completed";
@@ -464,6 +490,17 @@ export default function WorkflowPage() {
             Skip (Q&A not yet available)
           </Button>
         </div>
+      );
+    }
+
+    // Reasoning step (Step 6) — multi-turn chat
+    if (stepConfig?.type === "reasoning") {
+      return (
+        <ReasoningChat
+          skillName={skillName}
+          domain={domain ?? ""}
+          workspacePath={workspacePath ?? ""}
+        />
       );
     }
 
@@ -552,6 +589,12 @@ export default function WorkflowPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <Link to="/skill/$skillName/editor" params={{ skillName }}>
+              <Button variant="outline" size="sm">
+                <Pencil className="size-3.5" />
+                Editor
+              </Button>
+            </Link>
             {currentStepDef?.agentModel && (
               <Badge variant="secondary">{currentStepDef.agentModel}</Badge>
             )}

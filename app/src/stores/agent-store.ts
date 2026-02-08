@@ -16,6 +16,7 @@ export interface AgentRun {
   endTime?: number;
   totalCost?: number;
   tokenUsage?: { input: number; output: number };
+  sessionId?: string;
 }
 
 interface AgentState {
@@ -77,6 +78,15 @@ export const useAgentStore = create<AgentState>((set) => ({
         }
       }
 
+      // Extract session_id from init messages
+      let sessionId = run.sessionId;
+      if (message.type === "system" && (raw as Record<string, unknown>)?.subtype === "init") {
+        const sid = (raw as Record<string, unknown>)?.session_id;
+        if (typeof sid === "string") {
+          sessionId = sid;
+        }
+      }
+
       return {
         runs: {
           ...state.runs,
@@ -85,6 +95,7 @@ export const useAgentStore = create<AgentState>((set) => ({
             messages: [...run.messages, message],
             tokenUsage,
             totalCost,
+            sessionId,
           },
         },
       };

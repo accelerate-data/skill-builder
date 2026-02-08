@@ -3,6 +3,7 @@ use std::path::Path;
 
 use crate::agents::sidecar::{self, AgentRegistry, SidecarConfig};
 use crate::types::{AppSettings, PackageResult, ParallelAgentResult, StepConfig};
+use git2::{Cred, RemoteCallbacks, Repository};
 use tauri_plugin_store::StoreExt;
 
 const STORE_FILE: &str = "settings.json";
@@ -128,6 +129,7 @@ pub async fn run_workflow_step(
         allowed_tools: Some(step.allowed_tools),
         max_turns: Some(step.max_turns),
         permission_mode: Some("bypassPermissions".to_string()),
+        session_id: None,
     };
 
     sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app).await?;
@@ -161,6 +163,7 @@ pub async fn run_parallel_agents(
         allowed_tools: Some(tools.clone()),
         max_turns: Some(50),
         permission_mode: Some("bypassPermissions".to_string()),
+        session_id: None,
     };
 
     let config_b = SidecarConfig {
@@ -176,6 +179,7 @@ pub async fn run_parallel_agents(
         allowed_tools: Some(tools),
         max_turns: Some(50),
         permission_mode: Some("bypassPermissions".to_string()),
+        session_id: None,
     };
 
     let registry = state.inner().clone();
@@ -303,6 +307,92 @@ fn add_dir_to_zip(
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn auto_commit_step(
+    app: tauri::AppHandle,
+    skill_name: String,
+    step_name: String,
+    workspace_path: String,
+) -> Result<Option<String>, String> {
+    let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
+    let settings: AppSettings = match store.get(SETTINGS_KEY) {
+        Some(v) => serde_json::from_value(v.clone()).map_err(|e| e.to_string())?,
+        None => AppSettings::default(),
+    };
+
+    if !settings.auto_commit {
+        return Ok(None);
+    }
+
+    let message = format!("skill-builder: [{}] {}", skill_name, step_name);
+
+    let repo = Repository::open(&workspace_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+
+    let mut index = repo.index().map_err(|e| e.to_string())?;
+    index
+        .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+        .map_err(|e| e.to_string())?;
+    index
+        .update_all(["*"].iter(), None)
+        .map_err(|e| e.to_string())?;
+    index.write().map_err(|e| e.to_string())?;
+
+    let tree_oid = index.write_tree().map_err(|e| e.to_string())?;
+    let tree = repo.find_tree(tree_oid).map_err(|e| e.to_string())?;
+
+    let sig = repo
+        .signature()
+        .or_else(|_| git2::Signature::now("Skill Builder", "noreply@skill-builder.app"))
+        .map_err(|e| e.to_string())?;
+
+    let parent = repo
+        .head()
+        .ok()
+        .and_then(|h| h.peel_to_commit().ok());
+
+    // No changes to commit
+    if let Some(ref p) = parent {
+        if p.tree_id() == tree_oid {
+            return Ok(None);
+        }
+    }
+
+    let parents: Vec<&git2::Commit> = parent.iter().collect();
+
+    repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &parents)
+        .map_err(|e| e.to_string())?;
+
+    // Auto-push if enabled and token available
+    if settings.auto_push {
+        if let Some(token) = settings.github_token {
+            let mut callbacks = RemoteCallbacks::new();
+            callbacks.credentials(move |_url, _username, _allowed| {
+                Cred::userpass_plaintext("x-access-token", &token)
+            });
+
+            let mut push_opts = git2::PushOptions::new();
+            push_opts.remote_callbacks(callbacks);
+
+            let mut remote = repo
+                .find_remote("origin")
+                .map_err(|e| e.to_string())?;
+
+            let head = repo.head().map_err(|e| e.to_string())?;
+            let branch = head.shorthand().unwrap_or("main");
+            let refspec = format!("refs/heads/{}:refs/heads/{}", branch, branch);
+
+            remote
+                .push(&[&refspec], Some(&mut push_opts))
+                .map_err(|e| format!("Push failed: {}", e))?;
+
+            return Ok(Some(format!("Committed and pushed: {}", message)));
+        }
+    }
+
+    Ok(Some(format!("Committed: {}", message)))
 }
 
 #[cfg(test)]

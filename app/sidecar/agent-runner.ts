@@ -9,6 +9,7 @@ interface SidecarConfig {
   allowedTools?: string[];
   maxTurns?: number;
   permissionMode?: string;
+  sessionId?: string;
 }
 
 function readLineFromStdin(): Promise<string> {
@@ -65,6 +66,7 @@ async function main() {
         maxTurns: config.maxTurns ?? 50,
         permissionMode: (config.permissionMode || "bypassPermissions") as "default" | "acceptEdits" | "bypassPermissions" | "plan",
         abortController,
+        ...(config.sessionId ? { resume: config.sessionId } : {}),
       },
     });
 

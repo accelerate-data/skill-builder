@@ -86,15 +86,15 @@
 - [x] Rust: Workflow state machine (step ordering, transitions, gates)
 - [x] Rust: Step 3 — parallel agents (spawn two sidecar processes concurrently)
 - [x] Rust: Step 4 — merge agent execution
-- [x] Rust: Step 6 — reasoning agent (single-turn; multi-turn chat UI deferred)
-- [ ] Rust: Step 6 — follow-up question detection + append to clarifications
+- [x] Rust: Step 6 — reasoning agent with session resume for multi-turn
+- [x] Rust: Step 6 — follow-up question detection in reasoning chat
 - [x] Rust: Step 7 — build agent execution
 - [x] Rust: Step 8 — validator agent execution
 - [x] Rust: Step 9 — tester agent execution
 - [x] Rust: Step 10 — package skill as .skill zip archive
 - [x] Frontend: Step 3 — dual streaming panels (parallel agent output)
-- [ ] Frontend: Step 6 — chat-like view for multi-turn reasoning
-- [ ] Frontend: Step 6 — follow-up question prompt + re-run
+- [x] Frontend: Step 6 — chat-like view for multi-turn reasoning
+- [x] Frontend: Step 6 — follow-up question prompt + re-run via session resume
 - [x] Frontend: Step 7-9 — agent output + summary display
 - [x] Frontend: Step 10 — package confirmation
 - [x] Frontend: Workflow resume (load state, skip completed steps)
@@ -112,8 +112,8 @@
 - [x] Rust: git2 — log (commit history)
 - [x] Rust: git2 — file status (modified, untracked)
 - [x] Rust: git2 — commit without push (git_commit)
-- [ ] Rust: Auto-commit after each workflow step (configurable)
-- [ ] Rust: Auto-push after commit (optional)
+- [x] Rust: Auto-commit after each workflow step (configurable)
+- [x] Rust: Auto-push after commit (optional)
 - [x] Frontend: Push/pull toolbar buttons
 - [x] Frontend: Diff viewer for file history (react-diff-viewer-continued)
 - [x] Frontend: Git status indicators per file (GitStatusBadge)
@@ -121,14 +121,14 @@
 
 ## Phase 6: Editor
 
-- [ ] Install CodeMirror 6 (@codemirror/lang-markdown)
-- [ ] Frontend: Three-pane layout (file tree | editor | preview)
-- [ ] Frontend: File tree showing skill files (editable) + context files (read-only)
-- [ ] Frontend: CodeMirror source editor with markdown syntax highlighting
-- [ ] Frontend: Live markdown preview (react-markdown)
-- [ ] Frontend: Auto-save with debounce
+- [x] Install CodeMirror 6 (@codemirror/lang-markdown)
+- [x] Frontend: Three-pane layout (file tree | editor | preview)
+- [x] Frontend: File tree showing skill files (editable) + context files (read-only)
+- [x] Frontend: CodeMirror source editor with markdown syntax highlighting
+- [x] Frontend: Live markdown preview (react-markdown)
+- [x] Frontend: Auto-save with debounce
 - [ ] Frontend: Git status indicators in file tree
-- [ ] Frontend: `use-skill-files` hook
+- [x] Frontend: `use-skill-files` hook
 
 ## Phase 7: Chat Interface
 

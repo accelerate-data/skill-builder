@@ -180,7 +180,8 @@ export const startAgent = (
   cwd: string,
   allowedTools?: string[],
   maxTurns?: number,
-) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns });
+  sessionId?: string,
+) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns, sessionId });
 
 export const cancelAgent = (agentId: string) =>
   invoke("cancel_agent", { agentId });
@@ -214,6 +215,12 @@ export const packageSkill = (
   skillName: string,
   workspacePath: string,
 ) => invoke<PackageResult>("package_skill", { skillName, workspacePath });
+
+export const autoCommitStep = (
+  skillName: string,
+  stepName: string,
+  workspacePath: string,
+) => invoke<string | null>("auto_commit_step", { skillName, stepName, workspacePath });
 
 // --- Clarifications ---
 

@@ -7,6 +7,7 @@ import { AppLayout } from "./components/layout/app-layout";
 import DashboardPage from "./pages/dashboard";
 import SettingsPage from "./pages/settings";
 import WorkflowPage from "./pages/workflow";
+import EditorPage from "./pages/editor";
 
 const rootRoute = createRootRoute({
   component: AppLayout,
@@ -30,10 +31,17 @@ const workflowRoute = createRoute({
   component: WorkflowPage,
 });
 
+const editorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/skill/$skillName/editor",
+  component: EditorPage,
+});
+
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
   settingsRoute,
   workflowRoute,
+  editorRoute,
 ]);
 
 export const router = createRouter({ routeTree });
