@@ -70,6 +70,8 @@ Use this exact format:
 - **Result**: PASS | PARTIAL | FAIL
 - **Skill coverage**: [what the skill provides]
 - **Gap**: [what's missing, if any — write "None" for PASS]
+
+When finished, respond with only a single line: Done — wrote [filename] (result: PASS/PARTIAL/FAIL). Do not echo file contents.
 ```
 
 ## Phase 3: Consolidate and Write Report
@@ -113,6 +115,7 @@ Prompt it to:
 ```
 
 6. Delete the temporary test result files when done
+7. Respond with only: `Done — wrote test-skill.md ([N] tests, [M] passed, [P] partial, [F] failed)`
 
 ## Output Files
 - `test-skill.md` in the context directory

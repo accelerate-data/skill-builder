@@ -69,6 +69,8 @@ The file should:
 - Be self-contained — a reader should understand it without reading other reference files
 
 Topic: [TOPIC DESCRIPTION — what this file should cover, based on the decisions]
+
+When finished, respond with only a single line: Done — wrote [filename] ([N] lines). Do not echo file contents.
 ```
 
 ## Phase 4: Review and Fix Gaps
@@ -81,6 +83,7 @@ Prompt it to:
 3. Cross-check against `decisions.md` to ensure every decision is addressed somewhere
 4. Fix any gaps, inconsistencies, or missing content directly in the files
 5. Ensure SKILL.md's pointers accurately describe each reference file
+6. Respond with only: `Done — reviewed and fixed [N] issues`
 
 ## General Principles
 - Handle all technical details invisibly

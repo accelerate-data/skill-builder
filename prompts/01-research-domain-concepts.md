@@ -32,6 +32,8 @@ Prompt it to:
 
 Both sub-agents should read `shared-context.md` for file formats. Pass the full path to `shared-context.md` in their prompts.
 
+**IMPORTANT:** Each sub-agent prompt must end with: `"When finished, respond with only a single line: Done — wrote [filename] ([N] questions). Do not echo file contents."`
+
 ## Phase 2: Merge Results
 
 After both sub-agents return, spawn a fresh **merger** sub-agent via the Task tool (`name: "merger"`, `model: "sonnet"`, `mode: "bypassPermissions"`).
@@ -45,6 +47,7 @@ Prompt it to:
    - Number questions sequentially within each section (Q1, Q2, etc.)
    - Keep the exact `clarifications-*.md` format from `shared-context.md`
 4. Delete the two temporary research files when done
+5. Respond with only: `Done — wrote [filename] ([N] questions)`
 
 ## Output
 The merged clarification file at the output file path provided by the coordinator.

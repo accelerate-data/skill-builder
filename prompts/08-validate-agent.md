@@ -28,6 +28,7 @@ Prompt it to:
 - Verify every answered clarification in `clarifications.md` is reflected
 - For each, report COVERED (with file + section) or MISSING
 - Write findings to `context/validation-coverage.md`
+- Respond with only: `Done — wrote validation-coverage.md ([N] items checked). Do not echo file contents.`
 
 **Sub-agent 2: Structural Validation** (`name: "structural-validator"`)
 
@@ -40,6 +41,7 @@ Prompt it to:
 - Check for orphaned reference files (not pointed to from SKILL.md)
 - Check for unnecessary files (README, CHANGELOG, etc.)
 - Write findings to `context/validation-structural.md`
+- Respond with only: `Done — wrote validation-structural.md ([N] checks). Do not echo file contents.`
 
 **Sub-agent 3: Content Quality Review** (`name: "content-reviewer"`)
 
@@ -49,6 +51,7 @@ Prompt it to:
 - Verify content focuses on domain knowledge, not things LLMs already know
 - Check against best practices content guidelines
 - Write findings to `context/validation-content.md`
+- Respond with only: `Done — wrote validation-content.md ([N] files reviewed). Do not echo file contents.`
 
 ## Phase 3: Consolidate, Fix, and Write Report
 
@@ -103,6 +106,7 @@ Prompt it to:
 ```
 
 6. Delete the three temporary validation report files when done
+7. Respond with only: `Done — wrote agent-validation-log.md ([N] issues found, [M] auto-fixed)`
 
 ## Output Files
 - `agent-validation-log.md` in the context directory
