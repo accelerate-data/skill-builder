@@ -37,6 +37,7 @@ import {
   getArtifactContent,
   saveArtifactContent,
   cancelAgent,
+  readFile,
   type PackageResult,
 } from "@/lib/tauri";
 
@@ -195,7 +196,13 @@ export default function WorkflowPage() {
     setLoadingReview(true);
 
     getArtifactContent(skillName, relativePath)
-      .then((artifact) => setReviewContent(artifact?.content ?? null))
+      .then((artifact) => {
+        if (artifact?.content) return artifact.content;
+        // Fallback: read from filesystem if not captured in SQLite yet
+        const filePath = `${workspacePath}/${skillName}/${relativePath}`;
+        return readFile(filePath).catch(() => null);
+      })
+      .then((content) => setReviewContent(content ?? null))
       .catch(() => setReviewContent(null))
       .finally(() => setLoadingReview(false));
   }, [currentStep, isHumanReviewStep, workspacePath, skillName]);
@@ -260,12 +267,21 @@ export default function WorkflowPage() {
     if (activeRunStatus === "completed") {
       setActiveAgent(null);
 
+      // Capture artifacts before marking step complete so the next
+      // human review step can read them from SQLite immediately.
+      const finish = () => {
+        updateStepStatus(step, "completed");
+        setRunning(false);
+        toast.success(`Step ${step + 1} completed`);
+      };
+
       if (workspacePath) {
-        captureStepArtifacts(skillName, step, workspacePath).catch(() => {});
+        captureStepArtifacts(skillName, step, workspacePath)
+          .catch(() => {})
+          .then(finish);
+      } else {
+        finish();
       }
-      updateStepStatus(step, "completed");
-      setRunning(false);
-      toast.success(`Step ${step + 1} completed`);
     } else if (activeRunStatus === "error") {
       updateStepStatus(step, "error");
       setRunning(false);
