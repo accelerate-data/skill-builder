@@ -42,19 +42,19 @@ const defaultSteps: WorkflowStep[] = [
   {
     id: 2,
     name: "Research Domain",
-    description: "Research business patterns, data modeling, and merge clarification questions",
+    description: "Research business patterns, data modeling, and merge results",
     status: "pending",
   },
   {
     id: 3,
-    name: "Research Data Modeling",
-    description: "Handled by step 2 orchestrator",
+    name: "(Patterns Research)",
+    description: "Sub-step of Research Domain",
     status: "pending",
   },
   {
     id: 4,
-    name: "Merge Clarifications",
-    description: "Handled by step 2 orchestrator",
+    name: "(Merge)",
+    description: "Sub-step of Research Domain",
     status: "pending",
   },
   {
