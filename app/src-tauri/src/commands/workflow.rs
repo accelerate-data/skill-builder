@@ -78,39 +78,11 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     }
 }
 
-/// Locate the bundled agents directory. In production this is in the
-/// Tauri resource dir; in dev mode we resolve relative to CARGO_MANIFEST_DIR.
-fn resolve_prompts_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
-    use tauri::Manager;
-
-    // Production: Tauri resource directory
-    // Check for agents/ directory to distinguish real agents from placeholder dirs
-    if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        let agents = resource_dir.join("agents");
-        if agents.is_dir() {
-            return Ok(agents);
-        }
-    }
-
-    // Dev mode: repo root relative to CARGO_MANIFEST_DIR (src-tauri/../../agents)
-    let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent() // app/
-        .and_then(|p| p.parent()) // repo root
-        .map(|p| p.join("agents"));
-    if let Some(path) = dev_path {
-        if path.is_dir() {
-            return Ok(path);
-        }
-    }
-
-    Err("Could not find bundled agents directory".to_string())
-}
-
 /// Copy bundled agent .md files and references into workspace.
 /// Creates the directories if they don't exist. Overwrites existing files
 /// to keep them in sync with the app version.
 pub fn ensure_workspace_prompts(
-    app_handle: &tauri::AppHandle,
+    _app_handle: &tauri::AppHandle,
     workspace_path: &str,
 ) -> Result<(), String> {
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -164,18 +136,29 @@ fn build_prompt(
     skill_name: &str,
     domain: &str,
     workspace_path: &str,
+    skills_path: Option<&str>,
 ) -> String {
     let base = Path::new(workspace_path);
     let skill_dir = base.join(skill_name);
     let context_dir = skill_dir.join("context");
-    let skill_output_dir = skill_dir.join("skill");
+    let skill_output_dir = if let Some(sp) = skills_path {
+        Path::new(sp).join(skill_name)
+    } else {
+        skill_dir.clone() // fallback: workspace_path/skill_name
+    };
     let agents_file = base.join("agents").join(prompt_file);
     let shared_context = base.join("references").join("shared-context.md");
-    let output_path = skill_dir.join(output_file);
+    // For build step (output_file starts with "skill/"), use skill_output_dir
+    let output_path = if output_file.starts_with("skill/") {
+        skill_output_dir.join(output_file.trim_start_matches("skill/"))
+    } else {
+        skill_dir.join(output_file)
+    };
 
     format!(
         "Read {} and {} and follow the instructions. \
          The domain is: {}. The skill name is: {}. \
+         The shared context file is: {}. \
          The skill directory is: {}. \
          The context directory (for reading and writing intermediate files) is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
@@ -184,6 +167,7 @@ fn build_prompt(
         agents_file.display(),
         domain,
         skill_name,
+        shared_context.display(),
         skill_dir.display(),
         context_dir.display(),
         skill_output_dir.display(),
@@ -211,6 +195,11 @@ fn read_debug_mode(db: &tauri::State<'_, Db>) -> bool {
     conn.and_then(|c| crate::db::read_settings(&c).ok())
         .map(|s| s.debug_mode)
         .unwrap_or(false)
+}
+
+fn read_skills_path(db: &tauri::State<'_, Db>) -> Option<String> {
+    let conn = db.0.lock().ok()?;
+    crate::db::read_settings(&conn).ok()?.skills_path
 }
 
 /// Per-step turn limits for debug mode. Orchestrator steps (0, 2, 5) that
@@ -298,11 +287,11 @@ fn reconcile_disk_artifacts(
             reconcile_single_file(conn, skill_name, step_id, &skill_dir, file)?;
         }
 
-        // Step 5 also has skill/references/ directory
+        // Step 5 also has references/ directory in skill output dir
         if step_id == 5 {
-            let refs_dir = skill_dir.join("skill").join("references");
+            let refs_dir = skill_dir.join("references");
             if refs_dir.is_dir() {
-                for entry in walk_md_paths(&refs_dir, "skill/references")? {
+                for entry in walk_md_paths(&refs_dir, "references")? {
                     reconcile_single_file(
                         conn,
                         skill_name,
@@ -506,7 +495,8 @@ pub async fn run_workflow_step(
     let extended_context = read_extended_context(&db);
     let debug_mode = read_debug_mode(&db);
     let model = read_preferred_model(&db);
-    let prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain, &workspace_path);
+    let skills_path = read_skills_path(&db);
+    let prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain, &workspace_path, skills_path.as_deref());
     let agent_id = make_agent_id(&skill_name, &format!("step{}", step_id));
 
     let config = SidecarConfig {
@@ -543,62 +533,36 @@ pub async fn package_skill(
         stage_artifacts(&conn, &skill_name, &workspace_path)?;
     }
 
-    let skill_dir = Path::new(&workspace_path).join(&skill_name);
-    if !skill_dir.exists() {
+    // Determine where the skill files (SKILL.md, references/) live:
+    // - If skills_path is set, the build agent wrote directly there
+    // - Otherwise, they're in workspace_path/skill_name/
+    let skills_path = read_skills_path(&db);
+    let source_dir = if let Some(ref sp) = skills_path {
+        Path::new(sp).join(&skill_name)
+    } else {
+        Path::new(&workspace_path).join(&skill_name)
+    };
+
+    if !source_dir.exists() {
         return Err(format!(
             "Skill directory not found: {}",
-            skill_dir.display()
+            source_dir.display()
         ));
     }
 
-    let output_path = skill_dir.join(format!("{}.skill", skill_name));
+    let output_path = source_dir.join(format!("{}.skill", skill_name));
 
     let result = tokio::task::spawn_blocking(move || {
-        create_skill_zip(&skill_dir, &output_path)
+        create_skill_zip(&source_dir, &output_path)
     })
     .await
     .map_err(|e| format!("Packaging task failed: {}", e))??;
-
-    // Copy outputs to skills_path if configured
-    {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = crate::db::read_settings(&conn)?;
-        if let Some(ref skills_path) = settings.skills_path {
-            let dest_dir = Path::new(skills_path).join(&skill_name);
-            std::fs::create_dir_all(&dest_dir)
-                .map_err(|e| format!("Failed to create skills output dir: {}", e))?;
-
-            let skill_dir = Path::new(&workspace_path).join(&skill_name);
-
-            // Copy SKILL.md
-            let src_skill_md = skill_dir.join("skill").join("SKILL.md");
-            if src_skill_md.exists() {
-                std::fs::copy(&src_skill_md, dest_dir.join("SKILL.md"))
-                    .map_err(|e| format!("Failed to copy SKILL.md to skills_path: {}", e))?;
-            }
-
-            // Copy references/ directory
-            let src_refs = skill_dir.join("skill").join("references");
-            if src_refs.is_dir() {
-                let dest_refs = dest_dir.join("references");
-                copy_directory_recursive(&src_refs, &dest_refs)
-                    .map_err(|e| format!("Failed to copy references to skills_path: {}", e))?;
-            }
-
-            // Copy .skill zip
-            let src_zip = Path::new(&result.file_path);
-            if src_zip.exists() {
-                let dest_zip = dest_dir.join(format!("{}.skill", skill_name));
-                std::fs::copy(src_zip, &dest_zip)
-                    .map_err(|e| format!("Failed to copy .skill zip to skills_path: {}", e))?;
-            }
-        }
-    }
 
     Ok(result)
 }
 
 /// Recursively copy a directory and all its contents.
+#[allow(dead_code)]
 fn copy_directory_recursive(src: &Path, dest: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dest)
         .map_err(|e| format!("Failed to create dir {}: {}", dest.display(), e))?;
@@ -623,7 +587,7 @@ fn copy_directory_recursive(src: &Path, dest: &Path) -> Result<(), String> {
 }
 
 fn create_skill_zip(
-    skill_dir: &Path,
+    source_dir: &Path,
     output_path: &Path,
 ) -> Result<PackageResult, String> {
     let file = std::fs::File::create(output_path)
@@ -632,13 +596,13 @@ fn create_skill_zip(
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
 
-    let skill_out = skill_dir.join("skill");
-    let skill_md = skill_out.join("SKILL.md");
+    // SKILL.md and references/ are directly in source_dir
+    let skill_md = source_dir.join("SKILL.md");
     if skill_md.exists() {
         add_file_to_zip(&mut zip, &skill_md, "SKILL.md", options)?;
     }
 
-    let references_dir = skill_out.join("references");
+    let references_dir = source_dir.join("references");
     if references_dir.exists() && references_dir.is_dir() {
         add_dir_to_zip(&mut zip, &references_dir, "references", options)?;
     }
@@ -747,7 +711,7 @@ fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
         ],
         3 => vec![],  // Human review
         4 => vec!["context/decisions.md"],
-        5 => vec!["skill/SKILL.md"], // Also has skill/references/ dir
+        5 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
         6 => vec!["context/agent-validation-log.md"],
         7 => vec!["context/test-skill.md"],
         8 => vec![], // Package step — .skill file
@@ -756,8 +720,38 @@ fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
 }
 
 /// Delete output files for a single step.
-fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32) {
+/// For step 5 (build), files are in `skill_output_dir` (skills_path/skill_name or
+/// workspace_path/skill_name). For other steps, files are in workspace_path/skill_name.
+fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32, skills_path: Option<&str>) {
     let skill_dir = Path::new(workspace_path).join(skill_name);
+
+    if step_id == 5 {
+        // Step 5 output lives in skill_output_dir
+        let skill_output_dir = if let Some(sp) = skills_path {
+            Path::new(sp).join(skill_name)
+        } else {
+            skill_dir.clone()
+        };
+        if skill_output_dir.exists() {
+            for file in get_step_output_files(5) {
+                let path = skill_output_dir.join(file);
+                if path.exists() {
+                    let _ = std::fs::remove_file(&path);
+                }
+            }
+            let refs_dir = skill_output_dir.join("references");
+            if refs_dir.is_dir() {
+                let _ = std::fs::remove_dir_all(&refs_dir);
+            }
+            // Clean up .skill zip from skill output dir
+            let skill_file = skill_output_dir.join(format!("{}.skill", skill_name));
+            if skill_file.exists() {
+                let _ = std::fs::remove_file(&skill_file);
+            }
+        }
+        return;
+    }
+
     if !skill_dir.exists() {
         return;
     }
@@ -766,15 +760,6 @@ fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32) {
         let path = skill_dir.join(file);
         if path.exists() {
             let _ = std::fs::remove_file(&path);
-        }
-    }
-
-    // Step 5 also produces a skill/references/ directory
-    if step_id == 5 {
-        let skill_out = skill_dir.join("skill");
-        let refs_dir = skill_out.join("references");
-        if refs_dir.is_dir() {
-            let _ = std::fs::remove_dir_all(&refs_dir);
         }
     }
 
@@ -788,9 +773,9 @@ fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32) {
 }
 
 /// Delete output files for the given step and all subsequent steps.
-fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id: u32) {
+fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id: u32, skills_path: Option<&str>) {
     for step_id in from_step_id..=8 {
-        clean_step_output(workspace_path, skill_name, step_id);
+        clean_step_output(workspace_path, skill_name, step_id, skills_path);
     }
 }
 
@@ -801,7 +786,8 @@ pub fn reset_workflow_step(
     from_step_id: u32,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    delete_step_output_files(&workspace_path, &skill_name, from_step_id);
+    let skills_path = read_skills_path(&db);
+    delete_step_output_files(&workspace_path, &skill_name, from_step_id, skills_path.as_deref());
 
     // Reset steps and artifacts in SQLite
     let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -835,9 +821,26 @@ pub fn capture_step_artifacts(
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let mut captured = Vec::new();
 
+    // For step 5, determine the source directory for skill output files
+    let skills_path = read_skills_path(&db);
+    let skill_output_dir = if let Some(ref sp) = skills_path {
+        Some(Path::new(sp).join(&skill_name))
+    } else {
+        None
+    };
+
     // Read known output files for this step
     for file in get_step_output_files(step_id) {
-        let path = skill_dir.join(file);
+        // For build step output (skill/SKILL.md), resolve from skill_output_dir
+        let path = if step_id == 5 && file.starts_with("skill/") {
+            if let Some(ref sod) = skill_output_dir {
+                sod.join(file.trim_start_matches("skill/"))
+            } else {
+                skill_dir.join(file.trim_start_matches("skill/"))
+            }
+        } else {
+            skill_dir.join(file)
+        };
         if path.exists() {
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
@@ -854,9 +857,14 @@ pub fn capture_step_artifacts(
         }
     }
 
-    // Step 5 (Build): also walk skill/references/ directory
+    // Step 5 (Build): also walk references/ directory from skill output location
     if step_id == 5 {
-        let refs_dir = skill_dir.join("skill").join("references");
+        let refs_dir = if let Some(ref sod) = skill_output_dir {
+            sod.join("references")
+        } else {
+            skill_dir.join("references")
+        };
+        // Use relative paths with "skill/" prefix to keep DB artifact paths consistent
         if refs_dir.is_dir() {
             for (relative, content) in walk_md_files(&refs_dir, "skill/references")? {
                 crate::db::save_artifact(
@@ -937,22 +945,65 @@ mod tests {
     }
 
     #[test]
-    fn test_build_prompt() {
+    fn test_build_prompt_without_skills_path() {
+        // When skills_path is None, skill_output_dir falls back to workspace_path/skill_name
         let prompt = build_prompt(
             "research-concepts.md",
             "context/clarifications-concepts.md",
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
+            None,
         );
         assert!(prompt.contains("/home/user/.vibedata/references/shared-context.md"));
         assert!(prompt.contains("/home/user/.vibedata/agents/research-concepts.md"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
+        assert!(prompt.contains("The shared context file is: /home/user/.vibedata/references/shared-context.md"));
         assert!(prompt.contains("/home/user/.vibedata/my-skill/context/clarifications-concepts.md"));
         assert!(prompt.contains("The context directory (for reading and writing intermediate files) is: /home/user/.vibedata/my-skill/context"));
         assert!(prompt.contains("The skill directory is: /home/user/.vibedata/my-skill"));
-        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/.vibedata/my-skill/skill"));
+        // Without skills_path, skill output dir is workspace_path/skill_name (no /skill/ subdir)
+        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/.vibedata/my-skill"));
+    }
+
+    #[test]
+    fn test_build_prompt_with_skills_path() {
+        // When skills_path is set, skill_output_dir uses skills_path/skill_name
+        let prompt = build_prompt(
+            "build.md",
+            "skill/SKILL.md",
+            "my-skill",
+            "e-commerce",
+            "/home/user/.vibedata",
+            Some("/home/user/my-skills"),
+        );
+        // skill output directory should use skills_path
+        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
+        // output path for build step (skill/SKILL.md) should resolve to skills_path/skill_name/SKILL.md
+        assert!(prompt.contains("Write output to /home/user/my-skills/my-skill/SKILL.md"));
+        // context dir should still be in workspace
+        assert!(prompt.contains("The context directory (for reading and writing intermediate files) is: /home/user/.vibedata/my-skill/context"));
+        // skill directory should still be workspace-based
+        assert!(prompt.contains("The skill directory is: /home/user/.vibedata/my-skill"));
+    }
+
+    #[test]
+    fn test_build_prompt_with_skills_path_non_build_step() {
+        // For non-build steps, output_file doesn't start with "skill/" so output_path
+        // should still be in workspace even when skills_path is set
+        let prompt = build_prompt(
+            "reasoning.md",
+            "context/decisions.md",
+            "my-skill",
+            "e-commerce",
+            "/home/user/.vibedata",
+            Some("/home/user/my-skills"),
+        );
+        // output path should be in workspace for non-build steps
+        assert!(prompt.contains("Write output to /home/user/.vibedata/my-skill/context/decisions.md"));
+        // skill output directory should still use skills_path
+        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
     }
 
     #[test]
@@ -966,26 +1017,28 @@ mod tests {
     #[test]
     fn test_package_skill_creates_zip() {
         let tmp = tempfile::tempdir().unwrap();
-        let skill_dir = tmp.path().join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("skill").join("references")).unwrap();
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+        // source_dir now has SKILL.md and references/ directly (no skill/ subdir)
+        let source_dir = tmp.path().join("my-skill");
+        std::fs::create_dir_all(source_dir.join("references")).unwrap();
 
-        std::fs::write(skill_dir.join("skill").join("SKILL.md"), "# My Skill").unwrap();
+        std::fs::write(source_dir.join("SKILL.md"), "# My Skill").unwrap();
         std::fs::write(
-            skill_dir.join("skill").join("references").join("deep-dive.md"),
+            source_dir.join("references").join("deep-dive.md"),
             "# Deep Dive",
         )
         .unwrap();
 
+        // Extra files that should NOT be included in the zip
+        std::fs::create_dir_all(source_dir.join("context")).unwrap();
         std::fs::write(
-            skill_dir.join("context").join("decisions.md"),
+            source_dir.join("context").join("decisions.md"),
             "# Decisions",
         )
         .unwrap();
-        std::fs::write(skill_dir.join("workflow.md"), "# Workflow").unwrap();
+        std::fs::write(source_dir.join("workflow.md"), "# Workflow").unwrap();
 
-        let output_path = skill_dir.join("my-skill.skill");
-        let result = create_skill_zip(&skill_dir, &output_path).unwrap();
+        let output_path = source_dir.join("my-skill.skill");
+        let result = create_skill_zip(&source_dir, &output_path).unwrap();
 
         assert!(Path::new(&result.file_path).exists());
         assert!(result.size_bytes > 0);
@@ -997,7 +1050,6 @@ mod tests {
             .map(|i| archive.by_index(i).unwrap().name().to_string())
             .collect();
 
-        // Zip entries are flat (SKILL.md, references/) even though disk is under skill/
         assert!(names.contains(&"SKILL.md".to_string()));
         assert!(names.contains(&"references/deep-dive.md".to_string()));
         assert!(!names.iter().any(|n| n.starts_with("context/")));
@@ -1007,23 +1059,24 @@ mod tests {
     #[test]
     fn test_package_skill_nested_references() {
         let tmp = tempfile::tempdir().unwrap();
-        let skill_dir = tmp.path().join("nested-skill");
-        std::fs::create_dir_all(skill_dir.join("skill").join("references").join("sub")).unwrap();
+        // source_dir has SKILL.md and references/ directly
+        let source_dir = tmp.path().join("nested-skill");
+        std::fs::create_dir_all(source_dir.join("references").join("sub")).unwrap();
 
-        std::fs::write(skill_dir.join("skill").join("SKILL.md"), "# Nested").unwrap();
+        std::fs::write(source_dir.join("SKILL.md"), "# Nested").unwrap();
         std::fs::write(
-            skill_dir.join("skill").join("references").join("top.md"),
+            source_dir.join("references").join("top.md"),
             "top level",
         )
         .unwrap();
         std::fs::write(
-            skill_dir.join("skill").join("references").join("sub").join("nested.md"),
+            source_dir.join("references").join("sub").join("nested.md"),
             "nested ref",
         )
         .unwrap();
 
-        let output_path = skill_dir.join("nested-skill.skill");
-        let result = create_skill_zip(&skill_dir, &output_path).unwrap();
+        let output_path = source_dir.join("nested-skill.skill");
+        let result = create_skill_zip(&source_dir, &output_path).unwrap();
 
         let file = std::fs::File::open(&result.file_path).unwrap();
         let mut archive = zip::ZipArchive::new(file).unwrap();
@@ -1108,10 +1161,10 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-        std::fs::create_dir_all(skill_dir.join("skill").join("references")).unwrap();
+        // Step 5 output is now directly in skill_dir (no skill/ subdir)
+        std::fs::create_dir_all(skill_dir.join("references")).unwrap();
 
         // Create output files for steps 0, 2, 4, 5
-        // Step 2 now produces all three research+merge files
         std::fs::write(
             skill_dir.join("context/clarifications-concepts.md"),
             "step0",
@@ -1129,11 +1182,12 @@ mod tests {
         .unwrap();
         std::fs::write(skill_dir.join("context/clarifications.md"), "step2").unwrap();
         std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
-        std::fs::write(skill_dir.join("skill/SKILL.md"), "step5").unwrap();
-        std::fs::write(skill_dir.join("skill/references/ref.md"), "ref").unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "step5").unwrap();
+        std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
 
         // Reset from step 4 onwards — steps 0, 2 should be preserved
-        delete_step_output_files(workspace, "my-skill", 4);
+        // No skills_path set, so step 5 files are in workspace_path/skill_name/
+        delete_step_output_files(workspace, "my-skill", 4, None);
 
         // Steps 0, 2 outputs should still exist
         assert!(skill_dir.join("context/clarifications-concepts.md").exists());
@@ -1141,8 +1195,8 @@ mod tests {
 
         // Steps 4+ outputs should be deleted
         assert!(!skill_dir.join("context/decisions.md").exists());
-        assert!(!skill_dir.join("skill/SKILL.md").exists());
-        assert!(!skill_dir.join("skill/references").exists());
+        assert!(!skill_dir.join("SKILL.md").exists());
+        assert!(!skill_dir.join("references").exists());
     }
 
     #[test]
@@ -1158,7 +1212,7 @@ mod tests {
         std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
 
         // Clean only step 2 — step 4 should be untouched
-        clean_step_output(workspace, "my-skill", 2);
+        clean_step_output(workspace, "my-skill", 2, None);
 
         assert!(!skill_dir.join("context/clarifications.md").exists());
         assert!(skill_dir.join("context/decisions.md").exists());
@@ -1167,7 +1221,7 @@ mod tests {
     #[test]
     fn test_delete_step_output_files_nonexistent_dir_is_ok() {
         // Should not panic on nonexistent directory
-        delete_step_output_files("/tmp/nonexistent", "no-skill", 0);
+        delete_step_output_files("/tmp/nonexistent", "no-skill", 0, None);
     }
 
     #[test]

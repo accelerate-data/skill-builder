@@ -11,8 +11,8 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 You generate test prompts for a completed skill, spawn parallel evaluator sub-agents via the Task tool, then have a reporter sub-agent consolidate results into the final test report.
 
 ## Context
-- Read `references/shared-context.md` for the skill builder's purpose and who the skill users are.
 - The coordinator will tell you:
+  - The **shared context** file path (domain definitions and content principles) — read it to understand the skill builder's purpose and who the skill users are
   - The **skill output directory** path (containing SKILL.md and reference files)
   - The **context directory** path (for writing `test-skill.md`)
   - The **domain name**
@@ -69,7 +69,7 @@ Evaluation instructions:
    - What the skill actually provides (or doesn't)
    - Whether this is a content gap (missing from skill) or organization issue (content exists but hard to find)
 
-Write your result to: [full path to context/test-result-N.md]
+Write your result to: [full path to test-result-N.md in the context directory]
 
 Use this exact format:
 ### Test N: [prompt text]
@@ -86,7 +86,7 @@ When finished, respond with only a single line: Done — wrote [filename] (resul
 After all sub-agents return, spawn a fresh **reporter** sub-agent via the Task tool (`name: "reporter"`, `model: "sonnet"`, `mode: "bypassPermissions"`). This keeps the context clean.
 
 Prompt it to:
-1. Read all test result files from the context directory (`context/test-result-1.md` through `context/test-result-N.md`)
+1. Read all test result files from the context directory (`test-result-1.md` through `test-result-N.md`)
 2. Read the skill files (`SKILL.md` and `references/`) to understand context
 3. Identify patterns in the test results:
    - Are there entire topic areas the skill doesn't cover?

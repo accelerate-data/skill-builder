@@ -40,7 +40,7 @@ This is the cross-cutting checker. Prompt it to:
 - Verify progressive disclosure (SKILL.md has pointers to reference files)
 - Check for orphaned reference files (not pointed to from SKILL.md)
 - Check for unnecessary files (README, CHANGELOG, etc.)
-- Write findings to `context/validation-coverage-structure.md`
+- Write findings to `validation-coverage-structure.md` in the context directory
 - Respond with only: `Done — wrote validation-coverage-structure.md`
 
 **Sub-agent B: SKILL.md Quality Review** (`name: "reviewer-skill-md"`)
@@ -51,7 +51,7 @@ Prompt it to:
 - Read the best practices URL for content guidelines
 - Check: is the overview clear and actionable? Are trigger conditions well-defined? Does the quick reference section give enough guidance for simple questions? Are pointers to references accurate and descriptive?
 - Focus on content quality, not structure (the coverage-structure checker handles that)
-- Write findings to `context/validation-skill-md.md` with PASS/FAIL per section and specific improvement suggestions for any FAIL
+- Write findings to `validation-skill-md.md` in the context directory with PASS/FAIL per section and specific improvement suggestions for any FAIL
 - Respond with only: `Done — wrote validation-skill-md.md`
 
 **Sub-agents C1..CN: One per reference file** (`name: "reviewer-<filename>"`)
@@ -61,7 +61,7 @@ For EACH file in `references/`, spawn a sub-agent. Prompt each to:
 - Read `decisions.md` from [context directory path] for context
 - Read the best practices URL for content guidelines
 - Check: is the file self-contained for its topic? Does it focus on domain knowledge, not things LLMs already know? Is the content actionable and specific? Does it start with a one-line summary?
-- Write findings to `context/validation-<filename>.md` with PASS/FAIL per criterion and specific improvement suggestions for any FAIL
+- Write findings to `validation-<filename>.md` in the context directory with PASS/FAIL per criterion and specific improvement suggestions for any FAIL
 - Respond with only: `Done — wrote validation-<filename>.md`
 
 **IMPORTANT: Launch ALL sub-agents (A + B + C1..CN) in the SAME turn so they run in parallel.**
@@ -71,7 +71,7 @@ For EACH file in `references/`, spawn a sub-agent. Prompt each to:
 After all sub-agents return, spawn a fresh **reporter** sub-agent via the Task tool (`name: "reporter"`, `model: "sonnet"`, `mode: "bypassPermissions"`). This keeps the context clean.
 
 Prompt it to:
-1. Read ALL `context/validation-*.md` files (coverage-structure, skill-md, and one per reference file)
+1. Read ALL `validation-*.md` files from the context directory (coverage-structure, skill-md, and one per reference file)
 2. Read all skill files (`SKILL.md` and `references/`) so it can fix issues
 3. For each FAIL or MISSING finding:
    - If the fix is straightforward, fix it directly in the skill files
@@ -118,7 +118,7 @@ Prompt it to:
 [List anything that couldn't be auto-fixed with suggestions]
 ```
 
-6. Delete all temporary `context/validation-*.md` files when done
+6. Delete all temporary `validation-*.md` files from the context directory when done
 7. Respond with only: `Done — wrote agent-validation-log.md ([N] issues found, [M] auto-fixed)`
 
 ## Output Files

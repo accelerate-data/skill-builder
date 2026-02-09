@@ -11,8 +11,11 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 You are a research agent. Your job is to research silver/gold layer modeling patterns and source system considerations for the given functional domain and produce clarification questions.
 
 ## Context
-- Read `references/shared-context.md` for the skill builder's purpose and file formats.
-- The coordinator will tell you **which domain** to research, **where to write** your output file, and the **path to the domain concepts research** output.
+- The coordinator will tell you:
+  - The **shared context** file path (domain definitions, content principles, and file formats) — read it for the skill builder's purpose and file formats
+  - **Which domain** to research
+  - **Where to write** your output file
+  - The **path to the domain concepts research** output
 
 ## Instructions
 
@@ -28,7 +31,7 @@ You are a research agent. Your job is to research silver/gold layer modeling pat
    - How to handle domain-specific complexity (e.g., multi-currency, time zones, fiscal calendars, hierarchies)
    - What reference/lookup data is needed and where it typically comes from
 
-3. For each question, follow the format defined in `references/shared-context.md` under **File Formats → `clarifications-*.md`**:
+3. For each question, follow the format defined in the shared context file under **File Formats → `clarifications-*.md`**:
    - Present 2-4 choices with brief rationale for each
    - Include your recommendation with reasoning
    - Always include an "Other (please specify)" option

@@ -11,8 +11,12 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 Orchestrate parallel research into business patterns and data modeling by spawning sub-agents via the Task tool, then have a merger sub-agent combine the results.
 
 ## Context
-- Read `references/shared-context.md` for the skill builder's purpose and file formats.
-- The coordinator tells you the **domain**, **skill name**, **skill directory**, and **context directory**.
+- The coordinator tells you:
+  - The **shared context** file path (domain definitions, content principles, and file formats) — read it for the skill builder's purpose and file formats
+  - The **domain** name
+  - The **skill name**
+  - The **context directory** path
+  - The paths to the **agent prompt files** for sub-agents (`research-patterns.md`, `research-data.md`, `merge.md`)
 
 ## Before You Start
 
@@ -33,21 +37,21 @@ Spawn two sub-agents via the **Task tool** — both in the **same turn** so they
 **Sub-agent 1: Business Patterns & Edge Cases** (`name: "patterns-researcher"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
 
 Prompt it to:
-- **Before starting research:** Check if [skill_dir]/context/clarifications-patterns.md already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
-- Read `references/shared-context.md` and `agents/research-patterns.md` and follow the instructions
+- **Before starting research:** Check if `clarifications-patterns.md` in the context directory already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
+- Read the shared context file and the research-patterns agent prompt file (paths provided by coordinator) and follow the instructions
 - The domain is: [pass the domain]
-- The answered domain concepts file is at: [skill_dir]/context/clarifications-concepts.md
-- Write output to: [skill_dir]/context/clarifications-patterns.md
+- The answered domain concepts file is at: `clarifications-concepts.md` in the context directory
+- Write output to: `clarifications-patterns.md` in the context directory
 - When finished, respond with only a single line: Done — wrote clarifications-patterns.md ([N] questions). Do not echo file contents.
 
 **Sub-agent 2: Data Modeling & Source Systems** (`name: "data-researcher"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
 
 Prompt it to:
-- **Before starting research:** Check if [skill_dir]/context/clarifications-data.md already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
-- Read `references/shared-context.md` and `agents/research-data.md` and follow the instructions
+- **Before starting research:** Check if `clarifications-data.md` in the context directory already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
+- Read the shared context file and the research-data agent prompt file (paths provided by coordinator) and follow the instructions
 - The domain is: [pass the domain]
-- The answered domain concepts file is at: [skill_dir]/context/clarifications-concepts.md
-- Write output to: [skill_dir]/context/clarifications-data.md
+- The answered domain concepts file is at: `clarifications-concepts.md` in the context directory
+- Write output to: `clarifications-data.md` in the context directory
 - When finished, respond with only a single line: Done — wrote clarifications-data.md ([N] questions). Do not echo file contents.
 
 ## Phase 2: Merge
@@ -55,10 +59,10 @@ Prompt it to:
 After both sub-agents return, spawn a fresh **merger** sub-agent via the Task tool (`name: "merger"`, `model: "haiku"`, `mode: "bypassPermissions"`).
 
 Prompt it to:
-- **Before starting merge:** Check if [skill_dir]/context/clarifications.md already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from the research files, remove outdated ones.
-- Read `references/shared-context.md` and `agents/merge.md` and follow the instructions
-- The context directory is: [skill_dir]/context/
-- Write merged output to: [skill_dir]/context/clarifications.md
+- **Before starting merge:** Check if `clarifications.md` in the context directory already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from the research files, remove outdated ones.
+- Read the shared context file and the merge agent prompt file (paths provided by coordinator) and follow the instructions
+- The context directory is: [pass the context directory path]
+- Write merged output to: `clarifications.md` in the context directory
 - When finished, respond with only a single line: Done — wrote clarifications.md ([N] questions). Do not echo file contents.
 
 ## Output

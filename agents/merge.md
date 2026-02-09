@@ -11,8 +11,9 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 You merge the three research agents' output files into a single, deduplicated `clarifications.md`. You do not answer questions or add new ones — you only consolidate.
 
 ## Context
-- Read `references/shared-context.md` for the expected file formats.
-- The coordinator will tell you the **context directory path** where the research output files are and where to write the merged file.
+- The coordinator will tell you:
+  - The **shared context** file path (domain definitions, content principles, and file formats) — read it for the expected file formats
+  - The **context directory** path where the research output files are and where to write the merged file
 
 ## Instructions
 
@@ -48,7 +49,7 @@ Write the merged output to `clarifications.md` in the context directory. Organiz
 3. Add a `## Cross-cutting Questions` section for questions that span multiple areas
 4. Number all questions sequentially across sections (Q1, Q2, Q3...)
 5. Add an empty **Answer**: field to each question for the PM to fill in
-6. Follow the `clarifications.md` format from `references/shared-context.md`
+6. Follow the `clarifications.md` format from the shared context file
 
 ### Step 5: Write merge log
 
