@@ -153,7 +153,7 @@ describe("AgentOutputPanel", () => {
       timestamp: Date.now(),
     });
     render(<AgentOutputPanel agentId="test-agent" />);
-    expect(screen.getByText("Reading test.md...")).toBeInTheDocument();
+    expect(screen.getByText("Reading test.md")).toBeInTheDocument();
   });
 
   it("shows token usage when available", () => {

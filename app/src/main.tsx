@@ -6,6 +6,7 @@ import { ThemeProvider } from "./components/theme-provider";
 import { ErrorBoundary } from "./components/error-boundary";
 import { Toaster } from "./components/ui/sonner";
 import { router } from "./router";
+import "github-markdown-css/github-markdown.css";
 import "./styles/globals.css";
 
 const queryClient = new QueryClient();

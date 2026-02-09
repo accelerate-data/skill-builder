@@ -135,6 +135,12 @@ pub struct ArtifactRow {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParallelAgentResult {
+    pub agent_id_a: String,
+    pub agent_id_b: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

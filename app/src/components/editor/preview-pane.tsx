@@ -18,7 +18,7 @@ export function PreviewPane({ content }: PreviewPaneProps) {
 
   return (
     <ScrollArea className="h-full">
-      <div className="prose prose-sm dark:prose-invert max-w-none p-4">
+      <div className="markdown-body max-w-none p-4">
         <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
           {content}
         </ReactMarkdown>

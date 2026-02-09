@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
+import { ParallelAgentPanel } from "@/components/parallel-agent-panel";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ReasoningChat } from "@/components/reasoning-chat";
 import { useAgentStream } from "@/hooks/use-agent-stream";
@@ -28,6 +29,7 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   runWorkflowStep,
+  runParallelAgents,
   packageSkill,
   resetWorkflowStep,
   getWorkflowState,
@@ -41,15 +43,15 @@ import {
 // --- Step config ---
 
 interface StepConfig {
-  type: "agent" | "human" | "package" | "reasoning";
+  type: "agent" | "human" | "package" | "reasoning" | "parallel";
   outputFiles?: string[];
 }
 
 const STEP_CONFIGS: Record<number, StepConfig> = {
   0: { type: "agent", outputFiles: ["context/clarifications-concepts.md"] },
   1: { type: "human" },
-  2: { type: "agent", outputFiles: ["context/clarifications-patterns.md"] },
-  3: { type: "agent", outputFiles: ["context/clarifications-data.md"] },
+  2: { type: "parallel", outputFiles: ["context/clarifications-patterns.md", "context/clarifications-data.md"] },
+  3: { type: "parallel", outputFiles: ["context/clarifications-data.md"] }, // Run as part of step 2
   4: { type: "agent", outputFiles: ["context/clarifications.md"] },
   5: { type: "human" },
   6: { type: "reasoning", outputFiles: ["context/decisions.md"] },
@@ -85,9 +87,11 @@ export default function WorkflowPage() {
   } = useWorkflowStore();
 
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
+  const parallelAgentIds = useAgentStore((s) => s.parallelAgentIds);
   const runs = useAgentStore((s) => s.runs);
   const agentStartRun = useAgentStore((s) => s.startRun);
   const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
+  const setParallelAgents = useAgentStore((s) => s.setParallelAgents);
   const clearRuns = useAgentStore((s) => s.clearRuns);
 
   useAgentStream();
@@ -233,6 +237,41 @@ export default function WorkflowPage() {
     }
   }, [activeRunStatus, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath]);
 
+  // Watch for parallel agent completion (both must finish)
+  const runA = parallelAgentIds?.[0] ? runs[parallelAgentIds[0]] : null;
+  const runB = parallelAgentIds?.[1] ? runs[parallelAgentIds[1]] : null;
+  const parallelStatusA = runA?.status;
+  const parallelStatusB = runB?.status;
+
+  useEffect(() => {
+    if (!parallelAgentIds) return;
+    const { steps: currentSteps, currentStep: step } = useWorkflowStore.getState();
+    if (currentSteps[step]?.status !== "in_progress") return;
+
+    const bothCompleted = parallelStatusA === "completed" && parallelStatusB === "completed";
+    const anyError = parallelStatusA === "error" || parallelStatusB === "error";
+
+    if (bothCompleted) {
+      setParallelAgents(null);
+
+      if (workspacePath) {
+        // Capture artifacts for both steps 2 and 3
+        captureStepArtifacts(skillName, 2, workspacePath).catch(() => {});
+        captureStepArtifacts(skillName, 3, workspacePath).catch(() => {});
+      }
+      // Mark both steps as completed
+      updateStepStatus(2, "completed");
+      updateStepStatus(3, "completed");
+      setRunning(false);
+      toast.success("Research steps completed");
+    } else if (anyError) {
+      setParallelAgents(null);
+      updateStepStatus(step, "error");
+      setRunning(false);
+      toast.error("Research step failed");
+    }
+  }, [parallelStatusA, parallelStatusB, parallelAgentIds, updateStepStatus, setRunning, setParallelAgents, skillName, workspacePath]);
+
   // (Review agent logic removed — direct completion is faster and sufficient)
 
   // --- Step handlers ---
@@ -259,6 +298,31 @@ export default function WorkflowPage() {
       setRunning(false);
       toast.error(
         `Failed to start agent: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  };
+
+  const handleStartParallelStep = async () => {
+    if (!domain || !workspacePath) {
+      toast.error("Missing domain or workspace path");
+      return;
+    }
+
+    try {
+      updateStepStatus(2, "in_progress");
+      updateStepStatus(3, "in_progress");
+      setRunning(true);
+
+      const result = await runParallelAgents(skillName, domain, workspacePath);
+      agentStartRun(result.agent_id_a, "agent");
+      agentStartRun(result.agent_id_b, "agent");
+      setParallelAgents([result.agent_id_a, result.agent_id_b]);
+    } catch (err) {
+      updateStepStatus(2, "error");
+      updateStepStatus(3, "error");
+      setRunning(false);
+      toast.error(
+        `Failed to start research agents: ${err instanceof Error ? err.message : String(err)}`
       );
     }
   };
@@ -300,6 +364,8 @@ export default function WorkflowPage() {
     switch (stepConfig.type) {
       case "agent":
         return handleStartAgentStep();
+      case "parallel":
+        return handleStartParallelStep();
       case "package":
         return handlePackageStep();
       case "human":
@@ -361,10 +427,13 @@ export default function WorkflowPage() {
   };
 
   const currentStepDef = steps[currentStep];
+  // Step 3 can't be started independently (it runs as part of step 2 parallel)
+  const isParallelSubStep = currentStep === 3;
   const canStart =
     stepConfig &&
     stepConfig.type !== "human" &&
     stepConfig.type !== "reasoning" &&
+    !isParallelSubStep &&
     !isRunning &&
     workspacePath &&
     currentStepDef?.status !== "completed";
@@ -487,6 +556,16 @@ export default function WorkflowPage() {
           skillName={skillName}
           domain={domain ?? ""}
           workspacePath={workspacePath ?? ""}
+        />
+      );
+    }
+
+    // Parallel agents (Steps 2+3)
+    if (parallelAgentIds) {
+      return (
+        <ParallelAgentPanel
+          agentIdA={parallelAgentIds[0]}
+          agentIdB={parallelAgentIds[1]}
         />
       );
     }

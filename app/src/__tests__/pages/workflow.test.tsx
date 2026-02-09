@@ -25,6 +25,7 @@ vi.mock("sonner", () => ({
 // Mock @/lib/tauri
 vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: vi.fn(),
+  runParallelAgents: vi.fn(),
   packageSkill: vi.fn(),
   readFile: vi.fn(() => Promise.reject("not found")),
   getWorkflowState: vi.fn(() => Promise.reject("not found")),
@@ -41,6 +42,9 @@ vi.mock("@/components/workflow-sidebar", () => ({
 }));
 vi.mock("@/components/agent-output-panel", () => ({
   AgentOutputPanel: () => <div data-testid="agent-output" />,
+}));
+vi.mock("@/components/parallel-agent-panel", () => ({
+  ParallelAgentPanel: () => <div data-testid="parallel-agent-output" />,
 }));
 vi.mock("@/components/workflow-step-complete", () => ({
   WorkflowStepComplete: () => <div data-testid="step-complete" />,

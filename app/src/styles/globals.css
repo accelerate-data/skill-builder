@@ -106,6 +106,71 @@
   }
 }
 
+/* --- github-markdown-css: class-based dark mode overrides --- */
+/* The imported CSS uses @media (prefers-color-scheme) for theming.
+   Since this app uses next-themes with class-based dark mode (.dark on <html>),
+   we override the CSS custom properties to match. */
+
+:root:not(.dark) .markdown-body {
+  color-scheme: light;
+  --fgColor-danger: #d1242f;
+  --bgColor-attention-muted: #fff8c5;
+  --bgColor-default: transparent;
+  --bgColor-muted: #f6f8fa;
+  --bgColor-neutral-muted: #818b981f;
+  --borderColor-accent-emphasis: #0969da;
+  --borderColor-attention-emphasis: #9a6700;
+  --borderColor-danger-emphasis: #cf222e;
+  --borderColor-default: #d1d9e0;
+  --borderColor-done-emphasis: #8250df;
+  --borderColor-success-emphasis: #1a7f37;
+  --color-prettylights-syntax-comment: #59636e;
+  --color-prettylights-syntax-constant: #0550ae;
+  --color-prettylights-syntax-entity: #6639ba;
+  --color-prettylights-syntax-entity-tag: #0550ae;
+  --color-prettylights-syntax-keyword: #cf222e;
+  --color-prettylights-syntax-string: #0a3069;
+  --color-prettylights-syntax-variable: #953800;
+  --fgColor-accent: #0969da;
+  --fgColor-attention: #9a6700;
+  --fgColor-done: #8250df;
+  --fgColor-muted: #59636e;
+  --fgColor-success: #1a7f37;
+  --fgColor-default: #1f2328;
+  --borderColor-muted: #d1d9e0b3;
+  --borderColor-neutral-muted: var(--borderColor-muted);
+}
+
+.dark .markdown-body {
+  color-scheme: dark;
+  --fgColor-accent: #4493f8;
+  --bgColor-attention-muted: #bb800926;
+  --bgColor-default: transparent;
+  --bgColor-muted: #151b23;
+  --bgColor-neutral-muted: #656c7633;
+  --borderColor-accent-emphasis: #1f6feb;
+  --borderColor-attention-emphasis: #9e6a03;
+  --borderColor-danger-emphasis: #da3633;
+  --borderColor-default: #3d444d;
+  --borderColor-done-emphasis: #8957e5;
+  --borderColor-success-emphasis: #238636;
+  --color-prettylights-syntax-comment: #9198a1;
+  --color-prettylights-syntax-constant: #79c0ff;
+  --color-prettylights-syntax-entity: #d2a8ff;
+  --color-prettylights-syntax-entity-tag: #7ee787;
+  --color-prettylights-syntax-keyword: #ff7b72;
+  --color-prettylights-syntax-string: #a5d6ff;
+  --color-prettylights-syntax-variable: #ffa657;
+  --fgColor-attention: #d29922;
+  --fgColor-danger: #f85149;
+  --fgColor-default: #f0f6fc;
+  --fgColor-done: #ab7df8;
+  --fgColor-muted: #9198a1;
+  --fgColor-success: #3fb950;
+  --borderColor-muted: #3d444db3;
+  --borderColor-neutral-muted: var(--borderColor-muted);
+}
+
 /* Safety net for minimum dimensions (Tauri enforces via minWidth/minHeight) */
 html, body, #root {
   min-width: 900px;

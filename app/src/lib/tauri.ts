@@ -87,6 +87,17 @@ export const runReviewStep = (
   workspacePath: string,
 ) => invoke<string>("run_review_step", { skillName, stepId, domain, workspacePath });
 
+export interface ParallelAgentResult {
+  agent_id_a: string;
+  agent_id_b: string;
+}
+
+export const runParallelAgents = (
+  skillName: string,
+  domain: string,
+  workspacePath: string,
+) => invoke<ParallelAgentResult>("run_parallel_agents", { skillName, domain, workspacePath });
+
 export const packageSkill = (
   skillName: string,
   workspacePath: string,

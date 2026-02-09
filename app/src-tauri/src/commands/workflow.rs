@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::agents::sidecar::{self, AgentRegistry, SidecarConfig};
 use crate::db::Db;
 use crate::types::{
-    ArtifactRow, PackageResult, StepConfig, StepStatusUpdate,
+    ArtifactRow, PackageResult, ParallelAgentResult, StepConfig, StepStatusUpdate,
     WorkflowStateResponse,
 };
 
@@ -347,6 +347,75 @@ pub async fn run_workflow_step(
 
     sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app).await?;
     Ok(agent_id)
+}
+
+#[tauri::command]
+pub async fn run_parallel_agents(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AgentRegistry>,
+    db: tauri::State<'_, Db>,
+    skill_name: String,
+    domain: String,
+    workspace_path: String,
+) -> Result<ParallelAgentResult, String> {
+    ensure_workspace_prompts(&app, &workspace_path)?;
+
+    // Stage DB artifacts to filesystem before running agents
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        stage_artifacts(&conn, &skill_name, &workspace_path)?;
+    }
+
+    let step_a = get_step_config(2)?; // Patterns
+    let step_b = get_step_config(3)?; // Data modeling
+    let api_key = read_api_key(&db)?;
+    let model = read_preferred_model(&db);
+
+    let agent_id_a = make_agent_id(&skill_name, "patterns");
+    let agent_id_b = make_agent_id(&skill_name, "data");
+
+    let config_a = SidecarConfig {
+        prompt: build_prompt(&step_a.prompt_template, &step_a.output_file, &skill_name, &domain),
+        model: model.clone(),
+        api_key: api_key.clone(),
+        cwd: workspace_path.clone(),
+        allowed_tools: Some(step_a.allowed_tools),
+        max_turns: Some(step_a.max_turns),
+        permission_mode: Some("bypassPermissions".to_string()),
+        session_id: None,
+    };
+
+    let config_b = SidecarConfig {
+        prompt: build_prompt(&step_b.prompt_template, &step_b.output_file, &skill_name, &domain),
+        model,
+        api_key,
+        cwd: workspace_path,
+        allowed_tools: Some(step_b.allowed_tools),
+        max_turns: Some(step_b.max_turns),
+        permission_mode: Some("bypassPermissions".to_string()),
+        session_id: None,
+    };
+
+    // Spawn both concurrently
+    let registry_a = state.inner().clone();
+    let registry_b = state.inner().clone();
+    let app_a = app.clone();
+    let app_b = app.clone();
+    let id_a = agent_id_a.clone();
+    let id_b = agent_id_b.clone();
+
+    let (res_a, res_b) = tokio::join!(
+        sidecar::spawn_sidecar(id_a, config_a, registry_a, app_a),
+        sidecar::spawn_sidecar(id_b, config_b, registry_b, app_b)
+    );
+
+    res_a?;
+    res_b?;
+
+    Ok(ParallelAgentResult {
+        agent_id_a,
+        agent_id_b,
+    })
 }
 
 #[tauri::command]
