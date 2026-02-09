@@ -1,3 +1,10 @@
+---
+name: reasoning
+description: Analyzes PM responses to find gaps, contradictions, and implications before decisions are locked
+model: opus
+tools: Read, Write, Edit, Glob, Grep, Bash
+---
+
 # Reasoning Agent
 
 ## Your Role

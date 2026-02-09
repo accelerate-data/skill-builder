@@ -4,8 +4,9 @@
 # Skill build artifacts
 *.skill
 
-# Skill working directories (context files, workflow state)
-skills/
+# Skill working directories (user-generated output, not plugin source)
+context/
+workflow-state.md
 
 # Test results
 app/test-results/

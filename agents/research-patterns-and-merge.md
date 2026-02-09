@@ -1,3 +1,10 @@
+---
+name: research-patterns-and-merge
+description: Orchestrates parallel research into business patterns and data modeling then merges results
+model: sonnet
+tools: Read, Write, Edit, Glob, Grep, Bash, Task
+---
+
 # Orchestrator: Research Domain Patterns, Data Modeling & Merge
 
 ## Your Role

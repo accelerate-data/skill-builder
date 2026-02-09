@@ -1,3 +1,10 @@
+---
+name: merge
+description: Merges and deduplicates clarification questions from multiple research agents
+model: haiku
+tools: Read, Write, Edit, Glob, Grep, Bash
+---
+
 # Merge Agent: Deduplicate Clarifications
 
 ## Your Role

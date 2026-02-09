@@ -1,3 +1,10 @@
+---
+name: test
+description: Generates test prompts and spawns parallel evaluator sub-agents to validate skill coverage
+model: sonnet
+tools: Read, Write, Edit, Glob, Grep, Bash, Task
+---
+
 # Test Agent: Skill Testing
 
 ## Your Role

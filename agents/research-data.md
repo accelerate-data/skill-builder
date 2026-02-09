@@ -1,3 +1,10 @@
+---
+name: research-data
+description: Researches silver and gold layer modeling patterns and source system considerations
+model: sonnet
+tools: Read, Write, Edit, Glob, Grep, Bash
+---
+
 # Research Agent: Data Modeling & Source Systems
 
 ## Your Role
