@@ -31,7 +31,6 @@ const defaultSteps: WorkflowStep[] = [
     name: "Research Domain Concepts",
     description: "Research key concepts, terminology, and frameworks for the domain",
     status: "pending",
-
   },
   {
     id: 1,
@@ -47,52 +46,36 @@ const defaultSteps: WorkflowStep[] = [
   },
   {
     id: 3,
-    name: "(Patterns Research)",
-    description: "Sub-step of Research Domain",
-    status: "pending",
-  },
-  {
-    id: 4,
-    name: "(Merge)",
-    description: "Sub-step of Research Domain",
-    status: "pending",
-  },
-  {
-    id: 5,
     name: "Human Review",
     description: "Review and answer merged clarification questions",
     status: "pending",
   },
   {
-    id: 6,
+    id: 4,
     name: "Reasoning",
     description: "Analyze responses for implications, gaps, and contradictions",
     status: "pending",
-
   },
   {
-    id: 7,
+    id: 5,
     name: "Build Skill",
     description: "Generate skill files from decisions",
     status: "pending",
-
   },
   {
-    id: 8,
+    id: 6,
     name: "Validate",
     description: "Validate skill against best practices",
     status: "pending",
-
   },
   {
-    id: 9,
+    id: 7,
     name: "Test",
     description: "Generate and evaluate test prompts",
     status: "pending",
-
   },
   {
-    id: 10,
+    id: 8,
     name: "Package",
     description: "Package skill into a deployable .skill file",
     status: "pending",

@@ -125,7 +125,7 @@ export function ReasoningChat({
       };
       saveArtifactContent(
         skillName,
-        6,
+        4,
         SESSION_ARTIFACT,
         JSON.stringify(state),
       ).catch(() => {});
@@ -188,7 +188,7 @@ export function ReasoningChat({
 
   const loadDecisions = useCallback(async () => {
     try {
-      await captureStepArtifacts(skillName, 6, workspacePath);
+      await captureStepArtifacts(skillName, 4, workspacePath);
       const artifact = await getArtifactContent(skillName, "context/decisions.md");
       if (artifact?.content) setDecisionsContent(artifact.content);
     } catch {
@@ -357,7 +357,7 @@ export function ReasoningChat({
 
       // Use runWorkflowStep which stages artifacts, copies prompts,
       // and builds the proper prompt from 06-reasoning-agent.md
-      const agentId = await runWorkflowStep(skillName, 6, domain, workspacePath);
+      const agentId = await runWorkflowStep(skillName, 4, domain, workspacePath);
       agentStartRun(agentId, "opus");
       setCurrentAgentId(agentId);
     } catch (err) {
@@ -403,7 +403,7 @@ export function ReasoningChat({
 
   const handleProceedToBuild = async () => {
     try {
-      await captureStepArtifacts(skillName, 6, workspacePath);
+      await captureStepArtifacts(skillName, 4, workspacePath);
     } catch {
       // Best-effort
     }

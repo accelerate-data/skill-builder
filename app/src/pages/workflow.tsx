@@ -53,20 +53,18 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
   0: { type: "agent", outputFiles: ["context/clarifications-concepts.md"], model: "sonnet" },
   1: { type: "human" },
   2: { type: "agent", outputFiles: ["context/clarifications-patterns.md", "context/clarifications-data.md", "context/clarifications.md"], model: "sonnet" },
-  3: { type: "agent" },  // Auto-completed by step 2 orchestrator
-  4: { type: "agent" },  // Auto-completed by step 2 orchestrator
-  5: { type: "human" },
-  6: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
-  7: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
-  8: { type: "agent", outputFiles: ["context/agent-validation-log.md"], model: "sonnet" },
-  9: { type: "agent", outputFiles: ["context/test-skill.md"], model: "sonnet" },
-  10: { type: "package" },
+  3: { type: "human" },
+  4: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
+  5: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
+  6: { type: "agent", outputFiles: ["context/agent-validation-log.md"], model: "sonnet" },
+  7: { type: "agent", outputFiles: ["context/test-skill.md"], model: "sonnet" },
+  8: { type: "package" },
 };
 
 // Human review steps: step id -> relative artifact path
 const HUMAN_REVIEW_STEPS: Record<number, { relativePath: string }> = {
   1: { relativePath: "context/clarifications-concepts.md" },
-  5: { relativePath: "context/clarifications.md" },
+  3: { relativePath: "context/clarifications.md" },
 };
 
 export default function WorkflowPage() {
@@ -267,13 +265,6 @@ export default function WorkflowPage() {
         captureStepArtifacts(skillName, step, workspacePath).catch(() => {});
       }
       updateStepStatus(step, "completed");
-
-      // Step 2 orchestrator also handles steps 3 (data modeling) and 4 (merge)
-      if (step === 2) {
-        updateStepStatus(3, "completed");
-        updateStepStatus(4, "completed");
-      }
-
       setRunning(false);
       toast.success(`Step ${step + 1} completed`);
     } else if (activeRunStatus === "error") {
@@ -429,13 +420,10 @@ export default function WorkflowPage() {
   };
 
   const currentStepDef = steps[currentStep];
-  // Steps 3 and 4 are handled by the step 2 orchestrator and can't be started independently
-  const isOrchestratorSubStep = currentStep === 3 || currentStep === 4;
   const canStart =
     stepConfig &&
     stepConfig.type !== "human" &&
     stepConfig.type !== "reasoning" &&
-    !isOrchestratorSubStep &&
     !isRunning &&
     workspacePath &&
     currentStepDef?.status !== "completed";

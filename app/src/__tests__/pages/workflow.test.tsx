@@ -25,7 +25,6 @@ vi.mock("sonner", () => ({
 // Mock @/lib/tauri
 vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: vi.fn(),
-  runParallelAgents: vi.fn(),
   packageSkill: vi.fn(),
   readFile: vi.fn(() => Promise.reject("not found")),
   getWorkflowState: vi.fn(() => Promise.reject("not found")),
@@ -122,44 +121,6 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(mockToast.success).toHaveBeenCalledWith("Step 1 completed");
   });
 
-  it("step 2 orchestrator auto-completes steps 3 and 4", async () => {
-    // Simulate: step 2 (Research Domain orchestrator) running
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    useWorkflowStore.getState().setCurrentStep(2);
-    useWorkflowStore.getState().updateStepStatus(2, "in_progress");
-    useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-2", "sonnet");
-
-    render(<WorkflowPage />);
-
-    // Agent completes — steps 2, 3, 4 should all be marked completed
-    act(() => {
-      useAgentStore.getState().completeRun("agent-2", true);
-    });
-
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[2].status).toBe("completed");
-    });
-
-    const wf = useWorkflowStore.getState();
-
-    // Step 2 completed
-    expect(wf.steps[2].status).toBe("completed");
-
-    // Steps 3 and 4 auto-completed by orchestrator
-    expect(wf.steps[3].status).toBe("completed");
-    expect(wf.steps[4].status).toBe("completed");
-
-    // Does NOT auto-advance — stays on step 2
-    expect(wf.currentStep).toBe(2);
-
-    // Step 5 unaffected
-    expect(wf.steps[5].status).toBe("pending");
-
-    expect(wf.isRunning).toBe(false);
-    expect(mockToast.success).toHaveBeenCalledWith("Step 3 completed");
-  });
 
   it("marks step as error when agent fails — no cascade", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
