@@ -420,13 +420,15 @@ pub async fn run_workflow_step(
     step_id: u32,
     domain: String,
     workspace_path: String,
+    resume: bool,
 ) -> Result<String, String> {
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path)?;
 
-    // Step 0 starts a fresh workflow — wipe the context directory and all
-    // artifacts so the agent doesn't see stale files from a previous run.
-    if step_id == 0 {
+    // Step 0 fresh start — wipe the context directory and all artifacts so
+    // the agent doesn't see stale files from a previous workflow run.
+    // Skip this when resuming a paused step to preserve partial progress.
+    if step_id == 0 && !resume {
         let context_dir = Path::new(&workspace_path).join(&skill_name).join("context");
         if context_dir.is_dir() {
             let _ = std::fs::remove_dir_all(&context_dir);

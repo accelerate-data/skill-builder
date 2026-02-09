@@ -100,6 +100,9 @@ export default function WorkflowPage() {
   const [loadingReview, setLoadingReview] = useState(false);
   const debugAutoAnswerRef = useRef<number | null>(null);
 
+  // Track whether the current step was paused (for resume vs fresh start)
+  const [paused, setPaused] = useState(false);
+
   // Package result state
   const [packageResult, setPackageResult] = useState<PackageResult | null>(
     null
@@ -158,6 +161,7 @@ export default function WorkflowPage() {
   // Reset state when moving to a new step
   useEffect(() => {
     debugAutoAnswerRef.current = null;
+    setPaused(false);
   }, [currentStep]);
 
   // Persist workflow state to SQLite when steps change
@@ -309,9 +313,11 @@ export default function WorkflowPage() {
         skillName,
         currentStep,
         domain,
-        workspacePath
+        workspacePath,
+        paused,
       );
       agentStartRun(agentId, stepConfig?.model ?? "sonnet");
+      setPaused(false);
     } catch (err) {
       updateStepStatus(currentStep, "error");
       setRunning(false);
@@ -394,6 +400,7 @@ export default function WorkflowPage() {
     setActiveAgent(null);
     updateStepStatus(currentStep, "pending");
     setRunning(false);
+    setPaused(true);
     toast.success(`Step ${currentStep + 1} paused — progress saved`);
   };
 
@@ -635,7 +642,7 @@ export default function WorkflowPage() {
       case "package":
         return "Package";
       default:
-        return "Start Step";
+        return paused ? "Resume" : "Start Step";
     }
   };
 

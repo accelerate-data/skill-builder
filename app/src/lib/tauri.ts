@@ -80,7 +80,8 @@ export const runWorkflowStep = (
   stepId: number,
   domain: string,
   workspacePath: string,
-) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath });
+  resume?: boolean,
+) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath, resume: resume ?? false });
 
 export const runReviewStep = (
   skillName: string,
