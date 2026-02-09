@@ -43,7 +43,6 @@ Each skill is built in its own folder under `skills/`:
 
 ```
 skills/<skillname>/
-├── workflow-state.md                # Session resume checkpoint
 ├── context/                         # All intermediate/working files
 │   ├── clarifications-concepts.md   # Research: domain concepts agent
 │   ├── clarifications-patterns.md   # Research: business patterns agent
@@ -61,7 +60,6 @@ skills/<skillname>/
 ```
 
 Additionally:
-- `skills/<skillname>/workflow-state.md` — session resume checkpoint (inside the skill folder; the coordinator looks up a specific skill's state by name)
 - `<skillname>.skill` — final deployable zip archive in the project root (created after successful build)
 
 **Important:** The coordinator provides the full `context/` and `skill/` directory paths to each agent when spawning it. Agents write files to the directories they are given.

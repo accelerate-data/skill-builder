@@ -329,6 +329,7 @@ export default function WorkflowPage() {
         }
         setReviewAgentId(null);
         setRetryCount(0);
+        setActiveAgent(null);
         if (workspacePath) {
           captureStepArtifacts(skillName, step, workspacePath).catch(() => {});
         }
@@ -337,6 +338,7 @@ export default function WorkflowPage() {
     } else {
       // Review agent errored — complete step anyway
       setReviewAgentId(null);
+      setActiveAgent(null);
       if (workspacePath) {
         captureStepArtifacts(skillName, step, workspacePath).catch(() => {});
       }
@@ -535,7 +537,7 @@ export default function WorkflowPage() {
               </Button>
             </div>
             <ScrollArea className="min-h-0 flex-1 rounded-md border">
-              <div className="prose prose-sm dark:prose-invert max-w-none p-4">
+              <div className="markdown-body max-w-none p-4">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {reviewContent}
                 </ReactMarkdown>
