@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { Fragment, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -137,6 +137,18 @@ function getToolSummary(message: AgentMessage): ToolSummaryResult | null {
   return result(name);
 }
 
+function TurnMarker({ turn }: { turn: number }) {
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <div className="h-px flex-1 bg-border" />
+      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        Turn {turn}
+      </span>
+      <div className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
 function MessageItem({ message }: { message: AgentMessage }) {
   if (message.type === "system") {
     return null;
@@ -235,6 +247,9 @@ export function AgentOutputPanel({ agentId }: { agentId: string }) {
     cancelled: "Cancelled",
   }[run.status];
 
+  // Count turns: each 'assistant' message = one SDK round-trip
+  const turnCount = run.messages.filter((m) => m.type === "assistant").length;
+
   return (
     <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <CardHeader className="shrink-0 flex-row items-center justify-between space-y-0 pb-3">
@@ -254,6 +269,11 @@ export function AgentOutputPanel({ agentId }: { agentId: string }) {
             <Clock className="size-3" />
             {formatElapsed(elapsed)}
           </Badge>
+          {turnCount > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              Turn {turnCount}
+            </Badge>
+          )}
           {run.tokenUsage && (
             <Badge variant="secondary" className="text-xs">
               {(run.tokenUsage.input + run.tokenUsage.output).toLocaleString()} tokens
@@ -280,9 +300,19 @@ export function AgentOutputPanel({ agentId }: { agentId: string }) {
       <Separator />
       <ScrollArea className="min-h-0 flex-1">
         <div ref={scrollRef} className="flex flex-col gap-2 p-4">
-          {run.messages.map((msg, i) => (
-            <MessageItem key={i} message={msg} />
-          ))}
+          {run.messages.map((msg, i) => {
+            // Insert a turn marker before each assistant message
+            let turn = 0;
+            if (msg.type === "assistant") {
+              turn = run.messages.slice(0, i + 1).filter((m) => m.type === "assistant").length;
+            }
+            return (
+              <Fragment key={i}>
+                {turn > 0 && <TurnMarker turn={turn} />}
+                <MessageItem message={msg} />
+              </Fragment>
+            );
+          })}
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
