@@ -1,12 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook } from "@testing-library/react";
-import { useAgentStream, _resetForTesting } from "@/hooks/use-agent-stream";
+import { initAgentStream, _resetForTesting } from "@/hooks/use-agent-stream";
 import { useAgentStore } from "@/stores/agent-store";
 import { mockListen } from "@/test/mocks/tauri";
 
 type ListenCallback = (event: { payload: unknown }) => void;
 
-describe("useAgentStream", () => {
+describe("initAgentStream", () => {
   let listeners: Record<string, ListenCallback>;
 
   beforeEach(() => {
@@ -23,7 +22,7 @@ describe("useAgentStream", () => {
   });
 
   it("subscribes to agent-message and agent-exit events", () => {
-    renderHook(() => useAgentStream());
+    initAgentStream();
 
     expect(mockListen).toHaveBeenCalledWith("agent-message", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-exit", expect.any(Function));
@@ -31,7 +30,7 @@ describe("useAgentStream", () => {
 
   it("adds assistant message content to agent store", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    renderHook(() => useAgentStream());
+    initAgentStream();
 
     listeners["agent-message"]({
       payload: {
@@ -56,7 +55,7 @@ describe("useAgentStream", () => {
 
   it("adds result message content to agent store", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    renderHook(() => useAgentStream());
+    initAgentStream();
 
     listeners["agent-message"]({
       payload: {
@@ -76,7 +75,7 @@ describe("useAgentStream", () => {
 
   it("adds error message content to agent store", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    renderHook(() => useAgentStream());
+    initAgentStream();
 
     listeners["agent-message"]({
       payload: {
@@ -95,7 +94,7 @@ describe("useAgentStream", () => {
 
   it("handles error message with no error string", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    renderHook(() => useAgentStream());
+    initAgentStream();
 
     listeners["agent-message"]({
       payload: {
@@ -112,7 +111,7 @@ describe("useAgentStream", () => {
 
   it("completes run on agent-exit with success=true", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    renderHook(() => useAgentStream());
+    initAgentStream();
 
     listeners["agent-exit"]({
       payload: { agent_id: "agent-1", success: true },
@@ -125,7 +124,7 @@ describe("useAgentStream", () => {
 
   it("sets error status on agent-exit with success=false", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    renderHook(() => useAgentStream());
+    initAgentStream();
 
     listeners["agent-exit"]({
       payload: { agent_id: "agent-1", success: false },
@@ -135,34 +134,33 @@ describe("useAgentStream", () => {
     expect(run.status).toBe("error");
   });
 
-  it("only registers one set of listeners for multiple hook instances", () => {
-    renderHook(() => useAgentStream());
-    renderHook(() => useAgentStream());
+  it("only registers listeners once for multiple init calls", () => {
+    initAgentStream();
+    initAgentStream();
 
     // listen should only be called twice (once for agent-message, once for agent-exit)
     expect(mockListen).toHaveBeenCalledTimes(2);
   });
 
-  it("cleans up listeners when all hooks unmount", () => {
-    const unlistenA = vi.fn();
-    const unlistenB = vi.fn();
-    let callCount = 0;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (mockListen as any).mockImplementation((_event: string, callback: ListenCallback) => {
-      listeners[_event] = callback;
-      callCount++;
-      return Promise.resolve(callCount === 1 ? unlistenA : unlistenB);
+  it("auto-creates run for messages arriving before startRun", () => {
+    initAgentStream();
+
+    // Send a message for an agent that hasn't been registered via startRun
+    listeners["agent-message"]({
+      payload: {
+        agent_id: "unknown-agent",
+        message: {
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "Early message" }],
+          },
+        },
+      },
     });
 
-    const hook1 = renderHook(() => useAgentStream());
-    const hook2 = renderHook(() => useAgentStream());
-
-    // Unmounting one hook should not unsubscribe
-    hook1.unmount();
-    expect(mockListen).toHaveBeenCalledTimes(2);
-
-    // Unmounting the last hook triggers cleanup
-    hook2.unmount();
-    expect(mockListen).toHaveBeenCalledTimes(2);
+    const run = useAgentStore.getState().runs["unknown-agent"];
+    expect(run).toBeDefined();
+    expect(run.messages).toHaveLength(1);
+    expect(run.messages[0].content).toBe("Early message");
   });
 });

@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useAgentStore } from "@/stores/agent-store";
 
@@ -22,87 +21,59 @@ interface AgentExitPayload {
   success: boolean;
 }
 
-// Module-level singleton subscription.  Multiple components (workflow page,
-// chat page) may call useAgentStream(), and React StrictMode double-mounts
-// effects.  Because Tauri's `listen()` returns a Promise<UnlistenFn>, the
-// async cleanup races with the next mount's `listen()` call, accumulating
-// duplicate subscriptions that cause messages to appear N times.
-//
-// The singleton ensures exactly ONE Tauri listener exists at any time,
-// regardless of how many React components call the hook or how many times
-// effects re-run.
-let refCount = 0;
-let teardown: (() => void) | null = null;
-
-function subscribe() {
-  refCount++;
-  if (refCount > 1) return; // already subscribed
-
-  // Track unlisten promises so we can tear down synchronously-ish
-  let tornDown = false;
-  const unlistenMessage = listen<AgentMessagePayload>(
-    "agent-message",
-    (event) => {
-      if (tornDown) return;
-      const { agent_id, message } = event.payload;
-
-      let content: string | undefined;
-      if (message.type === "assistant") {
-        const textBlocks = message.message?.content?.filter(
-          (b) => b.type === "text"
-        );
-        content = textBlocks?.map((b) => b.text).join("") || undefined;
-      } else if (message.type === "result") {
-        content = message.result || undefined;
-      } else if (message.type === "error") {
-        content = message.error || "Unknown error";
-      }
-
-      useAgentStore.getState().addMessage(agent_id, {
-        type: message.type,
-        content,
-        raw: message as unknown as Record<string, unknown>,
-        timestamp: Date.now(),
-      });
-    }
-  );
-
-  const unlistenExit = listen<AgentExitPayload>(
-    "agent-exit",
-    (event) => {
-      if (tornDown) return;
-      useAgentStore.getState().completeRun(
-        event.payload.agent_id,
-        event.payload.success
-      );
-    }
-  );
-
-  teardown = () => {
-    tornDown = true;
-    unlistenMessage.then((fn) => fn());
-    unlistenExit.then((fn) => fn());
-    teardown = null;
-  };
-}
-
-function unsubscribe() {
-  refCount = Math.max(0, refCount - 1);
-  if (refCount === 0 && teardown) {
-    teardown();
+function parseContent(message: AgentMessagePayload["message"]): string | undefined {
+  if (message.type === "assistant") {
+    const textBlocks = message.message?.content?.filter(
+      (b) => b.type === "text"
+    );
+    return textBlocks?.map((b) => b.text).join("") || undefined;
+  } else if (message.type === "result") {
+    return message.result || undefined;
+  } else if (message.type === "error") {
+    return message.error || "Unknown error";
   }
+  return undefined;
 }
 
-export function useAgentStream() {
-  useEffect(() => {
-    subscribe();
-    return () => unsubscribe();
-  }, []);
+// Module-level singleton subscription.  We subscribe eagerly at import time
+// so the listener is active before any agent can be started.  This eliminates
+// the race condition where Tauri events arrive before a React effect sets up
+// the listener.
+let initialized = false;
+
+export function initAgentStream() {
+  if (initialized) return;
+  initialized = true;
+
+  listen<AgentMessagePayload>("agent-message", (event) => {
+    const { agent_id, message } = event.payload;
+    const store = useAgentStore.getState();
+
+    // Auto-create run if messages arrive before startRun (race condition guard)
+    if (!store.runs[agent_id]) {
+      store.startRun(agent_id, "unknown");
+    }
+
+    store.addMessage(agent_id, {
+      type: message.type,
+      content: parseContent(message),
+      raw: message as unknown as Record<string, unknown>,
+      timestamp: Date.now(),
+    });
+  });
+
+  listen<AgentExitPayload>("agent-exit", (event) => {
+    useAgentStore.getState().completeRun(
+      event.payload.agent_id,
+      event.payload.success
+    );
+  });
 }
+
+// Initialize eagerly on module load
+initAgentStream();
 
 /** Reset module-level singleton state for tests. */
 export function _resetForTesting() {
-  if (teardown) teardown();
-  refCount = 0;
-  teardown = null;
+  initialized = false;
 }

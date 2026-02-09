@@ -23,7 +23,7 @@ import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ReasoningChat } from "@/components/reasoning-chat";
-import { useAgentStream } from "@/hooks/use-agent-stream";
+import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -92,8 +92,6 @@ export default function WorkflowPage() {
   const agentStartRun = useAgentStore((s) => s.startRun);
   const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
   const clearRuns = useAgentStore((s) => s.clearRuns);
-
-  useAgentStream();
 
   // Human review state
   const [reviewContent, setReviewContent] = useState<string | null>(null);
