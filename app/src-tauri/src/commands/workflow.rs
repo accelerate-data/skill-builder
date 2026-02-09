@@ -587,7 +587,7 @@ fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
         0 => vec!["context/clarifications-concepts.md"],
         1 => vec![],  // Human review
-        2 => vec!["context/clarifications-patterns.md", "context/clarifications-data.md", "context/clarifications.md"],
+        2 => vec!["context/clarifications.md"],
         3 => vec![],  // Human review
         4 => vec!["context/decisions.md"],
         5 => vec!["skill/SKILL.md"], // Also has skill/references/ dir
@@ -983,8 +983,6 @@ mod tests {
 
         // Steps 0, 2 outputs should still exist
         assert!(skill_dir.join("context/clarifications-concepts.md").exists());
-        assert!(skill_dir.join("context/clarifications-patterns.md").exists());
-        assert!(skill_dir.join("context/clarifications-data.md").exists());
         assert!(skill_dir.join("context/clarifications.md").exists());
 
         // Steps 4+ outputs should be deleted
@@ -994,23 +992,20 @@ mod tests {
     }
 
     #[test]
-    fn test_clean_step_output_step2_removes_all_research_files() {
+    fn test_clean_step_output_step2_removes_merged_clarifications() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Step 2 produces patterns, data, and merged clarifications
-        std::fs::write(skill_dir.join("context/clarifications-patterns.md"), "p").unwrap();
-        std::fs::write(skill_dir.join("context/clarifications-data.md"), "d").unwrap();
+        // Step 2 output is only the merged clarifications (temp files
+        // are cleaned up by the agent, not tracked as step outputs)
         std::fs::write(skill_dir.join("context/clarifications.md"), "m").unwrap();
-        std::fs::write(skill_dir.join("context/decisions.md"), "step6").unwrap();
+        std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
 
-        // Clean only step 2 — step 6 should be untouched
+        // Clean only step 2 — step 4 should be untouched
         clean_step_output(workspace, "my-skill", 2);
 
-        assert!(!skill_dir.join("context/clarifications-patterns.md").exists());
-        assert!(!skill_dir.join("context/clarifications-data.md").exists());
         assert!(!skill_dir.join("context/clarifications.md").exists());
         assert!(skill_dir.join("context/decisions.md").exists());
     }
