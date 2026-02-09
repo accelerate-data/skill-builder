@@ -30,6 +30,7 @@ import { useSettingsStore } from "@/stores/settings-store";
 import {
   runWorkflowStep,
   runParallelAgents,
+  runReviewStep,
   packageSkill,
   resetWorkflowStep,
   readFile,
@@ -141,6 +142,11 @@ export default function WorkflowPage() {
     null
   );
 
+  // Review state
+  const [reviewAgentId, setReviewAgentId] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const MAX_RETRIES = 2;
+
   const stepConfig = STEP_CONFIGS[currentStep];
   const isHumanReviewStep = stepConfig?.type === "human";
   const isParallelStep = stepConfig?.type === "parallel";
@@ -179,6 +185,12 @@ export default function WorkflowPage() {
 
     return () => { cancelled = true; };
   }, [skillName, initWorkflow, loadWorkflowState]);
+
+  // Reset retry count when moving to a new step
+  useEffect(() => {
+    setRetryCount(0);
+    setReviewAgentId(null);
+  }, [currentStep]);
 
   // Persist workflow state to SQLite when steps change
   useEffect(() => {
@@ -239,15 +251,42 @@ export default function WorkflowPage() {
 
   useEffect(() => {
     if (!activeRunStatus || isParallelStep) return;
+    // Skip if this is a review agent — handled by review effect
+    if (reviewAgentId) return;
     // Guard: only complete steps that are actively running an agent
     const { steps: currentSteps, currentStep: step } = useWorkflowStore.getState();
     if (currentSteps[step]?.status !== "in_progress") return;
 
     if (activeRunStatus === "completed") {
-      updateStepStatus(step, "completed");
-      setRunning(false);
+      const config = STEP_CONFIGS[step];
+      const hasOutputFiles = config?.outputFiles && config.outputFiles.length > 0;
+      const shouldReview = config?.type === "agent" && hasOutputFiles;
+
       setActiveAgent(null);
 
+      // If step has output files, run coordinator review
+      if (shouldReview && domain && workspacePath && retryCount < MAX_RETRIES) {
+        updateStepStatus(step, "in_progress"); // keep as in_progress during review
+        setRunning(false);
+
+        runReviewStep(skillName, step, domain, workspacePath)
+          .then((reviewId) => {
+            agentStartRun(reviewId, "haiku");
+            setReviewAgentId(reviewId);
+          })
+          .catch(() => {
+            updateStepStatus(step, "completed");
+            setRunning(false);
+            toast.success(`Step ${step + 1} completed`);
+            advanceToNextStep();
+          });
+        return;
+      }
+
+      // No review needed — complete normally
+      updateStepStatus(step, "completed");
+      setRunning(false);
+      setRetryCount(0);
       toast.success(`Step ${step + 1} completed`);
       advanceToNextStep();
     } else if (activeRunStatus === "error") {
@@ -256,7 +295,59 @@ export default function WorkflowPage() {
       setActiveAgent(null);
       toast.error(`Step ${step + 1} failed`);
     }
-  }, [activeRunStatus, isParallelStep, updateStepStatus, setRunning, setActiveAgent, advanceToNextStep]);
+  }, [activeRunStatus, isParallelStep, reviewAgentId, updateStepStatus, setRunning, setActiveAgent, advanceToNextStep, skillName, domain, workspacePath, retryCount, MAX_RETRIES, agentStartRun]);
+
+  // Watch for review agent completion
+  const reviewRun = reviewAgentId ? runs[reviewAgentId] : null;
+  const reviewRunStatus = reviewRun?.status;
+
+  useEffect(() => {
+    if (!reviewAgentId || !reviewRunStatus) return;
+    if (reviewRunStatus !== "completed" && reviewRunStatus !== "error") return;
+
+    const { currentStep: step } = useWorkflowStore.getState();
+
+    if (reviewRunStatus === "completed") {
+      // Parse review result from agent messages
+      const messages = reviewRun?.messages ?? [];
+      const resultText = messages
+        .filter((m) => m.type === "assistant" || m.type === "result")
+        .map((m) => m.content ?? "")
+        .join("\n");
+
+      const shouldRetry = resultText.includes("RETRY:");
+
+      if (shouldRetry && retryCount < MAX_RETRIES) {
+        // Extract reason
+        const reasonMatch = resultText.match(/RETRY:\s*(.+)/);
+        const reason = reasonMatch?.[1]?.trim() ?? "Quality check failed";
+
+        toast.info(`Retrying step ${step + 1}: ${reason}`);
+        setReviewAgentId(null);
+        setRetryCount((prev) => prev + 1);
+
+        // Restart the step
+        handleStartStep();
+      } else {
+        // PASS or max retries
+        if (shouldRetry) {
+          toast.warning(`Step ${step + 1} completed after max retries`);
+        } else {
+          toast.success(`Step ${step + 1} passed review`);
+        }
+        setReviewAgentId(null);
+        setRetryCount(0);
+        updateStepStatus(step, "completed");
+        advanceToNextStep();
+      }
+    } else {
+      // Review agent errored — complete step anyway
+      setReviewAgentId(null);
+      updateStepStatus(step, "completed");
+      advanceToNextStep();
+      toast.success(`Step ${step + 1} completed`);
+    }
+  }, [reviewAgentId, reviewRunStatus, retryCount, MAX_RETRIES, reviewRun, updateStepStatus, advanceToNextStep]);
 
   // Watch for parallel agents completion (Step 2)
   const parallelRunA = parallelAgentIds ? runs[parallelAgentIds[0]] : null;
@@ -266,6 +357,8 @@ export default function WorkflowPage() {
 
   useEffect(() => {
     if (!parallelAgentIds || !isParallelStep) return;
+    // Skip if review agent is running
+    if (reviewAgentId) return;
     if (!parallelStatusA || !parallelStatusB) return;
 
     const aFinished = parallelStatusA === "completed" || parallelStatusA === "error";
@@ -277,11 +370,36 @@ export default function WorkflowPage() {
     if (currentSteps[step]?.status !== "in_progress") return;
 
     if (parallelStatusA === "completed" && parallelStatusB === "completed") {
-      updateStepStatus(step, "completed");
-      setRunning(false);
+      const config = STEP_CONFIGS[step];
+      const hasOutputFiles = config?.outputFiles && config.outputFiles.length > 0;
+      const shouldReview = hasOutputFiles && domain && workspacePath && retryCount < MAX_RETRIES;
+
       setActiveAgent(null);
       setParallelAgents(null);
 
+      // Run review for parallel steps
+      if (shouldReview) {
+        updateStepStatus(step, "in_progress"); // keep as in_progress during review
+        setRunning(false);
+
+        runReviewStep(skillName, step, domain, workspacePath)
+          .then((reviewId) => {
+            agentStartRun(reviewId, "haiku");
+            setReviewAgentId(reviewId);
+          })
+          .catch(() => {
+            updateStepStatus(step, "completed");
+            setRunning(false);
+            toast.success(`Step ${step + 1} completed`);
+            advanceToNextStep();
+          });
+        return;
+      }
+
+      // No review needed
+      updateStepStatus(step, "completed");
+      setRunning(false);
+      setRetryCount(0);
       toast.success(`Step ${step + 1} completed`);
       advanceToNextStep();
     } else {
@@ -291,7 +409,7 @@ export default function WorkflowPage() {
       setParallelAgents(null);
       toast.error(`Step ${step + 1} failed`);
     }
-  }, [parallelAgentIds, isParallelStep, parallelStatusA, parallelStatusB, updateStepStatus, setRunning, setActiveAgent, setParallelAgents, advanceToNextStep]);
+  }, [parallelAgentIds, isParallelStep, reviewAgentId, parallelStatusA, parallelStatusB, updateStepStatus, setRunning, setActiveAgent, setParallelAgents, advanceToNextStep, skillName, domain, workspacePath, retryCount, MAX_RETRIES, agentStartRun]);
 
   // --- Step handlers ---
 
@@ -432,6 +550,11 @@ export default function WorkflowPage() {
   // --- Render content ---
 
   const renderContent = () => {
+    // Show review agent output when reviewing
+    if (reviewAgentId) {
+      return <AgentOutputPanel agentId={reviewAgentId} />;
+    }
+
     // Completed step with output files
     if (
       currentStepDef?.status === "completed" &&
@@ -677,6 +800,12 @@ export default function WorkflowPage() {
               <Badge variant="outline" className="gap-1">
                 <Loader2 className="size-3 animate-spin" />
                 Running
+              </Badge>
+            )}
+            {reviewAgentId && (
+              <Badge variant="outline" className="gap-1">
+                <Loader2 className="size-3 animate-spin" />
+                Reviewing...
               </Badge>
             )}
             {canStart && (

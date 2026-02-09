@@ -143,8 +143,10 @@ fn build_prompt(
     format!(
         "Read prompts/shared-context.md and prompts/{} and follow the instructions. \
          The domain is: {}. The skill name is: {}. \
+         The skill directory is: {}/. \
+         The context directory (for reading and writing intermediate files) is: {}/context/. \
          Write output to {}/{}.",
-        prompt_file, domain, skill_name, skill_name, output_file
+        prompt_file, domain, skill_name, skill_name, skill_name, skill_name, output_file
     )
 }
 
@@ -162,6 +164,55 @@ fn make_agent_id(skill_name: &str, label: &str) -> String {
         .unwrap_or_default()
         .as_millis();
     format!("{}-{}-{}", skill_name, label, ts)
+}
+
+#[tauri::command]
+pub async fn run_review_step(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AgentRegistry>,
+    db: tauri::State<'_, Db>,
+    skill_name: String,
+    step_id: u32,
+    domain: String,
+    workspace_path: String,
+) -> Result<String, String> {
+    ensure_workspace_prompts(&app, &workspace_path)?;
+
+    let step = get_step_config(step_id)?;
+    let api_key = read_api_key(&db)?;
+    let agent_id = make_agent_id(&skill_name, &format!("review-step{}", step_id));
+
+    let output_path = format!("{}/{}", skill_name, step.output_file);
+
+    let prompt = format!(
+        "You are a quality reviewer for a skill-building workflow. \
+         Read the file at '{}' and evaluate whether the output is satisfactory. \
+         \n\nEvaluate based on:\n\
+         1. The file exists and is non-empty\n\
+         2. The content is well-structured markdown\n\
+         3. The content meaningfully addresses the domain: '{}'\n\
+         4. The content follows the expected format (check prompts/shared-context.md for format guidelines)\n\
+         5. The content is substantive (not placeholder or minimal)\n\
+         \n\nRespond with EXACTLY one line:\n\
+         - If satisfactory: PASS\n\
+         - If needs regeneration: RETRY: <brief reason>\n\
+         \nDo not write any files. Only read and evaluate.",
+        output_path, domain
+    );
+
+    let config = SidecarConfig {
+        prompt,
+        model: "haiku".to_string(),
+        api_key,
+        cwd: workspace_path,
+        allowed_tools: Some(vec!["Read".to_string(), "Glob".to_string()]),
+        max_turns: Some(10),
+        permission_mode: Some("bypassPermissions".to_string()),
+        session_id: None,
+    };
+
+    sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app).await?;
+    Ok(agent_id)
 }
 
 #[tauri::command]
@@ -527,6 +578,8 @@ mod tests {
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
         assert!(prompt.contains("my-skill/context/clarifications-concepts.md"));
+        assert!(prompt.contains("The context directory (for reading and writing intermediate files) is: my-skill/context/"));
+        assert!(prompt.contains("The skill directory is: my-skill/"));
     }
 
     #[test]

@@ -36,6 +36,7 @@ pub fn run() {
             commands::files::read_file,
             commands::workflow::run_workflow_step,
             commands::workflow::run_parallel_agents,
+            commands::workflow::run_review_step,
             commands::workflow::package_skill,
             commands::workflow::reset_workflow_step,
             commands::workflow::get_workflow_state,
