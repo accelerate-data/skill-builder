@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useCallback } from "react";
+import { Fragment, useEffect, useRef, useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -210,6 +210,14 @@ export function AgentOutputPanel({ agentId }: { agentId: string }) {
   useEffect(() => {
     scrollToBottom();
   }, [run?.messages.length, scrollToBottom]);
+
+  // Force re-render every second while running so elapsed time updates
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (run?.status !== "running") return;
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [run?.status]);
 
   const handleCancel = async () => {
     try {
