@@ -12,6 +12,7 @@ import {
   Pencil,
   ArrowRight,
   FileText,
+  Pause,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -24,8 +25,10 @@ import { useWorkflowStore } from "@/stores/workflow-store";
 import {
   runWorkflowStep,
   startAgent,
+  cancelAgent,
   captureStepArtifacts,
   getArtifactContent,
+  saveArtifactContent,
 } from "@/lib/tauri";
 import {
   parseAgentResponseType,
@@ -56,6 +59,15 @@ type ReasoningPhase =
   | "gate_check"
   | "completed";
 
+const SESSION_ARTIFACT = "context/reasoning-session.json";
+
+interface ReasoningSessionState {
+  messages: ChatMessage[];
+  sessionId?: string;
+  phase: ReasoningPhase;
+  round: number;
+}
+
 // --- Component ---
 
 export function ReasoningChat({
@@ -82,6 +94,9 @@ export function ReasoningChat({
   const [decisionsContent, setDecisionsContent] = useState<string | null>(null);
   const [showDecisions, setShowDecisions] = useState(false);
 
+  // Session restored flag (prevents overwriting saved state)
+  const [restored, setRestored] = useState(false);
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -92,6 +107,61 @@ export function ReasoningChat({
 
   const currentRun = currentAgentId ? runs[currentAgentId] : null;
   const isAgentRunning = currentRun?.status === "running";
+
+  // --- Session persistence ---
+
+  const saveSession = useCallback(
+    (
+      msgs: ChatMessage[],
+      sid: string | undefined,
+      ph: ReasoningPhase,
+      rnd: number,
+    ) => {
+      const state: ReasoningSessionState = {
+        messages: msgs,
+        sessionId: sid,
+        phase: ph,
+        round: rnd,
+      };
+      saveArtifactContent(
+        skillName,
+        6,
+        SESSION_ARTIFACT,
+        JSON.stringify(state),
+      ).catch(() => {});
+    },
+    [skillName],
+  );
+
+  // Load saved session on mount
+  useEffect(() => {
+    if (restored) return;
+    getArtifactContent(skillName, SESSION_ARTIFACT)
+      .then((artifact) => {
+        if (!artifact?.content) {
+          setRestored(true);
+          return;
+        }
+        try {
+          const state: ReasoningSessionState = JSON.parse(artifact.content);
+          if (state.messages?.length > 0) {
+            setMessages(state.messages);
+            setSessionId(state.sessionId);
+            // Don't restore agent_running — it's not running anymore
+            setPhase(
+              state.phase === "agent_running"
+                ? "summary"
+                : state.phase,
+            );
+            setRound(state.round ?? 1);
+          }
+        } catch {
+          // Corrupt JSON — ignore
+        }
+        setRestored(true);
+      })
+      .catch(() => setRestored(true));
+  }, [skillName, restored]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -130,6 +200,7 @@ export function ReasoningChat({
     if (!currentRun || !currentAgentId) return;
     if (currentRun.status !== "completed" && currentRun.status !== "error") return;
 
+    const sid = currentRun.sessionId ?? sessionId;
     if (currentRun.sessionId && !sessionId) {
       setSessionId(currentRun.sessionId);
     }
@@ -144,56 +215,105 @@ export function ReasoningChat({
       const agentText = textParts.join("\n\n");
 
       if (agentText) {
-        setMessages((prev) => [
-          ...prev,
-          { role: "agent", content: agentText, agentId: currentAgentId },
-        ]);
+        const newMsg: ChatMessage = { role: "agent", content: agentText, agentId: currentAgentId };
+        setMessages((prev) => {
+          const updated = [...prev, newMsg];
 
-        // Classify response and transition phase
-        const responseType = parseAgentResponseType(agentText);
+          // Classify response and transition phase
+          const responseType = parseAgentResponseType(agentText);
+          let newPhase: ReasoningPhase;
+          let newRound = round;
 
-        switch (responseType) {
-          case "follow_up": {
-            const extracted = extractFollowUpSection(agentText);
-            setFollowUpText(extracted ?? "");
-            const detectedRound = extractRoundNumber(agentText);
-            if (detectedRound) setRound(detectedRound);
-            setPhase("follow_up");
-            break;
+          switch (responseType) {
+            case "follow_up": {
+              const extracted = extractFollowUpSection(agentText);
+              setFollowUpText(extracted ?? "");
+              const detectedRound = extractRoundNumber(agentText);
+              if (detectedRound) {
+                newRound = detectedRound;
+                setRound(detectedRound);
+              }
+              newPhase = "follow_up";
+              break;
+            }
+            case "gate_check":
+              newPhase = "gate_check";
+              break;
+            default:
+              newPhase = "summary";
+              break;
           }
-          case "gate_check":
-            setPhase("gate_check");
-            break;
-          case "summary":
-          case "unknown":
-          default:
-            setPhase("summary");
-            break;
-        }
+
+          setPhase(newPhase);
+          saveSession(updated, sid, newPhase, newRound);
+          return updated;
+        });
       }
 
       setRunning(false);
       loadDecisions();
     } else if (currentRun.status === "error") {
       const errorMsg = currentRun.messages.find((m) => m.type === "error");
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "agent",
-          content: `Error: ${errorMsg?.content ?? "Agent encountered an error"}`,
-          agentId: currentAgentId,
-        },
-      ]);
+      const newPhase = messages.length > 0 ? "summary" : "not_started";
+      setMessages((prev) => {
+        const updated = [
+          ...prev,
+          {
+            role: "agent" as const,
+            content: `Error: ${errorMsg?.content ?? "Agent encountered an error"}`,
+            agentId: currentAgentId,
+          },
+        ];
+        saveSession(updated, sid, newPhase, round);
+        return updated;
+      });
       setRunning(false);
-      // Revert to summary phase so user can retry
-      setPhase(messages.length > 0 ? "summary" : "not_started");
+      setPhase(newPhase);
       toast.error("Reasoning agent encountered an error");
     }
-  }, [currentRun?.status, currentAgentId, currentRun, sessionId, setRunning, loadDecisions, messages.length]);
+  }, [currentRun?.status, currentAgentId, currentRun, sessionId, setRunning, loadDecisions, messages.length, round, saveSession]);
 
   useEffect(() => {
     handleAgentTurnComplete();
   }, [handleAgentTurnComplete]);
+
+  // --- Pause handler ---
+
+  const handlePause = async () => {
+    if (!currentAgentId) return;
+    try {
+      await cancelAgent(currentAgentId);
+    } catch {
+      // Agent may have already finished
+    }
+
+    // Collect any partial text the agent produced before pause
+    if (currentRun) {
+      const textParts: string[] = [];
+      for (const msg of currentRun.messages) {
+        if (msg.type === "assistant" && msg.content) {
+          textParts.push(msg.content);
+        }
+      }
+      const partialText = textParts.join("\n\n");
+      if (partialText) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "agent", content: partialText, agentId: currentAgentId },
+        ]);
+      }
+    }
+
+    const pausePhase = messages.length > 0 ? "summary" : "not_started";
+    setPhase(pausePhase);
+    setRunning(false);
+    updateStepStatus(currentStep, "pending");
+
+    // Save state so we can resume later
+    saveSession(messages, sessionId, pausePhase, round);
+    loadDecisions();
+    toast.info("Reasoning session paused — you can resume anytime");
+  };
 
   // --- Agent launchers ---
 
@@ -512,17 +632,26 @@ export function ReasoningChat({
             </div>
           ))}
 
-          {/* Streaming indicator */}
+          {/* Streaming indicator with pause button */}
           {isAgentRunning && (
             <div className="flex gap-3">
               <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <Brain className="size-4" />
               </div>
-              <Card className="px-4 py-3">
+              <Card className="flex items-center gap-3 px-4 py-3">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" />
                   Reasoning...
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={handlePause}
+                >
+                  <Pause className="size-3" />
+                  Pause
+                </Button>
               </Card>
             </div>
           )}
