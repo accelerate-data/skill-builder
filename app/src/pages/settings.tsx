@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react"
 import { invoke } from "@tauri-apps/api/core"
-import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "sonner"
 import { Loader2, Eye, EyeOff, Save, CheckCircle2, XCircle, ExternalLink, FolderOpen } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -19,10 +18,8 @@ import { useSettingsStore } from "@/stores/settings-store"
 import { checkNode, type NodeStatus } from "@/lib/tauri"
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<AppSettings>({
-    anthropic_api_key: null,
-    workspace_path: null,
-  })
+  const [apiKey, setApiKey] = useState<string | null>(null)
+  const [workspacePath, setWorkspacePath] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -40,7 +37,8 @@ export default function SettingsPage() {
         try {
           const result = await invoke<AppSettings>("get_settings")
           if (!cancelled) {
-            setSettings(result)
+            setApiKey(result.anthropic_api_key)
+            setWorkspacePath(result.workspace_path)
             setLoading(false)
           }
           return
@@ -71,26 +69,24 @@ export default function SettingsPage() {
     check()
   }, [])
 
-  const handleBrowseFolder = async () => {
-    const selected = await open({ directory: true, title: "Select workspace folder" })
-    if (selected) {
-      setSettings((s) => ({ ...s, workspace_path: selected }))
-    }
-  }
-
   const handleSave = async () => {
     setSaving(true)
     setSaved(false)
     try {
-      await invoke("save_settings", { settings })
+      await invoke("save_settings", {
+        settings: {
+          anthropic_api_key: apiKey,
+          workspace_path: workspacePath,
+        },
+      })
       setSaved(true)
       setSaving(false)
       setTimeout(() => setSaved(false), 3000)
 
       // Sync Zustand store so other pages see updated settings
       setStoreSettings({
-        anthropicApiKey: settings.anthropic_api_key,
-        workspacePath: settings.workspace_path,
+        anthropicApiKey: apiKey,
+        workspacePath,
       })
 
       toast.success("Settings saved")
@@ -103,14 +99,14 @@ export default function SettingsPage() {
   }
 
   const handleTestApiKey = async () => {
-    if (!settings.anthropic_api_key) {
+    if (!apiKey) {
       toast.error("Enter an API key first")
       return
     }
     setTesting(true)
     setApiKeyValid(null)
     try {
-      await invoke("test_api_key", { apiKey: settings.anthropic_api_key })
+      await invoke("test_api_key", { apiKey })
       setApiKeyValid(true)
       toast.success("API key is valid")
     } catch (err) {
@@ -151,13 +147,8 @@ export default function SettingsPage() {
                   id="api-key"
                   type={showApiKey ? "text" : "password"}
                   placeholder="sk-ant-..."
-                  value={settings.anthropic_api_key || ""}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      anthropic_api_key: e.target.value || null,
-                    }))
-                  }
+                  value={apiKey || ""}
+                  onChange={(e) => setApiKey(e.target.value || null)}
                 />
                 <Button
                   type="button"
@@ -177,7 +168,7 @@ export default function SettingsPage() {
                 variant={apiKeyValid ? "default" : "outline"}
                 size="sm"
                 onClick={handleTestApiKey}
-                disabled={testing || !settings.anthropic_api_key}
+                disabled={testing || !apiKey}
                 className={apiKeyValid ? "bg-green-600 hover:bg-green-700 text-white" : ""}
               >
                 {testing ? (
@@ -196,35 +187,15 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Workspace Folder</CardTitle>
           <CardDescription>
-            Local directory where skills are created and stored.
+            Skills and working files are stored in this directory. This is managed automatically.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="workspace-path">Folder Path</Label>
-            <div className="flex gap-2">
-              <Input
-                id="workspace-path"
-                placeholder="Select a folder..."
-                value={settings.workspace_path || ""}
-                onChange={(e) =>
-                  setSettings((s) => ({
-                    ...s,
-                    workspace_path: e.target.value || null,
-                  }))
-                }
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleBrowseFolder}
-              >
-                <FolderOpen className="size-4" />
-                Browse
-              </Button>
-            </div>
+        <CardContent>
+          <div className="flex items-center gap-2">
+            <FolderOpen className="size-4 text-muted-foreground" />
+            <code className="text-sm text-muted-foreground">
+              {workspacePath || "Not initialized"}
+            </code>
           </div>
         </CardContent>
       </Card>

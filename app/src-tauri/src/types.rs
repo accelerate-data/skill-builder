@@ -44,12 +44,6 @@ pub struct StepConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ParallelAgentResult {
-    pub agent_id_a: String,
-    pub agent_id_b: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageResult {
     pub file_path: String,
     pub size_bytes: u64,

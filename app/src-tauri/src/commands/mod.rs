@@ -8,3 +8,4 @@ pub mod node;
 pub mod settings;
 pub mod skill;
 pub mod workflow;
+pub mod workspace;

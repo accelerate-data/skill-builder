@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::agents::sidecar::{self, AgentRegistry, SidecarConfig};
 use crate::db::Db;
 use crate::types::{
-    ArtifactRow, PackageResult, ParallelAgentResult, StepConfig, StepStatusUpdate,
+    ArtifactRow, PackageResult, StepConfig, StepStatusUpdate,
     WorkflowStateResponse,
 };
 
@@ -26,8 +26,26 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
         }),
+        2 => Ok(StepConfig {
+            step_id: 2,
+            name: "Research Patterns".to_string(),
+            model: MODEL_SONNET.to_string(),
+            prompt_template: "03a-research-business-patterns.md".to_string(),
+            output_file: "context/clarifications-patterns.md".to_string(),
+            allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 50,
+        }),
         3 => Ok(StepConfig {
             step_id: 3,
+            name: "Research Data Modeling".to_string(),
+            model: MODEL_SONNET.to_string(),
+            prompt_template: "03b-research-data-modeling.md".to_string(),
+            output_file: "context/clarifications-data.md".to_string(),
+            allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 50,
+        }),
+        4 => Ok(StepConfig {
+            step_id: 4,
             name: "Merge Clarifications".to_string(),
             model: MODEL_HAIKU.to_string(),
             prompt_template: "04-merge-clarifications.md".to_string(),
@@ -35,8 +53,8 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 30,
         }),
-        5 => Ok(StepConfig {
-            step_id: 5,
+        6 => Ok(StepConfig {
+            step_id: 6,
             name: "Reasoning".to_string(),
             model: MODEL_OPUS.to_string(),
             prompt_template: "06-reasoning-agent.md".to_string(),
@@ -44,8 +62,8 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 100,
         }),
-        6 => Ok(StepConfig {
-            step_id: 6,
+        7 => Ok(StepConfig {
+            step_id: 7,
             name: "Build".to_string(),
             model: MODEL_SONNET.to_string(),
             prompt_template: "07-build-agent.md".to_string(),
@@ -53,8 +71,8 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 80,
         }),
-        7 => Ok(StepConfig {
-            step_id: 7,
+        8 => Ok(StepConfig {
+            step_id: 8,
             name: "Validate".to_string(),
             model: MODEL_SONNET.to_string(),
             prompt_template: "08-validate-agent.md".to_string(),
@@ -62,8 +80,8 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
         }),
-        8 => Ok(StepConfig {
-            step_id: 8,
+        9 => Ok(StepConfig {
+            step_id: 9,
             name: "Test".to_string(),
             model: MODEL_SONNET.to_string(),
             prompt_template: "09-test-agent.md".to_string(),
@@ -72,7 +90,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             max_turns: 50,
         }),
         _ => Err(format!(
-            "Unknown step_id {}. Use run_parallel_agents for step 2.",
+            "Unknown step_id {}. Steps 1, 5, 10 are human/package steps.",
             step_id
         )),
     }
@@ -322,83 +340,6 @@ pub async fn run_workflow_step(
 }
 
 #[tauri::command]
-pub async fn run_parallel_agents(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, AgentRegistry>,
-    db: tauri::State<'_, Db>,
-    skill_name: String,
-    domain: String,
-    workspace_path: String,
-) -> Result<ParallelAgentResult, String> {
-    ensure_workspace_prompts(&app, &workspace_path)?;
-
-    // Stage DB artifacts to filesystem before running agents
-    {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        stage_artifacts(&conn, &skill_name, &workspace_path)?;
-    }
-
-    let api_key = read_api_key(&db)?;
-    let tools: Vec<String> = DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect();
-
-    let agent_id_a = make_agent_id(&skill_name, "step2a");
-    let agent_id_b = make_agent_id(&skill_name, "step2b");
-
-    let config_a = SidecarConfig {
-        prompt: build_prompt(
-            "03a-research-business-patterns.md",
-            "context/clarifications-patterns.md",
-            &skill_name,
-            &domain,
-        ),
-        model: MODEL_SONNET.to_string(),
-        api_key: api_key.clone(),
-        cwd: workspace_path.clone(),
-        allowed_tools: Some(tools.clone()),
-        max_turns: Some(50),
-        permission_mode: Some("bypassPermissions".to_string()),
-        session_id: None,
-    };
-
-    let config_b = SidecarConfig {
-        prompt: build_prompt(
-            "03b-research-data-modeling.md",
-            "context/clarifications-data.md",
-            &skill_name,
-            &domain,
-        ),
-        model: MODEL_SONNET.to_string(),
-        api_key,
-        cwd: workspace_path,
-        allowed_tools: Some(tools),
-        max_turns: Some(50),
-        permission_mode: Some("bypassPermissions".to_string()),
-        session_id: None,
-    };
-
-    let registry = state.inner().clone();
-    let app_a = app.clone();
-
-    let id_a = agent_id_a.clone();
-    let id_b = agent_id_b.clone();
-    let reg_a = registry.clone();
-    let reg_b = registry.clone();
-
-    let (res_a, res_b) = tokio::join!(
-        sidecar::spawn_sidecar(id_a, config_a, reg_a, app_a),
-        sidecar::spawn_sidecar(id_b, config_b, reg_b, app),
-    );
-
-    res_a?;
-    res_b?;
-
-    Ok(ParallelAgentResult {
-        agent_id_a,
-        agent_id_b,
-    })
-}
-
-#[tauri::command]
 pub async fn package_skill(
     skill_name: String,
     workspace_path: String,
@@ -541,18 +482,16 @@ pub fn save_workflow_state(
 fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
         0 => vec!["context/clarifications-concepts.md"],
-        1 => vec![], // Human review — no output files to delete
-        2 => vec![
-            "context/clarifications-patterns.md",
-            "context/clarifications-data.md",
-        ],
-        3 => vec!["context/clarifications.md"],
-        4 => vec![], // Human review
-        5 => vec!["context/decisions.md"],
-        6 => vec!["SKILL.md"], // Also has references/ dir
-        7 => vec!["context/agent-validation-log.md"],
-        8 => vec!["context/test-skill.md"],
-        9 => vec![], // Package step — .skill file
+        1 => vec![],  // Human review
+        2 => vec!["context/clarifications-patterns.md"],
+        3 => vec!["context/clarifications-data.md"],
+        4 => vec!["context/clarifications.md"],
+        5 => vec![],  // Human review
+        6 => vec!["context/decisions.md"],
+        7 => vec!["SKILL.md"], // Also has references/ dir
+        8 => vec!["context/agent-validation-log.md"],
+        9 => vec!["context/test-skill.md"],
+        10 => vec![], // Package step — .skill file
         _ => vec![],
     }
 }
@@ -565,7 +504,7 @@ fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id
         return;
     }
 
-    for step_id in from_step_id..=9 {
+    for step_id in from_step_id..=10 {
         for file in get_step_output_files(step_id) {
             let path = skill_dir.join(file);
             if path.exists() {
@@ -573,16 +512,16 @@ fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id
             }
         }
 
-        // Step 6 also produces a references/ directory
-        if step_id == 6 {
+        // Step 7 also produces a references/ directory
+        if step_id == 7 {
             let refs_dir = skill_dir.join("references");
             if refs_dir.is_dir() {
                 let _ = std::fs::remove_dir_all(&refs_dir);
             }
         }
 
-        // Step 9 produces a .skill zip
-        if step_id == 9 {
+        // Step 10 produces a .skill zip
+        if step_id == 10 {
             let skill_file = skill_dir.join(format!("{}.skill", skill_name));
             if skill_file.exists() {
                 let _ = std::fs::remove_file(&skill_file);
@@ -651,8 +590,8 @@ pub fn capture_step_artifacts(
         }
     }
 
-    // Step 6 (Build): also walk references/ directory
-    if step_id == 6 {
+    // Step 7 (Build): also walk references/ directory
+    if step_id == 7 {
         let refs_dir = skill_dir.join("references");
         if refs_dir.is_dir() {
             for (relative, content) in walk_md_files(&refs_dir, "references")? {
@@ -707,7 +646,7 @@ mod tests {
 
     #[test]
     fn test_get_step_config_valid_steps() {
-        let valid_steps = [0, 3, 5, 6, 7, 8];
+        let valid_steps = [0, 2, 3, 4, 6, 7, 8, 9];
         for step_id in valid_steps {
             let config = get_step_config(step_id);
             assert!(config.is_ok(), "Step {} should be valid", step_id);
@@ -720,18 +659,20 @@ mod tests {
 
     #[test]
     fn test_get_step_config_invalid_step() {
-        assert!(get_step_config(1).is_err());
-        assert!(get_step_config(2).is_err());
-        assert!(get_step_config(4).is_err());
+        assert!(get_step_config(1).is_err());  // Human review
+        assert!(get_step_config(5).is_err());  // Human review
+        assert!(get_step_config(10).is_err()); // Package step
         assert!(get_step_config(99).is_err());
     }
 
     #[test]
     fn test_get_step_config_models() {
         assert_eq!(get_step_config(0).unwrap().model, MODEL_SONNET);
-        assert_eq!(get_step_config(3).unwrap().model, MODEL_HAIKU);
-        assert_eq!(get_step_config(5).unwrap().model, MODEL_OPUS);
-        assert_eq!(get_step_config(6).unwrap().model, MODEL_SONNET);
+        assert_eq!(get_step_config(2).unwrap().model, MODEL_SONNET);
+        assert_eq!(get_step_config(3).unwrap().model, MODEL_SONNET);
+        assert_eq!(get_step_config(4).unwrap().model, MODEL_HAIKU);
+        assert_eq!(get_step_config(6).unwrap().model, MODEL_OPUS);
+        assert_eq!(get_step_config(7).unwrap().model, MODEL_SONNET);
     }
 
     #[test]
@@ -909,7 +850,7 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
         std::fs::create_dir_all(skill_dir.join("references")).unwrap();
 
-        // Create output files for steps 0, 2, 3, 5, 6
+        // Create output files for steps 0, 2, 3, 4, 6, 7
         std::fs::write(
             skill_dir.join("context/clarifications-concepts.md"),
             "step0",
@@ -917,24 +858,28 @@ mod tests {
         .unwrap();
         std::fs::write(
             skill_dir.join("context/clarifications-patterns.md"),
-            "step2a",
+            "step2",
         )
         .unwrap();
-        std::fs::write(skill_dir.join("context/clarifications.md"), "step3").unwrap();
-        std::fs::write(skill_dir.join("context/decisions.md"), "step5").unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), "step6").unwrap();
+        std::fs::write(
+            skill_dir.join("context/clarifications-data.md"),
+            "step3",
+        )
+        .unwrap();
+        std::fs::write(skill_dir.join("context/clarifications.md"), "step4").unwrap();
+        std::fs::write(skill_dir.join("context/decisions.md"), "step6").unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "step7").unwrap();
         std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
 
-        // Reset from step 3 onwards — steps 0, 2 should be preserved
-        delete_step_output_files(workspace, "my-skill", 3);
+        // Reset from step 4 onwards — steps 0, 2, 3 should be preserved
+        delete_step_output_files(workspace, "my-skill", 4);
 
-        // Steps 0 and 2 outputs should still exist
+        // Steps 0, 2, 3 outputs should still exist
         assert!(skill_dir.join("context/clarifications-concepts.md").exists());
-        assert!(skill_dir
-            .join("context/clarifications-patterns.md")
-            .exists());
+        assert!(skill_dir.join("context/clarifications-patterns.md").exists());
+        assert!(skill_dir.join("context/clarifications-data.md").exists());
 
-        // Steps 3+ outputs should be deleted
+        // Steps 4+ outputs should be deleted
         assert!(!skill_dir.join("context/clarifications.md").exists());
         assert!(!skill_dir.join("context/decisions.md").exists());
         assert!(!skill_dir.join("SKILL.md").exists());

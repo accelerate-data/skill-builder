@@ -25,7 +25,6 @@ vi.mock("sonner", () => ({
 // Mock @/lib/tauri
 vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: vi.fn(),
-  runParallelAgents: vi.fn(),
   runReviewStep: vi.fn(() => Promise.resolve("review-agent-1")),
   packageSkill: vi.fn(),
   readFile: vi.fn(() => Promise.reject("not found")),
@@ -43,9 +42,6 @@ vi.mock("@/components/workflow-sidebar", () => ({
 }));
 vi.mock("@/components/agent-output-panel", () => ({
   AgentOutputPanel: () => <div data-testid="agent-output" />,
-}));
-vi.mock("@/components/parallel-agent-panel", () => ({
-  ParallelAgentPanel: () => <div data-testid="parallel-panel" />,
 }));
 vi.mock("@/components/workflow-step-complete", () => ({
   WorkflowStepComplete: () => <div data-testid="step-complete" />,
@@ -138,22 +134,19 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(mockToast.success).toHaveBeenCalledWith("Step 1 passed review");
   });
 
-  it("completes parallel step but does NOT auto-advance", async () => {
-    // Simulate: step 2 (parallel) running two agents
+  it("completes agent step 2 but does NOT auto-advance", async () => {
+    // Simulate: step 2 (Research Patterns) running an agent
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setCurrentStep(2);
     useWorkflowStore.getState().updateStepStatus(2, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-a", "sonnet");
-    useAgentStore.getState().startRun("agent-b", "sonnet");
-    useAgentStore.getState().setParallelAgents(["agent-a", "agent-b"]);
+    useAgentStore.getState().startRun("agent-2", "sonnet");
 
     render(<WorkflowPage />);
 
-    // Both agents complete — this triggers the review agent
+    // Agent completes — this triggers the review agent
     act(() => {
-      useAgentStore.getState().completeRun("agent-a", true);
-      useAgentStore.getState().completeRun("agent-b", true);
+      useAgentStore.getState().completeRun("agent-2", true);
     });
 
     // Wait for review agent to be started

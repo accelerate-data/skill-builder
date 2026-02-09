@@ -85,7 +85,7 @@ describe("SettingsPage", () => {
     expect(spinner).toBeInTheDocument();
   });
 
-  it("populates form fields after settings load", async () => {
+  it("populates API key after settings load", async () => {
     setupDefaultMocks(populatedSettings);
     render(<SettingsPage />);
 
@@ -97,9 +97,19 @@ describe("SettingsPage", () => {
     const apiKeyInput = screen.getByPlaceholderText("sk-ant-...");
     expect(apiKeyInput).toHaveValue("sk-ant-existing-key");
 
-    // Workspace path
-    const workspaceInput = screen.getByPlaceholderText("Select a folder...");
-    expect(workspaceInput).toHaveValue("/home/user/workspace");
+    // Workspace path shown as read-only text
+    expect(screen.getByText("/home/user/workspace")).toBeInTheDocument();
+  });
+
+  it("shows 'Not initialized' when no workspace path", async () => {
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Not initialized")).toBeInTheDocument();
   });
 
   it("calls invoke with test_api_key when Test button is clicked", async () => {

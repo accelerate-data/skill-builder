@@ -67,11 +67,6 @@ export const cancelAgent = (agentId: string) =>
 
 // --- Workflow ---
 
-export interface ParallelAgentResult {
-  agent_id_a: string;
-  agent_id_b: string;
-}
-
 export interface PackageResult {
   file_path: string;
   size_bytes: number;
@@ -83,12 +78,6 @@ export const runWorkflowStep = (
   domain: string,
   workspacePath: string,
 ) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath });
-
-export const runParallelAgents = (
-  skillName: string,
-  domain: string,
-  workspacePath: string,
-) => invoke<ParallelAgentResult>("run_parallel_agents", { skillName, domain, workspacePath });
 
 export const runReviewStep = (
   skillName: string,
@@ -170,11 +159,11 @@ export const readFile = (filePath: string) =>
 
 // --- Lifecycle ---
 
-export const checkWorkspacePath = (workspacePath: string) =>
-  invoke<boolean>("check_workspace_path", { workspacePath });
-
 export const hasRunningAgents = () =>
   invoke<boolean>("has_running_agents");
+
+export const getWorkspacePath = () =>
+  invoke<string>("get_workspace_path");
 
 // --- Chat ---
 

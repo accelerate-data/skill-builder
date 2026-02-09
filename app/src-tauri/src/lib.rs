@@ -16,6 +16,13 @@ pub fn run() {
             use tauri::Manager;
             let db = db::init_db(app).expect("failed to initialize database");
             app.manage(db);
+
+            // Initialize workspace directory and deploy bundled prompts
+            let db_state = app.state::<db::Db>();
+            let handle = app.handle().clone();
+            commands::workspace::init_workspace(&handle, &db_state)
+                .expect("failed to initialize workspace");
+
             Ok(())
         })
         .manage(agents::sidecar::create_registry())
@@ -35,7 +42,6 @@ pub fn run() {
             commands::files::list_skill_files,
             commands::files::read_file,
             commands::workflow::run_workflow_step,
-            commands::workflow::run_parallel_agents,
             commands::workflow::run_review_step,
             commands::workflow::package_skill,
             commands::workflow::reset_workflow_step,
@@ -49,8 +55,8 @@ pub fn run() {
             commands::chat::add_chat_message,
             commands::chat::get_chat_messages,
             commands::chat::run_chat_agent,
-            commands::lifecycle::check_workspace_path,
             commands::lifecycle::has_running_agents,
+            commands::workspace::get_workspace_path,
             commands::diff::generate_diff,
             commands::diff::apply_suggestion,
         ])

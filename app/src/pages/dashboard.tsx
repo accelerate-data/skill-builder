@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
-import { Link } from "@tanstack/react-router"
-import { FolderOpen, TriangleAlert } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { FolderOpen } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -23,25 +21,12 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [workspacePath, setWorkspacePath] = useState("")
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
-  const [workspaceWarning, setWorkspaceWarning] = useState(false)
   const navigate = useNavigate()
 
   const loadSettings = useCallback(async () => {
     try {
       const settings = await invoke<AppSettings>("get_settings")
-      const wp = settings.workspace_path || ""
-      setWorkspacePath(wp)
-
-      if (wp) {
-        try {
-          const exists = await invoke<boolean>("check_workspace_path", { workspacePath: wp })
-          setWorkspaceWarning(!exists)
-        } catch {
-          setWorkspaceWarning(false)
-        }
-      } else {
-        setWorkspaceWarning(false)
-      }
+      setWorkspacePath(settings.workspace_path || "")
     } catch {
       // Settings may not exist yet
     }
@@ -90,27 +75,6 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {workspaceWarning && (
-        <Card className="border-amber-500/50 bg-amber-500/10">
-          <CardHeader className="flex-row items-center gap-3 py-3">
-            <TriangleAlert className="size-5 shrink-0 text-amber-500" />
-            <div className="flex-1 space-y-1">
-              <CardTitle className="text-sm font-medium">
-                Workspace folder not found
-              </CardTitle>
-              <CardDescription className="text-sm">
-                The configured workspace path no longer exists on disk. Please reconfigure it in Settings.
-              </CardDescription>
-            </div>
-            <Link to="/settings">
-              <Button variant="outline" size="sm">
-                Open Settings
-              </Button>
-            </Link>
-          </CardHeader>
-        </Card>
-      )}
-
       {loading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
@@ -137,9 +101,7 @@ export default function DashboardPage() {
             </div>
             <CardTitle>No skills yet</CardTitle>
             <CardDescription>
-              {workspacePath
-                ? "Create your first skill to get started."
-                : "Configure a workspace path in Settings to get started."}
+              Create your first skill to get started.
             </CardDescription>
           </CardHeader>
           {workspacePath && (
@@ -148,13 +110,6 @@ export default function DashboardPage() {
                 workspacePath={workspacePath}
                 onCreated={loadSkills}
               />
-            </CardContent>
-          )}
-          {!workspacePath && (
-            <CardContent className="flex justify-center">
-              <Button variant="outline" asChild>
-                <a href="/settings">Open Settings</a>
-              </Button>
             </CardContent>
           )}
         </Card>
