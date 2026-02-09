@@ -92,7 +92,7 @@ pub async fn run_chat_agent(
 
     let config = SidecarConfig {
         prompt,
-        model: "sonnet".to_string(),
+        model: "claude-sonnet-4-5-20250929".to_string(),
         api_key,
         cwd,
         allowed_tools: Some(vec![

@@ -10,12 +10,17 @@ use crate::types::{
 
 const DEFAULT_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"];
 
+// Explicit model IDs to avoid SDK shorthand resolution issues
+const MODEL_SONNET: &str = "claude-sonnet-4-5-20250929";
+const MODEL_HAIKU: &str = "claude-haiku-4-5-20251001";
+const MODEL_OPUS: &str = "claude-opus-4-6";
+
 fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     match step_id {
         0 => Ok(StepConfig {
             step_id: 0,
             name: "Research Domain Concepts".to_string(),
-            model: "sonnet".to_string(),
+            model: MODEL_SONNET.to_string(),
             prompt_template: "01-research-domain-concepts.md".to_string(),
             output_file: "context/clarifications-concepts.md".to_string(),
             allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
@@ -24,7 +29,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         3 => Ok(StepConfig {
             step_id: 3,
             name: "Merge Clarifications".to_string(),
-            model: "haiku".to_string(),
+            model: MODEL_HAIKU.to_string(),
             prompt_template: "04-merge-clarifications.md".to_string(),
             output_file: "context/clarifications.md".to_string(),
             allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
@@ -33,7 +38,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         5 => Ok(StepConfig {
             step_id: 5,
             name: "Reasoning".to_string(),
-            model: "opus".to_string(),
+            model: MODEL_OPUS.to_string(),
             prompt_template: "06-reasoning-agent.md".to_string(),
             output_file: "context/decisions.md".to_string(),
             allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
@@ -42,7 +47,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         6 => Ok(StepConfig {
             step_id: 6,
             name: "Build".to_string(),
-            model: "sonnet".to_string(),
+            model: MODEL_SONNET.to_string(),
             prompt_template: "07-build-agent.md".to_string(),
             output_file: "SKILL.md".to_string(),
             allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
@@ -51,7 +56,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         7 => Ok(StepConfig {
             step_id: 7,
             name: "Validate".to_string(),
-            model: "sonnet".to_string(),
+            model: MODEL_SONNET.to_string(),
             prompt_template: "08-validate-agent.md".to_string(),
             output_file: "context/agent-validation-log.md".to_string(),
             allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
@@ -60,7 +65,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         8 => Ok(StepConfig {
             step_id: 8,
             name: "Test".to_string(),
-            model: "sonnet".to_string(),
+            model: MODEL_SONNET.to_string(),
             prompt_template: "09-test-agent.md".to_string(),
             output_file: "context/test-skill.md".to_string(),
             allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
@@ -264,7 +269,7 @@ pub async fn run_review_step(
 
     let config = SidecarConfig {
         prompt,
-        model: "haiku".to_string(),
+        model: MODEL_HAIKU.to_string(),
         api_key,
         cwd: workspace_path,
         allowed_tools: Some(vec!["Read".to_string(), "Glob".to_string()]),
@@ -346,7 +351,7 @@ pub async fn run_parallel_agents(
             &skill_name,
             &domain,
         ),
-        model: "sonnet".to_string(),
+        model: MODEL_SONNET.to_string(),
         api_key: api_key.clone(),
         cwd: workspace_path.clone(),
         allowed_tools: Some(tools.clone()),
@@ -362,7 +367,7 @@ pub async fn run_parallel_agents(
             &skill_name,
             &domain,
         ),
-        model: "sonnet".to_string(),
+        model: MODEL_SONNET.to_string(),
         api_key,
         cwd: workspace_path,
         allowed_tools: Some(tools),
@@ -723,10 +728,10 @@ mod tests {
 
     #[test]
     fn test_get_step_config_models() {
-        assert_eq!(get_step_config(0).unwrap().model, "sonnet");
-        assert_eq!(get_step_config(3).unwrap().model, "haiku");
-        assert_eq!(get_step_config(5).unwrap().model, "opus");
-        assert_eq!(get_step_config(6).unwrap().model, "sonnet");
+        assert_eq!(get_step_config(0).unwrap().model, MODEL_SONNET);
+        assert_eq!(get_step_config(3).unwrap().model, MODEL_HAIKU);
+        assert_eq!(get_step_config(5).unwrap().model, MODEL_OPUS);
+        assert_eq!(get_step_config(6).unwrap().model, MODEL_SONNET);
     }
 
     #[test]
