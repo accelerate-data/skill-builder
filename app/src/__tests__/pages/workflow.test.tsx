@@ -73,6 +73,10 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     mockToast.success.mockClear();
     mockToast.error.mockClear();
     mockToast.info.mockClear();
+
+    // Clear module-level tauri mock call records so tests don't leak
+    vi.mocked(saveWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockClear();
   });
 
   afterEach(() => {
@@ -84,6 +88,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   it("completes step but does NOT auto-advance — waits for user click", async () => {
     // Simulate: step 0 is running an agent
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
     useAgentStore.getState().startRun("agent-1", "sonnet");
@@ -123,6 +128,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   it("completes agent step 3 but does NOT auto-advance", async () => {
     // Simulate: step 2 (Research Patterns) running an agent
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setCurrentStep(2);
     useWorkflowStore.getState().updateStepStatus(2, "in_progress");
     useWorkflowStore.getState().setRunning(true);
@@ -159,6 +165,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
   it("marks step as error when agent fails — no cascade", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
     useAgentStore.getState().startRun("agent-1", "sonnet");
@@ -230,6 +237,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Edge case: agent completion arrives but step is already completed
     // (e.g., from a stale agent)
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setCurrentStep(1);
     useWorkflowStore.getState().setRunning(false);

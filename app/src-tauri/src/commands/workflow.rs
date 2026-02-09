@@ -54,7 +54,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             prompt_template: "04-merge-clarifications.md".to_string(),
             output_file: "context/clarifications.md".to_string(),
             allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 15,
+            max_turns: 8,
         }),
         6 => Ok(StepConfig {
             step_id: 6,
@@ -68,7 +68,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             step_id: 7,
             name: "Build".to_string(),
             prompt_template: "07-build-agent.md".to_string(),
-            output_file: "SKILL.md".to_string(),
+            output_file: "skill/SKILL.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 80,
         }),
@@ -169,8 +169,9 @@ fn build_prompt(
          The domain is: {}. The skill name is: {}. \
          The skill directory is: {}/. \
          The context directory (for reading and writing intermediate files) is: {}/context/. \
+         The skill output directory (SKILL.md and references/) is: {}/skill/. \
          Write output to {}/{}.",
-        prompt_file, domain, skill_name, skill_name, skill_name, skill_name, output_file
+        prompt_file, domain, skill_name, skill_name, skill_name, skill_name, skill_name, output_file
     )
 }
 
@@ -221,6 +222,51 @@ fn stage_artifacts(
         }
         std::fs::write(&file_path, &artifact.content)
             .map_err(|e| format!("Failed to write {}: {}", file_path.display(), e))?;
+    }
+
+    Ok(())
+}
+
+/// Reconcile disk → SQLite: scan the workspace for existing step artifacts
+/// and capture any that aren't already in the DB (or are newer on disk).
+/// This handles the case where the app was shut down mid-agent and files
+/// were written to disk but never captured.
+fn reconcile_disk_artifacts(
+    conn: &rusqlite::Connection,
+    skill_name: &str,
+    workspace_path: &str,
+) -> Result<(), String> {
+    let skill_dir = Path::new(workspace_path).join(skill_name);
+    if !skill_dir.exists() {
+        return Ok(());
+    }
+
+    // Walk all steps that produce output files
+    for step_id in [0u32, 2, 3, 4, 6, 7, 8, 9] {
+        for file in get_step_output_files(step_id) {
+            let path = skill_dir.join(file);
+            if path.exists() {
+                let content = std::fs::read_to_string(&path)
+                    .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+                crate::db::save_artifact(conn, skill_name, step_id as i32, file, &content)?;
+            }
+        }
+
+        // Step 7 also has skill/references/ directory
+        if step_id == 7 {
+            let refs_dir = skill_dir.join("skill").join("references");
+            if refs_dir.is_dir() {
+                for (relative, content) in walk_md_files(&refs_dir, "skill/references")? {
+                    crate::db::save_artifact(
+                        conn,
+                        skill_name,
+                        step_id as i32,
+                        &relative,
+                        &content,
+                    )?;
+                }
+            }
+        }
     }
 
     Ok(())
@@ -322,9 +368,12 @@ pub async fn run_workflow_step(
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path)?;
 
-    // Stage DB artifacts to filesystem before running agent
+    // Reconcile disk → DB (captures partial output from paused/interrupted runs),
+    // then stage all DB artifacts → disk so the agent sees prerequisites and
+    // any previously written partial output.
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
+        reconcile_disk_artifacts(&conn, &skill_name, &workspace_path)?;
         stage_artifacts(&conn, &skill_name, &workspace_path)?;
     }
 
@@ -360,9 +409,10 @@ pub async fn run_parallel_agents(
 ) -> Result<ParallelAgentResult, String> {
     ensure_workspace_prompts(&app, &workspace_path)?;
 
-    // Stage DB artifacts to filesystem before running agents
+    // Reconcile disk → DB, then stage all DB artifacts → disk
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
+        reconcile_disk_artifacts(&conn, &skill_name, &workspace_path)?;
         stage_artifacts(&conn, &skill_name, &workspace_path)?;
     }
 
@@ -459,12 +509,13 @@ fn create_skill_zip(
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
 
-    let skill_md = skill_dir.join("SKILL.md");
+    let skill_out = skill_dir.join("skill");
+    let skill_md = skill_out.join("SKILL.md");
     if skill_md.exists() {
         add_file_to_zip(&mut zip, &skill_md, "SKILL.md", options)?;
     }
 
-    let references_dir = skill_dir.join("references");
+    let references_dir = skill_out.join("references");
     if references_dir.exists() && references_dir.is_dir() {
         add_dir_to_zip(&mut zip, &references_dir, "references", options)?;
     }
@@ -567,7 +618,7 @@ fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
         4 => vec!["context/clarifications.md"],
         5 => vec![],  // Human review
         6 => vec!["context/decisions.md"],
-        7 => vec!["SKILL.md"], // Also has references/ dir
+        7 => vec!["skill/SKILL.md"], // Also has skill/references/ dir
         8 => vec!["context/agent-validation-log.md"],
         9 => vec!["context/test-skill.md"],
         10 => vec![], // Package step — .skill file
@@ -575,37 +626,42 @@ fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     }
 }
 
-/// Delete output files for the given step and all subsequent steps.
-/// Extracted as a helper so it can be tested without `tauri::State`.
-fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id: u32) {
+/// Delete output files for a single step.
+fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32) {
     let skill_dir = Path::new(workspace_path).join(skill_name);
     if !skill_dir.exists() {
         return;
     }
 
+    for file in get_step_output_files(step_id) {
+        let path = skill_dir.join(file);
+        if path.exists() {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+
+    // Step 7 also produces a skill/references/ directory
+    if step_id == 7 {
+        let skill_out = skill_dir.join("skill");
+        let refs_dir = skill_out.join("references");
+        if refs_dir.is_dir() {
+            let _ = std::fs::remove_dir_all(&refs_dir);
+        }
+    }
+
+    // Step 10 produces a .skill zip
+    if step_id == 10 {
+        let skill_file = skill_dir.join(format!("{}.skill", skill_name));
+        if skill_file.exists() {
+            let _ = std::fs::remove_file(&skill_file);
+        }
+    }
+}
+
+/// Delete output files for the given step and all subsequent steps.
+fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id: u32) {
     for step_id in from_step_id..=10 {
-        for file in get_step_output_files(step_id) {
-            let path = skill_dir.join(file);
-            if path.exists() {
-                let _ = std::fs::remove_file(&path);
-            }
-        }
-
-        // Step 7 also produces a references/ directory
-        if step_id == 7 {
-            let refs_dir = skill_dir.join("references");
-            if refs_dir.is_dir() {
-                let _ = std::fs::remove_dir_all(&refs_dir);
-            }
-        }
-
-        // Step 10 produces a .skill zip
-        if step_id == 10 {
-            let skill_file = skill_dir.join(format!("{}.skill", skill_name));
-            if skill_file.exists() {
-                let _ = std::fs::remove_file(&skill_file);
-            }
-        }
+        clean_step_output(workspace_path, skill_name, step_id);
     }
 }
 
@@ -669,11 +725,11 @@ pub fn capture_step_artifacts(
         }
     }
 
-    // Step 7 (Build): also walk references/ directory
+    // Step 7 (Build): also walk skill/references/ directory
     if step_id == 7 {
-        let refs_dir = skill_dir.join("references");
+        let refs_dir = skill_dir.join("skill").join("references");
         if refs_dir.is_dir() {
-            for (relative, content) in walk_md_files(&refs_dir, "references")? {
+            for (relative, content) in walk_md_files(&refs_dir, "skill/references")? {
                 crate::db::save_artifact(
                     &conn,
                     &skill_name,
@@ -766,6 +822,7 @@ mod tests {
         assert!(prompt.contains("my-skill/context/clarifications-concepts.md"));
         assert!(prompt.contains("The context directory (for reading and writing intermediate files) is: my-skill/context/"));
         assert!(prompt.contains("The skill directory is: my-skill/"));
+        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: my-skill/skill/"));
     }
 
     #[test]
@@ -780,12 +837,12 @@ mod tests {
     fn test_package_skill_creates_zip() {
         let tmp = tempfile::tempdir().unwrap();
         let skill_dir = tmp.path().join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("references")).unwrap();
+        std::fs::create_dir_all(skill_dir.join("skill").join("references")).unwrap();
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        std::fs::write(skill_dir.join("SKILL.md"), "# My Skill").unwrap();
+        std::fs::write(skill_dir.join("skill").join("SKILL.md"), "# My Skill").unwrap();
         std::fs::write(
-            skill_dir.join("references").join("deep-dive.md"),
+            skill_dir.join("skill").join("references").join("deep-dive.md"),
             "# Deep Dive",
         )
         .unwrap();
@@ -810,6 +867,7 @@ mod tests {
             .map(|i| archive.by_index(i).unwrap().name().to_string())
             .collect();
 
+        // Zip entries are flat (SKILL.md, references/) even though disk is under skill/
         assert!(names.contains(&"SKILL.md".to_string()));
         assert!(names.contains(&"references/deep-dive.md".to_string()));
         assert!(!names.iter().any(|n| n.starts_with("context/")));
@@ -820,16 +878,16 @@ mod tests {
     fn test_package_skill_nested_references() {
         let tmp = tempfile::tempdir().unwrap();
         let skill_dir = tmp.path().join("nested-skill");
-        std::fs::create_dir_all(skill_dir.join("references").join("sub")).unwrap();
+        std::fs::create_dir_all(skill_dir.join("skill").join("references").join("sub")).unwrap();
 
-        std::fs::write(skill_dir.join("SKILL.md"), "# Nested").unwrap();
+        std::fs::write(skill_dir.join("skill").join("SKILL.md"), "# Nested").unwrap();
         std::fs::write(
-            skill_dir.join("references").join("top.md"),
+            skill_dir.join("skill").join("references").join("top.md"),
             "top level",
         )
         .unwrap();
         std::fs::write(
-            skill_dir.join("references").join("sub").join("nested.md"),
+            skill_dir.join("skill").join("references").join("sub").join("nested.md"),
             "nested ref",
         )
         .unwrap();
@@ -924,7 +982,7 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-        std::fs::create_dir_all(skill_dir.join("references")).unwrap();
+        std::fs::create_dir_all(skill_dir.join("skill").join("references")).unwrap();
 
         // Create output files for steps 0, 2, 3, 4, 6, 7
         std::fs::write(
@@ -944,8 +1002,8 @@ mod tests {
         .unwrap();
         std::fs::write(skill_dir.join("context/clarifications.md"), "step4").unwrap();
         std::fs::write(skill_dir.join("context/decisions.md"), "step6").unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), "step7").unwrap();
-        std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
+        std::fs::write(skill_dir.join("skill/SKILL.md"), "step7").unwrap();
+        std::fs::write(skill_dir.join("skill/references/ref.md"), "ref").unwrap();
 
         // Reset from step 4 onwards — steps 0, 2, 3 should be preserved
         delete_step_output_files(workspace, "my-skill", 4);
@@ -958,8 +1016,26 @@ mod tests {
         // Steps 4+ outputs should be deleted
         assert!(!skill_dir.join("context/clarifications.md").exists());
         assert!(!skill_dir.join("context/decisions.md").exists());
-        assert!(!skill_dir.join("SKILL.md").exists());
-        assert!(!skill_dir.join("references").exists());
+        assert!(!skill_dir.join("skill/SKILL.md").exists());
+        assert!(!skill_dir.join("skill/references").exists());
+    }
+
+    #[test]
+    fn test_clean_step_output_only_removes_target_step() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+
+        // Create output files for steps 4 and 6
+        std::fs::write(skill_dir.join("context/clarifications.md"), "step4").unwrap();
+        std::fs::write(skill_dir.join("context/decisions.md"), "step6").unwrap();
+
+        // Clean only step 4 — step 6 should be untouched
+        clean_step_output(workspace, "my-skill", 4);
+
+        assert!(!skill_dir.join("context/clarifications.md").exists());
+        assert!(skill_dir.join("context/decisions.md").exists());
     }
 
     #[test]

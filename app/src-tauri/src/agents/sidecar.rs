@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -62,10 +63,14 @@ pub async fn spawn_sidecar(
         reg.insert(agent_id.clone(), child);
     }
 
+    // Open a log file for this agent run so users can `tail -f` it
+    let log_file = open_agent_log(Path::new(&config.cwd), &agent_id, &config_json);
+
     // Spawn stdout reader
     let app_handle_stdout = app_handle.clone();
     let agent_id_stdout = agent_id.clone();
     let registry_stdout = registry.clone();
+    let log_stdout = log_file.clone();
     tokio::spawn(async move {
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
@@ -73,6 +78,10 @@ pub async fn spawn_sidecar(
 
         while let Ok(Some(line)) = lines.next_line().await {
             events::handle_sidecar_message(&app_handle_stdout, &agent_id_stdout, &line);
+            if let Some(ref f) = log_stdout {
+                let mut f = f.lock().unwrap_or_else(|e| e.into_inner());
+                let _ = writeln!(f, "{}", line);
+            }
         }
 
         // Stdout closed — sidecar exited
@@ -90,6 +99,16 @@ pub async fn spawn_sidecar(
         }
 
         events::handle_sidecar_exit(&app_handle_stdout, &agent_id_stdout, success);
+
+        // Log the exit event
+        if let Some(ref f) = log_stdout {
+            let mut f = f.lock().unwrap_or_else(|e| e.into_inner());
+            let _ = writeln!(
+                f,
+                "{{\"type\":\"agent-exit\",\"success\":{}}}",
+                success
+            );
+        }
     });
 
     // Spawn stderr reader
@@ -100,10 +119,53 @@ pub async fn spawn_sidecar(
 
         while let Ok(Some(line)) = lines.next_line().await {
             log::debug!("[sidecar:{}] {}", agent_id_stderr, line);
+            if let Some(ref f) = log_file {
+                let mut f = f.lock().unwrap_or_else(|e| e.into_inner());
+                let _ = writeln!(
+                    f,
+                    "{{\"type\":\"stderr\",\"content\":{}}}",
+                    serde_json::to_string(&line).unwrap_or_else(|_| format!("\"{}\"", line))
+                );
+            }
         }
     });
 
     Ok(())
+}
+
+type SharedFile = Arc<std::sync::Mutex<std::fs::File>>;
+
+/// Create `.agent-logs/<agent_id>.jsonl` in the working directory.
+/// Returns None (with a log warning) if the directory can't be created.
+fn open_agent_log(
+    cwd: &Path,
+    agent_id: &str,
+    config_json: &str,
+) -> Option<SharedFile> {
+    let log_dir = cwd.join(".agent-logs");
+    if let Err(e) = std::fs::create_dir_all(&log_dir) {
+        log::warn!("Could not create agent log dir {}: {}", log_dir.display(), e);
+        return None;
+    }
+
+    let log_path = log_dir.join(format!("{}.jsonl", agent_id));
+    match std::fs::File::create(&log_path) {
+        Ok(mut file) => {
+            // Write redacted config as first line (strip API key)
+            if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(config_json) {
+                if let Some(obj) = val.as_object_mut() {
+                    obj.insert("apiKey".to_string(), serde_json::json!("[REDACTED]"));
+                }
+                let _ = writeln!(file, "{{\"type\":\"config\",\"config\":{}}}", val);
+            }
+            log::info!("Agent log: {}", log_path.display());
+            Some(Arc::new(std::sync::Mutex::new(file)))
+        }
+        Err(e) => {
+            log::warn!("Could not create agent log {}: {}", log_path.display(), e);
+            None
+        }
+    }
 }
 
 pub async fn cancel_sidecar(agent_id: String, registry: AgentRegistry) -> Result<(), String> {

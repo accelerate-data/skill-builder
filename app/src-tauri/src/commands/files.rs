@@ -75,10 +75,10 @@ mod tests {
     fn setup_skill_dir(base: &Path) {
         let skill = base.join("my-skill");
         fs::create_dir_all(skill.join("context")).unwrap();
-        fs::create_dir_all(skill.join("references")).unwrap();
-        fs::write(skill.join("SKILL.md"), "# My Skill").unwrap();
+        fs::create_dir_all(skill.join("skill").join("references")).unwrap();
+        fs::write(skill.join("skill").join("SKILL.md"), "# My Skill").unwrap();
         fs::write(skill.join("workflow.md"), "## Workflow State").unwrap();
-        fs::write(skill.join("references").join("ref1.md"), "# Ref 1").unwrap();
+        fs::write(skill.join("skill").join("references").join("ref1.md"), "# Ref 1").unwrap();
         fs::write(
             skill.join("context").join("clarifications.md"),
             "# Clarifications",
@@ -97,17 +97,18 @@ mod tests {
         )
         .unwrap();
 
-        // Should have: SKILL.md, workflow.md, context/, context/clarifications.md,
-        //              references/, references/ref1.md
-        assert_eq!(entries.len(), 6);
+        // Should have: workflow.md, context/, context/clarifications.md,
+        //              skill/, skill/SKILL.md, skill/references/, skill/references/ref1.md
+        assert_eq!(entries.len(), 7);
 
         let paths: Vec<&str> = entries.iter().map(|e| e.relative_path.as_str()).collect();
-        assert!(paths.contains(&"SKILL.md"));
+        assert!(paths.contains(&"skill/SKILL.md"));
         assert!(paths.contains(&"workflow.md"));
         assert!(paths.contains(&"context"));
         assert!(paths.contains(&"context/clarifications.md"));
-        assert!(paths.contains(&"references"));
-        assert!(paths.contains(&"references/ref1.md"));
+        assert!(paths.contains(&"skill"));
+        assert!(paths.contains(&"skill/references"));
+        assert!(paths.contains(&"skill/references/ref1.md"));
     }
 
     #[test]
@@ -174,7 +175,7 @@ mod tests {
 
         let skill_md = entries
             .iter()
-            .find(|e| e.relative_path == "SKILL.md")
+            .find(|e| e.relative_path == "skill/SKILL.md")
             .unwrap();
         assert!(!skill_md.is_directory);
         assert!(skill_md.size_bytes > 0);

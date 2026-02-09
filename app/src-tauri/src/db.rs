@@ -398,6 +398,19 @@ pub fn delete_artifacts_from(
     Ok(())
 }
 
+pub fn delete_step_artifacts(
+    conn: &Connection,
+    skill_name: &str,
+    step_id: i32,
+) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM workflow_artifacts WHERE skill_name = ?1 AND step_id = ?2",
+        rusqlite::params![skill_name, step_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn delete_all_artifacts(conn: &Connection, skill_name: &str) -> Result<(), String> {
     conn.execute(
         "DELETE FROM workflow_artifacts WHERE skill_name = ?1",

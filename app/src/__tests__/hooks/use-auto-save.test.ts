@@ -55,8 +55,8 @@ describe("useAutoSave", () => {
 
     useEditorStore.getState().setActiveFile({
       name: "SKILL.md",
-      relative_path: "SKILL.md",
-      absolute_path: "/ws/skill/SKILL.md",
+      relative_path: "skill/SKILL.md",
+      absolute_path: "/ws/skill/skill/SKILL.md",
       is_directory: false,
       is_readonly: false,
       size_bytes: 100,
@@ -76,7 +76,7 @@ describe("useAutoSave", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(mockInvoke).toHaveBeenCalledWith("save_raw_file", {
-      filePath: "/ws/skill/SKILL.md",
+      filePath: "/ws/skill/skill/SKILL.md",
       content: "modified",
     });
   });

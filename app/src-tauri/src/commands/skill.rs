@@ -1,11 +1,23 @@
+use crate::db::Db;
 use crate::markdown::workflow_state;
 use crate::types::SkillSummary;
 use std::fs;
 use std::path::Path;
 
 #[tauri::command]
-pub fn list_skills(workspace_path: String) -> Result<Vec<SkillSummary>, String> {
-    let base = Path::new(&workspace_path);
+pub fn list_skills(
+    workspace_path: String,
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<SkillSummary>, String> {
+    let conn = db.0.lock().ok();
+    list_skills_inner(&workspace_path, conn.as_deref())
+}
+
+fn list_skills_inner(
+    workspace_path: &str,
+    conn: Option<&rusqlite::Connection>,
+) -> Result<Vec<SkillSummary>, String> {
+    let base = Path::new(workspace_path);
     if !base.exists() {
         return Ok(vec![]);
     }
@@ -69,6 +81,19 @@ pub fn list_skills(workspace_path: String) -> Result<Vec<SkillSummary>, String> 
         });
     }
 
+    // Overlay SQLite workflow state (preferred over filesystem workflow.md)
+    if let Some(conn) = conn {
+        for skill in &mut skills {
+            if let Ok(Some(run)) = crate::db::get_workflow_run(conn, &skill.name) {
+                skill.current_step = Some(format!("Step {}", run.current_step));
+                skill.status = Some(run.status);
+                if skill.domain.is_none() {
+                    skill.domain = Some(run.domain);
+                }
+            }
+        }
+    }
+
     skills.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
     Ok(skills)
 }
@@ -129,7 +154,7 @@ mod tests {
 
         create_skill(workspace.clone(), "my-skill".into(), "sales pipeline".into()).unwrap();
 
-        let skills = list_skills(workspace).unwrap();
+        let skills = list_skills_inner(&workspace, None).unwrap();
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "my-skill");
         assert_eq!(skills[0].domain.as_deref(), Some("sales pipeline"));
@@ -153,18 +178,18 @@ mod tests {
         let workspace = dir.path().to_str().unwrap().to_string();
 
         create_skill(workspace.clone(), "to-delete".into(), "domain".into()).unwrap();
-        let skills = list_skills(workspace.clone()).unwrap();
+        let skills = list_skills_inner(&workspace, None).unwrap();
         assert_eq!(skills.len(), 1);
 
         delete_skill(workspace.clone(), "to-delete".into()).unwrap();
-        let skills = list_skills(workspace).unwrap();
+        let skills = list_skills_inner(&workspace, None).unwrap();
         assert_eq!(skills.len(), 0);
     }
 
     #[test]
     fn test_list_empty_workspace() {
         // Use a path that does not exist — list_skills returns empty vec
-        let skills = list_skills("/tmp/nonexistent-workspace-path-abc123".into()).unwrap();
+        let skills = list_skills_inner("/tmp/nonexistent-workspace-path-abc123", None).unwrap();
         assert!(skills.is_empty());
     }
 
@@ -181,7 +206,7 @@ mod tests {
         assert!(result.is_err());
 
         // The legitimate skill should still exist
-        let skills = list_skills(workspace).unwrap();
+        let skills = list_skills_inner(&workspace, None).unwrap();
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "legit");
     }

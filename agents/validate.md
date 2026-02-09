@@ -15,7 +15,7 @@ You validate a completed skill against Anthropic's published best practices. You
 ## Context
 - Read the shared context file at the path provided by the coordinator in the task prompt.
 - The coordinator will tell you:
-  - The **skill directory** path (containing SKILL.md and reference files to validate)
+  - The **skill output directory** path (containing SKILL.md and reference files to validate)
   - The **context directory** path (for writing `agent-validation-log.md`)
 
 ## Instructions
@@ -37,11 +37,11 @@ The skill directory must follow this structure:
     └── ...
 ```
 
-List `SKILL.md` at the root and all files in `references/`. For each file, note:
+List `SKILL.md` at the skill output directory root and all files in `references/`. For each file, note:
 - File name and path
 - File size (line count)
 - Purpose (entry point or reference topic)
-- Whether it's in the correct location (SKILL.md at root, everything else in `references/`)
+- Whether it's in the correct location (SKILL.md at skill output directory root, everything else in `references/`)
 
 ### Step 3: Validate
 
@@ -52,7 +52,7 @@ Check every skill file against each best-practice criterion. For each criterion,
 - **Fix applied**: if FAIL, describe the fix (or "none — requires manual intervention")
 
 Common checks include (but are not limited to — use whatever the best practices page specifies):
-- **Folder structure**: SKILL.md is at the skill directory root; all other content files are in `references/`; no files outside these two locations
+- **Folder structure**: SKILL.md is at the skill output directory root; all other content files are in `references/`; no files outside these two locations
 - SKILL.md is under 500 lines
 - Metadata (name + description) is present and concise at the top of SKILL.md
 - Progressive disclosure: SKILL.md is the entry point with pointers to `references/` files; reference files contain depth
@@ -95,4 +95,4 @@ Write `agent-validation-log.md` to the context directory with:
 
 ## Output Files
 - `agent-validation-log.md` in the context directory
-- Updated skill files in the skill directory (if fixes were applied)
+- Updated skill files in the skill output directory (if fixes were applied)

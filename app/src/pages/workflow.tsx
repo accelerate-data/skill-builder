@@ -37,6 +37,7 @@ import {
   captureStepArtifacts,
   getArtifactContent,
   saveArtifactContent,
+  cancelAgent,
   type PackageResult,
 } from "@/lib/tauri";
 
@@ -55,7 +56,7 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
   4: { type: "agent", outputFiles: ["context/clarifications.md"] },
   5: { type: "human" },
   6: { type: "reasoning", outputFiles: ["context/decisions.md"] },
-  7: { type: "agent", outputFiles: ["SKILL.md", "references/"] },
+  7: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"] },
   8: { type: "agent", outputFiles: ["context/agent-validation-log.md"] },
   9: { type: "agent", outputFiles: ["context/test-skill.md"] },
   10: { type: "package" },
@@ -116,8 +117,11 @@ export default function WorkflowPage() {
     let cancelled = false;
     const store = useWorkflowStore.getState();
 
-    // Already loaded for this skill — skip
-    if (store.skillName === skillName) return;
+    // Already fully hydrated for this skill — skip.
+    // Must check hydrated too: React StrictMode unmounts/remounts effects,
+    // so skillName can match from the first (cancelled) run while hydration
+    // never completed.
+    if (store.skillName === skillName && store.hydrated) return;
 
     // Reset immediately so stale state from another skill doesn't linger
     initWorkflow(skillName, skillName.replace(/-/g, " "));
@@ -150,7 +154,7 @@ export default function WorkflowPage() {
       });
 
     return () => { cancelled = true; };
-  }, [skillName, initWorkflow, loadWorkflowState]);
+  }, [skillName, initWorkflow, loadWorkflowState, setHydrated]);
 
   // Reset state when moving to a new step
   useEffect(() => {
@@ -175,7 +179,7 @@ export default function WorkflowPage() {
         : "pending";
 
     saveWorkflowState(skillName, domain, currentStep, status, stepStatuses).catch(
-      () => {} // silent — best-effort persistence
+      (err) => console.warn("Failed to persist workflow state:", err)
     );
   }, [steps, currentStep, skillName, domain, hydrated]);
 
@@ -390,6 +394,23 @@ export default function WorkflowPage() {
     }
   };
 
+  const handlePauseAgent = async () => {
+    if (!activeAgentId) return;
+    try {
+      await cancelAgent(activeAgentId);
+    } catch {
+      // Agent may already be finished
+    }
+    // Capture whatever the agent wrote to disk
+    if (workspacePath) {
+      captureStepArtifacts(skillName, currentStep, workspacePath).catch(() => {});
+    }
+    setActiveAgent(null);
+    updateStepStatus(currentStep, "pending");
+    setRunning(false);
+    toast.success(`Step ${currentStep + 1} paused — progress saved`);
+  };
+
   const handleReviewContinue = async () => {
     // Auto-fill empty Answer fields with the corresponding Recommendation
     let content = reviewContent;
@@ -574,7 +595,7 @@ export default function WorkflowPage() {
 
     // Single agent with output
     if (activeAgentId) {
-      return <AgentOutputPanel agentId={activeAgentId} />;
+      return <AgentOutputPanel agentId={activeAgentId} onPause={handlePauseAgent} />;
     }
 
     // Package step empty state

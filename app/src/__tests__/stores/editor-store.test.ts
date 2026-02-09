@@ -18,7 +18,7 @@ describe("editor-store", () => {
 
   it("sets files", () => {
     const files = [
-      { name: "SKILL.md", relative_path: "SKILL.md", absolute_path: "/ws/skill/SKILL.md", is_directory: false, is_readonly: false, size_bytes: 100 },
+      { name: "SKILL.md", relative_path: "skill/SKILL.md", absolute_path: "/ws/skill/skill/SKILL.md", is_directory: false, is_readonly: false, size_bytes: 100 },
     ];
     useEditorStore.getState().setFiles(files);
     expect(useEditorStore.getState().files).toEqual(files);

@@ -30,8 +30,8 @@ export function makeSkillSummary(overrides?: Partial<SkillSummary>): SkillSummar
 export function makeFileEntry(overrides?: Partial<FileEntry>): FileEntry {
   return {
     name: "SKILL.md",
-    relative_path: "SKILL.md",
-    absolute_path: "/ws/test-skill/SKILL.md",
+    relative_path: "skill/SKILL.md",
+    absolute_path: "/ws/test-skill/skill/SKILL.md",
     is_directory: false,
     is_readonly: false,
     size_bytes: 1024,

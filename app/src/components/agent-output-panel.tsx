@@ -1,9 +1,10 @@
-import { useEffect, useRef, useCallback } from "react";
+import { Fragment, useEffect, useRef, useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   Loader2,
   Square,
+  Pause,
   CheckCircle2,
   XCircle,
   Clock,
@@ -137,6 +138,18 @@ function getToolSummary(message: AgentMessage): ToolSummaryResult | null {
   return result(name);
 }
 
+function TurnMarker({ turn }: { turn: number }) {
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <div className="h-px flex-1 bg-border" />
+      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        Turn {turn}
+      </span>
+      <div className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
 function MessageItem({ message }: { message: AgentMessage }) {
   if (message.type === "system") {
     return null;
@@ -186,7 +199,12 @@ function MessageItem({ message }: { message: AgentMessage }) {
   return null;
 }
 
-export function AgentOutputPanel({ agentId }: { agentId: string }) {
+interface AgentOutputPanelProps {
+  agentId: string;
+  onPause?: () => void;
+}
+
+export function AgentOutputPanel({ agentId, onPause }: AgentOutputPanelProps) {
   const run = useAgentStore((s) => s.runs[agentId]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -198,6 +216,14 @@ export function AgentOutputPanel({ agentId }: { agentId: string }) {
   useEffect(() => {
     scrollToBottom();
   }, [run?.messages.length, scrollToBottom]);
+
+  // Force re-render every second while running so elapsed time updates
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (run?.status !== "running") return;
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [run?.status]);
 
   const handleCancel = async () => {
     try {
@@ -235,6 +261,9 @@ export function AgentOutputPanel({ agentId }: { agentId: string }) {
     cancelled: "Cancelled",
   }[run.status];
 
+  // Count turns: each 'assistant' message = one SDK round-trip
+  const turnCount = run.messages.filter((m) => m.type === "assistant").length;
+
   return (
     <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <CardHeader className="shrink-0 flex-row items-center justify-between space-y-0 pb-3">
@@ -254,6 +283,11 @@ export function AgentOutputPanel({ agentId }: { agentId: string }) {
             <Clock className="size-3" />
             {formatElapsed(elapsed)}
           </Badge>
+          {turnCount > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              Turn {turnCount}
+            </Badge>
+          )}
           {run.tokenUsage && (
             <Badge variant="secondary" className="text-xs">
               {(run.tokenUsage.input + run.tokenUsage.output).toLocaleString()} tokens
@@ -263,6 +297,17 @@ export function AgentOutputPanel({ agentId }: { agentId: string }) {
             <Badge variant="secondary" className="text-xs">
               ${run.totalCost.toFixed(4)}
             </Badge>
+          )}
+          {run.status === "running" && onPause && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={onPause}
+            >
+              <Pause className="size-3" />
+              Pause
+            </Button>
           )}
           {run.status === "running" && (
             <Button
@@ -280,9 +325,19 @@ export function AgentOutputPanel({ agentId }: { agentId: string }) {
       <Separator />
       <ScrollArea className="min-h-0 flex-1">
         <div ref={scrollRef} className="flex flex-col gap-2 p-4">
-          {run.messages.map((msg, i) => (
-            <MessageItem key={i} message={msg} />
-          ))}
+          {run.messages.map((msg, i) => {
+            // Insert a turn marker before each assistant message
+            let turn = 0;
+            if (msg.type === "assistant") {
+              turn = run.messages.slice(0, i + 1).filter((m) => m.type === "assistant").length;
+            }
+            return (
+              <Fragment key={i}>
+                {turn > 0 && <TurnMarker turn={turn} />}
+                <MessageItem message={msg} />
+              </Fragment>
+            );
+          })}
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
