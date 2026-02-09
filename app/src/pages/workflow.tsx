@@ -199,15 +199,18 @@ export default function WorkflowPage() {
     setReviewFilePath(relativePath);
     setLoadingReview(true);
 
+    const filePath = `${workspacePath}/${skillName}/${relativePath}`;
+
+    // Try SQLite artifact first, then fall back to filesystem.
+    // Both paths are attempted even if one throws.
     getArtifactContent(skillName, relativePath)
-      .then((artifact) => {
+      .catch(() => null)
+      .then(async (artifact) => {
         if (artifact?.content) return artifact.content;
         // Fallback: read from filesystem if not captured in SQLite yet
-        const filePath = `${workspacePath}/${skillName}/${relativePath}`;
         return readFile(filePath).catch(() => null);
       })
       .then((content) => setReviewContent(content ?? null))
-      .catch(() => setReviewContent(null))
       .finally(() => setLoadingReview(false));
   }, [currentStep, isHumanReviewStep, workspacePath, skillName]);
 
@@ -434,11 +437,19 @@ export default function WorkflowPage() {
 
   // Reload the file content (after user edits externally)
   const handleReviewReload = () => {
-    if (!reviewFilePath) return;
+    if (!reviewFilePath || !workspacePath) return;
     setLoadingReview(true);
+    const filePath = `${workspacePath}/${skillName}/${reviewFilePath}`;
     getArtifactContent(skillName, reviewFilePath)
-      .then((artifact) => setReviewContent(artifact?.content ?? null))
-      .catch(() => toast.error("Failed to reload file"))
+      .catch(() => null)
+      .then(async (artifact) => {
+        if (artifact?.content) return artifact.content;
+        return readFile(filePath).catch(() => null);
+      })
+      .then((content) => {
+        setReviewContent(content ?? null);
+        if (!content) toast.error("Failed to reload file");
+      })
       .finally(() => setLoadingReview(false));
   };
 
