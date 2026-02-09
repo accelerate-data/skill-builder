@@ -2,10 +2,6 @@
 
 A Tauri v2 desktop application for building Claude skills. All code lives in `app/`.
 
-## Design Plan
-
-Full architecture, data model, and UI specs: `app/PLAN.md`
-
 ## Architecture
 
 ```
@@ -220,9 +216,6 @@ The app replicates the CLI workflow. Each step is a state in the workflow state 
 - `prompts/02-research-patterns-and-merge.md` — orchestrator (spawns parallel sub-agents + merger)
 - `prompts/06-reasoning-agent.md` — most complex agent (multi-turn with follow-ups)
 - `prompts/07-build-agent.md` — skill output structure (SKILL.md + references/)
-- `app/PLAN.md` — full architecture, data model, UI specs, implementation phases
-- `app/FEATURES.md` — feature checklist with status per phase
-- `app/TESTS.md` — test plan per phase
 
 ## Development
 
@@ -405,6 +398,3 @@ If the change is purely cosmetic (CSS tweaks, copy changes) or wiring-only (regi
 
 Always run existing tests (`npm test && cargo test`) before committing to catch regressions.
 
-### Manual test checklist
-
-See `app/TESTS.md` for a comprehensive manual test plan organized by phase. Use it for QA before releases.
