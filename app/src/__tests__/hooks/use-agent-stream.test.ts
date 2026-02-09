@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
-import { useAgentStream } from "@/hooks/use-agent-stream";
+import { useAgentStream, _resetForTesting } from "@/hooks/use-agent-stream";
 import { useAgentStore } from "@/stores/agent-store";
 import { mockListen } from "@/test/mocks/tauri";
 
@@ -11,6 +11,7 @@ describe("useAgentStream", () => {
 
   beforeEach(() => {
     useAgentStore.getState().clearRuns();
+    _resetForTesting();
     listeners = {};
 
     mockListen.mockReset();
@@ -134,7 +135,15 @@ describe("useAgentStream", () => {
     expect(run.status).toBe("error");
   });
 
-  it("cleans up listeners on unmount", () => {
+  it("only registers one set of listeners for multiple hook instances", () => {
+    renderHook(() => useAgentStream());
+    renderHook(() => useAgentStream());
+
+    // listen should only be called twice (once for agent-message, once for agent-exit)
+    expect(mockListen).toHaveBeenCalledTimes(2);
+  });
+
+  it("cleans up listeners when all hooks unmount", () => {
     const unlistenA = vi.fn();
     const unlistenB = vi.fn();
     let callCount = 0;
@@ -145,10 +154,15 @@ describe("useAgentStream", () => {
       return Promise.resolve(callCount === 1 ? unlistenA : unlistenB);
     });
 
-    const { unmount } = renderHook(() => useAgentStream());
-    unmount();
+    const hook1 = renderHook(() => useAgentStream());
+    const hook2 = renderHook(() => useAgentStream());
 
-    // The cleanup returns promises that call unlisten — we just verify the setup was correct
+    // Unmounting one hook should not unsubscribe
+    hook1.unmount();
+    expect(mockListen).toHaveBeenCalledTimes(2);
+
+    // Unmounting the last hook triggers cleanup
+    hook2.unmount();
     expect(mockListen).toHaveBeenCalledTimes(2);
   });
 });
