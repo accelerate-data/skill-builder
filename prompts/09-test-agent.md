@@ -1,7 +1,7 @@
-# Test Agent: Skill Testing (Team Lead)
+# Test Agent: Skill Testing
 
 ## Your Role
-You lead a testing team that generates realistic test prompts for a completed skill, distributes them to parallel evaluators, and consolidates the results into a test report. You orchestrate, review, and produce the final `test-skill.md`.
+You generate test prompts for a completed skill, spawn parallel evaluator sub-agents via the Task tool, then have a reporter sub-agent consolidate results into the final test report.
 
 ## Context
 - Read `shared-context.md` for the skill builder's purpose and who the skill users are.
@@ -30,82 +30,53 @@ You lead a testing team that generates realistic test prompts for a completed sk
 
 3. For each test prompt, note which category it falls into and assign it a number (Test 1, Test 2, etc.).
 
-## Phase 2: Create Test Team
+## Phase 2: Spawn Parallel Evaluators
 
-1. Use **TeamCreate** to create a team named `skill-test`.
+Use the **Task tool** to spawn one sub-agent per test prompt. Launch ALL Task calls in the **same turn** so they run in parallel.
 
-2. Use **TaskCreate** to add one task per test prompt. Each task should have:
-   - **subject**: `Evaluate Test N: [short prompt summary]`
-   - **description**: The full test prompt text, the category, and instructions for evaluation
+For each sub-agent, use: `name: "tester-N"`, `model: "sonnet"`, `mode: "bypassPermissions"`
 
-3. Spawn one teammate per test prompt using the **Task tool**. Launch ALL Task calls **in the same turn** so they run in parallel. For each teammate:
+Each sub-agent's prompt should follow this template:
 
-   ```
-   Task tool parameters:
-     name: "tester-N"
-     team_name: "skill-test"
-     subagent_type: "general-purpose"
-     mode: "bypassPermissions"
-     model: "sonnet"
-   ```
+```
+You are evaluating a single test prompt against a skill about [DOMAIN].
 
-   Each teammate's prompt should follow this template:
+Read the skill files:
+- [full path to SKILL.md]
+- All files in [full path to references/]
 
-   ```
-   You are a teammate on the "skill-test" team evaluating a single test prompt against a skill about [DOMAIN].
+Test prompt to evaluate:
+"[THE TEST PROMPT TEXT]"
 
-   Read the skill files:
-   - [full path to SKILL.md]
-   - All files in [full path to references/]
+Category: [category name]
 
-   Test prompt to evaluate:
-   "[THE TEST PROMPT TEXT]"
+Evaluation instructions:
+1. Search the skill files for relevant content that would answer the prompt.
+2. Evaluate whether the skill provides a useful, accurate, and sufficiently detailed answer.
+3. Score the test:
+   - PASS — the skill content directly addresses the question with actionable guidance
+   - PARTIAL — the skill has some relevant content but misses key details or is vague
+   - FAIL — the skill doesn't address this question or gives misleading guidance
+4. For PARTIAL and FAIL, explain:
+   - What the engineer would expect to find
+   - What the skill actually provides (or doesn't)
+   - Whether this is a content gap (missing from skill) or organization issue (content exists but hard to find)
 
-   Category: [category name]
+Write your result to: [full path to context/test-result-N.md]
 
-   Evaluation instructions:
-   1. Search the skill files for relevant content that would answer the prompt.
-   2. Evaluate whether the skill provides a useful, accurate, and sufficiently detailed answer.
-   3. Score the test:
-      - PASS — the skill content directly addresses the question with actionable guidance
-      - PARTIAL — the skill has some relevant content but misses key details or is vague
-      - FAIL — the skill doesn't address this question or gives misleading guidance
-   4. For PARTIAL and FAIL, explain:
-      - What the engineer would expect to find
-      - What the skill actually provides (or doesn't)
-      - Whether this is a content gap (missing from skill) or organization issue (content exists but hard to find)
-
-   Write your result to: [full path to context/test-result-N.md]
-
-   Use this exact format:
-   ```
-   ### Test N: [prompt text]
-   - **Category**: [category]
-   - **Result**: PASS | PARTIAL | FAIL
-   - **Skill coverage**: [what the skill provides]
-   - **Gap**: [what's missing, if any — write "None" for PASS]
-   ```
-
-   When done, use TaskUpdate to mark your task as completed.
-   ```
-
-4. After all teammates finish, check the task list with **TaskList** to confirm all tasks are completed.
+Use this exact format:
+### Test N: [prompt text]
+- **Category**: [category]
+- **Result**: PASS | PARTIAL | FAIL
+- **Skill coverage**: [what the skill provides]
+- **Gap**: [what's missing, if any — write "None" for PASS]
+```
 
 ## Phase 3: Consolidate and Write Report
 
-Spawn a fresh **reporter** teammate to consolidate results and write the final report. This keeps the context clean (the leader's context is bloated from orchestration). Use the **Task tool**:
+After all sub-agents return, spawn a fresh **reporter** sub-agent via the Task tool (`name: "reporter"`, `model: "sonnet"`, `mode: "bypassPermissions"`). This keeps the context clean.
 
-```
-Task tool parameters:
-  name: "reporter"
-  team_name: "skill-test"
-  subagent_type: "general-purpose"
-  mode: "bypassPermissions"
-  model: "sonnet"
-```
-
-The reporter's prompt should instruct it to:
-
+Prompt it to:
 1. Read all test result files from the context directory (`context/test-result-1.md` through `context/test-result-N.md`)
 2. Read the skill files (`SKILL.md` and `references/`) to understand context
 3. Identify patterns in the test results:
@@ -142,13 +113,6 @@ The reporter's prompt should instruct it to:
 ```
 
 6. Delete the temporary test result files when done
-7. Use TaskUpdate to mark its task as completed
-
-Wait for the reporter to finish, then proceed to cleanup.
-
-## Phase 4: Clean Up
-
-Send shutdown requests to all teammates via **SendMessage** (type: `shutdown_request`), then clean up with **TeamDelete**.
 
 ## Output Files
 - `test-skill.md` in the context directory

@@ -10,10 +10,6 @@ use crate::types::{
 
 const RESEARCH_TOOLS: &[&str] = &["Read", "Write", "Glob", "Grep"];
 const FULL_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"];
-const TEAM_TOOLS: &[&str] = &[
-    "Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task",
-    "TeamCreate", "TeamDelete", "TaskCreate", "TaskList", "TaskGet", "TaskUpdate", "SendMessage",
-];
 
 /// Resolve a model shorthand ("sonnet", "haiku", "opus") to a full model ID.
 /// If the input is already a full ID, pass it through unchanged.
@@ -33,7 +29,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             name: "Research Domain Concepts".to_string(),
             prompt_template: "01-research-domain-concepts.md".to_string(),
             output_file: "context/clarifications-concepts.md".to_string(),
-            allowed_tools: TEAM_TOOLS.iter().map(|s| s.to_string()).collect(),
+            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
         }),
         2 => Ok(StepConfig {
@@ -73,7 +69,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             name: "Build".to_string(),
             prompt_template: "07-build-agent.md".to_string(),
             output_file: "skill/SKILL.md".to_string(),
-            allowed_tools: TEAM_TOOLS.iter().map(|s| s.to_string()).collect(),
+            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 120,
         }),
         8 => Ok(StepConfig {
@@ -81,7 +77,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             name: "Validate".to_string(),
             prompt_template: "08-validate-agent.md".to_string(),
             output_file: "context/agent-validation-log.md".to_string(),
-            allowed_tools: TEAM_TOOLS.iter().map(|s| s.to_string()).collect(),
+            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 80,
         }),
         9 => Ok(StepConfig {
@@ -89,7 +85,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             name: "Test".to_string(),
             prompt_template: "09-test-agent.md".to_string(),
             output_file: "context/test-skill.md".to_string(),
-            allowed_tools: TEAM_TOOLS.iter().map(|s| s.to_string()).collect(),
+            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 80,
         }),
         _ => Err(format!(

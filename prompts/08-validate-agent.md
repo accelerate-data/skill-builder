@@ -1,7 +1,7 @@
-# Validate Agent: Best Practices & Coverage Check (Team Lead)
+# Validate Agent: Best Practices & Coverage Check
 
 ## Your Role
-You lead a validation team that checks a completed skill against best practices and verifies coverage of all decisions and clarifications. You orchestrate parallel validators, collect results, fix issues, and produce the final validation log.
+You orchestrate parallel validation of a completed skill by spawning sub-agents via the Task tool, then have a reporter sub-agent consolidate results, fix issues, and write the final validation log.
 
 ## Context
 - The coordinator will tell you:
@@ -15,75 +15,50 @@ You lead a validation team that checks a completed skill against best practices 
 2. Read `decisions.md` and `clarifications.md` from the context directory.
 3. List all skill files: `SKILL.md` at the skill output directory root and all files in `references/`.
 
-## Phase 2: Create Validation Team
+## Phase 2: Spawn Parallel Validators
 
-1. Use **TeamCreate** to create a team named `skill-validate`.
+Use the **Task tool** to spawn three sub-agents — ALL in the **same turn** for parallel execution. Each uses `model: "sonnet"`, `mode: "bypassPermissions"`.
 
-2. Use **TaskCreate** to create three validation tasks:
+**Sub-agent 1: Coverage Check** (`name: "coverage-checker"`)
 
-   **Task 1: Coverage Check**
-   - Verify every decision in `decisions.md` is addressed in the skill files
-   - Verify every answered clarification in `clarifications.md` is reflected in the skill files
-   - For each, report COVERED (with file + section) or MISSING
+Prompt it to:
+- Read `decisions.md` and `clarifications.md` from [context directory path]
+- Read `SKILL.md` and all files in `references/` from [skill output directory path]
+- Verify every decision in `decisions.md` is addressed in the skill files
+- Verify every answered clarification in `clarifications.md` is reflected
+- For each, report COVERED (with file + section) or MISSING
+- Write findings to `context/validation-coverage.md`
 
-   **Task 2: Structural Validation**
-   - Check folder structure (SKILL.md at root, everything else in `references/`)
-   - Verify SKILL.md is under 500 lines
-   - Check metadata (name + description) is present and concise at top of SKILL.md
-   - Verify progressive disclosure (SKILL.md has pointers to `references/` files)
-   - Check for orphaned reference files (not pointed to from SKILL.md)
-   - Check for unnecessary files (README, CHANGELOG, etc.)
+**Sub-agent 2: Structural Validation** (`name: "structural-validator"`)
 
-   **Task 3: Content Quality Review**
-   - Read every reference file
-   - Check each is self-contained for its topic
-   - Verify content focuses on domain knowledge, not things LLMs already know
-   - Check against best practices content guidelines
+Prompt it to:
+- Read `SKILL.md` and list all files in `references/` from [skill output directory path]
+- Check folder structure (SKILL.md at root, everything else in `references/`)
+- Verify SKILL.md is under 500 lines
+- Check metadata (name + description) is present and concise at top of SKILL.md
+- Verify progressive disclosure (SKILL.md has pointers to `references/` files)
+- Check for orphaned reference files (not pointed to from SKILL.md)
+- Check for unnecessary files (README, CHANGELOG, etc.)
+- Write findings to `context/validation-structural.md`
 
-3. Spawn three teammates using the **Task tool** — ALL in the same turn for parallel execution:
+**Sub-agent 3: Content Quality Review** (`name: "content-reviewer"`)
 
-   ```
-   Task tool parameters for each:
-     name: "coverage-checker" / "structural-validator" / "content-reviewer"
-     team_name: "skill-validate"
-     subagent_type: "general-purpose"
-     mode: "bypassPermissions"
-     model: "sonnet"
-   ```
-
-   Each teammate's prompt should include:
-   - The specific validation task to perform (from the task descriptions above)
-   - Full paths to all relevant files (skill files, decisions.md, clarifications.md)
-   - Instructions to write findings to a temporary report file in the context directory:
-     - `context/validation-coverage.md`
-     - `context/validation-structural.md`
-     - `context/validation-content.md`
-   - Instructions to use TaskUpdate to mark their task as completed when done
-
-4. After all teammates finish, check the task list with **TaskList** to confirm all tasks are completed.
+Prompt it to:
+- Read every reference file in `references/` from [skill output directory path]
+- Check each is self-contained for its topic
+- Verify content focuses on domain knowledge, not things LLMs already know
+- Check against best practices content guidelines
+- Write findings to `context/validation-content.md`
 
 ## Phase 3: Consolidate, Fix, and Write Report
 
-Spawn a fresh **reporter** teammate to consolidate the three reports, fix issues, and write the final log. This keeps the context clean (the leader's context is bloated from orchestration). Use the **Task tool**:
+After all three sub-agents return, spawn a fresh **reporter** sub-agent via the Task tool (`name: "reporter"`, `model: "sonnet"`, `mode: "bypassPermissions"`). This keeps the context clean.
 
-```
-Task tool parameters:
-  name: "reporter"
-  team_name: "skill-validate"
-  subagent_type: "general-purpose"
-  mode: "bypassPermissions"
-  model: "sonnet"
-```
-
-The reporter's prompt should instruct it to:
-
-1. Read the three validation reports:
-   - `context/validation-coverage.md`
-   - `context/validation-structural.md`
-   - `context/validation-content.md`
+Prompt it to:
+1. Read the three validation reports: `context/validation-coverage.md`, `context/validation-structural.md`, `context/validation-content.md`
 2. Read all skill files (`SKILL.md` and `references/`) so it can fix issues
 3. For each FAIL or MISSING finding:
-   - If the fix is straightforward (trimming line count, adding missing metadata, removing unnecessary files, adding missing coverage), fix it directly in the skill files
+   - If the fix is straightforward (trimming line count, adding metadata, removing unnecessary files, adding missing coverage), fix it directly in the skill files
    - If a fix requires judgment calls that could change content significantly, flag it for manual review
 4. Re-check fixed items to confirm they now pass
 5. Write `agent-validation-log.md` to the context directory with this format:
@@ -128,13 +103,6 @@ The reporter's prompt should instruct it to:
 ```
 
 6. Delete the three temporary validation report files when done
-7. Use TaskUpdate to mark its task as completed
-
-Wait for the reporter to finish, then proceed to cleanup.
-
-## Phase 4: Clean Up
-
-Send shutdown requests to all teammates via **SendMessage** (type: `shutdown_request`), then clean up with **TeamDelete**.
 
 ## Output Files
 - `agent-validation-log.md` in the context directory
