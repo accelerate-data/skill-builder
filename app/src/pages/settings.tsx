@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react"
 import { invoke } from "@tauri-apps/api/core"
-import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "sonner"
 import { Loader2, Eye, EyeOff, Save, CheckCircle2, XCircle, ExternalLink, FolderOpen } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -18,11 +17,16 @@ import type { AppSettings } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
 import { checkNode, type NodeStatus } from "@/lib/tauri"
 
+const MODEL_OPTIONS = [
+  { value: "sonnet", label: "Claude Sonnet 4.5", description: "Fast and capable" },
+  { value: "haiku", label: "Claude Haiku 4.5", description: "Fastest, lower cost" },
+  { value: "opus", label: "Claude Opus 4.6", description: "Most capable" },
+] as const
+
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<AppSettings>({
-    anthropic_api_key: null,
-    workspace_path: null,
-  })
+  const [apiKey, setApiKey] = useState<string | null>(null)
+  const [workspacePath, setWorkspacePath] = useState<string | null>(null)
+  const [preferredModel, setPreferredModel] = useState<string>("sonnet")
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -40,7 +44,9 @@ export default function SettingsPage() {
         try {
           const result = await invoke<AppSettings>("get_settings")
           if (!cancelled) {
-            setSettings(result)
+            setApiKey(result.anthropic_api_key)
+            setWorkspacePath(result.workspace_path)
+            setPreferredModel(result.preferred_model || "sonnet")
             setLoading(false)
           }
           return
@@ -71,26 +77,26 @@ export default function SettingsPage() {
     check()
   }, [])
 
-  const handleBrowseFolder = async () => {
-    const selected = await open({ directory: true, title: "Select workspace folder" })
-    if (selected) {
-      setSettings((s) => ({ ...s, workspace_path: selected }))
-    }
-  }
-
   const handleSave = async () => {
     setSaving(true)
     setSaved(false)
     try {
-      await invoke("save_settings", { settings })
+      await invoke("save_settings", {
+        settings: {
+          anthropic_api_key: apiKey,
+          workspace_path: workspacePath,
+          preferred_model: preferredModel,
+        },
+      })
       setSaved(true)
       setSaving(false)
-      setTimeout(() => setSaved(false), 3000)
+      setTimeout(() => setSaved(false), 1000)
 
       // Sync Zustand store so other pages see updated settings
       setStoreSettings({
-        anthropicApiKey: settings.anthropic_api_key,
-        workspacePath: settings.workspace_path,
+        anthropicApiKey: apiKey,
+        workspacePath,
+        preferredModel,
       })
 
       toast.success("Settings saved")
@@ -103,14 +109,14 @@ export default function SettingsPage() {
   }
 
   const handleTestApiKey = async () => {
-    if (!settings.anthropic_api_key) {
+    if (!apiKey) {
       toast.error("Enter an API key first")
       return
     }
     setTesting(true)
     setApiKeyValid(null)
     try {
-      await invoke("test_api_key", { apiKey: settings.anthropic_api_key })
+      await invoke("test_api_key", { apiKey })
       setApiKeyValid(true)
       toast.success("API key is valid")
     } catch (err) {
@@ -151,13 +157,8 @@ export default function SettingsPage() {
                   id="api-key"
                   type={showApiKey ? "text" : "password"}
                   placeholder="sk-ant-..."
-                  value={settings.anthropic_api_key || ""}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      anthropic_api_key: e.target.value || null,
-                    }))
-                  }
+                  value={apiKey || ""}
+                  onChange={(e) => setApiKey(e.target.value || null)}
                 />
                 <Button
                   type="button"
@@ -177,7 +178,7 @@ export default function SettingsPage() {
                 variant={apiKeyValid ? "default" : "outline"}
                 size="sm"
                 onClick={handleTestApiKey}
-                disabled={testing || !settings.anthropic_api_key}
+                disabled={testing || !apiKey}
                 className={apiKeyValid ? "bg-green-600 hover:bg-green-700 text-white" : ""}
               >
                 {testing ? (
@@ -194,37 +195,43 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Workspace Folder</CardTitle>
+          <CardTitle>Model</CardTitle>
           <CardDescription>
-            Local directory where skills are created and stored.
+            Choose which Claude model to use for all workflow steps.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+        <CardContent>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="workspace-path">Folder Path</Label>
-            <div className="flex gap-2">
-              <Input
-                id="workspace-path"
-                placeholder="Select a folder..."
-                value={settings.workspace_path || ""}
-                onChange={(e) =>
-                  setSettings((s) => ({
-                    ...s,
-                    workspace_path: e.target.value || null,
-                  }))
-                }
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleBrowseFolder}
-              >
-                <FolderOpen className="size-4" />
-                Browse
-              </Button>
-            </div>
+            <Label htmlFor="model-select">Preferred Model</Label>
+            <select
+              id="model-select"
+              value={preferredModel}
+              onChange={(e) => setPreferredModel(e.target.value)}
+              className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              {MODEL_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label} — {opt.description}
+                </option>
+              ))}
+            </select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Workspace Folder</CardTitle>
+          <CardDescription>
+            Skills and working files are stored in this directory. This is managed automatically.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-2">
+            <FolderOpen className="size-4 text-muted-foreground" />
+            <code className="text-sm text-muted-foreground">
+              {workspacePath || "Not initialized"}
+            </code>
           </div>
         </CardContent>
       </Card>

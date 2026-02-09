@@ -8,7 +8,7 @@
     "dev": "node --loader ts-node/esm agent-runner.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-code": "^2.1.37"
+    "@anthropic-ai/claude-agent-sdk": "^0.2.37"
   },
   "devDependencies": {
     "@types/node": "^22",

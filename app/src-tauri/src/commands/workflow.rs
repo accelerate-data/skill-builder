@@ -8,71 +8,88 @@ use crate::types::{
     WorkflowStateResponse,
 };
 
-const DEFAULT_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"];
+const RESEARCH_TOOLS: &[&str] = &["Read", "Write", "Glob", "Grep"];
+const FULL_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"];
 
-// Explicit model IDs to avoid SDK shorthand resolution issues
-const MODEL_SONNET: &str = "claude-sonnet-4-5-20250929";
-const MODEL_HAIKU: &str = "claude-haiku-4-5-20251001";
-const MODEL_OPUS: &str = "claude-opus-4-6";
+/// Resolve a model shorthand ("sonnet", "haiku", "opus") to a full model ID.
+/// If the input is already a full ID, pass it through unchanged.
+pub fn resolve_model_id(shorthand: &str) -> String {
+    match shorthand {
+        "sonnet" => "claude-sonnet-4-5-20250929".to_string(),
+        "haiku" => "claude-haiku-4-5-20251001".to_string(),
+        "opus" => "claude-opus-4-6".to_string(),
+        other => other.to_string(), // passthrough for full IDs
+    }
+}
 
 fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     match step_id {
         0 => Ok(StepConfig {
             step_id: 0,
             name: "Research Domain Concepts".to_string(),
-            model: MODEL_SONNET.to_string(),
             prompt_template: "01-research-domain-concepts.md".to_string(),
             output_file: "context/clarifications-concepts.md".to_string(),
-            allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 50,
+            allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 15,
+        }),
+        2 => Ok(StepConfig {
+            step_id: 2,
+            name: "Research Patterns".to_string(),
+            prompt_template: "03a-research-business-patterns.md".to_string(),
+            output_file: "context/clarifications-patterns.md".to_string(),
+            allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 15,
         }),
         3 => Ok(StepConfig {
             step_id: 3,
+            name: "Research Data Modeling".to_string(),
+            prompt_template: "03b-research-data-modeling.md".to_string(),
+            output_file: "context/clarifications-data.md".to_string(),
+            allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 15,
+        }),
+        4 => Ok(StepConfig {
+            step_id: 4,
             name: "Merge Clarifications".to_string(),
-            model: MODEL_HAIKU.to_string(),
             prompt_template: "04-merge-clarifications.md".to_string(),
             output_file: "context/clarifications.md".to_string(),
-            allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 30,
-        }),
-        5 => Ok(StepConfig {
-            step_id: 5,
-            name: "Reasoning".to_string(),
-            model: MODEL_OPUS.to_string(),
-            prompt_template: "06-reasoning-agent.md".to_string(),
-            output_file: "context/decisions.md".to_string(),
-            allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 100,
+            allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 15,
         }),
         6 => Ok(StepConfig {
             step_id: 6,
-            name: "Build".to_string(),
-            model: MODEL_SONNET.to_string(),
-            prompt_template: "07-build-agent.md".to_string(),
-            output_file: "SKILL.md".to_string(),
-            allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 80,
+            name: "Reasoning".to_string(),
+            prompt_template: "06-reasoning-agent.md".to_string(),
+            output_file: "context/decisions.md".to_string(),
+            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 100,
         }),
         7 => Ok(StepConfig {
             step_id: 7,
-            name: "Validate".to_string(),
-            model: MODEL_SONNET.to_string(),
-            prompt_template: "08-validate-agent.md".to_string(),
-            output_file: "context/agent-validation-log.md".to_string(),
-            allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 50,
+            name: "Build".to_string(),
+            prompt_template: "07-build-agent.md".to_string(),
+            output_file: "SKILL.md".to_string(),
+            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 80,
         }),
         8 => Ok(StepConfig {
             step_id: 8,
+            name: "Validate".to_string(),
+            prompt_template: "08-validate-agent.md".to_string(),
+            output_file: "context/agent-validation-log.md".to_string(),
+            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 50,
+        }),
+        9 => Ok(StepConfig {
+            step_id: 9,
             name: "Test".to_string(),
-            model: MODEL_SONNET.to_string(),
             prompt_template: "09-test-agent.md".to_string(),
             output_file: "context/test-skill.md".to_string(),
-            allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
         }),
         _ => Err(format!(
-            "Unknown step_id {}. Use run_parallel_agents for step 2.",
+            "Unknown step_id {}. Steps 1, 5, 10 are human/package steps.",
             step_id
         )),
     }
@@ -84,9 +101,10 @@ fn resolve_prompts_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String>
     use tauri::Manager;
 
     // Production: Tauri resource directory
+    // Check for shared-context.md to distinguish real prompts from placeholder dirs
     if let Ok(resource_dir) = app_handle.path().resource_dir() {
         let prompts = resource_dir.join("prompts");
-        if prompts.is_dir() {
+        if prompts.join("shared-context.md").is_file() {
             return Ok(prompts);
         }
     }
@@ -105,7 +123,7 @@ fn resolve_prompts_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String>
     Err("Could not find bundled prompts directory".to_string())
 }
 
-/// Copy bundled agent .md files into `<workspace_path>/agents/`.
+/// Copy bundled prompt .md files into `<workspace_path>/prompts/`.
 /// Creates the directory if it doesn't exist. Overwrites existing files
 /// to keep them in sync with the app version.
 pub fn ensure_workspace_prompts(
@@ -116,9 +134,9 @@ pub fn ensure_workspace_prompts(
     copy_prompts_from(&src_dir, workspace_path)
 }
 
-/// Copy .md files from `src_dir` into `<workspace_path>/agents/`.
+/// Copy .md files from `src_dir` into `<workspace_path>/prompts/`.
 fn copy_prompts_from(src_dir: &Path, workspace_path: &str) -> Result<(), String> {
-    let dest_dir = Path::new(workspace_path).join("agents");
+    let dest_dir = Path::new(workspace_path).join("prompts");
 
     std::fs::create_dir_all(&dest_dir)
         .map_err(|e| format!("Failed to create prompts directory: {}", e))?;
@@ -147,7 +165,7 @@ fn build_prompt(
     domain: &str,
 ) -> String {
     format!(
-        "Read references/shared-context.md and agents/{} and follow the instructions. \
+        "Read prompts/shared-context.md and prompts/{} and follow the instructions. \
          The domain is: {}. The skill name is: {}. \
          The skill directory is: {}/. \
          The context directory (for reading and writing intermediate files) is: {}/context/. \
@@ -162,6 +180,15 @@ fn read_api_key(db: &tauri::State<'_, Db>) -> Result<String, String> {
     settings
         .anthropic_api_key
         .ok_or_else(|| "Anthropic API key not configured".to_string())
+}
+
+fn read_preferred_model(db: &tauri::State<'_, Db>) -> String {
+    let conn = db.0.lock().ok();
+    let model_shorthand = conn
+        .and_then(|c| crate::db::read_settings(&c).ok())
+        .and_then(|s| s.preferred_model)
+        .unwrap_or_else(|| "sonnet".to_string());
+    resolve_model_id(&model_shorthand)
 }
 
 fn make_agent_id(skill_name: &str, label: &str) -> String {
@@ -258,7 +285,7 @@ pub async fn run_review_step(
          1. The file exists and is non-empty\n\
          2. The content is well-structured markdown\n\
          3. The content meaningfully addresses the domain: '{}'\n\
-         4. The content follows the expected format (check references/shared-context.md for format guidelines)\n\
+         4. The content follows the expected format (check prompts/shared-context.md for format guidelines)\n\
          5. The content is substantive (not placeholder or minimal)\n\
          \n\nRespond with EXACTLY one line:\n\
          - If satisfactory: PASS\n\
@@ -269,7 +296,7 @@ pub async fn run_review_step(
 
     let config = SidecarConfig {
         prompt,
-        model: MODEL_HAIKU.to_string(),
+        model: resolve_model_id("haiku"),
         api_key,
         cwd: workspace_path,
         allowed_tools: Some(vec!["Read".to_string(), "Glob".to_string()]),
@@ -303,12 +330,13 @@ pub async fn run_workflow_step(
 
     let step = get_step_config(step_id)?;
     let api_key = read_api_key(&db)?;
+    let model = read_preferred_model(&db);
     let prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain);
     let agent_id = make_agent_id(&skill_name, &format!("step{}", step_id));
 
     let config = SidecarConfig {
         prompt,
-        model: step.model,
+        model,
         api_key,
         cwd: workspace_path,
         allowed_tools: Some(step.allowed_tools),
@@ -338,55 +366,47 @@ pub async fn run_parallel_agents(
         stage_artifacts(&conn, &skill_name, &workspace_path)?;
     }
 
+    let step_a = get_step_config(2)?; // Patterns
+    let step_b = get_step_config(3)?; // Data modeling
     let api_key = read_api_key(&db)?;
-    let tools: Vec<String> = DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect();
+    let model = read_preferred_model(&db);
 
-    let agent_id_a = make_agent_id(&skill_name, "step2a");
-    let agent_id_b = make_agent_id(&skill_name, "step2b");
+    let agent_id_a = make_agent_id(&skill_name, "patterns");
+    let agent_id_b = make_agent_id(&skill_name, "data");
 
     let config_a = SidecarConfig {
-        prompt: build_prompt(
-            "03a-research-business-patterns.md",
-            "context/clarifications-patterns.md",
-            &skill_name,
-            &domain,
-        ),
-        model: MODEL_SONNET.to_string(),
+        prompt: build_prompt(&step_a.prompt_template, &step_a.output_file, &skill_name, &domain),
+        model: model.clone(),
         api_key: api_key.clone(),
         cwd: workspace_path.clone(),
-        allowed_tools: Some(tools.clone()),
-        max_turns: Some(50),
+        allowed_tools: Some(step_a.allowed_tools),
+        max_turns: Some(step_a.max_turns),
         permission_mode: Some("bypassPermissions".to_string()),
         session_id: None,
     };
 
     let config_b = SidecarConfig {
-        prompt: build_prompt(
-            "03b-research-data-modeling.md",
-            "context/clarifications-data.md",
-            &skill_name,
-            &domain,
-        ),
-        model: MODEL_SONNET.to_string(),
+        prompt: build_prompt(&step_b.prompt_template, &step_b.output_file, &skill_name, &domain),
+        model,
         api_key,
         cwd: workspace_path,
-        allowed_tools: Some(tools),
-        max_turns: Some(50),
+        allowed_tools: Some(step_b.allowed_tools),
+        max_turns: Some(step_b.max_turns),
         permission_mode: Some("bypassPermissions".to_string()),
         session_id: None,
     };
 
-    let registry = state.inner().clone();
+    // Spawn both concurrently
+    let registry_a = state.inner().clone();
+    let registry_b = state.inner().clone();
     let app_a = app.clone();
-
+    let app_b = app.clone();
     let id_a = agent_id_a.clone();
     let id_b = agent_id_b.clone();
-    let reg_a = registry.clone();
-    let reg_b = registry.clone();
 
     let (res_a, res_b) = tokio::join!(
-        sidecar::spawn_sidecar(id_a, config_a, reg_a, app_a),
-        sidecar::spawn_sidecar(id_b, config_b, reg_b, app),
+        sidecar::spawn_sidecar(id_a, config_a, registry_a, app_a),
+        sidecar::spawn_sidecar(id_b, config_b, registry_b, app_b)
     );
 
     res_a?;
@@ -541,18 +561,16 @@ pub fn save_workflow_state(
 fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
         0 => vec!["context/clarifications-concepts.md"],
-        1 => vec![], // Human review — no output files to delete
-        2 => vec![
-            "context/clarifications-patterns.md",
-            "context/clarifications-data.md",
-        ],
-        3 => vec!["context/clarifications.md"],
-        4 => vec![], // Human review
-        5 => vec!["context/decisions.md"],
-        6 => vec!["SKILL.md"], // Also has references/ dir
-        7 => vec!["context/agent-validation-log.md"],
-        8 => vec!["context/test-skill.md"],
-        9 => vec![], // Package step — .skill file
+        1 => vec![],  // Human review
+        2 => vec!["context/clarifications-patterns.md"],
+        3 => vec!["context/clarifications-data.md"],
+        4 => vec!["context/clarifications.md"],
+        5 => vec![],  // Human review
+        6 => vec!["context/decisions.md"],
+        7 => vec!["SKILL.md"], // Also has references/ dir
+        8 => vec!["context/agent-validation-log.md"],
+        9 => vec!["context/test-skill.md"],
+        10 => vec![], // Package step — .skill file
         _ => vec![],
     }
 }
@@ -565,7 +583,7 @@ fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id
         return;
     }
 
-    for step_id in from_step_id..=9 {
+    for step_id in from_step_id..=10 {
         for file in get_step_output_files(step_id) {
             let path = skill_dir.join(file);
             if path.exists() {
@@ -573,16 +591,16 @@ fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id
             }
         }
 
-        // Step 6 also produces a references/ directory
-        if step_id == 6 {
+        // Step 7 also produces a references/ directory
+        if step_id == 7 {
             let refs_dir = skill_dir.join("references");
             if refs_dir.is_dir() {
                 let _ = std::fs::remove_dir_all(&refs_dir);
             }
         }
 
-        // Step 9 produces a .skill zip
-        if step_id == 9 {
+        // Step 10 produces a .skill zip
+        if step_id == 10 {
             let skill_file = skill_dir.join(format!("{}.skill", skill_name));
             if skill_file.exists() {
                 let _ = std::fs::remove_file(&skill_file);
@@ -651,8 +669,8 @@ pub fn capture_step_artifacts(
         }
     }
 
-    // Step 6 (Build): also walk references/ directory
-    if step_id == 6 {
+    // Step 7 (Build): also walk references/ directory
+    if step_id == 7 {
         let refs_dir = skill_dir.join("references");
         if refs_dir.is_dir() {
             for (relative, content) in walk_md_files(&refs_dir, "references")? {
@@ -707,31 +725,30 @@ mod tests {
 
     #[test]
     fn test_get_step_config_valid_steps() {
-        let valid_steps = [0, 3, 5, 6, 7, 8];
+        let valid_steps = [0, 2, 3, 4, 6, 7, 8, 9];
         for step_id in valid_steps {
             let config = get_step_config(step_id);
             assert!(config.is_ok(), "Step {} should be valid", step_id);
             let config = config.unwrap();
             assert_eq!(config.step_id, step_id);
             assert!(!config.prompt_template.is_empty());
-            assert!(!config.model.is_empty());
         }
     }
 
     #[test]
     fn test_get_step_config_invalid_step() {
-        assert!(get_step_config(1).is_err());
-        assert!(get_step_config(2).is_err());
-        assert!(get_step_config(4).is_err());
+        assert!(get_step_config(1).is_err());  // Human review
+        assert!(get_step_config(5).is_err());  // Human review
+        assert!(get_step_config(10).is_err()); // Package step
         assert!(get_step_config(99).is_err());
     }
 
     #[test]
-    fn test_get_step_config_models() {
-        assert_eq!(get_step_config(0).unwrap().model, MODEL_SONNET);
-        assert_eq!(get_step_config(3).unwrap().model, MODEL_HAIKU);
-        assert_eq!(get_step_config(5).unwrap().model, MODEL_OPUS);
-        assert_eq!(get_step_config(6).unwrap().model, MODEL_SONNET);
+    fn test_resolve_model_id() {
+        assert_eq!(resolve_model_id("sonnet"), "claude-sonnet-4-5-20250929");
+        assert_eq!(resolve_model_id("haiku"), "claude-haiku-4-5-20251001");
+        assert_eq!(resolve_model_id("opus"), "claude-opus-4-6");
+        assert_eq!(resolve_model_id("claude-sonnet-4-5-20250929"), "claude-sonnet-4-5-20250929");
     }
 
     #[test]
@@ -742,8 +759,8 @@ mod tests {
             "my-skill",
             "e-commerce",
         );
-        assert!(prompt.contains("references/shared-context.md"));
-        assert!(prompt.contains("agents/01-research-domain-concepts.md"));
+        assert!(prompt.contains("prompts/shared-context.md"));
+        assert!(prompt.contains("prompts/01-research-domain-concepts.md"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
         assert!(prompt.contains("my-skill/context/clarifications-concepts.md"));
@@ -887,18 +904,17 @@ mod tests {
 
     #[test]
     fn test_resolve_prompts_dir_dev_mode() {
-        // In dev/test mode, CARGO_MANIFEST_DIR is set and the repo root has agents/
+        // In dev/test mode, CARGO_MANIFEST_DIR is set and the repo root has prompts/
         let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(|p| p.parent())
-            .map(|p| p.join("agents"));
+            .map(|p| p.join("prompts"));
         assert!(dev_path.is_some());
-        let agents_dir = dev_path.unwrap();
-        assert!(agents_dir.is_dir(), "Repo root agents/ should exist");
-        let references_dir = agents_dir.parent().unwrap().join("references");
+        let prompts_dir = dev_path.unwrap();
+        assert!(prompts_dir.is_dir(), "Repo root prompts/ should exist");
         assert!(
-            references_dir.join("shared-context.md").exists(),
-            "shared-context.md should exist in repo references/"
+            prompts_dir.join("shared-context.md").exists(),
+            "shared-context.md should exist in repo prompts/"
         );
     }
 
@@ -910,7 +926,7 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
         std::fs::create_dir_all(skill_dir.join("references")).unwrap();
 
-        // Create output files for steps 0, 2, 3, 5, 6
+        // Create output files for steps 0, 2, 3, 4, 6, 7
         std::fs::write(
             skill_dir.join("context/clarifications-concepts.md"),
             "step0",
@@ -918,24 +934,28 @@ mod tests {
         .unwrap();
         std::fs::write(
             skill_dir.join("context/clarifications-patterns.md"),
-            "step2a",
+            "step2",
         )
         .unwrap();
-        std::fs::write(skill_dir.join("context/clarifications.md"), "step3").unwrap();
-        std::fs::write(skill_dir.join("context/decisions.md"), "step5").unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), "step6").unwrap();
+        std::fs::write(
+            skill_dir.join("context/clarifications-data.md"),
+            "step3",
+        )
+        .unwrap();
+        std::fs::write(skill_dir.join("context/clarifications.md"), "step4").unwrap();
+        std::fs::write(skill_dir.join("context/decisions.md"), "step6").unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "step7").unwrap();
         std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
 
-        // Reset from step 3 onwards — steps 0, 2 should be preserved
-        delete_step_output_files(workspace, "my-skill", 3);
+        // Reset from step 4 onwards — steps 0, 2, 3 should be preserved
+        delete_step_output_files(workspace, "my-skill", 4);
 
-        // Steps 0 and 2 outputs should still exist
+        // Steps 0, 2, 3 outputs should still exist
         assert!(skill_dir.join("context/clarifications-concepts.md").exists());
-        assert!(skill_dir
-            .join("context/clarifications-patterns.md")
-            .exists());
+        assert!(skill_dir.join("context/clarifications-patterns.md").exists());
+        assert!(skill_dir.join("context/clarifications-data.md").exists());
 
-        // Steps 3+ outputs should be deleted
+        // Steps 4+ outputs should be deleted
         assert!(!skill_dir.join("context/clarifications.md").exists());
         assert!(!skill_dir.join("context/decisions.md").exists());
         assert!(!skill_dir.join("SKILL.md").exists());

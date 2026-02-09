@@ -7,6 +7,7 @@ export function makeAppSettings(overrides?: Partial<AppSettings>): AppSettings {
   return {
     anthropic_api_key: null,
     workspace_path: null,
+    preferred_model: null,
     ...overrides,
   };
 }

@@ -5,7 +5,6 @@ export interface WorkflowStep {
   name: string;
   description: string;
   status: "pending" | "in_progress" | "waiting_for_user" | "completed" | "error";
-  agentModel?: string;
 }
 
 interface WorkflowState {
@@ -14,6 +13,7 @@ interface WorkflowState {
   currentStep: number;
   steps: WorkflowStep[];
   isRunning: boolean;
+  hydrated: boolean;
 
   initWorkflow: (skillName: string, domain: string) => void;
   setCurrentStep: (step: number) => void;
@@ -21,6 +21,7 @@ interface WorkflowState {
   setRunning: (running: boolean) => void;
   rerunFromStep: (stepId: number) => void;
   loadWorkflowState: (completedStepIds: number[]) => void;
+  setHydrated: (hydrated: boolean) => void;
   reset: () => void;
 }
 
@@ -30,7 +31,7 @@ const defaultSteps: WorkflowStep[] = [
     name: "Research Domain Concepts",
     description: "Research key concepts, terminology, and frameworks for the domain",
     status: "pending",
-    agentModel: "sonnet",
+
   },
   {
     id: 1,
@@ -40,54 +41,61 @@ const defaultSteps: WorkflowStep[] = [
   },
   {
     id: 2,
-    name: "Research Patterns & Data Modeling",
-    description: "Research business patterns and data modeling in parallel",
+    name: "Research Patterns",
+    description: "Research business patterns and workflows for the domain",
     status: "pending",
-    agentModel: "sonnet",
+
   },
   {
     id: 3,
-    name: "Merge Clarifications",
-    description: "Deduplicate and merge clarification questions",
+    name: "Research Data Modeling",
+    description: "Research data structures, relationships, and modeling for the domain",
     status: "pending",
-    agentModel: "haiku",
+
   },
   {
     id: 4,
+    name: "Merge Clarifications",
+    description: "Deduplicate and merge clarification questions",
+    status: "pending",
+
+  },
+  {
+    id: 5,
     name: "Human Review",
     description: "Review and answer merged clarification questions",
     status: "pending",
   },
   {
-    id: 5,
+    id: 6,
     name: "Reasoning",
     description: "Analyze responses for implications, gaps, and contradictions",
     status: "pending",
-    agentModel: "opus",
-  },
-  {
-    id: 6,
-    name: "Build Skill",
-    description: "Generate skill files from decisions",
-    status: "pending",
-    agentModel: "sonnet",
+
   },
   {
     id: 7,
-    name: "Validate",
-    description: "Validate skill against best practices",
+    name: "Build Skill",
+    description: "Generate skill files from decisions",
     status: "pending",
-    agentModel: "sonnet",
+
   },
   {
     id: 8,
-    name: "Test",
-    description: "Generate and evaluate test prompts",
+    name: "Validate",
+    description: "Validate skill against best practices",
     status: "pending",
-    agentModel: "sonnet",
+
   },
   {
     id: 9,
+    name: "Test",
+    description: "Generate and evaluate test prompts",
+    status: "pending",
+
+  },
+  {
+    id: 10,
     name: "Package",
     description: "Package skill into a deployable .skill file",
     status: "pending",
@@ -100,6 +108,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
   currentStep: 0,
   steps: defaultSteps.map((s) => ({ ...s })),
   isRunning: false,
+  hydrated: false,
 
   initWorkflow: (skillName, domain) =>
     set({
@@ -108,6 +117,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
+      hydrated: false,
     }),
 
   setCurrentStep: (step) => set({ currentStep: step }),
@@ -139,8 +149,11 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       return {
         steps,
         currentStep: firstIncomplete ? firstIncomplete.id : state.steps.length - 1,
+        hydrated: true,
       };
     }),
+
+  setHydrated: (hydrated) => set({ hydrated }),
 
   reset: () =>
     set({
@@ -149,5 +162,6 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
+      hydrated: false,
     }),
 }));

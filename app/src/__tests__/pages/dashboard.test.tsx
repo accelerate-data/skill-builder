@@ -38,6 +38,7 @@ import DashboardPage from "@/pages/dashboard";
 const defaultSettings: AppSettings = {
   anthropic_api_key: "sk-ant-test",
   workspace_path: "/home/user/workspace",
+  preferred_model: "sonnet",
 };
 
 const sampleSkills: SkillSummary[] = [
@@ -61,17 +62,14 @@ function setupMocks(
   overrides: Partial<{
     settings: Partial<AppSettings>;
     skills: SkillSummary[];
-    workspaceExists: boolean;
   }> = {}
 ) {
   const settings = { ...defaultSettings, ...overrides.settings };
   const skills = overrides.skills ?? sampleSkills;
-  const workspaceExists = overrides.workspaceExists ?? true;
 
   mockInvokeCommands({
     get_settings: settings,
     list_skills: skills,
-    check_workspace_path: workspaceExists,
     create_skill: undefined,
     delete_skill: undefined,
   });
@@ -87,7 +85,6 @@ describe("DashboardPage", () => {
     // Make get_settings resolve immediately but list_skills hang
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
-      if (cmd === "check_workspace_path") return Promise.resolve(true);
       // list_skills hangs forever
       return new Promise(() => {});
     });
@@ -118,7 +115,7 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("shows empty state when no skills and workspace is set", async () => {
+  it("shows empty state when no skills", async () => {
     setupMocks({ skills: [] });
     render(<DashboardPage />);
 
@@ -128,34 +125,6 @@ describe("DashboardPage", () => {
         screen.getByText("Create your first skill to get started.")
       ).toBeInTheDocument();
     });
-  });
-
-  it("shows empty state with settings link when no workspace", async () => {
-    setupMocks({ settings: { workspace_path: null }, skills: [] });
-    render(<DashboardPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("No skills yet")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText(
-        "Configure a workspace path in Settings to get started."
-      )
-    ).toBeInTheDocument();
-  });
-
-  it("shows workspace warning when path does not exist on disk", async () => {
-    setupMocks({ workspaceExists: false });
-    render(<DashboardPage />);
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Workspace folder not found")
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText(/configured workspace path no longer exists/)
-    ).toBeInTheDocument();
   });
 
   it("navigates to skill page when Continue is clicked", async () => {
@@ -189,18 +158,5 @@ describe("DashboardPage", () => {
     expect(
       screen.getByRole("button", { name: /New Skill/i })
     ).toBeInTheDocument();
-  });
-
-  it("does not show New Skill button when no workspace", async () => {
-    setupMocks({ settings: { workspace_path: null }, skills: [] });
-    render(<DashboardPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("No skills yet")).toBeInTheDocument();
-    });
-
-    expect(
-      screen.queryByRole("button", { name: /New Skill/i })
-    ).not.toBeInTheDocument();
   });
 });

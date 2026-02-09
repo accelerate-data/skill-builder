@@ -120,7 +120,7 @@ Requires a **GitHub OAuth App** (not a GitHub App). Created at `github.com/setti
 
 Each "agent" becomes a **Claude Messages API call with tools**:
 
-1. Backend loads prompt template from bundled `agents/*.md` files
+1. Backend loads prompt template from bundled `prompts/*.md` files
 2. Constructs API payload: `system` = shared-context + agent prompt, `user` = domain + file paths
 3. Provides `read_file` and `write_file` tools so Claude can read inputs and write outputs
 4. Runs a **tool execution loop**: Claude requests tool calls → backend executes → sends results back → repeat until final text response
@@ -211,7 +211,7 @@ Two required fields + optional overrides:
 - README.md at repo root, auto-generated on init
 - ALL files are git tracked (including `.skill` archives)
 
-**Markdown parsing contract**: The Rust backend parses clarification files into structured `ClarificationQuestion` objects (id, title, question text, choices with rationale, recommendation, answer) using the format defined in `references/shared-context.md`. Frontend renders these as form fields. On submission, serializes back to the exact markdown format. Includes "raw markdown" fallback for questions that fail to parse.
+**Markdown parsing contract**: The Rust backend parses clarification files into structured `ClarificationQuestion` objects (id, title, question text, choices with rationale, recommendation, answer) using the format defined in `prompts/shared-context.md`. Frontend renders these as form fields. On submission, serializes back to the exact markdown format. Includes "raw markdown" fallback for questions that fail to parse.
 
 ---
 
@@ -342,8 +342,8 @@ skill-builder-app/
 
 ## Critical Files to Reference
 
-- `references/shared-context.md` — defines all markdown formats (clarifications, decisions, workflow-state) that the Rust parser must handle
-- `CLAUDE-APP.md` — complete workflow state machine (step ordering, transitions, gates) to replicate in Rust
-- `agents/reasoning.md` — most complex agent (multi-turn with follow-ups), defines the conversation protocol
-- `agents/build.md` — defines skill output structure (SKILL.md + references/)
-- `agents/validate.md` — references external URL, needs web-fetch tool support
+- `prompts/shared-context.md` — defines all markdown formats (clarifications, decisions, workflow-state) that the Rust parser must handle
+- `CLAUDE.md` — complete workflow state machine (step ordering, transitions, gates) to replicate in Rust
+- `prompts/06-reasoning-agent.md` — most complex agent (multi-turn with follow-ups), defines the conversation protocol
+- `prompts/07-build-agent.md` — defines skill output structure (SKILL.md + references/)
+- `prompts/08-validate-agent.md` — references external URL, needs web-fetch tool support

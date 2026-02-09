@@ -71,11 +71,6 @@ export function WorkflowSidebar({
                   >
                     {step.id + 1}. {step.name}
                   </span>
-                  {step.agentModel && (
-                    <span className="text-xs text-muted-foreground">
-                      {step.agentModel}
-                    </span>
-                  )}
                 </span>
               </button>
             </li>

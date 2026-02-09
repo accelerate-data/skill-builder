@@ -9,20 +9,11 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
 
 #[tauri::command]
 pub fn save_settings(
-    app: tauri::AppHandle,
     db: tauri::State<'_, Db>,
     settings: AppSettings,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     crate::db::write_settings(&conn, &settings)?;
-
-    // Copy bundled prompts into the workspace so agents can read them
-    if let Some(ref workspace_path) = settings.workspace_path {
-        if !workspace_path.is_empty() {
-            super::workflow::ensure_workspace_prompts(&app, workspace_path)?;
-        }
-    }
-
     Ok(())
 }
 

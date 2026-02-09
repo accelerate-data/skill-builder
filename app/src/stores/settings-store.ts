@@ -3,6 +3,7 @@ import { create } from "zustand";
 interface SettingsState {
   anthropicApiKey: string | null;
   workspacePath: string | null;
+  preferredModel: string | null;
   isConfigured: boolean;
   setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset">>) => void;
   reset: () => void;
@@ -11,6 +12,7 @@ interface SettingsState {
 const initialState = {
   anthropicApiKey: null,
   workspacePath: null,
+  preferredModel: null,
   isConfigured: false,
 };
 

@@ -12,6 +12,8 @@ import {
   Pencil,
   Search,
   Terminal,
+  Globe,
+  GitBranch,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,18 +33,26 @@ function formatElapsed(ms: number): string {
   return `${secs}s`;
 }
 
-function getToolIcon(content: string) {
-  const lower = content.toLowerCase();
-  if (lower.includes("reading") || lower.includes("read")) {
-    return <FileText className="size-3.5" />;
+function getToolIcon(toolName: string) {
+  switch (toolName) {
+    case "Read":
+      return <FileText className="size-3.5" />;
+    case "Write":
+    case "Edit":
+    case "NotebookEdit":
+      return <Pencil className="size-3.5" />;
+    case "Grep":
+    case "Glob":
+    case "Search":
+      return <Search className="size-3.5" />;
+    case "WebSearch":
+    case "WebFetch":
+      return <Globe className="size-3.5" />;
+    case "Task":
+      return <GitBranch className="size-3.5" />;
+    default:
+      return <Terminal className="size-3.5" />;
   }
-  if (lower.includes("writing") || lower.includes("write") || lower.includes("edit")) {
-    return <Pencil className="size-3.5" />;
-  }
-  if (lower.includes("search") || lower.includes("grep") || lower.includes("glob")) {
-    return <Search className="size-3.5" />;
-  }
-  return <Terminal className="size-3.5" />;
 }
 
 function isToolUseMessage(message: AgentMessage): boolean {
@@ -54,7 +64,16 @@ function isToolUseMessage(message: AgentMessage): boolean {
   return msgContent?.content?.some((b) => b.type === "tool_use") ?? false;
 }
 
-function getToolSummary(message: AgentMessage): string | null {
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max) + "..." : s;
+}
+
+interface ToolSummaryResult {
+  toolName: string;
+  summary: string;
+}
+
+function getToolSummary(message: AgentMessage): ToolSummaryResult | null {
   const raw = message.raw;
   const msgContent = (raw as Record<string, unknown>).message as
     | { content?: Array<{ type: string; name?: string; input?: Record<string, unknown> }> }
@@ -65,26 +84,57 @@ function getToolSummary(message: AgentMessage): string | null {
   const name = toolBlock.name;
   const input = toolBlock.input;
 
+  const result = (summary: string): ToolSummaryResult => ({ toolName: name, summary });
+
   if (name === "Read" && input?.file_path) {
     const path = String(input.file_path).split("/").pop();
-    return `Reading ${path}...`;
+    return result(`Reading ${path}`);
   }
   if (name === "Write" && input?.file_path) {
     const path = String(input.file_path).split("/").pop();
-    return `Writing ${path}...`;
+    return result(`Writing ${path}`);
   }
   if (name === "Edit" && input?.file_path) {
     const path = String(input.file_path).split("/").pop();
-    return `Editing ${path}...`;
+    return result(`Editing ${path}`);
   }
   if (name === "Bash" && input?.command) {
-    const cmd = String(input.command).slice(0, 60);
-    return `Running: ${cmd}${String(input.command).length > 60 ? "..." : ""}`;
+    return result(`Running: ${truncate(String(input.command), 80)}`);
   }
-  if (name === "Grep") return "Searching files...";
-  if (name === "Glob") return "Finding files...";
+  if (name === "Grep" && input?.pattern) {
+    const pattern = truncate(String(input.pattern), 40);
+    const path = input.path ? ` in ${String(input.path).split("/").pop()}` : "";
+    return result(`Grep: "${pattern}"${path}`);
+  }
+  if (name === "Glob" && input?.pattern) {
+    return result(`Glob: ${truncate(String(input.pattern), 50)}`);
+  }
+  if (name === "WebSearch" && input?.query) {
+    return result(`Web search: "${truncate(String(input.query), 60)}"`);
+  }
+  if (name === "WebFetch" && input?.url) {
+    return result(`Fetching: ${truncate(String(input.url), 70)}`);
+  }
+  if (name === "Task" && input?.description) {
+    return result(`Sub-agent: ${truncate(String(input.description), 60)}`);
+  }
+  if (name === "NotebookEdit" && input?.notebook_path) {
+    const path = String(input.notebook_path).split("/").pop();
+    return result(`Editing notebook ${path}`);
+  }
+  if (name === "LS" && input?.path) {
+    return result(`Listing ${truncate(String(input.path), 50)}`);
+  }
 
-  return `${name}...`;
+  // Fallback: show tool name with first string input value for context
+  if (input) {
+    for (const val of Object.values(input)) {
+      if (typeof val === "string" && val.length > 0) {
+        return result(`${name}: ${truncate(val, 60)}`);
+      }
+    }
+  }
+  return result(name);
 }
 
 function MessageItem({ message }: { message: AgentMessage }) {
@@ -111,12 +161,12 @@ function MessageItem({ message }: { message: AgentMessage }) {
 
   if (message.type === "assistant") {
     if (isToolUseMessage(message)) {
-      const summary = getToolSummary(message);
-      if (summary) {
+      const tool = getToolSummary(message);
+      if (tool) {
         return (
           <div className="flex items-center gap-2 px-1 py-0.5 text-xs text-muted-foreground">
-            {getToolIcon(summary)}
-            <span>{summary}</span>
+            {getToolIcon(tool.toolName)}
+            <span>{tool.summary}</span>
           </div>
         );
       }
@@ -124,7 +174,7 @@ function MessageItem({ message }: { message: AgentMessage }) {
 
     if (message.content) {
       return (
-        <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+        <div className="markdown-body max-w-none text-sm">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {message.content}
           </ReactMarkdown>

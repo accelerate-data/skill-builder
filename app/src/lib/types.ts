@@ -1,6 +1,7 @@
 export interface AppSettings {
   anthropic_api_key: string | null
   workspace_path: string | null
+  preferred_model: string | null
 }
 
 export interface SkillSummary {
@@ -23,7 +24,6 @@ export interface WorkflowStep {
   name: string
   description: string
   status: "pending" | "in_progress" | "waiting_for_user" | "completed" | "error"
-  agentModel?: string
 }
 
 export interface ParallelAgentResult {

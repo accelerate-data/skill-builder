@@ -16,6 +16,7 @@ export function AppLayout() {
       setSettings({
         anthropicApiKey: s.anthropic_api_key,
         workspacePath: s.workspace_path,
+        preferredModel: s.preferred_model,
       });
     }).catch(() => {
       // Settings may not exist yet
