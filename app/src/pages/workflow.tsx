@@ -46,19 +46,21 @@ import {
 interface StepConfig {
   type: "agent" | "human" | "package" | "reasoning" | "parallel";
   outputFiles?: string[];
+  /** Default model shorthand for display (actual model comes from backend settings) */
+  model?: string;
 }
 
 const STEP_CONFIGS: Record<number, StepConfig> = {
-  0: { type: "agent", outputFiles: ["context/clarifications-concepts.md"] },
+  0: { type: "agent", outputFiles: ["context/clarifications-concepts.md"], model: "sonnet" },
   1: { type: "human" },
-  2: { type: "parallel", outputFiles: ["context/clarifications-patterns.md", "context/clarifications-data.md"] },
-  3: { type: "parallel", outputFiles: ["context/clarifications-data.md"] }, // Run as part of step 2
-  4: { type: "agent", outputFiles: ["context/clarifications.md"] },
+  2: { type: "parallel", outputFiles: ["context/clarifications-patterns.md", "context/clarifications-data.md"], model: "sonnet" },
+  3: { type: "parallel", outputFiles: ["context/clarifications-data.md"], model: "sonnet" },
+  4: { type: "agent", outputFiles: ["context/clarifications.md"], model: "haiku" },
   5: { type: "human" },
-  6: { type: "reasoning", outputFiles: ["context/decisions.md"] },
-  7: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"] },
-  8: { type: "agent", outputFiles: ["context/agent-validation-log.md"] },
-  9: { type: "agent", outputFiles: ["context/test-skill.md"] },
+  6: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
+  7: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
+  8: { type: "agent", outputFiles: ["context/agent-validation-log.md"], model: "sonnet" },
+  9: { type: "agent", outputFiles: ["context/test-skill.md"], model: "sonnet" },
   10: { type: "package" },
 };
 
@@ -295,7 +297,7 @@ export default function WorkflowPage() {
         domain,
         workspacePath
       );
-      agentStartRun(agentId, "agent");
+      agentStartRun(agentId, stepConfig?.model ?? "sonnet");
     } catch (err) {
       updateStepStatus(currentStep, "error");
       setRunning(false);
@@ -317,8 +319,8 @@ export default function WorkflowPage() {
       setRunning(true);
 
       const result = await runParallelAgents(skillName, domain, workspacePath);
-      agentStartRun(result.agent_id_a, "agent");
-      agentStartRun(result.agent_id_b, "agent");
+      agentStartRun(result.agent_id_a, STEP_CONFIGS[2]?.model ?? "sonnet");
+      agentStartRun(result.agent_id_b, STEP_CONFIGS[3]?.model ?? "sonnet");
       // Clear activeAgentId so the single-agent watcher doesn't interfere —
       // parallel agents are tracked exclusively via parallelAgentIds
       setActiveAgent(null);

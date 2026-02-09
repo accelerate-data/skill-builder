@@ -21,7 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { useAgentStore, type AgentMessage } from "@/stores/agent-store";
+import { useAgentStore, type AgentMessage, formatModelName } from "@/stores/agent-store";
 import { cancelAgent } from "@/lib/tauri";
 
 function formatElapsed(ms: number): string {
@@ -277,7 +277,7 @@ export function AgentOutputPanel({ agentId, onPause }: AgentOutputPanelProps) {
             {statusLabel}
           </Badge>
           <Badge variant="secondary" className="text-xs">
-            {run.model}
+            {formatModelName(run.model)}
           </Badge>
           <Badge variant="secondary" className="gap-1 text-xs">
             <Clock className="size-3" />

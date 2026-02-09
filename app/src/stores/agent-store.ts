@@ -1,5 +1,16 @@
 import { create } from "zustand";
 
+/** Map model IDs and shorthands to human-readable display names. */
+export function formatModelName(model: string): string {
+  const lower = model.toLowerCase();
+  if (lower.includes("opus")) return "Opus";
+  if (lower.includes("sonnet")) return "Sonnet";
+  if (lower.includes("haiku")) return "Haiku";
+  // Already a readable name or unknown — capitalize first letter
+  if (model.length > 0) return model.charAt(0).toUpperCase() + model.slice(1);
+  return model;
+}
+
 export interface AgentMessage {
   type: string;
   content?: string;
@@ -78,12 +89,17 @@ export const useAgentStore = create<AgentState>((set) => ({
         }
       }
 
-      // Extract session_id from init messages
+      // Extract session_id and model from init messages
       let sessionId = run.sessionId;
+      let model = run.model;
       if (message.type === "system" && (raw as Record<string, unknown>)?.subtype === "init") {
         const sid = (raw as Record<string, unknown>)?.session_id;
         if (typeof sid === "string") {
           sessionId = sid;
+        }
+        const initModel = (raw as Record<string, unknown>)?.model;
+        if (typeof initModel === "string" && initModel.length > 0) {
+          model = initModel;
         }
       }
 
@@ -92,6 +108,7 @@ export const useAgentStore = create<AgentState>((set) => ({
           ...state.runs,
           [agentId]: {
             ...run,
+            model,
             messages: [...run.messages, message],
             tokenUsage,
             totalCost,

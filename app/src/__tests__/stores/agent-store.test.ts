@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { useAgentStore, type AgentMessage } from "@/stores/agent-store";
+import { useAgentStore, type AgentMessage, formatModelName } from "@/stores/agent-store";
 
 describe("useAgentStore", () => {
   beforeEach(() => {
@@ -191,6 +191,28 @@ describe("useAgentStore", () => {
     expect(useAgentStore.getState().activeAgentId).toBeNull();
   });
 
+  it("addMessage with system init extracts model from raw", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    const initMsg: AgentMessage = {
+      type: "system",
+      content: undefined,
+      raw: {
+        type: "system",
+        subtype: "init",
+        session_id: "sess-123",
+        model: "claude-sonnet-4-5-20250929",
+      },
+      timestamp: Date.now(),
+    };
+
+    useAgentStore.getState().addMessage("agent-1", initMsg);
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.model).toBe("claude-sonnet-4-5-20250929");
+    expect(run.sessionId).toBe("sess-123");
+  });
+
   it("multiple runs are independent", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
     useAgentStore.getState().startRun("agent-2", "opus");
@@ -209,5 +231,23 @@ describe("useAgentStore", () => {
     expect(state.runs["agent-1"].status).toBe("running");
     expect(state.runs["agent-2"].messages).toHaveLength(0);
     expect(state.runs["agent-2"].status).toBe("completed");
+  });
+});
+
+describe("formatModelName", () => {
+  it("maps full model IDs to friendly names", () => {
+    expect(formatModelName("claude-sonnet-4-5-20250929")).toBe("Sonnet");
+    expect(formatModelName("claude-haiku-4-5-20251001")).toBe("Haiku");
+    expect(formatModelName("claude-opus-4-6")).toBe("Opus");
+  });
+
+  it("maps shorthand names to friendly names", () => {
+    expect(formatModelName("sonnet")).toBe("Sonnet");
+    expect(formatModelName("haiku")).toBe("Haiku");
+    expect(formatModelName("opus")).toBe("Opus");
+  });
+
+  it("capitalizes unknown model names", () => {
+    expect(formatModelName("custom")).toBe("Custom");
   });
 });
