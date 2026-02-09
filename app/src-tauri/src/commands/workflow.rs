@@ -163,15 +163,31 @@ fn build_prompt(
     output_file: &str,
     skill_name: &str,
     domain: &str,
+    workspace_path: &str,
 ) -> String {
+    let base = Path::new(workspace_path);
+    let skill_dir = base.join(skill_name);
+    let context_dir = skill_dir.join("context");
+    let skill_output_dir = skill_dir.join("skill");
+    let agents_file = base.join("agents").join(prompt_file);
+    let shared_context = base.join("references").join("shared-context.md");
+    let output_path = skill_dir.join(output_file);
+
     format!(
-        "Read references/shared-context.md and agents/{} and follow the instructions. \
+        "Read {} and {} and follow the instructions. \
          The domain is: {}. The skill name is: {}. \
-         The skill directory is: {}/. \
-         The context directory (for reading and writing intermediate files) is: {}/context/. \
-         The skill output directory (SKILL.md and references/) is: {}/skill/. \
-         Write output to {}/{}.",
-        prompt_file, domain, skill_name, skill_name, skill_name, skill_name, skill_name, output_file
+         The skill directory is: {}. \
+         The context directory (for reading and writing intermediate files) is: {}. \
+         The skill output directory (SKILL.md and references/) is: {}. \
+         Write output to {}.",
+        shared_context.display(),
+        agents_file.display(),
+        domain,
+        skill_name,
+        skill_dir.display(),
+        context_dir.display(),
+        skill_output_dir.display(),
+        output_path.display(),
     )
 }
 
@@ -195,6 +211,18 @@ fn read_debug_mode(db: &tauri::State<'_, Db>) -> bool {
     conn.and_then(|c| crate::db::read_settings(&c).ok())
         .map(|s| s.debug_mode)
         .unwrap_or(false)
+}
+
+/// Per-step turn limits for debug mode. Orchestrator steps (0, 2, 5) that
+/// spawn sub-agents need more headroom; simple agent steps can stay low.
+fn debug_max_turns(step_id: u32) -> u32 {
+    match step_id {
+        0 | 2 => 15, // research orchestrators: spawn + merge
+        5 => 30,     // build: reads 4 files + plan + write SKILL.md + spawn writers + reviewer
+        4 => 10,     // reasoning: single agent, reads + writes
+        6 | 7 => 15, // validate/test: spawn parallel checkers
+        _ => 5,
+    }
 }
 
 fn read_preferred_model(db: &tauri::State<'_, Db>) -> String {
@@ -478,7 +506,7 @@ pub async fn run_workflow_step(
     let extended_context = read_extended_context(&db);
     let debug_mode = read_debug_mode(&db);
     let model = read_preferred_model(&db);
-    let prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain);
+    let prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain, &workspace_path);
     let agent_id = make_agent_id(&skill_name, &format!("step{}", step_id));
 
     let config = SidecarConfig {
@@ -487,7 +515,7 @@ pub async fn run_workflow_step(
         api_key,
         cwd: workspace_path,
         allowed_tools: Some(step.allowed_tools),
-        max_turns: Some(if debug_mode { 5 } else { step.max_turns }),
+        max_turns: Some(if debug_mode { debug_max_turns(step_id) } else { step.max_turns }),
         permission_mode: Some("bypassPermissions".to_string()),
         session_id: None,
         betas: if extended_context {
@@ -915,15 +943,16 @@ mod tests {
             "context/clarifications-concepts.md",
             "my-skill",
             "e-commerce",
+            "/home/user/.vibedata",
         );
-        assert!(prompt.contains("references/shared-context.md"));
-        assert!(prompt.contains("agents/research-concepts.md"));
+        assert!(prompt.contains("/home/user/.vibedata/references/shared-context.md"));
+        assert!(prompt.contains("/home/user/.vibedata/agents/research-concepts.md"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
-        assert!(prompt.contains("my-skill/context/clarifications-concepts.md"));
-        assert!(prompt.contains("The context directory (for reading and writing intermediate files) is: my-skill/context/"));
-        assert!(prompt.contains("The skill directory is: my-skill/"));
-        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: my-skill/skill/"));
+        assert!(prompt.contains("/home/user/.vibedata/my-skill/context/clarifications-concepts.md"));
+        assert!(prompt.contains("The context directory (for reading and writing intermediate files) is: /home/user/.vibedata/my-skill/context"));
+        assert!(prompt.contains("The skill directory is: /home/user/.vibedata/my-skill"));
+        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/.vibedata/my-skill/skill"));
     }
 
     #[test]
