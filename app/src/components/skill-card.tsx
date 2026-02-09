@@ -21,7 +21,8 @@ function parseStepProgress(currentStep: string | null): number {
   if (!currentStep) return 0
   const match = currentStep.match(/step\s*(\d+)/i)
   if (match) {
-    return Math.min(Number(match[1]) * 10, 100)
+    const stepIndex = Number(match[1])
+    return Math.min(Math.round(((stepIndex + 1) / 9) * 100), 100)
   }
   if (/completed/i.test(currentStep)) return 100
   if (/initialization/i.test(currentStep)) return 5

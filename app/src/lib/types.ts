@@ -2,6 +2,9 @@ export interface AppSettings {
   anthropic_api_key: string | null
   workspace_path: string | null
   preferred_model: string | null
+  debug_mode: boolean
+  extended_context: boolean
+  splash_shown: boolean
 }
 
 export interface SkillSummary {

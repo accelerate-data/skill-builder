@@ -5,6 +5,12 @@ pub struct AppSettings {
     pub anthropic_api_key: Option<String>,
     pub workspace_path: Option<String>,
     pub preferred_model: Option<String>,
+    #[serde(default)]
+    pub debug_mode: bool,
+    #[serde(default)]
+    pub extended_context: bool,
+    #[serde(default)]
+    pub splash_shown: bool,
 }
 
 impl Default for AppSettings {
@@ -13,6 +19,9 @@ impl Default for AppSettings {
             anthropic_api_key: None,
             workspace_path: None,
             preferred_model: None,
+            debug_mode: false,
+            extended_context: false,
+            splash_shown: false,
         }
     }
 }
@@ -135,12 +144,6 @@ pub struct ArtifactRow {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ParallelAgentResult {
-    pub agent_id_a: String,
-    pub agent_id_b: String,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,6 +162,9 @@ mod tests {
             anthropic_api_key: Some("sk-ant-test-key".to_string()),
             workspace_path: Some("/home/user/skills".to_string()),
             preferred_model: Some("sonnet".to_string()),
+            debug_mode: false,
+            extended_context: false,
+            splash_shown: false,
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();
@@ -187,6 +193,8 @@ mod tests {
             max_turns: Some(10),
             permission_mode: Some("bypassPermissions".to_string()),
             session_id: None,
+            betas: None,
+            path_to_claude_code_executable: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"apiKey\""));
@@ -195,5 +203,7 @@ mod tests {
         assert!(json.contains("\"permissionMode\""));
         // session_id is None with skip_serializing_if, so should not appear
         assert!(!json.contains("\"sessionId\""));
+        // betas is None with skip_serializing_if, so should not appear
+        assert!(!json.contains("\"betas\""));
     }
 }

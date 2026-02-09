@@ -33,12 +33,18 @@ const defaultSettings: AppSettings = {
   anthropic_api_key: null,
   workspace_path: null,
   preferred_model: null,
+  debug_mode: false,
+  extended_context: false,
+  splash_shown: false,
 };
 
 const populatedSettings: AppSettings = {
   anthropic_api_key: "sk-ant-existing-key",
   workspace_path: "/home/user/workspace",
   preferred_model: "sonnet",
+  debug_mode: false,
+  extended_context: false,
+  splash_shown: true,
 };
 
 function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {

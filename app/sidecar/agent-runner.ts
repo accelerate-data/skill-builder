@@ -9,6 +9,8 @@ interface SidecarConfig {
   maxTurns?: number;
   permissionMode?: string;
   sessionId?: string;
+  betas?: string[];
+  pathToClaudeCodeExecutable?: string;
 }
 
 let aborted = false;
@@ -60,7 +62,11 @@ async function main() {
         // Use the same Node binary that's running this sidecar process,
         // so the SDK spawns cli.js with a compatible Node version.
         executable: process.execPath,
+        ...(config.pathToClaudeCodeExecutable
+          ? { pathToClaudeCodeExecutable: config.pathToClaudeCodeExecutable }
+          : {}),
         ...(config.sessionId ? { resume: config.sessionId } : {}),
+        ...(config.betas ? { betas: config.betas } : {}),
       },
     });
 

@@ -1,14 +1,7 @@
-import { Fragment, useEffect, useRef, useState, useCallback } from "react";
+import { Fragment, memo, useEffect, useMemo, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
-  Loader2,
-  Square,
-  Pause,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  Cpu,
   FileText,
   Pencil,
   Search,
@@ -16,23 +9,14 @@ import {
   Globe,
   GitBranch,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { useAgentStore, type AgentMessage } from "@/stores/agent-store";
-import { cancelAgent } from "@/lib/tauri";
-
-function formatElapsed(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (minutes > 0) {
-    return `${minutes}m ${secs}s`;
-  }
-  return `${secs}s`;
-}
+import {
+  useAgentStore,
+  type AgentMessage,
+} from "@/stores/agent-store";
+import { AgentStatusHeader } from "@/components/agent-status-header";
 
 function getToolIcon(toolName: string) {
   switch (toolName) {
@@ -138,7 +122,7 @@ function getToolSummary(message: AgentMessage): ToolSummaryResult | null {
   return result(name);
 }
 
-function TurnMarker({ turn }: { turn: number }) {
+export function TurnMarker({ turn }: { turn: number }) {
   return (
     <div className="flex items-center gap-2 py-1">
       <div className="h-px flex-1 bg-border" />
@@ -150,7 +134,7 @@ function TurnMarker({ turn }: { turn: number }) {
   );
 }
 
-function MessageItem({ message }: { message: AgentMessage }) {
+export const MessageItem = memo(function MessageItem({ message }: { message: AgentMessage }) {
   if (message.type === "system") {
     return null;
   }
@@ -197,7 +181,7 @@ function MessageItem({ message }: { message: AgentMessage }) {
   }
 
   return null;
-}
+});
 
 interface AgentOutputPanelProps {
   agentId: string;
@@ -217,22 +201,6 @@ export function AgentOutputPanel({ agentId, onPause }: AgentOutputPanelProps) {
     scrollToBottom();
   }, [run?.messages.length, scrollToBottom]);
 
-  // Force re-render every second while running so elapsed time updates
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (run?.status !== "running") return;
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [run?.status]);
-
-  const handleCancel = async () => {
-    try {
-      await cancelAgent(agentId);
-    } catch {
-      // Agent may already be finished
-    }
-  };
-
   if (!run) {
     return (
       <Card className="flex-1">
@@ -243,94 +211,27 @@ export function AgentOutputPanel({ agentId, onPause }: AgentOutputPanelProps) {
     );
   }
 
-  const elapsed = run.endTime
-    ? run.endTime - run.startTime
-    : Date.now() - run.startTime;
-
-  const statusIcon = {
-    running: <Loader2 className="size-3.5 animate-spin" />,
-    completed: <CheckCircle2 className="size-3.5 text-green-500" />,
-    error: <XCircle className="size-3.5 text-destructive" />,
-    cancelled: <Square className="size-3.5 text-muted-foreground" />,
-  }[run.status];
-
-  const statusLabel = {
-    running: "Running",
-    completed: "Completed",
-    error: "Error",
-    cancelled: "Cancelled",
-  }[run.status];
-
-  // Count turns: each 'assistant' message = one SDK round-trip
-  const turnCount = run.messages.filter((m) => m.type === "assistant").length;
+  // Pre-compute turn numbers in O(n) instead of O(n^2)
+  const turnMap = useMemo(() => {
+    const map = new Map<number, number>();
+    let turn = 0;
+    for (let i = 0; i < run.messages.length; i++) {
+      if (run.messages[i].type === "assistant") {
+        turn++;
+        map.set(i, turn);
+      }
+    }
+    return map;
+  }, [run.messages]);
 
   return (
     <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <CardHeader className="shrink-0 flex-row items-center justify-between space-y-0 pb-3">
-        <CardTitle className="flex items-center gap-2 text-sm font-medium">
-          <Cpu className="size-4" />
-          Agent Output
-        </CardTitle>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="gap-1 text-xs">
-            {statusIcon}
-            {statusLabel}
-          </Badge>
-          <Badge variant="secondary" className="text-xs">
-            {run.model}
-          </Badge>
-          <Badge variant="secondary" className="gap-1 text-xs">
-            <Clock className="size-3" />
-            {formatElapsed(elapsed)}
-          </Badge>
-          {turnCount > 0 && (
-            <Badge variant="secondary" className="text-xs">
-              Turn {turnCount}
-            </Badge>
-          )}
-          {run.tokenUsage && (
-            <Badge variant="secondary" className="text-xs">
-              {(run.tokenUsage.input + run.tokenUsage.output).toLocaleString()} tokens
-            </Badge>
-          )}
-          {run.totalCost !== undefined && (
-            <Badge variant="secondary" className="text-xs">
-              ${run.totalCost.toFixed(4)}
-            </Badge>
-          )}
-          {run.status === "running" && onPause && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={onPause}
-            >
-              <Pause className="size-3" />
-              Pause
-            </Button>
-          )}
-          {run.status === "running" && (
-            <Button
-              variant="destructive"
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={handleCancel}
-            >
-              <Square className="size-3" />
-              Cancel
-            </Button>
-          )}
-        </div>
-      </CardHeader>
+      <AgentStatusHeader agentId={agentId} onPause={onPause} />
       <Separator />
       <ScrollArea className="min-h-0 flex-1">
         <div ref={scrollRef} className="flex flex-col gap-2 p-4">
           {run.messages.map((msg, i) => {
-            // Insert a turn marker before each assistant message
-            let turn = 0;
-            if (msg.type === "assistant") {
-              turn = run.messages.slice(0, i + 1).filter((m) => m.type === "assistant").length;
-            }
+            const turn = turnMap.get(i) ?? 0;
             return (
               <Fragment key={i}>
                 {turn > 0 && <TurnMarker turn={turn} />}

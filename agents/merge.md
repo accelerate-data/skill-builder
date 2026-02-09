@@ -62,4 +62,4 @@ At the top of `clarifications.md`, add a brief summary:
 
 ## Output
 - Write `clarifications.md` to the context directory provided by the coordinator
-- Do not modify or delete the original `clarifications-*.md` files
+- Delete the temporary `clarifications-patterns.md` and `clarifications-data.md` files when done

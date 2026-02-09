@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import type { AppSettings } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
 import { checkNode, type NodeStatus } from "@/lib/tauri"
@@ -27,6 +28,8 @@ export default function SettingsPage() {
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [workspacePath, setWorkspacePath] = useState<string | null>(null)
   const [preferredModel, setPreferredModel] = useState<string>("sonnet")
+  const [debugMode, setDebugMode] = useState(false)
+  const [extendedContext, setExtendedContext] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -47,6 +50,8 @@ export default function SettingsPage() {
             setApiKey(result.anthropic_api_key)
             setWorkspacePath(result.workspace_path)
             setPreferredModel(result.preferred_model || "sonnet")
+            setDebugMode(result.debug_mode ?? false)
+            setExtendedContext(result.extended_context ?? false)
             setLoading(false)
           }
           return
@@ -86,6 +91,9 @@ export default function SettingsPage() {
           anthropic_api_key: apiKey,
           workspace_path: workspacePath,
           preferred_model: preferredModel,
+          debug_mode: debugMode,
+          extended_context: extendedContext,
+          splash_shown: true,
         },
       })
       setSaved(true)
@@ -97,9 +105,11 @@ export default function SettingsPage() {
         anthropicApiKey: apiKey,
         workspacePath,
         preferredModel,
+        debugMode,
+        extendedContext,
       })
 
-      toast.success("Settings saved")
+      toast.success("Settings saved", { duration: 1500 })
     } catch (err) {
       setSaving(false)
       toast.error(
@@ -215,6 +225,44 @@ export default function SettingsPage() {
                 </option>
               ))}
             </select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Debug Mode</CardTitle>
+          <CardDescription>
+            Auto-answer clarification questions with recommended choices during human review steps.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="debug-mode">Auto-answer with recommendations</Label>
+            <Switch
+              id="debug-mode"
+              checked={debugMode}
+              onCheckedChange={setDebugMode}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Extended Context</CardTitle>
+          <CardDescription>
+            Enable 1M token context window for all agents. Requires a compatible API plan.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="extended-context">Extended context (1M tokens)</Label>
+            <Switch
+              id="extended-context"
+              checked={extendedContext}
+              onCheckedChange={setExtendedContext}
+            />
           </div>
         </CardContent>
       </Card>

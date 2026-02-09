@@ -6,18 +6,18 @@ describe("useWorkflowStore", () => {
     useWorkflowStore.getState().reset();
   });
 
-  it("has correct initial state with 11 steps, all pending, currentStep=0", () => {
+  it("has correct initial state with 9 steps, all pending, currentStep=0", () => {
     const state = useWorkflowStore.getState();
     expect(state.skillName).toBeNull();
     expect(state.domain).toBeNull();
     expect(state.currentStep).toBe(0);
     expect(state.isRunning).toBe(false);
-    expect(state.steps).toHaveLength(11);
+    expect(state.steps).toHaveLength(9);
     state.steps.forEach((step) => {
       expect(step.status).toBe("pending");
     });
-    // Verify step IDs are 0-10
-    expect(state.steps.map((s) => s.id)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    // Verify step IDs are 0-8
+    expect(state.steps.map((s) => s.id)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
   it("initWorkflow sets skillName, domain, and resets steps", () => {
@@ -87,7 +87,7 @@ describe("useWorkflowStore", () => {
     expect(state.domain).toBeNull();
     expect(state.currentStep).toBe(0);
     expect(state.isRunning).toBe(false);
-    expect(state.steps).toHaveLength(11);
+    expect(state.steps).toHaveLength(9);
     state.steps.forEach((step) => {
       expect(step.status).toBe("pending");
     });
@@ -110,8 +110,8 @@ describe("useWorkflowStore", () => {
     expect(state.steps[0].status).toBe("completed");
     expect(state.steps[1].status).toBe("completed");
     expect(state.steps[2].status).toBe("completed");
-    // Steps 3-10 should be reset to pending
-    for (let i = 3; i <= 10; i++) {
+    // Steps 3-8 should be reset to pending
+    for (let i = 3; i <= 8; i++) {
       expect(state.steps[i].status).toBe("pending");
     }
     // currentStep should be 3
@@ -122,10 +122,10 @@ describe("useWorkflowStore", () => {
 
   it("rerunFromStep from step 0 resets all steps", () => {
     const store = useWorkflowStore.getState();
-    for (let i = 0; i <= 10; i++) {
+    for (let i = 0; i <= 8; i++) {
       store.updateStepStatus(i, "completed");
     }
-    store.setCurrentStep(10);
+    store.setCurrentStep(8);
 
     useWorkflowStore.getState().rerunFromStep(0);
 
@@ -139,11 +139,10 @@ describe("useWorkflowStore", () => {
   it("steps have expected names", () => {
     const state = useWorkflowStore.getState();
     expect(state.steps[0].name).toBe("Research Domain Concepts");
-    expect(state.steps[2].name).toBe("Research Patterns");
-    expect(state.steps[3].name).toBe("Research Data Modeling");
-    expect(state.steps[4].name).toBe("Merge Clarifications");
-    expect(state.steps[6].name).toBe("Reasoning");
-    expect(state.steps[7].name).toBe("Build Skill");
-    expect(state.steps[10].name).toBe("Package");
+    expect(state.steps[2].name).toBe("Research Domain");
+    expect(state.steps[3].name).toBe("Human Review");
+    expect(state.steps[4].name).toBe("Reasoning");
+    expect(state.steps[5].name).toBe("Build Skill");
+    expect(state.steps[8].name).toBe("Package");
   });
 });

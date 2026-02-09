@@ -20,7 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { SuggestionCard } from "@/components/chat/suggestion-card";
 import { useAgentStore } from "@/stores/agent-store";
-import { useAgentStream } from "@/hooks/use-agent-stream";
+import "@/hooks/use-agent-stream";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useChatStore, type ChatMessage, type Suggestion } from "@/stores/chat-store";
 import {
@@ -77,8 +77,6 @@ export default function ChatPage() {
 
   const runs = useAgentStore((s) => s.runs);
   const agentStartRun = useAgentStore((s) => s.startRun);
-
-  useAgentStream();
 
   const [userInput, setUserInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);

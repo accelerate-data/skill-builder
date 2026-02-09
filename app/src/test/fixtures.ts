@@ -8,6 +8,9 @@ export function makeAppSettings(overrides?: Partial<AppSettings>): AppSettings {
     anthropic_api_key: null,
     workspace_path: null,
     preferred_model: null,
+    debug_mode: false,
+    extended_context: false,
+    splash_shown: false,
     ...overrides,
   };
 }

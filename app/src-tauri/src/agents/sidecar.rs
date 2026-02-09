@@ -31,16 +31,30 @@ pub struct SidecarConfig {
     pub permission_mode: Option<String>,
     #[serde(rename = "sessionId", skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub betas: Option<Vec<String>>,
+    #[serde(
+        rename = "pathToClaudeCodeExecutable",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub path_to_claude_code_executable: Option<String>,
 }
 
 pub async fn spawn_sidecar(
     agent_id: String,
-    config: SidecarConfig,
+    mut config: SidecarConfig,
     registry: AgentRegistry,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let sidecar_path = resolve_sidecar_path(&app_handle)?;
     let node_bin = resolve_node_binary().await?;
+
+    // Resolve the SDK cli.js path so the bundled SDK can find it
+    if config.path_to_claude_code_executable.is_none() {
+        if let Ok(cli_path) = resolve_sdk_cli_path(&app_handle) {
+            config.path_to_claude_code_executable = Some(cli_path);
+        }
+    }
 
     // Pass config as a CLI argument to avoid stdin pipe race conditions.
     let config_json = serde_json::to_string(&config).map_err(|e| e.to_string())?;
@@ -292,6 +306,51 @@ fn resolve_sidecar_path(app_handle: &tauri::AppHandle) -> Result<String, String>
     Err("Could not find agent-runner.js — run 'npm run build' in app/sidecar/ first".to_string())
 }
 
+/// Resolve the path to the SDK's cli.js, which the bundled SDK needs to spawn.
+/// Looks in sidecar/dist/sdk/cli.js (where build.js copies it).
+fn resolve_sdk_cli_path(app_handle: &tauri::AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+
+    // Try resource directory first (production)
+    if let Ok(resource_dir) = app_handle.path().resource_dir() {
+        let cli = resource_dir.join("sidecar").join("dist").join("sdk").join("cli.js");
+        if cli.exists() {
+            return cli
+                .to_str()
+                .map(|s| s.to_string())
+                .ok_or_else(|| "Invalid SDK cli.js path".to_string());
+        }
+    }
+
+    // Fallback: next to the binary
+    if let Ok(exe_dir) = std::env::current_exe() {
+        if let Some(dir) = exe_dir.parent() {
+            let cli = dir.join("sidecar").join("dist").join("sdk").join("cli.js");
+            if cli.exists() {
+                return cli
+                    .to_str()
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| "Invalid SDK cli.js path".to_string());
+            }
+        }
+    }
+
+    // Dev mode fallback
+    let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|p| p.join("sidecar").join("dist").join("sdk").join("cli.js"));
+    if let Some(path) = dev_path {
+        if path.exists() {
+            return path
+                .to_str()
+                .map(|s| s.to_string())
+                .ok_or_else(|| "Invalid SDK cli.js path".to_string());
+        }
+    }
+
+    Err("Could not find SDK cli.js — run 'npm run build' in app/sidecar/ first".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,6 +374,8 @@ mod tests {
             max_turns: Some(25),
             permission_mode: Some("bypassPermissions".to_string()),
             session_id: None,
+            betas: None,
+            path_to_claude_code_executable: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -327,6 +388,8 @@ mod tests {
         assert_eq!(parsed["permissionMode"], "bypassPermissions");
         // session_id is None + skip_serializing_if — should be absent
         assert!(parsed.get("sessionId").is_none());
+        // betas is None + skip_serializing_if — should be absent
+        assert!(parsed.get("betas").is_none());
     }
 
     #[test]

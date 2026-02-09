@@ -570,6 +570,9 @@ mod tests {
             anthropic_api_key: Some("sk-test-key".to_string()),
             workspace_path: Some("/home/user/skills".to_string()),
             preferred_model: Some("sonnet".to_string()),
+            debug_mode: false,
+            extended_context: false,
+            splash_shown: false,
         };
         write_settings(&conn, &settings).unwrap();
 
@@ -588,6 +591,9 @@ mod tests {
             anthropic_api_key: Some("key-1".to_string()),
             workspace_path: None,
             preferred_model: None,
+            debug_mode: false,
+            extended_context: false,
+            splash_shown: false,
         };
         write_settings(&conn, &v1).unwrap();
 
@@ -595,6 +601,9 @@ mod tests {
             anthropic_api_key: Some("key-2".to_string()),
             workspace_path: Some("/new/path".to_string()),
             preferred_model: Some("opus".to_string()),
+            debug_mode: true,
+            extended_context: false,
+            splash_shown: false,
         };
         write_settings(&conn, &v2).unwrap();
 

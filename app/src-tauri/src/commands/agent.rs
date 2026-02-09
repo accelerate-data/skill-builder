@@ -14,12 +14,13 @@ pub async fn start_agent(
     max_turns: Option<u32>,
     session_id: Option<String>,
 ) -> Result<String, String> {
-    let api_key = {
+    let (api_key, extended_context) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings(&conn)?;
-        settings
+        let key = settings
             .anthropic_api_key
-            .ok_or_else(|| "Anthropic API key not configured".to_string())?
+            .ok_or_else(|| "Anthropic API key not configured".to_string())?;
+        (key, settings.extended_context)
     };
 
     let config = SidecarConfig {
@@ -31,6 +32,12 @@ pub async fn start_agent(
         max_turns,
         permission_mode: None,
         session_id,
+        betas: if extended_context {
+            Some(vec!["context-1m-2025-08-07".to_string()])
+        } else {
+            None
+        },
+        path_to_claude_code_executable: None,
     };
 
     sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app).await?;

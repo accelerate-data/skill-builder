@@ -4,11 +4,10 @@ use std::path::{Path, PathBuf};
 use crate::agents::sidecar::{self, AgentRegistry, SidecarConfig};
 use crate::db::Db;
 use crate::types::{
-    ArtifactRow, PackageResult, ParallelAgentResult, StepConfig, StepStatusUpdate,
+    ArtifactRow, PackageResult, StepConfig, StepStatusUpdate,
     WorkflowStateResponse,
 };
 
-const RESEARCH_TOOLS: &[&str] = &["Read", "Write", "Glob", "Grep"];
 const FULL_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"];
 
 /// Resolve a model shorthand ("sonnet", "haiku", "opus") to a full model ID.
@@ -29,67 +28,51 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             name: "Research Domain Concepts".to_string(),
             prompt_template: "01-research-domain-concepts.md".to_string(),
             output_file: "context/clarifications-concepts.md".to_string(),
-            allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 15,
+            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 50,
         }),
         2 => Ok(StepConfig {
             step_id: 2,
-            name: "Research Patterns".to_string(),
-            prompt_template: "03a-research-business-patterns.md".to_string(),
-            output_file: "context/clarifications-patterns.md".to_string(),
-            allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 15,
-        }),
-        3 => Ok(StepConfig {
-            step_id: 3,
-            name: "Research Data Modeling".to_string(),
-            prompt_template: "03b-research-data-modeling.md".to_string(),
-            output_file: "context/clarifications-data.md".to_string(),
-            allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 15,
+            name: "Research Domain".to_string(),
+            prompt_template: "02-research-patterns-and-merge.md".to_string(),
+            output_file: "context/clarifications.md".to_string(),
+            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 50,
         }),
         4 => Ok(StepConfig {
             step_id: 4,
-            name: "Merge Clarifications".to_string(),
-            prompt_template: "04-merge-clarifications.md".to_string(),
-            output_file: "context/clarifications.md".to_string(),
-            allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 8,
-        }),
-        6 => Ok(StepConfig {
-            step_id: 6,
             name: "Reasoning".to_string(),
             prompt_template: "06-reasoning-agent.md".to_string(),
             output_file: "context/decisions.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 100,
         }),
-        7 => Ok(StepConfig {
-            step_id: 7,
-            name: "Build".to_string(),
+        5 => Ok(StepConfig {
+            step_id: 5,
+            name: "Build Skill".to_string(),
             prompt_template: "07-build-agent.md".to_string(),
             output_file: "skill/SKILL.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 80,
+            max_turns: 120,
         }),
-        8 => Ok(StepConfig {
-            step_id: 8,
+        6 => Ok(StepConfig {
+            step_id: 6,
             name: "Validate".to_string(),
             prompt_template: "08-validate-agent.md".to_string(),
             output_file: "context/agent-validation-log.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 50,
+            max_turns: 80,
         }),
-        9 => Ok(StepConfig {
-            step_id: 9,
+        7 => Ok(StepConfig {
+            step_id: 7,
             name: "Test".to_string(),
             prompt_template: "09-test-agent.md".to_string(),
             output_file: "context/test-skill.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 50,
+            max_turns: 80,
         }),
         _ => Err(format!(
-            "Unknown step_id {}. Steps 1, 5, 10 are human/package steps.",
+            "Unknown step_id {}. Steps 1, 3, 8 are human/package steps.",
             step_id
         )),
     }
@@ -200,6 +183,13 @@ fn read_api_key(db: &tauri::State<'_, Db>) -> Result<String, String> {
         .ok_or_else(|| "Anthropic API key not configured".to_string())
 }
 
+fn read_extended_context(db: &tauri::State<'_, Db>) -> bool {
+    let conn = db.0.lock().ok();
+    conn.and_then(|c| crate::db::read_settings(&c).ok())
+        .map(|s| s.extended_context)
+        .unwrap_or(false)
+}
+
 fn read_preferred_model(db: &tauri::State<'_, Db>) -> String {
     let conn = db.0.lock().ok();
     let model_shorthand = conn
@@ -219,6 +209,7 @@ fn make_agent_id(skill_name: &str, label: &str) -> String {
 
 /// Write all DB artifacts for a skill to the workspace filesystem.
 /// This stages files so agents can read them during execution.
+/// Skips files that already exist on disk with the same byte length.
 fn stage_artifacts(
     conn: &rusqlite::Connection,
     skill_name: &str,
@@ -233,6 +224,14 @@ fn stage_artifacts(
 
     for artifact in &artifacts {
         let file_path = skill_dir.join(&artifact.relative_path);
+
+        // Skip if file already exists with same size (content unchanged)
+        if let Ok(meta) = std::fs::metadata(&file_path) {
+            if meta.len() == artifact.content.len() as u64 {
+                continue;
+            }
+        }
+
         if let Some(parent) = file_path.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| format!("Failed to create dir {}: {}", parent.display(), e))?;
@@ -245,7 +244,7 @@ fn stage_artifacts(
 }
 
 /// Reconcile disk → SQLite: scan the workspace for existing step artifacts
-/// and capture any that aren't already in the DB (or are newer on disk).
+/// and capture any that aren't already in the DB (or differ in size).
 /// This handles the case where the app was shut down mid-agent and files
 /// were written to disk but never captured.
 fn reconcile_disk_artifacts(
@@ -259,27 +258,22 @@ fn reconcile_disk_artifacts(
     }
 
     // Walk all steps that produce output files
-    for step_id in [0u32, 2, 3, 4, 6, 7, 8, 9] {
+    for step_id in [0u32, 2, 4, 5, 6, 7] {
         for file in get_step_output_files(step_id) {
-            let path = skill_dir.join(file);
-            if path.exists() {
-                let content = std::fs::read_to_string(&path)
-                    .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-                crate::db::save_artifact(conn, skill_name, step_id as i32, file, &content)?;
-            }
+            reconcile_single_file(conn, skill_name, step_id, &skill_dir, file)?;
         }
 
-        // Step 7 also has skill/references/ directory
-        if step_id == 7 {
+        // Step 5 also has skill/references/ directory
+        if step_id == 5 {
             let refs_dir = skill_dir.join("skill").join("references");
             if refs_dir.is_dir() {
-                for (relative, content) in walk_md_files(&refs_dir, "skill/references")? {
-                    crate::db::save_artifact(
+                for entry in walk_md_paths(&refs_dir, "skill/references")? {
+                    reconcile_single_file(
                         conn,
                         skill_name,
-                        step_id as i32,
-                        &relative,
-                        &content,
+                        step_id,
+                        &skill_dir,
+                        &entry,
                     )?;
                 }
             }
@@ -289,7 +283,63 @@ fn reconcile_disk_artifacts(
     Ok(())
 }
 
-/// Recursively collect .md files from a directory, returning relative paths.
+/// Reconcile a single file: skip if DB already has it with the same size.
+fn reconcile_single_file(
+    conn: &rusqlite::Connection,
+    skill_name: &str,
+    step_id: u32,
+    skill_dir: &Path,
+    relative_path: &str,
+) -> Result<(), String> {
+    let path = skill_dir.join(relative_path);
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let disk_size = std::fs::metadata(&path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    // Skip if DB already has this artifact with the same size
+    if let Ok(Some(existing)) = crate::db::get_artifact_by_path(conn, skill_name, relative_path) {
+        if existing.size_bytes as u64 == disk_size {
+            return Ok(());
+        }
+    }
+
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+    crate::db::save_artifact(conn, skill_name, step_id as i32, relative_path, &content)?;
+    Ok(())
+}
+
+/// Recursively collect .md file relative paths from a directory.
+fn walk_md_paths(dir: &Path, prefix: &str) -> Result<Vec<String>, String> {
+    let mut results = Vec::new();
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| format!("Failed to read dir {}: {}", dir.display(), e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        let relative = if prefix.is_empty() {
+            name.clone()
+        } else {
+            format!("{}/{}", prefix, name)
+        };
+
+        if path.is_dir() {
+            results.extend(walk_md_paths(&path, &relative)?);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            results.push(relative);
+        }
+    }
+
+    Ok(results)
+}
+
+/// Recursively collect .md files from a directory, returning relative paths and content.
 fn walk_md_files(dir: &Path, prefix: &str) -> Result<Vec<(String, String)>, String> {
     let mut results = Vec::new();
     let entries = std::fs::read_dir(dir)
@@ -337,6 +387,7 @@ pub async fn run_review_step(
 
     let step = get_step_config(step_id)?;
     let api_key = read_api_key(&db)?;
+    let extended_context = read_extended_context(&db);
     let agent_id = make_agent_id(&skill_name, &format!("review-step{}", step_id));
 
     let output_path = format!("{}/{}", skill_name, step.output_file);
@@ -366,6 +417,12 @@ pub async fn run_review_step(
         max_turns: Some(10),
         permission_mode: Some("bypassPermissions".to_string()),
         session_id: None,
+        betas: if extended_context {
+            Some(vec!["context-1m-2025-08-07".to_string()])
+        } else {
+            None
+        },
+        path_to_claude_code_executable: None,
     };
 
     sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app).await?;
@@ -381,9 +438,22 @@ pub async fn run_workflow_step(
     step_id: u32,
     domain: String,
     workspace_path: String,
+    resume: bool,
 ) -> Result<String, String> {
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path)?;
+
+    // Step 0 fresh start — wipe the context directory and all artifacts so
+    // the agent doesn't see stale files from a previous workflow run.
+    // Skip this when resuming a paused step to preserve partial progress.
+    if step_id == 0 && !resume {
+        let context_dir = Path::new(&workspace_path).join(&skill_name).join("context");
+        if context_dir.is_dir() {
+            let _ = std::fs::remove_dir_all(&context_dir);
+        }
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::db::delete_artifacts_from(&conn, &skill_name, 0)?;
+    }
 
     // Reconcile disk → DB (captures partial output from paused/interrupted runs),
     // then stage all DB artifacts → disk so the agent sees prerequisites and
@@ -396,6 +466,7 @@ pub async fn run_workflow_step(
 
     let step = get_step_config(step_id)?;
     let api_key = read_api_key(&db)?;
+    let extended_context = read_extended_context(&db);
     let model = read_preferred_model(&db);
     let prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain);
     let agent_id = make_agent_id(&skill_name, &format!("step{}", step_id));
@@ -409,81 +480,18 @@ pub async fn run_workflow_step(
         max_turns: Some(step.max_turns),
         permission_mode: Some("bypassPermissions".to_string()),
         session_id: None,
+        betas: if extended_context {
+            Some(vec!["context-1m-2025-08-07".to_string()])
+        } else {
+            None
+        },
+        path_to_claude_code_executable: None,
     };
 
     sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app).await?;
     Ok(agent_id)
 }
 
-#[tauri::command]
-pub async fn run_parallel_agents(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, AgentRegistry>,
-    db: tauri::State<'_, Db>,
-    skill_name: String,
-    domain: String,
-    workspace_path: String,
-) -> Result<ParallelAgentResult, String> {
-    ensure_workspace_prompts(&app, &workspace_path)?;
-
-    // Reconcile disk → DB, then stage all DB artifacts → disk
-    {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        reconcile_disk_artifacts(&conn, &skill_name, &workspace_path)?;
-        stage_artifacts(&conn, &skill_name, &workspace_path)?;
-    }
-
-    let step_a = get_step_config(2)?; // Patterns
-    let step_b = get_step_config(3)?; // Data modeling
-    let api_key = read_api_key(&db)?;
-    let model = read_preferred_model(&db);
-
-    let agent_id_a = make_agent_id(&skill_name, "patterns");
-    let agent_id_b = make_agent_id(&skill_name, "data");
-
-    let config_a = SidecarConfig {
-        prompt: build_prompt(&step_a.prompt_template, &step_a.output_file, &skill_name, &domain),
-        model: model.clone(),
-        api_key: api_key.clone(),
-        cwd: workspace_path.clone(),
-        allowed_tools: Some(step_a.allowed_tools),
-        max_turns: Some(step_a.max_turns),
-        permission_mode: Some("bypassPermissions".to_string()),
-        session_id: None,
-    };
-
-    let config_b = SidecarConfig {
-        prompt: build_prompt(&step_b.prompt_template, &step_b.output_file, &skill_name, &domain),
-        model,
-        api_key,
-        cwd: workspace_path,
-        allowed_tools: Some(step_b.allowed_tools),
-        max_turns: Some(step_b.max_turns),
-        permission_mode: Some("bypassPermissions".to_string()),
-        session_id: None,
-    };
-
-    // Spawn both concurrently
-    let registry_a = state.inner().clone();
-    let registry_b = state.inner().clone();
-    let app_a = app.clone();
-    let app_b = app.clone();
-    let id_a = agent_id_a.clone();
-    let id_b = agent_id_b.clone();
-
-    let (res_a, res_b) = tokio::join!(
-        sidecar::spawn_sidecar(id_a, config_a, registry_a, app_a),
-        sidecar::spawn_sidecar(id_b, config_b, registry_b, app_b)
-    );
-
-    res_a?;
-    res_b?;
-
-    Ok(ParallelAgentResult {
-        agent_id_a,
-        agent_id_b,
-    })
-}
 
 #[tauri::command]
 pub async fn package_skill(
@@ -630,15 +638,13 @@ fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
         0 => vec!["context/clarifications-concepts.md"],
         1 => vec![],  // Human review
-        2 => vec!["context/clarifications-patterns.md"],
-        3 => vec!["context/clarifications-data.md"],
-        4 => vec!["context/clarifications.md"],
-        5 => vec![],  // Human review
-        6 => vec!["context/decisions.md"],
-        7 => vec!["skill/SKILL.md"], // Also has skill/references/ dir
-        8 => vec!["context/agent-validation-log.md"],
-        9 => vec!["context/test-skill.md"],
-        10 => vec![], // Package step — .skill file
+        2 => vec!["context/clarifications.md"],
+        3 => vec![],  // Human review
+        4 => vec!["context/decisions.md"],
+        5 => vec!["skill/SKILL.md"], // Also has skill/references/ dir
+        6 => vec!["context/agent-validation-log.md"],
+        7 => vec!["context/test-skill.md"],
+        8 => vec![], // Package step — .skill file
         _ => vec![],
     }
 }
@@ -657,8 +663,8 @@ fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32) {
         }
     }
 
-    // Step 7 also produces a skill/references/ directory
-    if step_id == 7 {
+    // Step 5 also produces a skill/references/ directory
+    if step_id == 5 {
         let skill_out = skill_dir.join("skill");
         let refs_dir = skill_out.join("references");
         if refs_dir.is_dir() {
@@ -666,8 +672,8 @@ fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32) {
         }
     }
 
-    // Step 10 produces a .skill zip
-    if step_id == 10 {
+    // Step 8 produces a .skill zip
+    if step_id == 8 {
         let skill_file = skill_dir.join(format!("{}.skill", skill_name));
         if skill_file.exists() {
             let _ = std::fs::remove_file(&skill_file);
@@ -677,7 +683,7 @@ fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32) {
 
 /// Delete output files for the given step and all subsequent steps.
 fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id: u32) {
-    for step_id in from_step_id..=10 {
+    for step_id in from_step_id..=8 {
         clean_step_output(workspace_path, skill_name, step_id);
     }
 }
@@ -742,8 +748,8 @@ pub fn capture_step_artifacts(
         }
     }
 
-    // Step 7 (Build): also walk skill/references/ directory
-    if step_id == 7 {
+    // Step 5 (Build): also walk skill/references/ directory
+    if step_id == 5 {
         let refs_dir = skill_dir.join("skill").join("references");
         if refs_dir.is_dir() {
             for (relative, content) in walk_md_files(&refs_dir, "skill/references")? {
@@ -798,7 +804,7 @@ mod tests {
 
     #[test]
     fn test_get_step_config_valid_steps() {
-        let valid_steps = [0, 2, 3, 4, 6, 7, 8, 9];
+        let valid_steps = [0, 2, 4, 5, 6, 7];
         for step_id in valid_steps {
             let config = get_step_config(step_id);
             assert!(config.is_ok(), "Step {} should be valid", step_id);
@@ -811,8 +817,8 @@ mod tests {
     #[test]
     fn test_get_step_config_invalid_step() {
         assert!(get_step_config(1).is_err());  // Human review
-        assert!(get_step_config(5).is_err());  // Human review
-        assert!(get_step_config(10).is_err()); // Package step
+        assert!(get_step_config(3).is_err());  // Human review
+        assert!(get_step_config(8).is_err());  // Package step
         assert!(get_step_config(99).is_err());
     }
 
@@ -1001,7 +1007,8 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
         std::fs::create_dir_all(skill_dir.join("skill").join("references")).unwrap();
 
-        // Create output files for steps 0, 2, 3, 4, 6, 7
+        // Create output files for steps 0, 2, 4, 5
+        // Step 2 now produces all three research+merge files
         std::fs::write(
             skill_dir.join("context/clarifications-concepts.md"),
             "step0",
@@ -1014,42 +1021,41 @@ mod tests {
         .unwrap();
         std::fs::write(
             skill_dir.join("context/clarifications-data.md"),
-            "step3",
+            "step2",
         )
         .unwrap();
-        std::fs::write(skill_dir.join("context/clarifications.md"), "step4").unwrap();
-        std::fs::write(skill_dir.join("context/decisions.md"), "step6").unwrap();
-        std::fs::write(skill_dir.join("skill/SKILL.md"), "step7").unwrap();
+        std::fs::write(skill_dir.join("context/clarifications.md"), "step2").unwrap();
+        std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
+        std::fs::write(skill_dir.join("skill/SKILL.md"), "step5").unwrap();
         std::fs::write(skill_dir.join("skill/references/ref.md"), "ref").unwrap();
 
-        // Reset from step 4 onwards — steps 0, 2, 3 should be preserved
+        // Reset from step 4 onwards — steps 0, 2 should be preserved
         delete_step_output_files(workspace, "my-skill", 4);
 
-        // Steps 0, 2, 3 outputs should still exist
+        // Steps 0, 2 outputs should still exist
         assert!(skill_dir.join("context/clarifications-concepts.md").exists());
-        assert!(skill_dir.join("context/clarifications-patterns.md").exists());
-        assert!(skill_dir.join("context/clarifications-data.md").exists());
+        assert!(skill_dir.join("context/clarifications.md").exists());
 
         // Steps 4+ outputs should be deleted
-        assert!(!skill_dir.join("context/clarifications.md").exists());
         assert!(!skill_dir.join("context/decisions.md").exists());
         assert!(!skill_dir.join("skill/SKILL.md").exists());
         assert!(!skill_dir.join("skill/references").exists());
     }
 
     #[test]
-    fn test_clean_step_output_only_removes_target_step() {
+    fn test_clean_step_output_step2_removes_merged_clarifications() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Create output files for steps 4 and 6
-        std::fs::write(skill_dir.join("context/clarifications.md"), "step4").unwrap();
-        std::fs::write(skill_dir.join("context/decisions.md"), "step6").unwrap();
+        // Step 2 output is only the merged clarifications (temp files
+        // are cleaned up by the agent, not tracked as step outputs)
+        std::fs::write(skill_dir.join("context/clarifications.md"), "m").unwrap();
+        std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
 
-        // Clean only step 4 — step 6 should be untouched
-        clean_step_output(workspace, "my-skill", 4);
+        // Clean only step 2 — step 4 should be untouched
+        clean_step_output(workspace, "my-skill", 2);
 
         assert!(!skill_dir.join("context/clarifications.md").exists());
         assert!(skill_dir.join("context/decisions.md").exists());

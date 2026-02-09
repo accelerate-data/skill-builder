@@ -86,8 +86,8 @@ describe("SkillCard", () => {
     render(
       <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
     );
-    // Step 3 => 30%
-    expect(screen.getByText("30%")).toBeInTheDocument();
+    // Step 3 => Math.round((4/9)*100) = 44%
+    expect(screen.getByText("44%")).toBeInTheDocument();
   });
 
   it("shows 100% for completed step", () => {

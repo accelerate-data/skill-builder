@@ -25,7 +25,6 @@ vi.mock("sonner", () => ({
 // Mock @/lib/tauri
 vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: vi.fn(),
-  runParallelAgents: vi.fn(),
   packageSkill: vi.fn(),
   readFile: vi.fn(() => Promise.reject("not found")),
   getWorkflowState: vi.fn(() => Promise.reject("not found")),
@@ -42,9 +41,6 @@ vi.mock("@/components/workflow-sidebar", () => ({
 }));
 vi.mock("@/components/agent-output-panel", () => ({
   AgentOutputPanel: () => <div data-testid="agent-output" />,
-}));
-vi.mock("@/components/parallel-agent-panel", () => ({
-  ParallelAgentPanel: () => <div data-testid="parallel-agent-output" />,
 }));
 vi.mock("@/components/workflow-step-complete", () => ({
   WorkflowStepComplete: () => <div data-testid="step-complete" />,
@@ -125,43 +121,6 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(mockToast.success).toHaveBeenCalledWith("Step 1 completed");
   });
 
-  it("completes agent step 3 but does NOT auto-advance", async () => {
-    // Simulate: step 2 (Research Patterns) running an agent
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    useWorkflowStore.getState().setCurrentStep(2);
-    useWorkflowStore.getState().updateStepStatus(2, "in_progress");
-    useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-2", "sonnet");
-
-    render(<WorkflowPage />);
-
-    // Agent completes — step should be marked completed directly
-    act(() => {
-      useAgentStore.getState().completeRun("agent-2", true);
-    });
-
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[2].status).toBe("completed");
-    });
-
-    const wf = useWorkflowStore.getState();
-
-    // Step 2 completed
-    expect(wf.steps[2].status).toBe("completed");
-
-    // Does NOT auto-advance — stays on step 2
-    expect(wf.currentStep).toBe(2);
-
-    // Step 3 still pending (user must click "Next Step")
-    expect(wf.steps[3].status).toBe("pending");
-
-    // Step 4 unaffected
-    expect(wf.steps[4].status).toBe("pending");
-
-    expect(wf.isRunning).toBe(false);
-    expect(mockToast.success).toHaveBeenCalledWith("Step 3 completed");
-  });
 
   it("marks step as error when agent fails — no cascade", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");

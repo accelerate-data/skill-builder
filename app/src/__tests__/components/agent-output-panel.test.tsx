@@ -49,10 +49,10 @@ describe("AgentOutputPanel", () => {
     expect(screen.getByText("Running")).toBeInTheDocument();
   });
 
-  it("shows model badge", () => {
+  it("shows model badge with friendly name", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
     render(<AgentOutputPanel agentId="test-agent" />);
-    expect(screen.getByText("sonnet")).toBeInTheDocument();
+    expect(screen.getByText("Sonnet")).toBeInTheDocument();
   });
 
   it("shows Cancel button when running", () => {

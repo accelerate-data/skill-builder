@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, Link } from "@tanstack/react-router";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -13,6 +13,7 @@ import {
   ArrowRight,
   AlertCircle,
   RotateCcw,
+  Bug,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,16 +21,14 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
-import { ParallelAgentPanel } from "@/components/parallel-agent-panel";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ReasoningChat } from "@/components/reasoning-chat";
-import { useAgentStream } from "@/hooks/use-agent-stream";
+import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   runWorkflowStep,
-  runParallelAgents,
   packageSkill,
   resetWorkflowStep,
   getWorkflowState,
@@ -38,39 +37,41 @@ import {
   getArtifactContent,
   saveArtifactContent,
   cancelAgent,
+  readFile,
   type PackageResult,
 } from "@/lib/tauri";
 
 // --- Step config ---
 
 interface StepConfig {
-  type: "agent" | "human" | "package" | "reasoning" | "parallel";
+  type: "agent" | "human" | "package" | "reasoning";
   outputFiles?: string[];
+  /** Default model shorthand for display (actual model comes from backend settings) */
+  model?: string;
 }
 
 const STEP_CONFIGS: Record<number, StepConfig> = {
-  0: { type: "agent", outputFiles: ["context/clarifications-concepts.md"] },
+  0: { type: "agent", outputFiles: ["context/clarifications-concepts.md"], model: "sonnet" },
   1: { type: "human" },
-  2: { type: "parallel", outputFiles: ["context/clarifications-patterns.md", "context/clarifications-data.md"] },
-  3: { type: "parallel", outputFiles: ["context/clarifications-data.md"] }, // Run as part of step 2
-  4: { type: "agent", outputFiles: ["context/clarifications.md"] },
-  5: { type: "human" },
-  6: { type: "reasoning", outputFiles: ["context/decisions.md"] },
-  7: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"] },
-  8: { type: "agent", outputFiles: ["context/agent-validation-log.md"] },
-  9: { type: "agent", outputFiles: ["context/test-skill.md"] },
-  10: { type: "package" },
+  2: { type: "agent", outputFiles: ["context/clarifications-patterns.md", "context/clarifications-data.md", "context/clarifications.md"], model: "sonnet" },
+  3: { type: "human" },
+  4: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
+  5: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
+  6: { type: "agent", outputFiles: ["context/agent-validation-log.md"], model: "sonnet" },
+  7: { type: "agent", outputFiles: ["context/test-skill.md"], model: "sonnet" },
+  8: { type: "package" },
 };
 
 // Human review steps: step id -> relative artifact path
 const HUMAN_REVIEW_STEPS: Record<number, { relativePath: string }> = {
   1: { relativePath: "context/clarifications-concepts.md" },
-  5: { relativePath: "context/clarifications.md" },
+  3: { relativePath: "context/clarifications.md" },
 };
 
 export default function WorkflowPage() {
   const { skillName } = useParams({ from: "/skill/$skillName" });
   const workspacePath = useSettingsStore((s) => s.workspacePath);
+  const debugMode = useSettingsStore((s) => s.debugMode);
 
   const {
     domain,
@@ -88,19 +89,19 @@ export default function WorkflowPage() {
   } = useWorkflowStore();
 
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
-  const parallelAgentIds = useAgentStore((s) => s.parallelAgentIds);
   const runs = useAgentStore((s) => s.runs);
   const agentStartRun = useAgentStore((s) => s.startRun);
   const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
-  const setParallelAgents = useAgentStore((s) => s.setParallelAgents);
   const clearRuns = useAgentStore((s) => s.clearRuns);
-
-  useAgentStream();
 
   // Human review state
   const [reviewContent, setReviewContent] = useState<string | null>(null);
   const [reviewFilePath, setReviewFilePath] = useState("");
   const [loadingReview, setLoadingReview] = useState(false);
+  const debugAutoAnswerRef = useRef<number | null>(null);
+
+  // Track whether the current step was paused (for resume vs fresh start)
+  const [paused, setPaused] = useState(false);
 
   // Package result state
   const [packageResult, setPackageResult] = useState<PackageResult | null>(
@@ -154,11 +155,13 @@ export default function WorkflowPage() {
       });
 
     return () => { cancelled = true; };
-  }, [skillName, initWorkflow, loadWorkflowState, setHydrated]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skillName]);
 
   // Reset state when moving to a new step
   useEffect(() => {
-    // placeholder for future per-step state resets
+    debugAutoAnswerRef.current = null;
+    setPaused(false);
   }, [currentStep]);
 
   // Persist workflow state to SQLite when steps change
@@ -196,9 +199,18 @@ export default function WorkflowPage() {
     setReviewFilePath(relativePath);
     setLoadingReview(true);
 
+    const filePath = `${workspacePath}/${skillName}/${relativePath}`;
+
+    // Try SQLite artifact first, then fall back to filesystem.
+    // Both paths are attempted even if one throws.
     getArtifactContent(skillName, relativePath)
-      .then((artifact) => setReviewContent(artifact?.content ?? null))
-      .catch(() => setReviewContent(null))
+      .catch(() => null)
+      .then(async (artifact) => {
+        if (artifact?.content) return artifact.content;
+        // Fallback: read from filesystem if not captured in SQLite yet
+        return readFile(filePath).catch(() => null);
+      })
+      .then((content) => setReviewContent(content ?? null))
       .finally(() => setLoadingReview(false));
   }, [currentStep, isHumanReviewStep, workspacePath, skillName]);
 
@@ -214,6 +226,41 @@ export default function WorkflowPage() {
     }
   }, [currentStep, steps.length, setCurrentStep, updateStepStatus]);
 
+  // Debug mode: auto-answer clarifications with recommendations and advance
+  useEffect(() => {
+    if (
+      !debugMode ||
+      !isHumanReviewStep ||
+      !reviewContent ||
+      loadingReview ||
+      debugAutoAnswerRef.current === currentStep
+    ) {
+      return;
+    }
+
+    debugAutoAnswerRef.current = currentStep;
+
+    // Fill empty Answer fields with the corresponding Recommendation text
+    const filled = reviewContent.replace(
+      /\*\*Recommendation\*\*:\s*([^\n]+)\n\*\*Answer\*\*:\s*$/gm,
+      (_match, rec) => `**Recommendation**: ${rec}\n**Answer**: ${rec.trim()}`
+    );
+
+    const config = HUMAN_REVIEW_STEPS[currentStep];
+    if (!config) return;
+
+    setReviewContent(filled);
+
+    // Save and advance
+    saveArtifactContent(skillName, currentStep, config.relativePath, filled)
+      .catch(() => {})
+      .finally(() => {
+        updateStepStatus(currentStep, "completed");
+        advanceToNextStep();
+        toast.success(`Step ${currentStep + 1} auto-answered (debug mode)`);
+      });
+  }, [debugMode, isHumanReviewStep, reviewContent, loadingReview, currentStep, skillName, updateStepStatus, advanceToNextStep]);
+
   // Watch for single agent completion
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
   const activeRunStatus = activeRun?.status;
@@ -227,12 +274,21 @@ export default function WorkflowPage() {
     if (activeRunStatus === "completed") {
       setActiveAgent(null);
 
+      // Capture artifacts before marking step complete so the next
+      // human review step can read them from SQLite immediately.
+      const finish = () => {
+        updateStepStatus(step, "completed");
+        setRunning(false);
+        toast.success(`Step ${step + 1} completed`);
+      };
+
       if (workspacePath) {
-        captureStepArtifacts(skillName, step, workspacePath).catch(() => {});
+        captureStepArtifacts(skillName, step, workspacePath)
+          .catch(() => {})
+          .then(finish);
+      } else {
+        finish();
       }
-      updateStepStatus(step, "completed");
-      setRunning(false);
-      toast.success(`Step ${step + 1} completed`);
     } else if (activeRunStatus === "error") {
       updateStepStatus(step, "error");
       setRunning(false);
@@ -240,40 +296,6 @@ export default function WorkflowPage() {
       toast.error(`Step ${step + 1} failed`);
     }
   }, [activeRunStatus, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath]);
-
-  // Watch for parallel agent completion (both must finish)
-  const runA = parallelAgentIds?.[0] ? runs[parallelAgentIds[0]] : null;
-  const runB = parallelAgentIds?.[1] ? runs[parallelAgentIds[1]] : null;
-  const parallelStatusA = runA?.status;
-  const parallelStatusB = runB?.status;
-
-  useEffect(() => {
-    if (!parallelAgentIds) return;
-
-    const bothCompleted = parallelStatusA === "completed" && parallelStatusB === "completed";
-    const anyError = parallelStatusA === "error" || parallelStatusB === "error";
-
-    if (bothCompleted) {
-      setParallelAgents(null);
-
-      if (workspacePath) {
-        // Capture artifacts for both steps 2 and 3
-        captureStepArtifacts(skillName, 2, workspacePath).catch(() => {});
-        captureStepArtifacts(skillName, 3, workspacePath).catch(() => {});
-      }
-      // Mark both steps as completed
-      updateStepStatus(2, "completed");
-      updateStepStatus(3, "completed");
-      setRunning(false);
-      toast.success("Research steps completed");
-    } else if (anyError) {
-      setParallelAgents(null);
-      updateStepStatus(2, "error");
-      updateStepStatus(3, "error");
-      setRunning(false);
-      toast.error("Research step failed");
-    }
-  }, [parallelStatusA, parallelStatusB, parallelAgentIds, updateStepStatus, setRunning, setParallelAgents, skillName, workspacePath]);
 
   // (Review agent logic removed — direct completion is faster and sufficient)
 
@@ -286,6 +308,7 @@ export default function WorkflowPage() {
     }
 
     try {
+      clearRuns();
       updateStepStatus(currentStep, "in_progress");
       setRunning(true);
 
@@ -293,42 +316,16 @@ export default function WorkflowPage() {
         skillName,
         currentStep,
         domain,
-        workspacePath
+        workspacePath,
+        paused,
       );
-      agentStartRun(agentId, "agent");
+      agentStartRun(agentId, stepConfig?.model ?? "sonnet");
+      setPaused(false);
     } catch (err) {
       updateStepStatus(currentStep, "error");
       setRunning(false);
       toast.error(
         `Failed to start agent: ${err instanceof Error ? err.message : String(err)}`
-      );
-    }
-  };
-
-  const handleStartParallelStep = async () => {
-    if (!domain || !workspacePath) {
-      toast.error("Missing domain or workspace path");
-      return;
-    }
-
-    try {
-      updateStepStatus(2, "in_progress");
-      updateStepStatus(3, "in_progress");
-      setRunning(true);
-
-      const result = await runParallelAgents(skillName, domain, workspacePath);
-      agentStartRun(result.agent_id_a, "agent");
-      agentStartRun(result.agent_id_b, "agent");
-      // Clear activeAgentId so the single-agent watcher doesn't interfere —
-      // parallel agents are tracked exclusively via parallelAgentIds
-      setActiveAgent(null);
-      setParallelAgents([result.agent_id_a, result.agent_id_b]);
-    } catch (err) {
-      updateStepStatus(2, "error");
-      updateStepStatus(3, "error");
-      setRunning(false);
-      toast.error(
-        `Failed to start research agents: ${err instanceof Error ? err.message : String(err)}`
       );
     }
   };
@@ -370,8 +367,6 @@ export default function WorkflowPage() {
     switch (stepConfig.type) {
       case "agent":
         return handleStartAgentStep();
-      case "parallel":
-        return handleStartParallelStep();
       case "package":
         return handlePackageStep();
       case "human":
@@ -408,6 +403,7 @@ export default function WorkflowPage() {
     setActiveAgent(null);
     updateStepStatus(currentStep, "pending");
     setRunning(false);
+    setPaused(true);
     toast.success(`Step ${currentStep + 1} paused — progress saved`);
   };
 
@@ -441,22 +437,27 @@ export default function WorkflowPage() {
 
   // Reload the file content (after user edits externally)
   const handleReviewReload = () => {
-    if (!reviewFilePath) return;
+    if (!reviewFilePath || !workspacePath) return;
     setLoadingReview(true);
+    const filePath = `${workspacePath}/${skillName}/${reviewFilePath}`;
     getArtifactContent(skillName, reviewFilePath)
-      .then((artifact) => setReviewContent(artifact?.content ?? null))
-      .catch(() => toast.error("Failed to reload file"))
+      .catch(() => null)
+      .then(async (artifact) => {
+        if (artifact?.content) return artifact.content;
+        return readFile(filePath).catch(() => null);
+      })
+      .then((content) => {
+        setReviewContent(content ?? null);
+        if (!content) toast.error("Failed to reload file");
+      })
       .finally(() => setLoadingReview(false));
   };
 
   const currentStepDef = steps[currentStep];
-  // Step 3 can't be started independently (it runs as part of step 2 parallel)
-  const isParallelSubStep = currentStep === 3;
   const canStart =
     stepConfig &&
     stepConfig.type !== "human" &&
     stepConfig.type !== "reasoning" &&
-    !isParallelSubStep &&
     !isRunning &&
     workspacePath &&
     currentStepDef?.status !== "completed";
@@ -583,16 +584,6 @@ export default function WorkflowPage() {
       );
     }
 
-    // Parallel agents (Steps 2+3)
-    if (parallelAgentIds) {
-      return (
-        <ParallelAgentPanel
-          agentIdA={parallelAgentIds[0]}
-          agentIdB={parallelAgentIds[1]}
-        />
-      );
-    }
-
     // Single agent with output
     if (activeAgentId) {
       return <AgentOutputPanel agentId={activeAgentId} onPause={handlePauseAgent} />;
@@ -662,7 +653,7 @@ export default function WorkflowPage() {
       case "package":
         return "Package";
       default:
-        return "Start Step";
+        return paused ? "Resume" : "Start Step";
     }
   };
 
@@ -709,10 +700,10 @@ export default function WorkflowPage() {
                 Chat
               </Button>
             </Link>
-            {isRunning && (
-              <Badge variant="outline" className="gap-1">
-                <Loader2 className="size-3 animate-spin" />
-                Running
+            {debugMode && (
+              <Badge variant="outline" className="gap-1 border-amber-500 text-amber-600">
+                <Bug className="size-3" />
+                Debug
               </Badge>
             )}
             {canStart && (

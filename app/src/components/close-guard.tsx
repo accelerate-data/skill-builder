@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { invoke } from "@tauri-apps/api/core";
+import { markShuttingDown } from "@/hooks/use-agent-stream";
 
 type CloseDialogState =
   | { kind: "hidden" }
@@ -22,6 +23,8 @@ export function CloseGuard() {
   });
 
   const performClose = useCallback(async () => {
+    // Suppress late agent-exit events so killed sidecars don't trigger error UI
+    markShuttingDown();
     try {
       await getCurrentWindow().destroy();
     } catch {

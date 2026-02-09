@@ -6,6 +6,9 @@ export interface AppSettings {
   anthropic_api_key: string | null;
   workspace_path: string | null;
   preferred_model: string | null;
+  debug_mode: boolean;
+  extended_context: boolean;
+  splash_shown: boolean;
 }
 
 export interface SkillSummary {
@@ -78,7 +81,8 @@ export const runWorkflowStep = (
   stepId: number,
   domain: string,
   workspacePath: string,
-) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath });
+  resume?: boolean,
+) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath, resume: resume ?? false });
 
 export const runReviewStep = (
   skillName: string,
@@ -86,17 +90,6 @@ export const runReviewStep = (
   domain: string,
   workspacePath: string,
 ) => invoke<string>("run_review_step", { skillName, stepId, domain, workspacePath });
-
-export interface ParallelAgentResult {
-  agent_id_a: string;
-  agent_id_b: string;
-}
-
-export const runParallelAgents = (
-  skillName: string,
-  domain: string,
-  workspacePath: string,
-) => invoke<ParallelAgentResult>("run_parallel_agents", { skillName, domain, workspacePath });
 
 export const packageSkill = (
   skillName: string,

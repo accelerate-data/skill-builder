@@ -1,8 +1,7 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, Fragment } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
-  Loader2,
   Send,
   Brain,
   User,
@@ -12,7 +11,6 @@ import {
   Pencil,
   ArrowRight,
   FileText,
-  Pause,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,6 +18,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { useAgentStore } from "@/stores/agent-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import {
@@ -36,6 +35,8 @@ import {
   extractRoundNumber,
   countDecisions,
 } from "@/lib/reasoning-parser";
+import { AgentStatusHeader } from "@/components/agent-status-header";
+import { MessageItem, TurnMarker } from "@/components/agent-output-panel";
 
 // --- Types ---
 
@@ -99,13 +100,13 @@ export function ReasoningChat({
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const processedRunRef = useRef<string | null>(null);
 
-  // Stores
-  const runs = useAgentStore((s) => s.runs);
+  // Stores — granular selector: only re-render when *this* agent's run changes
+  const currentRun = useAgentStore((s) => currentAgentId ? s.runs[currentAgentId] : null);
   const agentStartRun = useAgentStore((s) => s.startRun);
   const { updateStepStatus, setRunning, currentStep } = useWorkflowStore();
 
-  const currentRun = currentAgentId ? runs[currentAgentId] : null;
   const isAgentRunning = currentRun?.status === "running";
 
   // --- Session persistence ---
@@ -125,7 +126,7 @@ export function ReasoningChat({
       };
       saveArtifactContent(
         skillName,
-        6,
+        4,
         SESSION_ARTIFACT,
         JSON.stringify(state),
       ).catch(() => {});
@@ -188,7 +189,7 @@ export function ReasoningChat({
 
   const loadDecisions = useCallback(async () => {
     try {
-      await captureStepArtifacts(skillName, 6, workspacePath);
+      await captureStepArtifacts(skillName, 4, workspacePath);
       const artifact = await getArtifactContent(skillName, "context/decisions.md");
       if (artifact?.content) setDecisionsContent(artifact.content);
     } catch {
@@ -199,6 +200,9 @@ export function ReasoningChat({
   const handleAgentTurnComplete = useCallback(() => {
     if (!currentRun || !currentAgentId) return;
     if (currentRun.status !== "completed" && currentRun.status !== "error") return;
+    // Prevent re-processing the same run (avoids infinite loop from messages.length dependency)
+    if (processedRunRef.current === currentAgentId) return;
+    processedRunRef.current = currentAgentId;
 
     const sid = currentRun.sessionId ?? sessionId;
     if (currentRun.sessionId && !sessionId) {
@@ -357,7 +361,7 @@ export function ReasoningChat({
 
       // Use runWorkflowStep which stages artifacts, copies prompts,
       // and builds the proper prompt from 06-reasoning-agent.md
-      const agentId = await runWorkflowStep(skillName, 6, domain, workspacePath);
+      const agentId = await runWorkflowStep(skillName, 4, domain, workspacePath);
       agentStartRun(agentId, "opus");
       setCurrentAgentId(agentId);
     } catch (err) {
@@ -403,7 +407,7 @@ export function ReasoningChat({
 
   const handleProceedToBuild = async () => {
     try {
-      await captureStepArtifacts(skillName, 6, workspacePath);
+      await captureStepArtifacts(skillName, 4, workspacePath);
     } catch {
       // Best-effort
     }
@@ -436,6 +440,20 @@ export function ReasoningChat({
       handleSend();
     }
   };
+
+  // Pre-compute turn numbers for streaming messages in O(n)
+  const streamTurnMap = useMemo(() => {
+    const map = new Map<number, number>();
+    if (!currentRun) return map;
+    let turn = 0;
+    for (let i = 0; i < currentRun.messages.length; i++) {
+      if (currentRun.messages[i].type === "assistant") {
+        turn++;
+        map.set(i, turn);
+      }
+    }
+    return map;
+  }, [currentRun?.messages]);
 
   // --- Not started ---
 
@@ -592,8 +610,19 @@ export function ReasoningChat({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
+      {/* Agent status header — shown when an agent has been launched */}
+      {currentAgentId && (
+        <>
+          <AgentStatusHeader
+            agentId={currentAgentId}
+            title="Reasoning Agent"
+            onPause={isAgentRunning ? handlePause : undefined}
+          />
+          <Separator />
+        </>
+      )}
       {/* Messages area */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-4 p-4">
           {messages.map((msg, i) => (
             <div
@@ -633,29 +662,16 @@ export function ReasoningChat({
             </div>
           ))}
 
-          {/* Streaming indicator with pause button */}
-          {isAgentRunning && (
-            <div className="flex gap-3">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <Brain className="size-4" />
-              </div>
-              <Card className="flex items-center gap-3 px-4 py-3">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" />
-                  Reasoning...
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={handlePause}
-                >
-                  <Pause className="size-3" />
-                  Pause
-                </Button>
-              </Card>
-            </div>
-          )}
+          {/* Streaming agent messages — same rendering as AgentOutputPanel */}
+          {isAgentRunning && currentRun && currentRun.messages.map((msg, i) => {
+            const turn = streamTurnMap.get(i) ?? 0;
+            return (
+              <Fragment key={`stream-${i}`}>
+                {turn > 0 && <TurnMarker turn={turn} />}
+                <MessageItem message={msg} />
+              </Fragment>
+            );
+          })}
 
           {/* Action panel — shown after messages */}
           {renderActionPanel()}
@@ -701,19 +717,6 @@ export function ReasoningChat({
           {sessionId && (
             <Badge variant="secondary" className="text-xs">
               Session active
-            </Badge>
-          )}
-          {currentRun?.tokenUsage && (
-            <Badge variant="secondary" className="text-xs">
-              {(
-                currentRun.tokenUsage.input + currentRun.tokenUsage.output
-              ).toLocaleString()}{" "}
-              tokens
-            </Badge>
-          )}
-          {currentRun?.totalCost !== undefined && (
-            <Badge variant="secondary" className="text-xs">
-              ${currentRun.totalCost.toFixed(4)}
             </Badge>
           )}
         </div>

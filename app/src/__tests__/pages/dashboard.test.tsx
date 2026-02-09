@@ -39,6 +39,9 @@ const defaultSettings: AppSettings = {
   anthropic_api_key: "sk-ant-test",
   workspace_path: "/home/user/workspace",
   preferred_model: "sonnet",
+  debug_mode: false,
+  extended_context: false,
+  splash_shown: false,
 };
 
 const sampleSkills: SkillSummary[] = [
