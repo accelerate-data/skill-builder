@@ -6,7 +6,7 @@ run_t3() {
   source "$TESTS_DIR/fixtures.sh"
 
   local skill_name="pet-store-analytics"
-  local budget="${MAX_BUDGET_T3:-0.05}"
+  local budget="${MAX_BUDGET_T3:-0.25}"
 
   # ---- T3.1: Mode C (scratch — empty directory) ----
   local dir_c

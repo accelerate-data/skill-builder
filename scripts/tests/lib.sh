@@ -152,10 +152,11 @@ run_claude_safe() {
   local timeout_secs="${2:-60}"
   local cwd="${3:-}"
   local cmd="$CLAUDE_BIN -p --plugin-dir $PLUGIN_DIR"
+  # Pipe prompt via stdin because --plugin-dir is variadic and swallows positional args
   if [[ -n "$cwd" ]]; then
-    (cd "$cwd" && _timeout_cmd "$timeout_secs" $cmd "$prompt" 2>&1) || true
+    (cd "$cwd" && echo "$prompt" | _timeout_cmd "$timeout_secs" $cmd 2>&1) || true
   else
-    _timeout_cmd "$timeout_secs" $cmd "$prompt" 2>&1 || true
+    echo "$prompt" | _timeout_cmd "$timeout_secs" $cmd 2>&1 || true
   fi
 }
 
@@ -165,10 +166,11 @@ run_claude_unsafe() {
   local timeout_secs="${3:-120}"
   local cwd="${4:-}"
   local cmd="$CLAUDE_BIN -p --plugin-dir $PLUGIN_DIR --dangerously-skip-permissions --max-budget-usd $budget"
+  # Pipe prompt via stdin because --plugin-dir is variadic and swallows positional args
   if [[ -n "$cwd" ]]; then
-    (cd "$cwd" && _timeout_cmd "$timeout_secs" $cmd "$prompt" 2>&1) || true
+    (cd "$cwd" && echo "$prompt" | _timeout_cmd "$timeout_secs" $cmd 2>&1) || true
   else
-    _timeout_cmd "$timeout_secs" $cmd "$prompt" 2>&1 || true
+    echo "$prompt" | _timeout_cmd "$timeout_secs" $cmd 2>&1 || true
   fi
 }
 
