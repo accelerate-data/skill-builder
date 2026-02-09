@@ -57,7 +57,7 @@ Prompt it to:
    - Deduplicate any overlapping questions
    - Number questions sequentially within each section (Q1, Q2, etc.)
    - Keep the exact `clarifications-*.md` format from `references/shared-context.md`
-4. Delete the two temporary research files when done
+4. Keep the intermediate research files for reference
 5. Respond with only: `Done — wrote [filename] ([N] questions)`
 
 ## Output

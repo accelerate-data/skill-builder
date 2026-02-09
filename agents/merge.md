@@ -53,4 +53,4 @@ At the top of `clarifications.md`, add a brief summary:
 
 ## Output
 - Write `clarifications.md` to the context directory provided by the coordinator
-- Delete the temporary `clarifications-patterns.md` and `clarifications-data.md` files when done
+- Keep the intermediate `clarifications-patterns.md` and `clarifications-data.md` files for reference
