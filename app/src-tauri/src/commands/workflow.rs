@@ -368,16 +368,12 @@ pub async fn run_workflow_step(
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path)?;
 
-    // Reconcile disk → DB (captures files from interrupted runs),
-    // clean this step's output, then stage DB → disk for agent prereqs
+    // Reconcile disk → DB (captures partial output from paused/interrupted runs),
+    // then stage all DB artifacts → disk so the agent sees prerequisites and
+    // any previously written partial output.
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         reconcile_disk_artifacts(&conn, &skill_name, &workspace_path)?;
-        crate::db::delete_step_artifacts(&conn, &skill_name, step_id as i32)?;
-    }
-    clean_step_output(&workspace_path, &skill_name, step_id);
-    {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
         stage_artifacts(&conn, &skill_name, &workspace_path)?;
     }
 
@@ -413,17 +409,10 @@ pub async fn run_parallel_agents(
 ) -> Result<ParallelAgentResult, String> {
     ensure_workspace_prompts(&app, &workspace_path)?;
 
-    // Reconcile disk → DB, clean these steps' output, stage DB → disk
+    // Reconcile disk → DB, then stage all DB artifacts → disk
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         reconcile_disk_artifacts(&conn, &skill_name, &workspace_path)?;
-        crate::db::delete_step_artifacts(&conn, &skill_name, 2)?;
-        crate::db::delete_step_artifacts(&conn, &skill_name, 3)?;
-    }
-    clean_step_output(&workspace_path, &skill_name, 2);
-    clean_step_output(&workspace_path, &skill_name, 3);
-    {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
         stage_artifacts(&conn, &skill_name, &workspace_path)?;
     }
 
