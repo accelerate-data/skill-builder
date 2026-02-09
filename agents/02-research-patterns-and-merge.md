@@ -27,7 +27,7 @@ Spawn two sub-agents via the **Task tool** — both in the **same turn** so they
 
 Prompt it to:
 - **Before starting research:** Check if [skill_dir]/context/clarifications-patterns.md already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
-- Read `references/shared-context.md` and `agents/research-patterns.md` and follow the instructions
+- Read `prompts/shared-context.md` and `prompts/03a-research-business-patterns.md` and follow the instructions
 - The domain is: [pass the domain]
 - The answered domain concepts file is at: [skill_dir]/context/clarifications-concepts.md
 - Write output to: [skill_dir]/context/clarifications-patterns.md
@@ -37,7 +37,7 @@ Prompt it to:
 
 Prompt it to:
 - **Before starting research:** Check if [skill_dir]/context/clarifications-data.md already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
-- Read `references/shared-context.md` and `agents/research-data.md` and follow the instructions
+- Read `prompts/shared-context.md` and `prompts/03b-research-data-modeling.md` and follow the instructions
 - The domain is: [pass the domain]
 - The answered domain concepts file is at: [skill_dir]/context/clarifications-concepts.md
 - Write output to: [skill_dir]/context/clarifications-data.md
@@ -49,7 +49,7 @@ After both sub-agents return, spawn a fresh **merger** sub-agent via the Task to
 
 Prompt it to:
 - **Before starting merge:** Check if [skill_dir]/context/clarifications.md already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from the research files, remove outdated ones.
-- Read `references/shared-context.md` and `agents/merge.md` and follow the instructions
+- Read `prompts/shared-context.md` and `prompts/04-merge-clarifications.md` and follow the instructions
 - The context directory is: [skill_dir]/context/
 - Write merged output to: [skill_dir]/context/clarifications.md
 - When finished, respond with only a single line: Done — wrote clarifications.md ([N] questions). Do not echo file contents.

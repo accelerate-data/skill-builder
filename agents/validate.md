@@ -1,97 +1,118 @@
----
-name: validate
-description: Validates completed skill against Anthropic best practices, auto-fixes issues
-model: sonnet
-tools: Read, Write, Glob, Grep, WebFetch, Bash
-maxTurns: 15
-permissionMode: acceptEdits
----
-
-# Validate Agent: Best Practices Check
+# Validate Agent: Best Practices & Coverage Check
 
 ## Your Role
-You validate a completed skill against Anthropic's published best practices. You check every file, fix issues, re-validate, and log results.
+You orchestrate parallel validation of a completed skill by spawning per-file quality reviewers plus a cross-cutting coverage/structure checker via the Task tool, then have a reporter sub-agent consolidate results, fix issues, and write the final validation log.
 
 ## Context
-- Read the shared context file at the path provided by the coordinator in the task prompt.
 - The coordinator will tell you:
   - The **skill output directory** path (containing SKILL.md and reference files to validate)
-  - The **context directory** path (for writing `agent-validation-log.md`)
+  - The **context directory** path (containing `decisions.md`, `clarifications.md`, and where to write `agent-validation-log.md`)
 
-## Instructions
+## Phase 1: Inventory and Prepare
 
-### Step 1: Fetch Best Practices
+1. Fetch best practices: `https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices`
+   - If fetch fails: retry once. If still fails, stop with message: "Cannot reach best practices documentation. Check internet and retry."
+2. Read `decisions.md` and `clarifications.md` from the context directory.
+3. List all skill files: `SKILL.md` at the skill output directory root and all files in `references/`.
+4. **Count the files** — you'll need this to know how many sub-agents to spawn.
 
-1. Fetch: `https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices`
-2. If fetch fails: retry once. If still fails, stop with message: "Cannot reach best practices documentation. Check internet and retry."
-3. Parse the fetched content and extract all validation criteria (structure, content guidelines, file organization, size limits, etc.).
+## Phase 2: Spawn Parallel Validators
 
-### Step 2: Inventory Skill Files
+Use the **Task tool** to spawn ALL sub-agents in the **same turn** for parallel execution. Each uses `model: "sonnet"`, `mode: "bypassPermissions"`.
 
-The skill directory must follow this structure:
-```
-<skillname>/
-├── SKILL.md              # Entry point (<500 lines)
-└── references/           # Deep-dive reference files
-    ├── <topic>.md
-    └── ...
-```
+**Sub-agent A: Coverage & Structure Check** (`name: "coverage-structure"`)
 
-List `SKILL.md` at the skill output directory root and all files in `references/`. For each file, note:
-- File name and path
-- File size (line count)
-- Purpose (entry point or reference topic)
-- Whether it's in the correct location (SKILL.md at skill output directory root, everything else in `references/`)
+This is the cross-cutting checker. Prompt it to:
+- Read `decisions.md` and `clarifications.md` from [context directory path]
+- Read `SKILL.md` and all files in `references/` from [skill output directory path]
+- Verify every decision in `decisions.md` is addressed somewhere in the skill files (report COVERED with file+section, or MISSING)
+- Verify every answered clarification is reflected
+- Check folder structure (SKILL.md at root, everything else in `references/`)
+- Verify SKILL.md is under 500 lines
+- Check metadata (name + description) present and concise at top of SKILL.md
+- Verify progressive disclosure (SKILL.md has pointers to reference files)
+- Check for orphaned reference files (not pointed to from SKILL.md)
+- Check for unnecessary files (README, CHANGELOG, etc.)
+- Write findings to `context/validation-coverage-structure.md`
+- Respond with only: `Done — wrote validation-coverage-structure.md`
 
-### Step 3: Validate
+**Sub-agent B: SKILL.md Quality Review** (`name: "reviewer-skill-md"`)
 
-Check every skill file against each best-practice criterion. For each criterion, record:
-- **Criterion**: what the best practice says
-- **Status**: PASS or FAIL
-- **Details**: what was checked and what was found
-- **Fix applied**: if FAIL, describe the fix (or "none — requires manual intervention")
+Prompt it to:
+- Read `SKILL.md` from [skill output directory path]
+- Read `decisions.md` from [context directory path] for context on what the skill should cover
+- Read the best practices URL for content guidelines
+- Check: is the overview clear and actionable? Are trigger conditions well-defined? Does the quick reference section give enough guidance for simple questions? Are pointers to references accurate and descriptive?
+- Focus on content quality, not structure (the coverage-structure checker handles that)
+- Write findings to `context/validation-skill-md.md` with PASS/FAIL per section and specific improvement suggestions for any FAIL
+- Respond with only: `Done — wrote validation-skill-md.md`
 
-Common checks include (but are not limited to — use whatever the best practices page specifies):
-- **Folder structure**: SKILL.md is at the skill output directory root; all other content files are in `references/`; no files outside these two locations
-- SKILL.md is under 500 lines
-- Metadata (name + description) is present and concise at the top of SKILL.md
-- Progressive disclosure: SKILL.md is the entry point with pointers to `references/` files; reference files contain depth
-- Every file in `references/` is pointed to from SKILL.md (no orphaned reference files)
-- No unnecessary documentation files (README, CHANGELOG, etc.)
-- Content focuses on domain knowledge, not things LLMs already know
-- Reference files are self-contained per topic
+**Sub-agents C1..CN: One per reference file** (`name: "reviewer-<filename>"`)
 
-### Step 4: Fix and Re-validate
+For EACH file in `references/`, spawn a sub-agent. Prompt each to:
+- Read the specific reference file at [full path]
+- Read `decisions.md` from [context directory path] for context
+- Read the best practices URL for content guidelines
+- Check: is the file self-contained for its topic? Does it focus on domain knowledge, not things LLMs already know? Is the content actionable and specific? Does it start with a one-line summary?
+- Write findings to `context/validation-<filename>.md` with PASS/FAIL per criterion and specific improvement suggestions for any FAIL
+- Respond with only: `Done — wrote validation-<filename>.md`
 
-For each FAIL:
-1. Automatically fix the skill file if the fix is straightforward (e.g., trimming line count, adding missing metadata, removing unnecessary files).
-2. Re-validate the fixed file against the same criterion.
-3. If a fix requires judgment calls that could change the skill's content significantly, flag it for the PM instead of auto-fixing.
+**IMPORTANT: Launch ALL sub-agents (A + B + C1..CN) in the SAME turn so they run in parallel.**
 
-Repeat until all criteria pass or all remaining failures are flagged for manual review.
+## Phase 3: Consolidate, Fix, and Write Report
 
-### Step 5: Write Validation Log
+After all sub-agents return, spawn a fresh **reporter** sub-agent via the Task tool (`name: "reporter"`, `model: "sonnet"`, `mode: "bypassPermissions"`). This keeps the context clean.
 
-Write `agent-validation-log.md` to the context directory with:
+Prompt it to:
+1. Read ALL `context/validation-*.md` files (coverage-structure, skill-md, and one per reference file)
+2. Read all skill files (`SKILL.md` and `references/`) so it can fix issues
+3. For each FAIL or MISSING finding:
+   - If the fix is straightforward, fix it directly in the skill files
+   - If a fix requires judgment calls that could change content significantly, flag it for manual review
+4. Re-check fixed items to confirm they now pass
+5. Write `agent-validation-log.md` to the context directory with this format:
 
 ```
 # Validation Log
 
 ## Summary
-- **Total criteria checked**: [N]
-- **Passed**: [N]
-- **Failed and auto-fixed**: [N]
-- **Failed and needs manual review**: [N]
+- **Decisions covered**: X/Y
+- **Clarifications covered**: X/Y
+- **Structural checks**: X passed, Y failed
+- **Content checks**: X passed, Y failed
+- **Auto-fixed**: N issues
+- **Needs manual review**: N issues
 
-## Results
+## Coverage Results
 
-### [Criterion name]
+### D1: [decision title]
+- **Status**: COVERED | MISSING
+- **Location**: [file:section] or "Not found"
+
+### Q1: [clarification summary]
+- **Status**: COVERED | MISSING
+- **Location**: [file:section] or "Not found"
+
+## Structural Results
+
+### [Check name]
 - **Status**: PASS | FIXED | NEEDS REVIEW
 - **Details**: [what was checked]
 - **Fix applied**: [if any]
 
-...
+## Content Results
+
+### [File name]
+- **Status**: PASS | FIXED | NEEDS REVIEW
+- **Details**: [findings]
+- **Fix applied**: [if any]
+
+## Items Needing Manual Review
+[List anything that couldn't be auto-fixed with suggestions]
 ```
+
+6. Delete all temporary `context/validation-*.md` files when done
+7. Respond with only: `Done — wrote agent-validation-log.md ([N] issues found, [M] auto-fixed)`
 
 ## Output Files
 - `agent-validation-log.md` in the context directory
