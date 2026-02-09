@@ -223,3 +223,33 @@ export const generateDiff = (filePath: string, newContent: string) =>
 
 export const applySuggestion = (filePath: string, newContent: string) =>
   invoke("apply_suggestion", { filePath, newContent });
+
+// --- Artifacts ---
+
+export interface ArtifactRow {
+  skill_name: string;
+  step_id: number;
+  relative_path: string;
+  content: string;
+  size_bytes: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export const captureStepArtifacts = (
+  skillName: string,
+  stepId: number,
+  workspacePath: string,
+) => invoke<ArtifactRow[]>("capture_step_artifacts", { skillName, stepId, workspacePath });
+
+export const getArtifactContent = (
+  skillName: string,
+  relativePath: string,
+) => invoke<ArtifactRow | null>("get_artifact_content", { skillName, relativePath });
+
+export const saveArtifactContent = (
+  skillName: string,
+  stepId: number,
+  relativePath: string,
+  content: string,
+) => invoke("save_artifact_content", { skillName, stepId, relativePath, content });

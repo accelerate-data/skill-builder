@@ -32,6 +32,9 @@ vi.mock("@/lib/tauri", () => ({
   getWorkflowState: vi.fn(() => Promise.reject("not found")),
   saveWorkflowState: vi.fn(() => Promise.resolve()),
   resetWorkflowStep: vi.fn(() => Promise.resolve()),
+  captureStepArtifacts: vi.fn(() => Promise.resolve([])),
+  getArtifactContent: vi.fn(() => Promise.resolve(null)),
+  saveArtifactContent: vi.fn(() => Promise.resolve()),
 }));
 
 // Mock heavy sub-components to isolate the effect lifecycle

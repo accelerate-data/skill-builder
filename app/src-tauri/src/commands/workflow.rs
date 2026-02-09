@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 use crate::agents::sidecar::{self, AgentRegistry, SidecarConfig};
 use crate::db::Db;
 use crate::types::{
-    PackageResult, ParallelAgentResult, StepConfig, StepStatusUpdate, WorkflowStateResponse,
+    ArtifactRow, PackageResult, ParallelAgentResult, StepConfig, StepStatusUpdate,
+    WorkflowStateResponse,
 };
 
 const DEFAULT_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"];
@@ -166,6 +167,61 @@ fn make_agent_id(skill_name: &str, label: &str) -> String {
     format!("{}-{}-{}", skill_name, label, ts)
 }
 
+/// Write all DB artifacts for a skill to the workspace filesystem.
+/// This stages files so agents can read them during execution.
+fn stage_artifacts(
+    conn: &rusqlite::Connection,
+    skill_name: &str,
+    workspace_path: &str,
+) -> Result<(), String> {
+    let artifacts = crate::db::get_skill_artifacts(conn, skill_name)?;
+    let skill_dir = Path::new(workspace_path).join(skill_name);
+
+    // Ensure context/ directory exists
+    std::fs::create_dir_all(skill_dir.join("context"))
+        .map_err(|e| format!("Failed to create context dir: {}", e))?;
+
+    for artifact in &artifacts {
+        let file_path = skill_dir.join(&artifact.relative_path);
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create dir {}: {}", parent.display(), e))?;
+        }
+        std::fs::write(&file_path, &artifact.content)
+            .map_err(|e| format!("Failed to write {}: {}", file_path.display(), e))?;
+    }
+
+    Ok(())
+}
+
+/// Recursively collect .md files from a directory, returning relative paths.
+fn walk_md_files(dir: &Path, prefix: &str) -> Result<Vec<(String, String)>, String> {
+    let mut results = Vec::new();
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| format!("Failed to read dir {}: {}", dir.display(), e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        let relative = if prefix.is_empty() {
+            name.clone()
+        } else {
+            format!("{}/{}", prefix, name)
+        };
+
+        if path.is_dir() {
+            results.extend(walk_md_files(&path, &relative)?);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+            results.push((relative, content));
+        }
+    }
+
+    Ok(results)
+}
+
 #[tauri::command]
 pub async fn run_review_step(
     app: tauri::AppHandle,
@@ -177,6 +233,12 @@ pub async fn run_review_step(
     workspace_path: String,
 ) -> Result<String, String> {
     ensure_workspace_prompts(&app, &workspace_path)?;
+
+    // Stage DB artifacts to filesystem before running agent
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        stage_artifacts(&conn, &skill_name, &workspace_path)?;
+    }
 
     let step = get_step_config(step_id)?;
     let api_key = read_api_key(&db)?;
@@ -228,6 +290,12 @@ pub async fn run_workflow_step(
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path)?;
 
+    // Stage DB artifacts to filesystem before running agent
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        stage_artifacts(&conn, &skill_name, &workspace_path)?;
+    }
+
     let step = get_step_config(step_id)?;
     let api_key = read_api_key(&db)?;
     let prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain);
@@ -258,6 +326,12 @@ pub async fn run_parallel_agents(
     workspace_path: String,
 ) -> Result<ParallelAgentResult, String> {
     ensure_workspace_prompts(&app, &workspace_path)?;
+
+    // Stage DB artifacts to filesystem before running agents
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        stage_artifacts(&conn, &skill_name, &workspace_path)?;
+    }
 
     let api_key = read_api_key(&db)?;
     let tools: Vec<String> = DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect();
@@ -323,7 +397,14 @@ pub async fn run_parallel_agents(
 pub async fn package_skill(
     skill_name: String,
     workspace_path: String,
+    db: tauri::State<'_, Db>,
 ) -> Result<PackageResult, String> {
+    // Stage DB artifacts to filesystem before packaging
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        stage_artifacts(&conn, &skill_name, &workspace_path)?;
+    }
+
     let skill_dir = Path::new(&workspace_path).join(&skill_name);
     if !skill_dir.exists() {
         return Err(format!(
@@ -514,9 +595,10 @@ pub fn reset_workflow_step(
 ) -> Result<(), String> {
     delete_step_output_files(&workspace_path, &skill_name, from_step_id);
 
-    // Reset steps in SQLite
+    // Reset steps and artifacts in SQLite
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     crate::db::reset_workflow_steps_from(&conn, &skill_name, from_step_id as i32)?;
+    crate::db::delete_artifacts_from(&conn, &skill_name, from_step_id as i32)?;
 
     // Update the workflow run's current step
     if let Some(run) = crate::db::get_workflow_run(&conn, &skill_name)? {
@@ -530,6 +612,88 @@ pub fn reset_workflow_step(
     }
 
     Ok(())
+}
+
+// --- Artifact commands ---
+
+#[tauri::command]
+pub fn capture_step_artifacts(
+    skill_name: String,
+    step_id: u32,
+    workspace_path: String,
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<ArtifactRow>, String> {
+    let skill_dir = Path::new(&workspace_path).join(&skill_name);
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mut captured = Vec::new();
+
+    // Read known output files for this step
+    for file in get_step_output_files(step_id) {
+        let path = skill_dir.join(file);
+        if path.exists() {
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+            crate::db::save_artifact(&conn, &skill_name, step_id as i32, file, &content)?;
+            captured.push(ArtifactRow {
+                skill_name: skill_name.clone(),
+                step_id: step_id as i32,
+                relative_path: file.to_string(),
+                size_bytes: content.len() as i64,
+                content,
+                created_at: String::new(),
+                updated_at: String::new(),
+            });
+        }
+    }
+
+    // Step 6 (Build): also walk references/ directory
+    if step_id == 6 {
+        let refs_dir = skill_dir.join("references");
+        if refs_dir.is_dir() {
+            for (relative, content) in walk_md_files(&refs_dir, "references")? {
+                crate::db::save_artifact(
+                    &conn,
+                    &skill_name,
+                    step_id as i32,
+                    &relative,
+                    &content,
+                )?;
+                captured.push(ArtifactRow {
+                    skill_name: skill_name.clone(),
+                    step_id: step_id as i32,
+                    relative_path: relative,
+                    size_bytes: content.len() as i64,
+                    content,
+                    created_at: String::new(),
+                    updated_at: String::new(),
+                });
+            }
+        }
+    }
+
+    Ok(captured)
+}
+
+#[tauri::command]
+pub fn get_artifact_content(
+    skill_name: String,
+    relative_path: String,
+    db: tauri::State<'_, Db>,
+) -> Result<Option<ArtifactRow>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::get_artifact_by_path(&conn, &skill_name, &relative_path)
+}
+
+#[tauri::command]
+pub fn save_artifact_content(
+    skill_name: String,
+    step_id: i32,
+    relative_path: String,
+    content: String,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::save_artifact(&conn, &skill_name, step_id, &relative_path, &content)
 }
 
 #[cfg(test)]

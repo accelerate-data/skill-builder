@@ -33,9 +33,11 @@ import {
   runReviewStep,
   packageSkill,
   resetWorkflowStep,
-  readFile,
   getWorkflowState,
   saveWorkflowState,
+  captureStepArtifacts,
+  getArtifactContent,
+  saveArtifactContent,
   type PackageResult,
 } from "@/lib/tauri";
 
@@ -91,18 +93,10 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
   9: { type: "package" },
 };
 
-// Human review steps: step id -> clarification file path builder
-const HUMAN_REVIEW_STEPS: Record<
-  number,
-  { getFilePath: (workspacePath: string, skillName: string) => string }
-> = {
-  1: {
-    getFilePath: (wp, name) =>
-      `${wp}/${name}/context/clarifications-concepts.md`,
-  },
-  4: {
-    getFilePath: (wp, name) => `${wp}/${name}/context/clarifications.md`,
-  },
+// Human review steps: step id -> relative artifact path
+const HUMAN_REVIEW_STEPS: Record<number, { relativePath: string }> = {
+  1: { relativePath: "context/clarifications-concepts.md" },
+  4: { relativePath: "context/clarifications.md" },
 };
 
 export default function WorkflowPage() {
@@ -223,12 +217,12 @@ export default function WorkflowPage() {
 
     const config = HUMAN_REVIEW_STEPS[currentStep];
     if (!config) return;
-    const filePath = config.getFilePath(workspacePath, skillName);
-    setReviewFilePath(filePath);
+    const relativePath = config.relativePath;
+    setReviewFilePath(relativePath);
     setLoadingReview(true);
 
-    readFile(filePath)
-      .then((content) => setReviewContent(content))
+    getArtifactContent(skillName, relativePath)
+      .then((artifact) => setReviewContent(artifact?.content ?? null))
       .catch(() => setReviewContent(null))
       .finally(() => setLoadingReview(false));
   }, [currentStep, isHumanReviewStep, workspacePath, skillName]);
@@ -283,6 +277,9 @@ export default function WorkflowPage() {
       }
 
       // No review needed — complete normally
+      if (workspacePath) {
+        captureStepArtifacts(skillName, step, workspacePath).catch(() => {});
+      }
       updateStepStatus(step, "completed");
       setRunning(false);
       setRetryCount(0);
@@ -335,11 +332,17 @@ export default function WorkflowPage() {
         }
         setReviewAgentId(null);
         setRetryCount(0);
+        if (workspacePath) {
+          captureStepArtifacts(skillName, step, workspacePath).catch(() => {});
+        }
         updateStepStatus(step, "completed");
       }
     } else {
       // Review agent errored — complete step anyway
       setReviewAgentId(null);
+      if (workspacePath) {
+        captureStepArtifacts(skillName, step, workspacePath).catch(() => {});
+      }
       updateStepStatus(step, "completed");
       toast.success(`Step ${step + 1} completed`);
     }
@@ -392,6 +395,9 @@ export default function WorkflowPage() {
       }
 
       // No review needed
+      if (workspacePath) {
+        captureStepArtifacts(skillName, step, workspacePath).catch(() => {});
+      }
       updateStepStatus(step, "completed");
       setRunning(false);
       setRetryCount(0);
@@ -517,7 +523,16 @@ export default function WorkflowPage() {
     }
   };
 
-  const handleReviewContinue = () => {
+  const handleReviewContinue = async () => {
+    // Save the (possibly edited) content to DB
+    const config = HUMAN_REVIEW_STEPS[currentStep];
+    if (config && reviewContent !== null) {
+      try {
+        await saveArtifactContent(skillName, currentStep, config.relativePath, reviewContent);
+      } catch {
+        // best-effort
+      }
+    }
     updateStepStatus(currentStep, "completed");
     advanceToNextStep();
   };
@@ -526,8 +541,8 @@ export default function WorkflowPage() {
   const handleReviewReload = () => {
     if (!reviewFilePath) return;
     setLoadingReview(true);
-    readFile(reviewFilePath)
-      .then((content) => setReviewContent(content))
+    getArtifactContent(skillName, reviewFilePath)
+      .then((artifact) => setReviewContent(artifact?.content ?? null))
       .catch(() => toast.error("Failed to reload file"))
       .finally(() => setLoadingReview(false));
   };

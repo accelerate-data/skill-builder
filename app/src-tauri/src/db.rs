@@ -1,5 +1,6 @@
 use crate::types::{
-    AgentRunRow, AppSettings, ChatMessageRow, ChatSessionRow, WorkflowRunRow, WorkflowStepRow,
+    AgentRunRow, AppSettings, ArtifactRow, ChatMessageRow, ChatSessionRow, WorkflowRunRow,
+    WorkflowStepRow,
 };
 use rusqlite::Connection;
 use std::fs;
@@ -69,6 +70,17 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             role TEXT NOT NULL,
             content TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS workflow_artifacts (
+            skill_name TEXT NOT NULL,
+            step_id INTEGER NOT NULL,
+            relative_path TEXT NOT NULL,
+            content TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (skill_name, step_id, relative_path)
         );",
     )
 }
@@ -162,6 +174,7 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
         [skill_name],
     )
     .map_err(|e| e.to_string())?;
+    delete_all_artifacts(conn, skill_name)?;
     Ok(())
 }
 
@@ -288,6 +301,110 @@ pub fn get_agent_runs(conn: &Connection, skill_name: &str) -> Result<Vec<AgentRu
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
+}
+
+// --- Workflow Artifacts ---
+
+pub fn save_artifact(
+    conn: &Connection,
+    skill_name: &str,
+    step_id: i32,
+    relative_path: &str,
+    content: &str,
+) -> Result<(), String> {
+    let size_bytes = content.len() as i64;
+    conn.execute(
+        "INSERT INTO workflow_artifacts
+         (skill_name, step_id, relative_path, content, size_bytes, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'), datetime('now'))
+         ON CONFLICT(skill_name, step_id, relative_path) DO UPDATE SET
+             content = ?4, size_bytes = ?5, updated_at = datetime('now')",
+        rusqlite::params![skill_name, step_id, relative_path, content, size_bytes],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn get_skill_artifacts(
+    conn: &Connection,
+    skill_name: &str,
+) -> Result<Vec<ArtifactRow>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT skill_name, step_id, relative_path, content, size_bytes, created_at, updated_at
+             FROM workflow_artifacts WHERE skill_name = ?1 ORDER BY step_id, relative_path",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(rusqlite::params![skill_name], |row| {
+            Ok(ArtifactRow {
+                skill_name: row.get(0)?,
+                step_id: row.get(1)?,
+                relative_path: row.get(2)?,
+                content: row.get(3)?,
+                size_bytes: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn get_artifact_by_path(
+    conn: &Connection,
+    skill_name: &str,
+    relative_path: &str,
+) -> Result<Option<ArtifactRow>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT skill_name, step_id, relative_path, content, size_bytes, created_at, updated_at
+             FROM workflow_artifacts WHERE skill_name = ?1 AND relative_path = ?2",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let result = stmt.query_row(rusqlite::params![skill_name, relative_path], |row| {
+        Ok(ArtifactRow {
+            skill_name: row.get(0)?,
+            step_id: row.get(1)?,
+            relative_path: row.get(2)?,
+            content: row.get(3)?,
+            size_bytes: row.get(4)?,
+            created_at: row.get(5)?,
+            updated_at: row.get(6)?,
+        })
+    });
+
+    match result {
+        Ok(artifact) => Ok(Some(artifact)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+pub fn delete_artifacts_from(
+    conn: &Connection,
+    skill_name: &str,
+    from_step_id: i32,
+) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM workflow_artifacts WHERE skill_name = ?1 AND step_id >= ?2",
+        rusqlite::params![skill_name, from_step_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn delete_all_artifacts(conn: &Connection, skill_name: &str) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM workflow_artifacts WHERE skill_name = ?1",
+        [skill_name],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 // --- Chat Sessions ---
@@ -593,5 +710,109 @@ mod tests {
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].agent_id, "agent-1");
         assert_eq!(runs[0].input_tokens, Some(1000));
+    }
+
+    // --- Workflow Artifacts tests ---
+
+    #[test]
+    fn test_save_and_get_artifact() {
+        let conn = create_test_db();
+        save_artifact(&conn, "my-skill", 0, "context/clarifications-concepts.md", "# Concepts\nSome content").unwrap();
+
+        let artifacts = get_skill_artifacts(&conn, "my-skill").unwrap();
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].skill_name, "my-skill");
+        assert_eq!(artifacts[0].step_id, 0);
+        assert_eq!(artifacts[0].relative_path, "context/clarifications-concepts.md");
+        assert_eq!(artifacts[0].content, "# Concepts\nSome content");
+        assert_eq!(artifacts[0].size_bytes, 23);
+    }
+
+    #[test]
+    fn test_save_artifact_upsert() {
+        let conn = create_test_db();
+        save_artifact(&conn, "my-skill", 0, "context/test.md", "v1").unwrap();
+        save_artifact(&conn, "my-skill", 0, "context/test.md", "v2 updated content").unwrap();
+
+        let artifacts = get_skill_artifacts(&conn, "my-skill").unwrap();
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].content, "v2 updated content");
+        assert_eq!(artifacts[0].size_bytes, 18);
+    }
+
+    #[test]
+    fn test_get_artifact_by_path() {
+        let conn = create_test_db();
+        save_artifact(&conn, "my-skill", 0, "context/concepts.md", "concepts").unwrap();
+        save_artifact(&conn, "my-skill", 2, "context/patterns.md", "patterns").unwrap();
+
+        let found = get_artifact_by_path(&conn, "my-skill", "context/concepts.md").unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().content, "concepts");
+
+        let not_found = get_artifact_by_path(&conn, "my-skill", "nonexistent.md").unwrap();
+        assert!(not_found.is_none());
+    }
+
+    #[test]
+    fn test_delete_artifacts_from() {
+        let conn = create_test_db();
+        save_artifact(&conn, "my-skill", 0, "context/step0.md", "step 0").unwrap();
+        save_artifact(&conn, "my-skill", 2, "context/step2.md", "step 2").unwrap();
+        save_artifact(&conn, "my-skill", 3, "context/step3.md", "step 3").unwrap();
+        save_artifact(&conn, "my-skill", 5, "context/step5.md", "step 5").unwrap();
+
+        delete_artifacts_from(&conn, "my-skill", 3).unwrap();
+
+        let artifacts = get_skill_artifacts(&conn, "my-skill").unwrap();
+        assert_eq!(artifacts.len(), 2);
+        assert_eq!(artifacts[0].step_id, 0);
+        assert_eq!(artifacts[1].step_id, 2);
+    }
+
+    #[test]
+    fn test_delete_all_artifacts() {
+        let conn = create_test_db();
+        save_artifact(&conn, "my-skill", 0, "context/a.md", "a").unwrap();
+        save_artifact(&conn, "my-skill", 2, "context/b.md", "b").unwrap();
+        save_artifact(&conn, "other-skill", 0, "context/c.md", "c").unwrap();
+
+        delete_all_artifacts(&conn, "my-skill").unwrap();
+
+        let my = get_skill_artifacts(&conn, "my-skill").unwrap();
+        assert!(my.is_empty());
+
+        let other = get_skill_artifacts(&conn, "other-skill").unwrap();
+        assert_eq!(other.len(), 1);
+    }
+
+    #[test]
+    fn test_delete_workflow_run_also_deletes_artifacts() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "my-skill", "domain", 0, "pending").unwrap();
+        save_artifact(&conn, "my-skill", 0, "context/test.md", "content").unwrap();
+
+        delete_workflow_run(&conn, "my-skill").unwrap();
+
+        assert!(get_workflow_run(&conn, "my-skill").unwrap().is_none());
+        assert!(get_skill_artifacts(&conn, "my-skill").unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_get_skill_artifacts_ordering() {
+        let conn = create_test_db();
+        save_artifact(&conn, "my-skill", 5, "context/decisions.md", "decisions").unwrap();
+        save_artifact(&conn, "my-skill", 0, "context/concepts.md", "concepts").unwrap();
+        save_artifact(&conn, "my-skill", 2, "context/patterns.md", "patterns").unwrap();
+        save_artifact(&conn, "my-skill", 2, "context/data.md", "data").unwrap();
+
+        let artifacts = get_skill_artifacts(&conn, "my-skill").unwrap();
+        assert_eq!(artifacts.len(), 4);
+        assert_eq!(artifacts[0].step_id, 0);
+        assert_eq!(artifacts[1].step_id, 2);
+        assert_eq!(artifacts[1].relative_path, "context/data.md");
+        assert_eq!(artifacts[2].step_id, 2);
+        assert_eq!(artifacts[2].relative_path, "context/patterns.md");
+        assert_eq!(artifacts[3].step_id, 5);
     }
 }
