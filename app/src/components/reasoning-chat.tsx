@@ -323,12 +323,13 @@ export function ReasoningChat({
       setRunning(true);
       setPhase("agent_running");
 
-      const cwd = `${workspacePath}/${skillName}`;
+      // CWD must match runWorkflowStep (workspace root, not skill dir)
+      // so the agent resolves <skill-name>/context/ paths correctly
       const agentId = await startAgent(
         `reasoning-${Date.now()}`,
         prompt,
         "opus",
-        cwd,
+        workspacePath,
         ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"],
         100,
         sessionId,
