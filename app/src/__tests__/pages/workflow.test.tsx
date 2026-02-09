@@ -123,7 +123,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   });
 
   it("step 2 orchestrator auto-completes steps 3 and 4", async () => {
-    // Simulate: step 2 (Research Patterns & Merge orchestrator) running
+    // Simulate: step 2 (Research Domain orchestrator) running
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setCurrentStep(2);
