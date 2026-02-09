@@ -163,4 +163,29 @@ describe("initAgentStream", () => {
     expect(run.messages).toHaveLength(1);
     expect(run.messages[0].content).toBe("Early message");
   });
+
+  it("startRun preserves messages from auto-created run", () => {
+    initAgentStream();
+
+    // Message arrives before startRun
+    listeners["agent-message"]({
+      payload: {
+        agent_id: "early-agent",
+        message: {
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "I started early" }],
+          },
+        },
+      },
+    });
+
+    // Now startRun is called (e.g. by workflow page)
+    useAgentStore.getState().startRun("early-agent", "sonnet");
+
+    const run = useAgentStore.getState().runs["early-agent"];
+    expect(run.model).toBe("sonnet");
+    expect(run.messages).toHaveLength(1);
+    expect(run.messages[0].content).toBe("I started early");
+  });
 });

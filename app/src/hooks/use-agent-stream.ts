@@ -47,14 +47,8 @@ export function initAgentStream() {
 
   listen<AgentMessagePayload>("agent-message", (event) => {
     const { agent_id, message } = event.payload;
-    const store = useAgentStore.getState();
 
-    // Auto-create run if messages arrive before startRun (race condition guard)
-    if (!store.runs[agent_id]) {
-      store.startRun(agent_id, "unknown");
-    }
-
-    store.addMessage(agent_id, {
+    useAgentStore.getState().addMessage(agent_id, {
       type: message.type,
       content: parseContent(message),
       raw: message as unknown as Record<string, unknown>,

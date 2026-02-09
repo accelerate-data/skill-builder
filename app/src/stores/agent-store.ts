@@ -86,20 +86,24 @@ export const useAgentStore = create<AgentState>((set) => ({
 
   startRun: (agentId, model) =>
     set((state) => {
+      const existing = state.runs[agentId];
       const extendedContext = useSettingsStore.getState().extendedContext;
       return {
         runs: {
           ...state.runs,
-          [agentId]: {
-            agentId,
-            model,
-            status: "running",
-            messages: [],
-            startTime: Date.now(),
-            contextHistory: [],
-            contextWindow: extendedContext ? 1_000_000 : 200_000,
-            compactionEvents: [],
-          },
+          [agentId]: existing
+            ? // Run was auto-created by early messages — update model, keep messages
+              { ...existing, model, status: "running" as const }
+            : {
+                agentId,
+                model,
+                status: "running" as const,
+                messages: [],
+                startTime: Date.now(),
+                contextHistory: [],
+                contextWindow: extendedContext ? 1_000_000 : 200_000,
+                compactionEvents: [],
+              },
         },
         activeAgentId: agentId,
       };
@@ -107,8 +111,18 @@ export const useAgentStore = create<AgentState>((set) => ({
 
   addMessage: (agentId, message) =>
     set((state) => {
-      const run = state.runs[agentId];
-      if (!run) return state;
+      const extendedContext = useSettingsStore.getState().extendedContext;
+      // Auto-create run for messages that arrive before startRun
+      const run: AgentRun = state.runs[agentId] ?? {
+        agentId,
+        model: "unknown",
+        status: "running" as const,
+        messages: [],
+        startTime: Date.now(),
+        contextHistory: [],
+        contextWindow: extendedContext ? 1_000_000 : 200_000,
+        compactionEvents: [],
+      };
 
       // Extract token usage and cost from result messages
       const raw = message.raw;

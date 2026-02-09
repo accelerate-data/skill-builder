@@ -144,7 +144,7 @@ describe("useAgentStore", () => {
     expect(run.endTime).toBeDefined();
   });
 
-  it("addMessage for a non-existent run is a no-op", () => {
+  it("addMessage auto-creates run for unknown agent", () => {
     const msg: AgentMessage = {
       type: "text",
       content: "Hello",
@@ -152,11 +152,13 @@ describe("useAgentStore", () => {
       timestamp: Date.now(),
     };
 
-    // Should not throw
     useAgentStore.getState().addMessage("nonexistent", msg);
 
-    const state = useAgentStore.getState();
-    expect(state.runs["nonexistent"]).toBeUndefined();
+    const run = useAgentStore.getState().runs["nonexistent"];
+    expect(run).toBeDefined();
+    expect(run.model).toBe("unknown");
+    expect(run.messages).toHaveLength(1);
+    expect(run.messages[0].content).toBe("Hello");
   });
 
   it("completeRun for a non-existent run is a no-op", () => {
