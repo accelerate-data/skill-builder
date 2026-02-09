@@ -14,7 +14,7 @@ fn resolve_workspace_path() -> Result<String, String> {
 
 /// Initialize the workspace directory on app startup.
 /// Creates `~/.vibedata` if it doesn't exist, updates settings,
-/// and deploys bundled prompts (always, so updates ship with the app).
+/// and deploys bundled agents and references (always, so updates ship with the app).
 pub fn init_workspace(
     app: &tauri::AppHandle,
     db: &tauri::State<'_, Db>,
@@ -34,7 +34,7 @@ pub fn init_workspace(
     }
     drop(conn);
 
-    // Always sync bundled prompts so app updates deploy new prompts
+    // Always sync bundled agents and references so app updates deploy new files
     super::workflow::ensure_workspace_prompts(app, &workspace_path)?;
 
     Ok(workspace_path)
