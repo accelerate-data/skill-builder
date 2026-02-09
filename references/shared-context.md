@@ -39,10 +39,10 @@ Focus on what/why, let the engineer decide how.
 
 ## Folder Structure
 
-Each skill is built in its own folder under `skills/`:
+All output is written to the user's current working directory:
 
 ```
-skills/<skillname>/
+./                                   # User's CWD
 ├── workflow-state.md                # Session resume checkpoint
 ├── context/                         # All intermediate/working files
 │   ├── clarifications-concepts.md   # Research: domain concepts agent
@@ -52,7 +52,7 @@ skills/<skillname>/
 │   ├── decisions.md                 # Confirmed decisions (clean snapshot)
 │   ├── agent-validation-log.md      # Validate: best practices results
 │   └── test-skill.md               # Test: test prompts + results
-└── skill/                           # Deployable skill files
+└── <skillname>/                     # Deployable skill
     ├── SKILL.md                     # Entry point (<500 lines)
     └── references/                  # Deep-dive content loaded on demand
         ├── <topic-a>.md
@@ -61,10 +61,9 @@ skills/<skillname>/
 ```
 
 Additionally:
-- `skills/<skillname>/workflow-state.md` — session resume checkpoint (inside the skill folder; the coordinator looks up a specific skill's state by name)
 - `<skillname>.skill` — final deployable zip archive in the project root (created after successful build)
 
-**Important:** The coordinator provides the full `context/` and `skill/` directory paths to each agent when spawning it. Agents write files to the directories they are given.
+**Important:** The coordinator provides the skill directory path and context directory path to each agent when spawning it. SKILL.md and references/ live directly under the skill directory. Working files go in the context directory. Agents write files to the directories they are given.
 
 ## File Formats
 

@@ -1,89 +1,167 @@
 # Skill Builder
 
-A multi-agent workflow for creating Anthropic Claude skills — domain knowledge packages that help data/analytics engineers build silver and gold layer models. Available as a **CLI workflow** (Claude Code / Claude Desktop) and a **desktop application** (Tauri).
+A multi-agent workflow for creating domain-specific Claude skills. Domain-agnostic — you choose the functional domain at startup. Skills target data/analytics engineers who need functional context for silver and gold table modeling.
 
 ## Platforms
 
 | Platform | Status | How to Use |
 | --- | --- | --- |
-| **CLI** (Claude Code) | Production | Say "start" in a Claude Code session |
-| **CLI** (Claude Desktop Cowork) | Production | Say "start" in a Cowork session — see `cowork/cowork.md` |
-| **Desktop App** (Tauri) | In development (`feature/desktop-ui`) | See [Desktop App](#desktop-app) below |
+| **Claude Code Plugin** | Production | `/skill-builder:start` — see [Installation](#installation) |
+| **Desktop App** (Tauri) | In development (`feature/desktop-ui`) | See [Desktop App](#desktop-app) |
 
-Both CLI platforms run the same 10-step workflow orchestrated by the coordinator in `CLAUDE.md`. The desktop app replaces the CLI with a GUI — workflow dashboard, form-based Q&A, streaming agent output, and a chat interface for post-build editing.
+Both platforms run the same 10-step workflow with the same agent prompts. The plugin uses Claude Code's native orchestration, while the desktop app provides a standalone GUI.
+
+## Installation (Plugin)
+
+### From GitHub
+
+```
+/plugin marketplace add hbanerjee74/skill-builder
+/plugin install skill-builder@skill-builder-marketplace
+```
+
+### From local directory (development)
+
+```bash
+claude --plugin-dir /path/to/skill-builder
+```
+
+## Usage (Plugin)
+
+Once the plugin is loaded, invoke the workflow:
+
+```
+/skill-builder:start
+```
+
+The coordinator handles everything: creating an agent team, spawning agents, tracking state, and walking you through each step.
 
 ## Workflow Overview
 
 | Step | What Happens | Your Role |
-| --- | --- | --- |
-| **Initialization** | Choose a domain and skill name | Provide domain, confirm name |
+|---|---|---|
+| **Init** | Choose a domain and skill name | Provide domain, confirm name |
 | **Step 1** | Research agent identifies key entities, metrics, KPIs | Wait |
 | **Step 2** | Review domain concept questions | Answer each question |
 | **Step 3** | Two agents research business patterns + data modeling (parallel) | Wait |
 | **Step 4** | Merge agent deduplicates questions | Wait |
 | **Step 5** | Review merged clarification questions | Answer each question |
 | **Step 6** | Reasoning agent analyzes answers, finds gaps/contradictions | Confirm reasoning, answer follow-ups |
-| **Step 7** | Build agent creates the skill files | Review skill output |
+| **Step 7** | Build agent creates the skill files | Review skill structure |
 | **Step 8** | Validator checks against best practices | Review validation log |
 | **Step 9** | Tester generates and runs test prompts | Review test results |
 | **Step 10** | Package into a `.skill` zip archive | Done |
 
-## Directory Structure
+## Architecture
+
+The plugin has three layers:
+
+1. **Coordinator skill** (`skills/start/SKILL.md`) — the entry point invoked via `/skill-builder:start`. Orchestrates the full workflow using agent teams (TeamCreate/SendMessage/TeamDelete).
+
+2. **Subagents** (`agents/*.md`) — each has YAML frontmatter (name, model, tools, permissions) and markdown instructions. Spawned as teammates by the coordinator.
+
+3. **Shared reference** (`references/shared-context.md`) — domain definitions, file formats, content principles. Read by all agents at runtime.
+
+### Agent Team Orchestration
+
+The coordinator creates an agent team at the start of the workflow. Each agent is spawned as a teammate with access to a shared task list. Agents work concurrently where steps are independent (e.g., Step 3 runs two research agents in parallel).
+
+### Agents
+
+| Agent | Model | Role |
+|---|---|---|
+| `research-concepts` | sonnet | Domain concepts, entities, metrics, KPIs |
+| `research-patterns` | sonnet | Business patterns and edge cases |
+| `research-data` | sonnet | Silver/gold layer modeling, source systems |
+| `merge` | haiku | Question deduplication across research outputs |
+| `reasoning` | opus | Gap analysis, contradiction detection, decisions |
+| `build` | sonnet | Skill file creation (SKILL.md + references) |
+| `validate` | sonnet | Best practices validation and auto-fix |
+| `test` | sonnet | Test prompt generation and coverage evaluation |
+
+## Plugin Structure
 
 ```
 skill-builder/
-├── CLAUDE.md                  # Coordinator instructions (CLI workflow)
-├── README.md
-├── cowork/
-│   └── cowork.md              # Cowork mode adaptation (Claude Desktop)
-├── prompts/                   # Agent prompt files (shared by CLI and desktop app)
-│   ├── shared-context.md
-│   ├── 01-research-domain-concepts.md
-│   ├── 03a-research-business-patterns.md
-│   ├── 03b-research-data-modeling.md
-│   ├── 04-merge-clarifications.md
-│   ├── 06-reasoning-agent.md
-│   ├── 07-build-agent.md
-│   ├── 08-validate-agent.md
-│   └── 09-test-agent.md
-├── skills/                    # Built skills (CLI workflow output)
-│   └── <skillname>/
-│       ├── workflow-state.md
-│       ├── context/
-│       └── skill/
-├── app/                       # Desktop application (Tauri + React)
-│   ├── src/                   # React frontend
-│   ├── src-tauri/             # Rust backend
-│   ├── package.json
-│   └── vite.config.ts
-└── <skillname>.skill          # Final zip archive (CLI Step 10)
+├── .claude-plugin/
+│   └── plugin.json              # Plugin manifest
+├── skills/
+│   └── start/
+│       └── SKILL.md             # Coordinator (entry point)
+├── agents/
+│   ├── research-concepts.md     # Step 1
+│   ├── research-patterns.md     # Step 3a
+│   ├── research-data.md         # Step 3b
+│   ├── merge.md                 # Step 4
+│   ├── reasoning.md             # Step 6
+│   ├── build.md                 # Step 7
+│   ├── validate.md              # Step 8
+│   └── test.md                  # Step 9
+├── references/
+│   └── shared-context.md        # Shared context for all agents
+├── app/                         # Desktop application (Tauri + React)
+│   ├── src/                     # React frontend
+│   ├── src-tauri/               # Rust backend
+│   └── sidecar/                 # Node.js agent runner
+├── CLAUDE.md                    # Developer guide overview
+├── CLAUDE-PLUGIN.md             # Plugin development docs
+├── CLAUDE-APP.md                # Desktop app development docs
+├── README.md                    # This file
+└── LICENSE
 ```
 
-## CLI Workflow
+## Output (Plugin)
 
-### Agent Prompt Files
+All output is created in your current working directory:
 
-Each prompt file defines a single agent's behavior. The coordinator spawns them as teammates at the right step.
+```
+./                               # Your CWD
+├── workflow-state.md            # Session resume checkpoint
+├── context/                     # Working files
+│   ├── clarifications-*.md      # Research outputs
+│   ├── clarifications.md        # Merged questions + answers
+│   ├── decisions.md             # Confirmed decisions
+│   ├── agent-validation-log.md  # Validation results
+│   └── test-skill.md            # Test results
+└── <skillname>/                 # Deployable skill
+    ├── SKILL.md                 # Entry point (<500 lines)
+    └── references/              # Deep-dive content
+```
 
-| File | Agent | Model Tier |
-| --- | --- | --- |
-| `01-research-domain-concepts.md` | Domain concepts researcher | sonnet |
-| `03a-research-business-patterns.md` | Business patterns researcher | sonnet |
-| `03b-research-data-modeling.md` | Data modeling researcher | sonnet |
-| `04-merge-clarifications.md` | Question deduplicator/merger | haiku |
-| `06-reasoning-agent.md` | Reasoning + decision engine | opus |
-| `07-build-agent.md` | Skill file creator | sonnet |
-| `08-validate-agent.md` | Best practices validator | sonnet |
-| `09-test-agent.md` | Test prompt generator + evaluator | sonnet |
+A `.skill` zip archive is also created at the project root after Step 10.
 
 ### Session Resume
 
-The CLI workflow supports resuming from any step. State is tracked in `skills/<skillname>/workflow-state.md`. On restart, you'll be asked whether to continue or reset.
+The workflow supports resuming from any step. State is tracked in `./workflow-state.md`. On restart, you'll be asked whether to continue or start fresh.
 
-### Prerequisites
+## Development (Plugin)
 
-- **Claude Code** or **Claude Desktop** (Cowork mode) with access to sonnet, haiku, and opus models
-- All files in this project folder
+### Validate plugin structure
+
+```bash
+# Run automated checks (manifest, agents, frontmatter, coordinator, etc.)
+./scripts/validate.sh
+```
+
+This also runs automatically after every Edit/Write via the Claude Code hook in `.claude/settings.json`.
+
+### Test the plugin locally
+
+```bash
+# Start Claude Code with the plugin loaded
+claude --plugin-dir .
+
+# Then invoke the workflow
+/skill-builder:start
+```
+
+### Validate the manifest
+
+```bash
+claude plugin validate .
+```
+
+See `CLAUDE-PLUGIN.md` for the full plugin development guide, `TESTS.md` for the test plan, and `FEATURES.md` for the feature checklist.
 
 ## Desktop App
 
@@ -128,17 +206,17 @@ The desktop app (`app/`) is a **Tauri v2** application that provides a GUI for t
 4. **Skill Editor** — Three-pane layout: file tree, CodeMirror source editor, live markdown preview
 5. **Settings** — Anthropic API key, workspace folder, Node.js status
 
-### Development
+### Development (Desktop App)
 
 ```bash
 cd app
 npm install
-npm run tauri dev
+npm run dev  # Starts both Vite and Tauri in dev mode
 ```
 
 Prerequisites: Node.js, Rust toolchain, platform-specific Tauri dependencies (see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)).
 
-### Testing
+### Testing (Desktop App)
 
 ```bash
 cd app
@@ -153,9 +231,9 @@ cd src-tauri && cargo test
 npm run test:e2e
 ```
 
-See `CLAUDE.md` for full testing documentation including mock strategies and the testing rule for new features.
+See `CLAUDE-APP.md` for full desktop app development documentation.
 
-### Implementation Phases
+### Implementation Status
 
 | Phase | Scope | Status |
 | --- | --- | --- |
@@ -165,5 +243,14 @@ See `CLAUDE.md` for full testing documentation including mock strategies and the
 | 4. Full Workflow | All 10 steps, parallel agents, reasoning loop, packaging | Done |
 | 5. SQLite Migration | Replace plugin-store with rusqlite, remove GitHub/git | Done |
 | 6. Editor | CodeMirror editor, split pane, file tree, auto-save | Done |
-| 7. Chat | Conversational edit + review/suggest modes | Not started |
-| 8. Polish | Error states, retry UX, loading states, keyboard shortcuts | Not started |
+| 7. Chat | Conversational edit + review/suggest modes | Done |
+| 8. Polish | Error states, retry UX, loading states, keyboard shortcuts | Done |
+
+## Prerequisites
+
+- **Plugin**: Claude Code with access to sonnet, haiku, and opus models
+- **Desktop App**: Node.js 18+, Anthropic API key
+
+## License
+
+See [LICENSE](LICENSE) for details.
