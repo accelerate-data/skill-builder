@@ -89,8 +89,8 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             name: "Test".to_string(),
             prompt_template: "09-test-agent.md".to_string(),
             output_file: "context/test-skill.md".to_string(),
-            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 50,
+            allowed_tools: TEAM_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 80,
         }),
         _ => Err(format!(
             "Unknown step_id {}. Steps 1, 5, 10 are human/package steps.",
