@@ -105,7 +105,7 @@ fn resolve_prompts_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String>
     Err("Could not find bundled prompts directory".to_string())
 }
 
-/// Copy bundled prompt .md files into `<workspace_path>/prompts/`.
+/// Copy bundled agent .md files into `<workspace_path>/agents/`.
 /// Creates the directory if it doesn't exist. Overwrites existing files
 /// to keep them in sync with the app version.
 pub fn ensure_workspace_prompts(
@@ -116,9 +116,9 @@ pub fn ensure_workspace_prompts(
     copy_prompts_from(&src_dir, workspace_path)
 }
 
-/// Copy .md files from `src_dir` into `<workspace_path>/prompts/`.
+/// Copy .md files from `src_dir` into `<workspace_path>/agents/`.
 fn copy_prompts_from(src_dir: &Path, workspace_path: &str) -> Result<(), String> {
-    let dest_dir = Path::new(workspace_path).join("prompts");
+    let dest_dir = Path::new(workspace_path).join("agents");
 
     std::fs::create_dir_all(&dest_dir)
         .map_err(|e| format!("Failed to create prompts directory: {}", e))?;
@@ -147,7 +147,7 @@ fn build_prompt(
     domain: &str,
 ) -> String {
     format!(
-        "Read prompts/shared-context.md and prompts/{} and follow the instructions. \
+        "Read references/shared-context.md and agents/{} and follow the instructions. \
          The domain is: {}. The skill name is: {}. \
          The skill directory is: {}/. \
          The context directory (for reading and writing intermediate files) is: {}/context/. \
@@ -258,7 +258,7 @@ pub async fn run_review_step(
          1. The file exists and is non-empty\n\
          2. The content is well-structured markdown\n\
          3. The content meaningfully addresses the domain: '{}'\n\
-         4. The content follows the expected format (check prompts/shared-context.md for format guidelines)\n\
+         4. The content follows the expected format (check references/shared-context.md for format guidelines)\n\
          5. The content is substantive (not placeholder or minimal)\n\
          \n\nRespond with EXACTLY one line:\n\
          - If satisfactory: PASS\n\
@@ -742,8 +742,8 @@ mod tests {
             "my-skill",
             "e-commerce",
         );
-        assert!(prompt.contains("prompts/shared-context.md"));
-        assert!(prompt.contains("prompts/01-research-domain-concepts.md"));
+        assert!(prompt.contains("references/shared-context.md"));
+        assert!(prompt.contains("agents/01-research-domain-concepts.md"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
         assert!(prompt.contains("my-skill/context/clarifications-concepts.md"));
@@ -887,17 +887,18 @@ mod tests {
 
     #[test]
     fn test_resolve_prompts_dir_dev_mode() {
-        // In dev/test mode, CARGO_MANIFEST_DIR is set and the repo root has prompts/
+        // In dev/test mode, CARGO_MANIFEST_DIR is set and the repo root has agents/
         let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(|p| p.parent())
-            .map(|p| p.join("prompts"));
+            .map(|p| p.join("agents"));
         assert!(dev_path.is_some());
-        let prompts_dir = dev_path.unwrap();
-        assert!(prompts_dir.is_dir(), "Repo root prompts/ should exist");
+        let agents_dir = dev_path.unwrap();
+        assert!(agents_dir.is_dir(), "Repo root agents/ should exist");
+        let references_dir = agents_dir.parent().unwrap().join("references");
         assert!(
-            prompts_dir.join("shared-context.md").exists(),
-            "shared-context.md should exist in repo prompts/"
+            references_dir.join("shared-context.md").exists(),
+            "shared-context.md should exist in repo references/"
         );
     }
 
