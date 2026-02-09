@@ -224,18 +224,42 @@ cd app
 npm install
 cd sidecar && npm install && npm run build  # Bundle sidecar
 cd .. && npm run tauri dev                   # Dev mode (hot reload)
-npm run tauri build                          # Production build
 ```
 
-## Distribution
+## Building for Distribution
 
-- `npm run tauri build` produces platform-specific installers (~10MB + bundled sidecar)
-- macOS: `.dmg` + `.app` (needs Apple Developer ID for code signing)
-- Windows: `.msi` or `.exe` (needs code signing cert for SmartScreen)
-- Linux: `.deb`, `.AppImage`, `.rpm`
-- CI: `tauri-apps/tauri-action` GitHub Action builds all platforms
-- Auto-update: `tauri-plugin-updater` checks GitHub Releases
-- **Requires Node.js 18+** on user's machine (checked at startup)
+Build the app for your platform:
+
+```bash
+cd app
+npm run sidecar:build  # Bundle sidecar + copy SDK runtime files to sidecar/dist/sdk/
+npx tauri build        # Creates platform-specific installers
+```
+
+### Output locations
+
+- **macOS**: `app/src-tauri/target/release/bundle/macos/`
+  - `Skill Builder.app` (85MB) — app bundle
+  - `Skill Builder_0.1.0_aarch64.dmg` (31MB) — compressed installer
+- **Windows**: `app/src-tauri/target/release/bundle/msi/` or `.../nsis/`
+- **Linux**: `app/src-tauri/target/release/bundle/deb/`, `.../appimage/`, or `.../rpm/`
+
+### What gets bundled
+
+- The sidecar build step (`npm run sidecar:build`) copies the SDK runtime files (`cli.js`, `wasm`, `vendor/`) from `node_modules/@anthropic-ai/claude-agent-sdk/dist/` to `sidecar/dist/sdk/`. These files are included in the Tauri bundle and are required for the sidecar to run.
+- Recipients need **Node.js 18+** installed on their machine (the app checks at startup).
+
+### Code signing status
+
+The app is currently **unsigned**:
+- **macOS**: users must right-click → Open to bypass Gatekeeper on first launch
+- **Windows**: users will see a SmartScreen warning — click "More info" → "Run anyway"
+- To eliminate warnings, obtain an Apple Developer ID (macOS) or code signing certificate (Windows)
+
+### CI/CD
+
+- Use `tauri-apps/tauri-action` GitHub Action to build for all platforms
+- Auto-update support via `tauri-plugin-updater` (checks GitHub Releases)
 
 ## Parallel Development with Git Worktrees
 

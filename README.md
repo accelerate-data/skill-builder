@@ -167,3 +167,33 @@ See `CLAUDE.md` for full testing documentation including mock strategies and the
 | 6. Editor | CodeMirror editor, split pane, file tree, auto-save | Done |
 | 7. Chat | Conversational edit + review/suggest modes | Done |
 | 8. Polish | Error states, retry UX, loading states, keyboard shortcuts | Done |
+
+## Distribution
+
+### Building for Users
+
+To create a distributable installer:
+
+```bash
+cd app
+npm run sidecar:build  # Bundle sidecar + SDK runtime files
+npx tauri build        # Build platform installer
+```
+
+Output:
+- **macOS**: `app/src-tauri/target/release/bundle/macos/Skill Builder_0.1.0_aarch64.dmg` (31MB)
+- **Windows**: `app/src-tauri/target/release/bundle/msi/` or `.../nsis/`
+- **Linux**: `app/src-tauri/target/release/bundle/deb/`, `.../appimage/`, or `.../rpm/`
+
+### Sharing with Users
+
+**Prerequisites for recipients:**
+- Node.js 18+ must be installed ([nodejs.org](https://nodejs.org))
+- The app will check at startup and prompt if missing
+
+**Installation:**
+- **macOS**: Right-click the `.dmg` → Open (first launch only) to bypass Gatekeeper warning (app is unsigned)
+- **Windows**: Click "More info" → "Run anyway" on SmartScreen warning (app is unsigned)
+- **Linux**: Install via package manager or run AppImage directly
+
+**Why unsigned?** Code signing requires an Apple Developer ID (macOS, $99/year) or a code signing certificate (Windows). Once obtained, follow Tauri's [signing guide](https://v2.tauri.app/distribute/sign/) to eliminate warnings.
