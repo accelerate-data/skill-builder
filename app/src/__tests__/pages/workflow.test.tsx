@@ -78,7 +78,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     useSettingsStore.getState().reset();
   });
 
-  it("advances exactly one step when a single agent completes — no cascade", async () => {
+  it("completes step but does NOT auto-advance — waits for user click", async () => {
     // Simulate: step 0 is running an agent
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
@@ -118,12 +118,11 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Step 0 completed
     expect(wf.steps[0].status).toBe("completed");
 
-    // Advanced to step 1
-    expect(wf.currentStep).toBe(1);
+    // Does NOT auto-advance — stays on step 0
+    expect(wf.currentStep).toBe(0);
 
-    // Step 1 (human review) must NOT be auto-completed by the cascade.
-    // It should be "waiting_for_user" — the advance helper sets this for human steps.
-    expect(wf.steps[1].status).toBe("waiting_for_user");
+    // Step 1 still pending (user must click "Next Step" to advance)
+    expect(wf.steps[1].status).toBe("pending");
 
     // No further steps affected
     expect(wf.steps[2].status).toBe("pending");
@@ -136,7 +135,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(mockToast.success).toHaveBeenCalledWith("Step 1 passed review");
   });
 
-  it("advances exactly one step when parallel agents complete — no cascade", async () => {
+  it("completes parallel step but does NOT auto-advance", async () => {
     // Simulate: step 2 (parallel) running two agents
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setCurrentStep(2);
@@ -179,10 +178,10 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Step 2 completed
     expect(wf.steps[2].status).toBe("completed");
 
-    // Advanced to step 3
-    expect(wf.currentStep).toBe(3);
+    // Does NOT auto-advance — stays on step 2
+    expect(wf.currentStep).toBe(2);
 
-    // Step 3 must NOT be auto-completed
+    // Step 3 still pending (user must click "Next Step")
     expect(wf.steps[3].status).toBe("pending");
 
     // Step 4 unaffected

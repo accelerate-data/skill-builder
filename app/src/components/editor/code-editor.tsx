@@ -1,37 +1,79 @@
 import { useEffect, useRef } from "react";
 import { useTheme } from "next-themes";
 import { EditorState } from "@codemirror/state";
-import { EditorView, keymap, lineNumbers } from "@codemirror/view";
+import { EditorView, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
+import {
+  syntaxHighlighting,
+  HighlightStyle,
+} from "@codemirror/language";
+import { tags } from "@lezer/highlight";
 
-const lightTheme = EditorView.theme(
-  {
-    "&": { backgroundColor: "transparent", height: "100%" },
-    ".cm-content": { fontFamily: "monospace", fontSize: "14px", padding: "16px 0" },
-    ".cm-gutters": { backgroundColor: "transparent", border: "none", color: "var(--muted-foreground)" },
-    ".cm-activeLineGutter": { backgroundColor: "transparent" },
-    ".cm-activeLine": { backgroundColor: "color-mix(in oklch, var(--accent) 30%, transparent)" },
-    ".cm-selectionBackground": { backgroundColor: "color-mix(in oklch, var(--accent) 40%, transparent) !important" },
-    ".cm-cursor": { borderLeftColor: "var(--foreground)" },
-  },
-  { dark: false }
-);
+// MarkEdit-inspired highlight style — headings are bigger, emphasis is styled inline
+const markdownHighlightStyle = HighlightStyle.define([
+  { tag: tags.heading1, fontSize: "1.6em", fontWeight: "700", lineHeight: "1.3" },
+  { tag: tags.heading2, fontSize: "1.35em", fontWeight: "600", lineHeight: "1.3" },
+  { tag: tags.heading3, fontSize: "1.15em", fontWeight: "600", lineHeight: "1.3" },
+  { tag: tags.heading4, fontSize: "1.05em", fontWeight: "600" },
+  { tag: tags.heading5, fontSize: "1em", fontWeight: "600" },
+  { tag: tags.heading6, fontSize: "1em", fontWeight: "600", fontStyle: "italic" },
+  { tag: tags.strong, fontWeight: "700" },
+  { tag: tags.emphasis, fontStyle: "italic" },
+  { tag: tags.strikethrough, textDecoration: "line-through" },
+  { tag: tags.link, color: "var(--primary)", textDecoration: "underline" },
+  { tag: tags.url, color: "var(--muted-foreground)", fontSize: "0.9em" },
+  { tag: tags.monospace, fontFamily: "monospace", fontSize: "0.9em", backgroundColor: "color-mix(in oklch, var(--muted) 50%, transparent)", borderRadius: "3px", padding: "1px 4px" },
+  { tag: tags.quote, color: "var(--muted-foreground)", fontStyle: "italic" },
+  { tag: tags.list, color: "var(--muted-foreground)" },
+  { tag: tags.processingInstruction, color: "var(--muted-foreground)", fontSize: "0.85em" }, // markdown markers like # ** etc
+]);
 
-const darkTheme = EditorView.theme(
-  {
-    "&": { backgroundColor: "transparent", height: "100%" },
-    ".cm-content": { fontFamily: "monospace", fontSize: "14px", padding: "16px 0" },
-    ".cm-gutters": { backgroundColor: "transparent", border: "none", color: "var(--muted-foreground)" },
-    ".cm-activeLineGutter": { backgroundColor: "transparent" },
-    ".cm-activeLine": { backgroundColor: "color-mix(in oklch, var(--accent) 30%, transparent)" },
-    ".cm-selectionBackground": { backgroundColor: "color-mix(in oklch, var(--accent) 50%, transparent) !important" },
-    ".cm-cursor": { borderLeftColor: "var(--foreground)" },
-  },
-  { dark: true }
-);
+const baseTheme = (dark: boolean) =>
+  EditorView.theme(
+    {
+      "&": {
+        backgroundColor: "transparent",
+        height: "100%",
+      },
+      ".cm-content": {
+        fontFamily:
+          '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontSize: "15px",
+        lineHeight: "1.7",
+        padding: "24px 16px",
+        maxWidth: "48em",
+      },
+      ".cm-line": {
+        padding: "1px 0",
+      },
+      ".cm-gutters": {
+        display: "none",
+      },
+      ".cm-activeLine": {
+        backgroundColor: dark
+          ? "color-mix(in oklch, var(--accent) 20%, transparent)"
+          : "color-mix(in oklch, var(--accent) 15%, transparent)",
+      },
+      ".cm-selectionBackground": {
+        backgroundColor: dark
+          ? "color-mix(in oklch, var(--accent) 50%, transparent) !important"
+          : "color-mix(in oklch, var(--accent) 35%, transparent) !important",
+      },
+      ".cm-cursor": {
+        borderLeftColor: "var(--foreground)",
+        borderLeftWidth: "2px",
+      },
+      "&.cm-focused .cm-cursor": {
+        borderLeftColor: "var(--primary)",
+      },
+      ".cm-scroller": {
+        overflow: "auto",
+      },
+    },
+    { dark }
+  );
 
 interface CodeEditorProps {
   content: string;
@@ -58,14 +100,13 @@ export function CodeEditor({ content, onChange, readonly = false }: CodeEditorPr
     const state = EditorState.create({
       doc: content,
       extensions: [
-        lineNumbers(),
         history(),
         markdown(),
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        syntaxHighlighting(markdownHighlightStyle),
         highlightSelectionMatches(),
         keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
         EditorView.lineWrapping,
-        isDark ? darkTheme : lightTheme,
+        baseTheme(isDark),
         EditorState.readOnly.of(readonly),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !isExternalUpdate.current) {

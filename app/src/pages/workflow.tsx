@@ -278,7 +278,6 @@ export default function WorkflowPage() {
             updateStepStatus(step, "completed");
             setRunning(false);
             toast.success(`Step ${step + 1} completed`);
-            advanceToNextStep();
           });
         return;
       }
@@ -288,14 +287,13 @@ export default function WorkflowPage() {
       setRunning(false);
       setRetryCount(0);
       toast.success(`Step ${step + 1} completed`);
-      advanceToNextStep();
     } else if (activeRunStatus === "error") {
       updateStepStatus(step, "error");
       setRunning(false);
       setActiveAgent(null);
       toast.error(`Step ${step + 1} failed`);
     }
-  }, [activeRunStatus, isParallelStep, reviewAgentId, updateStepStatus, setRunning, setActiveAgent, advanceToNextStep, skillName, domain, workspacePath, retryCount, MAX_RETRIES, agentStartRun]);
+  }, [activeRunStatus, isParallelStep, reviewAgentId, updateStepStatus, setRunning, setActiveAgent, skillName, domain, workspacePath, retryCount, MAX_RETRIES, agentStartRun]);
 
   // Watch for review agent completion
   const reviewRun = reviewAgentId ? runs[reviewAgentId] : null;
@@ -338,16 +336,14 @@ export default function WorkflowPage() {
         setReviewAgentId(null);
         setRetryCount(0);
         updateStepStatus(step, "completed");
-        advanceToNextStep();
       }
     } else {
       // Review agent errored — complete step anyway
       setReviewAgentId(null);
       updateStepStatus(step, "completed");
-      advanceToNextStep();
       toast.success(`Step ${step + 1} completed`);
     }
-  }, [reviewAgentId, reviewRunStatus, retryCount, MAX_RETRIES, reviewRun, updateStepStatus, advanceToNextStep]);
+  }, [reviewAgentId, reviewRunStatus, retryCount, MAX_RETRIES, reviewRun, updateStepStatus]);
 
   // Watch for parallel agents completion (Step 2)
   const parallelRunA = parallelAgentIds ? runs[parallelAgentIds[0]] : null;
@@ -391,7 +387,6 @@ export default function WorkflowPage() {
             updateStepStatus(step, "completed");
             setRunning(false);
             toast.success(`Step ${step + 1} completed`);
-            advanceToNextStep();
           });
         return;
       }
@@ -401,7 +396,6 @@ export default function WorkflowPage() {
       setRunning(false);
       setRetryCount(0);
       toast.success(`Step ${step + 1} completed`);
-      advanceToNextStep();
     } else {
       updateStepStatus(step, "error");
       setRunning(false);
@@ -409,7 +403,7 @@ export default function WorkflowPage() {
       setParallelAgents(null);
       toast.error(`Step ${step + 1} failed`);
     }
-  }, [parallelAgentIds, isParallelStep, reviewAgentId, parallelStatusA, parallelStatusB, updateStepStatus, setRunning, setActiveAgent, setParallelAgents, advanceToNextStep, skillName, domain, workspacePath, retryCount, MAX_RETRIES, agentStartRun]);
+  }, [parallelAgentIds, isParallelStep, reviewAgentId, parallelStatusA, parallelStatusB, updateStepStatus, setRunning, setActiveAgent, setParallelAgents, skillName, domain, workspacePath, retryCount, MAX_RETRIES, agentStartRun]);
 
   // --- Step handlers ---
 
@@ -561,12 +555,15 @@ export default function WorkflowPage() {
       !activeAgentId &&
       !parallelAgentIds
     ) {
+      const isLastStep = currentStep >= steps.length - 1;
       if (isPackageStep && packageResult) {
         return (
           <WorkflowStepComplete
             stepName={currentStepDef.name}
             outputFiles={[packageResult.file_path]}
             onRerun={handleRerunStep}
+            onNextStep={advanceToNextStep}
+            isLastStep={isLastStep}
           />
         );
       }
@@ -576,6 +573,8 @@ export default function WorkflowPage() {
             stepName={currentStepDef.name}
             outputFiles={stepConfig.outputFiles}
             onRerun={handleRerunStep}
+            onNextStep={advanceToNextStep}
+            isLastStep={isLastStep}
           />
         );
       }
@@ -585,6 +584,8 @@ export default function WorkflowPage() {
           stepName={currentStepDef.name}
           outputFiles={[]}
           onRerun={handleRerunStep}
+          onNextStep={advanceToNextStep}
+          isLastStep={isLastStep}
         />
       );
     }
