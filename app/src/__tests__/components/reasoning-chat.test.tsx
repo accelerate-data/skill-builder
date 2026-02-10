@@ -57,6 +57,19 @@ vi.mock("@/components/agent-output-panel", () => ({
     <div data-testid="message-item">{message.content}</div>
   ),
   TurnMarker: ({ turn }: { turn: number }) => <div data-testid="turn-marker">Turn {turn}</div>,
+  computeMessageGroups: (
+    messages: Array<{ type: string }>,
+    turnMap: Map<number, number>,
+  ) => {
+    // Realistic mock: first visible gets "none", turn markers get "group-start", rest "continuation"
+    return messages.map((msg, i) => {
+      if (msg.type === "system") return "none";
+      if (i === 0) return "none";
+      if ((turnMap.get(i) ?? 0) > 0) return "group-start";
+      return "continuation";
+    });
+  },
+  spacingClasses: { none: "", "group-start": "mt-6", continuation: "mt-1" },
 }));
 
 // Mock sonner toast

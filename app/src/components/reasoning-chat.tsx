@@ -35,7 +35,7 @@ import {
   countDecisions,
 } from "@/lib/reasoning-parser";
 import { AgentStatusHeader } from "@/components/agent-status-header";
-import { MessageItem, TurnMarker } from "@/components/agent-output-panel";
+import { MessageItem, TurnMarker, computeMessageGroups, spacingClasses } from "@/components/agent-output-panel";
 
 // --- Types ---
 
@@ -416,6 +416,11 @@ export function ReasoningChat({
     return map;
   }, [currentRun?.messages]);
 
+  const streamMessageGroups = useMemo(
+    () => currentRun ? computeMessageGroups(currentRun.messages, streamTurnMap) : [],
+    [currentRun?.messages, streamTurnMap],
+  );
+
   // --- Not started ---
 
   if (phase === "not_started" && messages.length === 0) {
@@ -625,10 +630,13 @@ export function ReasoningChat({
           {/* Streaming agent messages — same rendering as AgentOutputPanel */}
           {isAgentRunning && currentRun && currentRun.messages.map((msg, i) => {
             const turn = streamTurnMap.get(i) ?? 0;
+            const spacing = spacingClasses[streamMessageGroups[i]];
             return (
-              <Fragment key={`stream-${i}`}>
+              <Fragment key={`${msg.timestamp}-${i}`}>
                 {turn > 0 && <TurnMarker turn={turn} />}
-                <MessageItem message={msg} />
+                <div className={spacing}>
+                  <MessageItem message={msg} />
+                </div>
               </Fragment>
             );
           })}

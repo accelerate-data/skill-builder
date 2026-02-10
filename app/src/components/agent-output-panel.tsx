@@ -1,4 +1,4 @@
-import { Fragment, memo, useEffect, useMemo, useRef, useCallback } from "react";
+import { Fragment, memo, useEffect, useMemo, useRef, useCallback, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -8,7 +8,10 @@ import {
   Terminal,
   Globe,
   GitBranch,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -17,6 +20,7 @@ import {
   type AgentMessage,
 } from "@/stores/agent-store";
 import { AgentStatusHeader } from "@/components/agent-status-header";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { parseAgentResponseType } from "@/lib/reasoning-parser";
 
 function getToolIcon(toolName: string) {
@@ -123,6 +127,29 @@ function getToolSummary(message: AgentMessage): ToolSummaryResult | null {
   return result(name);
 }
 
+function getToolInput(message: AgentMessage): Record<string, unknown> | null {
+  const raw = message.raw;
+  const msgContent = (raw as Record<string, unknown>).message as
+    | { content?: Array<{ type: string; name?: string; input?: Record<string, unknown> }> }
+    | undefined;
+  const toolBlock = msgContent?.content?.find((b) => b.type === "tool_use");
+  return toolBlock?.input ?? null;
+}
+
+/**
+ * Check if a message ends with a question directed at the user.
+ * Looks at the last non-empty line for a trailing question mark.
+ */
+export function endsWithUserQuestion(text: string): boolean {
+  const lastLine = text.trim().split("\n").pop()?.trim() ?? "";
+  if (!lastLine.endsWith("?") || lastLine.length <= 5) return false;
+  // Require common question words to avoid false positives on rhetorical
+  // questions, code examples, and documentation fragments
+  const questionWords =
+    /\b(should|would|could|do|does|did|can|will|is|are|was|were|have|has|had|shall|may|might|what|where|when|how|why|which|who)\b/i;
+  return questionWords.test(lastLine);
+}
+
 export type MessageCategory =
   | "agent_response"
   | "tool_call"
@@ -143,6 +170,11 @@ export function classifyMessage(message: AgentMessage): MessageCategory {
     if (message.content) {
       const responseType = parseAgentResponseType(message.content);
       if (responseType === "follow_up" || responseType === "gate_check") {
+        return "question";
+      }
+
+      // Detect messages ending with a question directed at the user
+      if (endsWithUserQuestion(message.content)) {
         return "question";
       }
     }
@@ -166,14 +198,186 @@ export const categoryStyles: Record<MessageCategory, string> = {
   status: "",
 };
 
+// --- Message grouping ---
+
+export type MessageSpacing = "none" | "group-start" | "continuation";
+
+function isAssistantCategory(category: MessageCategory): boolean {
+  return category === "agent_response" || category === "tool_call" || category === "question";
+}
+
+/**
+ * Compute spacing for each message based on grouping rules:
+ * - Consecutive assistant-type messages form a group (tight spacing)
+ * - Turn markers and sender-type changes break groups (full spacing)
+ * - Status messages are hidden and get "none"
+ * - The very first visible message gets "none" (no top margin)
+ */
+export function computeMessageGroups(
+  messages: AgentMessage[],
+  turnMap: Map<number, number>,
+): MessageSpacing[] {
+  const result: MessageSpacing[] = [];
+  let prevVisibleCategory: MessageCategory | null = null;
+
+  for (let i = 0; i < messages.length; i++) {
+    const hasTurnMarker = (turnMap.get(i) ?? 0) > 0;
+    const category = classifyMessage(messages[i]);
+
+    // Status messages are hidden (MessageItem returns null)
+    if (category === "status") {
+      result.push("none");
+      continue;
+    }
+
+    if (prevVisibleCategory === null) {
+      // Very first visible message — no spacing needed
+      result.push("none");
+    } else if (hasTurnMarker || !(isAssistantCategory(category) && isAssistantCategory(prevVisibleCategory))) {
+      // New group: turn marker present, or different sender type
+      result.push("group-start");
+    } else {
+      // Same sender type, no turn marker — continuation
+      result.push("continuation");
+    }
+
+    prevVisibleCategory = category;
+  }
+
+  return result;
+}
+
+export const spacingClasses: Record<MessageSpacing, string> = {
+  none: "",
+  "group-start": "mt-6",
+  continuation: "mt-1",
+};
+
+// --- Tool call grouping ---
+
+/**
+ * Find consecutive runs of 2+ tool_call messages and group them.
+ * Returns a map from group leader index to all member indices,
+ * and a reverse map from each member to its leader.
+ */
+export function computeToolCallGroups(
+  messages: AgentMessage[],
+): { groups: Map<number, number[]>; memberOf: Map<number, number> } {
+  const groups = new Map<number, number[]>();
+  const memberOf = new Map<number, number>();
+  let currentGroup: number[] = [];
+
+  const flushGroup = () => {
+    if (currentGroup.length >= 2) {
+      const leader = currentGroup[0];
+      groups.set(leader, [...currentGroup]);
+      for (const idx of currentGroup) {
+        memberOf.set(idx, leader);
+      }
+    }
+    currentGroup = [];
+  };
+
+  for (let i = 0; i < messages.length; i++) {
+    if (classifyMessage(messages[i]) === "tool_call") {
+      currentGroup.push(i);
+    } else {
+      flushGroup();
+    }
+  }
+  flushGroup();
+
+  return { groups, memberOf };
+}
+
+// --- Components ---
+
 export function TurnMarker({ turn }: { turn: number }) {
   return (
     <div className="flex items-center gap-2 py-1">
-      <div className="h-px flex-1 bg-border" />
-      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+      <div className="h-px flex-1 bg-border/40" />
+      <span className="text-xs text-muted-foreground">
         Turn {turn}
       </span>
-      <div className="h-px flex-1 bg-border" />
+      <div className="h-px flex-1 bg-border/40" />
+    </div>
+  );
+}
+
+export function CollapsibleToolCall({ message }: { message: AgentMessage }) {
+  const [expanded, setExpanded] = useState(false);
+  const tool = getToolSummary(message);
+  if (!tool) return null;
+
+  const input = getToolInput(message);
+
+  return (
+    <div data-testid="collapsible-tool-call">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        aria-label={`${tool.summary} — ${expanded ? "collapse" : "expand"}`}
+        className="flex w-full items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        {expanded ? (
+          <ChevronDown className="size-3.5 shrink-0" data-testid="chevron-down" aria-hidden="true" />
+        ) : (
+          <ChevronRight className="size-3.5 shrink-0" data-testid="chevron-right" aria-hidden="true" />
+        )}
+        {getToolIcon(tool.toolName)}
+        <span className="truncate text-left">{tool.summary}</span>
+      </button>
+      <div
+        className={`overflow-hidden transition-all duration-200 ease-out ${
+          expanded ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+        }`}
+        data-testid="tool-call-details"
+      >
+        {input && (
+          <div className={`ml-5 mt-1 ${categoryStyles.tool_call}`}>
+            <pre className="overflow-x-auto text-xs">
+              {JSON.stringify(input, null, 2)}
+            </pre>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function ToolCallGroup({ messages }: { messages: AgentMessage[] }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div data-testid="tool-call-group">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        aria-label={`${messages.length} tool calls — ${expanded ? "collapse" : "expand"}`}
+        className="flex w-full items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        {expanded ? (
+          <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
+        ) : (
+          <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />
+        )}
+        <Terminal className="size-3.5" aria-hidden="true" />
+        <span>{messages.length} tool calls</span>
+      </button>
+      <div
+        className={`overflow-hidden transition-all duration-200 ease-out ${
+          expanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
+        }`}
+        data-testid="tool-group-details"
+      >
+        <div className="ml-3 mt-1 flex flex-col gap-1 border-l-2 border-l-[var(--chat-tool-border)] pl-3">
+          {messages.map((msg, idx) => (
+            <CollapsibleToolCall key={`${msg.timestamp}-${idx}`} message={msg} />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -204,36 +408,37 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
   }
 
   if (category === "tool_call") {
-    const tool = getToolSummary(message);
-    if (tool) {
-      return (
-        <div className={`${wrapperClass} flex items-center gap-2 text-xs text-muted-foreground`}>
-          {getToolIcon(tool.toolName)}
-          <span>{tool.summary}</span>
-        </div>
-      );
-    }
+    return <CollapsibleToolCall message={message} />;
   }
 
   if (category === "question") {
     return (
       <div className={wrapperClass}>
-        <div className="markdown-body max-w-none text-sm">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {message.content ?? ""}
-          </ReactMarkdown>
+        <div className="mb-1 flex items-center gap-2">
+          <Badge className="bg-[var(--chat-question-border)] text-white text-[10px] px-1.5 py-0">
+            Needs Response
+          </Badge>
         </div>
+        <ErrorBoundary fallback={<pre className="whitespace-pre-wrap text-sm">{message.content}</pre>}>
+          <div className="markdown-body max-w-none text-sm">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {message.content ?? ""}
+            </ReactMarkdown>
+          </div>
+        </ErrorBoundary>
       </div>
     );
   }
 
   if (category === "agent_response" && message.content) {
     return (
-      <div className="markdown-body max-w-none text-sm">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-          {message.content}
-        </ReactMarkdown>
-      </div>
+      <ErrorBoundary fallback={<pre className="whitespace-pre-wrap text-sm">{message.content}</pre>}>
+        <div className="markdown-body max-w-none text-sm">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {message.content}
+          </ReactMarkdown>
+        </div>
+      </ErrorBoundary>
     );
   }
 
@@ -280,18 +485,44 @@ export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
     return map;
   }, [run.messages]);
 
+  const messageGroups = useMemo(
+    () => computeMessageGroups(run.messages, turnMap),
+    [run.messages, turnMap],
+  );
+
+  const toolCallGroupMap = useMemo(
+    () => computeToolCallGroups(run.messages),
+    [run.messages],
+  );
+
   return (
     <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <AgentStatusHeader agentId={agentId} />
       <Separator />
       <ScrollArea className="min-h-0 flex-1">
-        <div ref={scrollRef} className="flex flex-col gap-2 p-4">
+        <div ref={scrollRef} className="flex flex-col p-4">
           {run.messages.map((msg, i) => {
             const turn = turnMap.get(i) ?? 0;
+            const spacing = spacingClasses[messageGroups[i]];
+
+            // Skip group members (rendered by group leader)
+            if (toolCallGroupMap.memberOf.has(i) && toolCallGroupMap.memberOf.get(i) !== i) {
+              return null;
+            }
+
+            const groupIndices = toolCallGroupMap.groups.get(i);
+            const content = groupIndices ? (
+              <ToolCallGroup messages={groupIndices.map(idx => run.messages[idx])} />
+            ) : (
+              <MessageItem message={msg} />
+            );
+
             return (
-              <Fragment key={i}>
+              <Fragment key={`${msg.timestamp}-${i}`}>
                 {turn > 0 && <TurnMarker turn={turn} />}
-                <MessageItem message={msg} />
+                <div className={spacing}>
+                  {content}
+                </div>
               </Fragment>
             );
           })}
