@@ -157,6 +157,9 @@ export default function WorkflowPage() {
   // Track whether current step has partial output from an interrupted run
   const [hasPartialOutput, setHasPartialOutput] = useState(false);
 
+  // Pending step switch — set when user clicks a sidebar step while agent is running
+  const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(null);
+
   const stepConfig = STEP_CONFIGS[currentStep];
   const isHumanReviewStep = stepConfig?.type === "human";
   const isPackageStep = stepConfig?.type === "package";
@@ -747,14 +750,49 @@ export default function WorkflowPage() {
         </Dialog>
       )}
 
+      {/* Step-switch guard — shown when user clicks a prior step while agent is running */}
+      {pendingStepSwitch !== null && (
+        <Dialog open onOpenChange={(open) => { if (!open) setPendingStepSwitch(null); }}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Agent Running</DialogTitle>
+              <DialogDescription>
+                An agent is still running on this step. Leaving will abandon it.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPendingStepSwitch(null)}>
+                Stay
+              </Button>
+              <Button variant="destructive" onClick={() => {
+                const targetStep = pendingStepSwitch;
+                const { currentStep: step, steps: curSteps } = useWorkflowStore.getState();
+                if (curSteps[step]?.status === "in_progress") {
+                  useWorkflowStore.getState().updateStepStatus(step, "pending");
+                }
+                useWorkflowStore.getState().setRunning(false);
+                useAgentStore.getState().clearRuns();
+                setPendingStepSwitch(null);
+                setCurrentStep(targetStep);
+              }}>
+                Leave
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
       <div className="flex h-full -m-6">
         <WorkflowSidebar
           steps={steps}
           currentStep={currentStep}
           onStepClick={(id) => {
-            if (steps[id]?.status === "completed") {
-              setCurrentStep(id);
+            if (steps[id]?.status !== "completed") return;
+            if (isRunning) {
+              setPendingStepSwitch(id);
+              return;
             }
+            setCurrentStep(id);
           }}
         />
 
