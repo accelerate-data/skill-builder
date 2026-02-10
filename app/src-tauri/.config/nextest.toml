@@ -1,0 +1,6 @@
+[profile.default]
+# Default profile — console output only
+
+[profile.ci]
+# CI profile — produces JUnit XML alongside console output
+junit.path = "../../../../test-results/cargo-results.xml"

@@ -40,11 +40,20 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 1. Ask the user: "What functional domain should this skill cover? (e.g., sales pipeline, supply chain, HR analytics, financial planning)"
 2. Derive the skill name from the domain (lowercase, kebab-case, e.g., "sales-pipeline")
 3. Confirm with the user: "I'll create the skill as `<skillname>`. Does this name work?"
-4. **Detect start mode** by checking the filesystem:
+4. Ask the user: "What type of skill is this?
+     1. Platform — Tool/platform-specific (dbt, Fabric, Databricks)
+     2. Domain — Business domain knowledge (Finance, Marketing, Supply Chain)
+     3. Source — Source system extraction patterns (Salesforce, SAP, Workday)
+     4. Data Engineering — Technical patterns (SCD Type 2, Incremental Loads)"
+
+   Store the selection as kebab-case: `platform`, `domain`, `source`, `data-engineering`. Default to `domain` if the user's response is unclear.
+
+5. **Detect start mode** by checking the filesystem:
 
    **Mode A — Resume** (`./workflow-state.md` exists):
    The user is continuing a previous session.
    - Read `workflow-state.md`, show the last completed step.
+   - Recover `skill_type` from the `## Skill Type:` line in workflow-state.md. If the line is missing (legacy session), ask the user for the skill type using the prompt in step 4 above and write it to workflow-state.md.
    - Ask: "Continue from step N, or start fresh (this deletes all progress)?"
    - If continue: skip to the recorded step + 1.
    - If start fresh: delete `./workflow-state.md`, `./context/`, and `./<skillname>/` then fall through to Mode C.
@@ -52,8 +61,9 @@ Only one skill is active at a time. The coordinator works on the skill the user 
    **Mode B — Modify existing skill** (`./<skillname>/SKILL.md` exists but `./workflow-state.md` does NOT):
    The user has a finished skill and wants to improve it.
    - Tell the user: "Found an existing skill at `./<skillname>/`. I'll start from the reasoning step so you can refine it."
+   - Determine `skill_type`: inspect the existing `./<skillname>/SKILL.md` for a skill type indicator. If none is found, ask the user for the skill type using the prompt in step 4 above.
    - Create `./context/` if it doesn't exist.
-   - Create `./workflow-state.md` at Step 6.
+   - Create `./workflow-state.md` at Step 6 (include the `## Skill Type:` line).
    - Skip to Step 6 (Reasoning). The reasoning agent will read the existing skill files + any context/ files to identify gaps and produce updated decisions, then the build agent will revise the skill.
 
    **Mode C — Scratch** (no `./<skillname>/` directory and no `./workflow-state.md`):
@@ -70,13 +80,25 @@ Only one skill is active at a time. The coordinator works on the skill the user 
      # Workflow State: <skillname>
      ## Current Step: 0 (Initialization)
      ## Domain: <domain>
+     ## Skill Type: <skill_type>
      ## Status: In Progress
      ```
 
-5. Create the agent team:
+6. Create the agent team:
    ```
    TeamCreate(team_name: "skill-builder-<skillname>", description: "Building <domain> skill")
    ```
+
+### Agent Type Prefix
+
+The `skill_type` stored in `workflow-state.md` determines which agent variants to use.
+
+Derive the prefix once after initialization (or resume) and use it for all subsequent agent dispatches:
+
+- If `skill_type` is `data-engineering`, set `type_prefix` to `de`
+- Otherwise, set `type_prefix` to the `skill_type` value as-is (e.g., `platform`, `domain`, `source`)
+
+All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Shared agents (`merge`, `research-patterns`, `research-data`) remain unprefixed.
 
 ### Step 1: Research Domain Concepts
 
@@ -88,7 +110,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 3. Spawn the research-concepts agent as a teammate:
    ```
    Task(
-     subagent_type: "skill-builder:research-concepts",
+     subagent_type: "skill-builder:{type_prefix}-research-concepts",
      team_name: "skill-builder-<skillname>",
      name: "research-concepts",
      prompt: "You are on the skill-builder-<skillname> team. Claim the 'Research domain concepts' task.
@@ -188,7 +210,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 2. Spawn the reasoning agent:
    ```
    Task(
-     subagent_type: "skill-builder:reasoning",
+     subagent_type: "skill-builder:{type_prefix}-reasoning",
      team_name: "skill-builder-<skillname>",
      name: "reasoning",
      model: "opus",
@@ -214,7 +236,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 2. Spawn the build agent:
    ```
    Task(
-     subagent_type: "skill-builder:build",
+     subagent_type: "skill-builder:{type_prefix}-build",
      team_name: "skill-builder-<skillname>",
      name: "build",
      prompt: "You are on the skill-builder-<skillname> team.
@@ -237,7 +259,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 2. Spawn the validate agent:
    ```
    Task(
-     subagent_type: "skill-builder:validate",
+     subagent_type: "skill-builder:{type_prefix}-validate",
      team_name: "skill-builder-<skillname>",
      name: "validate",
      prompt: "You are on the skill-builder-<skillname> team.
@@ -260,7 +282,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 2. Spawn the test agent:
    ```
    Task(
-     subagent_type: "skill-builder:test",
+     subagent_type: "skill-builder:{type_prefix}-test",
      team_name: "skill-builder-<skillname>",
      name: "test",
      prompt: "You are on the skill-builder-<skillname> team.

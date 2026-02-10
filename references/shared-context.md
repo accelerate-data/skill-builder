@@ -39,11 +39,10 @@ Focus on what/why, let the engineer decide how.
 
 ## Folder Structure
 
-All output is written to the user's current working directory:
+Each skill is built in its own folder under `skills/`:
 
 ```
-./                                   # User's CWD
-├── workflow-state.md                # Session resume checkpoint
+skills/<skillname>/
 ├── context/                         # All intermediate/working files
 │   ├── clarifications-concepts.md   # Research: domain concepts agent
 │   ├── clarifications-patterns.md   # Research: business patterns agent
@@ -52,7 +51,7 @@ All output is written to the user's current working directory:
 │   ├── decisions.md                 # Confirmed decisions (clean snapshot)
 │   ├── agent-validation-log.md      # Validate: best practices results
 │   └── test-skill.md               # Test: test prompts + results
-└── <skillname>/                     # Deployable skill
+└── skill/                           # Deployable skill files
     ├── SKILL.md                     # Entry point (<500 lines)
     └── references/                  # Deep-dive content loaded on demand
         ├── <topic-a>.md
@@ -63,7 +62,7 @@ All output is written to the user's current working directory:
 Additionally:
 - `<skillname>.skill` — final deployable zip archive in the project root (created after successful build)
 
-**Important:** The coordinator provides the skill directory path and context directory path to each agent when spawning it. SKILL.md and references/ live directly under the skill directory. Working files go in the context directory. Agents write files to the directories they are given.
+**Important:** The coordinator provides the full `context/` and `skill/` directory paths to each agent when spawning it. Agents write files to the directories they are given.
 
 ## File Formats
 
@@ -96,6 +95,8 @@ Additionally:
 **Recommendation**: [letter] — [why]
 **Answer**: [PM writes chosen letter and any notes here]
 ```
+
+**Auto-fill rule:** If a question's `**Answer**:` field is empty or missing, treat the `**Recommendation**:` choice as the answer. Do not ask for clarification on unanswered questions — use the recommendation and proceed.
 
 ### `decisions.md` (in context directory)
 

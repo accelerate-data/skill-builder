@@ -41,12 +41,32 @@ fi
 # ---------- T1.2 + T1.3: Agent files + frontmatter ----------
 echo "=== Agents ==="
 
-AGENTS="research-concepts:sonnet research-patterns:sonnet research-data:sonnet merge:haiku reasoning:opus build:sonnet validate:sonnet test:sonnet"
+# Shared agents (no type prefix)
+SHARED_AGENTS="shared/research-patterns:research-patterns:sonnet shared/research-data:research-data:sonnet shared/merge:merge:haiku"
 
-for entry in $AGENTS; do
-  agent="${entry%%:*}"
-  expected="${entry##*:}"
-  file="agents/${agent}.md"
+# Type-specific agents: each type dir has 6 agents
+TYPE_DIRS="domain platform source data-engineering"
+TYPE_AGENTS="research-concepts:sonnet reasoning:opus build:sonnet validate:sonnet test:sonnet research-patterns-and-merge:sonnet"
+
+# Build full list: path:expected_name:expected_model
+ALL_AGENTS="$SHARED_AGENTS"
+for dir in $TYPE_DIRS; do
+  case "$dir" in
+    data-engineering) prefix="de" ;;
+    *) prefix="$dir" ;;
+  esac
+  for entry in $TYPE_AGENTS; do
+    agent="${entry%%:*}"
+    model="${entry##*:}"
+    ALL_AGENTS="$ALL_AGENTS ${dir}/${agent}:${prefix}-${agent}:${model}"
+  done
+done
+
+for entry in $ALL_AGENTS; do
+  path=$(echo "$entry" | cut -d: -f1)
+  expected_name=$(echo "$entry" | cut -d: -f2)
+  expected_model=$(echo "$entry" | cut -d: -f3)
+  file="agents/${path}.md"
 
   if [ ! -f "$file" ]; then
     fail "$file missing"
@@ -55,7 +75,7 @@ for entry in $AGENTS; do
 
   # Check frontmatter delimiters
   if ! head -1 "$file" | grep -q "^---"; then
-    fail "$agent — no YAML frontmatter"
+    fail "$path — no YAML frontmatter"
     continue
   fi
 
@@ -67,28 +87,46 @@ for entry in $AGENTS; do
     if echo "$fm" | grep -q "^${field}:"; then
       :
     else
-      fail "$agent — missing '$field' in frontmatter"
+      fail "$path — missing '$field' in frontmatter"
     fi
   done
+
+  # Check name matches expected prefix
+  actual_name=$(echo "$fm" | grep "^name:" | sed 's/name: *//')
+  if [ "$actual_name" = "$expected_name" ]; then
+    pass "$path — name=$actual_name"
+  else
+    fail "$path — name=$actual_name, expected=$expected_name"
+  fi
 
   # Tools must be comma-separated string, not YAML list
   tools_line=$(echo "$fm" | grep "^tools:" || true)
   if [ -z "$tools_line" ]; then
-    fail "$agent — missing 'tools' in frontmatter"
+    fail "$path — missing 'tools' in frontmatter"
   elif echo "$fm" | grep -q "^  - "; then
-    fail "$agent — tools must be comma-separated string, not YAML list"
+    fail "$path — tools must be comma-separated string, not YAML list"
   else
-    pass "$agent — frontmatter valid"
+    pass "$path — frontmatter valid"
   fi
 
   # Model check
-  actual=$(echo "$fm" | grep "^model:" | sed 's/model: *//')
-  if [ "$actual" = "$expected" ]; then
-    pass "$agent — model=$actual"
+  actual_model=$(echo "$fm" | grep "^model:" | sed 's/model: *//')
+  if [ "$actual_model" = "$expected_model" ]; then
+    pass "$path — model=$actual_model"
   else
-    fail "$agent — model=$actual, expected=$expected"
+    fail "$path — model=$actual_model, expected=$expected_model"
   fi
 done
+
+# Check for unique names across all agents
+echo "=== Name Uniqueness ==="
+all_names=$(grep -rh "^name:" agents/ | sed 's/name: *//' | sort)
+dupes=$(echo "$all_names" | uniq -d)
+if [ -z "$dupes" ]; then
+  pass "all $(echo "$all_names" | wc -l | tr -d ' ') agent names are unique"
+else
+  fail "duplicate agent names found: $dupes"
+fi
 
 # ---------- T1.4: Skill file ----------
 echo "=== Coordinator Skill ==="
@@ -166,20 +204,27 @@ if [ -f "skills/start/SKILL.md" ]; then
   done
 fi
 
-# ---------- Build agent: progressive disclosure ----------
+# ---------- Build agent: progressive disclosure (check all type variants) ----------
 echo "=== Build Agent ==="
-if [ -f "agents/build.md" ]; then
-  build_content=$(cat "agents/build.md")
-  if echo "$build_content" | grep -q "progressive disclosure"; then
-    pass "build agent references progressive disclosure"
-  else
-    fail "build agent missing progressive disclosure guidance"
+build_checked=0
+for dir in $TYPE_DIRS; do
+  if [ -f "agents/${dir}/build.md" ]; then
+    build_content=$(cat "agents/${dir}/build.md")
+    if echo "$build_content" | grep -q "progressive disclosure"; then
+      pass "${dir}/build agent references progressive disclosure"
+    else
+      fail "${dir}/build agent missing progressive disclosure guidance"
+    fi
+    if echo "$build_content" | grep -q "references/"; then
+      pass "${dir}/build agent references references/ subfolder"
+    else
+      fail "${dir}/build agent missing references/ subfolder structure"
+    fi
+    build_checked=$((build_checked + 1))
   fi
-  if echo "$build_content" | grep -q "references/"; then
-    pass "build agent references references/ subfolder"
-  else
-    fail "build agent missing references/ subfolder structure"
-  fi
+done
+if [ $build_checked -eq 0 ]; then
+  fail "no build agent files found in any type directory"
 fi
 
 # ---------- Summary ----------

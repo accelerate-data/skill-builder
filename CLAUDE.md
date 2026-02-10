@@ -1,235 +1,85 @@
-# Skill Builder — Claude Code Plugin
+# Skill Builder — Developer Guide
 
-A Claude Code plugin that provides a multi-agent workflow for creating domain-specific Claude skills. Targets data/analytics engineers who need functional context for silver and gold table modeling.
+This is a merged repo containing **two frontends** for the same skill-building workflow:
 
-## Project Tracking
+1. **Claude Code Plugin** — Production CLI plugin
+2. **Desktop App** — Tauri 2 + React 19 GUI
 
-- **`PLAN.md`** — Conversion plan (CLI → plugin): architecture mapping, implementation steps, path resolution, verification checklist
-- **`FEATURES.md`** — Feature checklist with status checkboxes (F1–F46). Update as features are completed.
-- **`TESTS.md`** — Test plan (T1–T7): structure validation, plugin loading, coordinator behavior, agent execution, human gates, E2E workflow, regression
+Both share the same agent prompts (`agents/`) and reference material (`references/`).
 
-## Quick Start (Development)
+## Quick Navigation
 
-```bash
-# Test locally from any directory
-claude --plugin-dir /path/to/this/repo
+- **Working on the plugin?** → Read [`CLAUDE-PLUGIN.md`](CLAUDE-PLUGIN.md)
+- **Working on the desktop app?** → Read [`CLAUDE-APP.md`](CLAUDE-APP.md)
 
-# Then invoke the skill
-/skill-builder:start
-```
+## What is Skill Builder?
 
-## Plugin Structure
+A multi-agent workflow for creating domain-specific Claude skills. Skills are domain knowledge packages that help data/analytics engineers build silver and gold layer models with proper functional context.
 
-```
-skill-builder/
-├── .claude-plugin/
-│   └── plugin.json                  # Plugin manifest
-├── .claude/
-│   └── settings.json                # Dev hooks (runs validate.sh after Edit/Write)
-├── scripts/
-│   └── validate.sh                  # Automated structural validation (T1 checks)
-├── skills/
-│   └── start/
-│       └── SKILL.md                 # Entry point: /skill-builder:start (coordinator)
-├── agents/
-│   ├── research-concepts.md         # Step 1 — domain concepts researcher
-│   ├── research-patterns.md         # Step 3a — business patterns researcher
-│   ├── research-data.md             # Step 3b — data modeling researcher
-│   ├── merge.md                     # Step 4 — question deduplicator
-│   ├── reasoning.md                 # Step 6 — reasoning + decision engine
-│   ├── build.md                     # Step 7 — skill file creator
-│   ├── validate.md                  # Step 8 — best practices validator
-│   └── test.md                      # Step 9 — test generator + evaluator
-├── references/
-│   └── shared-context.md            # Shared context read by all agents at runtime
-├── CLAUDE.md                        # This file (plugin dev instructions)
-├── PLAN.md                          # Conversion plan (from CLI → plugin)
-├── FEATURES.md                      # Feature checklist with status
-├── TESTS.md                         # Test plan and cases
-├── README.md                        # User-facing plugin docs
-├── LICENSE
-└── .gitignore
-```
+## Shared Components
 
-## Architecture
+Both frontends use the same agents and references. No conversion needed.
 
-The plugin has three layers:
+| Directory | Purpose |
+|---|---|
+| `agents/{type}/` | Type-specific agents (domain, platform, source, data-engineering) — 6 per type |
+| `agents/shared/` | Shared agents (merge, research-patterns, research-data) — used by all types |
+| `references/shared-context.md` | Domain definitions, file formats, content principles |
 
-1. **Coordinator skill** (`skills/start/SKILL.md`) — invoked via `/skill-builder:start`. Contains the full 10-step workflow orchestration. Uses `!`echo $CLAUDE_PLUGIN_ROOT`` to resolve paths to plugin files at runtime.
+### Agent Files
 
-2. **Subagents** (`agents/*.md`) — each has YAML frontmatter (name, model, tools, permissions) and markdown instructions. Spawned by the coordinator via `Task(subagent_type: "skill-builder:<agent-name>")`.
+Each skill type directory (`domain/`, `platform/`, `source/`, `data-engineering/`) contains these 6 agents:
 
-3. **Shared reference** (`references/shared-context.md`) — domain definitions, file formats, content principles. Read by agents at the path the coordinator passes in the Task prompt.
+| File | Role |
+|---|---|
+| `research-concepts.md` | Orchestrator: spawns entity + metrics researchers, merges results |
+| `research-patterns-and-merge.md` | Orchestrator: spawns patterns + data researchers + merger |
+| `reasoning.md` | Gap analysis, contradiction detection, decisions |
+| `build.md` | Skill file creation (spawns reference writers) |
+| `validate.md` | Best practices validation (spawns parallel validators) |
+| `test.md` | Test generation + evaluation (spawns parallel testers) |
 
-### Context Conservation Principle
+Shared agents in `agents/shared/`:
 
-The coordinator's context window is the scarcest resource in the workflow. **All heavy work — research, analysis, generation, validation — must be delegated to subagents via Task calls.** The coordinator exists only to orchestrate, pass parameters, and relay short summaries to the user.
+| File | Role |
+|---|---|
+| `research-patterns.md` | Sub-agent: business patterns research |
+| `research-data.md` | Sub-agent: data modeling research |
+| `merge.md` | Sub-agent: question deduplication |
 
-Rules:
-1. **Never read agent output files into the coordinator context.** Agents write to disk; the coordinator tells the user where to find the files and relays the summary the agent returned.
-2. **Prefer subagents over inline work.** If a step involves reading multiple files, reasoning over content, or producing output longer than a few lines, it belongs in a subagent — not in the coordinator.
-3. **Summaries only flow up.** Each Task prompt must end with an instruction like "Return a 5–10 bullet summary." The coordinator uses that summary for progress updates and to inform the next step's prompt — nothing more.
-4. **Parallel where independent.** Steps that don't depend on each other (e.g., Step 3a and 3b) must be dispatched as parallel Task calls in a single message to reduce wall-clock time without expanding coordinator context.
+## Platform Differences
 
-### Path Resolution
+### Plugin (CLI)
+- Location: Root directory (`skills/start/SKILL.md`)
+- Workflow: 10 steps (init, research, Q&A, parallel research, merge, Q&A, reasoning, build, validate, test, package)
+- State: File-based (`workflow-state.md`)
+- Model selection: Per-agent (defined in coordinator)
+- Orchestration: Agent teams (TeamCreate/SendMessage/TeamDelete)
 
-- Plugin files: `${CLAUDE_PLUGIN_ROOT}/references/shared-context.md` (resolved by coordinator skill via shell injection)
-- Output files in the user's CWD (not the plugin directory):
-  - `./workflow-state.md` — session state
-  - `./context/` — working files
-  - `./<skillname>/` — deployable skill (SKILL.md + references/)
-- Coordinator passes skill directory, context directory, and shared context paths to agents when spawning them
+### Desktop App (GUI)
+- Location: `app/` directory
+- Workflow: **9 steps** (0-8). Step 2 combines parallel research + merge into one orchestrator agent
+- State: SQLite database
+- Model selection: **Global user preference** in Settings (one model for all agents)
+- Orchestration: Node.js sidecar via Claude Agent SDK
 
-### Agent Orchestration
+### Workflow Comparison
 
-The coordinator uses **agent teams** (TeamCreate / Task with team_name / SendMessage / TeamDelete) to orchestrate the workflow. This gives the coordinator visibility into agent progress, enables inter-agent communication, and supports parallel execution with shared task lists.
-
-```
-# 1. Create the team at workflow start
-TeamCreate(team_name: "skill-builder-<skillname>", description: "Building <domain> skill")
-
-# 2. Create tasks for the team's shared task list
-TaskCreate(subject: "Research domain concepts", description: "...")
-
-# 3. Spawn agents as teammates
-Task(
-  subagent_type: "skill-builder:research-concepts",
-  team_name: "skill-builder-<skillname>",
-  name: "research-concepts",
-  model: "sonnet",
-  prompt: "Domain: <domain>. Shared context: <plugin_root>/references/shared-context.md. Write to ./context/clarifications-concepts.md. Claim your task from the task list, mark it complete when done, and return a 5-10 bullet summary."
-)
-
-# 4. Coordinate via messages
-SendMessage(type: "message", recipient: "research-concepts", content: "...", summary: "...")
-
-# 5. Clean up when workflow completes
-TeamDelete()
-```
-
-For parallel agents (Step 3): spawn both teammates in a single message — they share the task list and work concurrently.
-
-### Model Selection
-
-| Agent | Model | Rationale |
+| App Step | Plugin Equivalent | What Happens |
 |---|---|---|
-| research-concepts | **sonnet** | Structured research, runs in parallel |
-| research-patterns | **sonnet** | Structured research, runs in parallel |
-| research-data | **sonnet** | Structured research, runs in parallel |
-| merge | **haiku** | Mechanical deduplication — cheapest tier sufficient |
-| reasoning | **opus** | Deep analytical reasoning, contradiction detection |
-| build | **sonnet** | Content generation and structured writing |
-| validate | **sonnet** | Checking against best practices |
-| test | **sonnet** | Test generation and evaluation |
+| 0 | Step 1 | Research domain concepts (orchestrator) |
+| 1 | Step 2 | Human reviews concept questions |
+| 2 | Steps 3+4 | Research patterns + data + merge (single orchestrator) |
+| 3 | Step 5 | Human reviews merged questions |
+| 4 | Step 6 | Reasoning agent analyzes answers |
+| 5 | Step 7 | Build agent creates skill files |
+| 6 | Step 8 | Validate agent checks best practices |
+| 7 | Step 9 | Test agent generates + evaluates tests |
+| 8 | Step 10 | Package into .skill zip |
 
-## Start Modes
+The plugin has a separate Init step (Step 0) where the user names the skill. In the app, this happens in the new-skill dialog before the workflow starts.
 
-Only one skill is active at a time. The coordinator detects which mode to use based on the filesystem:
+## Development
 
-| Mode | Condition | Behavior |
-|---|---|---|
-| **A — Resume** | `workflow-state.md` exists | Continue from last completed step, or start fresh |
-| **B — Modify existing** | `SKILL.md` exists but no `workflow-state.md` | Skip to Step 6 (reasoning) to refine the existing skill |
-| **C — Scratch** | No skill directory | Full workflow from Step 0 |
-
-## Workflow (10 Steps)
-
-| Step | Agent | What Happens | Human Gate? |
-|---|---|---|---|
-| Init | — | User provides domain, coordinator detects start mode | Yes (confirm name) |
-| 1 | research-concepts | Research key entities, metrics, KPIs | No |
-| 2 | — | User answers domain concept questions | **Yes** |
-| 3 | research-patterns + research-data | Parallel: business patterns + data modeling | No |
-| 4 | merge | Deduplicate questions | No |
-| 5 | — | User answers merged questions | **Yes** |
-| 6 | reasoning | Analyze answers, find gaps, update decisions | **Yes** (confirm reasoning) |
-| 7 | build | Create SKILL.md + reference files | Yes (confirm structure) |
-| 8 | validate | Check against best practices | Yes (review log) |
-| 9 | test | Generate + evaluate test prompts | Yes (review results) |
-| 10 | — | Package into .skill zip | No |
-
-## Output Data Model (in user's CWD)
-
-```
-./                                       # User's CWD
-├── workflow-state.md                    # Session resume checkpoint
-├── context/                             # Working files
-│   ├── clarifications-concepts.md       # Step 1 output
-│   ├── clarifications-patterns.md       # Step 3a output
-│   ├── clarifications-data.md           # Step 3b output
-│   ├── clarifications.md               # Step 4 merged output
-│   ├── decisions.md                     # Step 6 output
-│   ├── agent-validation-log.md          # Step 8 output
-│   └── test-skill.md                    # Step 9 output
-└── <skillname>/                         # Deployable skill
-    ├── SKILL.md                         # Entry point (<500 lines)
-    └── references/                      # Deep-dive files
-```
-
-## Development Guide
-
-### Adding/modifying an agent
-
-1. Edit the agent file in `agents/` — frontmatter controls model, tools, permissions
-2. The markdown body IS the agent's system prompt
-3. Agents receive runtime parameters (domain, paths) from the coordinator's Task prompt
-4. Agents read `references/shared-context.md` at the path provided by the coordinator
-
-### Modifying the workflow
-
-Edit `skills/start/SKILL.md`. This contains the full coordinator logic:
-- Session resume
-- All 10 steps with agent spawning instructions
-- Human review gates
-- Error recovery
-- Context conservation rules
-
-### Testing changes
-
-**Automated validation** runs automatically after every Edit/Write via a Claude Code hook (configured in `.claude/settings.json`). It checks:
-- Manifest validity (JSON, required fields)
-- All 8 agent files exist with valid frontmatter (name, description, model, tools as comma-separated string)
-- Model tiers match the spec (sonnet/haiku/opus)
-- Coordinator skill exists with frontmatter and references TeamCreate, TeamDelete, CLAUDE_PLUGIN_ROOT, etc.
-- Shared context exists, old files removed, .gitignore correct
-
-Run manually: `./scripts/validate.sh`
-
-**Live testing** (requires interactive session):
-```bash
-# Load plugin from local directory
-claude --plugin-dir .
-
-# Invoke the workflow
-/skill-builder:start
-
-# Or test a specific agent directly
-# (from within a Claude Code session with the plugin loaded)
-```
-
-### When adding a new feature
-
-Before implementing, reason about what tests are needed:
-
-1. **Does the change affect plugin structure?** (new files, renamed agents, changed frontmatter) → Add checks to `scripts/validate.sh` and update `TESTS.md` under T1.
-2. **Does the change affect coordinator behavior?** (new steps, changed orchestration, modified gates) → Add a test case to `TESTS.md` under T3 and verify the coordinator content check in `scripts/validate.sh` covers any new keywords.
-3. **Does the change affect an agent's output format or behavior?** → Add a test case to `TESTS.md` under T4 and consider adding a live test via `claude -p --plugin-dir .`.
-4. **Does the change affect the workflow end-to-end?** → Add a test case to `TESTS.md` under T6.
-5. **Not sure what tests to add?** → Propose 2-3 options with tradeoffs (automated vs. manual, structural vs. behavioral) and decide before implementing.
-
-The goal: every feature change has a corresponding test — either an automated check in `scripts/validate.sh` or a documented manual test in `TESTS.md`. If you can't determine the right test, stop and propose options before writing code.
-
-### Key constraints
-
-- **`skills/start/SKILL.md`**: The coordinator. Must not read agent output files into its own context (context conservation). Only relays summaries.
-- **Agent definitions**: Must specify `model` in frontmatter. The coordinator does NOT override models — it uses whatever the agent definition specifies.
-- **`references/shared-context.md`**: Read by every agent. Changes here affect all agents.
-- **Plugin caching**: Plugins are copied to a cache dir on install. All references must be within the plugin directory or in the user's CWD.
-
-## Key Reference
-
-- [Claude Code Plugin docs](https://code.claude.com/docs/en/plugins)
-- [Plugin reference](https://code.claude.com/docs/en/plugins-reference)
-- [Subagent docs](https://code.claude.com/docs/en/sub-agents)
-- [Hooks reference](https://code.claude.com/docs/en/hooks)
-- [Skills docs](https://code.claude.com/docs/en/skills)
+**Plugin**: See [`CLAUDE-PLUGIN.md`](CLAUDE-PLUGIN.md)
+**Desktop App**: See [`CLAUDE-APP.md`](CLAUDE-APP.md)
