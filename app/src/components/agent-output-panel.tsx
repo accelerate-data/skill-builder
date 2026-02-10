@@ -188,13 +188,13 @@ export function classifyMessage(message: AgentMessage): MessageCategory {
 export const categoryStyles: Record<MessageCategory, string> = {
   agent_response: "pl-3",
   tool_call:
-    "border-l-2 border-l-[var(--chat-tool-border)] bg-[var(--chat-tool-bg)] rounded-md px-3 py-2",
+    "border-l-2 border-l-[var(--chat-tool-border)] bg-[var(--chat-tool-bg)] rounded-md px-3 py-1",
   question:
-    "border-l-2 border-l-[var(--chat-question-border)] bg-[var(--chat-question-bg)] rounded-md px-3 py-2",
+    "border-l-2 border-l-[var(--chat-question-border)] bg-[var(--chat-question-bg)] rounded-md px-3 py-1",
   result:
-    "border-l-2 border-l-[var(--chat-result-border)] bg-[var(--chat-result-bg)] rounded-md px-3 py-2",
+    "border-l-2 border-l-[var(--chat-result-border)] bg-[var(--chat-result-bg)] rounded-md px-3 py-1",
   error:
-    "border-l-2 border-l-[var(--chat-error-border)] bg-[var(--chat-error-bg)] rounded-md px-3 py-2",
+    "border-l-2 border-l-[var(--chat-error-border)] bg-[var(--chat-error-bg)] rounded-md px-3 py-1",
   status: "",
 };
 
@@ -294,12 +294,11 @@ export function computeToolCallGroups(
 
 export function TurnMarker({ turn }: { turn: number }) {
   return (
-    <div className="flex items-center gap-2 py-1">
-      <div className="h-px flex-1 bg-border/40" />
-      <span className="text-xs text-muted-foreground">
+    <div className="flex items-center gap-2 mt-2">
+      <Badge variant="secondary" className="text-[11px] font-medium px-1.5 py-0 h-5 shrink-0">
         Turn {turn}
-      </span>
-      <div className="h-px flex-1 bg-border/40" />
+      </Badge>
+      <div className="h-px flex-1 bg-border" />
     </div>
   );
 }
@@ -318,7 +317,7 @@ export function CollapsibleToolCall({ message }: { message: AgentMessage }) {
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
         aria-label={`${tool.summary} — ${expanded ? "collapse" : "expand"}`}
-        className="flex w-full items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="flex w-full items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
       >
         {expanded ? (
           <ChevronDown className="size-3.5 shrink-0" data-testid="chevron-down" aria-hidden="true" />
@@ -356,7 +355,7 @@ export function ToolCallGroup({ messages }: { messages: AgentMessage[] }) {
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
         aria-label={`${messages.length} tool calls — ${expanded ? "collapse" : "expand"}`}
-        className="flex w-full items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="flex w-full items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
       >
         {expanded ? (
           <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
@@ -414,13 +413,13 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
   if (category === "question") {
     return (
       <div className={wrapperClass}>
-        <div className="mb-1 flex items-center gap-2">
+        <div className="mb-0.5 flex items-center gap-2">
           <Badge className="bg-[var(--chat-question-border)] text-white text-[10px] px-1.5 py-0">
             Needs Response
           </Badge>
         </div>
         <ErrorBoundary fallback={<pre className="whitespace-pre-wrap text-sm">{message.content}</pre>}>
-          <div className="markdown-body compact max-w-none">
+          <div className="markdown-body compact">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {message.content ?? ""}
             </ReactMarkdown>
@@ -433,7 +432,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
   if (category === "agent_response" && message.content) {
     return (
       <ErrorBoundary fallback={<pre className="whitespace-pre-wrap text-sm">{message.content}</pre>}>
-        <div className={`${wrapperClass} markdown-body compact max-w-none`}>
+        <div className={`${wrapperClass} markdown-body compact`}>
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {message.content}
           </ReactMarkdown>
@@ -500,7 +499,7 @@ export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
       <AgentStatusHeader agentId={agentId} />
       <Separator />
       <ScrollArea className="min-h-0 flex-1">
-        <div ref={scrollRef} className="flex flex-col p-4">
+        <div ref={scrollRef} className="flex flex-col p-3 max-w-prose">
           {run.messages.map((msg, i) => {
             const turn = turnMap.get(i) ?? 0;
             const spacing = spacingClasses[messageGroups[i]];

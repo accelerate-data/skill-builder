@@ -825,19 +825,12 @@ function buildTurnMap(messages: AgentMessage[]): Map<number, number> {
 }
 
 describe("TurnMarker", () => {
-  it("renders with subtle styling", () => {
+  it("renders with badge styling", () => {
     const { container } = render(<TurnMarker turn={3} />);
     expect(screen.getByText("Turn 3")).toBeInTheDocument();
 
-    const span = screen.getByText("Turn 3");
-    expect(span.className).toContain("text-xs");
-    expect(span.className).toContain("text-muted-foreground");
-    expect(span.className).not.toContain("text-[10px]");
-    expect(span.className).not.toContain("uppercase");
-    expect(span.className).not.toContain("tracking-wider");
-
-    const dividers = container.querySelectorAll(".bg-border\\/40");
-    expect(dividers).toHaveLength(2);
+    const dividers = container.querySelectorAll(".bg-border");
+    expect(dividers).toHaveLength(1);
   });
 });
 
