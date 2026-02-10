@@ -54,7 +54,7 @@ export interface CompactionEvent {
 export interface AgentRun {
   agentId: string;
   model: string;
-  status: "running" | "completed" | "error" | "cancelled";
+  status: "running" | "completed" | "error";
   messages: AgentMessage[];
   startTime: number;
   endTime?: number;
@@ -72,7 +72,6 @@ interface AgentState {
   startRun: (agentId: string, model: string) => void;
   addMessage: (agentId: string, message: AgentMessage) => void;
   completeRun: (agentId: string, success: boolean) => void;
-  cancelRun: (agentId: string) => void;
   setActiveAgent: (agentId: string | null) => void;
   clearRuns: () => void;
 }
@@ -236,22 +235,6 @@ export const useAgentStore = create<AgentState>((set) => ({
           [agentId]: {
             ...run,
             status: success ? "completed" : "error",
-            endTime: Date.now(),
-          },
-        },
-      };
-    }),
-
-  cancelRun: (agentId) =>
-    set((state) => {
-      const run = state.runs[agentId];
-      if (!run) return state;
-      return {
-        runs: {
-          ...state.runs,
-          [agentId]: {
-            ...run,
-            status: "cancelled",
             endTime: Date.now(),
           },
         },

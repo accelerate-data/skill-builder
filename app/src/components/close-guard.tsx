@@ -13,17 +13,10 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { markShuttingDown } from "@/hooks/use-agent-stream";
 
-type CloseDialogState =
-  | { kind: "hidden" }
-  | { kind: "agents-running" };
-
 export function CloseGuard() {
-  const [dialogState, setDialogState] = useState<CloseDialogState>({
-    kind: "hidden",
-  });
+  const [showDialog, setShowDialog] = useState(false);
 
-  const performClose = useCallback(async () => {
-    // Suppress late agent-exit events so killed sidecars don't trigger error UI
+  const destroyWindow = useCallback(async () => {
     markShuttingDown();
     try {
       await getCurrentWindow().destroy();
@@ -37,22 +30,27 @@ export function CloseGuard() {
   }, []);
 
   const handleCloseRequested = useCallback(async () => {
+    let agentsRunning = false;
     try {
-      const agentsRunning = await invoke<boolean>("has_running_agents");
-      if (agentsRunning) {
-        setDialogState({ kind: "agents-running" });
-        return;
-      }
+      agentsRunning = await invoke<boolean>("has_running_agents");
     } catch {
-      // If we can't check, assume no agents and proceed
+      // If we can't check, assume no agents and close
     }
 
-    await performClose();
-  }, [performClose]);
+    if (agentsRunning) {
+      setShowDialog(true);
+    } else {
+      await destroyWindow();
+    }
+  }, [destroyWindow]);
 
-  const handleCancel = useCallback(() => {
-    setDialogState({ kind: "hidden" });
+  const handleStay = useCallback(() => {
+    setShowDialog(false);
   }, []);
+
+  const handleCloseAnyway = useCallback(async () => {
+    await destroyWindow();
+  }, [destroyWindow]);
 
   // Listen for close-requested event from Rust backend
   useEffect(() => {
@@ -65,26 +63,29 @@ export function CloseGuard() {
     };
   }, [handleCloseRequested]);
 
-  if (dialogState.kind === "agents-running") {
-    return (
-      <Dialog open onOpenChange={(open) => { if (!open) handleCancel(); }}>
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Agents Still Running</DialogTitle>
-            <DialogDescription>
-              One or more agents are still running. Please wait for them to
-              finish or cancel them before closing the app.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={handleCancel}>
-              Go Back
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
-  }
+  if (!showDialog) return null;
 
-  return null;
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) handleStay(); }}>
+      <DialogContent showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>Agents Still Running</DialogTitle>
+          <DialogDescription>
+            One or more agents are still running. Closing now will stop them.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleStay}>
+            Stay
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleCloseAnyway}
+          >
+            Close Anyway
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }

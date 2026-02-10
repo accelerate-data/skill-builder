@@ -47,8 +47,7 @@ test.describe("Close Guard", () => {
     await page.goto("/");
     await page.waitForTimeout(500);
 
-    // None of the close guard dialog titles should be present
+    // Close guard dialog should not be present
     await expect(page.getByText("Agents Still Running")).not.toBeVisible();
-    await expect(page.getByText("Uncommitted Changes")).not.toBeVisible();
   });
 });

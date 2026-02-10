@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -17,7 +17,6 @@ pub struct AgentEntry {
 
 pub struct Registry {
     pub agents: HashMap<String, AgentEntry>,
-    pub cancelled: HashSet<String>,
 }
 
 pub type AgentRegistry = Arc<Mutex<Registry>>;
@@ -25,7 +24,6 @@ pub type AgentRegistry = Arc<Mutex<Registry>>;
 pub fn create_registry() -> AgentRegistry {
     Arc::new(Mutex::new(Registry {
         agents: HashMap::new(),
-        cancelled: HashSet::new(),
     }))
 }
 
@@ -113,10 +111,8 @@ pub async fn spawn_sidecar(
         }
 
         // Stdout closed — sidecar exited. Check exit status.
-        let was_cancelled;
         {
             let mut reg = registry_stdout.lock().await;
-            was_cancelled = reg.cancelled.remove(&agent_id_stdout);
             if let Some(mut entry) = reg.agents.remove(&agent_id_stdout) {
                 match entry.child.try_wait() {
                     Ok(Some(status)) => {
@@ -127,10 +123,7 @@ pub async fn spawn_sidecar(
             }
         }
 
-        // If cancelled, the cancel_sidecar function already emitted an exit event
-        if !was_cancelled {
-            events::handle_sidecar_exit(&app_handle_stdout, &agent_id_stdout, success);
-        }
+        events::handle_sidecar_exit(&app_handle_stdout, &agent_id_stdout, success);
 
         // Log the exit event
         if let Some(ref f) = log_stdout {
@@ -159,54 +152,6 @@ pub async fn spawn_sidecar(
                     serde_json::to_string(&line).unwrap_or_else(|_| format!("\"{}\"", line))
                 );
             }
-        }
-    });
-
-    Ok(())
-}
-
-pub async fn cancel_sidecar(
-    agent_id: &str,
-    registry: &AgentRegistry,
-    app_handle: &tauri::AppHandle,
-) -> Result<(), String> {
-    let pid: u32;
-
-    // Mark as cancelled and get PID while holding the lock
-    {
-        let mut reg = registry.lock().await;
-        let entry = reg
-            .agents
-            .get(&agent_id.to_string())
-            .ok_or_else(|| format!("Agent {} not found", agent_id))?;
-        pid = entry.pid;
-        reg.cancelled.insert(agent_id.to_string());
-    }
-    // Lock released before sending signal
-
-    // Send SIGTERM
-    #[cfg(unix)]
-    {
-        use nix::sys::signal::{kill, Signal};
-        use nix::unistd::Pid;
-        let _ = kill(Pid::from_raw(pid as i32), Signal::SIGTERM);
-    }
-
-    // Emit cancelled exit event immediately
-    events::handle_sidecar_cancelled(app_handle, agent_id);
-
-    // Spawn a 5-second SIGKILL fallback
-    let registry_fallback = registry.clone();
-    let agent_id_fallback = agent_id.to_string();
-    tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        let mut reg = registry_fallback.lock().await;
-        if let Some(mut entry) = reg.agents.remove(&agent_id_fallback) {
-            log::warn!(
-                "Agent {} did not exit after SIGTERM, sending SIGKILL",
-                agent_id_fallback
-            );
-            let _ = entry.child.start_kill();
         }
     });
 
@@ -444,32 +389,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cancel_marks_cancelled_set() {
-        let registry = create_registry();
-        // Manually insert a cancelled entry to verify the set works
-        {
-            let mut reg = registry.lock().await;
-            reg.cancelled.insert("test-agent".to_string());
-        }
-        let reg = registry.lock().await;
-        assert!(reg.cancelled.contains("test-agent"));
-    }
-
-    #[tokio::test]
-    async fn test_cancel_not_found_returns_error() {
-        // Without an AppHandle we can't call cancel_sidecar directly,
-        // but we can verify that looking up a missing agent fails.
-        let registry = create_registry();
-        let reg = registry.lock().await;
-        assert!(reg.agents.get("nonexistent").is_none());
-    }
-
-    #[tokio::test]
     async fn test_registry_agents_empty_after_init() {
         let registry = create_registry();
         let reg = registry.lock().await;
         assert!(reg.agents.is_empty());
-        assert!(reg.cancelled.is_empty());
     }
 
     #[test]

@@ -52,9 +52,6 @@ export const startAgent = (
   sessionId?: string,
 ) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns, sessionId });
 
-export const cancelAgent = (agentId: string) =>
-  invoke("cancel_agent", { agentId });
-
 // --- Workflow ---
 
 export const runWorkflowStep = (

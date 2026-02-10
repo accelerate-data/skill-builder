@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, Link } from "@tanstack/react-router";
+import { useParams, Link, useBlocker } from "@tanstack/react-router";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -14,11 +14,18 @@ import {
   AlertCircle,
   RotateCcw,
   Bug,
-  Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
@@ -37,7 +44,6 @@ import {
   captureStepArtifacts,
   getArtifactContent,
   saveArtifactContent,
-  cancelAgent,
   readFile,
   type PackageResult,
 } from "@/lib/tauri";
@@ -96,6 +102,47 @@ export default function WorkflowPage() {
   const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
   const clearRuns = useAgentStore((s) => s.clearRuns);
 
+  // --- Navigation guard ---
+  // Block navigation while an agent is running and show a confirmation dialog.
+  // Key: shouldBlockFn reads directly from Zustand (not React state) so the
+  // value is current when the router re-evaluates after proceed().
+  const { proceed, reset: resetBlocker, status: blockerStatus } = useBlocker({
+    shouldBlockFn: () => useWorkflowStore.getState().isRunning,
+    enableBeforeUnload: false,
+    withResolver: true,
+  });
+
+  const handleNavStay = useCallback(() => {
+    resetBlocker?.();
+  }, [resetBlocker]);
+
+  const handleNavLeave = useCallback(() => {
+    // Revert step to pending so SQLite persists the correct state.
+    const { currentStep: step, steps: curSteps } = useWorkflowStore.getState();
+    if (curSteps[step]?.status === "in_progress") {
+      useWorkflowStore.getState().updateStepStatus(step, "pending");
+    }
+
+    useWorkflowStore.getState().setRunning(false);
+    useAgentStore.getState().clearRuns();
+    proceed?.();
+  }, [proceed]);
+
+  // Safety-net cleanup: revert running state on unmount (e.g. if the
+  // component is removed without going through the blocker dialog).
+  useEffect(() => {
+    return () => {
+      const store = useWorkflowStore.getState();
+      if (!store.isRunning) return;
+
+      if (store.steps[store.currentStep]?.status === "in_progress") {
+        useWorkflowStore.getState().updateStepStatus(store.currentStep, "pending");
+      }
+      useWorkflowStore.getState().setRunning(false);
+      useAgentStore.getState().clearRuns();
+    };
+  }, [skillName]);
+
   // Human review state
   const [reviewContent, setReviewContent] = useState<string | null>(null);
   const [reviewFilePath, setReviewFilePath] = useState("");
@@ -107,7 +154,7 @@ export default function WorkflowPage() {
     null
   );
 
-  // Track whether current step has partial output from a cancelled run
+  // Track whether current step has partial output from an interrupted run
   const [hasPartialOutput, setHasPartialOutput] = useState(false);
 
   const stepConfig = STEP_CONFIGS[currentStep];
@@ -121,9 +168,13 @@ export default function WorkflowPage() {
 
     // Already fully hydrated for this skill — skip.
     // Must check hydrated too: React StrictMode unmounts/remounts effects,
-    // so skillName can match from the first (cancelled) run while hydration
+    // so skillName can match from the first (aborted) run while hydration
     // never completed.
     if (store.skillName === skillName && store.hydrated) return;
+
+    // Clear stale agent data from previous skill so lifecycle effects
+    // don't pick up a completed run from another workflow.
+    clearRuns();
 
     // Reset immediately so stale state from another skill doesn't linger
     initWorkflow(skillName, skillName.replace(/-/g, " "));
@@ -165,7 +216,7 @@ export default function WorkflowPage() {
     setHasPartialOutput(false);
   }, [currentStep]);
 
-  // Detect partial output from cancelled runs
+  // Detect partial output from interrupted runs
   useEffect(() => {
     if (!workspacePath || !hydrated) return;
     const cfg = STEP_CONFIGS[currentStep];
@@ -307,22 +358,6 @@ export default function WorkflowPage() {
       } else {
         finish();
       }
-    } else if (activeRunStatus === "cancelled") {
-      // Capture partial artifacts before reverting to pending
-      const revert = () => {
-        updateStepStatus(step, "pending");
-        setRunning(false);
-        setActiveAgent(null);
-        toast.info(`Step ${step + 1} cancelled`);
-      };
-
-      if (workspacePath) {
-        captureStepArtifacts(skillName, step, workspacePath)
-          .catch(() => {})
-          .then(revert);
-      } else {
-        revert();
-      }
     } else if (activeRunStatus === "error") {
       updateStepStatus(step, "error");
       setRunning(false);
@@ -360,17 +395,6 @@ export default function WorkflowPage() {
       setRunning(false);
       toast.error(
         `Failed to start agent: ${err instanceof Error ? err.message : String(err)}`
-      );
-    }
-  };
-
-  const handleCancelStep = async () => {
-    if (!activeAgentId) return;
-    try {
-      await cancelAgent(activeAgentId);
-    } catch (err) {
-      toast.error(
-        `Failed to cancel: ${err instanceof Error ? err.message : String(err)}`
       );
     }
   };
@@ -692,77 +716,92 @@ export default function WorkflowPage() {
   };
 
   return (
-    <div className="flex h-full -m-6">
-      <WorkflowSidebar
-        steps={steps}
-        currentStep={currentStep}
-        onStepClick={(id) => {
-          if (steps[id]?.status === "completed") {
-            setCurrentStep(id);
-          }
-        }}
-      />
+    <>
+      {/* Navigation guard dialog — shown when user tries to leave while agent is running */}
+      {blockerStatus === "blocked" && (
+        <Dialog open onOpenChange={(open) => { if (!open) handleNavStay(); }}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Agent Running</DialogTitle>
+              <DialogDescription>
+                An agent is still running on this step. Leaving will abandon it.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={handleNavStay}>
+                Stay
+              </Button>
+              <Button variant="destructive" onClick={handleNavLeave}>
+                Leave
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Step header */}
-        <div className="flex items-center justify-between border-b px-6 py-4">
-          <div className="flex flex-col gap-1">
-            <h2 className="text-lg font-semibold">
-              Step {currentStep + 1}: {currentStepDef?.name}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {currentStepDef?.description}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link to="/skill/$skillName/editor" params={{ skillName }}>
-              <Button variant="outline" size="sm">
-                <Pencil className="size-3.5" />
-                Editor
-              </Button>
-            </Link>
-            <Link to="/skill/$skillName/chat" params={{ skillName }}>
-              <Button variant="outline" size="sm">
-                <MessageSquare className="size-3.5" />
-                Chat
-              </Button>
-            </Link>
-            {debugMode && (
-              <Badge variant="outline" className="gap-1 border-amber-500 text-amber-600">
-                <Bug className="size-3" />
-                Debug
-              </Badge>
-            )}
-            {isRunning && stepConfig?.type === "agent" && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCancelStep}
-              >
-                <Square className="size-3.5" />
-                Cancel
-              </Button>
-            )}
-            {canStart && (
-              <Button onClick={() => handleStartStep(hasPartialOutput)} size="sm">
-                {hasPartialOutput ? <RotateCcw className="size-3.5" /> : getStartButtonIcon()}
-                {hasPartialOutput ? "Resume" : getStartButtonLabel()}
-              </Button>
-            )}
-            {isHumanReviewStep && currentStepDef?.status !== "completed" && (
-              <Badge variant="outline" className="gap-1">
-                <FileText className="size-3" />
-                Q&A Review
-              </Badge>
-            )}
-          </div>
-        </div>
+      <div className="flex h-full -m-6">
+        <WorkflowSidebar
+          steps={steps}
+          currentStep={currentStep}
+          onStepClick={(id) => {
+            if (steps[id]?.status === "completed") {
+              setCurrentStep(id);
+            }
+          }}
+        />
 
-        {/* Content area */}
-        <div className="flex flex-1 flex-col overflow-hidden p-4">
-          {renderContent()}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {/* Step header */}
+          <div className="flex items-center justify-between border-b px-6 py-4">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-semibold">
+                Step {currentStep + 1}: {currentStepDef?.name}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {currentStepDef?.description}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Link to="/skill/$skillName/editor" params={{ skillName }}>
+                <Button variant="outline" size="sm">
+                  <Pencil className="size-3.5" />
+                  Editor
+                </Button>
+              </Link>
+              <Link to="/skill/$skillName/chat" params={{ skillName }}>
+                <Button variant="outline" size="sm">
+                  <MessageSquare className="size-3.5" />
+                  Chat
+                </Button>
+              </Link>
+              {debugMode && (
+                <Badge variant="outline" className="gap-1 border-amber-500 text-amber-600">
+                  <Bug className="size-3" />
+                  Debug
+                </Badge>
+              )}
+              {canStart && (
+                <Button onClick={() => handleStartStep(hasPartialOutput)} size="sm">
+                  {hasPartialOutput ? <RotateCcw className="size-3.5" /> : getStartButtonIcon()}
+                  {hasPartialOutput ? "Resume" : getStartButtonLabel()}
+                </Button>
+              )}
+              {isHumanReviewStep && currentStepDef?.status !== "completed" && (
+                <Badge variant="outline" className="gap-1">
+                  <FileText className="size-3" />
+                  Q&A Review
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          {/* Content area */}
+          <div className="flex flex-1 flex-col overflow-hidden p-4">
+            {renderContent()}
+          </div>
         </div>
       </div>
-    </div>
+
+    </>
   );
 }

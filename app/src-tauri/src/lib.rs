@@ -28,7 +28,6 @@ pub fn run() {
         .manage(agents::sidecar::create_registry())
         .invoke_handler(tauri::generate_handler![
             commands::agent::start_agent,
-            commands::agent::cancel_agent,
             commands::node::check_node,
             commands::settings::get_settings,
             commands::settings::save_settings,

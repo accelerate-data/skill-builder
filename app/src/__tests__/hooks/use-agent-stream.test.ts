@@ -134,19 +134,6 @@ describe("initAgentStream", () => {
     expect(run.status).toBe("error");
   });
 
-  it("routes cancelled=true exit to cancelRun", () => {
-    useAgentStore.getState().startRun("agent-1", "sonnet");
-    initAgentStream();
-
-    listeners["agent-exit"]({
-      payload: { agent_id: "agent-1", success: false, cancelled: true },
-    });
-
-    const run = useAgentStore.getState().runs["agent-1"];
-    expect(run.status).toBe("cancelled");
-    expect(run.endTime).toBeDefined();
-  });
-
   it("only registers listeners once for multiple init calls", () => {
     initAgentStream();
     initAgentStream();
