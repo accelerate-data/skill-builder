@@ -10,6 +10,7 @@ workflow-state.md
 
 # Test results
 app/test-results/
+app/src-tauri/test-results/
 app/playwright-report/
 app/playwright-artifacts/
 
