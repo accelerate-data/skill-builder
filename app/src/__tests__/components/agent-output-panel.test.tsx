@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { useAgentStore } from "@/stores/agent-store";
+import { useAgentStore, type AgentMessage } from "@/stores/agent-store";
 
 // Polyfill scrollIntoView for jsdom
 if (!Element.prototype.scrollIntoView) {
@@ -17,7 +17,11 @@ vi.mock("remark-gfm", () => ({
   default: () => {},
 }));
 
-import { AgentOutputPanel } from "@/components/agent-output-panel";
+import {
+  AgentOutputPanel,
+  classifyMessage,
+  MessageItem,
+} from "@/components/agent-output-panel";
 
 describe("AgentOutputPanel", () => {
   beforeEach(() => {
@@ -149,5 +153,134 @@ describe("AgentOutputPanel", () => {
     expect(
       screen.queryByText("System init message")
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("classifyMessage", () => {
+  const msg = (overrides: Partial<AgentMessage>) =>
+    ({
+      type: "assistant",
+      content: "",
+      raw: {},
+      timestamp: Date.now(),
+      ...overrides,
+    }) as AgentMessage;
+
+  it("classifies system message as status", () => {
+    expect(classifyMessage(msg({ type: "system" }))).toBe("status");
+  });
+
+  it("classifies error message as error", () => {
+    expect(classifyMessage(msg({ type: "error", content: "fail" }))).toBe("error");
+  });
+
+  it("classifies result message as result", () => {
+    expect(classifyMessage(msg({ type: "result", content: "done" }))).toBe("result");
+  });
+
+  it("classifies assistant with tool_use as tool_call", () => {
+    expect(
+      classifyMessage(
+        msg({
+          type: "assistant",
+          content: null as unknown as string,
+          raw: { message: { content: [{ type: "tool_use", name: "Read" }] } },
+        }),
+      ),
+    ).toBe("tool_call");
+  });
+
+  it("classifies assistant with follow-up questions as question", () => {
+    expect(
+      classifyMessage(
+        msg({
+          type: "assistant",
+          content: "## Follow-up Questions\n1. What is the primary key?",
+        }),
+      ),
+    ).toBe("question");
+  });
+
+  it("classifies assistant with gate_check text as question", () => {
+    expect(
+      classifyMessage(
+        msg({
+          type: "assistant",
+          content: "Ready to proceed to the build step.",
+        }),
+      ),
+    ).toBe("question");
+  });
+
+  it("classifies assistant with plain text as agent_response", () => {
+    expect(
+      classifyMessage(
+        msg({ type: "assistant", content: "Analyzing the domain..." }),
+      ),
+    ).toBe("agent_response");
+  });
+
+  it("classifies unknown type as status (fallback)", () => {
+    expect(
+      classifyMessage(msg({ type: "unknown_type" as AgentMessage["type"] })),
+    ).toBe("status");
+  });
+});
+
+describe("MessageItem visual treatments", () => {
+  it("renders error message with destructive styling", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "error",
+          content: "Something broke",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    const el = container.firstElementChild!;
+    expect(el.className).toContain("border-destructive");
+    expect(el.className).toContain("bg-destructive");
+    expect(el.textContent).toBe("Something broke");
+  });
+
+  it("renders result message with green border/bg styling", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "result",
+          content: "Agent finished successfully",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    const el = container.firstElementChild!;
+    expect(el.className).toContain("border-green-500");
+    expect(el.className).toContain("bg-green-500");
+    expect(el.textContent).toContain("Agent finished successfully");
+  });
+
+  it("renders tool_call message with muted foreground styling", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "assistant",
+          content: null as unknown as string,
+          raw: {
+            message: {
+              content: [
+                { type: "tool_use", name: "Read", input: { file_path: "/a/b.ts" } },
+              ],
+            },
+          },
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    const el = container.firstElementChild!;
+    expect(el.className).toContain("text-muted-foreground");
+    expect(el.textContent).toContain("Reading b.ts");
   });
 });

@@ -16,6 +16,7 @@ import {
   useAgentStore,
   type AgentMessage,
 } from "@/stores/agent-store";
+import { parseAgentResponseType } from "@/lib/reasoning-parser";
 import { AgentStatusHeader } from "@/components/agent-status-header";
 
 function getToolIcon(toolName: string) {
@@ -120,6 +121,29 @@ function getToolSummary(message: AgentMessage): ToolSummaryResult | null {
     }
   }
   return result(name);
+}
+
+export type MessageCategory = 'agent_response' | 'tool_call' | 'question' | 'result' | 'error' | 'status';
+
+export function classifyMessage(message: AgentMessage): MessageCategory {
+  if (message.type === "system") return "status";
+  if (message.type === "error") return "error";
+  if (message.type === "result") return "result";
+
+  if (message.type === "assistant") {
+    if (isToolUseMessage(message)) return "tool_call";
+
+    if (message.content) {
+      const responseType = parseAgentResponseType(message.content);
+      if (responseType === "follow_up" || responseType === "gate_check") {
+        return "question";
+      }
+    }
+
+    return "agent_response";
+  }
+
+  return "status";
 }
 
 export function TurnMarker({ turn }: { turn: number }) {

@@ -28,7 +28,6 @@ pub fn run() {
         .manage(agents::sidecar::create_registry())
         .invoke_handler(tauri::generate_handler![
             commands::agent::start_agent,
-            commands::agent::cancel_agent,
             commands::node::check_node,
             commands::settings::get_settings,
             commands::settings::save_settings,
@@ -57,7 +56,6 @@ pub fn run() {
             commands::chat::get_chat_messages,
             commands::chat::run_chat_agent,
             commands::lifecycle::has_running_agents,
-            commands::lifecycle::cancel_all_agents,
             commands::workspace::get_workspace_path,
             commands::workspace::clear_workspace,
             commands::diff::generate_diff,

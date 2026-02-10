@@ -161,23 +161,6 @@ describe("useAgentStore", () => {
     expect(run.messages[0].content).toBe("Hello");
   });
 
-  it("cancelRun sets status 'cancelled' and endTime", () => {
-    useAgentStore.getState().startRun("agent-1", "sonnet");
-    const beforeCancel = Date.now();
-    useAgentStore.getState().cancelRun("agent-1");
-
-    const run = useAgentStore.getState().runs["agent-1"];
-    expect(run.status).toBe("cancelled");
-    expect(run.endTime).toBeDefined();
-    expect(run.endTime).toBeGreaterThanOrEqual(beforeCancel);
-  });
-
-  it("cancelRun for a non-existent run is a no-op", () => {
-    useAgentStore.getState().cancelRun("nonexistent");
-    const state = useAgentStore.getState();
-    expect(state.runs["nonexistent"]).toBeUndefined();
-  });
-
   it("completeRun for a non-existent run is a no-op", () => {
     useAgentStore.getState().completeRun("nonexistent", true);
     const state = useAgentStore.getState();

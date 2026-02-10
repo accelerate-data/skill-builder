@@ -44,12 +44,3 @@ pub async fn start_agent(
 
     Ok(agent_id)
 }
-
-#[tauri::command]
-pub async fn cancel_agent(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, AgentRegistry>,
-    agent_id: String,
-) -> Result<(), String> {
-    sidecar::cancel_sidecar(&agent_id, state.inner(), &app).await
-}

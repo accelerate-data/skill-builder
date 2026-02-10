@@ -52,9 +52,6 @@ export const startAgent = (
   sessionId?: string,
 ) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns, sessionId });
 
-export const cancelAgent = (agentId: string) =>
-  invoke("cancel_agent", { agentId });
-
 // --- Workflow ---
 
 export const runWorkflowStep = (
@@ -140,9 +137,6 @@ export const readFile = (filePath: string) =>
 
 export const hasRunningAgents = () =>
   invoke<boolean>("has_running_agents");
-
-export const cancelAllAgents = () =>
-  invoke("cancel_all_agents");
 
 export const getWorkspacePath = () =>
   invoke<string>("get_workspace_path");

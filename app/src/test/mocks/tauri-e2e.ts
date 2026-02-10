@@ -56,7 +56,6 @@ const mockResponses: Record<string, unknown> = {
   check_workspace_path: true,
   has_running_agents: false,
   start_agent: "agent-001",
-  cancel_agent: undefined,
   run_workflow_step: "agent-001",
   run_parallel_agents: { agent_id_a: "agent-001", agent_id_b: "agent-002" },
   package_skill: { file_path: "/tmp/test/my-skill.skill", size_bytes: 12345 },

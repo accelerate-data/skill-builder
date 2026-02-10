@@ -14,7 +14,6 @@ import {
   AlertCircle,
   RotateCcw,
   Bug,
-  Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -45,7 +44,6 @@ import {
   captureStepArtifacts,
   getArtifactContent,
   saveArtifactContent,
-  cancelAgent,
   readFile,
   type PackageResult,
 } from "@/lib/tauri";
@@ -119,12 +117,6 @@ export default function WorkflowPage() {
   }, [resetBlocker]);
 
   const handleNavLeave = useCallback(() => {
-    // All synchronous — no async gap for shouldBlockFn to re-block.
-    const agentId = useAgentStore.getState().activeAgentId;
-    if (agentId) {
-      cancelAgent(agentId).catch(() => {}); // fire-and-forget SIGTERM
-    }
-
     // Revert step to pending so SQLite persists the correct state.
     const { currentStep: step, steps: curSteps } = useWorkflowStore.getState();
     if (curSteps[step]?.status === "in_progress") {
@@ -136,17 +128,13 @@ export default function WorkflowPage() {
     proceed?.();
   }, [proceed]);
 
-  // Safety-net cleanup: cancel running agent on unmount (e.g. if the
+  // Safety-net cleanup: revert running state on unmount (e.g. if the
   // component is removed without going through the blocker dialog).
   useEffect(() => {
     return () => {
       const store = useWorkflowStore.getState();
       if (!store.isRunning) return;
 
-      const agentId = useAgentStore.getState().activeAgentId;
-      if (agentId) {
-        cancelAgent(agentId).catch(() => {}); // fire-and-forget
-      }
       if (store.steps[store.currentStep]?.status === "in_progress") {
         useWorkflowStore.getState().updateStepStatus(store.currentStep, "pending");
       }
@@ -166,7 +154,7 @@ export default function WorkflowPage() {
     null
   );
 
-  // Track whether current step has partial output from a cancelled run
+  // Track whether current step has partial output from an interrupted run
   const [hasPartialOutput, setHasPartialOutput] = useState(false);
 
   const stepConfig = STEP_CONFIGS[currentStep];
@@ -180,12 +168,12 @@ export default function WorkflowPage() {
 
     // Already fully hydrated for this skill — skip.
     // Must check hydrated too: React StrictMode unmounts/remounts effects,
-    // so skillName can match from the first (cancelled) run while hydration
+    // so skillName can match from the first (aborted) run while hydration
     // never completed.
     if (store.skillName === skillName && store.hydrated) return;
 
     // Clear stale agent data from previous skill so lifecycle effects
-    // don't pick up a completed/cancelled run from another workflow.
+    // don't pick up a completed run from another workflow.
     clearRuns();
 
     // Reset immediately so stale state from another skill doesn't linger
@@ -228,7 +216,7 @@ export default function WorkflowPage() {
     setHasPartialOutput(false);
   }, [currentStep]);
 
-  // Detect partial output from cancelled runs
+  // Detect partial output from interrupted runs
   useEffect(() => {
     if (!workspacePath || !hydrated) return;
     const cfg = STEP_CONFIGS[currentStep];
@@ -370,22 +358,6 @@ export default function WorkflowPage() {
       } else {
         finish();
       }
-    } else if (activeRunStatus === "cancelled") {
-      // Capture partial artifacts before reverting to pending
-      const revert = () => {
-        updateStepStatus(step, "pending");
-        setRunning(false);
-        setActiveAgent(null);
-        toast.info(`Step ${step + 1} cancelled`);
-      };
-
-      if (workspacePath) {
-        captureStepArtifacts(skillName, step, workspacePath)
-          .catch(() => {})
-          .then(revert);
-      } else {
-        revert();
-      }
     } else if (activeRunStatus === "error") {
       updateStepStatus(step, "error");
       setRunning(false);
@@ -425,31 +397,6 @@ export default function WorkflowPage() {
         `Failed to start agent: ${err instanceof Error ? err.message : String(err)}`
       );
     }
-  };
-
-  const handleCancelStep = () => {
-    // Fire-and-forget SIGTERM if we already have an agent handle.
-    // activeAgentId may still be null if runWorkflowStep hasn't resolved yet
-    // (the Cancel button is visible as soon as isRunning=true, before the ID
-    // comes back from Rust).  We still revert the UI in that case — the
-    // orphaned sidecar will exit on its own and the effect guards prevent it
-    // from affecting state.
-    const agentId = activeAgentId ?? useAgentStore.getState().activeAgentId;
-    if (agentId) {
-      cancelAgent(agentId).catch(() => {});
-    }
-
-    // Immediately update UI state so the user isn't left waiting.
-    updateStepStatus(currentStep, "pending");
-    setRunning(false);
-    clearRuns();
-
-    // Best-effort artifact capture in background
-    if (workspacePath) {
-      captureStepArtifacts(skillName, currentStep, workspacePath).catch(() => {});
-    }
-
-    toast.info(`Step ${currentStep + 1} cancelled`);
   };
 
   const handleSkipHumanStep = () => {
@@ -777,7 +724,7 @@ export default function WorkflowPage() {
             <DialogHeader>
               <DialogTitle>Agent Running</DialogTitle>
               <DialogDescription>
-                An agent is still running on this step. Leaving will cancel it.
+                An agent is still running on this step. Leaving will abandon it.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -785,7 +732,7 @@ export default function WorkflowPage() {
                 Stay
               </Button>
               <Button variant="destructive" onClick={handleNavLeave}>
-                Cancel & Leave
+                Leave
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -832,16 +779,6 @@ export default function WorkflowPage() {
                   <Bug className="size-3" />
                   Debug
                 </Badge>
-              )}
-              {isRunning && stepConfig?.type === "agent" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCancelStep}
-                >
-                  <Square className="size-3.5" />
-                  Cancel
-                </Button>
               )}
               {canStart && (
                 <Button onClick={() => handleStartStep(hasPartialOutput)} size="sm">

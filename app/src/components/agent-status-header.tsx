@@ -5,11 +5,9 @@ import {
   XCircle,
   Clock,
   Cpu,
-  Ban,
 } from "lucide-react";
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   useAgentStore,
   formatModelName,
@@ -59,13 +57,11 @@ function ContextMeter({ agentId }: { agentId: string }) {
 interface AgentStatusHeaderProps {
   agentId: string;
   title?: string;
-  onCancel?: () => void;
 }
 
 export function AgentStatusHeader({
   agentId,
   title = "Agent Output",
-  onCancel,
 }: AgentStatusHeaderProps) {
   const run = useAgentStore((s) => s.runs[agentId]);
 
@@ -87,14 +83,12 @@ export function AgentStatusHeader({
     running: <Loader2 className="size-3.5 animate-spin" />,
     completed: <CheckCircle2 className="size-3.5 text-green-500" />,
     error: <XCircle className="size-3.5 text-destructive" />,
-    cancelled: <Ban className="size-3.5 text-yellow-500" />,
   }[run.status];
 
   const statusLabel = {
     running: "Running",
     completed: "Completed",
     error: "Error",
-    cancelled: "Cancelled",
   }[run.status];
 
   const turnCount = run.messages.filter((m) => m.type === "assistant").length;
@@ -133,17 +127,6 @@ export function AgentStatusHeader({
           </Badge>
         )}
         <ContextMeter agentId={agentId} />
-        {run.status === "running" && onCancel && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6 text-muted-foreground hover:text-destructive"
-            onClick={onCancel}
-            title="Cancel agent"
-          >
-            <XCircle className="size-4" />
-          </Button>
-        )}
       </div>
     </CardHeader>
   );

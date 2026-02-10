@@ -90,9 +90,8 @@ describe("CloseGuard", () => {
     });
   });
 
-  it("Close Anyway calls cancelAllAgents then destroys window", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  it("Close Anyway destroys window immediately", async () => {
+    const user = userEvent.setup();
 
     const destroyFn = vi.fn(() => Promise.resolve());
     mockGetCurrentWindow.mockReturnValue({
@@ -101,7 +100,6 @@ describe("CloseGuard", () => {
     });
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "has_running_agents") return Promise.resolve(true);
-      if (cmd === "cancel_all_agents") return Promise.resolve(null);
       return Promise.reject(new Error(`Unmocked: ${cmd}`));
     });
 
@@ -114,21 +112,8 @@ describe("CloseGuard", () => {
 
     await user.click(screen.getByText("Close Anyway"));
 
-    // Button should show "Closing..." state
-    await waitFor(() => {
-      expect(screen.getByText("Closing...")).toBeInTheDocument();
-    });
-
-    // cancel_all_agents should have been called
-    expect(mockInvoke).toHaveBeenCalledWith("cancel_all_agents");
-
-    // Advance past the 500ms delay
-    await vi.advanceTimersByTimeAsync(600);
-
     await waitFor(() => {
       expect(destroyFn).toHaveBeenCalled();
     });
-
-    vi.useRealTimers();
   });
 });
