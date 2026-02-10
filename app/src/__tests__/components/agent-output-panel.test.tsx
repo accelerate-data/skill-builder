@@ -327,7 +327,7 @@ describe("MessageItem visual treatments", () => {
     expect(button!.className).toContain("text-muted-foreground");
   });
 
-  it("renders question message with CSS variable border styling and medium typography", () => {
+  it("renders question message with CSS variable border styling and compact markdown", () => {
     const { container } = render(
       <MessageItem
         message={{
@@ -341,14 +341,13 @@ describe("MessageItem visual treatments", () => {
     const el = container.firstElementChild!;
     expect(el.className).toContain("border-l-[var(--chat-question-border)]");
     expect(el.className).toContain("bg-[var(--chat-question-bg)]");
-    // Question markdown body uses medium weight typography
+    // Question markdown body uses compact class
     const markdownBody = el.querySelector(".markdown-body");
     expect(markdownBody).toBeInTheDocument();
-    expect(markdownBody!.className).toContain("text-base");
-    expect(markdownBody!.className).toContain("font-medium");
+    expect(markdownBody!.className).toContain("compact");
   });
 
-  it("renders agent_response without border styling and with prose typography", () => {
+  it("renders agent_response with pl-3 and compact markdown", () => {
     const { container } = render(
       <MessageItem
         message={{
@@ -361,9 +360,9 @@ describe("MessageItem visual treatments", () => {
     );
     const el = container.firstElementChild!;
     expect(el.className).not.toContain("border-l-2");
-    expect(el.className).toContain("text-base");
-    expect(el.className).toContain("font-normal");
-    expect(el.className).toContain("leading-relaxed");
+    expect(el.className).toContain("pl-3");
+    expect(el.className).toContain("markdown-body");
+    expect(el.className).toContain("compact");
   });
 });
 
@@ -384,8 +383,8 @@ describe("categoryStyles", () => {
     expect(categoryStyles.error).toContain("border-l-2");
   });
 
-  it("has empty styles for plain categories", () => {
-    expect(categoryStyles.agent_response).toBe("");
+  it("has expected styles for plain categories", () => {
+    expect(categoryStyles.agent_response).toBe("pl-3");
     expect(categoryStyles.status).toBe("");
   });
 });
@@ -833,19 +832,12 @@ function buildTurnMap(messages: AgentMessage[]): Map<number, number> {
 }
 
 describe("TurnMarker", () => {
-  it("renders with subtle styling", () => {
+  it("renders with badge styling", () => {
     const { container } = render(<TurnMarker turn={3} />);
     expect(screen.getByText("Turn 3")).toBeInTheDocument();
 
-    const span = screen.getByText("Turn 3");
-    expect(span.className).toContain("text-xs");
-    expect(span.className).toContain("text-muted-foreground");
-    expect(span.className).not.toContain("text-[10px]");
-    expect(span.className).not.toContain("uppercase");
-    expect(span.className).not.toContain("tracking-wider");
-
-    const dividers = container.querySelectorAll(".bg-border\\/40");
-    expect(dividers).toHaveLength(2);
+    const dividers = container.querySelectorAll(".bg-border");
+    expect(dividers).toHaveLength(1);
   });
 });
 
@@ -938,15 +930,15 @@ describe("computeMessageGroups", () => {
 describe("spacingClasses", () => {
   it("maps all spacing types to string classes", () => {
     expect(spacingClasses.none).toBe("");
-    expect(spacingClasses["group-start"]).toBe("mt-6");
-    expect(spacingClasses.continuation).toBe("mt-1");
+    expect(spacingClasses["group-start"]).toBe("mt-3");
+    expect(spacingClasses.continuation).toBe("mt-0.5");
   });
 });
 
 // --- VD-373: Typography hierarchy and message type icons ---
 
 describe("VD-373: Typography hierarchy", () => {
-  it("agent prose uses text-base font-normal leading-relaxed", () => {
+  it("agent prose uses compact markdown with pl-3", () => {
     const { container } = render(
       <MessageItem
         message={{
@@ -958,20 +950,19 @@ describe("VD-373: Typography hierarchy", () => {
       />,
     );
     const el = container.firstElementChild!;
-    expect(el.className).toContain("text-base");
-    expect(el.className).toContain("font-normal");
-    expect(el.className).toContain("leading-relaxed");
+    expect(el.className).toContain("pl-3");
+    expect(el.className).toContain("markdown-body");
+    expect(el.className).toContain("compact");
   });
 
-  it("tool call summaries use text-sm font-medium text-muted-foreground", () => {
+  it("tool call summaries use text-xs text-muted-foreground", () => {
     const { container } = render(
       <CollapsibleToolCall
         message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })}
       />,
     );
     const button = container.querySelector("button")!;
-    expect(button.className).toContain("text-sm");
-    expect(button.className).toContain("font-medium");
+    expect(button.className).toContain("text-xs");
     expect(button.className).toContain("text-muted-foreground");
   });
 
@@ -988,15 +979,14 @@ describe("VD-373: Typography hierarchy", () => {
     expect(pre.className).toContain("font-mono");
   });
 
-  it("turn markers use text-xs font-medium text-muted-foreground", () => {
+  it("turn markers use Badge with font-medium", () => {
     render(<TurnMarker turn={5} />);
-    const span = screen.getByText("Turn 5");
-    expect(span.className).toContain("text-xs");
-    expect(span.className).toContain("font-medium");
-    expect(span.className).toContain("text-muted-foreground");
+    const badge = screen.getByText("Turn 5");
+    expect(badge).toBeInTheDocument();
+    expect(badge.className).toContain("font-medium");
   });
 
-  it("question messages use text-base font-medium", () => {
+  it("question messages use compact markdown", () => {
     const { container } = render(
       <MessageItem
         message={{
@@ -1009,8 +999,7 @@ describe("VD-373: Typography hierarchy", () => {
     );
     const markdownBody = container.querySelector(".markdown-body")!;
     expect(markdownBody).toBeInTheDocument();
-    expect(markdownBody.className).toContain("text-base");
-    expect(markdownBody.className).toContain("font-medium");
+    expect(markdownBody.className).toContain("compact");
   });
 });
 

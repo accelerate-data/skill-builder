@@ -561,7 +561,7 @@ export function ReasoningChat({
         </button>
         {showDecisions && (
           <div className="max-h-[300px] overflow-y-auto border-t px-4 py-3">
-            <div className="markdown-body max-w-none text-sm">
+            <div className="markdown-body compact">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {decisionsContent}
               </ReactMarkdown>
@@ -615,7 +615,7 @@ export function ReasoningChat({
                 }`}
               >
                 {msg.role === "agent" ? (
-                  <div className="markdown-body max-w-none text-sm">
+                  <div className="markdown-body compact">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {msg.content}
                     </ReactMarkdown>

@@ -69,7 +69,7 @@ vi.mock("@/components/agent-output-panel", () => ({
       return "continuation";
     });
   },
-  spacingClasses: { none: "", "group-start": "mt-6", continuation: "mt-1" },
+  spacingClasses: { none: "", "group-start": "mt-3", continuation: "mt-0.5" },
 }));
 
 // Mock sonner toast
