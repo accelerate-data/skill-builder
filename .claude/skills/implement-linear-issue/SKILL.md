@@ -44,13 +44,11 @@ Everything else — worktree setup, Linear status updates, launching teams, runn
 
 ### Phase 1: Setup
 
-1. **Fetch the issue** from Linear via a sub-agent. Get: title, description, requirements, acceptance criteria, estimate, labels.
-2. **Create a git worktree** for the issue:
+1. **Fetch the issue** from Linear via a sub-agent. Get: issue ID, title, description, requirements, acceptance criteria, estimate, labels, **and branch name**.
+2. **Create a git worktree** using the branch name from Linear:
    ```
-   git worktree add <worktree-path> -b <branch-name>
+   git worktree add <branch-name> -b <branch-name>
    ```
-   Branch naming: `feature/<issue-id>-<short-slug>` (e.g., `feature/vd-383-post-workflow-chat`)
-   Worktree path: the user will provide this, or derive from the branch name.
 3. **Move the issue to In Progress** in Linear via a sub-agent.
 
 ### Phase 2: Plan
