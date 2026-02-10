@@ -17,6 +17,7 @@ import {
   type AgentMessage,
 } from "@/stores/agent-store";
 import { AgentStatusHeader } from "@/components/agent-status-header";
+import { parseAgentResponseType } from "@/lib/reasoning-parser";
 
 function getToolIcon(toolName: string) {
   switch (toolName) {
@@ -122,6 +123,49 @@ function getToolSummary(message: AgentMessage): ToolSummaryResult | null {
   return result(name);
 }
 
+export type MessageCategory =
+  | "agent_response"
+  | "tool_call"
+  | "question"
+  | "result"
+  | "error"
+  | "status";
+
+export function classifyMessage(message: AgentMessage): MessageCategory {
+  if (message.type === "system") return "status";
+  if (message.type === "error") return "error";
+  if (message.type === "result") return "result";
+
+  if (message.type === "assistant") {
+    if (isToolUseMessage(message)) return "tool_call";
+
+    // Detect question/action-required messages
+    if (message.content) {
+      const responseType = parseAgentResponseType(message.content);
+      if (responseType === "follow_up" || responseType === "gate_check") {
+        return "question";
+      }
+    }
+
+    return "agent_response";
+  }
+
+  return "status";
+}
+
+export const categoryStyles: Record<MessageCategory, string> = {
+  agent_response: "",
+  tool_call:
+    "border-l-2 border-l-[var(--chat-tool-border)] bg-[var(--chat-tool-bg)] rounded-md px-3 py-2",
+  question:
+    "border-l-2 border-l-[var(--chat-question-border)] bg-[var(--chat-question-bg)] rounded-md px-3 py-2",
+  result:
+    "border-l-2 border-l-[var(--chat-result-border)] bg-[var(--chat-result-bg)] rounded-md px-3 py-2",
+  error:
+    "border-l-2 border-l-[var(--chat-error-border)] bg-[var(--chat-error-bg)] rounded-md px-3 py-2",
+  status: "",
+};
+
 export function TurnMarker({ turn }: { turn: number }) {
   return (
     <div className="flex items-center gap-2 py-1">
@@ -135,49 +179,62 @@ export function TurnMarker({ turn }: { turn: number }) {
 }
 
 export const MessageItem = memo(function MessageItem({ message }: { message: AgentMessage }) {
-  if (message.type === "system") {
+  const category = classifyMessage(message);
+  const wrapperClass = categoryStyles[category];
+
+  if (category === "status") {
     return null;
   }
 
-  if (message.type === "error") {
+  if (category === "error") {
     return (
-      <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+      <div className={`${wrapperClass} text-sm text-destructive`}>
         {message.content ?? "Unknown error"}
       </div>
     );
   }
 
-  if (message.type === "result") {
+  if (category === "result") {
     return (
-      <div className="rounded-md border border-green-500/30 bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-400">
+      <div className={`${wrapperClass} text-sm text-green-700 dark:text-green-400`}>
         <span className="font-medium">Result: </span>
         {message.content ?? "Agent completed"}
       </div>
     );
   }
 
-  if (message.type === "assistant") {
-    if (isToolUseMessage(message)) {
-      const tool = getToolSummary(message);
-      if (tool) {
-        return (
-          <div className="flex items-center gap-2 px-1 py-0.5 text-xs text-muted-foreground">
-            {getToolIcon(tool.toolName)}
-            <span>{tool.summary}</span>
-          </div>
-        );
-      }
-    }
-
-    if (message.content) {
+  if (category === "tool_call") {
+    const tool = getToolSummary(message);
+    if (tool) {
       return (
-        <div className="markdown-body max-w-none text-sm">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {message.content}
-          </ReactMarkdown>
+        <div className={`${wrapperClass} flex items-center gap-2 text-xs text-muted-foreground`}>
+          {getToolIcon(tool.toolName)}
+          <span>{tool.summary}</span>
         </div>
       );
     }
+  }
+
+  if (category === "question") {
+    return (
+      <div className={wrapperClass}>
+        <div className="markdown-body max-w-none text-sm">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {message.content ?? ""}
+          </ReactMarkdown>
+        </div>
+      </div>
+    );
+  }
+
+  if (category === "agent_response" && message.content) {
+    return (
+      <div className="markdown-body max-w-none text-sm">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {message.content}
+        </ReactMarkdown>
+      </div>
+    );
   }
 
   return null;

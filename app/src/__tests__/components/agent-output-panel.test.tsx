@@ -17,7 +17,13 @@ vi.mock("remark-gfm", () => ({
   default: () => {},
 }));
 
-import { AgentOutputPanel } from "@/components/agent-output-panel";
+import {
+  AgentOutputPanel,
+  classifyMessage,
+  categoryStyles,
+  type MessageCategory,
+} from "@/components/agent-output-panel";
+import type { AgentMessage } from "@/stores/agent-store";
 
 describe("AgentOutputPanel", () => {
   beforeEach(() => {
@@ -149,5 +155,141 @@ describe("AgentOutputPanel", () => {
     expect(
       screen.queryByText("System init message")
     ).not.toBeInTheDocument();
+  });
+});
+
+function msg(overrides: Partial<AgentMessage>): AgentMessage {
+  return { type: "assistant", content: "", raw: {}, timestamp: Date.now(), ...overrides };
+}
+
+describe("classifyMessage", () => {
+  it("classifies system messages as status", () => {
+    expect(classifyMessage(msg({ type: "system" }))).toBe("status");
+  });
+
+  it("classifies error messages as error", () => {
+    expect(classifyMessage(msg({ type: "error", content: "fail" }))).toBe("error");
+  });
+
+  it("classifies result messages as result", () => {
+    expect(classifyMessage(msg({ type: "result", content: "done" }))).toBe("result");
+  });
+
+  it("classifies assistant with tool_use as tool_call", () => {
+    expect(
+      classifyMessage(
+        msg({
+          type: "assistant",
+          raw: { message: { content: [{ type: "tool_use", name: "Read", input: {} }] } },
+        }),
+      ),
+    ).toBe("tool_call");
+  });
+
+  it("classifies assistant with follow-up questions as question", () => {
+    expect(
+      classifyMessage(
+        msg({ type: "assistant", content: "## Follow-up Questions\n1. What is X?" }),
+      ),
+    ).toBe("question");
+  });
+
+  it("classifies assistant with gate_check text as question", () => {
+    expect(
+      classifyMessage(
+        msg({ type: "assistant", content: "Everything looks good. Ready to proceed to the build step." }),
+      ),
+    ).toBe("question");
+  });
+
+  it("classifies assistant with plain text as agent_response", () => {
+    expect(
+      classifyMessage(msg({ type: "assistant", content: "Analyzing the domain..." })),
+    ).toBe("agent_response");
+  });
+
+  it("classifies unknown type as status (fallback)", () => {
+    expect(classifyMessage(msg({ type: "unknown" }))).toBe("status");
+  });
+
+  it("classifies assistant with empty content as agent_response", () => {
+    expect(classifyMessage(msg({ type: "assistant", content: "" }))).toBe("agent_response");
+  });
+});
+
+describe("MessageItem visual treatments", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+  });
+
+  it("applies error styles to error messages", () => {
+    useAgentStore.getState().startRun("test-agent", "sonnet");
+    useAgentStore.getState().addMessage("test-agent", msg({ type: "error", content: "Oops" }));
+    const { container } = render(<AgentOutputPanel agentId="test-agent" />);
+    const errorDiv = container.querySelector(".border-l-\\[var\\(--chat-error-border\\)\\]");
+    expect(errorDiv).toBeInTheDocument();
+  });
+
+  it("applies result styles to result messages", () => {
+    useAgentStore.getState().startRun("test-agent", "sonnet");
+    useAgentStore.getState().addMessage("test-agent", msg({ type: "result", content: "Done" }));
+    const { container } = render(<AgentOutputPanel agentId="test-agent" />);
+    const resultDiv = container.querySelector(".border-l-\\[var\\(--chat-result-border\\)\\]");
+    expect(resultDiv).toBeInTheDocument();
+  });
+
+  it("applies tool_call styles to tool use messages", () => {
+    useAgentStore.getState().startRun("test-agent", "sonnet");
+    useAgentStore.getState().addMessage("test-agent", msg({
+      type: "assistant",
+      raw: { message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/test.md" } }] } },
+    }));
+    const { container } = render(<AgentOutputPanel agentId="test-agent" />);
+    const toolDiv = container.querySelector(".border-l-\\[var\\(--chat-tool-border\\)\\]");
+    expect(toolDiv).toBeInTheDocument();
+  });
+
+  it("applies question styles to follow-up messages", () => {
+    useAgentStore.getState().startRun("test-agent", "sonnet");
+    useAgentStore.getState().addMessage("test-agent", msg({
+      type: "assistant",
+      content: "## Follow-up Questions\n1. What about X?",
+    }));
+    const { container } = render(<AgentOutputPanel agentId="test-agent" />);
+    const questionDiv = container.querySelector(".border-l-\\[var\\(--chat-question-border\\)\\]");
+    expect(questionDiv).toBeInTheDocument();
+  });
+
+  it("renders agent_response without border styling", () => {
+    useAgentStore.getState().startRun("test-agent", "sonnet");
+    useAgentStore.getState().addMessage("test-agent", msg({
+      type: "assistant",
+      content: "Just plain text",
+    }));
+    const { container } = render(<AgentOutputPanel agentId="test-agent" />);
+    expect(container.querySelector(".border-l-2")).not.toBeInTheDocument();
+  });
+});
+
+describe("categoryStyles", () => {
+  it("has entries for all message categories", () => {
+    const categories: MessageCategory[] = [
+      "agent_response", "tool_call", "question", "result", "error", "status",
+    ];
+    for (const cat of categories) {
+      expect(categoryStyles).toHaveProperty(cat);
+    }
+  });
+
+  it("has non-empty styles for decorated categories", () => {
+    expect(categoryStyles.tool_call).toContain("border-l-2");
+    expect(categoryStyles.question).toContain("border-l-2");
+    expect(categoryStyles.result).toContain("border-l-2");
+    expect(categoryStyles.error).toContain("border-l-2");
+  });
+
+  it("has empty styles for plain categories", () => {
+    expect(categoryStyles.agent_response).toBe("");
+    expect(categoryStyles.status).toBe("");
   });
 });
