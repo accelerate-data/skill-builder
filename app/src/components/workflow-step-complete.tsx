@@ -1,4 +1,4 @@
-import { CheckCircle2, FileText, Clock, DollarSign, RotateCcw, ArrowRight } from "lucide-react";
+import { CheckCircle2, FileText, Clock, DollarSign, RotateCcw, ArrowRight, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface WorkflowStepCompleteProps {
@@ -9,6 +9,7 @@ interface WorkflowStepCompleteProps {
   onRerun?: () => void;
   onNextStep?: () => void;
   isLastStep?: boolean;
+  onRefineChat?: () => void;
 }
 
 function formatDuration(ms: number): string {
@@ -27,6 +28,7 @@ export function WorkflowStepComplete({
   onRerun,
   onNextStep,
   isLastStep = false,
+  onRefineChat,
 }: WorkflowStepCompleteProps) {
   return (
     <div className="flex flex-1 items-center justify-center">
@@ -77,6 +79,12 @@ export function WorkflowStepComplete({
             <Button size="sm" onClick={onNextStep}>
               <ArrowRight className="size-3.5" />
               Next Step
+            </Button>
+          )}
+          {isLastStep && onRefineChat && (
+            <Button variant="outline" size="sm" onClick={onRefineChat}>
+              <MessageSquare className="size-3.5" />
+              Refine with Chat
             </Button>
           )}
         </div>

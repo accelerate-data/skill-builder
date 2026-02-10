@@ -30,6 +30,7 @@ import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ReasoningChat } from "@/components/reasoning-chat";
+import { RefinementChat } from "@/components/refinement-chat";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
@@ -158,12 +159,17 @@ export default function WorkflowPage() {
   // Track whether current step has partial output from an interrupted run
   const [hasPartialOutput, setHasPartialOutput] = useState(false);
 
+  // Refinement chat state
+  const [showRefinementChat, setShowRefinementChat] = useState(false);
+  const [showRerunWarning, setShowRerunWarning] = useState(false);
+
   // Pending step switch — set when user clicks a sidebar step while agent is running
   const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(null);
 
   const stepConfig = STEP_CONFIGS[currentStep];
   const isHumanReviewStep = stepConfig?.type === "human";
   const isPackageStep = stepConfig?.type === "package";
+  const allStepsComplete = steps.every(s => s.status === "completed");
 
   // Initialize workflow and restore state from SQLite
   useEffect(() => {
@@ -470,6 +476,29 @@ export default function WorkflowPage() {
     }
   };
 
+  const handleRerunWithWarning = async () => {
+    try {
+      const artifact = await getArtifactContent(skillName, "context/refinement-chat.json");
+      if (artifact?.content) {
+        const parsed = JSON.parse(artifact.content);
+        if (parsed.messages?.length > 0) {
+          setShowRerunWarning(true);
+          return;
+        }
+      }
+    } catch { /* no artifact = no warning needed */ }
+    handleRerunStep();
+  };
+
+  const confirmRerun = async () => {
+    try {
+      await saveArtifactContent(skillName, 9, "context/refinement-chat.json", "");
+    } catch { /* best effort */ }
+    setShowRerunWarning(false);
+    setShowRefinementChat(false);
+    handleRerunStep();
+  };
+
   const handleReviewContinue = async () => {
     // Auto-fill empty Answer fields with the corresponding Recommendation
     let content = reviewContent;
@@ -528,6 +557,18 @@ export default function WorkflowPage() {
   // --- Render content ---
 
   const renderContent = () => {
+    // Refinement chat panel (shown when all steps complete and user clicks button)
+    if (showRefinementChat && allStepsComplete) {
+      return (
+        <RefinementChat
+          skillName={skillName}
+          domain={domain ?? ""}
+          workspacePath={workspacePath ?? ""}
+          onDismiss={() => setShowRefinementChat(false)}
+        />
+      );
+    }
+
     // Completed step with output files
     if (
       currentStepDef?.status === "completed" &&
@@ -539,9 +580,10 @@ export default function WorkflowPage() {
           <WorkflowStepComplete
             stepName={currentStepDef.name}
             outputFiles={[packageResult.file_path]}
-            onRerun={handleRerunStep}
+            onRerun={isLastStep ? handleRerunWithWarning : handleRerunStep}
             onNextStep={advanceToNextStep}
             isLastStep={isLastStep}
+            onRefineChat={allStepsComplete ? () => setShowRefinementChat(true) : undefined}
           />
         );
       }
@@ -550,9 +592,10 @@ export default function WorkflowPage() {
           <WorkflowStepComplete
             stepName={currentStepDef.name}
             outputFiles={stepConfig.outputFiles}
-            onRerun={handleRerunStep}
+            onRerun={isLastStep ? handleRerunWithWarning : handleRerunStep}
             onNextStep={advanceToNextStep}
             isLastStep={isLastStep}
+            onRefineChat={isLastStep && allStepsComplete ? () => setShowRefinementChat(true) : undefined}
           />
         );
       }
@@ -561,9 +604,10 @@ export default function WorkflowPage() {
         <WorkflowStepComplete
           stepName={currentStepDef.name}
           outputFiles={[]}
-          onRerun={handleRerunStep}
+          onRerun={isLastStep ? handleRerunWithWarning : handleRerunStep}
           onNextStep={advanceToNextStep}
           isLastStep={isLastStep}
+          onRefineChat={isLastStep && allStepsComplete ? () => setShowRefinementChat(true) : undefined}
         />
       );
     }
@@ -778,6 +822,24 @@ export default function WorkflowPage() {
               }}>
                 Leave
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Rerun warning — shown when user tries to rerun step 8 with existing refinement chat */}
+      {showRerunWarning && (
+        <Dialog open onOpenChange={(open) => { if (!open) setShowRerunWarning(false); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Clear Chat History?</DialogTitle>
+              <DialogDescription>
+                Rerunning this step will clear your refinement chat history. Skill files will not be affected until the step runs.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowRerunWarning(false)}>Cancel</Button>
+              <Button variant="destructive" onClick={confirmRerun}>Clear and Rerun</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
