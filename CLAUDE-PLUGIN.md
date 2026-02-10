@@ -2,12 +2,6 @@
 
 A Claude Code plugin that provides a multi-agent workflow for creating domain-specific Claude skills. Targets data/analytics engineers who need functional context for silver and gold table modeling.
 
-## Project Tracking
-
-- **`PLAN.md`** — Conversion plan (CLI → plugin): architecture mapping, implementation steps, path resolution, verification checklist
-- **`FEATURES.md`** — Feature checklist with status checkboxes (F1–F46). Update as features are completed.
-- **`TESTS.md`** — Test plan (T1–T7): structure validation, plugin loading, coordinator behavior, agent execution, human gates, E2E workflow, regression
-
 ## Quick Start (Development)
 
 ```bash
@@ -23,7 +17,8 @@ claude --plugin-dir /path/to/this/repo
 ```
 skill-builder/
 ├── .claude-plugin/
-│   └── plugin.json                  # Plugin manifest
+│   ├── plugin.json                  # Plugin manifest
+│   └── marketplace.json             # Marketplace registry (name, owner, plugin list)
 ├── .claude/
 │   └── settings.json                # Dev hooks (runs validate.sh after Edit/Write)
 ├── scripts/
@@ -44,9 +39,6 @@ skill-builder/
 ├── references/
 │   └── shared-context.md            # Shared context read by all agents at runtime
 ├── CLAUDE.md                        # This file (plugin dev instructions)
-├── PLAN.md                          # Conversion plan (from CLI → plugin)
-├── FEATURES.md                      # Feature checklist with status
-├── TESTS.md                         # Test plan and cases
 ├── README.md                        # User-facing plugin docs
 ├── LICENSE
 └── .gitignore
@@ -203,17 +195,40 @@ claude --plugin-dir .
 # (from within a Claude Code session with the plugin loaded)
 ```
 
+**Test harness** (`scripts/test-plugin.sh`):
+
+A reusable test runner with 5 tiers of increasing cost and scope:
+
+```bash
+./scripts/test-plugin.sh           # Run all tiers
+./scripts/test-plugin.sh t1        # Run only T1 (free, no LLM)
+./scripts/test-plugin.sh t1 t2     # Run T1 and T2
+./scripts/test-plugin.sh --list    # List available tiers
+```
+
+| Tier | Name | What it tests | LLM cost |
+|---|---|---|---|
+| **T1** | Structural Validation | `claude plugin validate`, `scripts/validate.sh`, agent file count (27), frontmatter presence, model tiers, coordinator keywords, plugin.json fields | Free |
+| **T2** | Plugin Loading | Plugin loads into `claude -p`, skill trigger responds with domain/skill keywords | ~$0.05 |
+| **T3** | Start Mode Detection | Mode A (resume), B (modify), C (scratch) detected correctly using fixture directories | ~$0.25 |
+| **T4** | Agent Smoke Tests | Merge agent deduplicates questions, reasoning agent produces decisions, build agent creates SKILL.md + references | ~$0.50 |
+| **T5** | Full E2E Workflow | Runs `/skill-builder:start` end-to-end with auto-answered gates, checks all workflow artifacts | ~$5.00 |
+
+Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_T5`, `KEEP_TEMP`, `VERBOSE`.
+
+Test files live in `scripts/tests/`: `lib.sh` (shared utilities), `fixtures.sh` (test data), and `t1-t5` tier scripts.
+
 ### When adding a new feature
 
 Before implementing, reason about what tests are needed:
 
-1. **Does the change affect plugin structure?** (new files, renamed agents, changed frontmatter) → Add checks to `scripts/validate.sh` and update `TESTS.md` under T1.
-2. **Does the change affect coordinator behavior?** (new steps, changed orchestration, modified gates) → Add a test case to `TESTS.md` under T3 and verify the coordinator content check in `scripts/validate.sh` covers any new keywords.
-3. **Does the change affect an agent's output format or behavior?** → Add a test case to `TESTS.md` under T4 and consider adding a live test via `claude -p --plugin-dir .`.
-4. **Does the change affect the workflow end-to-end?** → Add a test case to `TESTS.md` under T6.
+1. **Does the change affect plugin structure?** (new files, renamed agents, changed frontmatter) → Add checks to `scripts/validate.sh` and add a T1 test case in `scripts/tests/`.
+2. **Does the change affect coordinator behavior?** (new steps, changed orchestration, modified gates) → Add a T3 test case in `scripts/tests/` and verify the coordinator content check in `scripts/validate.sh` covers any new keywords.
+3. **Does the change affect an agent's output format or behavior?** → Add a T4 test case in `scripts/tests/` and consider adding a live test via `claude -p --plugin-dir .`.
+4. **Does the change affect the workflow end-to-end?** → Add a T5 test case in `scripts/tests/`.
 5. **Not sure what tests to add?** → Propose 2-3 options with tradeoffs (automated vs. manual, structural vs. behavioral) and decide before implementing.
 
-The goal: every feature change has a corresponding test — either an automated check in `scripts/validate.sh` or a documented manual test in `TESTS.md`. If you can't determine the right test, stop and propose options before writing code.
+The goal: every feature change has a corresponding test — either an automated check in `scripts/validate.sh` or a documented test in `scripts/tests/`. If you can't determine the right test, stop and propose options before writing code.
 
 ### Key constraints
 

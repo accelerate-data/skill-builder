@@ -112,7 +112,8 @@ The app combines parallel research + merge into a single orchestrator step and c
 ```
 skill-builder/
 ├── .claude-plugin/
-│   └── plugin.json              # Plugin manifest
+│   ├── plugin.json              # Plugin manifest
+│   └── marketplace.json         # Marketplace registry (name, owner, plugin list)
 ├── skills/
 │   └── start/
 │       └── SKILL.md             # Plugin coordinator (entry point)
@@ -190,7 +191,7 @@ npm run tauri dev     # Dev mode (hot reload)
 npm run tauri build   # Production build
 ```
 
-Requires: Node.js 18+, Rust toolchain, platform-specific [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+Requires: Node.js 18–24, Rust toolchain, platform-specific [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ### Testing
 
@@ -221,7 +222,7 @@ claude --plugin-dir .
 ## Prerequisites
 
 - **Plugin**: Claude Code with access to sonnet, haiku, and opus models
-- **Desktop App**: Node.js 18+, Anthropic API key
+- **Desktop App**: Node.js 18–24, Anthropic API key
 
 ## License
 

@@ -187,7 +187,6 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      subagent_type: "skill-builder:{type_prefix}-reasoning",
      team_name: "skill-builder-<skillname>",
      name: "reasoning",
-     model: "opus",
      prompt: "You are on the skill-builder-<skillname> team.
 
      Skill type: <skill_type>

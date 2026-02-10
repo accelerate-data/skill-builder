@@ -25,6 +25,7 @@ Both frontends use the same agents and references. No conversion needed.
 | `agents/{type}/` | Type-specific agents (domain, platform, source, data-engineering) — 6 per type |
 | `agents/shared/` | Shared agents (merge, research-patterns, research-data) — used by all types |
 | `references/shared-context.md` | Domain definitions, file formats, content principles |
+| `.kiro/steering/` | Kiro IDE steering docs (not actively maintained) |
 
 ### Agent Files
 
