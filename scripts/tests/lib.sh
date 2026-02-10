@@ -134,16 +134,20 @@ trap cleanup_temp_dirs EXIT
 
 # ---------- Claude invocation helpers ----------
 
-# Portable timeout: try timeout (Linux), gtimeout (macOS coreutils), then no-op
+# Portable timeout: try timeout (Linux), gtimeout (macOS coreutils), then perl fallback
 _timeout_cmd() {
   if command -v timeout >/dev/null 2>&1; then
     timeout "$@"
   elif command -v gtimeout >/dev/null 2>&1; then
     gtimeout "$@"
   else
-    # No timeout available — skip the timeout arg and run directly
-    shift  # discard timeout_secs
-    "$@"
+    # macOS fallback: use perl alarm() + exec to enforce timeout.
+    # exec replaces the perl process with the command, preserving all
+    # file descriptors (stdin pipes, redirections, etc.). When the alarm
+    # fires, SIGALRM kills the command.
+    local secs="$1"
+    shift
+    perl -e 'alarm(shift(@ARGV)); exec(@ARGV) or die "exec failed: $!"' -- "$secs" "$@"
   fi
 }
 

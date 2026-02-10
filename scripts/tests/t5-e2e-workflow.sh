@@ -33,7 +33,7 @@ $workspace/test-status.txt (just the number, e.g., '7')"
   echo "  (this may take several minutes)"
 
   local e2e_output
-  e2e_output=$(run_claude_unsafe "$e2e_prompt" "$MAX_BUDGET_T5" 600 "$workspace")
+  e2e_output=$(run_claude_unsafe "$e2e_prompt" "$MAX_BUDGET_T5" 2700 "$workspace")
 
   # ---- Check workflow artifacts at each step ----
 

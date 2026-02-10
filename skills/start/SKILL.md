@@ -287,12 +287,22 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
    ```bash
    cd ./<skillname> && zip -r ../<skillname>.skill . && cd -
    ```
-3. Clean up the team:
+3. Shut down all teammates before deleting the team. Send a `shutdown_request` to each agent that was spawned during the workflow:
+   ```
+   SendMessage(type: "shutdown_request", recipient: "research-concepts", content: "Workflow complete, shutting down.")
+   SendMessage(type: "shutdown_request", recipient: "research-patterns-and-merge", content: "Workflow complete, shutting down.")
+   SendMessage(type: "shutdown_request", recipient: "reasoning", content: "Workflow complete, shutting down.")
+   SendMessage(type: "shutdown_request", recipient: "build", content: "Workflow complete, shutting down.")
+   SendMessage(type: "shutdown_request", recipient: "validate", content: "Workflow complete, shutting down.")
+   SendMessage(type: "shutdown_request", recipient: "test", content: "Workflow complete, shutting down.")
+   ```
+   Wait for each agent to acknowledge the shutdown before proceeding. If an agent is already shut down, the request is a no-op.
+4. Clean up the team:
    ```
    TeamDelete()
    ```
-4. Update workflow-state.md: Complete
-5. Tell the user:
+5. Update workflow-state.md: Complete
+6. Tell the user:
    "Skill built successfully!
    - Skill files: `./<skillname>/`
    - Archive: `./<skillname>.skill`
