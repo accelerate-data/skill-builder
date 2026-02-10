@@ -320,6 +320,90 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(getByText("Cancel & Leave")).toBeTruthy();
   });
 
+  it("cancel button reverts UI even when activeAgentId is null (async gap)", async () => {
+    const { cancelAgent } = await import("@/lib/tauri");
+    vi.mocked(cancelAgent).mockClear();
+
+    // Simulate the async gap: isRunning=true but no activeAgentId yet
+    // (runWorkflowStep hasn't returned the agent ID from Rust)
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    // NOTE: no startRun / setActiveAgent — activeAgentId remains null
+
+    const { getByText } = render(<WorkflowPage />);
+
+    // Cancel button should be visible (isRunning && type=agent)
+    const cancelBtn = getByText("Cancel");
+    expect(cancelBtn).toBeTruthy();
+
+    // Click cancel
+    act(() => {
+      cancelBtn.click();
+    });
+
+    // UI should revert despite no activeAgentId
+    expect(useWorkflowStore.getState().steps[0].status).toBe("pending");
+    expect(useWorkflowStore.getState().isRunning).toBe(false);
+    expect(useAgentStore.getState().activeAgentId).toBeNull();
+
+    // cancelAgent should NOT have been called (no ID to cancel)
+    expect(cancelAgent).not.toHaveBeenCalled();
+
+    // Toast should still fire
+    expect(mockToast.info).toHaveBeenCalledWith("Step 1 cancelled");
+  });
+
+  it("cancel button sends SIGTERM when activeAgentId is available", async () => {
+    const { cancelAgent } = await import("@/lib/tauri");
+    vi.mocked(cancelAgent).mockClear();
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    const { getByText } = render(<WorkflowPage />);
+
+    act(() => {
+      getByText("Cancel").click();
+    });
+
+    // cancelAgent should have been called with the agent ID
+    expect(cancelAgent).toHaveBeenCalledWith("agent-1");
+
+    // UI reverted
+    expect(useWorkflowStore.getState().steps[0].status).toBe("pending");
+    expect(useWorkflowStore.getState().isRunning).toBe(false);
+    expect(mockToast.info).toHaveBeenCalledWith("Step 1 cancelled");
+  });
+
+  it("unmount reverts step even when activeAgentId is null", async () => {
+    const { cancelAgent } = await import("@/lib/tauri");
+    vi.mocked(cancelAgent).mockClear();
+
+    // isRunning but no agent ID yet
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+
+    const { unmount } = render(<WorkflowPage />);
+
+    act(() => {
+      unmount();
+    });
+
+    // cancelAgent should NOT be called (no ID)
+    expect(cancelAgent).not.toHaveBeenCalled();
+
+    // But UI state should still revert
+    expect(useWorkflowStore.getState().isRunning).toBe(false);
+    expect(useWorkflowStore.getState().steps[0].status).toBe("pending");
+  });
+
   it("clears stale agent data when switching skills", async () => {
     // Simulate: stale agent data from a previous skill
     useAgentStore.getState().startRun("old-agent", "sonnet");
