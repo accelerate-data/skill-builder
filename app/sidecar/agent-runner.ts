@@ -2,7 +2,8 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 
 interface SidecarConfig {
   prompt: string;
-  model: string;
+  model?: string;
+  agentName?: string;
   apiKey: string;
   cwd: string;
   allowedTools?: string[];
@@ -55,7 +56,12 @@ async function main() {
     const conversation = query({
       prompt: config.prompt,
       options: {
-        model: config.model,
+        ...(config.agentName
+          ? {
+              agent: config.agentName,
+              settingSources: ['project' as const],
+            }
+          : { model: config.model }),
         cwd: config.cwd,
         allowedTools: config.allowedTools,
         maxTurns: config.maxTurns ?? 50,

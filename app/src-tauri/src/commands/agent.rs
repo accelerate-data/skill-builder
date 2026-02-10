@@ -25,7 +25,7 @@ pub async fn start_agent(
 
     let config = SidecarConfig {
         prompt,
-        model,
+        model: Some(model),
         api_key,
         cwd,
         allowed_tools,
@@ -38,6 +38,7 @@ pub async fn start_agent(
             None
         },
         path_to_claude_code_executable: None,
+        agent_name: None,
     };
 
     sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app).await?;

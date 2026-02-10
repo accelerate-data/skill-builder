@@ -90,19 +90,70 @@ pub fn ensure_workspace_prompts(
         .and_then(|p| p.parent()) // repo root
         .ok_or("Could not resolve repo root")?
         .to_path_buf();
-    
+
     // Copy agents/ directory
     let agents_src = repo_root.join("agents");
     if agents_src.is_dir() {
         copy_directory_to(&agents_src, workspace_path, "agents")?;
+        // Also copy to .claude/agents/ with flattened names for SDK loading
+        copy_agents_to_claude_dir(&agents_src, workspace_path)?;
     }
-    
+
     // Copy references/ directory
     let refs_src = repo_root.join("references");
     if refs_src.is_dir() {
         copy_directory_to(&refs_src, workspace_path, "references")?;
     }
-    
+
+    Ok(())
+}
+
+/// Copy agent .md files to <workspace>/.claude/agents/ with flattened names.
+/// For skill type directories: agents/{type}/{file}.md → .claude/agents/{type}-{file}.md
+/// For shared directory: agents/shared/{file}.md → .claude/agents/shared-{file}.md
+fn copy_agents_to_claude_dir(agents_src: &Path, workspace_path: &str) -> Result<(), String> {
+    let claude_agents_dir = Path::new(workspace_path).join(".claude").join("agents");
+    std::fs::create_dir_all(&claude_agents_dir)
+        .map_err(|e| format!("Failed to create .claude/agents dir: {}", e))?;
+
+    // Skill type directories
+    for skill_type in &["domain", "platform", "source", "data-engineering"] {
+        let type_dir = agents_src.join(skill_type);
+        if type_dir.is_dir() {
+            let entries = std::fs::read_dir(&type_dir)
+                .map_err(|e| format!("Failed to read {} dir: {}", skill_type, e))?;
+            for entry in entries {
+                let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("md") {
+                    let file_name = entry.file_name().to_string_lossy().to_string();
+                    let flattened_name = format!("{}-{}", skill_type, file_name);
+                    let dest = claude_agents_dir.join(&flattened_name);
+                    std::fs::copy(&path, &dest)
+                        .map_err(|e| format!("Failed to copy {} to .claude/agents: {}", path.display(), e))?;
+                }
+            }
+        }
+    }
+
+    // Shared directory
+    let shared_dir = agents_src.join("shared");
+    if shared_dir.is_dir() {
+        let entries = std::fs::read_dir(&shared_dir)
+            .map_err(|e| format!("Failed to read shared dir: {}", e))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("md") {
+                let file_name = entry.file_name().to_string_lossy().to_string();
+                let flattened_name = format!("shared-{}", file_name);
+                let dest = claude_agents_dir.join(&flattened_name);
+                std::fs::copy(&path, &dest)
+                    .map_err(|e| format!("Failed to copy {} to .claude/agents: {}", path.display(), e))?;
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -137,14 +188,21 @@ fn copy_md_files_recursive(src_dir: &Path, dest_dir: &Path, label: &str) -> Resu
     Ok(())
 }
 
+/// Derive agent name from skill type and prompt template.
+/// Example: skill_type="domain", prompt_template="research-concepts.md" → "domain-research-concepts"
+fn derive_agent_name(skill_type: &str, prompt_template: &str) -> String {
+    let phase = prompt_template.trim_end_matches(".md");
+    format!("{}-{}", skill_type, phase)
+}
+
 fn build_prompt(
-    prompt_file: &str,
+    _prompt_file: &str,
     output_file: &str,
     skill_name: &str,
     domain: &str,
     workspace_path: &str,
     skills_path: Option<&str>,
-    skill_type: &str,
+    _skill_type: &str,
 ) -> String {
     let base = Path::new(workspace_path);
     let skill_dir = base.join(skill_name);
@@ -154,7 +212,6 @@ fn build_prompt(
     } else {
         skill_dir.clone() // fallback: workspace_path/skill_name
     };
-    let agents_file = base.join("agents").join(skill_type).join(prompt_file);
     let shared_context = base.join("references").join("shared-context.md");
     // For build step (output_file starts with "skill/"), use skill_output_dir
     let output_path = if output_file.starts_with("skill/") {
@@ -164,15 +221,12 @@ fn build_prompt(
     };
 
     format!(
-        "Read {} and {} and follow the instructions. \
-         The domain is: {}. The skill name is: {}. \
+        "The domain is: {}. The skill name is: {}. \
          The shared context file is: {}. \
          The skill directory is: {}. \
          The context directory (for reading and writing intermediate files) is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
          Write output to {}.",
-        shared_context.display(),
-        agents_file.display(),
         domain,
         skill_name,
         shared_context.display(),
@@ -270,15 +324,6 @@ fn debug_max_turns(step_id: u32) -> u32 {
         6 | 7 => 15, // validate/test: spawn parallel checkers
         _ => 5,
     }
-}
-
-fn read_preferred_model(db: &tauri::State<'_, Db>) -> String {
-    let conn = db.0.lock().ok();
-    let model_shorthand = conn
-        .and_then(|c| crate::db::read_settings(&c).ok())
-        .and_then(|s| s.preferred_model)
-        .unwrap_or_else(|| "sonnet".to_string());
-    resolve_model_id(&model_shorthand)
 }
 
 fn make_agent_id(skill_name: &str, label: &str) -> String {
@@ -494,7 +539,7 @@ pub async fn run_review_step(
 
     let config = SidecarConfig {
         prompt,
-        model: resolve_model_id("haiku"),
+        model: Some(resolve_model_id("haiku")),
         api_key,
         cwd: workspace_path,
         allowed_tools: Some(vec!["Read".to_string(), "Glob".to_string()]),
@@ -507,6 +552,7 @@ pub async fn run_review_step(
             None
         },
         path_to_claude_code_executable: None,
+        agent_name: None,
     };
 
     sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app).await?;
@@ -552,18 +598,18 @@ pub async fn run_workflow_step(
     let api_key = read_api_key(&db)?;
     let extended_context = read_extended_context(&db);
     let debug_mode = read_debug_mode(&db);
-    let model = read_preferred_model(&db);
     let skills_path = read_skills_path(&db);
     let skill_type = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         crate::db::get_skill_type(&conn, &skill_name)?
     };
     let prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain, &workspace_path, skills_path.as_deref(), &skill_type);
+    let agent_name = derive_agent_name(&skill_type, &step.prompt_template);
     let agent_id = make_agent_id(&skill_name, &format!("step{}", step_id));
 
     let config = SidecarConfig {
         prompt,
-        model,
+        model: None,
         api_key,
         cwd: workspace_path,
         allowed_tools: Some(step.allowed_tools),
@@ -576,6 +622,7 @@ pub async fn run_workflow_step(
             None
         },
         path_to_claude_code_executable: None,
+        agent_name: Some(agent_name),
     };
 
     sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app).await?;
@@ -1029,8 +1076,9 @@ mod tests {
             None,
             "domain",
         );
-        assert!(prompt.contains("/home/user/.vibedata/references/shared-context.md"));
-        assert!(prompt.contains("/home/user/.vibedata/agents/domain/research-concepts.md"));
+        // Should NOT contain "Read X and Y and follow the instructions"
+        assert!(!prompt.contains("Read"));
+        assert!(!prompt.contains("follow the instructions"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
         assert!(prompt.contains("The shared context file is: /home/user/.vibedata/references/shared-context.md"));
@@ -1053,6 +1101,9 @@ mod tests {
             Some("/home/user/my-skills"),
             "domain",
         );
+        // Should NOT contain "Read X and Y and follow the instructions"
+        assert!(!prompt.contains("Read"));
+        assert!(!prompt.contains("follow the instructions"));
         // skill output directory should use skills_path
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
         // output path for build step (skill/SKILL.md) should resolve to skills_path/skill_name/SKILL.md
@@ -1076,6 +1127,9 @@ mod tests {
             Some("/home/user/my-skills"),
             "domain",
         );
+        // Should NOT contain "Read X and Y and follow the instructions"
+        assert!(!prompt.contains("Read"));
+        assert!(!prompt.contains("follow the instructions"));
         // output path should be in workspace for non-build steps
         assert!(prompt.contains("Write output to /home/user/.vibedata/my-skill/context/decisions.md"));
         // skill output directory should still use skills_path
@@ -1084,7 +1138,7 @@ mod tests {
 
     #[test]
     fn test_build_prompt_with_skill_type() {
-        // Verify agents path includes the skill type subdirectory
+        // Simplified prompt no longer references agents path
         let prompt = build_prompt(
             "research-concepts.md",
             "context/clarifications-concepts.md",
@@ -1094,7 +1148,11 @@ mod tests {
             None,
             "platform",
         );
-        assert!(prompt.contains("/home/user/.vibedata/agents/platform/research-concepts.md"));
+        // Should NOT contain "Read X and Y and follow the instructions"
+        assert!(!prompt.contains("Read"));
+        assert!(!prompt.contains("follow the instructions"));
+        assert!(prompt.contains("e-commerce"));
+        assert!(prompt.contains("my-skill"));
     }
 
     #[test]
@@ -1406,6 +1464,81 @@ mod tests {
             &dest.path().join("dest"),
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_derive_agent_name() {
+        assert_eq!(
+            derive_agent_name("domain", "research-concepts.md"),
+            "domain-research-concepts"
+        );
+        assert_eq!(
+            derive_agent_name("platform", "build.md"),
+            "platform-build"
+        );
+        assert_eq!(
+            derive_agent_name("source", "validate.md"),
+            "source-validate"
+        );
+        assert_eq!(
+            derive_agent_name("data-engineering", "research-patterns-and-merge.md"),
+            "data-engineering-research-patterns-and-merge"
+        );
+    }
+
+    #[test]
+    fn test_copy_agents_to_claude_dir() {
+        let src = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+
+        // Create skill type directories with agent files
+        std::fs::create_dir_all(src.path().join("domain")).unwrap();
+        std::fs::create_dir_all(src.path().join("platform")).unwrap();
+        std::fs::create_dir_all(src.path().join("shared")).unwrap();
+
+        std::fs::write(
+            src.path().join("domain").join("research-concepts.md"),
+            "# Domain Research",
+        )
+        .unwrap();
+        std::fs::write(
+            src.path().join("platform").join("build.md"),
+            "# Platform Build",
+        )
+        .unwrap();
+        std::fs::write(
+            src.path().join("shared").join("merge.md"),
+            "# Shared Merge",
+        )
+        .unwrap();
+
+        // Non-.md file should be ignored
+        std::fs::write(
+            src.path().join("domain").join("README.txt"),
+            "ignore me",
+        )
+        .unwrap();
+
+        let workspace_path = workspace.path().to_str().unwrap();
+        copy_agents_to_claude_dir(src.path(), workspace_path).unwrap();
+
+        let claude_agents_dir = workspace.path().join(".claude").join("agents");
+        assert!(claude_agents_dir.is_dir());
+
+        // Verify flattened names
+        assert!(claude_agents_dir.join("domain-research-concepts.md").exists());
+        assert!(claude_agents_dir.join("platform-build.md").exists());
+        assert!(claude_agents_dir.join("shared-merge.md").exists());
+
+        // Non-.md file should NOT be copied
+        assert!(!claude_agents_dir.join("domain-README.txt").exists());
+
+        // Verify content
+        let content = std::fs::read_to_string(
+            claude_agents_dir.join("domain-research-concepts.md"),
+        )
+        .unwrap();
+        assert_eq!(content, "# Domain Research");
     }
 
     // --- capture_artifacts_inner tests ---

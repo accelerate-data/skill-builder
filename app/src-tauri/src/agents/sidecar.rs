@@ -30,7 +30,8 @@ pub fn create_registry() -> AgentRegistry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SidecarConfig {
     pub prompt: String,
-    pub model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
     #[serde(rename = "apiKey")]
     pub api_key: String,
     pub cwd: String,
@@ -49,6 +50,8 @@ pub struct SidecarConfig {
         skip_serializing_if = "Option::is_none"
     )]
     pub path_to_claude_code_executable: Option<String>,
+    #[serde(rename = "agentName", skip_serializing_if = "Option::is_none")]
+    pub agent_name: Option<String>,
 }
 
 pub async fn spawn_sidecar(
@@ -357,7 +360,7 @@ mod tests {
     fn test_sidecar_config_serialization() {
         let config = SidecarConfig {
             prompt: "Analyze this codebase".to_string(),
-            model: "sonnet".to_string(),
+            model: Some("sonnet".to_string()),
             api_key: "sk-ant-test".to_string(),
             cwd: "/home/user/project".to_string(),
             allowed_tools: Some(vec!["Read".to_string(), "Glob".to_string()]),
@@ -366,6 +369,7 @@ mod tests {
             session_id: None,
             betas: None,
             path_to_claude_code_executable: None,
+            agent_name: Some("domain-research-concepts".to_string()),
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -376,6 +380,8 @@ mod tests {
         assert_eq!(parsed["allowedTools"][0], "Read");
         assert_eq!(parsed["maxTurns"], 25);
         assert_eq!(parsed["permissionMode"], "bypassPermissions");
+        assert_eq!(parsed["model"], "sonnet");
+        assert_eq!(parsed["agentName"], "domain-research-concepts");
         // session_id is None + skip_serializing_if — should be absent
         assert!(parsed.get("sessionId").is_none());
         // betas is None + skip_serializing_if — should be absent

@@ -201,7 +201,7 @@ mod tests {
     fn test_sidecar_config_serde() {
         let config = crate::agents::sidecar::SidecarConfig {
             prompt: "test prompt".to_string(),
-            model: "sonnet".to_string(),
+            model: Some("sonnet".to_string()),
             api_key: "sk-test".to_string(),
             cwd: "/tmp".to_string(),
             allowed_tools: Some(vec!["Read".to_string(), "Write".to_string()]),
@@ -210,12 +210,15 @@ mod tests {
             session_id: None,
             betas: None,
             path_to_claude_code_executable: None,
+            agent_name: Some("domain-research-concepts".to_string()),
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"apiKey\""));
         assert!(json.contains("\"allowedTools\""));
         assert!(json.contains("\"maxTurns\""));
         assert!(json.contains("\"permissionMode\""));
+        assert!(json.contains("\"agentName\""));
+        assert!(json.contains("\"model\""));
         // session_id is None with skip_serializing_if, so should not appear
         assert!(!json.contains("\"sessionId\""));
         // betas is None with skip_serializing_if, so should not appear

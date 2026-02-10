@@ -233,12 +233,12 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Model</CardTitle>
           <CardDescription>
-            Choose which Claude model to use for all workflow steps.
+            Model used for chat sessions. Workflow steps use per-agent models defined in agent files.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="model-select">Preferred Model</Label>
+            <Label htmlFor="model-select">Chat Model</Label>
             <select
               id="model-select"
               value={preferredModel}
