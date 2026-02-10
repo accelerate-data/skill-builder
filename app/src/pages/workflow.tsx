@@ -141,14 +141,17 @@ export default function WorkflowPage() {
   useEffect(() => {
     return () => {
       const store = useWorkflowStore.getState();
+      if (!store.isRunning) return;
+
       const agentId = useAgentStore.getState().activeAgentId;
-      if (store.isRunning && agentId) {
+      if (agentId) {
         cancelAgent(agentId).catch(() => {}); // fire-and-forget
-        if (store.steps[store.currentStep]?.status === "in_progress") {
-          useWorkflowStore.getState().updateStepStatus(store.currentStep, "pending");
-        }
-        useWorkflowStore.getState().setRunning(false);
       }
+      if (store.steps[store.currentStep]?.status === "in_progress") {
+        useWorkflowStore.getState().updateStepStatus(store.currentStep, "pending");
+      }
+      useWorkflowStore.getState().setRunning(false);
+      useAgentStore.getState().clearRuns();
     };
   }, [skillName]);
 
@@ -425,15 +428,21 @@ export default function WorkflowPage() {
   };
 
   const handleCancelStep = () => {
-    if (!activeAgentId) return;
-
-    // Fire-and-forget SIGTERM — don't await, don't rely on event chain.
-    cancelAgent(activeAgentId).catch(() => {});
+    // Fire-and-forget SIGTERM if we already have an agent handle.
+    // activeAgentId may still be null if runWorkflowStep hasn't resolved yet
+    // (the Cancel button is visible as soon as isRunning=true, before the ID
+    // comes back from Rust).  We still revert the UI in that case — the
+    // orphaned sidecar will exit on its own and the effect guards prevent it
+    // from affecting state.
+    const agentId = activeAgentId ?? useAgentStore.getState().activeAgentId;
+    if (agentId) {
+      cancelAgent(agentId).catch(() => {});
+    }
 
     // Immediately update UI state so the user isn't left waiting.
     updateStepStatus(currentStep, "pending");
     setRunning(false);
-    setActiveAgent(null);
+    clearRuns();
 
     // Best-effort artifact capture in background
     if (workspacePath) {
