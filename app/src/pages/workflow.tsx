@@ -5,7 +5,6 @@ import remarkGfm from "remark-gfm";
 import {
   Loader2,
   Play,
-  Package,
   MessageSquare,
   SkipForward,
   FileText,
@@ -30,14 +29,12 @@ import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ReasoningChat } from "@/components/reasoning-chat";
-import { RefinementChat } from "@/components/refinement-chat";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   runWorkflowStep,
-  packageSkill,
   resetWorkflowStep,
   getWorkflowState,
   saveWorkflowState,
@@ -45,13 +42,12 @@ import {
   getArtifactContent,
   saveArtifactContent,
   readFile,
-  type PackageResult,
 } from "@/lib/tauri";
 
 // --- Step config ---
 
 interface StepConfig {
-  type: "agent" | "human" | "package" | "reasoning";
+  type: "agent" | "human" | "reasoning";
   outputFiles?: string[];
   /** Default model shorthand for display (actual model comes from backend settings) */
   model?: string;
@@ -66,7 +62,6 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
   5: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
   6: { type: "agent", outputFiles: ["context/agent-validation-log.md"], model: "sonnet" },
   7: { type: "agent", outputFiles: ["context/test-skill.md"], model: "sonnet" },
-  8: { type: "package" },
 };
 
 // Human review steps: step id -> relative artifact path
@@ -151,25 +146,14 @@ export default function WorkflowPage() {
   const [loadingReview, setLoadingReview] = useState(false);
   const debugAutoAnswerRef = useRef<number | null>(null);
 
-  // Package result state
-  const [packageResult, setPackageResult] = useState<PackageResult | null>(
-    null
-  );
-
   // Track whether current step has partial output from an interrupted run
   const [hasPartialOutput, setHasPartialOutput] = useState(false);
-
-  // Refinement chat state
-  const [showRefinementChat, setShowRefinementChat] = useState(false);
-  const [showRerunWarning, setShowRerunWarning] = useState(false);
 
   // Pending step switch — set when user clicks a sidebar step while agent is running
   const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(null);
 
   const stepConfig = STEP_CONFIGS[currentStep];
   const isHumanReviewStep = stepConfig?.type === "human";
-  const isPackageStep = stepConfig?.type === "package";
-  const allStepsComplete = steps.every(s => s.status === "completed");
 
   // Initialize workflow and restore state from SQLite
   useEffect(() => {
@@ -423,39 +407,12 @@ export default function WorkflowPage() {
     toast.success(`Step ${currentStep + 1} skipped`);
   };
 
-  const handlePackageStep = async () => {
-    if (!workspacePath) {
-      toast.error("Missing workspace path");
-      return;
-    }
-
-    try {
-      updateStepStatus(currentStep, "in_progress");
-      setRunning(true);
-
-      const result = await packageSkill(skillName, workspacePath);
-      setPackageResult(result);
-      updateStepStatus(currentStep, "completed");
-      setRunning(false);
-
-      toast.success("Skill packaged successfully");
-    } catch (err) {
-      updateStepStatus(currentStep, "error");
-      setRunning(false);
-      toast.error(
-        `Failed to package skill: ${err instanceof Error ? err.message : String(err)}`
-      );
-    }
-  };
-
   const handleStartStep = async (resume = false) => {
     if (!stepConfig) return;
 
     switch (stepConfig.type) {
       case "agent":
         return handleStartAgentStep(resume);
-      case "package":
-        return handlePackageStep();
       case "human":
         // Human steps don't have a "start" — they just show the form
         break;
@@ -474,29 +431,6 @@ export default function WorkflowPage() {
         `Failed to reset: ${err instanceof Error ? err.message : String(err)}`
       );
     }
-  };
-
-  const handleRerunWithWarning = async () => {
-    try {
-      const artifact = await getArtifactContent(skillName, "context/refinement-chat.json");
-      if (artifact?.content) {
-        const parsed = JSON.parse(artifact.content);
-        if (parsed.messages?.length > 0) {
-          setShowRerunWarning(true);
-          return;
-        }
-      }
-    } catch { /* no artifact = no warning needed */ }
-    handleRerunStep();
-  };
-
-  const confirmRerun = async () => {
-    try {
-      await saveArtifactContent(skillName, 9, "context/refinement-chat.json", "");
-    } catch { /* best effort */ }
-    setShowRerunWarning(false);
-    setShowRefinementChat(false);
-    handleRerunStep();
   };
 
   const handleReviewContinue = async () => {
@@ -557,45 +491,20 @@ export default function WorkflowPage() {
   // --- Render content ---
 
   const renderContent = () => {
-    // Refinement chat panel (shown when all steps complete and user clicks button)
-    if (showRefinementChat && allStepsComplete) {
-      return (
-        <RefinementChat
-          skillName={skillName}
-          domain={domain ?? ""}
-          workspacePath={workspacePath ?? ""}
-          onDismiss={() => setShowRefinementChat(false)}
-        />
-      );
-    }
-
     // Completed step with output files
     if (
       currentStepDef?.status === "completed" &&
       !activeAgentId
     ) {
       const isLastStep = currentStep >= steps.length - 1;
-      if (isPackageStep && packageResult) {
-        return (
-          <WorkflowStepComplete
-            stepName={currentStepDef.name}
-            outputFiles={[packageResult.file_path]}
-            onRerun={isLastStep ? handleRerunWithWarning : handleRerunStep}
-            onNextStep={advanceToNextStep}
-            isLastStep={isLastStep}
-            onRefineChat={allStepsComplete ? () => setShowRefinementChat(true) : undefined}
-          />
-        );
-      }
       if (stepConfig?.outputFiles) {
         return (
           <WorkflowStepComplete
             stepName={currentStepDef.name}
             outputFiles={stepConfig.outputFiles}
-            onRerun={isLastStep ? handleRerunWithWarning : handleRerunStep}
+            onRerun={handleRerunStep}
             onNextStep={advanceToNextStep}
             isLastStep={isLastStep}
-            onRefineChat={isLastStep && allStepsComplete ? () => setShowRefinementChat(true) : undefined}
           />
         );
       }
@@ -604,10 +513,9 @@ export default function WorkflowPage() {
         <WorkflowStepComplete
           stepName={currentStepDef.name}
           outputFiles={[]}
-          onRerun={isLastStep ? handleRerunWithWarning : handleRerunStep}
+          onRerun={handleRerunStep}
           onNextStep={advanceToNextStep}
           isLastStep={isLastStep}
-          onRefineChat={isLastStep && allStepsComplete ? () => setShowRefinementChat(true) : undefined}
         />
       );
     }
@@ -696,20 +604,6 @@ export default function WorkflowPage() {
       return <AgentOutputPanel agentId={activeAgentId} />;
     }
 
-    // Package step empty state
-    if (isPackageStep) {
-      return (
-        <div className="flex flex-1 items-center justify-center text-muted-foreground">
-          <div className="flex flex-col items-center gap-2">
-            <Package className="size-8 text-muted-foreground/50" />
-            <p className="text-sm">
-              Press "Package" to create a .skill file
-            </p>
-          </div>
-        </div>
-      );
-    }
-
     // Error state with retry
     if (currentStepDef?.status === "error" && !activeAgentId) {
       return (
@@ -754,22 +648,8 @@ export default function WorkflowPage() {
 
   // --- Start button label ---
 
-  const getStartButtonLabel = () => {
-    if (!stepConfig) return "Start Step";
-    switch (stepConfig.type) {
-      case "package":
-        return "Package";
-      default:
-        return "Start Step";
-    }
-  };
-
-  const getStartButtonIcon = () => {
-    if (stepConfig?.type === "package") {
-      return <Package className="size-3.5" />;
-    }
-    return <Play className="size-3.5" />;
-  };
+  const getStartButtonLabel = () => "Start Step";
+  const getStartButtonIcon = () => <Play className="size-3.5" />;
 
   return (
     <>
@@ -822,24 +702,6 @@ export default function WorkflowPage() {
               }}>
                 Leave
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* Rerun warning — shown when user tries to rerun step 8 with existing refinement chat */}
-      {showRerunWarning && (
-        <Dialog open onOpenChange={(open) => { if (!open) setShowRerunWarning(false); }}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Clear Chat History?</DialogTitle>
-              <DialogDescription>
-                Rerunning this step will clear your refinement chat history. Skill files will not be affected until the step runs.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowRerunWarning(false)}>Cancel</Button>
-              <Button variant="destructive" onClick={confirmRerun}>Clear and Rerun</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

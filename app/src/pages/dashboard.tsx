@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
+import { save } from "@tauri-apps/plugin-dialog"
+import { toast } from "sonner"
 import { FolderOpen, Search, Filter, AlertCircle, Settings } from "lucide-react"
 import {
   Card,
@@ -27,6 +29,7 @@ import DeleteSkillDialog from "@/components/delete-skill-dialog"
 import TagFilter from "@/components/tag-filter"
 import { OnboardingDialog } from "@/components/onboarding-dialog"
 import { useSettingsStore } from "@/stores/settings-store"
+import { packageSkill } from "@/lib/tauri"
 import type { SkillSummary, AppSettings } from "@/lib/types"
 import { SKILL_TYPES, SKILL_TYPE_LABELS } from "@/lib/types"
 
@@ -117,6 +120,27 @@ export default function DashboardPage() {
   const handleContinue = (skill: SkillSummary) => {
     navigate({ to: "/skill/$skillName", params: { skillName: skill.name } })
   }
+
+  const handleDownload = useCallback(async (skill: SkillSummary) => {
+    if (!workspacePath) return
+    const toastId = toast.loading("Packaging skill...")
+    try {
+      const result = await packageSkill(skill.name, workspacePath)
+      const savePath = await save({
+        defaultPath: `${skill.name}.skill`,
+        filters: [{ name: "Skill Package", extensions: ["skill"] }],
+      })
+      if (savePath) {
+        await invoke("copy_file", { src: result.file_path, dest: savePath })
+        toast.success("Skill downloaded", { id: toastId })
+      } else {
+        // User cancelled the save dialog
+        toast.dismiss(toastId)
+      }
+    } catch (err) {
+      toast.error(`Download failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId })
+    }
+  }, [workspacePath])
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -271,6 +295,7 @@ export default function DashboardPage() {
               skill={skill}
               onContinue={handleContinue}
               onDelete={setDeleteTarget}
+              onDownload={handleDownload}
             />
           ))}
         </div>
