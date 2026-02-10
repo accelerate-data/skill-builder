@@ -124,6 +124,13 @@ export default function WorkflowPage() {
     if (agentId) {
       cancelAgent(agentId).catch(() => {}); // fire-and-forget SIGTERM
     }
+
+    // Revert step to pending so SQLite persists the correct state.
+    const { currentStep: step, steps: curSteps } = useWorkflowStore.getState();
+    if (curSteps[step]?.status === "in_progress") {
+      useWorkflowStore.getState().updateStepStatus(step, "pending");
+    }
+
     useWorkflowStore.getState().setRunning(false);
     useAgentStore.getState().clearRuns();
     proceed?.();
@@ -133,10 +140,13 @@ export default function WorkflowPage() {
   // component is removed without going through the blocker dialog).
   useEffect(() => {
     return () => {
-      const { isRunning: running } = useWorkflowStore.getState();
+      const store = useWorkflowStore.getState();
       const agentId = useAgentStore.getState().activeAgentId;
-      if (running && agentId) {
+      if (store.isRunning && agentId) {
         cancelAgent(agentId).catch(() => {}); // fire-and-forget
+        if (store.steps[store.currentStep]?.status === "in_progress") {
+          useWorkflowStore.getState().updateStepStatus(store.currentStep, "pending");
+        }
         useWorkflowStore.getState().setRunning(false);
       }
     };
@@ -414,15 +424,23 @@ export default function WorkflowPage() {
     }
   };
 
-  const handleCancelStep = async () => {
+  const handleCancelStep = () => {
     if (!activeAgentId) return;
-    try {
-      await cancelAgent(activeAgentId);
-    } catch (err) {
-      toast.error(
-        `Failed to cancel: ${err instanceof Error ? err.message : String(err)}`
-      );
+
+    // Fire-and-forget SIGTERM — don't await, don't rely on event chain.
+    cancelAgent(activeAgentId).catch(() => {});
+
+    // Immediately update UI state so the user isn't left waiting.
+    updateStepStatus(currentStep, "pending");
+    setRunning(false);
+    setActiveAgent(null);
+
+    // Best-effort artifact capture in background
+    if (workspacePath) {
+      captureStepArtifacts(skillName, currentStep, workspacePath).catch(() => {});
     }
+
+    toast.info(`Step ${currentStep + 1} cancelled`);
   };
 
   const handleSkipHumanStep = () => {

@@ -279,6 +279,9 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     // isRunning should be cleared immediately
     expect(useWorkflowStore.getState().isRunning).toBe(false);
+
+    // Step should be reverted to pending (not stuck at in_progress)
+    expect(useWorkflowStore.getState().steps[0].status).toBe("pending");
   });
 
   it("does not cancel agent on unmount when not running", async () => {
