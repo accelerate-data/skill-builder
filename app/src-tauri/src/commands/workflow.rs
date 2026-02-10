@@ -874,24 +874,20 @@ pub fn reset_workflow_step(
 
 // --- Artifact commands ---
 
-#[tauri::command]
-pub fn capture_step_artifacts(
-    skill_name: String,
+/// Core logic for capturing step artifacts — takes `&Connection` directly so
+/// it cannot re-lock the Db mutex (prevents deadlock by construction).
+fn capture_artifacts_inner(
+    conn: &rusqlite::Connection,
+    skill_name: &str,
     step_id: u32,
-    workspace_path: String,
-    db: tauri::State<'_, Db>,
+    workspace_path: &str,
+    skills_path: Option<&str>,
 ) -> Result<Vec<ArtifactRow>, String> {
-    let skill_dir = Path::new(&workspace_path).join(&skill_name);
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let skill_dir = Path::new(workspace_path).join(skill_name);
     let mut captured = Vec::new();
 
     // For step 5, determine the source directory for skill output files
-    let skills_path = read_skills_path(&db);
-    let skill_output_dir = if let Some(ref sp) = skills_path {
-        Some(Path::new(sp).join(&skill_name))
-    } else {
-        None
-    };
+    let skill_output_dir = skills_path.map(|sp| Path::new(sp).join(skill_name));
 
     // Read known output files for this step
     for file in get_step_output_files(step_id) {
@@ -908,9 +904,9 @@ pub fn capture_step_artifacts(
         if path.exists() {
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-            crate::db::save_artifact(&conn, &skill_name, step_id as i32, file, &content)?;
+            crate::db::save_artifact(conn, skill_name, step_id as i32, file, &content)?;
             captured.push(ArtifactRow {
-                skill_name: skill_name.clone(),
+                skill_name: skill_name.to_string(),
                 step_id: step_id as i32,
                 relative_path: file.to_string(),
                 size_bytes: content.len() as i64,
@@ -932,14 +928,14 @@ pub fn capture_step_artifacts(
         if refs_dir.is_dir() {
             for (relative, content) in walk_md_files(&refs_dir, "skill/references")? {
                 crate::db::save_artifact(
-                    &conn,
-                    &skill_name,
+                    conn,
+                    skill_name,
                     step_id as i32,
                     &relative,
                     &content,
                 )?;
                 captured.push(ArtifactRow {
-                    skill_name: skill_name.clone(),
+                    skill_name: skill_name.to_string(),
                     step_id: step_id as i32,
                     relative_path: relative,
                     size_bytes: content.len() as i64,
@@ -952,6 +948,19 @@ pub fn capture_step_artifacts(
     }
 
     Ok(captured)
+}
+
+#[tauri::command]
+pub fn capture_step_artifacts(
+    skill_name: String,
+    step_id: u32,
+    workspace_path: String,
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<ArtifactRow>, String> {
+    // Read skills_path before acquiring the DB lock (read_skills_path locks internally)
+    let skills_path = read_skills_path(&db);
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    capture_artifacts_inner(&conn, &skill_name, step_id, &workspace_path, skills_path.as_deref())
 }
 
 #[tauri::command]
@@ -1397,5 +1406,111 @@ mod tests {
             &dest.path().join("dest"),
         );
         assert!(result.is_err());
+    }
+
+    // --- capture_artifacts_inner tests ---
+
+    fn create_test_conn() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS workflow_artifacts (
+                skill_name TEXT NOT NULL,
+                step_id INTEGER NOT NULL,
+                relative_path TEXT NOT NULL,
+                content TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (skill_name, step_id, relative_path)
+            );",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn test_capture_artifacts_step0() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skill_dir = tmp.path().join("my-skill").join("context");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+
+        std::fs::write(skill_dir.join("research-entities.md"), "# Entities").unwrap();
+        std::fs::write(skill_dir.join("research-metrics.md"), "# Metrics").unwrap();
+        std::fs::write(skill_dir.join("clarifications-concepts.md"), "# Clarifications").unwrap();
+
+        let conn = create_test_conn();
+        let captured = capture_artifacts_inner(&conn, "my-skill", 0, workspace, None).unwrap();
+
+        assert_eq!(captured.len(), 3);
+        assert!(captured.iter().any(|a| a.relative_path == "context/research-entities.md"));
+        assert!(captured.iter().any(|a| a.relative_path == "context/clarifications-concepts.md"));
+
+        // Verify artifacts were persisted to DB
+        let db_artifacts = crate::db::get_skill_artifacts(&conn, "my-skill").unwrap();
+        assert_eq!(db_artifacts.len(), 3);
+    }
+
+    #[test]
+    fn test_capture_artifacts_skips_missing_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skill_dir = tmp.path().join("my-skill").join("context");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+
+        // Only create one of the three expected step 0 output files
+        std::fs::write(skill_dir.join("clarifications-concepts.md"), "# Concepts").unwrap();
+
+        let conn = create_test_conn();
+        let captured = capture_artifacts_inner(&conn, "my-skill", 0, workspace, None).unwrap();
+
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].relative_path, "context/clarifications-concepts.md");
+    }
+
+    #[test]
+    fn test_capture_artifacts_step5_with_skills_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let skills = tmp.path().join("skills");
+
+        // SKILL.md lives in workspace_path/skill_name/ (no "skill/" prefix)
+        let skill_dir = workspace.join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# My Skill").unwrap();
+
+        // references/ live in skills_path/skill_name/ (resolved via "skill/" prefix)
+        let skill_output = skills.join("my-skill");
+        std::fs::create_dir_all(skill_output.join("references")).unwrap();
+        std::fs::write(skill_output.join("references").join("ref.md"), "# Ref").unwrap();
+
+        let conn = create_test_conn();
+        let captured = capture_artifacts_inner(
+            &conn,
+            "my-skill",
+            5,
+            workspace.to_str().unwrap(),
+            Some(skills.to_str().unwrap()),
+        )
+        .unwrap();
+
+        assert!(captured.iter().any(|a| a.relative_path == "SKILL.md"));
+        assert!(captured.iter().any(|a| a.relative_path == "skill/references/ref.md"));
+    }
+
+    #[test]
+    fn test_capture_artifacts_empty_step() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        std::fs::create_dir_all(tmp.path().join("my-skill")).unwrap();
+
+        let conn = create_test_conn();
+        // Human review steps have no output files
+        let captured = capture_artifacts_inner(&conn, "my-skill", 1, workspace, None).unwrap();
+        assert!(captured.is_empty());
     }
 }
