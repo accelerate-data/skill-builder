@@ -85,11 +85,11 @@ The only difference is the Init step — the plugin collects skill name and type
 
 ### /create-issue
 When the user runs /create-issue or asks to create a Linear issue, log a bug, file a ticket,
-or track a feature idea, read and follow the skill at `skills/create-linear-issue/SKILL.md`.
+or track a feature idea, read and follow the skill at `.claude/skills/create-linear-issue/SKILL.md`.
 
 ### /implement-issue
 When the user runs /implement-issue or asks to implement, build, fix, or work on a Linear issue,
-read and follow the skill at `skills/implement-linear-issue/SKILL.md`.
+read and follow the skill at `.claude/skills/implement-linear-issue/SKILL.md`.
 
 ## Development
 

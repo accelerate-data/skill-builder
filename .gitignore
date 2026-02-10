@@ -17,3 +17,4 @@ app/playwright-artifacts/
 # Claude Code (track .claude/settings.json for shared hooks, ignore the rest)
 .claude/*
 !.claude/settings.json
+!.claude/skills/
