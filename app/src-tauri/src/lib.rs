@@ -57,6 +57,7 @@ pub fn run() {
             commands::chat::get_chat_messages,
             commands::chat::run_chat_agent,
             commands::lifecycle::has_running_agents,
+            commands::lifecycle::cancel_all_agents,
             commands::workspace::get_workspace_path,
             commands::workspace::clear_workspace,
             commands::diff::generate_diff,

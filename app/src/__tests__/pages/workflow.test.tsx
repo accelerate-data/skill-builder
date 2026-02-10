@@ -5,10 +5,16 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { resetTauriMocks } from "@/test/mocks/tauri";
 
-// Mock TanStack Router
+// Mock TanStack Router — useBlocker returns idle state by default
+const mockBlocker = vi.hoisted(() => ({
+  proceed: vi.fn(),
+  reset: vi.fn(),
+  status: "idle" as string,
+}));
 vi.mock("@tanstack/react-router", () => ({
   useParams: () => ({ skillName: "test-skill" }),
   Link: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
+  useBlocker: () => mockBlocker,
 }));
 
 // Mock sonner — use vi.hoisted so the object is available in hoisted vi.mock factory
@@ -70,6 +76,11 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     mockToast.success.mockClear();
     mockToast.error.mockClear();
     mockToast.info.mockClear();
+
+    // Reset blocker to idle state
+    mockBlocker.proceed.mockClear();
+    mockBlocker.reset.mockClear();
+    mockBlocker.status = "idle";
 
     // Clear module-level tauri mock call records so tests don't leak
     vi.mocked(saveWorkflowState).mockClear();
@@ -244,5 +255,85 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     const wf = useWorkflowStore.getState();
     expect(wf.steps[0].status).toBe("pending");
     expect(wf.isRunning).toBe(false);
+  });
+
+  it("cancels running agent on unmount (fire-and-forget)", async () => {
+    const { cancelAgent } = await import("@/lib/tauri");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    useAgentStore.getState().setActiveAgent("agent-1");
+
+    const { unmount } = render(<WorkflowPage />);
+
+    // Unmount triggers cleanup (simulates navigating away)
+    act(() => {
+      unmount();
+    });
+
+    // cancelAgent should have been called fire-and-forget
+    expect(cancelAgent).toHaveBeenCalledWith("agent-1");
+
+    // isRunning should be cleared immediately
+    expect(useWorkflowStore.getState().isRunning).toBe(false);
+  });
+
+  it("does not cancel agent on unmount when not running", async () => {
+    const { cancelAgent } = await import("@/lib/tauri");
+    vi.mocked(cancelAgent).mockClear();
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setRunning(false);
+
+    const { unmount } = render(<WorkflowPage />);
+
+    act(() => {
+      unmount();
+    });
+
+    // cancelAgent should NOT have been called
+    expect(cancelAgent).not.toHaveBeenCalled();
+  });
+
+  it("shows nav guard dialog when blocker status is blocked", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    // Simulate blocker triggered by navigation attempt
+    mockBlocker.status = "blocked";
+
+    const { getByText } = render(<WorkflowPage />);
+
+    // Dialog should be visible
+    expect(getByText("Agent Running")).toBeTruthy();
+    expect(getByText("Stay")).toBeTruthy();
+    expect(getByText("Cancel & Leave")).toBeTruthy();
+  });
+
+  it("clears stale agent data when switching skills", async () => {
+    // Simulate: stale agent data from a previous skill
+    useAgentStore.getState().startRun("old-agent", "sonnet");
+    useAgentStore.getState().completeRun("old-agent", true);
+    useAgentStore.getState().setActiveAgent("old-agent");
+
+    expect(useAgentStore.getState().activeAgentId).toBe("old-agent");
+
+    // Render triggers init effect which should clear agent store
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().hydrated).toBe(true);
+    });
+
+    // Stale agent data should be cleared
+    expect(useAgentStore.getState().activeAgentId).toBeNull();
+    expect(Object.keys(useAgentStore.getState().runs)).toHaveLength(0);
   });
 });

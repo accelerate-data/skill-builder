@@ -141,6 +141,9 @@ export const readFile = (filePath: string) =>
 export const hasRunningAgents = () =>
   invoke<boolean>("has_running_agents");
 
+export const cancelAllAgents = () =>
+  invoke("cancel_all_agents");
+
 export const getWorkspacePath = () =>
   invoke<string>("get_workspace_path");
 

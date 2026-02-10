@@ -3,7 +3,6 @@ import { Home, FileText, Settings, Moon, Sun, Monitor, PanelLeftClose, PanelLeft
 import { useTheme } from "next-themes";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { useWorkflowStore } from "@/stores/workflow-store";
 
 const navItems = [
   { to: "/" as const, label: "Dashboard", icon: Home },
@@ -23,8 +22,6 @@ export function Sidebar() {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
   const { theme, setTheme } = useTheme();
-  const isRunning = useWorkflowStore((s) => s.isRunning);
-
   // Initialize collapsed state from localStorage
   const [collapsed, setCollapsed] = useState(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -72,21 +69,17 @@ export function Sidebar() {
         {navItems.map(({ to, label, icon: Icon }) => {
           const isActive =
             to === "/" ? currentPath === "/" : currentPath.startsWith(to);
-          const disabled = isRunning && !isActive;
           return (
             <Link
               key={to}
               to={to}
-              onClick={disabled ? (e) => e.preventDefault() : undefined}
               className={cn(
                 "flex items-center rounded-md py-2 text-sm font-medium transition-colors",
                 collapsed ? "justify-center px-2" : "gap-3 px-3",
-                disabled && "pointer-events-none opacity-40",
                 isActive
                   ? "bg-sidebar-accent text-sidebar-accent-foreground"
                   : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
               )}
-              aria-disabled={disabled}
               title={collapsed ? label : undefined}
             >
               <Icon className="size-4" />
