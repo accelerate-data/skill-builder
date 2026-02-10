@@ -6,18 +6,18 @@ describe("useWorkflowStore", () => {
     useWorkflowStore.getState().reset();
   });
 
-  it("has correct initial state with 9 steps, all pending, currentStep=0", () => {
+  it("has correct initial state with 8 steps, all pending, currentStep=0", () => {
     const state = useWorkflowStore.getState();
     expect(state.skillName).toBeNull();
     expect(state.domain).toBeNull();
     expect(state.currentStep).toBe(0);
     expect(state.isRunning).toBe(false);
-    expect(state.steps).toHaveLength(9);
+    expect(state.steps).toHaveLength(8);
     state.steps.forEach((step) => {
       expect(step.status).toBe("pending");
     });
-    // Verify step IDs are 0-8
-    expect(state.steps.map((s) => s.id)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    // Verify step IDs are 0-7
+    expect(state.steps.map((s) => s.id)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
   });
 
   it("initWorkflow sets skillName, domain, and resets steps", () => {
@@ -87,7 +87,7 @@ describe("useWorkflowStore", () => {
     expect(state.domain).toBeNull();
     expect(state.currentStep).toBe(0);
     expect(state.isRunning).toBe(false);
-    expect(state.steps).toHaveLength(9);
+    expect(state.steps).toHaveLength(8);
     state.steps.forEach((step) => {
       expect(step.status).toBe("pending");
     });
@@ -110,8 +110,8 @@ describe("useWorkflowStore", () => {
     expect(state.steps[0].status).toBe("completed");
     expect(state.steps[1].status).toBe("completed");
     expect(state.steps[2].status).toBe("completed");
-    // Steps 3-8 should be reset to pending
-    for (let i = 3; i <= 8; i++) {
+    // Steps 3-7 should be reset to pending
+    for (let i = 3; i <= 7; i++) {
       expect(state.steps[i].status).toBe("pending");
     }
     // currentStep should be 3
@@ -122,10 +122,10 @@ describe("useWorkflowStore", () => {
 
   it("rerunFromStep from step 0 resets all steps", () => {
     const store = useWorkflowStore.getState();
-    for (let i = 0; i <= 8; i++) {
+    for (let i = 0; i <= 7; i++) {
       store.updateStepStatus(i, "completed");
     }
-    store.setCurrentStep(8);
+    store.setCurrentStep(7);
 
     useWorkflowStore.getState().rerunFromStep(0);
 
@@ -143,6 +143,55 @@ describe("useWorkflowStore", () => {
     expect(state.steps[3].name).toBe("Human Review");
     expect(state.steps[4].name).toBe("Reasoning");
     expect(state.steps[5].name).toBe("Build Skill");
-    expect(state.steps[8].name).toBe("Package");
+    expect(state.steps[7].name).toBe("Test");
+  });
+
+  it("does not have a Package step", () => {
+    const state = useWorkflowStore.getState();
+    expect(state.steps.find((s) => s.name === "Package")).toBeUndefined();
+  });
+
+  describe("loadWorkflowState migration safety", () => {
+    it("ignores step_id 8 from legacy SQLite data (removed Package step)", () => {
+      // Simulate SQLite returning completed steps including the old Package step (8)
+      useWorkflowStore.getState().loadWorkflowState([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+
+      const state = useWorkflowStore.getState();
+      // All 8 real steps (0-7) should be completed
+      state.steps.forEach((step) => {
+        expect(step.status).toBe("completed");
+      });
+      // No step with id 8 should exist
+      expect(state.steps.find((s) => s.id === 8)).toBeUndefined();
+      expect(state.steps).toHaveLength(8);
+      // currentStep should be the last valid step since all are completed
+      expect(state.currentStep).toBe(7);
+      expect(state.hydrated).toBe(true);
+    });
+
+    it("ignores step_id 9 from legacy SQLite data", () => {
+      useWorkflowStore.getState().loadWorkflowState([0, 1, 2, 3, 4, 5, 6, 7, 9]);
+
+      const state = useWorkflowStore.getState();
+      state.steps.forEach((step) => {
+        expect(step.status).toBe("completed");
+      });
+      expect(state.steps.find((s) => s.id === 9)).toBeUndefined();
+    });
+
+    it("correctly hydrates partial progress with legacy step_id 8 present", () => {
+      // Steps 0-4 completed in SQLite, plus leftover step 8 from old data
+      useWorkflowStore.getState().loadWorkflowState([0, 1, 2, 3, 4, 8]);
+
+      const state = useWorkflowStore.getState();
+      for (let i = 0; i <= 4; i++) {
+        expect(state.steps[i].status).toBe("completed");
+      }
+      for (let i = 5; i <= 7; i++) {
+        expect(state.steps[i].status).toBe("pending");
+      }
+      // First incomplete step is 5
+      expect(state.currentStep).toBe(5);
+    });
   });
 });

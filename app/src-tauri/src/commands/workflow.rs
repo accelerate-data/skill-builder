@@ -72,7 +72,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             max_turns: 80,
         }),
         _ => Err(format!(
-            "Unknown step_id {}. Steps 1, 3, 8 are human/package steps.",
+            "Unknown step_id {}. Steps 1 and 3 are human review steps.",
             step_id
         )),
     }
@@ -824,8 +824,6 @@ fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
         5 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
         6 => vec!["context/agent-validation-log.md"],
         7 => vec!["context/test-skill.md"],
-        8 => vec![], // Package step — .skill file
-        9 => vec![], // Refinement chat — artifacts only
         _ => vec![],
     }
 }
@@ -873,19 +871,11 @@ fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32, skill
             let _ = std::fs::remove_file(&path);
         }
     }
-
-    // Step 8 produces a .skill zip
-    if step_id == 8 {
-        let skill_file = skill_dir.join(format!("{}.skill", skill_name));
-        if skill_file.exists() {
-            let _ = std::fs::remove_file(&skill_file);
-        }
-    }
 }
 
 /// Delete output files for the given step and all subsequent steps.
 fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id: u32, skills_path: Option<&str>) {
-    for step_id in from_step_id..=9 {
+    for step_id in from_step_id..=7 {
         clean_step_output(workspace_path, skill_name, step_id, skills_path);
     }
 }
@@ -1053,15 +1043,16 @@ mod tests {
     fn test_get_step_config_invalid_step() {
         assert!(get_step_config(1).is_err());  // Human review
         assert!(get_step_config(3).is_err());  // Human review
-        assert!(get_step_config(8).is_err());  // Package step
-        assert!(get_step_config(9).is_err());  // Refinement chat
+        assert!(get_step_config(8).is_err());  // Beyond last step
         assert!(get_step_config(99).is_err());
     }
 
     #[test]
-    fn test_get_step_output_files_step9() {
-        // Step 9 (refinement chat) should return empty vec — no output files, only artifacts
-        let files = get_step_output_files(9);
+    fn test_get_step_output_files_unknown_step() {
+        // Unknown steps should return empty vec
+        let files = get_step_output_files(8);
+        assert!(files.is_empty());
+        let files = get_step_output_files(99);
         assert!(files.is_empty());
     }
 
@@ -1390,23 +1381,20 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_step_output_files_includes_step9() {
+    fn test_delete_step_output_files_cleans_last_step() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Create files for steps 7 and 8 (step 9 has no output files, but we test the loop range)
+        // Create file for step 7 (the last step)
         std::fs::write(skill_dir.join("context/test-skill.md"), "step7").unwrap();
-        std::fs::write(skill_dir.join("my-skill.skill"), "step8").unwrap();
 
-        // Reset from step 7 onwards should clean up through step 9 (even though step 9 has no files)
+        // Reset from step 7 onwards should clean up through step 7
         delete_step_output_files(workspace, "my-skill", 7, None);
 
-        // Step 7 and 8 outputs should be deleted
+        // Step 7 output should be deleted
         assert!(!skill_dir.join("context/test-skill.md").exists());
-        // Step 8's .skill file is in skill_dir for non-step-5 cleanup
-        // (this test just verifies the loop range includes step 9)
     }
 
     #[test]

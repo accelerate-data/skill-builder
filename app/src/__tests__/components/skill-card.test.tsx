@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import SkillCard from "@/components/skill-card";
+import SkillCard, { hasBuildOutput } from "@/components/skill-card";
 import type { SkillSummary } from "@/lib/types";
 
 const baseSkill: SkillSummary = {
@@ -88,8 +88,8 @@ describe("SkillCard", () => {
     render(
       <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
     );
-    // Step 3 => Math.round((4/9)*100) = 44%
-    expect(screen.getByText("44%")).toBeInTheDocument();
+    // Step 3 => Math.round((4/8)*100) = 50%
+    expect(screen.getByText("50%")).toBeInTheDocument();
   });
 
   it("shows 100% for completed step", () => {
@@ -179,5 +179,52 @@ describe("SkillCard", () => {
     expect(screen.queryByText("Domain")).not.toBeInTheDocument();
     expect(screen.queryByText("Source")).not.toBeInTheDocument();
     expect(screen.queryByText("Data Engineering")).not.toBeInTheDocument();
+  });
+});
+
+describe("hasBuildOutput", () => {
+  it("returns false for null current_step", () => {
+    const skill = { ...baseSkill, current_step: null, status: "in_progress" };
+    expect(hasBuildOutput(skill)).toBe(false);
+  });
+
+  it("returns false for step less than 6", () => {
+    const skill = { ...baseSkill, current_step: "Step 3", status: "in_progress" };
+    expect(hasBuildOutput(skill)).toBe(false);
+  });
+
+  it("returns false for step 5 (Build step itself is in progress)", () => {
+    const skill = { ...baseSkill, current_step: "Step 5", status: "in_progress" };
+    expect(hasBuildOutput(skill)).toBe(false);
+  });
+
+  it("returns true for step 6 (past Build)", () => {
+    const skill = { ...baseSkill, current_step: "Step 6", status: "in_progress" };
+    expect(hasBuildOutput(skill)).toBe(true);
+  });
+
+  it("returns true for step 7", () => {
+    const skill = { ...baseSkill, current_step: "Step 7", status: "in_progress" };
+    expect(hasBuildOutput(skill)).toBe(true);
+  });
+
+  it("returns true when status is completed", () => {
+    const skill = { ...baseSkill, current_step: "Step 3", status: "completed" };
+    expect(hasBuildOutput(skill)).toBe(true);
+  });
+
+  it("returns true when current_step text says completed", () => {
+    const skill = { ...baseSkill, current_step: "completed", status: "in_progress" };
+    expect(hasBuildOutput(skill)).toBe(true);
+  });
+
+  it("returns false for initialization step", () => {
+    const skill = { ...baseSkill, current_step: "initialization", status: "in_progress" };
+    expect(hasBuildOutput(skill)).toBe(false);
+  });
+
+  it("returns true for completed status even with null step", () => {
+    const skill = { ...baseSkill, current_step: null, status: "completed" };
+    expect(hasBuildOutput(skill)).toBe(true);
   });
 });

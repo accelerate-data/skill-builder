@@ -76,12 +76,6 @@ const defaultSteps: WorkflowStep[] = [
     description: "Generate and evaluate test prompts",
     status: "pending",
   },
-  {
-    id: 8,
-    name: "Package",
-    description: "Package skill into a deployable .skill file",
-    status: "pending",
-  },
 ];
 
 export const useWorkflowStore = create<WorkflowState>((set) => ({
@@ -128,8 +122,13 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
 
   loadWorkflowState: (completedStepIds) =>
     set((state) => {
+      // Filter out step IDs that no longer exist in the workflow (e.g. the
+      // removed Package step 8, or any higher IDs from legacy data).
+      const validStepIds = new Set(state.steps.map((s) => s.id));
+      const filtered = completedStepIds.filter((id) => validStepIds.has(id));
+
       const steps = state.steps.map((s) =>
-        completedStepIds.includes(s.id) ? { ...s, status: "completed" as const } : s
+        filtered.includes(s.id) ? { ...s, status: "completed" as const } : s
       );
       const firstIncomplete = steps.find((s) => s.status !== "completed");
       return {

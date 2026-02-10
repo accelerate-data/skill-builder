@@ -12,8 +12,10 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: mockListen,
 }));
 
+export const mockDialogSave = vi.fn();
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: vi.fn(),
+  save: mockDialogSave,
 }));
 
 // Mock @tauri-apps/api/window
@@ -51,4 +53,5 @@ export function resetTauriMocks(): void {
   mockInvoke.mockReset();
   mockListen.mockReset().mockReturnValue(Promise.resolve(() => {}));
   mockGetCurrentWindow.mockClear();
+  mockDialogSave.mockReset();
 }

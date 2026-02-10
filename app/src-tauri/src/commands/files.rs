@@ -66,6 +66,13 @@ pub fn read_file(file_path: String) -> Result<String, String> {
     fs::read_to_string(file_path).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn copy_file(src: String, dest: String) -> Result<(), String> {
+    fs::copy(&src, &dest)
+        .map(|_| ())
+        .map_err(|e| format!("Failed to copy {} to {}: {}", src, dest, e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,5 +213,53 @@ mod tests {
     fn test_read_file_not_found() {
         let result = read_file("/tmp/nonexistent-file-abc123xyz".to_string());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_copy_file_success() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("source.txt");
+        let dest = dir.path().join("destination.txt");
+        fs::write(&src, "copy me").unwrap();
+
+        let result = copy_file(
+            src.to_str().unwrap().to_string(),
+            dest.to_str().unwrap().to_string(),
+        );
+        assert!(result.is_ok());
+
+        let content = fs::read_to_string(&dest).unwrap();
+        assert_eq!(content, "copy me");
+    }
+
+    #[test]
+    fn test_copy_file_source_not_found() {
+        let dir = tempdir().unwrap();
+        let dest = dir.path().join("destination.txt");
+        let result = copy_file(
+            "/tmp/nonexistent-source-abc123xyz".to_string(),
+            dest.to_str().unwrap().to_string(),
+        );
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Failed to copy"));
+    }
+
+    #[test]
+    fn test_copy_file_overwrites_existing() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("source.txt");
+        let dest = dir.path().join("destination.txt");
+        fs::write(&src, "new content").unwrap();
+        fs::write(&dest, "old content").unwrap();
+
+        let result = copy_file(
+            src.to_str().unwrap().to_string(),
+            dest.to_str().unwrap().to_string(),
+        );
+        assert!(result.is_ok());
+
+        let content = fs::read_to_string(&dest).unwrap();
+        assert_eq!(content, "new content");
     }
 }
