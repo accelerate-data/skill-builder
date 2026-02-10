@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, act, waitFor } from "@testing-library/react";
+import { render, screen, act, waitFor } from "@testing-library/react";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -57,7 +57,7 @@ vi.mock("@/components/reasoning-chat", () => ({
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
-import { getWorkflowState, saveWorkflowState } from "@/lib/tauri";
+import { getWorkflowState, saveWorkflowState, getArtifactContent, readFile } from "@/lib/tauri";
 
 describe("WorkflowPage — agent completion lifecycle", () => {
   beforeEach(() => {
@@ -306,5 +306,67 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Stale agent data should be cleared
     expect(useAgentStore.getState().activeAgentId).toBeNull();
     expect(Object.keys(useAgentStore.getState().runs)).toHaveLength(0);
+  });
+
+  it("shows Resume when partial output exists on disk but not in SQLite", async () => {
+    // Simulate: step 0 was interrupted — files on disk but never captured to SQLite
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path.includes("clarifications-concepts.md")) {
+        return Promise.resolve("# Partial research output");
+      }
+      return Promise.reject("not found");
+    });
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+
+    render(<WorkflowPage />);
+
+    // Filesystem fallback should detect partial output → show "Resume"
+    await waitFor(() => {
+      expect(screen.queryByText("Resume")).toBeTruthy();
+    });
+  });
+
+  it("does not show Resume when no partial output exists anywhere", async () => {
+    // Neither SQLite nor filesystem has output
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+    vi.mocked(readFile).mockRejectedValue("not found");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+
+    render(<WorkflowPage />);
+
+    // Wait for effects to settle
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // "Resume" should NOT appear — no partial output anywhere
+    expect(screen.queryByText("Resume")).toBeNull();
+  });
+
+  it("shows Resume when partial output exists in SQLite", async () => {
+    // SQLite has the artifact — no filesystem fallback needed
+    vi.mocked(getArtifactContent).mockResolvedValue({
+      skill_name: "test-skill",
+      step_id: 0,
+      relative_path: "context/clarifications-concepts.md",
+      content: "# Research output from SQLite",
+      size_bytes: 100,
+      created_at: "",
+      updated_at: "",
+    });
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Resume")).toBeTruthy();
+    });
   });
 });
