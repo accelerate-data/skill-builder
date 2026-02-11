@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "npm run sidecar:build && tauri dev",
+    "dev": "node scripts/dev.mjs",
     "dev:frontend": "vite",
     "dev:test": "TAURI_E2E=true vite",
     "build": "tsc && vite build",
