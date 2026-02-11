@@ -89,7 +89,8 @@ Assign a t-shirt size estimate based on agent implementation effort:
 | S | ~30 minutes | Small self-contained feature, simple behavior change |
 | M | 1-2 hours | Moderate feature, some product design decisions |
 | L | Half day | Significant feature, multiple user flows affected |
-| XL | Major effort | Core behavior change, new capability, cross-cutting impact |
+
+**L is the maximum size for a single issue.** If the scope exceeds L, the issue is too large for a single agent to execute effectively. Tell the user the scope is too big and offer to break it into smaller issues (each ≤ L). Do NOT create XL issues — decompose them instead.
 
 The estimate should come from the sub-agents' codebase analysis — they've already seen the scope. If they didn't provide enough signal, spawn a quick sub-agent to assess. Present the estimate to the user — they can override.
 

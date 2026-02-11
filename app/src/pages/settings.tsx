@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
-import { Loader2, Eye, EyeOff, Save, CheckCircle2, XCircle, ExternalLink, FolderOpen, FolderSearch, Trash2 } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, ExternalLink, FolderOpen, FolderSearch, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -33,7 +33,6 @@ export default function SettingsPage() {
   const [debugMode, setDebugMode] = useState(false)
   const [extendedContext, setExtendedContext] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [testing, setTesting] = useState(false)
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null)
@@ -86,41 +85,36 @@ export default function SettingsPage() {
     check()
   }, [])
 
-  const handleSave = async () => {
-    setSaving(true)
-    setSaved(false)
+  const autoSave = async (overrides: Partial<{
+    apiKey: string | null;
+    skillsPath: string | null;
+    preferredModel: string;
+    debugMode: boolean;
+    extendedContext: boolean;
+  }>) => {
+    const settings = {
+      anthropic_api_key: overrides.apiKey !== undefined ? overrides.apiKey : apiKey,
+      workspace_path: workspacePath,
+      skills_path: overrides.skillsPath !== undefined ? overrides.skillsPath : skillsPath,
+      preferred_model: overrides.preferredModel !== undefined ? overrides.preferredModel : preferredModel,
+      debug_mode: overrides.debugMode !== undefined ? overrides.debugMode : debugMode,
+      extended_context: overrides.extendedContext !== undefined ? overrides.extendedContext : extendedContext,
+    }
     try {
-      await invoke("save_settings", {
-        settings: {
-          anthropic_api_key: apiKey,
-          workspace_path: workspacePath,
-          skills_path: skillsPath,
-          preferred_model: preferredModel,
-          debug_mode: debugMode,
-          extended_context: extendedContext,
-          splash_shown: false,
-        },
-      })
-      setSaved(true)
-      setSaving(false)
-      setTimeout(() => setSaved(false), 1000)
-
+      await invoke("save_settings", { settings })
       // Sync Zustand store so other pages see updated settings
       setStoreSettings({
-        anthropicApiKey: apiKey,
-        workspacePath,
-        skillsPath,
-        preferredModel,
-        debugMode,
-        extendedContext,
+        anthropicApiKey: settings.anthropic_api_key,
+        workspacePath: settings.workspace_path,
+        skillsPath: settings.skills_path,
+        preferredModel: settings.preferred_model,
+        debugMode: settings.debug_mode,
+        extendedContext: settings.extended_context,
       })
-
-      toast.success("Settings saved", { duration: 1500 })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
     } catch (err) {
-      setSaving(false)
-      toast.error(
-        `Failed to save settings: ${err instanceof Error ? err.message : String(err)}`
-      )
+      toast.error(`Failed to save: ${err}`)
     }
   }
 
@@ -156,6 +150,7 @@ export default function SettingsPage() {
         normalized = parts.slice(0, -1).join('/')
       }
       setSkillsPath(normalized)
+      autoSave({ skillsPath: normalized })
     }
   }
 
@@ -184,7 +179,15 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <h1 className="text-2xl font-semibold">Settings</h1>
+      <div className="flex items-center gap-3">
+        <h1 className="text-2xl font-semibold">Settings</h1>
+        {saved && (
+          <span className="flex items-center gap-1 text-sm text-green-600 animate-in fade-in duration-200">
+            <CheckCircle2 className="size-3.5" />
+            Saved
+          </span>
+        )}
+      </div>
 
       <Card>
         <CardHeader>
@@ -204,6 +207,7 @@ export default function SettingsPage() {
                   placeholder="sk-ant-..."
                   value={apiKey || ""}
                   onChange={(e) => setApiKey(e.target.value || null)}
+                  onBlur={(e) => autoSave({ apiKey: e.target.value || null })}
                 />
                 <Button
                   type="button"
@@ -251,7 +255,7 @@ export default function SettingsPage() {
             <select
               id="model-select"
               value={preferredModel}
-              onChange={(e) => setPreferredModel(e.target.value)}
+              onChange={(e) => { setPreferredModel(e.target.value); autoSave({ preferredModel: e.target.value }); }}
               className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               {MODEL_OPTIONS.map((opt) => (
@@ -277,7 +281,7 @@ export default function SettingsPage() {
             <Switch
               id="debug-mode"
               checked={debugMode}
-              onCheckedChange={setDebugMode}
+              onCheckedChange={(checked) => { setDebugMode(checked); autoSave({ debugMode: checked }); }}
             />
           </div>
         </CardContent>
@@ -296,7 +300,7 @@ export default function SettingsPage() {
             <Switch
               id="extended-context"
               checked={extendedContext}
-              onCheckedChange={setExtendedContext}
+              onCheckedChange={(checked) => { setExtendedContext(checked); autoSave({ extendedContext: checked }); }}
             />
           </div>
         </CardContent>
@@ -425,23 +429,6 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <div className="flex justify-end">
-        <Button
-          onClick={handleSave}
-          disabled={saving}
-          variant={saved ? "default" : "outline"}
-          className={saved ? "bg-green-600 hover:bg-green-600 text-white border-green-600" : ""}
-        >
-          {saving ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : saved ? (
-            <CheckCircle2 className="size-4" />
-          ) : (
-            <Save className="size-4" />
-          )}
-          {saved ? "Saved" : "Save Settings"}
-        </Button>
-      </div>
     </div>
   )
 }

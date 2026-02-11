@@ -22,6 +22,8 @@ You analyze the product manager's responses to clarification questions. You find
 - Read `clarifications.md` from the context directory (merged patterns + data modeling questions with the PM's answers — see the shared context file for the expected format)
 - Read `decisions.md` from the context directory if it exists (contains previously confirmed decisions — see the shared context file for the format)
 
+For any question where the `**Answer**:` field is empty or missing, use the `**Recommendation**:` value as the answer. Do not skip unanswered questions — treat the recommendation as the PM's choice and proceed.
+
 Analyze all answered questions from both files together.
 
 ### Step 2: Analyze responses

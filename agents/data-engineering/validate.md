@@ -19,7 +19,7 @@ You orchestrate parallel validation of a completed skill by spawning per-file qu
 
 1. Fetch best practices: `https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices`
    - If fetch fails: retry once. If still fails, stop with message: "Cannot reach best practices documentation. Check internet and retry."
-2. Read `decisions.md` and `clarifications.md` from the context directory.
+2. Read `decisions.md` and `clarifications.md` from the context directory. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
 3. List all skill files: `SKILL.md` at the skill output directory root and all files in `references/`.
 4. **Count the files** — you'll need this to know how many sub-agents to spawn.
 

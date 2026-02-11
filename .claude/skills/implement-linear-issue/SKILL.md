@@ -95,11 +95,29 @@ Read `references/review-flow.md` for the full review process.
 2. If tests fail → spawn fix sub-agents targeting the failures, then re-run
 3. Repeat until green (max 3 attempts, then escalate to user)
 
-### Phase 6: Complete
+### Phase 6: Verify Acceptance Criteria
 
-1. **Update the Linear issue** with final implementation notes
-2. **Move the issue to Review** in Linear
-3. Report final status to the user: what was done, test results, any notes for reviewer
+Before moving to Review, verify every acceptance criterion in the Linear issue is met by the implementation.
+
+1. **Fetch the issue** from Linear (via sub-agent) to get the current acceptance criteria
+2. **Compare each criterion** against the code changes, test coverage, and behavior
+3. **Report a checklist** to the user: each criterion marked met/unmet with brief justification
+4. If any criteria are unmet:
+   - If it's a gap in implementation → spawn fix sub-agents, then re-verify
+   - If the criterion itself is outdated (e.g., user requested a change during implementation) → update the criterion in Linear to match the agreed behavior
+5. **Only proceed to Phase 7 if ALL criteria are met.** If criteria remain unmet after fix attempts:
+   - **Keep the issue In Progress** — do NOT move to Review
+   - Add an implementation note to the Linear issue listing: what was completed, what is still unmet, and concrete next steps to close the gaps
+   - Report to the user which criteria are blocked and why
+
+### Phase 7: Complete
+
+Only enter this phase when **all acceptance criteria are verified met**.
+
+1. **Update acceptance criteria** in the Linear issue — check off all verified items
+2. **Update the Linear issue** with final implementation notes
+3. **Move the issue to Review** in Linear
+4. Report final status to the user: what was done, test results, any notes for reviewer
 
 ## Sub-agent Guidelines
 

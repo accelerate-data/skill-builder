@@ -34,7 +34,7 @@ Parallel per-file validation ensures independent quality checks that don't share
 
 1. Fetch best practices: `https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices`
    - If fetch fails: retry once. If still fails, proceed using these fallback criteria: content should be actionable and specific, files should be self-contained, guidance should focus on domain knowledge not general LLM knowledge, and structure should use progressive disclosure.
-2. Read `decisions.md` and `clarifications.md` from the context directory.
+2. Read `decisions.md` and `clarifications.md` from the context directory. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
 3. List all skill files: `SKILL.md` at the skill output directory root and all files in `references/`.
 4. **Count the files** — you'll need this to know how many sub-agents to spawn.
 

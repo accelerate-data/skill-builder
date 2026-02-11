@@ -500,7 +500,7 @@ export const ReasoningChat = forwardRef<ReasoningChatHandle, ReasoningChatProps>
       )}
       {/* Messages area */}
       <ScrollArea className="min-h-0 flex-1">
-        <div className="flex flex-col gap-4 p-4">
+        <div className="flex flex-col gap-4 p-3">
           {messages.map((msg, i) => (
             <div
               key={i}
@@ -520,7 +520,7 @@ export const ReasoningChat = forwardRef<ReasoningChatHandle, ReasoningChatProps>
                 )}
               </div>
               <Card
-                className={`max-w-[80%] px-4 py-3 ${
+                className={`max-w-[80%] px-3 py-2.5 ${
                   msg.role === "user"
                     ? "bg-primary text-primary-foreground"
                     : ""

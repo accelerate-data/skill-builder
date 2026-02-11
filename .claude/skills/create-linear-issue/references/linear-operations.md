@@ -78,10 +78,9 @@ Linear supports custom estimate scales. The user's scale is t-shirt sizes:
 | XS | 1 | < 10 min agent effort |
 | S | 2 | ~30 min |
 | M | 3 | 1-2 hours |
-| L | 5 | ~half day |
-| XL | 8 | Major application change |
+| L | 5 | Half day (maximum single issue size) |
 
-Set the estimate field to the corresponding numeric value.
+L is the cap. If scope exceeds L, the coordinator should break it into multiple issues rather than creating one oversized ticket. Set the estimate field to the corresponding numeric value.
 
 ## Priority Inference
 

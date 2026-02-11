@@ -18,7 +18,7 @@ You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents v
   - The **domain name**
 - Read the shared context file for domain context and content principles
 - Read `decisions.md` from the context directory — this is your primary input
-- Read `clarifications.md` from the context directory — these are the answered clarification questions
+- Read `clarifications.md` from the context directory — these are the answered clarification questions. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
 
 ## Before You Start
 

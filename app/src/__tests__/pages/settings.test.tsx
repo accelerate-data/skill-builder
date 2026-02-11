@@ -144,7 +144,7 @@ describe("SettingsPage", () => {
     });
   });
 
-  it("calls invoke with save_settings when Save button is clicked", async () => {
+  it("auto-saves when debug mode toggle is changed", async () => {
     const user = userEvent.setup();
     setupDefaultMocks(populatedSettings);
     render(<SettingsPage />);
@@ -153,13 +153,79 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    const saveButton = screen.getByRole("button", { name: /Save Settings/i });
-    await user.click(saveButton);
+    const debugSwitch = screen.getByRole("switch", { name: /Auto-answer with recommendations/i });
+    await user.click(debugSwitch);
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
-        settings: populatedSettings,
+        settings: expect.objectContaining({
+          debug_mode: true,
+        }),
       });
+    });
+  });
+
+  it("auto-saves on API key blur", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks(populatedSettings);
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    const apiKeyInput = screen.getByPlaceholderText("sk-ant-...");
+    await user.clear(apiKeyInput);
+    await user.type(apiKeyInput, "sk-ant-new-key");
+    await user.tab(); // blur the input
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
+        settings: expect.objectContaining({
+          anthropic_api_key: "sk-ant-new-key",
+        }),
+      });
+    });
+  });
+
+  it("shows Saved indicator after auto-save", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks(populatedSettings);
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    const debugSwitch = screen.getByRole("switch", { name: /Auto-answer with recommendations/i });
+    await user.click(debugSwitch);
+
+    await waitFor(() => {
+      expect(screen.getByText("Saved")).toBeInTheDocument();
+    });
+  });
+
+  it("shows error toast on auto-save failure", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("sonner");
+    setupDefaultMocks(populatedSettings);
+    // Override save_settings to fail
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "save_settings") return Promise.reject("DB error");
+      if (cmd === "get_settings") return Promise.resolve(populatedSettings);
+      return Promise.resolve(undefined);
+    });
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    const debugSwitch = screen.getByRole("switch", { name: /Auto-answer with recommendations/i });
+    await user.click(debugSwitch);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Failed to save: DB error");
     });
   });
 
@@ -234,22 +300,23 @@ describe("SettingsPage", () => {
     expect(clearButton).toBeDisabled();
   });
 
-  it("includes skills_path in save_settings payload", async () => {
+  it("includes skills_path in auto-save payload when browsing", async () => {
     const user = userEvent.setup();
     setupDefaultMocks({ ...populatedSettings, skills_path: "/output" });
+    vi.mocked(mockOpen).mockResolvedValueOnce("/new/skills/path");
     render(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    const saveButton = screen.getByRole("button", { name: /Save Settings/i });
-    await user.click(saveButton);
+    const browseButton = screen.getByRole("button", { name: /Browse/i });
+    await user.click(browseButton);
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
         settings: expect.objectContaining({
-          skills_path: "/output",
+          skills_path: "/new/skills/path",
         }),
       });
     });
