@@ -1,131 +1,123 @@
 ---
 name: implement-linear-issue
 description: |
-  Implement a Linear issue end-to-end: set up a worktree, plan with parallelization, execute via agent teams,
-  update the Linear issue with progress, code review, run tests, and move to review.
-  Use this skill whenever the user wants to implement, build, fix, or work on a Linear issue.
-  Trigger on phrases like "implement VD-123", "work on VD-123", "build VD-123", "fix VD-123",
-  "/implement-issue", or any reference to picking up and executing a Linear issue.
+  Implements a Linear issue end-to-end: worktree setup, dependency-aware planning, parallel execution
+  via agent teams, code review, targeted testing, PR creation, and Linear status management.
+  Triggers on "implement VD-123", "work on VD-123", "build VD-123", "fix VD-123", or "/implement-issue".
 compatibility:
   requires:
-    - Task (sub-agent spawning — critical)
+    - Task (sub-agent spawning)
     - AskUserQuestion
-    - Bash (git worktree, test runners)
+    - Bash (git worktree, test runners, gh CLI)
     - Read, Grep, Glob
-    - Linear MCP (issue read/update, status transitions)
+    - Linear MCP (linear-server:get_issue, linear-server:update_issue)
 ---
 
 # Implement Linear Issue
 
-You are a **coordinator**. You take a Linear issue and drive it to completion using agent teams. You do NOT write code yourself.
+You are a **coordinator**. You do NOT write code, read code in detail, or run tests yourself. You plan, decompose, launch sub-agents via `Task`, monitor, and relay results.
 
-## Core Principle: You Are Only a Coordinator
+## Autonomy
 
-**You do NOT write code, read code in detail, run tests, or make implementation decisions yourself.** You:
-1. Plan and decompose work
-2. Launch agent teams via `Task` tool
-3. Check status of teams
-4. Make coordination decisions (ordering, dependencies, re-planning)
-5. Do a final code review (delegated to a review sub-agent)
-6. Relay results to the user
-
-Everything else is done by sub-agents. This preserves your context for orchestration across the full lifecycle.
-
-## Act Autonomously
-
-Do not ask for permission to do non-destructive work. The only things that need user confirmation:
-- The implementation plan (before execution begins)
-- Any scope changes discovered during implementation
+Do not ask permission for non-destructive work. Only confirm with the user:
+- The implementation plan (before execution)
+- Scope changes discovered during implementation
 - Final status before moving to review
 
-Everything else — worktree setup, Linear status updates, launching teams, running tests — just do it.
+## Progress Checklist
 
-## Full Workflow
+Copy and track:
+```
+- [ ] Phase 1: Setup (fetch, assign, worktree)
+- [ ] Phase 2: Assess complexity
+- [ ] Phase 3: Plan (or fast path)
+- [ ] Phase 4: Execute
+- [ ] Phase 5: Code review
+- [ ] Phase 6: Test
+- [ ] Phase 7: Create PR
+- [ ] Phase 8: Verify ACs
+- [ ] Phase 9: Complete
+```
+
+## Workflow
 
 ### Phase 1: Setup
 
-1. **Fetch the issue** from Linear via a sub-agent. Get: issue ID, title, description, requirements, acceptance criteria, estimate, labels, **and branch name**.
-2. **Create a git worktree** using the branch name from Linear:
-   ```
-   git worktree add <branch-name> -b <branch-name>
-   ```
-3. **Move the issue to In Progress** in Linear via a sub-agent.
+1. Fetch the issue via `linear-server:get_issue`. Get: ID, title, description, requirements, acceptance criteria, estimate, branch name.
+2. **Assign to me + move to In Progress** in a single `linear-server:update_issue` call (`assignee: "me"`, `state: "In Progress"`).
+3. **Create a git worktree** at `../worktrees/<branchName>` using the `branchName` from the issue. Reuse if it already exists. All subsequent sub-agents work in this worktree path, NOT the main repo.
 
-### Phase 2: Plan
+### Phase 2: Assess Complexity
 
-Read `references/planning-flow.md` for detailed planning workflow.
+Evaluate whether to use the fast path or full flow. See [fast-path.md](references/fast-path.md).
 
-**Summary:**
-1. Spawn a **planning sub-agent** to analyze the issue requirements against the codebase
-2. The planner returns a dependency-aware execution plan with parallelizable work streams
-3. Present the plan to the user for approval
-4. User can adjust, then you execute
+- **XS/S estimate** + straightforward description → fast path (skip to Phase 5 after single agent completes)
+- **M or larger**, or multi-component → full flow (Phase 3+)
+- User can override in either direction.
 
-The plan must identify:
-- Independent work streams that can run in parallel
-- Dependencies between tasks (what blocks what)
-- Which tasks need tests
-- Estimated sequence and parallelism
+### Phase 3: Plan
 
-### Phase 3: Execute
+See [planning-flow.md](references/planning-flow.md).
 
-Read `references/agent-team-guidelines.md` for how to instruct agent teams.
+Spawn a planning agent. It returns work streams, dependencies, AC mapping, and risks. Present the plan to the user for approval.
 
-**Summary:**
-1. Launch agent teams for independent work streams **in parallel**
-2. Each team lead is itself a coordinator — it plans how to parallelize within its scope and launches its own sub-agents
-3. Teams send **summary status only** — not detailed logs
-4. Teams update the Linear issue with implementation progress (see `references/linear-updates.md`)
-5. Teams also write tests alongside code changes
-6. Monitor teams, handle failures, re-plan if needed
+### Phase 4: Execute
 
-### Phase 4: Code Review
+See [agent-team-guidelines.md](references/agent-team-guidelines.md).
 
-Read `references/review-flow.md` for the full review process.
+1. Launch parallel work streams via `Task` tool. **Include in each team lead's prompt**: the issue ID, the exact AC text their stream owns (from the plan's AC mapping), and the instruction to check them off on Linear after tests pass.
+2. Each stream commits + pushes before reporting back
+3. **Each coding agent checks off its ACs on Linear** after tests pass via `linear-server:update_issue`
+4. Coordinator consolidates status → single Linear update at checkpoints (implementation updates section). See [linear-updates.md](references/linear-updates.md).
 
-**Summary:**
-1. Spawn a **code review sub-agent** to review all changes
-2. If issues found → spawn fix sub-agents, then re-review
-3. Verify tests exist for the changes — if missing, spawn a sub-agent to add them
-4. Add final comments to the implementation updates section in the Linear issue
+### Phase 5: Code Review
 
-### Phase 5: Test
+See [review-flow.md](references/review-flow.md).
 
-1. Spawn a sub-agent to run **all** frontend and backend tests in the worktree
-2. If tests fail → spawn fix sub-agents targeting the failures, then re-run
-3. Repeat until green (max 3 attempts, then escalate to user)
+Spawn a `feature-dev:code-reviewer` sub-agent. Fix high/medium issues, re-review. Max 2 cycles.
 
-### Phase 6: Verify Acceptance Criteria
+### Phase 6: Test
 
-Before moving to Review, verify every acceptance criterion in the Linear issue is met by the implementation.
+Run only relevant tests, not the full suite. Fix failures and re-run. Max 3 attempts, then escalate to user.
 
-1. **Fetch the issue** from Linear (via sub-agent) to get the current acceptance criteria
-2. **Compare each criterion** against the code changes, test coverage, and behavior
-3. **Report a checklist** to the user: each criterion marked met/unmet with brief justification
-4. If any criteria are unmet:
-   - If it's a gap in implementation → spawn fix sub-agents, then re-verify
-   - If the criterion itself is outdated (e.g., user requested a change during implementation) → update the criterion in Linear to match the agreed behavior
-5. **Only proceed to Phase 7 if ALL criteria are met.** If criteria remain unmet after fix attempts:
-   - **Keep the issue In Progress** — do NOT move to Review
-   - Add an implementation note to the Linear issue listing: what was completed, what is still unmet, and concrete next steps to close the gaps
-   - Report to the user which criteria are blocked and why
+### Phase 7: Create PR
 
-### Phase 7: Complete
+Create a PR and link it to the Linear issue. See [git-and-pr.md](references/git-and-pr.md) for the PR body template. **Do NOT remove the worktree** — user tests manually on it.
 
-Only enter this phase when **all acceptance criteria are verified met**.
+### Phase 8: Verify Acceptance Criteria
 
-1. **Update acceptance criteria** in the Linear issue — check off all verified items
-2. **Update the Linear issue** with final implementation notes
-3. **Move the issue to Review** in Linear
-4. Report final status to the user: what was done, test results, any notes for reviewer
+Coding agents checked off ACs incrementally in Phase 4. This is a **completeness check**:
 
-## Sub-agent Guidelines
+1. Fetch the issue from Linear
+2. Verify all ACs are checked off
+3. If any missed → spawn fix agent, then re-verify
+4. If ACs remain unmet after fixes → keep In Progress, report to user with details
 
-When spawning sub-agents via `Task`:
-- Use `subagent_type: "general-purpose"` for all implementation work
-- Always tell the sub-agent the **worktree path** (not the main repo path)
-- Tell sub-agents to be **concise** — summary status only, not detailed exploration logs
-- Spawn independent sub-agents in the **same message** for parallelism
-- Sub-agents CAN and SHOULD spawn their own sub-agents for parallelism within their scope
-- Every sub-agent that makes code changes must also consider whether tests are needed
-- Every sub-agent must update the Linear issue at completion (see `references/linear-updates.md`)
+### Phase 9: Complete
+
+Only enter when all ACs are verified.
+
+1. Write final Implementation Updates to Linear (include PR URL)
+2. Move issue to Review via `linear-server:update_issue`
+3. Report to user: what was done, PR URL, worktree path (for manual testing)
+4. **Do NOT remove the worktree**
+
+## Sub-agent Type Selection
+
+| Task | subagent_type | model |
+|---|---|---|
+| Planning | feature-dev:code-architect | sonnet |
+| Codebase exploration | Explore | default |
+| Implementation | general-purpose | default |
+| Code review | feature-dev:code-reviewer | default |
+| Linear updates | general-purpose | haiku |
+
+## Rules for All Sub-agents
+
+- Always provide the **worktree path** (not main repo path)
+- **Concise summaries only** — no detailed exploration logs
+- **Commit + push** before reporting completion
+- **Check off your ACs on Linear** after tests pass
+- Implementation Updates section → coordinator-only
+- Sub-agents can spawn their own sub-agents for parallelism
+- **Run only relevant tests** for files touched, not the full suite

@@ -1,94 +1,65 @@
 # Linear Issue Updates During Implementation
 
-This reference covers how to update the Linear issue as implementation progresses.
-
 ## Core Rules
 
-1. **Rewrite, don't append.** The implementation updates section is a living snapshot of current state — not an audit log. Every update overwrites the previous one so someone picking up the issue sees the current situation immediately.
+1. **Rewrite, don't append.** The implementation updates section is a living snapshot — not an audit log. Every update overwrites the previous one.
 
-2. **Never remove acceptance criteria.** Acceptance criteria from the original issue are sacred. You can:
-   - Check them off (mark as done)
-   - Add new ones discovered during implementation
-   - Never delete or modify existing ones
+2. **Never remove acceptance criteria.** You can check them off or add new ones with `(NEW)` prefix. Never delete or modify existing ones.
 
-3. **Update at regular stages.** Not after every commit, but at meaningful checkpoints:
-   - After each work stream completes
-   - When a blocker is hit
-   - After code review
-   - After tests pass
-   - Before moving to review
+3. **Update at meaningful checkpoints.** After each stream completes, when blocked, after code review, after tests pass, before moving to review.
+
+4. **Split update responsibilities.** Coding agents check off ACs directly after their tests pass. The coordinator owns the Implementation Updates section. This prevents race conditions — ACs are safe for parallel updates (each agent checks off different items), while the main status section has a single writer.
 
 ## Update Structure
-
-The implementation updates section should always follow this structure:
 
 ```markdown
 ## Implementation Updates
 
 **Status**: [In Progress / Blocked / Code Review / Testing / Ready for Review]
 **Branch**: [branch name]
-**Worktree**: [worktree path, for pickup by another agent]
+**PR**: [PR URL, once created]
+**Worktree**: [worktree path]
 
 ### Completed
-- [Brief description of what's been done]
-- [Each item is 1 line, not a paragraph]
+- [Brief, 1-line items]
 
 ### In Progress
-- [What's currently being worked on]
-- [If blocked, say why]
+- [What's being worked on, blockers if any]
 
 ### Remaining
-- [What's left to do]
+- [What's left]
 
 ### Tests
 - [Test areas covered]
-- [Any test gaps known]
 
-### Notes for Reviewer / Next Agent
-- [Key decisions made during implementation]
-- [Anything non-obvious about the approach]
-- [Known limitations or follow-up work]
+### Notes for Reviewer
+- [Key decisions, non-obvious choices, follow-up work]
 ```
 
-## Sub-agent Update Prompt
+## Coordinator's Update Prompt
 
-When telling sub-agents to update the Linear issue, include this in their prompt:
+The coordinator spawns a sub-agent to write implementation updates. Provide it with:
+- The issue ID
+- Consolidated status from all team reports
+- The update structure above
 
-```
-After completing your work, update the Linear issue [issue ID] implementation updates section.
-
-Rules:
-- REWRITE the entire Implementation Updates section — do not append to it
-- Read the current section first, preserve anything still relevant, update what's changed
-- NEVER remove or modify acceptance criteria — only add new ones or check off completed ones
-- Keep it concise — this is a status snapshot, not a detailed log
-- Someone picking up this issue tomorrow should know exactly where things stand
-
-Use this structure:
-[paste the update structure above]
-```
+The sub-agent reads the current issue first, preserves relevant content, rewrites the Implementation Updates section.
 
 ## When to Update
 
-| Stage | Who Updates | What Changes |
-|-------|-------------|--------------|
-| Stream completes | Team lead for that stream | Add to Completed, remove from In Progress |
-| Blocker hit | Team lead that hit it | Status → Blocked, explain in In Progress |
-| Code review done | Review sub-agent | Add review notes, update Status |
-| Tests pass | Test sub-agent | Update Tests section, Status → Ready for Review |
-| Final | Coordinator (via sub-agent) | Clean up, add reviewer notes, finalize |
+| Stage | Who Writes Implementation Updates | Who Checks Off ACs |
+|---|---|---|
+| Stream completes | Coordinator (via sub-agent) | Coding agent for that stream |
+| Blocker hit | Coordinator (via sub-agent) | — |
+| Code review done | Coordinator (via sub-agent) | — |
+| Tests pass | Coordinator (via sub-agent) | — |
+| PR created | Coordinator (via sub-agent) | — |
+| Final | Coordinator (via sub-agent) | Coordinator verifies all checked |
 
-## Acceptance Criteria Handling
-
-The acceptance criteria in the original issue are the contract. During implementation:
+## Acceptance Criteria Format
 
 ```markdown
-## Acceptance Criteria
-- [x] Users can see conversation history with pagination ← checked off
-- [ ] Error states show user-friendly messages ← still pending
-- [ ] API returns proper status codes for edge cases ← still pending
-- [x] Search results update in real-time as user types ← checked off
-- [ ] (NEW) Pagination handles empty result sets gracefully ← discovered during implementation
+- [x] Verified AC ← checked off by coding agent after tests pass
+- [ ] Pending AC ← not yet addressed
+- [ ] (NEW) Discovered AC ← found during implementation
 ```
-
-The `(NEW)` prefix is optional but helpful to distinguish original vs. discovered criteria.
