@@ -1,8 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   parseAgentResponseType,
-  extractFollowUpSection,
-  extractRoundNumber,
   countDecisions,
 } from "@/lib/reasoning-parser";
 
@@ -69,65 +67,6 @@ describe("parseAgentResponseType", () => {
 
   it("returns unknown for empty text", () => {
     expect(parseAgentResponseType("")).toBe("unknown");
-  });
-});
-
-describe("extractFollowUpSection", () => {
-  it("extracts questions after heading", () => {
-    const text = [
-      "## Reasoning Summary",
-      "Some analysis here.",
-      "## Follow-up Questions",
-      "### Q1: What about edge cases?",
-      "**Question**: How should we handle...",
-      "### Q2: Data format?",
-      "**Question**: What format...",
-    ].join("\n");
-
-    const result = extractFollowUpSection(text);
-    expect(result).toContain("Q1: What about edge cases?");
-    expect(result).toContain("Q2: Data format?");
-  });
-
-  it("extracts until next top-level heading", () => {
-    const text = [
-      "## Follow-up Questions — Round 2",
-      "### Q1: Something?",
-      "## Next Steps",
-      "Proceed after answering.",
-    ].join("\n");
-
-    const result = extractFollowUpSection(text);
-    expect(result).toContain("Q1: Something?");
-    expect(result).not.toContain("Next Steps");
-  });
-
-  it("returns null when no follow-up section", () => {
-    expect(extractFollowUpSection("Just some regular text.")).toBeNull();
-  });
-
-  it("handles h3 follow-up heading", () => {
-    const text = "### Follow-up questions\n- Question 1?\n- Question 2?";
-    const result = extractFollowUpSection(text);
-    expect(result).toContain("Question 1?");
-  });
-});
-
-describe("extractRoundNumber", () => {
-  it("extracts round from heading", () => {
-    expect(
-      extractRoundNumber("## Follow-up Questions — Round 2"),
-    ).toBe(2);
-  });
-
-  it("extracts round from body text", () => {
-    expect(
-      extractRoundNumber("This is round 3 of the analysis."),
-    ).toBe(3);
-  });
-
-  it("returns null when no round mentioned", () => {
-    expect(extractRoundNumber("Some text without round info.")).toBeNull();
   });
 });
 

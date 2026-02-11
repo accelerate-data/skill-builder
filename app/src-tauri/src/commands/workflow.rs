@@ -602,6 +602,64 @@ pub async fn run_review_step(
     Ok(agent_id)
 }
 
+/// Core logic for validating decisions.md existence — testable without tauri::State.
+/// Checks in order: skill output dir (skillsPath), workspace dir, SQLite artifact.
+/// Returns Ok(()) if found, Err with a clear message if missing.
+fn validate_decisions_exist_inner(
+    skill_name: &str,
+    workspace_path: &str,
+    skills_path: Option<&str>,
+    conn: &rusqlite::Connection,
+) -> Result<(), String> {
+    // 1. Check skill output directory (primary per VD-405)
+    if let Some(sp) = skills_path {
+        let path = Path::new(sp).join(skill_name).join("context").join("decisions.md");
+        if path.exists() {
+            let content = std::fs::read_to_string(&path).unwrap_or_default();
+            if !content.trim().is_empty() {
+                return Ok(());
+            }
+        }
+    }
+
+    // 2. Check workspace directory (fallback)
+    let workspace_decisions = Path::new(workspace_path)
+        .join(skill_name)
+        .join("context")
+        .join("decisions.md");
+    if workspace_decisions.exists() {
+        let content = std::fs::read_to_string(&workspace_decisions).unwrap_or_default();
+        if !content.trim().is_empty() {
+            return Ok(());
+        }
+    }
+
+    // 3. Check SQLite artifact (last resort)
+    if let Ok(Some(artifact)) = crate::db::get_artifact_by_path(conn, skill_name, "context/decisions.md") {
+        if !artifact.content.trim().is_empty() {
+            return Ok(());
+        }
+    }
+
+    Err(
+        "Cannot start Build step: decisions.md was not found. \
+         The Reasoning step (step 5) must create a decisions file before the Build step can run. \
+         Please re-run the Reasoning step first."
+            .to_string(),
+    )
+}
+
+/// Tauri command wrapper for decisions validation.
+fn validate_decisions_exist(
+    skill_name: &str,
+    workspace_path: &str,
+    skills_path: Option<&str>,
+    db: &tauri::State<'_, Db>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    validate_decisions_exist_inner(skill_name, workspace_path, skills_path, &conn)
+}
+
 #[tauri::command]
 pub async fn run_workflow_step(
     app: tauri::AppHandle,
@@ -636,6 +694,12 @@ pub async fn run_workflow_step(
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         reconcile_disk_artifacts(&conn, &skill_name, &workspace_path)?;
         stage_artifacts(&conn, &skill_name, &workspace_path, skills_path.as_deref())?;
+    }
+
+    // Validate that prerequisite files exist before starting certain steps.
+    // Step 5 (Build) requires decisions.md from step 4 (Reasoning).
+    if step_id == 5 {
+        validate_decisions_exist(&skill_name, &workspace_path, skills_path.as_deref(), &db)?;
     }
 
     let step = get_step_config(step_id)?;
@@ -2073,5 +2137,156 @@ mod tests {
         assert!(!names.iter().any(|n| n.starts_with("context/")));
         assert!(!names.iter().any(|n| n.contains("clarifications")));
         assert!(!names.iter().any(|n| n.contains("decisions")));
+    }
+
+    // --- VD-403: validate_decisions_exist_inner tests ---
+
+    #[test]
+    fn test_validate_decisions_missing_everywhere() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
+
+        let conn = create_test_conn();
+        let result = validate_decisions_exist_inner(
+            "my-skill",
+            workspace.to_str().unwrap(),
+            None,
+            &conn,
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("decisions.md was not found"));
+    }
+
+    #[test]
+    fn test_validate_decisions_found_in_skills_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let skills = tmp.path().join("skills");
+        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
+        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
+        std::fs::write(
+            skills.join("my-skill").join("context").join("decisions.md"),
+            "# Decisions\n\nD1: Use periodic recognition",
+        ).unwrap();
+
+        let conn = create_test_conn();
+        let result = validate_decisions_exist_inner(
+            "my-skill",
+            workspace.to_str().unwrap(),
+            Some(skills.to_str().unwrap()),
+            &conn,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_decisions_found_in_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
+        std::fs::write(
+            workspace.join("my-skill").join("context").join("decisions.md"),
+            "# Decisions\n\nD1: Use periodic recognition",
+        ).unwrap();
+
+        let conn = create_test_conn();
+        let result = validate_decisions_exist_inner(
+            "my-skill",
+            workspace.to_str().unwrap(),
+            None,
+            &conn,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_decisions_found_in_sqlite() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
+
+        let conn = create_test_conn();
+        crate::db::save_artifact(
+            &conn, "my-skill", 4,
+            "context/decisions.md", "# Decisions\n\nD1: Use periodic recognition",
+        ).unwrap();
+
+        let result = validate_decisions_exist_inner(
+            "my-skill",
+            workspace.to_str().unwrap(),
+            None,
+            &conn,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_decisions_rejects_empty_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
+        // Write an empty decisions file
+        std::fs::write(
+            workspace.join("my-skill").join("context").join("decisions.md"),
+            "   \n\n  ",
+        ).unwrap();
+
+        let conn = create_test_conn();
+        let result = validate_decisions_exist_inner(
+            "my-skill",
+            workspace.to_str().unwrap(),
+            None,
+            &conn,
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("decisions.md was not found"));
+    }
+
+    #[test]
+    fn test_validate_decisions_rejects_empty_sqlite_artifact() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
+
+        let conn = create_test_conn();
+        crate::db::save_artifact(
+            &conn, "my-skill", 4,
+            "context/decisions.md", "  \n  ",
+        ).unwrap();
+
+        let result = validate_decisions_exist_inner(
+            "my-skill",
+            workspace.to_str().unwrap(),
+            None,
+            &conn,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_decisions_priority_order() {
+        // skills_path takes priority over workspace, which takes priority over SQLite
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let skills = tmp.path().join("skills");
+        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
+        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
+
+        // Only write to skills_path (primary)
+        std::fs::write(
+            skills.join("my-skill").join("context").join("decisions.md"),
+            "# Decisions from skills path",
+        ).unwrap();
+        // workspace has no decisions.md, SQLite has no artifact
+
+        let conn = create_test_conn();
+        let result = validate_decisions_exist_inner(
+            "my-skill",
+            workspace.to_str().unwrap(),
+            Some(skills.to_str().unwrap()),
+            &conn,
+        );
+        assert!(result.is_ok());
     }
 }

@@ -84,14 +84,11 @@ pub fn reconcile_on_startup(
                 if name == "agents" || name == "references" || name == ".claude" {
                     continue;
                 }
-                // Only count directories that look like skill working dirs
-                // (have context/ or workflow.md or workflow-state.md)
-                let has_context = path.join("context").is_dir();
-                let has_workflow = path.join("workflow.md").exists()
-                    || path.join("workflow-state.md").exists();
-                if has_context || has_workflow {
-                    disk_dirs.insert(name);
-                }
+                // Any non-infrastructure subdirectory of the workspace is
+                // treated as a skill working directory. The workspace path
+                // itself is a DB setting, so every subfolder here is assumed
+                // to belong to a skill.
+                disk_dirs.insert(name);
             }
         }
     }
@@ -147,7 +144,7 @@ pub fn reconcile_on_startup(
         if !db_names.contains(name) {
             let disk_step_opt = detect_furthest_step(workspace_path, name, skills_path);
             let disk_step = disk_step_opt.map(|s| s as i32).unwrap_or(0);
-            // Try to read domain from workflow.md on disk
+            // Domain defaults to "unknown" for disk-only discoveries
             let domain = read_domain_from_disk(workspace_path, name);
             crate::db::save_workflow_run(
                 conn,
@@ -189,23 +186,10 @@ fn has_skill_output(skill_name: &str, skills_path: Option<&str>) -> bool {
     }
 }
 
-/// Try to read the domain from the workflow.md file on disk.
-fn read_domain_from_disk(workspace_path: &str, skill_name: &str) -> String {
-    let skill_dir = Path::new(workspace_path).join(skill_name);
-    for filename in &["workflow.md", "workflow-state.md"] {
-        let path = skill_dir.join(filename);
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            // Parse "- **Domain**: <value>" from the workflow file
-            for line in content.lines() {
-                if let Some(rest) = line.strip_prefix("- **Domain**:") {
-                    let domain = rest.trim();
-                    if !domain.is_empty() {
-                        return domain.to_string();
-                    }
-                }
-            }
-        }
-    }
+/// Return a default domain for disk-only skills that have no DB record.
+/// Previously this read from workflow.md, but that file no longer exists —
+/// the DB is the single source of truth for domain metadata.
+fn read_domain_from_disk(_workspace_path: &str, _skill_name: &str) -> String {
     "unknown".to_string()
 }
 
@@ -411,15 +395,10 @@ mod tests {
         assert!(path.starts_with('/'));
     }
 
-    /// Create a skill working directory on disk with a workflow.md and context/ dir.
-    fn create_skill_dir(workspace: &Path, name: &str, domain: &str) {
+    /// Create a skill working directory on disk with a context/ dir.
+    fn create_skill_dir(workspace: &Path, name: &str, _domain: &str) {
         let skill_dir = workspace.join(name);
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-        let content = format!(
-            "## Workflow State\n- **Skill name**: {}\n- **Domain**: {}\n- **Current step**: Initialization\n- **Status**: pending\n",
-            name, domain
-        );
-        std::fs::write(skill_dir.join("workflow.md"), content).unwrap();
     }
 
     /// Create step output files on disk for the given step.
@@ -456,13 +435,13 @@ mod tests {
         assert!(result.notifications[0].contains("orphan-skill"));
         assert!(result.notifications[0].contains("step 2"));
 
-        // Verify DB record was created
+        // Verify DB record was created (domain defaults to "unknown" for disk-only discoveries)
         let run = crate::db::get_workflow_run(&conn, "orphan-skill")
             .unwrap()
             .unwrap();
         assert_eq!(run.current_step, 2);
         assert_eq!(run.status, "pending");
-        assert_eq!(run.domain, "e-commerce");
+        assert_eq!(run.domain, "unknown");
     }
 
     // --- Scenario 2: DB step ahead of disk ---
@@ -717,11 +696,13 @@ mod tests {
     // --- read_domain_from_disk tests ---
 
     #[test]
-    fn test_read_domain_from_disk_exists() {
+    fn test_read_domain_from_disk_always_returns_unknown() {
+        // Domain is now always "unknown" for disk-only discoveries since
+        // workflow.md no longer exists. The DB is the source of truth.
         let tmp = tempfile::tempdir().unwrap();
         create_skill_dir(tmp.path(), "my-skill", "e-commerce analytics");
         let domain = read_domain_from_disk(tmp.path().to_str().unwrap(), "my-skill");
-        assert_eq!(domain, "e-commerce analytics");
+        assert_eq!(domain, "unknown");
     }
 
     #[test]

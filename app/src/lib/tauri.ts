@@ -52,7 +52,8 @@ export const startAgent = (
   sessionId?: string,
   skillName?: string,
   stepLabel?: string,
-) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns, sessionId, skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown" });
+  agentName?: string,
+) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns, sessionId, skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown", agentName: agentName ?? null });
 
 // --- Workflow ---
 

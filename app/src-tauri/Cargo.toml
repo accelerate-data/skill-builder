@@ -23,8 +23,6 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 tokio = { version = "1", features = ["full"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 notify = "8"
-pulldown-cmark = "0.12"
-regex = "1"
 zip = "2"
 chrono = { version = "0.4", features = ["serde"] }
 futures = "0.3"

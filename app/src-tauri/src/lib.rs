@@ -1,7 +1,6 @@
 mod agents;
 mod commands;
 mod db;
-mod markdown;
 mod types;
 
 pub use types::*;

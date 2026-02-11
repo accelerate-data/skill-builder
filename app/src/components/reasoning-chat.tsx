@@ -8,9 +8,6 @@ import {
   ChevronRight,
   ChevronDown,
   CheckCircle2,
-  Pencil,
-  ArrowRight,
-  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -27,13 +24,10 @@ import {
   captureStepArtifacts,
   getArtifactContent,
   saveArtifactContent,
+  readFile,
 } from "@/lib/tauri";
-import {
-  parseAgentResponseType,
-  extractFollowUpSection,
-  extractRoundNumber,
-  countDecisions,
-} from "@/lib/reasoning-parser";
+import { useSettingsStore } from "@/stores/settings-store";
+import { countDecisions } from "@/lib/reasoning-parser";
 import { AgentStatusHeader } from "@/components/agent-status-header";
 import { MessageItem, TurnMarker, computeMessageGroups, spacingClasses } from "@/components/agent-output-panel";
 
@@ -54,9 +48,7 @@ interface ChatMessage {
 type ReasoningPhase =
   | "not_started"
   | "agent_running"
-  | "follow_up"
-  | "summary"
-  | "gate_check"
+  | "awaiting_feedback"
   | "completed";
 
 const SESSION_ARTIFACT = "context/reasoning-session.json";
@@ -85,11 +77,6 @@ export function ReasoningChat({
   const [phase, setPhase] = useState<ReasoningPhase>("not_started");
   const [round, setRound] = useState(1);
 
-  // Action panel state
-  const [followUpText, setFollowUpText] = useState("");
-  const [showCorrections, setShowCorrections] = useState(false);
-  const [correctionText, setCorrectionText] = useState("");
-
   // Decisions panel
   const [decisionsContent, setDecisionsContent] = useState<string | null>(null);
   const [showDecisions, setShowDecisions] = useState(false);
@@ -104,7 +91,11 @@ export function ReasoningChat({
   // Stores — granular selector: only re-render when *this* agent's run changes
   const currentRun = useAgentStore((s) => currentAgentId ? s.runs[currentAgentId] : null);
   const agentStartRun = useAgentStore((s) => s.startRun);
-  const { updateStepStatus, setRunning, currentStep } = useWorkflowStore();
+  const { updateStepStatus, setRunning, currentStep, skillType } = useWorkflowStore();
+  const skillsPath = useSettingsStore((s) => s.skillsPath);
+
+  // Derive agent name so resume turns load the full agent persona (e.g., "domain-reasoning")
+  const agentName = skillType ? `${skillType}-reasoning` : undefined;
 
   const isAgentRunning = currentRun?.status === "running";
 
@@ -147,12 +138,20 @@ export function ReasoningChat({
           if (state.messages?.length > 0) {
             setMessages(state.messages);
             setSessionId(state.sessionId);
-            // Don't restore agent_running — it's not running anymore
-            setPhase(
-              state.phase === "agent_running"
-                ? "summary"
-                : state.phase,
-            );
+            // Don't restore agent_running — it's not running anymore.
+            // Map old phase names to new simplified phases for backward compatibility.
+            let restoredPhase: ReasoningPhase;
+            if (state.phase === "agent_running") {
+              restoredPhase = "awaiting_feedback";
+            } else if (state.phase === "completed") {
+              restoredPhase = "completed";
+            } else if (state.phase === "not_started") {
+              restoredPhase = "not_started";
+            } else {
+              // "summary", "follow_up", "gate_check", "awaiting_feedback" all map to awaiting_feedback
+              restoredPhase = "awaiting_feedback";
+            }
+            setPhase(restoredPhase);
             setRound(state.round ?? 1);
           }
         } catch {
@@ -221,34 +220,9 @@ export function ReasoningChat({
         const newMsg: ChatMessage = { role: "agent", content: agentText, agentId: currentAgentId };
         setMessages((prev) => {
           const updated = [...prev, newMsg];
-
-          // Classify response and transition phase
-          const responseType = parseAgentResponseType(agentText);
-          let newPhase: ReasoningPhase;
-          let newRound = round;
-
-          switch (responseType) {
-            case "follow_up": {
-              const extracted = extractFollowUpSection(agentText);
-              setFollowUpText(extracted ?? "");
-              const detectedRound = extractRoundNumber(agentText);
-              if (detectedRound) {
-                newRound = detectedRound;
-                setRound(detectedRound);
-              }
-              newPhase = "follow_up";
-              break;
-            }
-            case "gate_check":
-              newPhase = "gate_check";
-              break;
-            default:
-              newPhase = "summary";
-              break;
-          }
-
+          const newPhase: ReasoningPhase = "awaiting_feedback";
           setPhase(newPhase);
-          saveSession(updated, sid, newPhase, newRound);
+          saveSession(updated, sid, newPhase, round);
           return updated;
         });
       }
@@ -257,7 +231,7 @@ export function ReasoningChat({
       loadDecisions();
     } else if (currentRun.status === "error") {
       const errorMsg = currentRun.messages.find((m) => m.type === "error");
-      const newPhase = messages.length > 0 ? "summary" : "not_started";
+      const newPhase: ReasoningPhase = messages.length > 0 ? "awaiting_feedback" : "not_started";
       setMessages((prev) => {
         const updated = [
           ...prev,
@@ -288,11 +262,20 @@ export function ReasoningChat({
       setRunning(true);
       setPhase("agent_running");
 
+      // On resume turns, prepend context about the decisions.md output requirement
+      // so the agent always knows to write it, even if context was lost between sessions.
+      const contextPrefix = sessionId
+        ? `[Context reminder: You are the reasoning agent for skill "${skillName}" in domain "${domain}". ` +
+          `You MUST write your decisions to ${skillName}/context/decisions.md before completing. ` +
+          `The workspace is at ${workspacePath}.]\n\n`
+        : "";
+      const fullPrompt = contextPrefix + prompt;
+
       // CWD must match runWorkflowStep (workspace root, not skill dir)
       // so the agent resolves <skill-name>/context/ paths correctly
       const agentId = await startAgent(
         `reasoning-${Date.now()}`,
-        prompt,
+        fullPrompt,
         "opus",
         workspacePath,
         ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"],
@@ -300,6 +283,7 @@ export function ReasoningChat({
         sessionId,
         skillName,
         "step4-reasoning",
+        agentName,
       );
 
       agentStartRun(agentId, "opus");
@@ -307,7 +291,7 @@ export function ReasoningChat({
     } catch (err) {
       updateStepStatus(currentStep, "error");
       setRunning(false);
-      setPhase("summary");
+      setPhase("awaiting_feedback");
       toast.error(
         `Failed to start reasoning agent: ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -337,42 +321,53 @@ export function ReasoningChat({
     }
   };
 
-  const handleSubmitFollowUps = () => {
-    const text = followUpText.trim();
-    if (!text || isAgentRunning) return;
-
-    const message = `Here are my answers to the follow-up questions:\n\n${text}\n\nPlease analyze these responses and continue the reasoning process.`;
-    setMessages((prev) => [...prev, { role: "user", content: message }]);
-    setFollowUpText("");
-    setRound((prev) => prev + 1);
-    launchResumeAgent(message);
-  };
-
-  const handleConfirmSummary = () => {
-    const message =
-      "Confirmed. Please update decisions.md and check if there are any remaining follow-up questions. If not, proceed to the gate check.";
-    setMessages((prev) => [...prev, { role: "user", content: message }]);
-    setShowCorrections(false);
-    setCorrectionText("");
-    launchResumeAgent(message);
-  };
-
-  const handleSubmitCorrections = () => {
-    const text = correctionText.trim();
-    if (!text || isAgentRunning) return;
-
-    const message = `I have corrections to the reasoning summary:\n\n${text}\n\nPlease address these corrections, update your analysis, and check for remaining questions.`;
-    setMessages((prev) => [...prev, { role: "user", content: message }]);
-    setShowCorrections(false);
-    setCorrectionText("");
-    launchResumeAgent(message);
-  };
-
-  const handleProceedToBuild = async () => {
+  const handleCompleteStep = async () => {
     try {
       await captureStepArtifacts(skillName, 4, workspacePath);
     } catch {
       // Best-effort
+    }
+
+    // Validate that decisions.md was actually created before marking step complete.
+    // Check in order: skillsPath, workspacePath, SQLite artifact.
+    let decisionsFound = false;
+
+    // 1. Check skill output directory (primary per VD-405)
+    if (skillsPath) {
+      try {
+        const content = await readFile(`${skillsPath}/${skillName}/context/decisions.md`);
+        if (content && content.trim().length > 0) decisionsFound = true;
+      } catch {
+        // File doesn't exist there
+      }
+    }
+
+    // 2. Check workspace directory (fallback)
+    if (!decisionsFound) {
+      try {
+        const content = await readFile(`${workspacePath}/${skillName}/context/decisions.md`);
+        if (content && content.trim().length > 0) decisionsFound = true;
+      } catch {
+        // File doesn't exist there
+      }
+    }
+
+    // 3. Check SQLite artifact (last resort)
+    if (!decisionsFound) {
+      try {
+        const artifact = await getArtifactContent(skillName, "context/decisions.md");
+        if (artifact?.content && artifact.content.trim().length > 0) decisionsFound = true;
+      } catch {
+        // No artifact
+      }
+    }
+
+    if (!decisionsFound) {
+      toast.error(
+        "Decisions file was not created. The reasoning agent did not save decisions.md. " +
+        "Please send feedback to the agent asking it to write decisions before completing.",
+      );
+      return;
     }
 
     setPhase("completed");
@@ -386,14 +381,14 @@ export function ReasoningChat({
     }
   };
 
-  // Free-form send (escape hatch)
+  // Free-form send — primary interaction method
   const handleSend = () => {
     const text = userInput.trim();
     if (!text || isAgentRunning) return;
 
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     setUserInput("");
-    setShowCorrections(false);
+    setRound((prev) => prev + 1);
     launchResumeAgent(text);
   };
 
@@ -444,97 +439,31 @@ export function ReasoningChat({
     );
   }
 
-  // --- Action panels (inline after last agent message) ---
+  // --- Action panel (inline after last agent message) ---
 
   const renderActionPanel = () => {
     if (phase === "agent_running") return null;
 
-    if (phase === "follow_up") {
-      return (
-        <Card className="border-amber-500/30 bg-amber-500/5 p-4">
-          <div className="mb-3 flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-400">
-            <FileText className="size-4" />
-            Follow-up Questions {round > 1 && `\u2014 Round ${round}`}
-          </div>
-          <Textarea
-            value={followUpText}
-            onChange={(e) => setFollowUpText(e.target.value)}
-            placeholder="Add your answers below each question..."
-            className="mb-3 min-h-[120px] max-h-[300px] resize-y font-mono text-sm"
-            rows={6}
-          />
-          <div className="flex justify-end">
-            <Button
-              onClick={handleSubmitFollowUps}
-              disabled={!followUpText.trim() || isAgentRunning}
-              size="sm"
-            >
-              <ArrowRight className="size-3.5" />
-              Submit Answers
-            </Button>
-          </div>
-        </Card>
-      );
-    }
-
-    if (phase === "summary") {
+    if (phase === "awaiting_feedback") {
       return (
         <Card className="border-blue-500/30 bg-blue-500/5 p-4">
           <div className="mb-3 flex items-center gap-2 text-sm font-medium text-blue-700 dark:text-blue-400">
             <Brain className="size-4" />
-            Review the reasoning summary above
+            Review the decisions above. Provide feedback or complete the step.
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={handleConfirmSummary} disabled={isAgentRunning} size="sm">
-              <CheckCircle2 className="size-3.5" />
-              Confirm Reasoning
-            </Button>
             <Button
-              variant="outline"
-              onClick={() => setShowCorrections(!showCorrections)}
+              onClick={handleCompleteStep}
               disabled={isAgentRunning}
               size="sm"
             >
-              <Pencil className="size-3.5" />
-              Add Corrections
+              <CheckCircle2 className="size-3.5" />
+              Complete Step
             </Button>
           </div>
-          {showCorrections && (
-            <div className="mt-3">
-              <Textarea
-                value={correctionText}
-                onChange={(e) => setCorrectionText(e.target.value)}
-                placeholder="Describe your corrections or additional context..."
-                className="mb-2 min-h-[80px] max-h-[200px] resize-y text-sm"
-                rows={3}
-              />
-              <div className="flex justify-end">
-                <Button
-                  onClick={handleSubmitCorrections}
-                  disabled={!correctionText.trim() || isAgentRunning}
-                  size="sm"
-                >
-                  <Send className="size-3.5" />
-                  Send Corrections
-                </Button>
-              </div>
-            </div>
-          )}
-        </Card>
-      );
-    }
-
-    if (phase === "gate_check") {
-      return (
-        <Card className="border-green-500/30 bg-green-500/5 p-4">
-          <div className="mb-3 flex items-center gap-2 text-sm font-medium text-green-700 dark:text-green-400">
-            <CheckCircle2 className="size-4" />
-            All clarifications resolved. Decisions are logged.
-          </div>
-          <Button onClick={handleProceedToBuild} disabled={isAgentRunning} size="sm">
-            <ArrowRight className="size-3.5" />
-            Proceed to Build
-          </Button>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Use the input below to request revisions. Click "Complete Step" when satisfied.
+          </p>
         </Card>
       );
     }
@@ -653,7 +582,7 @@ export function ReasoningChat({
       {/* Decisions panel (collapsible) */}
       {renderDecisionsPanel()}
 
-      {/* Input area (always available as escape hatch) */}
+      {/* Input area — primary way to give feedback */}
       <div className="border-t bg-background p-4">
         <div className="flex items-end gap-2">
           <Textarea
@@ -664,7 +593,9 @@ export function ReasoningChat({
             placeholder={
               isAgentRunning
                 ? "Waiting for agent response..."
-                : "Type a message to override the flow... (Enter to send)"
+                : phase === "awaiting_feedback"
+                  ? "Provide feedback or request revisions... (Enter to send)"
+                  : "Type a message... (Enter to send)"
             }
             disabled={isAgentRunning}
             className="min-h-[60px] max-h-[160px] resize-none"

@@ -51,7 +51,6 @@ Agents run via the **Claude Agent SDK** in a Node.js sidecar process. This provi
 ```
 <repo>/
   <skill-name>/
-    workflow.md                    # Session state
     SKILL.md                       # Main skill file
     references/                    # Deep-dive reference files
     <skill-name>.skill             # Packaged zip

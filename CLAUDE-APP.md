@@ -112,9 +112,7 @@ app/
 │   │   │   ├── mod.rs
 │   │   │   ├── sidecar.rs           # Spawn Node.js process, pass config as CLI arg
 │   │   │   └── events.rs            # Parse JSON lines → Tauri events
-│   │   └── markdown/                # Markdown parsing
-│   │       ├── clarification.rs     # Q&A format parser/serializer
-│   │       └── workflow_state.rs    # Parse workflow state files
+│   │   └── (markdown/ removed — DB is single source of truth)
 │   ├── Cargo.toml
 │   └── tauri.conf.json              # bundles sidecar/dist/agent-runner.js
 ├── package.json
@@ -218,7 +216,6 @@ The app replicates the plugin workflow. Each step is a state in the workflow sta
 ```
 <repo>/
   <skill-name>/
-    workflow.md                    # Session state
     SKILL.md                       # Main skill file
     references/                    # Deep-dive reference files
     <skill-name>.skill             # Packaged zip
@@ -409,8 +406,6 @@ app/
     ├── db.rs
     ├── types.rs
     ├── agents/sidecar.rs
-    ├── markdown/workflow_state.rs
-    ├── markdown/clarification.rs
     ├── commands/clarification.rs
     ├── commands/files.rs
     ├── commands/node.rs

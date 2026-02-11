@@ -15,6 +15,7 @@ pub async fn start_agent(
     session_id: Option<String>,
     skill_name: String,
     step_label: String,
+    agent_name: Option<String>,
 ) -> Result<String, String> {
     let (api_key, extended_context) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -40,7 +41,7 @@ pub async fn start_agent(
             None
         },
         path_to_claude_code_executable: None,
-        agent_name: None,
+        agent_name,
     };
 
     sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app, skill_name, step_label).await?;

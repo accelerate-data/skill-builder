@@ -34,29 +34,6 @@ export function parseAgentResponseType(text: string): ResponseType {
 }
 
 /**
- * Extract the follow-up questions section from agent text.
- * Returns the text after "## Follow-up Questions" until the next heading or end.
- */
-export function extractFollowUpSection(text: string): string | null {
-  // Match heading-based follow-up section
-  const match = text.match(
-    /#{1,3}\s*follow-up questions[^\n]*\n([\s\S]*?)(?=\n#{1,2}\s|$)/i,
-  );
-  if (match?.[1]?.trim()) {
-    return match[1].trim();
-  }
-  return null;
-}
-
-/**
- * Extract round number from text like "Round 2" or "Follow-up Questions — Round 3".
- */
-export function extractRoundNumber(text: string): number | null {
-  const match = text.match(/Round\s+(\d+)/i);
-  return match ? parseInt(match[1], 10) : null;
-}
-
-/**
  * Count decision entries (### D1:, ### D2:, etc.) in decisions.md content.
  */
 export function countDecisions(content: string): number {

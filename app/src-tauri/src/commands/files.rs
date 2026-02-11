@@ -42,7 +42,7 @@ fn collect_entries(
 
         let name = entry.file_name().to_string_lossy().to_string();
         let is_directory = metadata.is_dir();
-        let is_readonly = relative == "workflow.md";
+        let is_readonly = false;
         let size_bytes = if is_directory { 0 } else { metadata.len() };
 
         entries.push(SkillFileEntry {
@@ -84,7 +84,6 @@ mod tests {
         fs::create_dir_all(skill.join("context")).unwrap();
         fs::create_dir_all(skill.join("skill").join("references")).unwrap();
         fs::write(skill.join("skill").join("SKILL.md"), "# My Skill").unwrap();
-        fs::write(skill.join("workflow.md"), "## Workflow State").unwrap();
         fs::write(skill.join("skill").join("references").join("ref1.md"), "# Ref 1").unwrap();
         fs::write(
             skill.join("context").join("clarifications.md"),
@@ -104,13 +103,12 @@ mod tests {
         )
         .unwrap();
 
-        // Should have: workflow.md, context/, context/clarifications.md,
+        // Should have: context/, context/clarifications.md,
         //              skill/, skill/SKILL.md, skill/references/, skill/references/ref1.md
-        assert_eq!(entries.len(), 7);
+        assert_eq!(entries.len(), 6);
 
         let paths: Vec<&str> = entries.iter().map(|e| e.relative_path.as_str()).collect();
         assert!(paths.contains(&"skill/SKILL.md"));
-        assert!(paths.contains(&"workflow.md"));
         assert!(paths.contains(&"context"));
         assert!(paths.contains(&"context/clarifications.md"));
         assert!(paths.contains(&"skill"));
@@ -136,7 +134,7 @@ mod tests {
     }
 
     #[test]
-    fn test_only_workflow_md_is_readonly() {
+    fn test_no_files_are_readonly() {
         let dir = tempdir().unwrap();
         setup_skill_dir(dir.path());
 
@@ -147,18 +145,11 @@ mod tests {
         .unwrap();
 
         for entry in &entries {
-            if entry.relative_path == "workflow.md" {
-                assert!(
-                    entry.is_readonly,
-                    "workflow.md should be readonly",
-                );
-            } else {
-                assert!(
-                    !entry.is_readonly,
-                    "{} should be editable",
-                    entry.relative_path
-                );
-            }
+            assert!(
+                !entry.is_readonly,
+                "{} should be editable",
+                entry.relative_path
+            );
         }
     }
 

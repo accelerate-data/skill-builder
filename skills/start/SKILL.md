@@ -194,15 +194,19 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
      Analyze all answered clarifications and produce decisions.
+     The agent handles conditional user interaction internally:
+     - If contradictions/ambiguities/conflicts are found, it presents numbered options and waits for the user to choose
+     - If no issues, it proceeds directly to writing decisions
      Write/update: ./context/decisions.md
 
      Return your reasoning summary (key conclusions, assumptions, conflicts, follow-ups)."
    )
    ```
 3. Relay the reasoning summary to the user.
-4. **Human Gate**: "Do you agree with this reasoning? Any corrections?"
-5. If the user has corrections, send them to the reasoning agent via SendMessage and let it re-analyze.
-6. Once confirmed, proceed.
+4. **Validate** that `./context/decisions.md` exists. If missing, re-run the reasoning agent.
+5. **Human Gate**: "Do you agree with these decisions? Any corrections?"
+6. If the user has corrections, send them to the reasoning agent via SendMessage and let it re-analyze.
+7. Once confirmed, proceed.
 
 ### Step 6: Build Skill
 

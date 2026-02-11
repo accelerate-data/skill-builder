@@ -116,15 +116,6 @@ fn create_skill_inner(
 
     let skill_type = skill_type.unwrap_or("domain");
 
-    let workflow_content = format!(
-        "## Workflow State\n- **Skill name**: {}\n- **Domain**: {}\n- **Current step**: Initialization\n- **Status**: pending\n- **Completed steps**: \n- **Timestamp**: {}\n- **Notes**: Skill created\n",
-        name,
-        domain,
-        chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
-    );
-
-    fs::write(base.join("workflow.md"), workflow_content).map_err(|e| e.to_string())?;
-
     if let Some(conn) = conn {
         crate::db::save_workflow_run(conn, name, domain, 0, "pending", skill_type)?;
 
@@ -603,7 +594,7 @@ mod tests {
         // Verify the skill was created in the workspace
         assert!(Path::new(workspace).join("new-skill").exists());
         assert!(Path::new(workspace).join("new-skill").join("context").exists());
-        assert!(Path::new(workspace).join("new-skill").join("workflow.md").exists());
+        // workflow.md is no longer created — DB is the single source of truth
     }
 
     #[test]
@@ -612,7 +603,7 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
 
         // Create a skill
-        create_skill_inner(workspace, "skill-with-logs", "analytics", None, None, None).unwrap();
+        create_skill_inner(workspace, "skill-with-logs", "analytics", None, None, None, None).unwrap();
 
         // Add a logs/ subdirectory with a fake log file inside the skill directory
         let skill_dir = dir.path().join("skill-with-logs");
@@ -627,14 +618,10 @@ mod tests {
         assert!(logs_dir.join("step-1.log").exists());
 
         // Delete the skill
-        delete_skill_inner(workspace, "skill-with-logs", None).unwrap();
+        delete_skill_inner(workspace, "skill-with-logs", None, None).unwrap();
 
         // Verify the entire skill directory (including logs/) is gone
         assert!(!skill_dir.exists(), "skill directory should be removed");
         assert!(!logs_dir.exists(), "logs directory should be removed");
-
-        // Verify no skills remain in the workspace
-        let skills = list_skills_inner(workspace, None).unwrap();
-        assert!(skills.is_empty());
     }
 }
