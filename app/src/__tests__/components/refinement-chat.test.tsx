@@ -225,6 +225,8 @@ describe("RefinementChat", () => {
         ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"],
         50,
         undefined, // No session ID yet
+        "test-skill",
+        "chat",
       );
     });
 
@@ -277,6 +279,8 @@ describe("RefinementChat", () => {
         ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"],
         50,
         "session-123", // Session ID from first turn
+        "test-skill",
+        "chat",
       );
     });
   });

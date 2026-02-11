@@ -245,6 +245,8 @@ The user will guide the conversation. Ask clarifying questions if their request 
         ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"],
         50,
         sessionId,
+        skillName,
+        "chat",
       );
 
       agentStartRun(agentId, "sonnet");

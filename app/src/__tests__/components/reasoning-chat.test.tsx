@@ -293,6 +293,8 @@ describe("ReasoningChat — conflict detection and resolution flow", () => {
       ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"],
       100,
       "session-123",
+      "saas-revenue",
+      "step4-reasoning",
     );
   });
 
@@ -437,6 +439,8 @@ describe("ReasoningChat — conflict detection and resolution flow", () => {
       expect.any(Array),
       100,
       "session-123",
+      "saas-revenue",
+      "step4-reasoning",
     );
   });
 
@@ -468,6 +472,8 @@ describe("ReasoningChat — conflict detection and resolution flow", () => {
       expect.any(Array),
       100,
       "session-123",
+      "saas-revenue",
+      "step4-reasoning",
     );
   });
 
@@ -503,6 +509,8 @@ describe("ReasoningChat — conflict detection and resolution flow", () => {
       expect.any(Array),
       100,
       "session-123",
+      "saas-revenue",
+      "step4-reasoning",
     );
   });
 });
