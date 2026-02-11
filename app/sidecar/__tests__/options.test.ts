@@ -29,7 +29,7 @@ describe("buildQueryOptions", () => {
 
     expect(opts).toHaveProperty("model", "claude-sonnet-4-20250514");
     expect(opts).not.toHaveProperty("agent");
-    expect(opts).not.toHaveProperty("settingSources");
+    expect(opts).toHaveProperty("settingSources", ["project"]);
   });
 
   it("passes both agent + model when both agentName and model are present (model overrides front-matter)", () => {
