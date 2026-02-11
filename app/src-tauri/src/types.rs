@@ -123,6 +123,20 @@ pub struct ArtifactRow {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrphanSkill {
+    pub skill_name: String,
+    pub domain: String,
+    pub skill_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReconciliationResult {
+    pub orphans: Vec<OrphanSkill>,
+    pub notifications: Vec<String>,
+    pub auto_cleaned: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

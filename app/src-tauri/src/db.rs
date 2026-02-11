@@ -197,6 +197,32 @@ pub fn get_skill_type(conn: &Connection, skill_name: &str) -> Result<String, Str
     })
 }
 
+pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at
+             FROM workflow_runs ORDER BY skill_name",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(WorkflowRunRow {
+                skill_name: row.get(0)?,
+                domain: row.get(1)?,
+                current_step: row.get(2)?,
+                status: row.get(3)?,
+                skill_type: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
 pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), String> {
     conn.execute(
         "DELETE FROM workflow_runs WHERE skill_name = ?1",
@@ -882,6 +908,44 @@ mod tests {
         save_workflow_run(&conn, "my-skill", "test", 0, "pending", "source").unwrap();
         let skill_type = get_skill_type(&conn, "my-skill").unwrap();
         assert_eq!(skill_type, "source");
+    }
+
+    #[test]
+    fn test_list_all_workflow_runs_empty() {
+        let conn = create_test_db();
+        let runs = list_all_workflow_runs(&conn).unwrap();
+        assert!(runs.is_empty());
+    }
+
+    #[test]
+    fn test_list_all_workflow_runs_multiple() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "alpha-skill", "domain-a", 3, "in_progress", "domain").unwrap();
+        save_workflow_run(&conn, "beta-skill", "domain-b", 0, "pending", "platform").unwrap();
+        save_workflow_run(&conn, "gamma-skill", "domain-c", 7, "completed", "source").unwrap();
+
+        let runs = list_all_workflow_runs(&conn).unwrap();
+        assert_eq!(runs.len(), 3);
+        // Ordered by skill_name
+        assert_eq!(runs[0].skill_name, "alpha-skill");
+        assert_eq!(runs[0].current_step, 3);
+        assert_eq!(runs[1].skill_name, "beta-skill");
+        assert_eq!(runs[1].skill_type, "platform");
+        assert_eq!(runs[2].skill_name, "gamma-skill");
+        assert_eq!(runs[2].status, "completed");
+    }
+
+    #[test]
+    fn test_list_all_workflow_runs_after_delete() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "skill-a", "domain", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "skill-b", "domain", 0, "pending", "domain").unwrap();
+
+        delete_workflow_run(&conn, "skill-a").unwrap();
+
+        let runs = list_all_workflow_runs(&conn).unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].skill_name, "skill-b");
     }
 
     #[test]

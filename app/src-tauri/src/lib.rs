@@ -54,6 +54,8 @@ pub fn run() {
             commands::lifecycle::has_running_agents,
             commands::workspace::get_workspace_path,
             commands::workspace::clear_workspace,
+            commands::workspace::reconcile_startup,
+            commands::workspace::resolve_orphan,
         ])
         .on_window_event(|window, event| {
             use tauri::Emitter;

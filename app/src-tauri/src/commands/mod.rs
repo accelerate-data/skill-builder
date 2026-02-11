@@ -5,5 +5,7 @@ pub mod lifecycle;
 pub mod node;
 pub mod settings;
 pub mod skill;
+#[cfg(test)]
+pub mod test_utils;
 pub mod workflow;
 pub mod workspace;

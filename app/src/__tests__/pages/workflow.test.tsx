@@ -515,3 +515,199 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(screen.queryByText("Skip")).toBeNull();
   });
 });
+
+describe("WorkflowPage — human review file loading priority", () => {
+  beforeEach(() => {
+    resetTauriMocks();
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+
+    useSettingsStore.getState().setSettings({
+      workspacePath: "/test/workspace",
+      skillsPath: "/test/skills",
+      anthropicApiKey: "sk-test",
+    });
+
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
+    mockToast.info.mockClear();
+    mockBlocker.proceed.mockClear();
+    mockBlocker.reset.mockClear();
+    mockBlocker.status = "idle";
+
+    vi.mocked(saveWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(getArtifactContent).mockClear();
+    vi.mocked(readFile).mockClear();
+  });
+
+  afterEach(() => {
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+  });
+
+  it("loads review content from skillsPath context directory first", async () => {
+    // skillsPath has the file — should use it even though SQLite and workspace also have content
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications-concepts.md") {
+        return Promise.resolve("# From skills context dir");
+      }
+      if (path === "/test/workspace/test-skill/context/clarifications-concepts.md") {
+        return Promise.resolve("# From workspace");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(getArtifactContent).mockResolvedValue({
+      skill_name: "test-skill",
+      step_id: 0,
+      relative_path: "context/clarifications-concepts.md",
+      content: "# From SQLite",
+      size_bytes: 50,
+      created_at: "",
+      updated_at: "",
+    });
+
+    // Navigate to step 1 (human review for concepts)
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+    useWorkflowStore.getState().updateStepStatus(1, "waiting_for_user");
+
+    render(<WorkflowPage />);
+
+    // Should show content from skills context directory
+    await waitFor(() => {
+      expect(screen.getByText("From skills context dir")).toBeTruthy();
+    });
+
+    // readFile should have been called with the skillsPath location first
+    expect(vi.mocked(readFile)).toHaveBeenCalledWith(
+      "/test/skills/test-skill/context/clarifications-concepts.md"
+    );
+  });
+
+  it("falls back to SQLite when skillsPath context file is not found", async () => {
+    // skillsPath does NOT have the file — should fall back to SQLite
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path.startsWith("/test/skills/")) {
+        return Promise.reject("not found");
+      }
+      if (path === "/test/workspace/test-skill/context/clarifications-concepts.md") {
+        return Promise.resolve("# From workspace");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(getArtifactContent).mockResolvedValue({
+      skill_name: "test-skill",
+      step_id: 0,
+      relative_path: "context/clarifications-concepts.md",
+      content: "# From SQLite",
+      size_bytes: 50,
+      created_at: "",
+      updated_at: "",
+    });
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+    useWorkflowStore.getState().updateStepStatus(1, "waiting_for_user");
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("From SQLite")).toBeTruthy();
+    });
+  });
+
+  it("falls back to workspace filesystem when both skillsPath and SQLite fail", async () => {
+    // Neither skillsPath nor SQLite has the content — workspace should be used
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path.startsWith("/test/skills/")) {
+        return Promise.reject("not found");
+      }
+      if (path === "/test/workspace/test-skill/context/clarifications-concepts.md") {
+        return Promise.resolve("# From workspace fallback");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+    useWorkflowStore.getState().updateStepStatus(1, "waiting_for_user");
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("From workspace fallback")).toBeTruthy();
+    });
+  });
+
+  it("skips skillsPath lookup when skillsPath is null", async () => {
+    // No skillsPath configured — should go straight to SQLite then workspace
+    useSettingsStore.getState().setSettings({
+      workspacePath: "/test/workspace",
+      skillsPath: null,
+      anthropicApiKey: "sk-test",
+    });
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/workspace/test-skill/context/clarifications-concepts.md") {
+        return Promise.resolve("# From workspace (no skillsPath)");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+    useWorkflowStore.getState().updateStepStatus(1, "waiting_for_user");
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("From workspace (no skillsPath)")).toBeTruthy();
+    });
+
+    // readFile should NOT have been called with any skills path
+    const readFileCalls = vi.mocked(readFile).mock.calls.map((c) => c[0]);
+    expect(readFileCalls.some((p) => p.includes("/test/skills/"))).toBe(false);
+  });
+
+  it("uses skillsPath context dir for step 3 (clarifications.md) too", async () => {
+    // Step 3 reviews clarifications.md — same priority should apply
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.md") {
+        return Promise.resolve("# Merged clarifications from skills dir");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().updateStepStatus(2, "completed");
+    useWorkflowStore.getState().setCurrentStep(3);
+    useWorkflowStore.getState().updateStepStatus(3, "waiting_for_user");
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Merged clarifications from skills dir")).toBeTruthy();
+    });
+
+    expect(vi.mocked(readFile)).toHaveBeenCalledWith(
+      "/test/skills/test-skill/context/clarifications.md"
+    );
+  });
+});
