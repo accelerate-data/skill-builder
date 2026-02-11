@@ -14,17 +14,23 @@ if (!Element.prototype.scrollIntoView) {
 const {
   mockStartAgent,
   mockGetArtifactContent,
-  mockSaveArtifactContent,
+  mockSaveChatSession,
+  mockLoadChatSession,
 } = vi.hoisted(() => ({
   mockStartAgent: vi.fn<(...args: unknown[]) => Promise<string>>(() => Promise.resolve("agent-1")),
   mockGetArtifactContent: vi.fn<(...args: unknown[]) => Promise<Record<string, unknown> | null>>(() => Promise.resolve(null)),
-  mockSaveArtifactContent: vi.fn<(...args: unknown[]) => Promise<void>>(() => Promise.resolve()),
+  mockSaveChatSession: vi.fn<(...args: unknown[]) => Promise<void>>(() => Promise.resolve()),
+  mockLoadChatSession: vi.fn<(...args: unknown[]) => Promise<Record<string, unknown> | null>>(() => Promise.resolve(null)),
 }));
 
 vi.mock("@/lib/tauri", () => ({
   startAgent: mockStartAgent,
   getArtifactContent: mockGetArtifactContent,
-  saveArtifactContent: mockSaveArtifactContent,
+}));
+
+vi.mock("@/lib/chat-storage", () => ({
+  saveChatSession: mockSaveChatSession,
+  loadChatSession: mockLoadChatSession,
 }));
 
 // Mock react-markdown to avoid ESM issues
@@ -117,7 +123,8 @@ describe("RefinementChat", () => {
 
     mockStartAgent.mockReset().mockResolvedValue("agent-1");
     mockGetArtifactContent.mockReset().mockResolvedValue(null);
-    mockSaveArtifactContent.mockReset().mockResolvedValue(undefined);
+    mockSaveChatSession.mockReset().mockResolvedValue(undefined);
+    mockLoadChatSession.mockReset().mockResolvedValue(null);
   });
 
   it("renders empty state with input when no persisted messages", async () => {
@@ -132,7 +139,32 @@ describe("RefinementChat", () => {
     expect(screen.queryByRole("article")).not.toBeInTheDocument();
   });
 
-  it("restores messages from artifact on mount", async () => {
+  it("restores messages from disk on mount", async () => {
+    const savedSession = {
+      sessionId: "session-456",
+      stepId: 8,
+      messages: [
+        { role: "user", content: "Can you improve the skill description?", timestamp: "2025-01-01T00:00:00.000Z" },
+        { role: "assistant", content: "I've updated the description with more clarity.", timestamp: "2025-01-01T00:00:01.000Z", agentId: "agent-1" },
+      ],
+      lastUpdated: "2025-01-01T00:00:00.000Z",
+    };
+
+    mockLoadChatSession.mockResolvedValueOnce(savedSession);
+
+    render(<RefinementChat {...defaultProps} />);
+
+    // Should restore messages (assistant mapped back to agent role internally)
+    await waitFor(() => {
+      expect(screen.getByText("Can you improve the skill description?")).toBeInTheDocument();
+      expect(screen.getByText("I've updated the description with more clarity.")).toBeInTheDocument();
+    });
+
+    // Should call loadChatSession
+    expect(mockLoadChatSession).toHaveBeenCalledWith("/workspace", "test-skill", "refinement");
+  });
+
+  it("falls back to SQLite artifact when disk file not found", async () => {
     const savedSession = {
       messages: [
         { role: "user", content: "Can you improve the skill description?" },
@@ -142,6 +174,9 @@ describe("RefinementChat", () => {
       lastUpdated: "2025-01-01T00:00:00.000Z",
     };
 
+    // Disk returns null
+    mockLoadChatSession.mockResolvedValueOnce(null);
+    // SQLite has the session
     mockGetArtifactContent.mockResolvedValueOnce({
       content: JSON.stringify(savedSession),
       skill_name: "test-skill",
@@ -154,13 +189,13 @@ describe("RefinementChat", () => {
 
     render(<RefinementChat {...defaultProps} />);
 
-    // Should restore messages
+    // Should restore messages from SQLite fallback
     await waitFor(() => {
       expect(screen.getByText("Can you improve the skill description?")).toBeInTheDocument();
       expect(screen.getByText("I've updated the description with more clarity.")).toBeInTheDocument();
     });
 
-    // Should call getArtifactContent
+    // Should call getArtifactContent as fallback
     expect(mockGetArtifactContent).toHaveBeenCalledWith("test-skill", "context/refinement-chat.json");
   });
 
@@ -285,7 +320,7 @@ describe("RefinementChat", () => {
     });
   });
 
-  it("saves session to artifact after agent completion", async () => {
+  it("saves session to disk after agent completion", async () => {
     const user = userEvent.setup();
     render(<RefinementChat {...defaultProps} />);
 
@@ -301,24 +336,33 @@ describe("RefinementChat", () => {
       simulateAgentCompletion("agent-1", "Done!");
     });
 
-    // Should save session
+    // Should save session via saveChatSession
     await waitFor(() => {
-      expect(mockSaveArtifactContent).toHaveBeenCalledWith(
+      expect(mockSaveChatSession).toHaveBeenCalledWith(
+        "/workspace",
         "test-skill",
-        8,
-        "context/refinement-chat.json",
-        expect.stringContaining("Test message"),
+        "refinement",
+        expect.objectContaining({
+          sessionId: "session-123",
+          stepId: 8,
+          messages: expect.arrayContaining([
+            expect.objectContaining({ role: "user", content: "Test message" }),
+            expect.objectContaining({ role: "assistant", content: "Done!", agentId: "agent-1" }),
+          ]),
+        }),
       );
     });
 
     // Check saved content structure
-    const [, , , savedContent] = mockSaveArtifactContent.mock.calls[0];
-    const parsed = JSON.parse(savedContent as string);
-    expect(parsed.messages).toHaveLength(2);
-    expect(parsed.messages[0]).toEqual({ role: "user", content: "Test message" });
-    expect(parsed.messages[1]).toEqual({ role: "agent", content: "Done!", agentId: "agent-1" });
-    expect(parsed.sessionId).toBe("session-123");
-    expect(parsed.lastUpdated).toBeDefined();
+    const savedSession = mockSaveChatSession.mock.calls[0][3] as Record<string, unknown>;
+    const savedMessages = savedSession.messages as Array<Record<string, unknown>>;
+    expect(savedMessages).toHaveLength(2);
+    expect(savedMessages[0].role).toBe("user");
+    expect(savedMessages[0].content).toBe("Test message");
+    expect(savedMessages[1].role).toBe("assistant");
+    expect(savedMessages[1].content).toBe("Done!");
+    expect(savedMessages[1].agentId).toBe("agent-1");
+    expect(savedSession.sessionId).toBe("session-123");
   });
 
   it("supports Enter to send message", async () => {

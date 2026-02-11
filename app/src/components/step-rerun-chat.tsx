@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect, useCallback, useMemo, Fragment } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, useImperativeHandle, forwardRef, Fragment } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   Send,
   User,
   Bot,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,10 +14,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useAgentStore } from "@/stores/agent-store";
-import { useSettingsStore } from "@/stores/settings-store";
+import { useWorkflowStore } from "@/stores/workflow-store";
 import {
+  runWorkflowStep,
   startAgent,
-  getArtifactContent,
+  captureStepArtifacts,
 } from "@/lib/tauri";
 import { saveChatSession, loadChatSession } from "@/lib/chat-storage";
 import { AgentStatusHeader } from "@/components/agent-status-header";
@@ -24,10 +26,18 @@ import { MessageItem, TurnMarker, computeMessageGroups, spacingClasses } from "@
 
 // --- Types ---
 
-export interface RefinementChatProps {
+export interface StepRerunChatProps {
   skillName: string;
   domain: string;
   workspacePath: string;
+  skillType: string;
+  stepId: number;
+  stepLabel: string;
+  onComplete: () => void;
+}
+
+export interface StepRerunChatHandle {
+  completeStep: () => Promise<void>;
 }
 
 interface ChatMessage {
@@ -36,32 +46,47 @@ interface ChatMessage {
   agentId?: string;
 }
 
-type RefinementPhase = "idle" | "agent_running" | "error";
+// --- Helpers ---
 
-const SESSION_ARTIFACT = "context/refinement-chat.json";
+/** Map step IDs to agent phase names for prompt resolution. */
+const STEP_PHASE_MAP: Record<number, string> = {
+  0: "research-concepts",
+  2: "research-patterns-and-merge",
+  5: "build",
+  6: "validate",
+  7: "test",
+};
 
-interface RefinementSessionState {
-  messages: ChatMessage[];
-  sessionId?: string;
-  lastUpdated: string;
-}
+/** Map step IDs to model shorthands. */
+const STEP_MODEL_MAP: Record<number, string> = {
+  0: "sonnet",
+  2: "sonnet",
+  5: "sonnet",
+  6: "sonnet",
+  7: "sonnet",
+};
 
 // --- Component ---
 
-export function RefinementChat({
+export const StepRerunChat = forwardRef<StepRerunChatHandle, StepRerunChatProps>(function StepRerunChat({
   skillName,
   domain,
   workspacePath,
-}: RefinementChatProps) {
+  skillType,
+  stepId,
+  stepLabel,
+  onComplete,
+}, ref) {
   // Core state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [userInput, setUserInput] = useState("");
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
-  const [_phase, setPhase] = useState<RefinementPhase>("idle");
 
   // Session restored flag
   const [restored, setRestored] = useState(false);
+  // Track whether initial rerun agent has been launched
+  const initialLaunchedRef = useRef(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -70,89 +95,64 @@ export function RefinementChat({
   // Stores
   const currentRun = useAgentStore((s) => currentAgentId ? s.runs[currentAgentId] : null);
   const agentRegisterRun = useAgentStore((s) => s.registerRun);
-  const skillsPath = useSettingsStore((s) => s.skillsPath);
+  const { setRunning } = useWorkflowStore();
 
   const isAgentRunning = currentRun?.status === "running";
+  const model = STEP_MODEL_MAP[stepId] ?? "sonnet";
+  const diskStepLabel = `rerun-step-${stepId}`;
 
   // --- Session persistence ---
 
   const saveSession = useCallback(
     (msgs: ChatMessage[], sid: string | undefined) => {
-      const lastUpdated = new Date().toISOString();
-      saveChatSession(workspacePath, skillName, "refinement", {
+      saveChatSession(workspacePath, skillName, diskStepLabel, {
         sessionId: sid ?? "",
-        stepId: 8,
+        stepId,
         messages: msgs.map((m) => ({
           role: m.role === "agent" ? "assistant" as const : "user" as const,
           content: m.content,
-          timestamp: lastUpdated,
+          timestamp: new Date().toISOString(),
           agentId: m.agentId,
         })),
-        // Extra state preserved via JSON round-trip
-        ...({ lastUpdated } as Record<string, unknown>),
       }).catch(() => {});
     },
-    [skillName, workspacePath],
+    [workspacePath, skillName, diskStepLabel, stepId],
   );
 
-  // Load saved session on mount — try disk first, fall back to SQLite
+  // Load saved session on mount
   useEffect(() => {
     if (restored) return;
-
-    const restoreFromState = (state: RefinementSessionState) => {
-      if (state.messages?.length > 0) {
-        // Map "assistant" role back to "agent" for internal use (disk format uses "assistant")
-        const mappedMessages: ChatMessage[] = state.messages.map((m) => ({
-          role: ((m.role as string) === "assistant" ? "agent" : "user") as "agent" | "user",
-          content: m.content,
-          agentId: (m as ChatMessage & { agentId?: string }).agentId,
-        }));
-        setMessages(mappedMessages);
-        setSessionId(state.sessionId);
-      }
-    };
-
-    // Try disk first
-    loadChatSession(workspacePath, skillName, "refinement")
+    loadChatSession(workspacePath, skillName, diskStepLabel)
       .then((diskSession) => {
-        if (diskSession) {
-          // Disk session found — restore from it
-          const state = diskSession as unknown as RefinementSessionState;
-          restoreFromState(state);
+        if (!diskSession || !diskSession.messages?.length) {
           setRestored(true);
           return;
         }
-        // Disk not found — fall back to SQLite artifact
-        return getArtifactContent(skillName, SESSION_ARTIFACT)
-          .then((artifact) => {
-            if (artifact?.content) {
-              try {
-                const state: RefinementSessionState = JSON.parse(artifact.content);
-                restoreFromState(state);
-              } catch {
-                // Corrupt JSON — ignore
-              }
-            }
-            setRestored(true);
-          });
+        // Map disk "assistant" role back to internal "agent" role
+        const mappedMessages: ChatMessage[] = diskSession.messages.map((m) => ({
+          role: m.role === "assistant" ? "agent" as const : "user" as const,
+          content: m.content,
+          agentId: m.agentId,
+        }));
+        setMessages(mappedMessages);
+        if (diskSession.sessionId) {
+          setSessionId(diskSession.sessionId);
+        }
+        setRestored(true);
       })
-      .catch(() => {
-        // Disk read failed — try SQLite fallback
-        getArtifactContent(skillName, SESSION_ARTIFACT)
-          .then((artifact) => {
-            if (artifact?.content) {
-              try {
-                const state: RefinementSessionState = JSON.parse(artifact.content);
-                restoreFromState(state);
-              } catch {
-                // Corrupt JSON — ignore
-              }
-            }
-            setRestored(true);
-          })
-          .catch(() => setRestored(true));
-      });
-  }, [skillName, workspacePath, restored]);
+      .catch(() => setRestored(true));
+  }, [workspacePath, skillName, diskStepLabel, restored]);
+
+  // Auto-launch rerun agent on mount if no existing session
+  useEffect(() => {
+    if (!restored || initialLaunchedRef.current) return;
+    // If there are already messages from a restored session, don't auto-launch
+    if (messages.length > 0) return;
+
+    initialLaunchedRef.current = true;
+    launchRerunAgent();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restored, messages.length]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -198,7 +198,10 @@ export function RefinementChat({
         });
       }
 
-      setPhase("idle");
+      // Capture artifacts after each turn
+      captureStepArtifacts(skillName, stepId, workspacePath).catch(() => {});
+
+      setRunning(false);
     } else if (currentRun.status === "error") {
       const errorMsg = currentRun.messages.find((m) => m.type === "error");
       setMessages((prev) => {
@@ -213,86 +216,76 @@ export function RefinementChat({
         saveSession(updated, sid);
         return updated;
       });
-      setPhase("error");
-      toast.error("Refinement agent encountered an error", { duration: Infinity });
+      setRunning(false);
+      toast.error(`Rerun agent encountered an error on step "${stepLabel}"`, { duration: Infinity });
     }
-  }, [currentRun?.status, currentAgentId, currentRun, sessionId, saveSession]);
+  }, [currentRun?.status, currentAgentId, currentRun, sessionId, saveSession, skillName, stepId, workspacePath, stepLabel, setRunning]);
 
   useEffect(() => {
     handleAgentTurnComplete();
   }, [handleAgentTurnComplete]);
 
-  // --- System prompt builder ---
+  // --- Agent launchers ---
 
-  const buildSystemPrompt = useCallback(() => {
-    const outputDir = skillsPath ? `${skillsPath}/${skillName}` : `<skills-path>/${skillName}`;
-
-    return `You are a skill refinement assistant. The user has completed the initial skill-building workflow and wants to refine their skill.
-
-# Context
-
-- **Skill Name**: ${skillName}
-- **Domain**: ${domain}
-- **Workspace Path**: ${workspacePath}
-- **Output Directory**: ${outputDir}
-
-# Key Files
-
-The skill output is located in \`${skillName}/\`:
-- \`${skillName}/SKILL.md\` - The main skill file
-- \`${skillName}/context/\` - Supporting context artifacts (concepts, patterns, data, decisions)
-- \`${skillName}/references/\` - Deep-dive reference materials
-- \`${skillName}/context/test-skill.md\` - Test cases and results
-- \`${skillName}/context/agent-validation-log.md\` - Validation report
-- \`${skillName}/context/decisions.md\` - Reasoning decisions
-
-# Your Role
-
-Help the user refine their skill by:
-- Answering questions about the skill content
-- Making targeted edits based on user feedback
-- Adding or removing sections as requested
-- Improving clarity, completeness, or structure
-- Addressing gaps or inconsistencies identified by the user
-
-# Guidelines
-
-- Read the existing skill files before making changes
-- Make precise, surgical edits — don't rewrite entire sections unless asked
-- Preserve the overall structure and style established during the workflow
-- Save changes to the appropriate files in the skill directory
-- Test your changes if the user requests validation
-
-The user will guide the conversation. Ask clarifying questions if their request is ambiguous.`;
-  }, [skillName, domain, workspacePath, skillsPath]);
-
-  // --- Agent launcher ---
-
-  const launchAgent = async (prompt: string) => {
+  const launchRerunAgent = async () => {
     try {
-      setPhase("agent_running");
+      setRunning(true);
 
-      // Build prompt: include system prompt on first turn, just user message on resume
-      const fullPrompt = sessionId ? prompt : `${buildSystemPrompt()}\n\n---\n\n${prompt}`;
+      // Use runWorkflowStep with rerun: true for the initial launch
+      // The backend will prepend [RERUN MODE] to the prompt
+      const agentId = await runWorkflowStep(
+        skillName,
+        stepId,
+        domain,
+        workspacePath,
+        false, // resume
+        true,  // rerun
+      );
+
+      agentRegisterRun(agentId, model);
+      setCurrentAgentId(agentId);
+    } catch (err) {
+      setRunning(false);
+      toast.error(
+        `Failed to start rerun agent: ${err instanceof Error ? err.message : String(err)}`,
+        { duration: Infinity },
+      );
+    }
+  };
+
+  const launchResumeAgent = async (prompt: string) => {
+    try {
+      setRunning(true);
+
+      const phaseName = STEP_PHASE_MAP[stepId] ?? stepLabel;
+      const agentName = skillType ? `${skillType}-${phaseName}` : undefined;
+
+      // On resume turns, include context reminder
+      const contextPrefix = sessionId
+        ? `[Context reminder: You are rerunning the "${stepLabel}" step for skill "${skillName}" in domain "${domain}". ` +
+          `The workspace is at ${workspacePath}. Continue improving the output based on user feedback.]\n\n`
+        : "";
+      const fullPrompt = contextPrefix + prompt;
 
       const agentId = await startAgent(
-        `refinement-${Date.now()}`,
+        `rerun-${stepLabel}-${Date.now()}`,
         fullPrompt,
-        "sonnet",
+        model,
         workspacePath,
         ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"],
         50,
         sessionId,
         skillName,
-        "chat",
+        `rerun-step${stepId}-${stepLabel}`,
+        agentName,
       );
 
-      agentRegisterRun(agentId, "sonnet");
+      agentRegisterRun(agentId, model);
       setCurrentAgentId(agentId);
     } catch (err) {
-      setPhase("error");
+      setRunning(false);
       toast.error(
-        `Failed to start refinement agent: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to resume rerun agent: ${err instanceof Error ? err.message : String(err)}`,
         { duration: Infinity },
       );
     }
@@ -306,7 +299,7 @@ The user will guide the conversation. Ask clarifying questions if their request 
 
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     setUserInput("");
-    launchAgent(text);
+    launchResumeAgent(text);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -315,6 +308,19 @@ The user will guide the conversation. Ask clarifying questions if their request 
       handleSend();
     }
   };
+
+  const handleComplete = useCallback(async () => {
+    // Final artifact capture
+    try {
+      await captureStepArtifacts(skillName, stepId, workspacePath);
+    } catch {
+      // Best-effort
+    }
+    onComplete();
+  }, [skillName, stepId, workspacePath, onComplete]);
+
+  // Expose completeStep to parent via ref
+  useImperativeHandle(ref, () => ({ completeStep: handleComplete }), [handleComplete]);
 
   // Pre-compute turn numbers for streaming messages
   const streamTurnMap = useMemo(() => {
@@ -335,16 +341,26 @@ The user will guide the conversation. Ask clarifying questions if their request 
     [currentRun?.messages, streamTurnMap],
   );
 
+  // --- Loading state ---
+
+  if (!restored) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <RotateCcw className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   // --- Main render ---
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Agent status header — shown when an agent has been launched */}
+      {/* Agent status header -- shown when an agent has been launched */}
       {currentAgentId && (
         <>
           <AgentStatusHeader
             agentId={currentAgentId}
-            title="Refinement Agent"
+            title={`Rerunning: ${stepLabel}`}
           />
           <Separator />
         </>
@@ -421,8 +437,8 @@ The user will guide the conversation. Ask clarifying questions if their request 
               isAgentRunning
                 ? "Waiting for agent response..."
                 : messages.length === 0
-                ? "Ask a question or request a change to your skill..."
-                : "Type a message... (Enter to send)"
+                ? "Agent is starting up..."
+                : "Guide the agent to improve this step's output... (Enter to send)"
             }
             disabled={isAgentRunning}
             className="min-h-[60px] max-h-[160px] resize-none"
@@ -440,4 +456,4 @@ The user will guide the conversation. Ask clarifying questions if their request 
       </div>
     </div>
   );
-}
+});

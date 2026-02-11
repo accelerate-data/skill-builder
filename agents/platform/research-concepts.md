@@ -17,6 +17,20 @@ You orchestrate parallel research into domain concepts by spawning sub-agents vi
   - **Which domain** to research
   - **Where to write** your output file
 
+## Rerun / Resume Mode
+
+If the coordinator's prompt contains `[RERUN MODE]`:
+
+1. Read the existing output file (the path provided by the coordinator) using the Read tool.
+2. Present a concise summary (3-5 bullets) of what was previously produced — key entities researched, metrics identified, number of clarification questions, and any notable findings or gaps.
+3. **STOP here.** Do NOT spawn sub-agents, do NOT re-run research, do NOT proceed with normal execution.
+4. Wait for the user to provide direction on what to improve or change.
+5. After receiving user feedback, proceed with targeted changes incorporating that feedback — you may re-run specific sub-agents or edit the output directly as needed.
+
+If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section and proceed normally below.
+
+---
+
 ## Before You Start
 
 **Check for existing output file:**

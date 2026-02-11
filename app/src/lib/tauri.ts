@@ -63,7 +63,8 @@ export const runWorkflowStep = (
   domain: string,
   workspacePath: string,
   resume?: boolean,
-) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath, resume: resume ?? false });
+  rerun?: boolean,
+) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath, resume: resume ?? false, rerun: rerun ?? false });
 
 export const runReviewStep = (
   skillName: string,
@@ -129,6 +130,9 @@ export const saveWorkflowState = (
 
 export const readFile = (filePath: string) =>
   invoke<string>("read_file", { filePath });
+
+export const writeFile = (path: string, content: string) =>
+  invoke<void>("write_file", { path, content });
 
 // --- Lifecycle ---
 

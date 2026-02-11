@@ -17,15 +17,19 @@ const {
   mockStartAgent,
   mockCaptureStepArtifacts,
   mockGetArtifactContent,
-  mockSaveArtifactContent,
   mockReadFile,
+  mockSaveChatSession,
+  mockLoadChatSession,
 } = vi.hoisted(() => ({
   mockRunWorkflowStep: vi.fn(() => Promise.resolve("agent-1")),
   mockStartAgent: vi.fn(() => Promise.resolve("agent-2")),
   mockCaptureStepArtifacts: vi.fn(() => Promise.resolve()),
-  mockGetArtifactContent: vi.fn(() => Promise.resolve(null)),
-  mockSaveArtifactContent: vi.fn(() => Promise.resolve()),
-  mockReadFile: vi.fn(() => Promise.reject(new Error("not found"))),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mockGetArtifactContent: vi.fn((_skill?: any, _path?: any) => Promise.resolve(null)) as any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mockReadFile: vi.fn((_path?: any): Promise<string> => Promise.reject(new Error("not found"))) as any,
+  mockSaveChatSession: vi.fn(() => Promise.resolve()),
+  mockLoadChatSession: vi.fn(() => Promise.resolve(null)),
 }));
 
 vi.mock("@/lib/tauri", () => ({
@@ -33,8 +37,12 @@ vi.mock("@/lib/tauri", () => ({
   startAgent: mockStartAgent,
   captureStepArtifacts: mockCaptureStepArtifacts,
   getArtifactContent: mockGetArtifactContent,
-  saveArtifactContent: mockSaveArtifactContent,
   readFile: mockReadFile,
+}));
+
+vi.mock("@/lib/chat-storage", () => ({
+  saveChatSession: mockSaveChatSession,
+  loadChatSession: mockLoadChatSession,
 }));
 
 // Mock react-markdown to avoid ESM issues
@@ -218,8 +226,9 @@ describe("ReasoningChat — simplified write-first flow", () => {
     mockStartAgent.mockReset().mockResolvedValue("agent-2");
     mockCaptureStepArtifacts.mockReset().mockResolvedValue(undefined);
     mockGetArtifactContent.mockReset().mockResolvedValue(null);
-    mockSaveArtifactContent.mockReset().mockResolvedValue(undefined);
     mockReadFile.mockReset().mockRejectedValue(new Error("not found"));
+    mockSaveChatSession.mockReset().mockResolvedValue(undefined);
+    mockLoadChatSession.mockReset().mockResolvedValue(null);
   });
 
   it("shows start button initially", () => {

@@ -39,6 +39,7 @@ pub fn run() {
             commands::clarification::save_raw_file,
             commands::files::list_skill_files,
             commands::files::read_file,
+            commands::files::write_file,
             commands::files::copy_file,
             commands::workflow::run_workflow_step,
             commands::workflow::run_review_step,

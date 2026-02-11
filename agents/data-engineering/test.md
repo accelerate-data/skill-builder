@@ -17,6 +17,20 @@ You generate test prompts for a completed skill, spawn parallel evaluator sub-ag
   - The **context directory** path (for writing `test-skill.md`)
   - The **domain name**
 
+## Rerun / Resume Mode
+
+If the coordinator's prompt contains `[RERUN MODE]`:
+
+1. Read `test-skill.md` from the context directory using the Read tool (if it exists).
+2. Present a concise summary (3-5 bullets) of what was previously produced — total tests run, pass/partial/fail counts, key content gaps identified, and any suggested PM prompts.
+3. **STOP here.** Do NOT generate test prompts, do NOT spawn evaluators, do NOT proceed with normal execution.
+4. Wait for the user to provide direction on what to improve or change.
+5. After receiving user feedback, proceed with targeted changes incorporating that feedback — you may re-run specific tests or edit the report directly as needed.
+
+If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section and proceed normally below.
+
+---
+
 ## Phase 1: Read the Skill and Generate Test Prompts
 
 1. Read `SKILL.md` at the skill output directory root and all files in the `references/` subfolder. Understand:

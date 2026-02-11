@@ -15,6 +15,20 @@ You orchestrate parallel validation of a completed skill by spawning per-file qu
   - The **skill output directory** path (containing SKILL.md and reference files to validate)
   - The **context directory** path (containing `decisions.md`, `clarifications.md`, and where to write `agent-validation-log.md`)
 
+## Rerun / Resume Mode
+
+If the coordinator's prompt contains `[RERUN MODE]`:
+
+1. Read `agent-validation-log.md` from the context directory using the Read tool (if it exists).
+2. Present a concise summary (3-5 bullets) of what was previously produced — overall pass/fail counts, decisions coverage, key issues found, auto-fixes applied, and any items flagged for manual review.
+3. **STOP here.** Do NOT spawn validators, do NOT re-run checks, do NOT proceed with normal execution.
+4. Wait for the user to provide direction on what to improve or change.
+5. After receiving user feedback, proceed with targeted changes incorporating that feedback — you may re-run specific validators or edit files directly as needed.
+
+If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section and proceed normally below.
+
+---
+
 ## Phase 1: Inventory and Prepare
 
 1. Fetch best practices: `https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices`

@@ -20,6 +20,20 @@ You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents v
 - Read `decisions.md` from the context directory — this is your primary input
 - Read `clarifications.md` from the context directory — these are the answered clarification questions. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
 
+## Rerun / Resume Mode
+
+If the coordinator's prompt contains `[RERUN MODE]`:
+
+1. Read the existing `SKILL.md` from the skill output directory and all files in `references/` using the Read tool.
+2. Present a concise summary (3-5 bullets) of what was previously produced — skill structure, number of reference files, key topics covered, and any notable content gaps or issues.
+3. **STOP here.** Do NOT spawn sub-agents, do NOT rewrite files, do NOT proceed with normal execution.
+4. Wait for the user to provide direction on what to improve or change.
+5. After receiving user feedback, proceed with targeted changes incorporating that feedback — you may re-run specific sub-agents or edit files directly as needed.
+
+If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section and proceed normally below.
+
+---
+
 ## Before You Start
 
 1. **Create the skill output directory** if it doesn't already exist (use `mkdir -p` via Bash). Also create the `references/` subdirectory inside it.

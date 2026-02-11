@@ -67,6 +67,17 @@ pub fn read_file(file_path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub fn write_file(path: String, content: String) -> Result<(), String> {
+    let file_path = Path::new(&path);
+    if let Some(parent) = file_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create directories for {}: {}", path, e))?;
+    }
+    fs::write(&path, &content)
+        .map_err(|e| format!("Failed to write {}: {}", path, e))
+}
+
+#[tauri::command]
 pub fn copy_file(src: String, dest: String) -> Result<(), String> {
     fs::copy(&src, &dest)
         .map(|_| ())
@@ -234,6 +245,49 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("Failed to copy"));
+    }
+
+    #[test]
+    fn test_write_file_success() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("output.txt");
+
+        let result = write_file(file.to_str().unwrap().to_string(), "hello world".to_string());
+        assert!(result.is_ok());
+
+        let content = fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "hello world");
+    }
+
+    #[test]
+    fn test_write_file_creates_parent_dirs() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("a").join("b").join("c").join("deep.txt");
+
+        let result = write_file(
+            file.to_str().unwrap().to_string(),
+            "nested content".to_string(),
+        );
+        assert!(result.is_ok());
+
+        let content = fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "nested content");
+    }
+
+    #[test]
+    fn test_write_file_overwrites_existing() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("existing.txt");
+        fs::write(&file, "old content").unwrap();
+
+        let result = write_file(
+            file.to_str().unwrap().to_string(),
+            "new content".to_string(),
+        );
+        assert!(result.is_ok());
+
+        let content = fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "new content");
     }
 
     #[test]

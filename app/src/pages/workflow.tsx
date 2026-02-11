@@ -31,6 +31,7 @@ import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ReasoningChat, type ReasoningChatHandle, type ReasoningPhase } from "@/components/reasoning-chat";
 import { RefinementChat } from "@/components/refinement-chat";
+import { StepRerunChat, type StepRerunChatHandle } from "@/components/step-rerun-chat";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
@@ -71,6 +72,18 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
 const HUMAN_REVIEW_STEPS: Record<number, { relativePath: string }> = {
   1: { relativePath: "context/clarifications-concepts.md" },
   3: { relativePath: "context/clarifications.md" },
+};
+
+// Agent step IDs eligible for rerun chat (not reasoning or refinement — those have their own chat)
+const RERUN_CHAT_STEPS = new Set([0, 2, 5, 6, 7]);
+
+// Map step IDs to human-readable labels for the rerun chat header
+const STEP_LABELS: Record<number, string> = {
+  0: "research-concepts",
+  2: "perform-research",
+  5: "build",
+  6: "validate",
+  7: "test",
 };
 
 export default function WorkflowPage() {
@@ -150,10 +163,14 @@ export default function WorkflowPage() {
   const [loadingReview, setLoadingReview] = useState(false);
   // Reasoning step state — phase tracked via callback so header can render Complete button
   const reasoningRef = useRef<ReasoningChatHandle>(null);
+  const rerunRef = useRef<StepRerunChatHandle>(null);
   const [reasoningPhase, setReasoningPhase] = useState<ReasoningPhase>("not_started");
 
   // Track whether current step has partial output from an interrupted run
   const [hasPartialOutput, setHasPartialOutput] = useState(false);
+
+  // Track which step is in rerun chat mode (null = no rerun active)
+  const [rerunStepId, setRerunStepId] = useState<number | null>(null);
 
   // Pending step switch — set when user clicks a sidebar step while agent is running
   const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(null);
@@ -214,6 +231,7 @@ export default function WorkflowPage() {
   useEffect(() => {
     setHasPartialOutput(false);
     setReasoningPhase("not_started");
+    setRerunStepId(null);
   }, [currentStep]);
 
   // Detect partial output from interrupted runs
@@ -435,6 +453,17 @@ export default function WorkflowPage() {
 
   const handleRerunStep = async () => {
     if (!workspacePath) return;
+
+    // For agent steps eligible for rerun chat, enter interactive rerun mode
+    // instead of destructively resetting.
+    // Steps 4 (reasoning) and 8 (refinement) have their own chat components.
+    if (RERUN_CHAT_STEPS.has(currentStep)) {
+      clearRuns();
+      setRerunStepId(currentStep);
+      return;
+    }
+
+    // For other steps (human review, reasoning, refinement), use the legacy destructive reset
     try {
       await resetWorkflowStep(workspacePath, skillName, currentStep);
       clearRuns();
@@ -461,6 +490,13 @@ export default function WorkflowPage() {
     updateStepStatus(currentStep, "completed");
     advanceToNextStep();
   };
+
+  // Handle completion from the rerun chat
+  const handleRerunComplete = useCallback(() => {
+    setRerunStepId(null);
+    // Step stays in completed status -- the rerun chat has already captured artifacts
+    toast.success(`Step ${currentStep + 1} rerun completed`);
+  }, [currentStep]);
 
   // Reload the file content (after user edits externally).
   // Same priority as initial load: skill context dir > SQLite > workspace.
@@ -532,11 +568,28 @@ export default function WorkflowPage() {
     stepConfig.type !== "refinement" &&
     !isRunning &&
     workspacePath &&
-    currentStepDef?.status !== "completed";
+    currentStepDef?.status !== "completed" &&
+    rerunStepId === null;
 
   // --- Render content ---
 
   const renderContent = () => {
+    // Rerun chat mode — interactive rerun for agent steps
+    if (rerunStepId !== null && rerunStepId === currentStep && RERUN_CHAT_STEPS.has(currentStep)) {
+      return (
+        <StepRerunChat
+          ref={rerunRef}
+          skillName={skillName}
+          domain={domain ?? ""}
+          workspacePath={workspacePath ?? ""}
+          skillType={skillType ?? "domain"}
+          stepId={currentStep}
+          stepLabel={STEP_LABELS[currentStep] ?? `step${currentStep}`}
+          onComplete={handleRerunComplete}
+        />
+      );
+    }
+
     // Completed step with output files
     if (
       currentStepDef?.status === "completed" &&
@@ -799,7 +852,15 @@ export default function WorkflowPage() {
                 </Badge>
               )}
               {canStart && (
-                <Button onClick={() => handleStartStep(hasPartialOutput)} size="sm">
+                <Button onClick={() => {
+                  // For agent steps with partial output, enter rerun chat mode for interactive resume
+                  if (hasPartialOutput && RERUN_CHAT_STEPS.has(currentStep)) {
+                    clearRuns();
+                    setRerunStepId(currentStep);
+                  } else {
+                    handleStartStep(hasPartialOutput);
+                  }
+                }} size="sm">
                   {hasPartialOutput ? <RotateCcw className="size-3.5" /> : getStartButtonIcon()}
                   {hasPartialOutput ? "Resume" : getStartButtonLabel()}
                 </Button>
@@ -809,6 +870,15 @@ export default function WorkflowPage() {
                   <FileText className="size-3" />
                   Q&A Review
                 </Badge>
+              )}
+              {rerunStepId !== null && !isRunning && (
+                <Button
+                  size="sm"
+                  onClick={() => rerunRef.current?.completeStep()}
+                >
+                  <CheckCircle2 className="size-3.5" />
+                  Complete Step
+                </Button>
               )}
               {stepConfig?.type === "reasoning" && reasoningPhase === "awaiting_feedback" && (
                 <Button

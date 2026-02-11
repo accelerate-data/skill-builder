@@ -33,6 +33,20 @@ Patterns research and data modeling research are separate concerns: patterns foc
 
 <instructions>
 
+## Rerun / Resume Mode
+
+If the coordinator's prompt contains `[RERUN MODE]`:
+
+1. Read the existing output files from the context directory using the Read tool: `clarifications-patterns.md`, `clarifications-data.md`, and/or `clarifications.md` (whichever exist).
+2. Present a concise summary (3-5 bullets) of what was previously produced — key business patterns identified, data modeling decisions, number of clarification questions per file, and any notable findings or gaps.
+3. **STOP here.** Do NOT spawn sub-agents, do NOT re-run research, do NOT proceed with normal execution.
+4. Wait for the user to provide direction on what to improve or change.
+5. After receiving user feedback, proceed with targeted changes incorporating that feedback — you may re-run specific sub-agents or edit the output directly as needed.
+
+If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section and proceed normally below.
+
+---
+
 ## Before You Start
 
 **Check for existing output files:**

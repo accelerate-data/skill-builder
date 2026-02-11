@@ -15,6 +15,20 @@ You analyze the product manager's responses to clarification questions. You find
   - The **shared context** file path (domain definitions, content principles, and file formats) — read it for full context on the skill builder's purpose
   - The **context directory** path where all working files live
 
+## Rerun / Resume Mode
+
+If the coordinator's prompt contains `[RERUN MODE]`:
+
+1. Read `decisions.md` from the context directory using the Read tool (if it exists).
+2. Present a concise summary (3-5 bullets) of what was previously produced — key decisions made, any gaps or contradictions found, assumptions recorded, and the total number of decisions.
+3. **STOP here.** Do NOT analyze clarification files, do NOT resolve issues, do NOT rewrite decisions, do NOT proceed with normal execution.
+4. Wait for the user to provide direction on what to improve or change.
+5. After receiving user feedback, proceed with targeted changes incorporating that feedback — update only the affected decisions and re-run relevant analysis steps as needed.
+
+If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section and proceed normally below.
+
+---
+
 ## Instructions
 
 ### Step 1: Load context

@@ -22,9 +22,9 @@ import {
   startAgent,
   captureStepArtifacts,
   getArtifactContent,
-  saveArtifactContent,
   readFile,
 } from "@/lib/tauri";
+import { saveChatSession, loadChatSession } from "@/lib/chat-storage";
 import { useSettingsStore } from "@/stores/settings-store";
 import { countDecisions } from "@/lib/reasoning-parser";
 import { AgentStatusHeader } from "@/components/agent-status-header";
@@ -117,59 +117,95 @@ export const ReasoningChat = forwardRef<ReasoningChatHandle, ReasoningChatProps>
       ph: ReasoningPhase,
       rnd: number,
     ) => {
-      const state: ReasoningSessionState = {
-        messages: msgs,
-        sessionId: sid,
-        phase: ph,
-        round: rnd,
-      };
-      saveArtifactContent(
-        skillName,
-        4,
-        SESSION_ARTIFACT,
-        JSON.stringify(state),
-      ).catch(() => {});
+      saveChatSession(workspacePath, skillName, "reasoning", {
+        sessionId: sid ?? "",
+        stepId: 4,
+        messages: msgs.map((m) => ({
+          role: m.role === "agent" ? "assistant" as const : "user" as const,
+          content: m.content,
+          timestamp: new Date().toISOString(),
+          agentId: m.agentId,
+        })),
+        // Extra state preserved via JSON round-trip
+        ...({ phase: ph, round: rnd } as Record<string, unknown>),
+      }).catch(() => {});
     },
-    [skillName],
+    [skillName, workspacePath],
   );
 
-  // Load saved session on mount
+  // Load saved session on mount — try disk first, fall back to SQLite
   useEffect(() => {
     if (restored) return;
-    getArtifactContent(skillName, SESSION_ARTIFACT)
-      .then((artifact) => {
-        if (!artifact?.content) {
+
+    const restoreFromState = (state: ReasoningSessionState) => {
+      if (state.messages?.length > 0) {
+        // Map "assistant" role back to "agent" for internal use (disk format uses "assistant")
+        const mappedMessages: ChatMessage[] = state.messages.map((m) => ({
+          role: ((m.role as string) === "assistant" ? "agent" : "user") as "agent" | "user",
+          content: m.content,
+          agentId: (m as ChatMessage & { agentId?: string }).agentId,
+        }));
+        setMessages(mappedMessages);
+        setSessionId(state.sessionId);
+        // Don't restore agent_running — it's not running anymore.
+        // Map old phase names to new simplified phases for backward compatibility.
+        let restoredPhase: ReasoningPhase;
+        if (state.phase === "agent_running") {
+          restoredPhase = "awaiting_feedback";
+        } else if (state.phase === "completed") {
+          restoredPhase = "completed";
+        } else if (state.phase === "not_started") {
+          restoredPhase = "not_started";
+        } else {
+          // "summary", "follow_up", "gate_check", "awaiting_feedback" all map to awaiting_feedback
+          restoredPhase = "awaiting_feedback";
+        }
+        setPhase(restoredPhase);
+        setRound(state.round ?? 1);
+      }
+    };
+
+    // Try disk first
+    loadChatSession(workspacePath, skillName, "reasoning")
+      .then((diskSession) => {
+        if (diskSession) {
+          // Disk session found — restore from it (extra fields like phase/round are preserved in JSON)
+          const state = diskSession as unknown as ReasoningSessionState;
+          restoreFromState(state);
           setRestored(true);
           return;
         }
-        try {
-          const state: ReasoningSessionState = JSON.parse(artifact.content);
-          if (state.messages?.length > 0) {
-            setMessages(state.messages);
-            setSessionId(state.sessionId);
-            // Don't restore agent_running — it's not running anymore.
-            // Map old phase names to new simplified phases for backward compatibility.
-            let restoredPhase: ReasoningPhase;
-            if (state.phase === "agent_running") {
-              restoredPhase = "awaiting_feedback";
-            } else if (state.phase === "completed") {
-              restoredPhase = "completed";
-            } else if (state.phase === "not_started") {
-              restoredPhase = "not_started";
-            } else {
-              // "summary", "follow_up", "gate_check", "awaiting_feedback" all map to awaiting_feedback
-              restoredPhase = "awaiting_feedback";
+        // Disk not found — fall back to SQLite artifact
+        return getArtifactContent(skillName, SESSION_ARTIFACT)
+          .then((artifact) => {
+            if (artifact?.content) {
+              try {
+                const state: ReasoningSessionState = JSON.parse(artifact.content);
+                restoreFromState(state);
+              } catch {
+                // Corrupt JSON — ignore
+              }
             }
-            setPhase(restoredPhase);
-            setRound(state.round ?? 1);
-          }
-        } catch {
-          // Corrupt JSON — ignore
-        }
-        setRestored(true);
+            setRestored(true);
+          });
       })
-      .catch(() => setRestored(true));
-  }, [skillName, restored]);
+      .catch(() => {
+        // Disk read failed — try SQLite fallback
+        getArtifactContent(skillName, SESSION_ARTIFACT)
+          .then((artifact) => {
+            if (artifact?.content) {
+              try {
+                const state: ReasoningSessionState = JSON.parse(artifact.content);
+                restoreFromState(state);
+              } catch {
+                // Corrupt JSON — ignore
+              }
+            }
+            setRestored(true);
+          })
+          .catch(() => setRestored(true));
+      });
+  }, [skillName, workspacePath, restored]);
 
   // Debug mode refs — declared here, effects are after handler definitions
   const debugAutoStartedRef = useRef(false);

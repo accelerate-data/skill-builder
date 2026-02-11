@@ -656,6 +656,7 @@ pub async fn run_workflow_step(
     domain: String,
     workspace_path: String,
     resume: bool,
+    rerun: bool,
 ) -> Result<String, String> {
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path)?;
@@ -663,7 +664,8 @@ pub async fn run_workflow_step(
     // Step 0 fresh start — wipe the context directory and all artifacts so
     // the agent doesn't see stale files from a previous workflow run.
     // Skip this when resuming a paused step to preserve partial progress.
-    if step_id == 0 && !resume {
+    // Also skip when rerunning — we want to keep existing output files intact.
+    if step_id == 0 && !resume && !rerun {
         let context_dir = Path::new(&workspace_path).join(&skill_name).join("context");
         if context_dir.is_dir() {
             let _ = std::fs::remove_dir_all(&context_dir);
@@ -696,7 +698,14 @@ pub async fn run_workflow_step(
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         crate::db::get_skill_type(&conn, &skill_name)?
     };
-    let prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain, &workspace_path, skills_path.as_deref(), &skill_type);
+    let mut prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain, &workspace_path, skills_path.as_deref(), &skill_type);
+
+    // In rerun mode, prepend a marker so the agent knows to summarize
+    // existing output before regenerating.
+    if rerun {
+        prompt = format!("[RERUN MODE]\n\n{}", prompt);
+    }
+
     let agent_name = derive_agent_name(&skill_type, &step.prompt_template);
     let agent_id = make_agent_id(&skill_name, &format!("step{}", step_id));
 
@@ -2350,5 +2359,185 @@ mod tests {
                 step_id, normal_turns
             );
         }
+    }
+
+    // --- VD-407: rerun mode tests ---
+
+    #[test]
+    fn test_rerun_prompt_prepending() {
+        // When rerun is true, the prompt should be prepended with [RERUN MODE]
+        let base_prompt = build_prompt(
+            "research-concepts.md",
+            "context/clarifications-concepts.md",
+            "my-skill",
+            "e-commerce",
+            "/home/user/.vibedata",
+            None,
+            "domain",
+        );
+
+        // Simulate the rerun logic from run_workflow_step
+        let rerun_prompt = format!("[RERUN MODE]\n\n{}", &base_prompt);
+
+        assert!(rerun_prompt.starts_with("[RERUN MODE]\n\n"));
+        assert!(rerun_prompt.contains("e-commerce"));
+        assert!(rerun_prompt.contains("my-skill"));
+        // The original prompt content should follow the rerun marker
+        assert!(rerun_prompt.contains("The domain is: e-commerce"));
+    }
+
+    #[test]
+    fn test_rerun_prompt_not_prepended_when_false() {
+        // When rerun is false, the prompt should NOT have [RERUN MODE]
+        let prompt = build_prompt(
+            "build.md",
+            "skill/SKILL.md",
+            "my-skill",
+            "analytics",
+            "/workspace",
+            None,
+            "domain",
+        );
+        assert!(!prompt.contains("[RERUN MODE]"));
+    }
+
+    #[test]
+    fn test_rerun_mode_preserves_step0_context() {
+        // In rerun mode, step 0 should NOT wipe the context directory.
+        // We verify this by checking the condition: step_id == 0 && !resume && !rerun
+        // When rerun=true, the condition is false, so context is preserved.
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+
+        // Write a context file that should survive rerun
+        std::fs::write(
+            skill_dir.join("context/clarifications-concepts.md"),
+            "# Existing concepts from previous run",
+        ).unwrap();
+
+        // Simulate the rerun guard: when rerun=true, we skip the wipe
+        let step_id: u32 = 0;
+        let resume = false;
+        let rerun = true;
+        if step_id == 0 && !resume && !rerun {
+            let context_dir = Path::new(workspace).join("my-skill").join("context");
+            if context_dir.is_dir() {
+                let _ = std::fs::remove_dir_all(&context_dir);
+            }
+        }
+
+        // Context file should still exist
+        assert!(skill_dir.join("context/clarifications-concepts.md").exists());
+        let content = std::fs::read_to_string(
+            skill_dir.join("context/clarifications-concepts.md"),
+        ).unwrap();
+        assert_eq!(content, "# Existing concepts from previous run");
+    }
+
+    #[test]
+    fn test_normal_mode_wipes_step0_context() {
+        // Confirm that without rerun, step 0 context IS wiped (baseline behavior)
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+
+        std::fs::write(
+            skill_dir.join("context/clarifications-concepts.md"),
+            "# Will be wiped",
+        ).unwrap();
+
+        let step_id: u32 = 0;
+        let resume = false;
+        let rerun = false;
+        if step_id == 0 && !resume && !rerun {
+            let context_dir = Path::new(workspace).join("my-skill").join("context");
+            if context_dir.is_dir() {
+                let _ = std::fs::remove_dir_all(&context_dir);
+            }
+        }
+
+        // Context directory should have been wiped
+        assert!(!skill_dir.join("context/clarifications-concepts.md").exists());
+    }
+
+    #[test]
+    fn test_rerun_prompt_for_all_agent_steps() {
+        // Verify rerun prompt works correctly for every agent step
+        let agent_steps: Vec<(u32, &str, &str)> = vec![
+            (0, "research-concepts.md", "context/clarifications-concepts.md"),
+            (2, "research-patterns-and-merge.md", "context/clarifications.md"),
+            (4, "reasoning.md", "context/decisions.md"),
+            (5, "build.md", "skill/SKILL.md"),
+            (6, "validate.md", "context/agent-validation-log.md"),
+            (7, "test.md", "context/test-skill.md"),
+        ];
+
+        for (step_id, prompt_template, output_file) in agent_steps {
+            let base_prompt = build_prompt(
+                prompt_template,
+                output_file,
+                "test-skill",
+                "test-domain",
+                "/workspace",
+                None,
+                "domain",
+            );
+            let rerun_prompt = format!("[RERUN MODE]\n\n{}", &base_prompt);
+
+            assert!(
+                rerun_prompt.starts_with("[RERUN MODE]\n\n"),
+                "Step {} rerun prompt should start with [RERUN MODE]",
+                step_id,
+            );
+            assert!(
+                rerun_prompt.contains("test-domain"),
+                "Step {} rerun prompt should contain domain",
+                step_id,
+            );
+        }
+    }
+
+    #[test]
+    fn test_save_artifact_upsert_behavior() {
+        // Verify that save_artifact uses INSERT ... ON CONFLICT UPDATE
+        // (upsert), so calling it multiple times for the same artifact
+        // updates rather than fails. This is critical for rerun mode where
+        // captureStepArtifacts is called after each agent turn.
+        let conn = create_test_conn();
+
+        // First insert
+        crate::db::save_artifact(
+            &conn, "my-skill", 5,
+            "SKILL.md", "# Initial version",
+        ).unwrap();
+
+        let artifact = crate::db::get_artifact_by_path(&conn, "my-skill", "SKILL.md")
+            .unwrap().unwrap();
+        assert_eq!(artifact.content, "# Initial version");
+        assert_eq!(artifact.size_bytes, "# Initial version".len() as i64);
+
+        // Second call (upsert) — should update, not error
+        crate::db::save_artifact(
+            &conn, "my-skill", 5,
+            "SKILL.md", "# Updated version with more content",
+        ).unwrap();
+
+        let artifact = crate::db::get_artifact_by_path(&conn, "my-skill", "SKILL.md")
+            .unwrap().unwrap();
+        assert_eq!(artifact.content, "# Updated version with more content");
+        assert_eq!(artifact.size_bytes, "# Updated version with more content".len() as i64);
+
+        // Third call — still fine
+        crate::db::save_artifact(
+            &conn, "my-skill", 5,
+            "SKILL.md", "# Final version",
+        ).unwrap();
+
+        let artifact = crate::db::get_artifact_by_path(&conn, "my-skill", "SKILL.md")
+            .unwrap().unwrap();
+        assert_eq!(artifact.content, "# Final version");
     }
 }

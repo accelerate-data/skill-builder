@@ -48,7 +48,11 @@ vi.mock("@/components/agent-output-panel", () => ({
   AgentOutputPanel: () => <div data-testid="agent-output" />,
 }));
 vi.mock("@/components/workflow-step-complete", () => ({
-  WorkflowStepComplete: () => <div data-testid="step-complete" />,
+  WorkflowStepComplete: ({ onRerun }: { onRerun?: () => void }) => (
+    <div data-testid="step-complete">
+      {onRerun && <button onClick={onRerun}>Rerun Step</button>}
+    </div>
+  ),
 }));
 vi.mock("@/components/reasoning-chat", () => ({
   ReasoningChat: () => <div data-testid="reasoning-chat" />,
@@ -56,10 +60,13 @@ vi.mock("@/components/reasoning-chat", () => ({
 vi.mock("@/components/refinement-chat", () => ({
   RefinementChat: () => <div data-testid="refinement-chat" />,
 }));
+vi.mock("@/components/step-rerun-chat", () => ({
+  StepRerunChat: () => <div data-testid="step-rerun-chat" />,
+}));
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
-import { getWorkflowState, saveWorkflowState, getArtifactContent, saveArtifactContent, readFile, runWorkflowStep } from "@/lib/tauri";
+import { getWorkflowState, saveWorkflowState, getArtifactContent, saveArtifactContent, readFile, runWorkflowStep, resetWorkflowStep } from "@/lib/tauri";
 
 describe("WorkflowPage — agent completion lifecycle", () => {
   beforeEach(() => {
@@ -1190,5 +1197,166 @@ describe("WorkflowPage — debug auto-start behavior", () => {
 
     // runWorkflowStep should NOT have been called again
     expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalled();
+  });
+});
+
+describe("WorkflowPage — rerun integration", () => {
+  beforeEach(() => {
+    resetTauriMocks();
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+
+    useSettingsStore.getState().setSettings({
+      workspacePath: "/test/workspace",
+      skillsPath: "/test/skills",
+      anthropicApiKey: "sk-test",
+    });
+
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
+    mockToast.info.mockClear();
+    mockBlocker.proceed.mockClear();
+    mockBlocker.reset.mockClear();
+    mockBlocker.status = "idle";
+
+    vi.mocked(saveWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(getArtifactContent).mockClear();
+    vi.mocked(readFile).mockClear();
+    vi.mocked(saveArtifactContent).mockClear();
+    vi.mocked(runWorkflowStep).mockClear();
+    vi.mocked(resetWorkflowStep).mockClear();
+  });
+
+  afterEach(() => {
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+  });
+
+  it("clicking Rerun on a completed agent step enters rerun chat mode", async () => {
+    // Step 0 is a completed agent step — clicking "Rerun Step" should render StepRerunChat
+    // instead of calling resetWorkflowStep (destructive reset).
+    vi.mocked(getArtifactContent).mockResolvedValue({
+      skill_name: "test-skill",
+      step_id: 0,
+      relative_path: "context/clarifications-concepts.md",
+      content: "# Research output",
+      size_bytes: 100,
+      created_at: "",
+      updated_at: "",
+    });
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    // Wait for effects to settle and the "Rerun Step" button to appear
+    await waitFor(() => {
+      expect(screen.queryByText("Rerun Step")).toBeTruthy();
+    });
+
+    // Click "Rerun Step"
+    act(() => {
+      screen.getByText("Rerun Step").click();
+    });
+
+    // StepRerunChat should render (not a destructive reset)
+    await waitFor(() => {
+      expect(screen.queryByTestId("step-rerun-chat")).toBeTruthy();
+    });
+
+    // resetWorkflowStep should NOT have been called (non-destructive rerun)
+    expect(vi.mocked(resetWorkflowStep)).not.toHaveBeenCalled();
+  });
+
+  it("resume with partial output enters rerun chat for agent steps", async () => {
+    // Step 0 has partial output on disk — clicking "Resume" should enter rerun chat
+    // mode instead of calling handleStartStep with resume=true.
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path.includes("clarifications-concepts.md")) {
+        return Promise.resolve("# Partial research output");
+      }
+      return Promise.reject("not found");
+    });
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    // Step 0 is pending (interrupted run — partial output exists)
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    // Wait for partial output detection and the "Resume" button to appear
+    await waitFor(() => {
+      expect(screen.queryByText("Resume")).toBeTruthy();
+    });
+
+    // Click "Resume"
+    act(() => {
+      screen.getByText("Resume").click();
+    });
+
+    // StepRerunChat should render (interactive resume via rerun chat)
+    await waitFor(() => {
+      expect(screen.queryByTestId("step-rerun-chat")).toBeTruthy();
+    });
+
+    // runWorkflowStep should NOT have been called (we entered rerun chat, not direct agent start)
+    expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalled();
+  });
+
+  it("rerun on step 4 (reasoning) does NOT enter rerun chat", async () => {
+    // Step 4 (reasoning) has its own chat component — rerun should use
+    // the legacy destructive reset path, not StepRerunChat.
+    vi.mocked(getArtifactContent).mockResolvedValue({
+      skill_name: "test-skill",
+      step_id: 4,
+      relative_path: "context/decisions.md",
+      content: "# Decisions",
+      size_bytes: 50,
+      created_at: "",
+      updated_at: "",
+    });
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    for (let i = 0; i < 4; i++) {
+      useWorkflowStore.getState().updateStepStatus(i, "completed");
+    }
+    useWorkflowStore.getState().updateStepStatus(4, "completed");
+    useWorkflowStore.getState().setCurrentStep(4);
+
+    render(<WorkflowPage />);
+
+    // Wait for the "Rerun Step" button to appear
+    await waitFor(() => {
+      expect(screen.queryByText("Rerun Step")).toBeTruthy();
+    });
+
+    // Click "Rerun Step"
+    act(() => {
+      screen.getByText("Rerun Step").click();
+    });
+
+    // Wait for async resetWorkflowStep to complete
+    await waitFor(() => {
+      expect(vi.mocked(resetWorkflowStep)).toHaveBeenCalledTimes(1);
+    });
+
+    // StepRerunChat should NOT render — reasoning has its own chat component
+    expect(screen.queryByTestId("step-rerun-chat")).toBeNull();
+
+    // resetWorkflowStep should have been called (legacy destructive reset)
+    expect(vi.mocked(resetWorkflowStep)).toHaveBeenCalledWith(
+      "/test/workspace",
+      "test-skill",
+      4,
+    );
   });
 });
