@@ -131,6 +131,33 @@ function getToolSummary(message: AgentMessage): ToolSummaryResult | null {
 }
 
 /**
+ * Extract tool input parameters from a message for display in expanded view.
+ * Returns a formatted JSON string of the input params, or null if none found.
+ */
+export function getToolInput(message: AgentMessage): string | null {
+  const raw = message.raw;
+  const msgContent = (raw as Record<string, unknown>).message as
+    | { content?: Array<{ type: string; name?: string; input?: Record<string, unknown> }> }
+    | undefined;
+  const toolBlock = msgContent?.content?.find((b) => b.type === "tool_use");
+  if (!toolBlock?.input) return null;
+
+  const input = toolBlock.input;
+  if (Object.keys(input).length === 0) return null;
+
+  const hasContent = Object.values(input).some(val =>
+    val !== null && val !== undefined && String(val).trim() !== ""
+  );
+  if (!hasContent) return null;
+
+  try {
+    return JSON.stringify(input, null, 2);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Check if a message ends with a question directed at the user.
  * Looks at the last non-empty line for a trailing question mark.
  */
@@ -297,6 +324,59 @@ export function TurnMarker({ turn }: { turn: number }) {
   );
 }
 
+export function CollapsibleToolCall({ message }: { message: AgentMessage }) {
+  const tool = getToolSummary(message);
+  if (!tool) return null;
+
+  const toolInput = getToolInput(message);
+  const [expanded, setExpanded] = useState(false);
+
+  // No expand affordance when there's no tool input to show
+  if (!toolInput) {
+    return (
+      <div
+        data-testid="collapsible-tool-call"
+        className="flex items-center gap-2 text-xs text-muted-foreground"
+      >
+        {getToolIcon(tool.toolName)}
+        <span className="truncate">{tool.summary}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div data-testid="collapsible-tool-call">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        aria-label={`${tool.summary} — ${expanded ? "collapse" : "expand"}`}
+        className="flex w-full items-center gap-2 text-xs text-muted-foreground cursor-pointer transition-colors hover:text-foreground"
+      >
+        {expanded ? (
+          <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
+        ) : (
+          <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />
+        )}
+        {getToolIcon(tool.toolName)}
+        <span className="truncate">{tool.summary}</span>
+      </button>
+      <div
+        className={`overflow-hidden transition-all duration-200 ease-out ${
+          expanded ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+        }`}
+        data-testid="collapsible-tool-details"
+      >
+        <div className="ml-3 mt-1 border-l-2 border-l-[var(--chat-tool-border)] pl-3">
+          <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-all">
+            {toolInput}
+          </pre>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ToolCallGroup({ messages }: { messages: AgentMessage[] }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -324,16 +404,9 @@ export function ToolCallGroup({ messages }: { messages: AgentMessage[] }) {
         data-testid="tool-group-details"
       >
         <div className="ml-3 mt-1 flex flex-col gap-0.5 border-l-2 border-l-[var(--chat-tool-border)] pl-3">
-          {messages.map((msg, idx) => {
-            const tool = getToolSummary(msg);
-            if (!tool) return null;
-            return (
-              <div key={`${msg.timestamp}-${idx}`} className="flex items-center gap-2 text-xs text-muted-foreground">
-                {getToolIcon(tool.toolName)}
-                <span className="truncate">{tool.summary}</span>
-              </div>
-            );
-          })}
+          {messages.map((msg, idx) => (
+            <CollapsibleToolCall key={`${msg.timestamp}-${idx}`} message={msg} />
+          ))}
         </div>
       </div>
     </div>
@@ -367,14 +440,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
   }
 
   if (category === "tool_call") {
-    const tool = getToolSummary(message);
-    if (!tool) return null;
-    return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        {getToolIcon(tool.toolName)}
-        <span className="truncate">{tool.summary}</span>
-      </div>
-    );
+    return <CollapsibleToolCall message={message} />;
   }
 
   if (category === "question") {

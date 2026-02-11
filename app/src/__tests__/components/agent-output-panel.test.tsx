@@ -23,11 +23,13 @@ import {
   categoryStyles,
   MessageItem,
   ToolCallGroup,
+  CollapsibleToolCall,
   TurnMarker,
   computeToolCallGroups,
   computeMessageGroups,
   spacingClasses,
   endsWithUserQuestion,
+  getToolInput,
   type MessageCategory,
   type MessageSpacing,
 } from "@/components/agent-output-panel";
@@ -132,6 +134,8 @@ describe("AgentOutputPanel", () => {
     });
     render(<AgentOutputPanel agentId="test-agent" />);
     expect(screen.getByText("Reading test.md")).toBeInTheDocument();
+    // Now renders as a CollapsibleToolCall
+    expect(screen.getByTestId("collapsible-tool-call")).toBeInTheDocument();
   });
 
   it("shows token usage when available", () => {
@@ -299,7 +303,7 @@ describe("MessageItem visual treatments", () => {
     expect(el.textContent).toContain("Agent finished successfully");
   });
 
-  it("renders tool_call message as simple non-interactive summary", () => {
+  it("renders tool_call message as collapsible tool call", () => {
     const { container } = render(
       <MessageItem
         message={{
@@ -316,17 +320,13 @@ describe("MessageItem visual treatments", () => {
         }}
       />,
     );
-    // Tool call should render as simple non-interactive summary (no collapsible)
-    const summary = container.querySelector("div");
-    expect(summary).toBeInTheDocument();
-    expect(summary!.textContent).toContain("Reading b.ts");
+    // Tool call should render as CollapsibleToolCall with data-testid
+    expect(screen.getByTestId("collapsible-tool-call")).toBeInTheDocument();
+    expect(container.textContent).toContain("Reading b.ts");
 
-    // Should have muted foreground styling
-    expect(summary!.className).toContain("text-muted-foreground");
-
-    // Should NOT have a button (no expand/collapse)
+    // Should have a button for expanding (since there is tool input)
     const button = container.querySelector("button");
-    expect(button).not.toBeInTheDocument();
+    expect(button).toBeInTheDocument();
   });
 
   it("renders question message with CSS variable border styling and compact markdown", () => {
@@ -985,17 +985,16 @@ describe("VD-373: Message type icons", () => {
     expect(svgs).toHaveLength(0);
   });
 
-  it("tool call messages do NOT render message-type icons (only tool icons)", () => {
+  it("tool call messages do NOT render message-type icons (only tool icons and chevron)", () => {
     const { container } = render(
       <MessageItem
         message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })}
       />,
     );
-    // Tool calls have tool-specific icons (e.g. FileText for Read) but not
-    // message-type icons (XCircle, CheckCircle2, MessageCircleQuestion).
-    // The tool icon is size-3.5, while message-type icons are size-4.
+    // Tool calls have tool-specific icons (e.g. FileText for Read) and a chevron,
+    // but not message-type icons (XCircle, CheckCircle2, MessageCircleQuestion).
+    // The tool icon and chevron are size-3.5, while message-type icons are size-4.
     const svgs = container.querySelectorAll("svg");
-    // Should have exactly tool icons (chevron + tool icon), no size-4 message-type icons
     for (const svg of svgs) {
       expect(svg.classList.contains("size-4")).toBe(false);
     }
@@ -1005,66 +1004,46 @@ describe("VD-373: Message type icons", () => {
 // --- Tool call rendering: standalone vs grouped ---
 
 describe("Tool call rendering: standalone vs grouped", () => {
-  it("standalone tool call has no chevron button", () => {
+  it("standalone tool call is expandable with chevron button", () => {
     const { container } = render(
       <MessageItem
         message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })}
       />,
     );
-    // Should not have any button element
-    expect(container.querySelector("button")).not.toBeInTheDocument();
-    // Should not have any chevron icons
-    expect(screen.queryByTestId("chevron-right")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("chevron-down")).not.toBeInTheDocument();
+    // Should have a button for expanding
+    const button = container.querySelector("button");
+    expect(button).toBeInTheDocument();
+    // Should render as collapsible-tool-call
+    expect(screen.getByTestId("collapsible-tool-call")).toBeInTheDocument();
   });
 
   it("standalone tool call shows tool icon and summary text", () => {
-    const { container } = render(
+    render(
       <MessageItem
         message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })}
       />,
     );
     // Should show the summary text
     expect(screen.getByText("Reading app.ts")).toBeInTheDocument();
-    // Should have a tool icon (FileText for Read)
-    const svgs = container.querySelectorAll("svg");
-    expect(svgs.length).toBe(1);
-    expect(svgs[0].classList.contains("size-3.5")).toBe(true);
   });
 
-  it("standalone tool call is plain text (no interactive elements)", () => {
-    const { container } = render(
+  it("standalone tool call expands to show tool input on click", () => {
+    render(
       <MessageItem
         message={makeToolCallMsg("Grep", { pattern: "TODO" })}
       />,
     );
-    // Should have no interactive elements
-    expect(container.querySelector("button")).not.toBeInTheDocument();
-    // Should be a simple div with icon + text
-    const wrapper = container.firstElementChild!;
-    expect(wrapper.tagName).toBe("DIV");
-    expect(wrapper.querySelector("button")).not.toBeInTheDocument();
+    // Click button to expand
+    const button = screen.getByRole("button");
+    fireEvent.click(button);
+
+    // Should show the tool input details
+    const details = screen.getByTestId("collapsible-tool-details");
+    expect(details.className).toContain("opacity-100");
+    expect(details.textContent).toContain("TODO");
   });
 
-  it("ToolCallGroup has exactly one chevron in header", () => {
-    const groupMessages = [
-      makeToolCallMsg("Read", { file_path: "/a.ts" }),
-      makeToolCallMsg("Grep", { pattern: "export" }),
-      makeToolCallMsg("Read", { file_path: "/b.ts" }),
-    ];
-    const { container } = render(<ToolCallGroup messages={groupMessages} />);
-
-    // Should have exactly one button (the group header)
-    const buttons = container.querySelectorAll("button");
-    expect(buttons).toHaveLength(1);
-
-    // Button should contain a chevron (ChevronRight in collapsed state)
-    const button = buttons[0];
-    // ChevronRight + Terminal icon = 2 icons, but we care that there's exactly one button
-    expect(button).toBeInTheDocument();
-  });
-
-  it("ToolCallGroup expanded members are plain text (no buttons)", () => {
+  it("ToolCallGroup header button controls group expand/collapse", () => {
     const groupMessages = [
       makeToolCallMsg("Read", { file_path: "/a.ts" }),
       makeToolCallMsg("Grep", { pattern: "export" }),
@@ -1072,7 +1051,26 @@ describe("Tool call rendering: standalone vs grouped", () => {
     ];
     render(<ToolCallGroup messages={groupMessages} />);
 
-    // Click to expand
+    // The group header button should exist with correct aria
+    const headerButton = screen.getByLabelText(/3 tool calls/);
+    expect(headerButton).toBeInTheDocument();
+    expect(headerButton).toHaveAttribute("aria-expanded", "false");
+
+    // When collapsed, the details container should be hidden
+    const details = screen.getByTestId("tool-group-details");
+    expect(details.className).toContain("max-h-0");
+    expect(details.className).toContain("opacity-0");
+  });
+
+  it("ToolCallGroup expanded members are individually collapsible", () => {
+    const groupMessages = [
+      makeToolCallMsg("Read", { file_path: "/a.ts" }),
+      makeToolCallMsg("Grep", { pattern: "export" }),
+      makeToolCallMsg("Read", { file_path: "/b.ts" }),
+    ];
+    render(<ToolCallGroup messages={groupMessages} />);
+
+    // Click group header to expand
     fireEvent.click(screen.getAllByRole("button")[0]);
 
     // Should show the three tool summaries as text
@@ -1080,13 +1078,14 @@ describe("Tool call rendering: standalone vs grouped", () => {
     expect(screen.getByText(/Grep:/)).toBeInTheDocument();
     expect(screen.getByText("Reading b.ts")).toBeInTheDocument();
 
-    // Expanded members should NOT have buttons
-    // (The only button is the group header, which we already clicked)
-    const buttons = screen.getAllByRole("button");
-    expect(buttons).toHaveLength(1);
+    // Each expanded member is now a CollapsibleToolCall with its own button
+    const details = screen.getByTestId("tool-group-details");
+    const memberButtons = details.querySelectorAll("button");
+    // Each tool call with input gets a button
+    expect(memberButtons.length).toBe(3);
   });
 
-  it("ToolCallGroup expanded members have no chevrons", () => {
+  it("ToolCallGroup expanded members render as CollapsibleToolCall", () => {
     const groupMessages = [
       makeToolCallMsg("Read", { file_path: "/a.ts" }),
       makeToolCallMsg("Grep", { pattern: "export" }),
@@ -1096,19 +1095,13 @@ describe("Tool call rendering: standalone vs grouped", () => {
     // Expand the group
     fireEvent.click(screen.getAllByRole("button")[0]);
 
-    // The details container should have no buttons inside it
+    // The details container should have CollapsibleToolCall items
     const details = screen.getByTestId("tool-group-details");
-    expect(details.querySelector("button")).not.toBeInTheDocument();
-
-    // Each member should be a simple div with no interactive elements
-    const members = details.querySelectorAll("div.flex.items-center");
-    expect(members).toHaveLength(2);
-    for (const member of members) {
-      expect(member.querySelector("button")).not.toBeInTheDocument();
-    }
+    const collapsibleItems = details.querySelectorAll("[data-testid='collapsible-tool-call']");
+    expect(collapsibleItems).toHaveLength(2);
   });
 
-  it("ToolCallGroup expanded members show icon and text only", () => {
+  it("ToolCallGroup expanded members show icon and text", () => {
     const groupMessages = [
       makeToolCallMsg("Read", { file_path: "/test.ts" }),
       makeToolCallMsg("Write", { file_path: "/output.ts" }),
@@ -1118,19 +1111,14 @@ describe("Tool call rendering: standalone vs grouped", () => {
     // Expand
     fireEvent.click(screen.getAllByRole("button")[0]);
 
-    // Find the details container
+    // Find collapsible items
     const details = screen.getByTestId("tool-group-details");
-    const memberDivs = details.querySelectorAll("div.flex.items-center");
+    const items = details.querySelectorAll("[data-testid='collapsible-tool-call']");
+    expect(items).toHaveLength(2);
 
-    // Should have 2 member divs
-    expect(memberDivs).toHaveLength(2);
-
-    // Each member div should have icon + text, no button
-    for (const div of memberDivs) {
-      expect(div.querySelector("button")).not.toBeInTheDocument();
-      expect(div.querySelector("svg.size-3\\.5")).toBeInTheDocument();
-      expect(div.querySelector("span")).toBeInTheDocument();
-    }
+    // Each should have SVG icons and summary text
+    expect(screen.getByText("Reading test.ts")).toBeInTheDocument();
+    expect(screen.getByText("Writing output.ts")).toBeInTheDocument();
   });
 });
 
@@ -1203,5 +1191,170 @@ describe("VD-374: Message transitions and animations", () => {
     const { container } = render(<AgentOutputPanel agentId="test-agent" />);
     const animatedDivs = container.querySelectorAll(".animate-message-in");
     expect(animatedDivs.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// --- VD-370: getToolInput ---
+
+describe("getToolInput", () => {
+  it("returns formatted JSON for tool input params", () => {
+    const msg = makeToolCallMsg("Read", { file_path: "/src/app.ts" });
+    const result = getToolInput(msg);
+    expect(result).toBe(JSON.stringify({ file_path: "/src/app.ts" }, null, 2));
+  });
+
+  it("returns null for messages with no tool_use block", () => {
+    const msg: AgentMessage = {
+      type: "assistant",
+      content: "Hello",
+      raw: { message: { content: [{ type: "text", text: "Hello" }] } },
+      timestamp: Date.now(),
+    };
+    expect(getToolInput(msg)).toBeNull();
+  });
+
+  it("returns null for tool_use with empty input", () => {
+    const msg: AgentMessage = {
+      type: "assistant",
+      content: null as unknown as string,
+      raw: { message: { content: [{ type: "tool_use", name: "Read", input: {} }] } },
+      timestamp: Date.now(),
+    };
+    expect(getToolInput(msg)).toBeNull();
+  });
+
+  it("returns null for tool_use with no input field", () => {
+    const msg: AgentMessage = {
+      type: "assistant",
+      content: null as unknown as string,
+      raw: { message: { content: [{ type: "tool_use", name: "Read" }] } },
+      timestamp: Date.now(),
+    };
+    expect(getToolInput(msg)).toBeNull();
+  });
+
+  it("returns null when all input values are empty strings", () => {
+    const msg = makeToolCallMsg("Read", { file_path: "", command: "" });
+    expect(getToolInput(msg)).toBeNull();
+  });
+
+  it("handles multiple input parameters", () => {
+    const msg = makeToolCallMsg("Grep", { pattern: "TODO", path: "/src" });
+    const result = getToolInput(msg);
+    const parsed = JSON.parse(result!);
+    expect(parsed.pattern).toBe("TODO");
+    expect(parsed.path).toBe("/src");
+  });
+});
+
+// --- VD-370: CollapsibleToolCall ---
+
+describe("CollapsibleToolCall", () => {
+  it("renders collapsed by default with summary text and chevron-right", () => {
+    render(
+      <CollapsibleToolCall message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })} />,
+    );
+    expect(screen.getByTestId("collapsible-tool-call")).toBeInTheDocument();
+    expect(screen.getByText("Reading app.ts")).toBeInTheDocument();
+
+    // Should have a button with aria-expanded=false
+    const button = screen.getByRole("button");
+    expect(button).toHaveAttribute("aria-expanded", "false");
+
+    // Expanded content should not be visible (max-h-0, opacity-0)
+    const details = screen.getByTestId("collapsible-tool-details");
+    expect(details.className).toContain("max-h-0");
+    expect(details.className).toContain("opacity-0");
+  });
+
+  it("expands on click to show tool input params", () => {
+    render(
+      <CollapsibleToolCall message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })} />,
+    );
+    const button = screen.getByRole("button");
+    fireEvent.click(button);
+
+    // aria-expanded should be true
+    expect(button).toHaveAttribute("aria-expanded", "true");
+
+    // Details should be visible
+    const details = screen.getByTestId("collapsible-tool-details");
+    expect(details.className).toContain("max-h-96");
+    expect(details.className).toContain("opacity-100");
+
+    // Tool input should be shown
+    expect(details.textContent).toContain("/src/app.ts");
+  });
+
+  it("collapses on re-click", () => {
+    render(
+      <CollapsibleToolCall message={makeToolCallMsg("Grep", { pattern: "TODO" })} />,
+    );
+    const button = screen.getByRole("button");
+
+    // Expand
+    fireEvent.click(button);
+    expect(button).toHaveAttribute("aria-expanded", "true");
+
+    // Collapse
+    fireEvent.click(button);
+    expect(button).toHaveAttribute("aria-expanded", "false");
+
+    const details = screen.getByTestId("collapsible-tool-details");
+    expect(details.className).toContain("max-h-0");
+    expect(details.className).toContain("opacity-0");
+  });
+
+  it("has animation classes on details container", () => {
+    render(
+      <CollapsibleToolCall message={makeToolCallMsg("Read", { file_path: "/a.ts" })} />,
+    );
+    const details = screen.getByTestId("collapsible-tool-details");
+    expect(details.className).toContain("transition-all");
+    expect(details.className).toContain("duration-200");
+    expect(details.className).toContain("ease-out");
+  });
+
+  it("shows no expand affordance when getToolInput returns null", () => {
+    // Create a tool message with no input
+    const msg: AgentMessage = {
+      type: "assistant",
+      content: null as unknown as string,
+      raw: { message: { content: [{ type: "tool_use", name: "Read", input: {} }] } },
+      timestamp: Date.now(),
+    };
+    const { container } = render(<CollapsibleToolCall message={msg} />);
+
+    // Should still render the tool-call testid
+    expect(screen.getByTestId("collapsible-tool-call")).toBeInTheDocument();
+
+    // Should NOT have a button (no expand)
+    expect(container.querySelector("button")).not.toBeInTheDocument();
+
+    // Should NOT have collapsible-tool-details
+    expect(screen.queryByTestId("collapsible-tool-details")).not.toBeInTheDocument();
+
+    // Should show summary text
+    expect(container.textContent).toContain("Read");
+  });
+
+  it("returns null for messages with no tool summary", () => {
+    const msg: AgentMessage = {
+      type: "assistant",
+      content: null as unknown as string,
+      raw: { message: { content: [{ type: "tool_use" }] } },
+      timestamp: Date.now(),
+    };
+    const { container } = render(<CollapsibleToolCall message={msg} />);
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("has correct aria-label", () => {
+    render(
+      <CollapsibleToolCall message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })} />,
+    );
+    const button = screen.getByRole("button");
+    expect(button.getAttribute("aria-label")).toContain("Reading app.ts");
+    expect(button.getAttribute("aria-label")).toContain("expand");
   });
 });
