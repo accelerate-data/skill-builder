@@ -1,18 +1,11 @@
 #!/usr/bin/env bash
 # fixtures.sh — Create test fixture directories for mode detection and agent tests
 
-# Mode A: Resume (workflow-state.md exists at Step 3)
+# Mode A: Resume (context/ output files exist)
 create_fixture_mode_a() {
   local dir="$1" skill_name="$2"
   mkdir -p "$dir/context"
   mkdir -p "$dir/$skill_name/references"
-
-  cat > "$dir/workflow-state.md" << 'EOF'
-# Workflow State: pet-store-analytics
-## Current Step: 3 (Parallel Research)
-## Domain: pet store analytics
-## Status: In Progress
-EOF
 
   cat > "$dir/context/clarifications-concepts.md" << 'EOF'
 ## Core Entities
@@ -75,13 +68,6 @@ create_fixture_t4_workspace() {
 
   mkdir -p "$dir/context"
   mkdir -p "$dir/$skill_name/references"
-
-  cat > "$dir/workflow-state.md" << 'EOF'
-# Workflow State: pet-store-analytics
-## Current Step: 5 (Merged Questions Answered)
-## Domain: pet store analytics
-## Status: In Progress
-EOF
 
   # Answered concepts (Step 2 complete)
   cat > "$dir/context/clarifications-concepts.md" << 'EOF'

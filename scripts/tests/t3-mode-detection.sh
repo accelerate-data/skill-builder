@@ -13,14 +13,14 @@ run_t3() {
   dir_c=$(make_temp_dir "mode-c")
   log_verbose "Mode C workspace: $dir_c"
 
-  local prompt_c="Check the current working directory for these two files:
-1. workflow-state.md
+  local prompt_c="Check the current working directory for:
+1. context/ directory with output files (e.g., context/clarifications-concepts.md)
 2. $skill_name/SKILL.md
 
 Then apply these rules:
-- If workflow-state.md exists → this is 'Mode A'
-- If $skill_name/SKILL.md exists but workflow-state.md does NOT → this is 'Mode B'
-- If NEITHER file exists → this is 'Mode C'
+- If context/ output files exist → this is 'Mode A'
+- If $skill_name/SKILL.md exists but NO context/ output files → this is 'Mode B'
+- If NEITHER exists → this is 'Mode C'
 
 Reply with ONLY the mode label, e.g. 'Mode C'. Nothing else."
 
@@ -32,20 +32,20 @@ Reply with ONLY the mode label, e.g. 'Mode C'. Nothing else."
     record_result "$tier" "mode_c_scratch_detected" "FAIL" "empty output"
   fi
 
-  # ---- T3.2: Mode A (resume — workflow-state.md exists) ----
+  # ---- T3.2: Mode A (resume — context/ output files exist) ----
   local dir_a
   dir_a=$(make_temp_dir "mode-a")
   create_fixture_mode_a "$dir_a" "$skill_name"
   log_verbose "Mode A workspace: $dir_a"
 
-  local prompt_a="Check the current working directory for these two files:
-1. workflow-state.md
+  local prompt_a="Check the current working directory for:
+1. context/ directory with output files (e.g., context/clarifications-concepts.md)
 2. $skill_name/SKILL.md
 
 Then apply these rules:
-- If workflow-state.md exists → this is 'Mode A'
-- If $skill_name/SKILL.md exists but workflow-state.md does NOT → this is 'Mode B'
-- If NEITHER file exists → this is 'Mode C'
+- If context/ output files exist → this is 'Mode A'
+- If $skill_name/SKILL.md exists but NO context/ output files → this is 'Mode B'
+- If NEITHER exists → this is 'Mode C'
 
 Reply with ONLY the mode label, e.g. 'Mode A'. Nothing else."
 
@@ -57,20 +57,20 @@ Reply with ONLY the mode label, e.g. 'Mode A'. Nothing else."
     record_result "$tier" "mode_a_resume_detected" "FAIL" "empty output"
   fi
 
-  # ---- T3.3: Mode B (modify — skill exists, no workflow-state) ----
+  # ---- T3.3: Mode B (modify — skill exists, no context/ output files) ----
   local dir_b
   dir_b=$(make_temp_dir "mode-b")
   create_fixture_mode_b "$dir_b" "$skill_name"
   log_verbose "Mode B workspace: $dir_b"
 
-  local prompt_b="Check the current working directory for these two files:
-1. workflow-state.md
+  local prompt_b="Check the current working directory for:
+1. context/ directory with output files (e.g., context/clarifications-concepts.md)
 2. $skill_name/SKILL.md
 
 Then apply these rules:
-- If workflow-state.md exists → this is 'Mode A'
-- If $skill_name/SKILL.md exists but workflow-state.md does NOT → this is 'Mode B'
-- If NEITHER file exists → this is 'Mode C'
+- If context/ output files exist → this is 'Mode A'
+- If $skill_name/SKILL.md exists but NO context/ output files → this is 'Mode B'
+- If NEITHER exists → this is 'Mode C'
 
 Reply with ONLY the mode label, e.g. 'Mode B'. Nothing else."
 

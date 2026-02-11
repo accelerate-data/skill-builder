@@ -37,13 +37,6 @@ $workspace/test-status.txt (just the number, e.g., '7')"
 
   # ---- Check workflow artifacts at each step ----
 
-  # Step 0: Init — workflow-state.md created
-  if [[ -f "$workspace/workflow-state.md" ]]; then
-    record_result "$tier" "init_workflow_state" "PASS"
-  else
-    record_result "$tier" "init_workflow_state" "FAIL" "workflow-state.md not created"
-  fi
-
   # Step 0: Init — context dir created
   if [[ -d "$workspace/context" ]]; then
     record_result "$tier" "init_context_dir" "PASS"
