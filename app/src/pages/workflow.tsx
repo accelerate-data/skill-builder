@@ -374,7 +374,7 @@ export default function WorkflowPage() {
       updateStepStatus(step, "error");
       setRunning(false);
       setActiveAgent(null);
-      toast.error(`Step ${step + 1} failed`);
+      toast.error(`Step ${step + 1} failed`, { duration: Infinity });
     }
   }, [activeRunStatus, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, advanceToNextStep]);
 
@@ -387,7 +387,7 @@ export default function WorkflowPage() {
 
   const handleStartAgentStep = async (resume = false) => {
     if (!domain || !workspacePath) {
-      toast.error("Missing domain or workspace path");
+      toast.error("Missing domain or workspace path", { duration: Infinity });
       return;
     }
 
@@ -409,7 +409,8 @@ export default function WorkflowPage() {
       updateStepStatus(currentStep, "error");
       setRunning(false);
       toast.error(
-        `Failed to start agent: ${err instanceof Error ? err.message : String(err)}`
+        `Failed to start agent: ${err instanceof Error ? err.message : String(err)}`,
+        { duration: Infinity },
       );
     }
   };
@@ -441,7 +442,8 @@ export default function WorkflowPage() {
       toast.success(`Reset to step ${currentStep + 1}`);
     } catch (err) {
       toast.error(
-        `Failed to reset: ${err instanceof Error ? err.message : String(err)}`
+        `Failed to reset: ${err instanceof Error ? err.message : String(err)}`,
+        { duration: Infinity },
       );
     }
   };
@@ -487,7 +489,7 @@ export default function WorkflowPage() {
       })
       .then((content) => {
         setReviewContent(content ?? null);
-        if (!content) toast.error("Failed to reload file");
+        if (!content) toast.error("Failed to reload file", { duration: Infinity });
       })
       .finally(() => setLoadingReview(false));
   };

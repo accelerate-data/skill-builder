@@ -176,7 +176,7 @@ export function RefinementChat({
         return updated;
       });
       setPhase("error");
-      toast.error("Refinement agent encountered an error");
+      toast.error("Refinement agent encountered an error", { duration: Infinity });
     }
   }, [currentRun?.status, currentAgentId, currentRun, sessionId, saveSession]);
 
@@ -255,6 +255,7 @@ The user will guide the conversation. Ask clarifying questions if their request 
       setPhase("error");
       toast.error(
         `Failed to start refinement agent: ${err instanceof Error ? err.message : String(err)}`,
+        { duration: Infinity },
       );
     }
   };

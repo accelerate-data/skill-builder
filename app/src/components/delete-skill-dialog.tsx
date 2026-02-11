@@ -43,7 +43,8 @@ export default function DeleteSkillDialog({
       onDeleted()
     } catch (err) {
       toast.error(
-        `Failed to delete skill: ${err instanceof Error ? err.message : String(err)}`
+        `Failed to delete skill: ${err instanceof Error ? err.message : String(err)}`,
+        { duration: Infinity },
       )
     } finally {
       setLoading(false)

@@ -225,7 +225,7 @@ describe("SettingsPage", () => {
     await user.click(debugSwitch);
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Failed to save: DB error");
+      expect(toast.error).toHaveBeenCalledWith("Failed to save: DB error", { duration: Infinity });
     });
   });
 

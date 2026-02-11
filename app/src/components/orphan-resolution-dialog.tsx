@@ -44,7 +44,7 @@ export default function OrphanResolutionDialog({
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      toast.error(`Failed to resolve "${skillName}": ${msg}`)
+      toast.error(`Failed to resolve "${skillName}": ${msg}`, { duration: Infinity })
     } finally {
       setResolving(null)
     }

@@ -187,7 +187,8 @@ describe("OrphanResolutionDialog", () => {
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
-        'Failed to resolve "sales-pipeline": DB locked'
+        'Failed to resolve "sales-pipeline": DB locked',
+        { duration: Infinity },
       );
     });
 

@@ -42,7 +42,7 @@ export function OnboardingDialog({ onComplete }: { onComplete: () => void }) {
       setIsOpen(false);
       onComplete();
     } catch {
-      toast.error("Failed to save settings");
+      toast.error("Failed to save settings", { duration: Infinity });
     } finally {
       setSaving(false);
     }

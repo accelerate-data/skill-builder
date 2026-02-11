@@ -138,7 +138,7 @@ export default function DashboardPage() {
         toast.dismiss(toastId)
       }
     } catch (err) {
-      toast.error(`Download failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId })
+      toast.error(`Download failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId, duration: Infinity })
     }
   }, [workspacePath])
 

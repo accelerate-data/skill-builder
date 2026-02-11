@@ -702,7 +702,7 @@ pub async fn run_workflow_step(
 
     let config = SidecarConfig {
         prompt,
-        model: if debug_mode { Some(resolve_model_id("haiku")) } else { None },
+        model: if debug_mode { Some(resolve_model_id("sonnet")) } else { None },
         api_key,
         cwd: workspace_path,
         allowed_tools: Some(step.allowed_tools),
@@ -2280,7 +2280,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    // --- debug mode: no reduced turns, haiku model override ---
+    // --- debug mode: no reduced turns, sonnet model override ---
 
     #[test]
     fn test_debug_max_turns_removed() {
@@ -2306,25 +2306,25 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_model_id_haiku_returns_full_id() {
-        // The haiku shorthand is used for debug mode model override
-        let haiku_id = resolve_model_id("haiku");
-        assert_eq!(haiku_id, "claude-haiku-4-5-20251001");
-        assert!(haiku_id.contains("haiku"), "Haiku model ID should contain 'haiku'");
+    fn test_resolve_model_id_sonnet_returns_full_id() {
+        // The sonnet shorthand is used for debug mode model override
+        let sonnet_id = resolve_model_id("sonnet");
+        assert_eq!(sonnet_id, "claude-sonnet-4-5-20250929");
+        assert!(sonnet_id.contains("sonnet"), "Sonnet model ID should contain 'sonnet'");
     }
 
     #[test]
     fn test_debug_mode_model_override_logic() {
         // Verify the model selection logic used in run_workflow_step:
-        // debug_mode=true  → Some(resolve_model_id("haiku"))
+        // debug_mode=true  → Some(resolve_model_id("sonnet"))
         // debug_mode=false → None (agent front matter model is used)
 
         let debug_mode = true;
-        let model: Option<String> = if debug_mode { Some(resolve_model_id("haiku")) } else { None };
-        assert_eq!(model, Some("claude-haiku-4-5-20251001".to_string()));
+        let model: Option<String> = if debug_mode { Some(resolve_model_id("sonnet")) } else { None };
+        assert_eq!(model, Some("claude-sonnet-4-5-20250929".to_string()));
 
         let debug_mode = false;
-        let model: Option<String> = if debug_mode { Some(resolve_model_id("haiku")) } else { None };
+        let model: Option<String> = if debug_mode { Some(resolve_model_id("sonnet")) } else { None };
         assert_eq!(model, None);
     }
 

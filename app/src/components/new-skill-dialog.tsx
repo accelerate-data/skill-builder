@@ -83,7 +83,7 @@ export default function NewSkillDialog({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg)
-      toast.error("Failed to create skill")
+      toast.error("Failed to create skill", { duration: Infinity })
     } finally {
       setLoading(false)
     }

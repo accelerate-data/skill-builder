@@ -259,7 +259,7 @@ export const ReasoningChat = forwardRef<ReasoningChatHandle, ReasoningChatProps>
       });
       setRunning(false);
       setPhase(newPhase);
-      toast.error("Reasoning agent encountered an error");
+      toast.error("Reasoning agent encountered an error", { duration: Infinity });
     }
   }, [currentRun?.status, currentAgentId, currentRun, sessionId, setRunning, loadDecisions, messages.length, round, saveSession]);
 
@@ -307,6 +307,7 @@ export const ReasoningChat = forwardRef<ReasoningChatHandle, ReasoningChatProps>
       setPhase("awaiting_feedback");
       toast.error(
         `Failed to start reasoning agent: ${err instanceof Error ? err.message : String(err)}`,
+        { duration: Infinity },
       );
     }
   };
@@ -330,6 +331,7 @@ export const ReasoningChat = forwardRef<ReasoningChatHandle, ReasoningChatProps>
       setPhase("not_started");
       toast.error(
         `Failed to start reasoning: ${err instanceof Error ? err.message : String(err)}`,
+        { duration: Infinity },
       );
     }
   };
@@ -382,6 +384,7 @@ export const ReasoningChat = forwardRef<ReasoningChatHandle, ReasoningChatProps>
         toast.error(
           "Decisions file was not created. The reasoning agent did not save decisions.md. " +
           "Please send feedback to the agent asking it to write decisions before completing.",
+          { duration: Infinity },
         );
         return;
       }

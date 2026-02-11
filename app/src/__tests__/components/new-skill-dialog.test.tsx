@@ -174,7 +174,7 @@ describe("NewSkillDialog", () => {
     await waitFor(() => {
       expect(screen.getByText("Skill already exists")).toBeInTheDocument();
     });
-    expect(toast.error).toHaveBeenCalledWith("Failed to create skill");
+    expect(toast.error).toHaveBeenCalledWith("Failed to create skill", { duration: Infinity });
   });
 
   it("has Cancel button that closes dialog", async () => {

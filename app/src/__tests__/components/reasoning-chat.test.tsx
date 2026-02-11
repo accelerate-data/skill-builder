@@ -486,6 +486,7 @@ describe("ReasoningChat — simplified write-first flow", () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
         expect.stringContaining("Decisions file was not created"),
+        { duration: Infinity },
       );
     });
 
@@ -628,6 +629,7 @@ describe("ReasoningChat — simplified write-first flow", () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
         expect.stringContaining("Decisions file was not created"),
+        { duration: Infinity },
       );
     });
 

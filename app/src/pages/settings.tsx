@@ -114,13 +114,13 @@ export default function SettingsPage() {
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (err) {
-      toast.error(`Failed to save: ${err}`)
+      toast.error(`Failed to save: ${err}`, { duration: Infinity })
     }
   }
 
   const handleTestApiKey = async () => {
     if (!apiKey) {
-      toast.error("Enter an API key first")
+      toast.error("Enter an API key first", { duration: Infinity })
       return
     }
     setTesting(true)
@@ -132,7 +132,8 @@ export default function SettingsPage() {
     } catch (err) {
       setApiKeyValid(false)
       toast.error(
-        `Invalid API key: ${err instanceof Error ? err.message : String(err)}`
+        `Invalid API key: ${err instanceof Error ? err.message : String(err)}`,
+        { duration: Infinity },
       )
     } finally {
       setTesting(false)
@@ -163,7 +164,7 @@ export default function SettingsPage() {
       await invoke("clear_workspace")
       toast.success("Workspace cleared", { duration: 1500 })
     } catch (err) {
-      toast.error(`Failed to clear workspace: ${err instanceof Error ? err.message : String(err)}`)
+      toast.error(`Failed to clear workspace: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity })
     } finally {
       setClearing(false)
     }
@@ -272,13 +273,13 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Debug Mode</CardTitle>
           <CardDescription>
-            Run the full workflow unattended using Haiku for all agents.
+            Run the full workflow unattended using Sonnet for all agents.
             Human review steps auto-complete, validate and test steps are skipped.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between">
-            <Label htmlFor="debug-mode">Unattended workflow (Haiku, skip validate/test)</Label>
+            <Label htmlFor="debug-mode">Unattended workflow (Sonnet, skip validate/test)</Label>
             <Switch
               id="debug-mode"
               checked={debugMode}

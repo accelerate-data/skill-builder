@@ -160,7 +160,8 @@ describe("DeleteSkillDialog", () => {
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
-        "Failed to delete skill: Permission denied"
+        "Failed to delete skill: Permission denied",
+        { duration: Infinity },
       );
     });
   });
