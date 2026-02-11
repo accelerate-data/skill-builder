@@ -29,7 +29,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
-import { ReasoningChat } from "@/components/reasoning-chat";
+import { ReasoningChat, type ReasoningChatHandle, type ReasoningPhase } from "@/components/reasoning-chat";
 import { RefinementChat } from "@/components/refinement-chat";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
@@ -150,6 +150,10 @@ export default function WorkflowPage() {
   const [loadingReview, setLoadingReview] = useState(false);
   const debugAutoAnswerRef = useRef<number | null>(null);
 
+  // Reasoning step state — phase tracked via callback so header can render Complete button
+  const reasoningRef = useRef<ReasoningChatHandle>(null);
+  const [reasoningPhase, setReasoningPhase] = useState<ReasoningPhase>("not_started");
+
   // Track whether current step has partial output from an interrupted run
   const [hasPartialOutput, setHasPartialOutput] = useState(false);
 
@@ -212,6 +216,7 @@ export default function WorkflowPage() {
   useEffect(() => {
     debugAutoAnswerRef.current = null;
     setHasPartialOutput(false);
+    setReasoningPhase("not_started");
   }, [currentStep]);
 
   // Detect partial output from interrupted runs
@@ -621,9 +626,11 @@ export default function WorkflowPage() {
     if (stepConfig?.type === "reasoning") {
       return (
         <ReasoningChat
+          ref={reasoningRef}
           skillName={skillName}
           domain={domain ?? ""}
           workspacePath={workspacePath ?? ""}
+          onPhaseChange={setReasoningPhase}
         />
       );
     }
@@ -790,6 +797,15 @@ export default function WorkflowPage() {
                   <FileText className="size-3" />
                   Q&A Review
                 </Badge>
+              )}
+              {stepConfig?.type === "reasoning" && reasoningPhase === "awaiting_feedback" && (
+                <Button
+                  size="sm"
+                  onClick={() => reasoningRef.current?.completeStep()}
+                >
+                  <CheckCircle2 className="size-3.5" />
+                  Complete Step
+                </Button>
               )}
               {stepConfig?.type === "refinement" && currentStepDef?.status !== "completed" && (
                 <>

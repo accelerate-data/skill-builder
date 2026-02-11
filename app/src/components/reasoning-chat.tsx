@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo, Fragment } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, useImperativeHandle, forwardRef, Fragment } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -7,7 +7,6 @@ import {
   User,
   ChevronRight,
   ChevronDown,
-  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -33,10 +32,21 @@ import { MessageItem, TurnMarker, computeMessageGroups, spacingClasses } from "@
 
 // --- Types ---
 
+export type ReasoningPhase =
+  | "not_started"
+  | "agent_running"
+  | "awaiting_feedback"
+  | "completed";
+
+export interface ReasoningChatHandle {
+  completeStep: () => Promise<void>;
+}
+
 interface ReasoningChatProps {
   skillName: string;
   domain: string;
   workspacePath: string;
+  onPhaseChange?: (phase: ReasoningPhase) => void;
 }
 
 interface ChatMessage {
@@ -44,12 +54,6 @@ interface ChatMessage {
   content: string;
   agentId?: string;
 }
-
-type ReasoningPhase =
-  | "not_started"
-  | "agent_running"
-  | "awaiting_feedback"
-  | "completed";
 
 const SESSION_ARTIFACT = "context/reasoning-session.json";
 
@@ -62,19 +66,23 @@ interface ReasoningSessionState {
 
 // --- Component ---
 
-export function ReasoningChat({
+export const ReasoningChat = forwardRef<ReasoningChatHandle, ReasoningChatProps>(function ReasoningChat({
   skillName,
   domain,
   workspacePath,
-}: ReasoningChatProps) {
+  onPhaseChange,
+}, ref) {
   // Core state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [userInput, setUserInput] = useState("");
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
 
-  // Phase state machine
+  // Phase state machine — notify parent via effect (not during render) to avoid React warnings
   const [phase, setPhase] = useState<ReasoningPhase>("not_started");
+  useEffect(() => {
+    onPhaseChange?.(phase);
+  }, [phase, onPhaseChange]);
   const [round, setRound] = useState(1);
 
   // Decisions panel
@@ -321,7 +329,7 @@ export function ReasoningChat({
     }
   };
 
-  const handleCompleteStep = async () => {
+  const handleCompleteStep = useCallback(async () => {
     try {
       await captureStepArtifacts(skillName, 4, workspacePath);
     } catch {
@@ -379,7 +387,12 @@ export function ReasoningChat({
     if (currentStep < steps.length - 1) {
       useWorkflowStore.getState().setCurrentStep(currentStep + 1);
     }
-  };
+  }, [skillName, workspacePath, skillsPath, setPhase, updateStepStatus, currentStep, setRunning]);
+
+  // Expose completeStep to parent via ref
+  useImperativeHandle(ref, () => ({
+    completeStep: handleCompleteStep,
+  }), [handleCompleteStep]);
 
   // Free-form send — primary interaction method
   const handleSend = () => {
@@ -438,38 +451,6 @@ export function ReasoningChat({
       </div>
     );
   }
-
-  // --- Action panel (inline after last agent message) ---
-
-  const renderActionPanel = () => {
-    if (phase === "agent_running") return null;
-
-    if (phase === "awaiting_feedback") {
-      return (
-        <Card className="border-blue-500/30 bg-blue-500/5 p-4">
-          <div className="mb-3 flex items-center gap-2 text-sm font-medium text-blue-700 dark:text-blue-400">
-            <Brain className="size-4" />
-            Review the decisions above. Provide feedback or complete the step.
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              onClick={handleCompleteStep}
-              disabled={isAgentRunning}
-              size="sm"
-            >
-              <CheckCircle2 className="size-3.5" />
-              Complete Step
-            </Button>
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Use the input below to request revisions. Click "Complete Step" when satisfied.
-          </p>
-        </Card>
-      );
-    }
-
-    return null;
-  };
 
   // --- Decisions panel ---
 
@@ -572,9 +553,6 @@ export function ReasoningChat({
             );
           })}
 
-          {/* Action panel — shown after messages */}
-          {renderActionPanel()}
-
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
@@ -624,4 +602,4 @@ export function ReasoningChat({
       </div>
     </div>
   );
-}
+});

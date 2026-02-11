@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { useAgentStore } from "@/stores/agent-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import type { ReactNode } from "react";
+import { useState, useRef, type ReactNode } from "react";
 
 // Polyfill scrollIntoView for jsdom
 if (!Element.prototype.scrollIntoView) {
@@ -81,7 +81,40 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
-import { ReasoningChat } from "@/components/reasoning-chat";
+import { ReasoningChat, type ReasoningChatHandle, type ReasoningPhase } from "@/components/reasoning-chat";
+
+// --- Test wrapper ---
+// Mimics workflow.tsx: renders "Complete Step" button in a header when phase is awaiting_feedback.
+
+interface TestWrapperProps {
+  skillName: string;
+  domain: string;
+  workspacePath: string;
+  onPhaseChange?: (phase: ReasoningPhase) => void;
+}
+
+function TestWrapper(props: TestWrapperProps) {
+  const ref = useRef<ReasoningChatHandle>(null);
+  const [phase, setPhase] = useState<ReasoningPhase>("not_started");
+
+  return (
+    <>
+      {phase === "awaiting_feedback" && (
+        <button onClick={() => ref.current?.completeStep()}>Complete Step</button>
+      )}
+      <ReasoningChat
+        ref={ref}
+        skillName={props.skillName}
+        domain={props.domain}
+        workspacePath={props.workspacePath}
+        onPhaseChange={(p) => {
+          setPhase(p);
+          props.onPhaseChange?.(p);
+        }}
+      />
+    </>
+  );
+}
 
 // --- Helpers ---
 
@@ -190,13 +223,13 @@ describe("ReasoningChat — simplified write-first flow", () => {
   });
 
   it("shows start button initially", () => {
-    render(<ReasoningChat {...defaultProps} />);
+    render(<TestWrapper {...defaultProps} />);
     expect(screen.getByText("Start Reasoning")).toBeInTheDocument();
   });
 
   it("starts agent via runWorkflowStep on start click", async () => {
     const user = userEvent.setup();
-    render(<ReasoningChat {...defaultProps} />);
+    render(<TestWrapper {...defaultProps} />);
 
     await user.click(screen.getByText("Start Reasoning"));
 
@@ -207,9 +240,10 @@ describe("ReasoningChat — simplified write-first flow", () => {
     expect(useAgentStore.getState().runs["agent-1"]).toBeDefined();
   });
 
-  it("shows awaiting_feedback with Complete Step button after agent completes", async () => {
+  it("calls onPhaseChange and shows Complete Step in header after agent completes", async () => {
     const user = userEvent.setup();
-    render(<ReasoningChat {...defaultProps} />);
+    const onPhaseChange = vi.fn();
+    render(<TestWrapper {...defaultProps} onPhaseChange={onPhaseChange} />);
 
     // Start reasoning
     await user.click(screen.getByText("Start Reasoning"));
@@ -224,18 +258,18 @@ describe("ReasoningChat — simplified write-first flow", () => {
       expect(screen.getByText(/significant conflict in your responses/)).toBeInTheDocument();
     });
 
-    // Should show the awaiting_feedback action panel with Complete Step button
+    // Should show the Complete Step button in the header (via phase callback)
     await waitFor(() => {
       expect(screen.getByText("Complete Step")).toBeInTheDocument();
     });
 
-    // Should show feedback guidance text
-    expect(screen.getByText(/Use the input below to request revisions/)).toBeInTheDocument();
+    // Phase callback should have been called with awaiting_feedback
+    expect(onPhaseChange).toHaveBeenCalledWith("awaiting_feedback");
   });
 
   it("sends user feedback via free-form input and resumes agent with session and agent name", async () => {
     const user = userEvent.setup();
-    render(<ReasoningChat {...defaultProps} />);
+    render(<TestWrapper {...defaultProps} />);
 
     // Start reasoning
     await user.click(screen.getByText("Start Reasoning"));
@@ -280,7 +314,7 @@ describe("ReasoningChat — simplified write-first flow", () => {
       return Promise.resolve(null);
     });
 
-    render(<ReasoningChat {...defaultProps} />);
+    render(<TestWrapper {...defaultProps} />);
 
     // Start reasoning
     await user.click(screen.getByText("Start Reasoning"));
@@ -325,7 +359,7 @@ describe("ReasoningChat — simplified write-first flow", () => {
       return Promise.resolve(null);
     });
 
-    render(<ReasoningChat {...defaultProps} />);
+    render(<TestWrapper {...defaultProps} />);
 
     // Start and complete first turn
     await user.click(screen.getByText("Start Reasoning"));
@@ -355,7 +389,7 @@ describe("ReasoningChat — simplified write-first flow", () => {
 
   it("completes step on Complete Step click when decisions.md exists", async () => {
     const user = userEvent.setup();
-    render(<ReasoningChat {...defaultProps} />);
+    render(<TestWrapper {...defaultProps} />);
 
     // Start reasoning
     await user.click(screen.getByText("Start Reasoning"));
@@ -377,7 +411,7 @@ describe("ReasoningChat — simplified write-first flow", () => {
       return Promise.reject(new Error("not found"));
     });
 
-    // Click Complete Step
+    // Click Complete Step (now rendered by TestWrapper, calls ref.completeStep())
     await user.click(screen.getByText("Complete Step"));
 
     // Should capture artifacts
@@ -392,7 +426,7 @@ describe("ReasoningChat — simplified write-first flow", () => {
 
   it("allows free-form input to send any message at awaiting_feedback phase", async () => {
     const user = userEvent.setup();
-    render(<ReasoningChat {...defaultProps} />);
+    render(<TestWrapper {...defaultProps} />);
 
     // Start reasoning and get to awaiting_feedback phase
     await user.click(screen.getByText("Start Reasoning"));
@@ -430,7 +464,7 @@ describe("ReasoningChat — simplified write-first flow", () => {
     const user = userEvent.setup();
     const { toast } = await import("sonner");
 
-    render(<ReasoningChat {...defaultProps} />);
+    render(<TestWrapper {...defaultProps} />);
 
     // Start reasoning, agent completes
     await user.click(screen.getByText("Start Reasoning"));
@@ -466,7 +500,7 @@ describe("ReasoningChat — simplified write-first flow", () => {
   it("allows complete step when decisions.md found in skills path", async () => {
     const user = userEvent.setup();
 
-    render(<ReasoningChat {...defaultProps} />);
+    render(<TestWrapper {...defaultProps} />);
 
     // Start reasoning, agent completes
     await user.click(screen.getByText("Start Reasoning"));
@@ -499,7 +533,7 @@ describe("ReasoningChat — simplified write-first flow", () => {
   it("allows complete step when decisions.md found in workspace path", async () => {
     const user = userEvent.setup();
 
-    render(<ReasoningChat {...defaultProps} />);
+    render(<TestWrapper {...defaultProps} />);
 
     // Start reasoning, agent completes
     await user.click(screen.getByText("Start Reasoning"));
@@ -532,7 +566,7 @@ describe("ReasoningChat — simplified write-first flow", () => {
   it("allows complete step when decisions.md found in SQLite artifact", async () => {
     const user = userEvent.setup();
 
-    render(<ReasoningChat {...defaultProps} />);
+    render(<TestWrapper {...defaultProps} />);
 
     // Start reasoning, agent completes
     await user.click(screen.getByText("Start Reasoning"));
@@ -567,7 +601,7 @@ describe("ReasoningChat — simplified write-first flow", () => {
     const user = userEvent.setup();
     const { toast } = await import("sonner");
 
-    render(<ReasoningChat {...defaultProps} />);
+    render(<TestWrapper {...defaultProps} />);
 
     // Start reasoning, agent completes
     await user.click(screen.getByText("Start Reasoning"));
@@ -606,7 +640,7 @@ describe("ReasoningChat — simplified write-first flow", () => {
 
   it("includes decisions.md context reminder and agent name in resume turn prompts", async () => {
     const user = userEvent.setup();
-    render(<ReasoningChat {...defaultProps} />);
+    render(<TestWrapper {...defaultProps} />);
 
     // Start reasoning (establishes session)
     await user.click(screen.getByText("Start Reasoning"));
