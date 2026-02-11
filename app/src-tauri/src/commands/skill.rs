@@ -605,4 +605,36 @@ mod tests {
         assert!(Path::new(workspace).join("new-skill").join("context").exists());
         assert!(Path::new(workspace).join("new-skill").join("workflow.md").exists());
     }
+
+    #[test]
+    fn test_delete_skill_removes_logs_directory() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap();
+
+        // Create a skill
+        create_skill_inner(workspace, "skill-with-logs", "analytics", None, None, None).unwrap();
+
+        // Add a logs/ subdirectory with a fake log file inside the skill directory
+        let skill_dir = dir.path().join("skill-with-logs");
+        let logs_dir = skill_dir.join("logs");
+        fs::create_dir_all(&logs_dir).unwrap();
+        fs::write(logs_dir.join("step-0.log"), "fake log content for step 0").unwrap();
+        fs::write(logs_dir.join("step-1.log"), "fake log content for step 1").unwrap();
+
+        // Verify the logs directory and files exist before deletion
+        assert!(logs_dir.exists());
+        assert!(logs_dir.join("step-0.log").exists());
+        assert!(logs_dir.join("step-1.log").exists());
+
+        // Delete the skill
+        delete_skill_inner(workspace, "skill-with-logs", None).unwrap();
+
+        // Verify the entire skill directory (including logs/) is gone
+        assert!(!skill_dir.exists(), "skill directory should be removed");
+        assert!(!logs_dir.exists(), "logs directory should be removed");
+
+        // Verify no skills remain in the workspace
+        let skills = list_skills_inner(workspace, None).unwrap();
+        assert!(skills.is_empty());
+    }
 }

@@ -597,7 +597,8 @@ pub async fn run_review_step(
         agent_name: None,
     };
 
-    sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app).await?;
+    let step_label = format!("review-step{}", step_id);
+    sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app, skill_name, step_label).await?;
     Ok(agent_id)
 }
 
@@ -667,7 +668,8 @@ pub async fn run_workflow_step(
         agent_name: Some(agent_name),
     };
 
-    sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app).await?;
+    let step_label = format!("step{}-{}", step_id, step.name);
+    sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app, skill_name, step_label).await?;
     Ok(agent_id)
 }
 

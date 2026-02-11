@@ -3,6 +3,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
@@ -59,6 +60,8 @@ pub async fn spawn_sidecar(
     mut config: SidecarConfig,
     registry: AgentRegistry,
     app_handle: tauri::AppHandle,
+    skill_name: String,
+    step_label: String,
 ) -> Result<(), String> {
     let sidecar_path = resolve_sidecar_path(&app_handle)?;
     let node_bin = resolve_node_binary().await?;
@@ -93,7 +96,7 @@ pub async fn spawn_sidecar(
     }
 
     // Open a log file for this agent run so users can `tail -f` it
-    let log_file = open_agent_log(Path::new(&config.cwd), &agent_id, &config_json);
+    let log_file = open_agent_log(Path::new(&config.cwd), &skill_name, &step_label, &config_json);
 
     // Spawn stdout reader
     let app_handle_stdout = app_handle.clone();
@@ -163,20 +166,44 @@ pub async fn spawn_sidecar(
 
 type SharedFile = Arc<std::sync::Mutex<std::fs::File>>;
 
-/// Create `.agent-logs/<agent_id>.jsonl` in the working directory.
+/// Convert a step name to a filename-safe slug: lowercase, spaces→hyphens.
+fn slugify_step_label(label: &str) -> String {
+    label
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+/// Build the log directory path: `{cwd}/{skill_name}/logs/`
+fn build_log_dir(cwd: &Path, skill_name: &str) -> PathBuf {
+    cwd.join(skill_name).join("logs")
+}
+
+/// Build the log filename: `{step_label_slug}-{timestamp}.jsonl`
+/// where timestamp is ISO 8601 with colons replaced by hyphens.
+fn build_log_filename(step_label: &str) -> String {
+    let slug = slugify_step_label(step_label);
+    let ts = Utc::now().format("%Y-%m-%dT%H-%M-%S").to_string();
+    format!("{}-{}.jsonl", slug, ts)
+}
+
+/// Create `{cwd}/{skill_name}/logs/{step_label}-{timestamp}.jsonl`.
 /// Returns None (with a log warning) if the directory can't be created.
 fn open_agent_log(
     cwd: &Path,
-    agent_id: &str,
+    skill_name: &str,
+    step_label: &str,
     config_json: &str,
 ) -> Option<SharedFile> {
-    let log_dir = cwd.join(".agent-logs");
+    let log_dir = build_log_dir(cwd, skill_name);
     if let Err(e) = std::fs::create_dir_all(&log_dir) {
         log::warn!("Could not create agent log dir {}: {}", log_dir.display(), e);
         return None;
     }
 
-    let log_path = log_dir.join(format!("{}.jsonl", agent_id));
+    let filename = build_log_filename(step_label);
+    let log_path = log_dir.join(&filename);
     match std::fs::File::create(&log_path) {
         Ok(mut file) => {
             // Write redacted config as first line (strip API key)
@@ -413,5 +440,145 @@ mod tests {
         assert!(!is_node_compatible("v17.9.0"));
         assert!(!is_node_compatible(""));
         assert!(!is_node_compatible("abc"));
+    }
+
+    // --- Log path and filename tests ---
+
+    #[test]
+    fn test_slugify_step_label_basic() {
+        assert_eq!(slugify_step_label("Research Concepts"), "research-concepts");
+        assert_eq!(slugify_step_label("Build Skill"), "build-skill");
+        assert_eq!(slugify_step_label("Validate"), "validate");
+        assert_eq!(slugify_step_label("Perform Research"), "perform-research");
+    }
+
+    #[test]
+    fn test_slugify_step_label_already_slugified() {
+        assert_eq!(slugify_step_label("research-concepts"), "research-concepts");
+        assert_eq!(slugify_step_label("step0-research"), "step0-research");
+    }
+
+    #[test]
+    fn test_slugify_step_label_extra_whitespace() {
+        assert_eq!(slugify_step_label("  Build   Skill  "), "build-skill");
+    }
+
+    #[test]
+    fn test_slugify_step_label_empty() {
+        assert_eq!(slugify_step_label(""), "");
+    }
+
+    #[test]
+    fn test_build_log_dir() {
+        let dir = build_log_dir(Path::new("/workspace"), "my-skill");
+        assert_eq!(dir, PathBuf::from("/workspace/my-skill/logs"));
+    }
+
+    #[test]
+    fn test_build_log_dir_nested_workspace() {
+        let dir = build_log_dir(Path::new("/home/user/.vibedata"), "ecommerce-domain");
+        assert_eq!(
+            dir,
+            PathBuf::from("/home/user/.vibedata/ecommerce-domain/logs")
+        );
+    }
+
+    #[test]
+    fn test_build_log_filename_format() {
+        let filename = build_log_filename("Research Concepts");
+        // Should start with the slugified label
+        assert!(
+            filename.starts_with("research-concepts-"),
+            "Filename should start with slugified label: {}",
+            filename
+        );
+        // Should end with .jsonl
+        assert!(filename.ends_with(".jsonl"), "Filename should end with .jsonl: {}", filename);
+        // Should NOT contain colons (invalid on Windows)
+        assert!(
+            !filename.contains(':'),
+            "Filename should not contain colons: {}",
+            filename
+        );
+        // Should match pattern: slug-YYYY-MM-DDTHH-MM-SS.jsonl
+        let without_ext = filename.trim_end_matches(".jsonl");
+        let parts: Vec<&str> = without_ext.rsplitn(2, "concepts-").collect();
+        assert_eq!(parts.len(), 2, "Should split at label-timestamp boundary: {}", filename);
+        let ts_part = parts[0]; // e.g., "2026-02-11T09-30-00"
+        assert_eq!(ts_part.len(), 19, "Timestamp should be 19 chars (YYYY-MM-DDTHH-MM-SS): {}", ts_part);
+    }
+
+    #[test]
+    fn test_build_log_filename_no_colons_in_timestamp() {
+        // Verify timestamp uses hyphens instead of colons
+        let filename = build_log_filename("step0");
+        let ts_section = filename
+            .trim_start_matches("step0-")
+            .trim_end_matches(".jsonl");
+        // Timestamp format: YYYY-MM-DDTHH-MM-SS — contains T but no colons
+        assert!(ts_section.contains('T'), "Should contain T separator: {}", ts_section);
+        assert!(!ts_section.contains(':'), "Should not contain colons: {}", ts_section);
+    }
+
+    #[test]
+    fn test_open_agent_log_creates_directory_and_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = tmp.path();
+        let config_json = r#"{"prompt":"test","apiKey":"sk-secret","cwd":"."}"#;
+
+        let log_file = open_agent_log(cwd, "my-skill", "Research Concepts", config_json);
+        assert!(log_file.is_some(), "open_agent_log should return Some");
+
+        // Verify directory was created
+        let log_dir = cwd.join("my-skill").join("logs");
+        assert!(log_dir.is_dir(), "logs directory should exist");
+
+        // Verify a .jsonl file was created in the directory
+        let entries: Vec<_> = std::fs::read_dir(&log_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        assert_eq!(entries.len(), 1, "Should have exactly one log file");
+        let filename = entries[0].file_name().to_string_lossy().to_string();
+        assert!(filename.starts_with("research-concepts-"), "Filename should start with slug: {}", filename);
+        assert!(filename.ends_with(".jsonl"), "Filename should end with .jsonl: {}", filename);
+    }
+
+    #[test]
+    fn test_open_agent_log_redacts_api_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = tmp.path();
+        let config_json = r#"{"prompt":"test","apiKey":"sk-ant-secret-key-123","cwd":"."}"#;
+
+        let _log_file = open_agent_log(cwd, "my-skill", "Validate", config_json);
+
+        // Read the log file and verify API key is redacted
+        let log_dir = cwd.join("my-skill").join("logs");
+        let entries: Vec<_> = std::fs::read_dir(&log_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        let content = std::fs::read_to_string(entries[0].path()).unwrap();
+        assert!(content.contains("[REDACTED]"), "API key should be redacted");
+        assert!(!content.contains("sk-ant-secret-key-123"), "Raw API key should not appear");
+    }
+
+    #[test]
+    fn test_open_agent_log_multiple_calls_create_separate_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = tmp.path();
+        let config_json = r#"{"prompt":"test","apiKey":"sk-test","cwd":"."}"#;
+
+        let _f1 = open_agent_log(cwd, "my-skill", "step0", config_json);
+        // Small delay to ensure different timestamp
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        let _f2 = open_agent_log(cwd, "my-skill", "step2", config_json);
+
+        let log_dir = cwd.join("my-skill").join("logs");
+        let entries: Vec<_> = std::fs::read_dir(&log_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        assert_eq!(entries.len(), 2, "Should have two separate log files");
     }
 }

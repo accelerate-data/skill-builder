@@ -298,6 +298,8 @@ export function ReasoningChat({
         ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"],
         100,
         sessionId,
+        skillName,
+        "step4-reasoning",
       );
 
       agentStartRun(agentId, "opus");

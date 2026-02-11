@@ -58,7 +58,7 @@ export function RefinementChat({
   const [userInput, setUserInput] = useState("");
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
-  const [phase, setPhase] = useState<RefinementPhase>("idle");
+  const [_phase, setPhase] = useState<RefinementPhase>("idle");
 
   // Session restored flag
   const [restored, setRestored] = useState(false);
@@ -245,6 +245,8 @@ The user will guide the conversation. Ask clarifying questions if their request 
         ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"],
         50,
         sessionId,
+        skillName,
+        "chat",
       );
 
       agentStartRun(agentId, "sonnet");
