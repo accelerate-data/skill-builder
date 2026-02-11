@@ -147,7 +147,16 @@ export default function SettingsPage() {
 
   const handleBrowseSkillsPath = async () => {
     const folder = await open({ directory: true, title: "Select Skills Folder" })
-    if (folder) setSkillsPath(folder)
+    if (folder) {
+      // Normalize: remove trailing slashes, then check for duplicate last segment
+      // (macOS file picker can return doubled paths like /foo/Skills/Skills)
+      let normalized = folder.replace(/\/+$/, '')
+      const parts = normalized.split('/')
+      if (parts.length >= 2 && parts[parts.length - 1] === parts[parts.length - 2]) {
+        normalized = parts.slice(0, -1).join('/')
+      }
+      setSkillsPath(normalized)
+    }
   }
 
   const handleClearWorkspace = async () => {

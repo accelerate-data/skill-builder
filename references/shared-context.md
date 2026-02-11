@@ -39,30 +39,30 @@ Focus on what/why, let the engineer decide how.
 
 ## Folder Structure
 
-Each skill is built in its own folder under `skills/`:
+Each skill has two directories — a **context directory** for working files and a **skill output directory** for the deployable skill:
 
 ```
-skills/<skillname>/
-├── context/                         # All intermediate/working files
-│   ├── clarifications-concepts.md   # Research: domain concepts agent
-│   ├── clarifications-patterns.md   # Research: business patterns agent
-│   ├── clarifications-data.md       # Research: data modeling agent
-│   ├── clarifications.md            # Merged questions + PM answers
-│   ├── decisions.md                 # Confirmed decisions (clean snapshot)
-│   ├── agent-validation-log.md      # Validate: best practices results
-│   └── test-skill.md               # Test: test prompts + results
-└── skill/                           # Deployable skill files
-    ├── SKILL.md                     # Entry point (<500 lines)
-    └── references/                  # Deep-dive content loaded on demand
-        ├── <topic-a>.md
-        ├── <topic-b>.md
-        └── ...
+context/                             # All intermediate/working files
+├── clarifications-concepts.md       # Research: domain concepts agent
+├── clarifications-patterns.md       # Research: business patterns agent
+├── clarifications-data.md           # Research: data modeling agent
+├── clarifications.md                # Merged questions + PM answers
+├── decisions.md                     # Confirmed decisions (clean snapshot)
+├── agent-validation-log.md          # Validate: best practices results
+└── test-skill.md                    # Test: test prompts + results
+
+<skillname>/                         # Deployable skill files (skill output directory)
+├── SKILL.md                         # Entry point (<500 lines)
+└── references/                      # Deep-dive content loaded on demand
+    ├── <topic-a>.md
+    ├── <topic-b>.md
+    └── ...
 ```
 
 Additionally:
-- `<skillname>.skill` — final deployable zip archive in the project root (created after successful build)
+- `<skillname>.skill` — final deployable zip archive (created after successful build)
 
-**Important:** The coordinator provides the full `context/` and `skill/` directory paths to each agent when spawning it. Agents write files to the directories they are given.
+**Important:** The coordinator provides the full **context directory** and **skill output directory** paths to each agent when spawning it. Agents write files to the directories they are given — no extra subdirectories should be created.
 
 ## File Formats
 

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockInvoke, mockInvokeCommands, resetTauriMocks } from "@/test/mocks/tauri";
+import { open as mockOpen } from "@tauri-apps/plugin-dialog";
 import type { AppSettings } from "@/lib/types";
 
 // Mock sonner toast
@@ -251,6 +252,62 @@ describe("SettingsPage", () => {
           skills_path: "/output",
         }),
       });
+    });
+  });
+
+  it("normalizes duplicate last segment from browse dialog", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks(populatedSettings);
+    // Simulate macOS dialog returning a doubled path
+    vi.mocked(mockOpen).mockResolvedValueOnce("/Users/me/Skills/Skills");
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    const browseButton = screen.getByRole("button", { name: /Browse/i });
+    await user.click(browseButton);
+
+    // After normalization, the path should have the duplicate stripped
+    await waitFor(() => {
+      expect(screen.getByText("/Users/me/Skills")).toBeInTheDocument();
+    });
+  });
+
+  it("strips trailing slash from browse dialog path", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks(populatedSettings);
+    vi.mocked(mockOpen).mockResolvedValueOnce("/Users/me/Skills/");
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    const browseButton = screen.getByRole("button", { name: /Browse/i });
+    await user.click(browseButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("/Users/me/Skills")).toBeInTheDocument();
+    });
+  });
+
+  it("does not alter a normal browse dialog path", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks(populatedSettings);
+    vi.mocked(mockOpen).mockResolvedValueOnce("/Users/me/Skills");
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    const browseButton = screen.getByRole("button", { name: /Browse/i });
+    await user.click(browseButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("/Users/me/Skills")).toBeInTheDocument();
     });
   });
 });

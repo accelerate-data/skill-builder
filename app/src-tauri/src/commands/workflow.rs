@@ -929,12 +929,14 @@ fn capture_artifacts_inner(
 
     // Read known output files for this step
     for file in get_step_output_files(step_id) {
-        // For build step output (skill/SKILL.md), resolve from skill_output_dir
-        let path = if step_id == 5 && file.starts_with("skill/") {
+        // For build step (5), ALL files should resolve from skill_output_dir.
+        // Strip "skill/" prefix when present for backward compatibility.
+        let path = if step_id == 5 {
+            let clean_file = file.strip_prefix("skill/").unwrap_or(file);
             if let Some(ref sod) = skill_output_dir {
-                sod.join(file.trim_start_matches("skill/"))
+                sod.join(clean_file)
             } else {
-                skill_dir.join(file.trim_start_matches("skill/"))
+                skill_dir.join(clean_file)
             }
         } else {
             skill_dir.join(file)
@@ -1645,15 +1647,17 @@ mod tests {
         let workspace = tmp.path().join("workspace");
         let skills = tmp.path().join("skills");
 
-        // SKILL.md lives in workspace_path/skill_name/ (no "skill/" prefix)
-        let skill_dir = workspace.join("my-skill");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), "# My Skill").unwrap();
-
-        // references/ live in skills_path/skill_name/ (resolved via "skill/" prefix)
+        // When skills_path is set, ALL step 5 files (SKILL.md and references/)
+        // should be resolved from skills_path/skill_name/, not workspace.
         let skill_output = skills.join("my-skill");
         std::fs::create_dir_all(skill_output.join("references")).unwrap();
+        std::fs::write(skill_output.join("SKILL.md"), "# My Skill").unwrap();
         std::fs::write(skill_output.join("references").join("ref.md"), "# Ref").unwrap();
+
+        // Ensure workspace skill dir exists (but has no SKILL.md — verifies we
+        // read from skills_path, not workspace)
+        let skill_dir = workspace.join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
 
         let conn = create_test_conn();
         let captured = capture_artifacts_inner(

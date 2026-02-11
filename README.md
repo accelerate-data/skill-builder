@@ -143,18 +143,18 @@ skill-builder/
 Both platforms produce the same skill output structure:
 
 ```
-<skillname>/
-├── context/                     # Intermediate working files
-│   ├── clarifications-concepts.md
-│   ├── clarifications-patterns.md
-│   ├── clarifications-data.md
-│   ├── clarifications.md
-│   ├── decisions.md
-│   ├── agent-validation-log.md
-│   └── test-skill.md
-└── skill/                       # Deployable skill
-    ├── SKILL.md                 # Entry point (<500 lines)
-    └── references/              # Deep-dive content
+context/                         # Intermediate working files
+├── clarifications-concepts.md
+├── clarifications-patterns.md
+├── clarifications-data.md
+├── clarifications.md
+├── decisions.md
+├── agent-validation-log.md
+└── test-skill.md
+
+<skillname>/                     # Deployable skill (skill output directory)
+├── SKILL.md                     # Entry point (<500 lines)
+└── references/                  # Deep-dive content
 ```
 
 A `.skill` zip archive is created after the final step.
