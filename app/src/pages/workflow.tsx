@@ -31,7 +31,7 @@ import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ReasoningChat, type ReasoningChatHandle, type ReasoningPhase } from "@/components/reasoning-chat";
 import { RefinementChat } from "@/components/refinement-chat";
-import { StepRerunChat } from "@/components/step-rerun-chat";
+import { StepRerunChat, type StepRerunChatHandle } from "@/components/step-rerun-chat";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
@@ -163,6 +163,7 @@ export default function WorkflowPage() {
   const [loadingReview, setLoadingReview] = useState(false);
   // Reasoning step state — phase tracked via callback so header can render Complete button
   const reasoningRef = useRef<ReasoningChatHandle>(null);
+  const rerunRef = useRef<StepRerunChatHandle>(null);
   const [reasoningPhase, setReasoningPhase] = useState<ReasoningPhase>("not_started");
 
   // Track whether current step has partial output from an interrupted run
@@ -577,6 +578,7 @@ export default function WorkflowPage() {
     if (rerunStepId !== null && rerunStepId === currentStep && RERUN_CHAT_STEPS.has(currentStep)) {
       return (
         <StepRerunChat
+          ref={rerunRef}
           skillName={skillName}
           domain={domain ?? ""}
           workspacePath={workspacePath ?? ""}
@@ -868,6 +870,15 @@ export default function WorkflowPage() {
                   <FileText className="size-3" />
                   Q&A Review
                 </Badge>
+              )}
+              {rerunStepId !== null && !isRunning && (
+                <Button
+                  size="sm"
+                  onClick={() => rerunRef.current?.completeStep()}
+                >
+                  <CheckCircle2 className="size-3.5" />
+                  Complete Step
+                </Button>
               )}
               {stepConfig?.type === "reasoning" && reasoningPhase === "awaiting_feedback" && (
                 <Button

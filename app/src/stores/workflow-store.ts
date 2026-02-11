@@ -78,7 +78,7 @@ const defaultSteps: WorkflowStep[] = [
   },
   {
     id: 8,
-    name: "Refine Skill",
+    name: "Refine",
     description: "Chat with an agent to review, iterate, and polish the skill output",
     status: "pending",
   },

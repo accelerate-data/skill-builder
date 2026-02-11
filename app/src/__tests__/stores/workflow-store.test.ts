@@ -144,7 +144,7 @@ describe("useWorkflowStore", () => {
     expect(state.steps[4].name).toBe("Reasoning");
     expect(state.steps[5].name).toBe("Build Skill");
     expect(state.steps[7].name).toBe("Test");
-    expect(state.steps[8].name).toBe("Refine Skill");
+    expect(state.steps[8].name).toBe("Refine");
   });
 
   it("does not have a Package step", () => {
@@ -153,8 +153,8 @@ describe("useWorkflowStore", () => {
   });
 
   describe("loadWorkflowState migration safety", () => {
-    it("completes all 9 steps including step 8 (Refine Skill)", () => {
-      // Simulate SQLite returning all steps completed including the new Refine Skill step (8)
+    it("completes all 9 steps including step 8 (Refine)", () => {
+      // Simulate SQLite returning all steps completed including the Refine step (8)
       useWorkflowStore.getState().loadWorkflowState([0, 1, 2, 3, 4, 5, 6, 7, 8]);
 
       const state = useWorkflowStore.getState();

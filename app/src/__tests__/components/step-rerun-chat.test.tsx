@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, act, waitFor } from "@testing-library/react";
+import { createRef } from "react";
 import userEvent from "@testing-library/user-event";
 import { useAgentStore } from "@/stores/agent-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
@@ -80,7 +81,7 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
-import { StepRerunChat } from "@/components/step-rerun-chat";
+import { StepRerunChat, type StepRerunChatHandle } from "@/components/step-rerun-chat";
 
 // --- Helpers ---
 
@@ -227,9 +228,6 @@ describe("StepRerunChat", () => {
     await waitFor(() => {
       expect(screen.getByText(/Reviewing existing output/)).toBeInTheDocument();
     });
-
-    // Should show the Complete Step button
-    expect(screen.getByText("Complete Step")).toBeInTheDocument();
   });
 
   it("sends user message and resumes agent with session ID", async () => {
@@ -245,7 +243,7 @@ describe("StepRerunChat", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Complete Step")).toBeInTheDocument();
+      expect(screen.getByText(/Reviewing existing output/)).toBeInTheDocument();
     });
 
     // Type and send a message
@@ -283,7 +281,7 @@ describe("StepRerunChat", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Complete Step")).toBeInTheDocument();
+      expect(screen.getByText(/Reviewing existing output/)).toBeInTheDocument();
     });
 
     // Send feedback
@@ -357,9 +355,9 @@ describe("StepRerunChat", () => {
     expect(savedSession.sessionId).toBe("session-456");
   });
 
-  it("calls onComplete and captures artifacts when Complete Step is clicked", async () => {
-    const user = userEvent.setup();
-    render(<StepRerunChat {...defaultProps} />);
+  it("exposes completeStep via ref that captures artifacts and calls onComplete", async () => {
+    const ref = createRef<StepRerunChatHandle>();
+    render(<StepRerunChat {...defaultProps} ref={ref} />);
 
     await waitFor(() => {
       expect(mockRunWorkflowStep).toHaveBeenCalled();
@@ -370,13 +368,16 @@ describe("StepRerunChat", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Complete Step")).toBeInTheDocument();
+      expect(screen.getByText(/Reviewing existing output/)).toBeInTheDocument();
     });
 
     // Reset mock to check the final capture call
     mockCaptureStepArtifacts.mockReset().mockResolvedValue(undefined);
 
-    await user.click(screen.getByText("Complete Step"));
+    // Call completeStep via ref (as parent workflow.tsx would)
+    await act(async () => {
+      await ref.current?.completeStep();
+    });
 
     // Should capture artifacts one final time
     expect(mockCaptureStepArtifacts).toHaveBeenCalledWith(
@@ -386,9 +387,7 @@ describe("StepRerunChat", () => {
     );
 
     // Should call onComplete callback
-    await waitFor(() => {
-      expect(defaultProps.onComplete).toHaveBeenCalled();
-    });
+    expect(defaultProps.onComplete).toHaveBeenCalled();
   });
 
   it("shows error toast when rerun agent fails to start", async () => {

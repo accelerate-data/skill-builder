@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo, Fragment } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, useImperativeHandle, forwardRef, Fragment } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -6,7 +6,6 @@ import {
   User,
   Bot,
   RotateCcw,
-  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -37,6 +36,10 @@ export interface StepRerunChatProps {
   onComplete: () => void;
 }
 
+export interface StepRerunChatHandle {
+  completeStep: () => Promise<void>;
+}
+
 interface ChatMessage {
   role: "agent" | "user";
   content: string;
@@ -65,7 +68,7 @@ const STEP_MODEL_MAP: Record<number, string> = {
 
 // --- Component ---
 
-export function StepRerunChat({
+export const StepRerunChat = forwardRef<StepRerunChatHandle, StepRerunChatProps>(function StepRerunChat({
   skillName,
   domain,
   workspacePath,
@@ -73,7 +76,7 @@ export function StepRerunChat({
   stepId,
   stepLabel,
   onComplete,
-}: StepRerunChatProps) {
+}, ref) {
   // Core state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [userInput, setUserInput] = useState("");
@@ -306,7 +309,7 @@ export function StepRerunChat({
     }
   };
 
-  const handleComplete = async () => {
+  const handleComplete = useCallback(async () => {
     // Final artifact capture
     try {
       await captureStepArtifacts(skillName, stepId, workspacePath);
@@ -314,7 +317,10 @@ export function StepRerunChat({
       // Best-effort
     }
     onComplete();
-  };
+  }, [skillName, stepId, workspacePath, onComplete]);
+
+  // Expose completeStep to parent via ref
+  useImperativeHandle(ref, () => ({ completeStep: handleComplete }), [handleComplete]);
 
   // Pre-compute turn numbers for streaming messages
   const streamTurnMap = useMemo(() => {
@@ -447,16 +453,7 @@ export function StepRerunChat({
             <Send className="size-4" />
           </Button>
         </div>
-        {/* Complete Step button */}
-        {messages.length > 0 && !isAgentRunning && (
-          <div className="mt-3 flex justify-end">
-            <Button size="sm" onClick={handleComplete}>
-              <CheckCircle2 className="size-3.5" />
-              Complete Step
-            </Button>
-          </div>
-        )}
       </div>
     </div>
   );
-}
+});
