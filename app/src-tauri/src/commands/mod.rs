@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod clarification;
 pub mod files;
+pub mod imported_skills;
 pub mod lifecycle;
 pub mod node;
 pub mod settings;

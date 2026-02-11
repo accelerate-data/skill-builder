@@ -1,5 +1,5 @@
 use crate::types::{
-    AppSettings, ArtifactRow, WorkflowRunRow,
+    AppSettings, ArtifactRow, ImportedSkill, WorkflowRunRow,
     WorkflowStepRow,
 };
 use rusqlite::Connection;
@@ -90,6 +90,16 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             tag TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             PRIMARY KEY (skill_name, tag)
+        );
+
+        CREATE TABLE IF NOT EXISTS imported_skills (
+            skill_id TEXT PRIMARY KEY,
+            skill_name TEXT UNIQUE NOT NULL,
+            domain TEXT,
+            description TEXT,
+            is_active INTEGER DEFAULT 1,
+            disk_path TEXT NOT NULL,
+            imported_at TEXT DEFAULT (datetime('now'))
         );",
     )
 }
@@ -506,6 +516,119 @@ pub fn get_all_tags(conn: &Connection) -> Result<Vec<String>, String> {
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
+}
+
+// --- Imported Skills ---
+
+pub fn insert_imported_skill(
+    conn: &Connection,
+    skill: &ImportedSkill,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO imported_skills (skill_id, skill_name, domain, description, is_active, disk_path, imported_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![
+            skill.skill_id,
+            skill.skill_name,
+            skill.domain,
+            skill.description,
+            skill.is_active as i32,
+            skill.disk_path,
+            skill.imported_at,
+        ],
+    )
+    .map_err(|e| {
+        if e.to_string().contains("UNIQUE") {
+            format!("Skill '{}' has already been imported", skill.skill_name)
+        } else {
+            e.to_string()
+        }
+    })?;
+    Ok(())
+}
+
+pub fn list_imported_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT skill_id, skill_name, domain, description, is_active, disk_path, imported_at
+             FROM imported_skills ORDER BY imported_at DESC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(ImportedSkill {
+                skill_id: row.get(0)?,
+                skill_name: row.get(1)?,
+                domain: row.get(2)?,
+                description: row.get(3)?,
+                is_active: row.get::<_, i32>(4)? != 0,
+                disk_path: row.get(5)?,
+                imported_at: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn update_imported_skill_active(
+    conn: &Connection,
+    skill_name: &str,
+    is_active: bool,
+    new_disk_path: &str,
+) -> Result<(), String> {
+    let rows = conn
+        .execute(
+            "UPDATE imported_skills SET is_active = ?1, disk_path = ?2 WHERE skill_name = ?3",
+            rusqlite::params![is_active as i32, new_disk_path, skill_name],
+        )
+        .map_err(|e| e.to_string())?;
+
+    if rows == 0 {
+        return Err(format!("Imported skill '{}' not found", skill_name));
+    }
+    Ok(())
+}
+
+pub fn delete_imported_skill(conn: &Connection, skill_name: &str) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM imported_skills WHERE skill_name = ?1",
+        [skill_name],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn get_imported_skill(
+    conn: &Connection,
+    skill_name: &str,
+) -> Result<Option<ImportedSkill>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT skill_id, skill_name, domain, description, is_active, disk_path, imported_at
+             FROM imported_skills WHERE skill_name = ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let result = stmt.query_row(rusqlite::params![skill_name], |row| {
+        Ok(ImportedSkill {
+            skill_id: row.get(0)?,
+            skill_name: row.get(1)?,
+            domain: row.get(2)?,
+            description: row.get(3)?,
+            is_active: row.get::<_, i32>(4)? != 0,
+            disk_path: row.get(5)?,
+            imported_at: row.get(6)?,
+        })
+    });
+
+    match result {
+        Ok(skill) => Ok(Some(skill)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 #[cfg(test)]

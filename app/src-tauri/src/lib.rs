@@ -56,6 +56,11 @@ pub fn run() {
             commands::workspace::clear_workspace,
             commands::workspace::reconcile_startup,
             commands::workspace::resolve_orphan,
+            commands::imported_skills::upload_skill,
+            commands::imported_skills::list_imported_skills,
+            commands::imported_skills::toggle_skill_active,
+            commands::imported_skills::delete_imported_skill,
+            commands::imported_skills::get_skill_content,
         ])
         .on_window_event(|window, event| {
             use tauri::Emitter;

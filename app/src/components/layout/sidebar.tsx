@@ -1,11 +1,12 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, FileText, Settings, Moon, Sun, Monitor, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Home, FileText, Settings, Moon, Sun, Monitor, PanelLeftClose, PanelLeftOpen, BookOpen } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { to: "/" as const, label: "Dashboard", icon: Home },
+  { to: "/skills" as const, label: "Skills Library", icon: BookOpen },
   { to: "/prompts" as const, label: "Prompts", icon: FileText },
   { to: "/settings" as const, label: "Settings", icon: Settings },
 ];

@@ -124,6 +124,17 @@ pub struct ArtifactRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportedSkill {
+    pub skill_id: String,
+    pub skill_name: String,
+    pub domain: Option<String>,
+    pub description: Option<String>,
+    pub is_active: bool,
+    pub disk_path: String,
+    pub imported_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrphanSkill {
     pub skill_name: String,
     pub domain: String,

@@ -95,6 +95,25 @@ pub async fn spawn_sidecar(
         reg.agents.insert(agent_id.clone(), AgentEntry { child, pid });
     }
 
+    // Emit redacted config to frontend so the agent output panel shows allowed tools
+    {
+        let mut config_val = serde_json::to_value(&config).unwrap_or_default();
+        if let Some(obj) = config_val.as_object_mut() {
+            obj.insert("apiKey".to_string(), serde_json::json!("[REDACTED]"));
+            obj.remove("prompt"); // Don't clutter the UI with the full prompt
+        }
+
+        // Scan .claude/skills/ for discovered skill names
+        let discovered_skills = scan_skills_dir(Path::new(&config.cwd));
+
+        let config_event = serde_json::json!({
+            "type": "config",
+            "config": config_val,
+            "discoveredSkills": discovered_skills,
+        });
+        events::handle_sidecar_message(&app_handle, &agent_id, &config_event.to_string());
+    }
+
     // Open a log file for this agent run so users can `tail -f` it
     let log_file = open_agent_log(Path::new(&config.cwd), &skill_name, &step_label, &config_json);
 
@@ -221,6 +240,27 @@ fn open_agent_log(
             None
         }
     }
+}
+
+/// Scan `{cwd}/.claude/skills/` for active skill directories (those containing SKILL.md).
+/// Returns a list of skill directory names that the SDK will discover.
+fn scan_skills_dir(cwd: &Path) -> Vec<String> {
+    let skills_dir = cwd.join(".claude").join("skills");
+    let mut names = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&skills_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() && path.join("SKILL.md").exists() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if !name.starts_with('.') {
+                        names.push(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    names.sort();
+    names
 }
 
 /// Find a compatible Node.js binary. The Claude Code SDK's bundled CLI currently
