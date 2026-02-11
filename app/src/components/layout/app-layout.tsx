@@ -80,6 +80,11 @@ export function AppLayout() {
         e.preventDefault();
         navigate({ to: "/" });
       }
+      // Cmd+2 -> Skills Library
+      if ((e.metaKey || e.ctrlKey) && e.key === "2") {
+        e.preventDefault();
+        navigate({ to: "/skills" });
+      }
       // Cmd+3 -> Prompts
       if ((e.metaKey || e.ctrlKey) && e.key === "3") {
         e.preventDefault();

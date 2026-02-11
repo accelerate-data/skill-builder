@@ -3,24 +3,25 @@ import type { SidecarConfig } from "./config.js";
 /**
  * Build the options object to pass to the SDK query() function.
  *
- * Agent / model resolution:
- *  - agentName only  → agent + settingSources (front-matter model used)
+ * Agent / model resolution (settingSources: ['project'] always passed for skill discovery):
+ *  - agentName only  → agent (front-matter model used)
  *  - model only      → model
- *  - both            → agent + settingSources + model (model overrides front-matter)
+ *  - both            → agent + model (model overrides front-matter)
  */
 export function buildQueryOptions(config: SidecarConfig, abortController: AbortController) {
   // --- agent / model resolution ---
-  const agentFields = config.agentName
-    ? { agent: config.agentName, settingSources: ['project' as const] }
-    : {};
+  const agentField = config.agentName ? { agent: config.agentName } : {};
 
   // When model is set, always pass it — whether it's the sole identifier
   // (model-only) or overriding the agent's front-matter model (both).
   const modelField = config.model ? { model: config.model } : {};
 
   return {
-    ...agentFields,
+    ...agentField,
     ...modelField,
+    // Always pass settingSources so the SDK discovers skills from
+    // {cwd}/.claude/skills/{name}/SKILL.md regardless of agent mode.
+    settingSources: ['project' as const],
     cwd: config.cwd,
     allowedTools: config.allowedTools,
     maxTurns: config.maxTurns ?? 50,

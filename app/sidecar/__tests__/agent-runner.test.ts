@@ -54,7 +54,7 @@ describe("buildQueryOptions", () => {
 
     expect(opts).toHaveProperty("model", "claude-sonnet-4-20250514");
     expect(opts).not.toHaveProperty("agent");
-    expect(opts).not.toHaveProperty("settingSources");
+    expect(opts).toHaveProperty("settingSources", ["project"]);
   });
 
   it("both agent + model: passes agent + settingSources + model (model overrides front-matter)", () => {
@@ -72,12 +72,12 @@ describe("buildQueryOptions", () => {
     expect(opts).toHaveProperty("model", "claude-haiku-4-20250414");
   });
 
-  it("neither agent nor model: no agent/model/settingSources in options", () => {
+  it("neither agent nor model: settingSources always present, no agent/model", () => {
     const abortController = new AbortController();
     const opts = buildQueryOptions(baseConfig(), abortController);
 
     expect(opts).not.toHaveProperty("agent");
-    expect(opts).not.toHaveProperty("settingSources");
+    expect(opts).toHaveProperty("settingSources", ["project"]);
     expect(opts).not.toHaveProperty("model");
   });
 
