@@ -187,7 +187,7 @@ The desktop app (`app/`) is a **Tauri v2** application providing a GUI for the s
 ```bash
 cd app
 npm install
-npm run tauri dev     # Dev mode (hot reload)
+npm run dev           # Dev mode (hot reload)
 npm run tauri build   # Production build
 ```
 
