@@ -1060,7 +1060,6 @@ describe("Tool call rendering: standalone vs grouped", () => {
 
     // Button should contain a chevron (ChevronRight in collapsed state)
     const button = buttons[0];
-    const chevrons = button.querySelectorAll("svg.size-3\\.5.shrink-0");
     // ChevronRight + Terminal icon = 2 icons, but we care that there's exactly one button
     expect(button).toBeInTheDocument();
   });
@@ -1092,7 +1091,7 @@ describe("Tool call rendering: standalone vs grouped", () => {
       makeToolCallMsg("Read", { file_path: "/a.ts" }),
       makeToolCallMsg("Grep", { pattern: "export" }),
     ];
-    const { container } = render(<ToolCallGroup messages={groupMessages} />);
+    render(<ToolCallGroup messages={groupMessages} />);
 
     // Expand the group
     fireEvent.click(screen.getAllByRole("button")[0]);
@@ -1114,7 +1113,7 @@ describe("Tool call rendering: standalone vs grouped", () => {
       makeToolCallMsg("Read", { file_path: "/test.ts" }),
       makeToolCallMsg("Write", { file_path: "/output.ts" }),
     ];
-    const { container } = render(<ToolCallGroup messages={groupMessages} />);
+    render(<ToolCallGroup messages={groupMessages} />);
 
     // Expand
     fireEvent.click(screen.getAllByRole("button")[0]);

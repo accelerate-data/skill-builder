@@ -16,9 +16,9 @@ const {
   mockGetArtifactContent,
   mockSaveArtifactContent,
 } = vi.hoisted(() => ({
-  mockStartAgent: vi.fn(() => Promise.resolve("agent-1")),
-  mockGetArtifactContent: vi.fn(() => Promise.resolve(null)),
-  mockSaveArtifactContent: vi.fn(() => Promise.resolve()),
+  mockStartAgent: vi.fn<(...args: unknown[]) => Promise<string>>(() => Promise.resolve("agent-1")),
+  mockGetArtifactContent: vi.fn<(...args: unknown[]) => Promise<Record<string, unknown> | null>>(() => Promise.resolve(null)),
+  mockSaveArtifactContent: vi.fn<(...args: unknown[]) => Promise<void>>(() => Promise.resolve()),
 }));
 
 vi.mock("@/lib/tauri", () => ({

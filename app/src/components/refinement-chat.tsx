@@ -58,7 +58,7 @@ export function RefinementChat({
   const [userInput, setUserInput] = useState("");
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
-  const [phase, setPhase] = useState<RefinementPhase>("idle");
+  const [_phase, setPhase] = useState<RefinementPhase>("idle");
 
   // Session restored flag
   const [restored, setRestored] = useState(false);
