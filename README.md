@@ -105,7 +105,7 @@ The app combines parallel research + merge into a single orchestrator step and c
 | **5** | Build skill files | Review structure |
 | **6** | Validate against best practices | Review log |
 | **7** | Test — generate and evaluate test prompts | Review results |
-| **8** | Package into `.skill` zip | Done |
+| **8** | Refine Skill | Done |
 
 ## Repo Structure
 

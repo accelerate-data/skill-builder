@@ -77,9 +77,11 @@ Shared agents in `agents/shared/`:
 | 5 | 6 | Build |
 | 6 | 7 | Validate |
 | 7 | 8 | Test |
-| 8 | 9 | Package |
+| 8 | 9 | Refine Skill |
 
 The only difference is the Init step — the plugin collects skill name and type via conversation, the app uses the new-skill dialog before the workflow starts.
+
+> **Note:** The app's "Package" action was moved from the workflow to a dashboard right-click action (VD-387). The plugin still has Package as Step 9.
 
 ## Custom Skills
 

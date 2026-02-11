@@ -209,7 +209,7 @@ The app replicates the plugin workflow. Each step is a state in the workflow sta
 5. **Build** — creates SKILL.md + reference files
 6. **Validate** — checks against best practices
 7. **Test** — generates and evaluates test prompts
-8. **Package** — creates `.skill` zip archive
+8. **Refine Skill** — interactive chat to review, iterate, and polish the skill
 
 ## Data Model (repo structure)
 
