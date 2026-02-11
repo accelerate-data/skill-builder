@@ -370,6 +370,13 @@ export default function WorkflowPage() {
         updateStepStatus(step, "completed");
         setRunning(false);
         toast.success(`Step ${step + 1} completed`);
+
+        // Auto-advance: persist next step in database for agent steps
+        // The completion screen still displays for user review
+        const stepConfig = STEP_CONFIGS[step];
+        if (stepConfig?.type === "agent") {
+          advanceToNextStep();
+        }
       };
 
       if (workspacePath) {
@@ -385,7 +392,7 @@ export default function WorkflowPage() {
       setActiveAgent(null);
       toast.error(`Step ${step + 1} failed`);
     }
-  }, [activeRunStatus, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath]);
+  }, [activeRunStatus, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, advanceToNextStep]);
 
   // (Review agent logic removed — direct completion is faster and sufficient)
 

@@ -94,7 +94,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     useSettingsStore.getState().reset();
   });
 
-  it("completes step but does NOT auto-advance — waits for user click", async () => {
+  it("auto-advances to next step after agent completion", async () => {
     // Simulate: step 0 is running an agent
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -104,7 +104,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Agent completes — step should be marked completed directly
+    // Agent completes — step should be marked completed and auto-advance
     act(() => {
       useAgentStore.getState().completeRun("agent-1", true);
     });
@@ -118,11 +118,11 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Step 0 completed
     expect(wf.steps[0].status).toBe("completed");
 
-    // Does NOT auto-advance — stays on step 0
-    expect(wf.currentStep).toBe(0);
+    // Auto-advances to step 1
+    expect(wf.currentStep).toBe(1);
 
-    // Step 1 still pending (user must click "Next Step" to advance)
-    expect(wf.steps[1].status).toBe("pending");
+    // Step 1 is a human review step — should be set to waiting_for_user
+    expect(wf.steps[1].status).toBe("waiting_for_user");
 
     // No further steps affected
     expect(wf.steps[2].status).toBe("pending");
@@ -132,6 +132,46 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(wf.isRunning).toBe(false);
 
     expect(mockToast.success).toHaveBeenCalledWith("Step 1 completed");
+  });
+
+  it("auto-advances from step 5 (build) to step 6 (validate)", async () => {
+    // Simulate: steps 0-4 completed, step 5 running
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    for (let i = 0; i < 5; i++) {
+      useWorkflowStore.getState().updateStepStatus(i, "completed");
+    }
+    useWorkflowStore.getState().setCurrentStep(5);
+    useWorkflowStore.getState().updateStepStatus(5, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-build", "sonnet");
+
+    render(<WorkflowPage />);
+
+    // Agent completes step 5 (build)
+    act(() => {
+      useAgentStore.getState().completeRun("agent-build", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[5].status).toBe("completed");
+    });
+
+    const wf = useWorkflowStore.getState();
+
+    // Step 5 completed
+    expect(wf.steps[5].status).toBe("completed");
+
+    // Auto-advances to step 6 (validate)
+    expect(wf.currentStep).toBe(6);
+
+    // Step 6 is an agent step — stays pending (not waiting_for_user)
+    expect(wf.steps[6].status).toBe("pending");
+
+    // Running flag cleared
+    expect(wf.isRunning).toBe(false);
+
+    expect(mockToast.success).toHaveBeenCalledWith("Step 6 completed");
   });
 
 
