@@ -37,7 +37,7 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
   useEffect(() => {
     if (isChecking) return;
     if (deps?.all_ok) {
-      // Small pause so the splash is visible before fading out (5s for testing, revert to 600)
+      // Keep splash visible for 5s so startup checks are readable
       const timer = setTimeout(() => {
         onReadyRef.current();
         setFading(true);
