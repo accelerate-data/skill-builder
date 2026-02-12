@@ -4,6 +4,17 @@ import { buildQueryOptions } from "./options.js";
 import { createAbortState } from "./shutdown.js";
 
 /**
+ * Emit a system-level progress event (not an SDK message).
+ * These events let the UI show granular status during initialization.
+ */
+export function emitSystemEvent(
+  onMessage: (message: Record<string, unknown>) => void,
+  subtype: string,
+): void {
+  onMessage({ type: "system", subtype, timestamp: Date.now() });
+}
+
+/**
  * Run a single agent request using the SDK.
  *
  * Streams each SDK message to the provided `onMessage` callback.
@@ -24,10 +35,16 @@ export async function runAgentRequest(
   const state = createAbortState();
   const options = buildQueryOptions(config, state.abortController);
 
+  // Notify the UI that we're about to initialize the SDK
+  emitSystemEvent(onMessage, "init_start");
+
   const conversation = query({
     prompt: config.prompt,
     options,
   });
+
+  // SDK is loaded and connected — ready to stream messages
+  emitSystemEvent(onMessage, "sdk_ready");
 
   for await (const message of conversation) {
     if (state.aborted) break;

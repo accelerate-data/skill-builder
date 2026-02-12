@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { useAgentStore } from "@/stores/agent-store";
+import { useWorkflowStore } from "@/stores/workflow-store";
 
 interface AgentMessagePayload {
   agent_id: string;
@@ -20,6 +21,18 @@ interface AgentExitPayload {
   agent_id: string;
   success: boolean;
 }
+
+interface AgentInitProgressPayload {
+  agent_id: string;
+  subtype: string;
+  timestamp: number;
+}
+
+/** Map sidecar system event subtypes to user-facing progress messages. */
+const INIT_PROGRESS_MESSAGES: Record<string, string> = {
+  init_start: "Loading SDK modules...",
+  sdk_ready: "Connecting to API...",
+};
 
 function parseContent(message: AgentMessagePayload["message"]): string | undefined {
   if (message.type === "assistant") {
@@ -51,9 +64,28 @@ export function initAgentStream() {
   if (initialized) return;
   initialized = true;
 
+  listen<AgentInitProgressPayload>("agent-init-progress", (event) => {
+    if (shuttingDown) return;
+    const { subtype } = event.payload;
+    const progressMessage = INIT_PROGRESS_MESSAGES[subtype];
+    if (progressMessage) {
+      const workflowState = useWorkflowStore.getState();
+      if (workflowState.isInitializing) {
+        workflowState.setInitProgressMessage(progressMessage);
+      }
+    }
+  });
+
   listen<AgentMessagePayload>("agent-message", (event) => {
     if (shuttingDown) return;
     const { agent_id, message } = event.payload;
+
+    // Clear the "initializing" spinner on the first message from the agent.
+    // This is idempotent — subsequent messages are a no-op when already cleared.
+    const workflowState = useWorkflowStore.getState();
+    if (workflowState.isInitializing) {
+      workflowState.clearInitializing();
+    }
 
     useAgentStore.getState().addMessage(agent_id, {
       type: message.type,

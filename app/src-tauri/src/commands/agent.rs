@@ -48,12 +48,15 @@ pub async fn start_agent(
         agent_name,
     };
 
+    // Default timeout of 0 for ad-hoc agent calls (e.g. refinement chat);
+    // the frontend manages its own timeout logic for these.
     sidecar::spawn_sidecar(
         agent_id.clone(),
         config,
         pool.inner().clone(),
         app,
         skill_name,
+        0,
     )
     .await?;
 

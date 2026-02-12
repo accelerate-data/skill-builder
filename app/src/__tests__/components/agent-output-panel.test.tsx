@@ -52,6 +52,13 @@ describe("AgentOutputPanel", () => {
 
   it("shows Running status badge for running agent", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
+    // A run with no messages shows "Initializing…" — add a message so it transitions to "Running"
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "system",
+      content: undefined,
+      raw: { subtype: "init" },
+      timestamp: Date.now(),
+    });
     render(<AgentOutputPanel agentId="test-agent" />);
     expect(screen.getByText("Running")).toBeInTheDocument();
   });

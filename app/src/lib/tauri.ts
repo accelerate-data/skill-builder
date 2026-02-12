@@ -64,7 +64,8 @@ export const runWorkflowStep = (
   workspacePath: string,
   resume?: boolean,
   rerun?: boolean,
-) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath, resume: resume ?? false, rerun: rerun ?? false });
+  timeoutSecs?: number,
+) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath, resume: resume ?? false, rerun: rerun ?? false, timeoutSecs: timeoutSecs ?? 90 });
 
 export const runReviewStep = (
   skillName: string,

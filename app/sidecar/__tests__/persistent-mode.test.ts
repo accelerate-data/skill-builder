@@ -283,10 +283,10 @@ describe("runPersistent", () => {
       capture.restore();
     }
 
-    // Filter out the sidecar_ready line
+    // Filter out the sidecar_ready and system init lines
     const responseLinesRaw = capture.lines.filter((l) => {
       const parsed = JSON.parse(l);
-      return parsed.type !== "sidecar_ready";
+      return parsed.type !== "sidecar_ready" && parsed.type !== "system";
     });
 
     expect(responseLinesRaw).toHaveLength(2);
@@ -384,11 +384,11 @@ describe("runPersistent", () => {
       capture.restore();
     }
 
-    // Filter out sidecar_ready
+    // Filter out sidecar_ready and system init events
     const responses = capture.lines
       .filter((l) => {
         const parsed = JSON.parse(l);
-        return parsed.request_id;
+        return parsed.request_id && parsed.type !== "system";
       })
       .map((l) => JSON.parse(l));
 

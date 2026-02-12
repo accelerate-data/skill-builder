@@ -8,10 +8,15 @@ interface SettingsState {
   debugMode: boolean;
   extendedContext: boolean;
   extendedThinking: boolean;
+  /** Agent timeout in seconds. If an agent step takes longer, a timeout dialog is shown. */
+  agentTimeout: number;
   isConfigured: boolean;
   setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset">>) => void;
   reset: () => void;
 }
+
+/** Default agent timeout in seconds. */
+export const DEFAULT_AGENT_TIMEOUT = 90;
 
 const initialState = {
   anthropicApiKey: null,
@@ -21,6 +26,7 @@ const initialState = {
   debugMode: false,
   extendedContext: false,
   extendedThinking: false,
+  agentTimeout: DEFAULT_AGENT_TIMEOUT,
   isConfigured: false,
 };
 

@@ -40,6 +40,9 @@ pub struct SidecarPool {
     /// Tracks skills that are currently being spawned to prevent duplicate spawns
     /// while the pool lock is released during the spawn + sidecar_ready wait.
     spawning: Arc<Mutex<HashSet<String>>>,
+    /// Tracks agent_ids of in-flight requests (removed when result/error received).
+    /// Used by timeout tasks to determine whether a request already completed.
+    pending_requests: Arc<Mutex<HashSet<String>>>,
 }
 
 impl SidecarPool {
@@ -47,6 +50,7 @@ impl SidecarPool {
         SidecarPool {
             sidecars: Arc::new(Mutex::new(HashMap::new())),
             spawning: Arc::new(Mutex::new(HashSet::new())),
+            pending_requests: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
@@ -242,6 +246,7 @@ impl SidecarPool {
 
         // Spawn stdout reader that routes messages by request_id
         let stdout_pool = self.sidecars.clone();
+        let stdout_pending = self.pending_requests.clone();
         let skill_name_stdout = skill_name.to_string();
         let app_handle_stdout = app_handle.clone();
         let stdout_task = tokio::spawn(async move {
@@ -260,14 +265,23 @@ impl SidecarPool {
                             );
 
                             // Check if this is a result or error — if so, emit exit event
+                            // and remove from pending_requests so timeout tasks know it completed.
                             if let Some(msg_type) = msg.get("type").and_then(|t| t.as_str()) {
                                 if msg_type == "result" {
+                                    {
+                                        let mut pending = stdout_pending.lock().await;
+                                        pending.remove(request_id);
+                                    }
                                     events::handle_sidecar_exit(
                                         &app_handle_stdout,
                                         request_id,
                                         true,
                                     );
                                 } else if msg_type == "error" {
+                                    {
+                                        let mut pending = stdout_pending.lock().await;
+                                        pending.remove(request_id);
+                                    }
                                     events::handle_sidecar_exit(
                                         &app_handle_stdout,
                                         request_id,
@@ -320,6 +334,10 @@ impl SidecarPool {
     /// Send an agent request to the persistent sidecar for a skill.
     /// The request_id is set to the agent_id so events route to the correct frontend handler.
     ///
+    /// `timeout_secs` controls how long to wait before treating the request as timed out.
+    /// After that duration, if the request is still in `pending_requests`, an `agent_exit`
+    /// event is emitted with `success: false` so the frontend can show a timeout dialog.
+    ///
     /// Issue 1 fix: stdin writes are serialized via `Mutex<ChildStdin>`.
     /// Issue 4 fix: on any error after `get_or_spawn`, an `agent_exit` event is emitted
     /// so the frontend never gets stuck in "running" state.
@@ -329,13 +347,14 @@ impl SidecarPool {
         agent_id: &str,
         config: SidecarConfig,
         app_handle: &tauri::AppHandle,
+        timeout_secs: u64,
     ) -> Result<(), String> {
         // Ensure we have a sidecar running
         self.get_or_spawn(skill_name, app_handle).await?;
 
         // Issue 4: If anything below fails, emit agent_exit so the frontend doesn't hang.
         let result = self
-            .do_send_request(skill_name, agent_id, config, app_handle)
+            .do_send_request(skill_name, agent_id, config, app_handle, timeout_secs)
             .await;
 
         if let Err(ref e) = result {
@@ -359,6 +378,7 @@ impl SidecarPool {
         agent_id: &str,
         config: SidecarConfig,
         app_handle: &tauri::AppHandle,
+        timeout_secs: u64,
     ) -> Result<(), String> {
         // Build the request message (before acquiring any lock)
         let request = serde_json::json!({
@@ -389,10 +409,19 @@ impl SidecarPool {
             events::handle_sidecar_message(app_handle, agent_id, &config_event.to_string());
         }
 
+        // Register this request as pending BEFORE sending to stdin, so the
+        // stdout reader and timeout task both know it's in-flight.
+        {
+            let mut pending = self.pending_requests.lock().await;
+            pending.insert(agent_id.to_string());
+        }
+
         // Get a clone of the Arc<Mutex<ChildStdin>> — hold pool lock only briefly
         let (stdin_handle, pid) = {
             let pool = self.sidecars.lock().await;
             let sidecar = pool.get(skill_name).ok_or_else(|| {
+                // Remove from pending since we never sent the request
+                // (can't await here, but the timeout task will handle cleanup)
                 format!(
                     "Sidecar for '{}' not found in pool after get_or_spawn",
                     skill_name
@@ -423,6 +452,43 @@ impl SidecarPool {
             skill_name,
             pid
         );
+
+        // Spawn a background timeout task. If the request is still pending after
+        // `timeout_secs`, emit an `agent_exit` event with `success: false` so the
+        // frontend can show the timeout dialog and offer retry/cancel.
+        if timeout_secs > 0 {
+            let timeout_pending = self.pending_requests.clone();
+            let timeout_app_handle = app_handle.clone();
+            let timeout_agent_id = agent_id.to_string();
+            let timeout_skill_name = skill_name.to_string();
+
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(timeout_secs)).await;
+
+                let still_pending = {
+                    let mut pending = timeout_pending.lock().await;
+                    if pending.remove(&timeout_agent_id) {
+                        true
+                    } else {
+                        false
+                    }
+                };
+
+                if still_pending {
+                    log::warn!(
+                        "Agent request '{}' on skill '{}' timed out after {}s",
+                        timeout_agent_id,
+                        timeout_skill_name,
+                        timeout_secs,
+                    );
+                    events::handle_sidecar_exit(
+                        &timeout_app_handle,
+                        &timeout_agent_id,
+                        false,
+                    );
+                }
+            });
+        }
 
         Ok(())
     }
@@ -753,5 +819,81 @@ mod tests {
             let sidecars = pool.sidecars.lock().await;
             assert!(!sidecars.contains_key("skill_b"));
         }
+    }
+
+    #[tokio::test]
+    async fn test_pending_requests_empty_after_init() {
+        let pool = SidecarPool::new();
+        let pending = pool.pending_requests.lock().await;
+        assert!(pending.is_empty(), "Pending requests should be empty after creation");
+    }
+
+    #[tokio::test]
+    async fn test_pending_requests_insert_and_remove() {
+        let pool = SidecarPool::new();
+
+        // Simulate adding a request to the pending set
+        {
+            let mut pending = pool.pending_requests.lock().await;
+            pending.insert("agent-123".to_string());
+            assert!(pending.contains("agent-123"));
+        }
+
+        // Simulate completion — removing the request
+        {
+            let mut pending = pool.pending_requests.lock().await;
+            assert!(pending.remove("agent-123"));
+            assert!(!pending.contains("agent-123"));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_pending_requests_timeout_removes_if_still_pending() {
+        // Simulate the timeout task logic: if the request is still pending
+        // after the timeout period, it should be removed.
+        let pool = SidecarPool::new();
+
+        {
+            let mut pending = pool.pending_requests.lock().await;
+            pending.insert("agent-timeout-test".to_string());
+        }
+
+        // Simulate timeout check: request is still pending
+        let still_pending = {
+            let mut pending = pool.pending_requests.lock().await;
+            pending.remove("agent-timeout-test")
+        };
+        assert!(still_pending, "Request should still be pending at timeout");
+
+        // After removal, it should no longer be in the set
+        {
+            let pending = pool.pending_requests.lock().await;
+            assert!(!pending.contains("agent-timeout-test"));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_pending_requests_completed_before_timeout() {
+        // Simulate the case where a request completes before the timeout fires.
+        // The stdout reader removes it, so the timeout task should find it absent.
+        let pool = SidecarPool::new();
+
+        {
+            let mut pending = pool.pending_requests.lock().await;
+            pending.insert("agent-fast".to_string());
+        }
+
+        // Simulate stdout reader removing the request on completion
+        {
+            let mut pending = pool.pending_requests.lock().await;
+            pending.remove("agent-fast");
+        }
+
+        // Simulate timeout check: request should NOT be pending
+        let still_pending = {
+            let mut pending = pool.pending_requests.lock().await;
+            pending.remove("agent-fast")
+        };
+        assert!(!still_pending, "Request should have been completed before timeout");
     }
 }

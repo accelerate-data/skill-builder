@@ -28,6 +28,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
+import { AgentInitializingIndicator } from "@/components/agent-initializing-indicator";
+import { TimeoutDialog } from "@/components/timeout-dialog";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ReasoningChat, type ReasoningChatHandle, type ReasoningPhase } from "@/components/reasoning-chat";
 import { RefinementChat } from "@/components/refinement-chat";
@@ -92,6 +94,7 @@ export default function WorkflowPage() {
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const skillsPath = useSettingsStore((s) => s.skillsPath);
   const debugMode = useSettingsStore((s) => s.debugMode);
+  const agentTimeout = useSettingsStore((s) => s.agentTimeout);
 
   const {
     domain,
@@ -99,11 +102,18 @@ export default function WorkflowPage() {
     currentStep,
     steps,
     isRunning,
+    isInitializing,
+    isTimedOut,
+    timeoutStartTime: _timeoutStartTime,
     hydrated,
     initWorkflow,
     setCurrentStep,
     updateStepStatus,
     setRunning,
+    setInitializing,
+    clearInitializing,
+    setTimedOut: _setTimedOut,
+    clearTimeout: clearTimeoutState,
     rerunFromStep,
     loadWorkflowState,
     setHydrated,
@@ -183,6 +193,49 @@ export default function WorkflowPage() {
 
   // Pending step switch — set when user clicks a sidebar step while agent is running
   const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(null);
+
+  // Track when the current agent step started running (for elapsed-time display in timeout dialog)
+  const stepRunStartRef = useRef<number | null>(null);
+
+  // --- Timeout detection ---
+  // Start a timer when a step begins running. If agentTimeout seconds elapse
+  // with no completion, trigger the timeout state.
+  const timeoutTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isRunning) {
+      stepRunStartRef.current = null;
+      // Clear the timer and timeout state when the step stops running
+      if (timeoutTimerRef.current !== null) {
+        window.clearTimeout(timeoutTimerRef.current);
+        timeoutTimerRef.current = null;
+      }
+      if (useWorkflowStore.getState().isTimedOut) {
+        clearTimeoutState();
+      }
+      return;
+    }
+
+    // Record the start time when a step begins running
+    if (stepRunStartRef.current === null) {
+      stepRunStartRef.current = Date.now();
+    }
+
+    const timer = window.setTimeout(() => {
+      timeoutTimerRef.current = null;
+      // Double-check the step is still running at timeout time
+      const store = useWorkflowStore.getState();
+      if (store.isRunning && store.steps[store.currentStep]?.status === "in_progress") {
+        store.setTimedOut();
+      }
+    }, agentTimeout * 1000);
+    timeoutTimerRef.current = timer;
+
+    return () => {
+      window.clearTimeout(timer);
+      timeoutTimerRef.current = null;
+    };
+  }, [isRunning, agentTimeout, currentStep, clearTimeoutState]);
 
   const stepConfig = STEP_CONFIGS[currentStep];
   const isHumanReviewStep = stepConfig?.type === "human";
@@ -401,6 +454,11 @@ export default function WorkflowPage() {
       updateStepStatus(step, "error");
       setRunning(false);
       setActiveAgent(null);
+      // Clear initializing state if the agent errored before sending any messages
+      const workflowState = useWorkflowStore.getState();
+      if (workflowState.isInitializing) {
+        workflowState.clearInitializing();
+      }
       toast.error(`Step ${step + 1} failed`, { duration: Infinity });
     }
   }, [activeRunStatus, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, advanceToNextStep]);
@@ -420,8 +478,10 @@ export default function WorkflowPage() {
 
     try {
       clearRuns();
+      clearTimeoutState();
       updateStepStatus(currentStep, "in_progress");
       setRunning(true);
+      setInitializing();
       setHasPartialOutput(false);
 
       const agentId = await runWorkflowStep(
@@ -430,11 +490,14 @@ export default function WorkflowPage() {
         domain,
         workspacePath,
         resume,
+        false,
+        agentTimeout,
       );
       agentStartRun(agentId, stepConfig?.model ?? "sonnet");
     } catch (err) {
       updateStepStatus(currentStep, "error");
       setRunning(false);
+      clearInitializing();
       toast.error(
         `Failed to start agent: ${err instanceof Error ? err.message : String(err)}`,
         { duration: Infinity },
@@ -506,6 +569,43 @@ export default function WorkflowPage() {
     // Step stays in completed status -- the rerun chat has already captured artifacts
     toast.success(`Step ${currentStep + 1} rerun completed`);
   }, [currentStep]);
+
+  // --- Timeout handlers ---
+
+  /** Retry: kill the current sidecar, revert step to pending, and restart it. */
+  const handleTimeoutRetry = useCallback(async () => {
+    clearTimeoutState();
+    setRunning(false);
+    setActiveAgent(null);
+    clearRuns();
+    updateStepStatus(currentStep, "pending");
+
+    // Kill the current sidecar process so it doesn't linger
+    cleanupSkillSidecar(skillName).catch(() => {});
+
+    toast.info(`Retrying step ${currentStep + 1}...`);
+
+    // Small delay to let cleanup propagate before restarting
+    await new Promise((r) => setTimeout(r, 300));
+
+    // Re-start the step
+    handleStartStep();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, skillName, clearTimeoutState, setRunning, setActiveAgent, clearRuns, updateStepStatus]);
+
+  /** Cancel: revert the step to pending and stop running. */
+  const handleTimeoutCancel = useCallback(() => {
+    clearTimeoutState();
+    setRunning(false);
+    setActiveAgent(null);
+    clearRuns();
+    updateStepStatus(currentStep, "pending");
+
+    // Kill the current sidecar process
+    cleanupSkillSidecar(skillName).catch(() => {});
+
+    toast.info(`Step ${currentStep + 1} cancelled`);
+  }, [currentStep, skillName, clearTimeoutState, setRunning, setActiveAgent, clearRuns, updateStepStatus]);
 
   // Reload the file content (after user edits externally).
   // Same priority as initial load: skill context dir > SQLite > workspace.
@@ -720,6 +820,11 @@ export default function WorkflowPage() {
       );
     }
 
+    // Initializing state — show spinner before first agent message arrives
+    if (isInitializing && (!activeAgentId || !runs[activeAgentId]?.messages.length)) {
+      return <AgentInitializingIndicator />;
+    }
+
     // Single agent with output
     if (activeAgentId) {
       return <AgentOutputPanel agentId={activeAgentId} />;
@@ -827,6 +932,15 @@ export default function WorkflowPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Timeout dialog — shown when an agent step exceeds the configured timeout */}
+      <TimeoutDialog
+        open={isTimedOut}
+        stepName={currentStepDef?.name ?? `Step ${currentStep + 1}`}
+        stepStartTime={stepRunStartRef.current}
+        onRetry={handleTimeoutRetry}
+        onCancel={handleTimeoutCancel}
+      />
 
       <div className="flex h-full -m-6">
         <WorkflowSidebar

@@ -6,7 +6,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 }));
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { runAgentRequest } from "../run-agent.js";
+import { runAgentRequest, emitSystemEvent } from "../run-agent.js";
 import type { SidecarConfig } from "../config.js";
 
 const mockQuery = vi.mocked(query);
@@ -60,20 +60,50 @@ describe("runAgentRequest", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    expect(messages).toHaveLength(3);
-    expect(messages[0]).toEqual({ type: "agent_message", content: "step 1" });
-    expect(messages[1]).toEqual({ type: "tool_use", name: "Read", input: {} });
-    expect(messages[2]).toEqual({ type: "result", content: "done" });
+    // First two messages are system events (init_start, sdk_ready), then SDK messages
+    expect(messages).toHaveLength(5);
+    expect(messages[2]).toEqual({ type: "agent_message", content: "step 1" });
+    expect(messages[3]).toEqual({ type: "tool_use", name: "Read", input: {} });
+    expect(messages[4]).toEqual({ type: "result", content: "done" });
   });
 
-  it("propagates SDK errors", async () => {
+  it("emits init_start and sdk_ready system events in order", async () => {
+    async function* fakeConversation() {
+      yield { type: "result", content: "done" };
+    }
+    mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
+
+    const messages: Record<string, unknown>[] = [];
+    await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
+
+    // System events come first
+    expect(messages[0]).toMatchObject({ type: "system", subtype: "init_start" });
+    expect(messages[0]).toHaveProperty("timestamp");
+    expect(typeof messages[0].timestamp).toBe("number");
+
+    expect(messages[1]).toMatchObject({ type: "system", subtype: "sdk_ready" });
+    expect(messages[1]).toHaveProperty("timestamp");
+    expect(typeof messages[1].timestamp).toBe("number");
+
+    // init_start timestamp should be <= sdk_ready timestamp
+    expect(messages[0].timestamp as number).toBeLessThanOrEqual(
+      messages[1].timestamp as number,
+    );
+  });
+
+  it("propagates SDK errors after emitting init_start", async () => {
+    const messages: Record<string, unknown>[] = [];
     mockQuery.mockImplementation(() => {
       throw new Error("SDK failure");
     });
 
     await expect(
-      runAgentRequest(baseConfig(), vi.fn()),
+      runAgentRequest(baseConfig(), (msg) => messages.push(msg)),
     ).rejects.toThrow("SDK failure");
+
+    // init_start should have been emitted before the error
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({ type: "system", subtype: "init_start" });
   });
 
   it("sets ANTHROPIC_API_KEY when apiKey is provided", async () => {
@@ -112,5 +142,40 @@ describe("runAgentRequest", () => {
       maxTurns: 50,
       permissionMode: "bypassPermissions",
     });
+  });
+});
+
+describe("emitSystemEvent", () => {
+  it("emits a system event with correct format", () => {
+    const messages: Record<string, unknown>[] = [];
+    emitSystemEvent((msg) => messages.push(msg), "init_start");
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      type: "system",
+      subtype: "init_start",
+    });
+    expect(typeof messages[0].timestamp).toBe("number");
+  });
+
+  it("emits events with the specified subtype", () => {
+    const messages: Record<string, unknown>[] = [];
+    emitSystemEvent((msg) => messages.push(msg), "sdk_ready");
+
+    expect(messages[0]).toMatchObject({
+      type: "system",
+      subtype: "sdk_ready",
+    });
+  });
+
+  it("includes a millisecond timestamp", () => {
+    const before = Date.now();
+    const messages: Record<string, unknown>[] = [];
+    emitSystemEvent((msg) => messages.push(msg), "init_start");
+    const after = Date.now();
+
+    const timestamp = messages[0].timestamp as number;
+    expect(timestamp).toBeGreaterThanOrEqual(before);
+    expect(timestamp).toBeLessThanOrEqual(after);
   });
 });

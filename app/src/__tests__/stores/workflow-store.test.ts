@@ -152,6 +152,88 @@ describe("useWorkflowStore", () => {
     expect(state.steps.find((s) => s.name === "Package")).toBeUndefined();
   });
 
+  describe("setInitializing / clearInitializing", () => {
+    it("has correct initial state for initializing fields", () => {
+      const state = useWorkflowStore.getState();
+      expect(state.isInitializing).toBe(false);
+      expect(state.initStartTime).toBeNull();
+    });
+
+    it("setInitializing sets isInitializing=true and records start time", () => {
+      const before = Date.now();
+      useWorkflowStore.getState().setInitializing();
+      const state = useWorkflowStore.getState();
+      expect(state.isInitializing).toBe(true);
+      expect(state.initStartTime).toBeGreaterThanOrEqual(before);
+      expect(state.initStartTime).toBeLessThanOrEqual(Date.now());
+    });
+
+    it("clearInitializing resets isInitializing=false and initStartTime=null", () => {
+      useWorkflowStore.getState().setInitializing();
+      useWorkflowStore.getState().clearInitializing();
+      const state = useWorkflowStore.getState();
+      expect(state.isInitializing).toBe(false);
+      expect(state.initStartTime).toBeNull();
+    });
+
+    it("initWorkflow resets initializing state", () => {
+      useWorkflowStore.getState().setInitializing();
+      useWorkflowStore.getState().initWorkflow("test", "test domain");
+      const state = useWorkflowStore.getState();
+      expect(state.isInitializing).toBe(false);
+      expect(state.initStartTime).toBeNull();
+    });
+
+    it("reset clears initializing state", () => {
+      useWorkflowStore.getState().setInitializing();
+      useWorkflowStore.getState().reset();
+      const state = useWorkflowStore.getState();
+      expect(state.isInitializing).toBe(false);
+      expect(state.initStartTime).toBeNull();
+    });
+  });
+
+  describe("setTimedOut / clearTimeout", () => {
+    it("has correct initial state for timeout fields", () => {
+      const state = useWorkflowStore.getState();
+      expect(state.isTimedOut).toBe(false);
+      expect(state.timeoutStartTime).toBeNull();
+    });
+
+    it("setTimedOut sets isTimedOut=true and records timestamp", () => {
+      const before = Date.now();
+      useWorkflowStore.getState().setTimedOut();
+      const state = useWorkflowStore.getState();
+      expect(state.isTimedOut).toBe(true);
+      expect(state.timeoutStartTime).toBeGreaterThanOrEqual(before);
+      expect(state.timeoutStartTime).toBeLessThanOrEqual(Date.now());
+    });
+
+    it("clearTimeout resets isTimedOut=false and timeoutStartTime=null", () => {
+      useWorkflowStore.getState().setTimedOut();
+      useWorkflowStore.getState().clearTimeout();
+      const state = useWorkflowStore.getState();
+      expect(state.isTimedOut).toBe(false);
+      expect(state.timeoutStartTime).toBeNull();
+    });
+
+    it("initWorkflow resets timeout state", () => {
+      useWorkflowStore.getState().setTimedOut();
+      useWorkflowStore.getState().initWorkflow("test", "test domain");
+      const state = useWorkflowStore.getState();
+      expect(state.isTimedOut).toBe(false);
+      expect(state.timeoutStartTime).toBeNull();
+    });
+
+    it("reset clears timeout state", () => {
+      useWorkflowStore.getState().setTimedOut();
+      useWorkflowStore.getState().reset();
+      const state = useWorkflowStore.getState();
+      expect(state.isTimedOut).toBe(false);
+      expect(state.timeoutStartTime).toBeNull();
+    });
+  });
+
   describe("loadWorkflowState migration safety", () => {
     it("completes all 9 steps including step 8 (Refine)", () => {
       // Simulate SQLite returning all steps completed including the Refine step (8)

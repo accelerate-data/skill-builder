@@ -16,6 +16,7 @@ import {
   getLatestContextTokens,
   getContextUtilization,
 } from "@/stores/agent-store";
+import { useWorkflowStore } from "@/stores/workflow-store";
 
 export function formatElapsed(ms: number): string {
   const seconds = Math.floor(ms / 1000);
@@ -60,38 +61,76 @@ interface AgentStatusHeaderProps {
   title?: string;
 }
 
+/** Determine the display status for the agent header.
+ *  - "initializing": run exists, status is "running", but no messages yet
+ *                     (or workflow store's isInitializing flag is true)
+ *  - "running" / "completed" / "error": pass through from run status
+ */
+export type DisplayStatus = "initializing" | "running" | "completed" | "error";
+
+export function getDisplayStatus(
+  runStatus: "running" | "completed" | "error",
+  messageCount: number,
+  workflowIsInitializing?: boolean,
+): DisplayStatus {
+  if (runStatus !== "running") return runStatus;
+  // If workflow store says we're initializing, trust that
+  if (workflowIsInitializing) return "initializing";
+  // If running but no messages have arrived yet, we're still initializing
+  if (messageCount === 0) return "initializing";
+  return "running";
+}
+
 export function AgentStatusHeader({
   agentId,
   title = "Agent Output",
 }: AgentStatusHeaderProps) {
   const run = useAgentStore((s) => s.runs[agentId]);
 
-  // Force re-render every second while running so elapsed time updates
+  // Read initializing state from workflow store
+  const workflowIsInitializing = useWorkflowStore((s) => s.isInitializing);
+  const workflowInitStartTime = useWorkflowStore((s) => s.initStartTime);
+
+  const displayStatus = run
+    ? getDisplayStatus(run.status, run.messages.length, workflowIsInitializing)
+    : null;
+
+  // Force re-render every second while running or initializing so elapsed time updates
   const [, setTick] = useState(0);
   useEffect(() => {
-    if (run?.status !== "running") return;
+    if (!displayStatus || displayStatus === "completed" || displayStatus === "error") return;
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
-  }, [run?.status]);
+  }, [displayStatus]);
 
   if (!run) return null;
 
-  const elapsed = run.endTime
-    ? run.endTime - run.startTime
-    : Date.now() - run.startTime;
+  // For elapsed time: during initialization, prefer initStartTime from workflow store
+  // (tracks when the step was kicked off, before the run object even exists).
+  // Fall back to the run's startTime.
+  const elapsedOrigin = displayStatus === "initializing" && workflowInitStartTime
+    ? workflowInitStartTime
+    : run.startTime;
 
-  const statusIcon = {
+  const elapsed = run.endTime
+    ? run.endTime - elapsedOrigin
+    : Date.now() - elapsedOrigin;
+
+  const statusIcon: Record<DisplayStatus, React.ReactNode> = {
+    initializing: <Loader2 className="size-3.5 animate-spin text-yellow-500" />,
     running: <Loader2 className="size-3.5 animate-spin" />,
     completed: <CheckCircle2 className="size-3.5 text-green-500" />,
     error: <XCircle className="size-3.5 text-destructive" />,
-  }[run.status];
+  };
 
-  const statusLabel = {
+  const statusLabel: Record<DisplayStatus, string> = {
+    initializing: "Initializing\u2026",
     running: "Running",
     completed: "Completed",
     error: "Error",
-  }[run.status];
+  };
 
+  const currentStatus = displayStatus ?? "running";
   const turnCount = run.messages.filter((m) => m.type === "assistant").length;
 
   return (
@@ -101,9 +140,9 @@ export function AgentStatusHeader({
         {title}
       </CardTitle>
       <div className="flex items-center gap-2">
-        <Badge variant="outline" className="gap-1 text-xs">
-          {statusIcon}
-          {statusLabel}
+        <Badge variant="outline" className="gap-1 text-xs transition-colors">
+          {statusIcon[currentStatus]}
+          {statusLabel[currentStatus]}
         </Badge>
         <Badge variant="secondary" className="text-xs">
           {formatModelName(run.model)}

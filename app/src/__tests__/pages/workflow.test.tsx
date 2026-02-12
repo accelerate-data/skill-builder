@@ -1197,6 +1197,8 @@ describe("WorkflowPage — debug auto-start behavior", () => {
       "test domain",
       "/test/workspace",
       false,
+      false,
+      90,
     );
 
     // Step 2 should now be in_progress (started by debug auto-start)

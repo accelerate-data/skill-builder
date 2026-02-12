@@ -243,7 +243,7 @@ describe("ReasoningChat — simplified write-first flow", () => {
     await user.click(screen.getByText("Start Reasoning"));
 
     expect(mockRunWorkflowStep).toHaveBeenCalledWith(
-      "saas-revenue", 4, "SaaS Revenue Analytics", "/workspace"
+      "saas-revenue", 4, "SaaS Revenue Analytics", "/workspace", false, false, 90
     );
     // Agent run registered in store
     expect(useAgentStore.getState().runs["agent-1"]).toBeDefined();
@@ -694,7 +694,7 @@ describe("ReasoningChat — simplified write-first flow", () => {
     // In debug mode, handleStart should be called automatically
     await waitFor(() => {
       expect(mockRunWorkflowStep).toHaveBeenCalledWith(
-        "saas-revenue", 4, "SaaS Revenue Analytics", "/workspace"
+        "saas-revenue", 4, "SaaS Revenue Analytics", "/workspace", false, false, 90
       );
     }, { timeout: 500 });
   });

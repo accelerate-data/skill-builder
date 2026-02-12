@@ -620,12 +620,14 @@ pub async fn run_review_step(
         agent_name: None,
     };
 
+    // Review agents are lightweight (haiku, max 10 turns) — use a shorter timeout.
     sidecar::spawn_sidecar(
         agent_id.clone(),
         config,
         pool.inner().clone(),
         app,
         skill_name,
+        60,
     )
     .await?;
 
@@ -701,6 +703,7 @@ pub async fn run_workflow_step(
     workspace_path: String,
     resume: bool,
     rerun: bool,
+    timeout_secs: u64,
 ) -> Result<String, String> {
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path)?;
@@ -782,12 +785,17 @@ pub async fn run_workflow_step(
         agent_name: Some(agent_name),
     };
 
+    // Use the timeout value passed from the frontend settings. The frontend
+    // also enforces its own agentTimeout, but this backend timeout acts as a
+    // safety net to ensure the agent_exit event fires even if the frontend
+    // timer misfires.
     sidecar::spawn_sidecar(
         agent_id.clone(),
         config,
         pool.inner().clone(),
         app,
         skill_name,
+        timeout_secs,
     )
     .await?;
 
