@@ -28,6 +28,12 @@ interface AgentInitProgressPayload {
   timestamp: number;
 }
 
+interface AgentInitErrorPayload {
+  error_type: string;
+  message: string;
+  fix_hint: string;
+}
+
 /** Map sidecar system event subtypes to user-facing progress messages. */
 const INIT_PROGRESS_MESSAGES: Record<string, string> = {
   init_start: "Loading SDK modules...",
@@ -76,6 +82,17 @@ export function initAgentStream() {
     }
   });
 
+  listen<AgentInitErrorPayload>("agent-init-error", (event) => {
+    if (shuttingDown) return;
+    const workflowState = useWorkflowStore.getState();
+    workflowState.clearInitializing(); // Fix 3: Clear spinner on preflight errors
+    workflowState.setRuntimeError({
+      error_type: event.payload.error_type,
+      message: event.payload.message,
+      fix_hint: event.payload.fix_hint,
+    });
+  });
+
   listen<AgentMessagePayload>("agent-message", (event) => {
     if (shuttingDown) return;
     const { agent_id, message } = event.payload;
@@ -85,6 +102,7 @@ export function initAgentStream() {
     const workflowState = useWorkflowStore.getState();
     if (workflowState.isInitializing) {
       workflowState.clearInitializing();
+      workflowState.clearRuntimeError(); // Fix 2: Clear stale errors if agent actually starts
     }
 
     useAgentStore.getState().addMessage(agent_id, {

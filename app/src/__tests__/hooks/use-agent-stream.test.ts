@@ -141,8 +141,8 @@ describe("initAgentStream", () => {
     initAgentStream();
     initAgentStream();
 
-    // listen should only be called 3 times (agent-init-progress, agent-message, agent-exit)
-    expect(mockListen).toHaveBeenCalledTimes(3);
+    // listen should only be called 4 times (agent-init-progress, agent-message, agent-exit, agent-init-error)
+    expect(mockListen).toHaveBeenCalledTimes(4);
   });
 
   it("auto-creates run for messages arriving before startRun", () => {

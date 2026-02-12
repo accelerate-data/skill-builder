@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { RuntimeError } from "@/components/runtime-error-dialog";
 
 export interface WorkflowStep {
   id: number;
@@ -25,6 +26,9 @@ interface WorkflowState {
   /** Timestamp (ms) when the timeout was triggered, for elapsed-time display. */
   timeoutStartTime: number | null;
 
+  /** Structured runtime error from a failed sidecar startup (shown in RuntimeErrorDialog). */
+  runtimeError: RuntimeError | null;
+
   initWorkflow: (skillName: string, domain: string, skillType?: string) => void;
   setSkillType: (skillType: string | null) => void;
   setCurrentStep: (step: number) => void;
@@ -40,6 +44,10 @@ interface WorkflowState {
   setTimedOut: () => void;
   /** Clear the timeout state (e.g. after retry or cancel). */
   clearTimeout: () => void;
+  /** Set a structured runtime error from a sidecar startup failure. */
+  setRuntimeError: (error: RuntimeError) => void;
+  /** Clear the runtime error (e.g. after user dismisses the dialog). */
+  clearRuntimeError: () => void;
   reset: () => void;
 }
 
@@ -112,6 +120,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
   initProgressMessage: null,
   isTimedOut: false,
   timeoutStartTime: null,
+  runtimeError: null,
   hydrated: false,
 
   initWorkflow: (skillName, domain, skillType) =>
@@ -127,6 +136,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       initProgressMessage: null,
       isTimedOut: false,
       timeoutStartTime: null,
+      runtimeError: null,
       hydrated: false,
     }),
 
@@ -158,6 +168,10 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
   setTimedOut: () => set({ isTimedOut: true, timeoutStartTime: Date.now() }),
 
   clearTimeout: () => set({ isTimedOut: false, timeoutStartTime: null }),
+
+  setRuntimeError: (error) => set({ runtimeError: error }),
+
+  clearRuntimeError: () => set({ runtimeError: null }),
 
   rerunFromStep: (stepId) =>
     set((state) => ({
@@ -201,6 +215,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       initProgressMessage: null,
       isTimedOut: false,
       timeoutStartTime: null,
+      runtimeError: null,
       hydrated: false,
     }),
 }));

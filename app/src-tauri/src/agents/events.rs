@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 
+use super::sidecar_pool::SidecarStartupError;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentEvent {
     pub agent_id: String,
@@ -13,6 +15,14 @@ pub struct AgentInitProgress {
     pub agent_id: String,
     pub subtype: String,
     pub timestamp: u64,
+}
+
+/// Payload for sidecar startup error events sent to the frontend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentInitError {
+    pub error_type: String,
+    pub message: String,
+    pub fix_hint: String,
 }
 
 pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, line: &str) {
@@ -55,4 +65,21 @@ pub fn handle_sidecar_exit(app_handle: &tauri::AppHandle, agent_id: &str, succes
             "success": success,
         }),
     );
+}
+
+/// Emit a structured error event when sidecar startup fails.
+/// The frontend listens for `agent-init-error` to show an actionable dialog.
+pub fn emit_init_error(app_handle: &tauri::AppHandle, error: &SidecarStartupError) {
+    let payload = AgentInitError {
+        error_type: error.error_type().to_string(),
+        message: error.message(),
+        fix_hint: error.fix_hint(),
+    };
+    log::error!(
+        "Sidecar startup error [{}]: {} | Fix: {}",
+        payload.error_type,
+        payload.message,
+        payload.fix_hint
+    );
+    let _ = app_handle.emit("agent-init-error", &payload);
 }

@@ -30,6 +30,7 @@ import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { AgentInitializingIndicator } from "@/components/agent-initializing-indicator";
 import { TimeoutDialog } from "@/components/timeout-dialog";
+import { RuntimeErrorDialog } from "@/components/runtime-error-dialog";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ReasoningChat, type ReasoningChatHandle, type ReasoningPhase } from "@/components/reasoning-chat";
 import { RefinementChat } from "@/components/refinement-chat";
@@ -114,6 +115,8 @@ export default function WorkflowPage() {
     clearInitializing,
     setTimedOut: _setTimedOut,
     clearTimeout: clearTimeoutState,
+    runtimeError,
+    clearRuntimeError,
     rerunFromStep,
     loadWorkflowState,
     setHydrated,
@@ -479,6 +482,7 @@ export default function WorkflowPage() {
     try {
       clearRuns();
       clearTimeoutState();
+      clearRuntimeError();
       updateStepStatus(currentStep, "in_progress");
       setRunning(true);
       setInitializing();
@@ -940,6 +944,12 @@ export default function WorkflowPage() {
         stepStartTime={stepRunStartRef.current}
         onRetry={handleTimeoutRetry}
         onCancel={handleTimeoutCancel}
+      />
+
+      {/* Runtime error dialog — shown when sidecar startup fails with an actionable error */}
+      <RuntimeErrorDialog
+        error={runtimeError}
+        onDismiss={clearRuntimeError}
       />
 
       <div className="flex h-full -m-6">

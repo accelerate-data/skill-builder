@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -9,6 +10,128 @@ use tokio::task::JoinHandle;
 
 use super::events;
 use super::sidecar::SidecarConfig;
+
+/// Categorized sidecar startup failure with actionable fix instructions.
+#[derive(Debug, Clone, serde::Serialize)]
+pub enum SidecarStartupError {
+    /// The agent-runner.js bundle was not found in any expected location.
+    SidecarMissing,
+    /// Node.js binary was not found on the system.
+    NodeMissing,
+    /// Node.js was found but its version is outside the supported range (18-24).
+    NodeIncompatible {
+        found: String,
+        required: String,
+    },
+    /// The sidecar process could not be spawned (OS-level failure).
+    SpawnFailed {
+        detail: String,
+    },
+    /// The sidecar started but did not send the ready signal within the timeout.
+    ReadyTimeout {
+        pid: u32,
+    },
+    /// An unexpected error during startup.
+    Other {
+        detail: String,
+    },
+}
+
+impl SidecarStartupError {
+    /// Machine-readable error type for frontend classification.
+    pub fn error_type(&self) -> &'static str {
+        match self {
+            SidecarStartupError::SidecarMissing => "sidecar_missing",
+            SidecarStartupError::NodeMissing => "node_missing",
+            SidecarStartupError::NodeIncompatible { .. } => "node_incompatible",
+            SidecarStartupError::SpawnFailed { .. } => "spawn_failed",
+            SidecarStartupError::ReadyTimeout { .. } => "ready_timeout",
+            SidecarStartupError::Other { .. } => "other",
+        }
+    }
+
+    /// Human-readable message describing the error.
+    pub fn message(&self) -> String {
+        match self {
+            SidecarStartupError::SidecarMissing => {
+                "Agent runtime not found.".to_string()
+            }
+            SidecarStartupError::NodeMissing => {
+                "Node.js is not installed or not in PATH.".to_string()
+            }
+            SidecarStartupError::NodeIncompatible { found, required } => {
+                format!(
+                    "Node.js {} is not compatible. This app requires Node.js {}.",
+                    found, required
+                )
+            }
+            SidecarStartupError::SpawnFailed { detail } => {
+                format!("Failed to start agent runtime: {}", detail)
+            }
+            SidecarStartupError::ReadyTimeout { pid } => {
+                format!(
+                    "Agent runtime started (pid {}) but failed to initialize within 10 seconds.",
+                    pid
+                )
+            }
+            SidecarStartupError::Other { detail } => detail.clone(),
+        }
+    }
+
+    /// Actionable instruction for the user to fix the error.
+    pub fn fix_hint(&self) -> String {
+        match self {
+            SidecarStartupError::SidecarMissing => {
+                "Run `npm run sidecar:build` in the app/ directory, or use `npm run dev` which builds automatically.".to_string()
+            }
+            SidecarStartupError::NodeMissing => {
+                "Install Node.js 18-24 from https://nodejs.org".to_string()
+            }
+            SidecarStartupError::NodeIncompatible { .. } => {
+                "Install a compatible version of Node.js (18-24) from https://nodejs.org".to_string()
+            }
+            SidecarStartupError::SpawnFailed { .. } => {
+                "Check file permissions and ensure the sidecar bundle exists. Try running `npm run sidecar:build` in the app/ directory.".to_string()
+            }
+            SidecarStartupError::ReadyTimeout { .. } => {
+                "Check the app logs for details (Help > Open Log Directory). The sidecar process may have crashed during initialization.".to_string()
+            }
+            SidecarStartupError::Other { .. } => {
+                "Check the app logs for details (Help > Open Log Directory).".to_string()
+            }
+        }
+    }
+}
+
+impl fmt::Display for SidecarStartupError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.message(), self.fix_hint())
+    }
+}
+
+/// Structured error from `resolve_node_binary()` so callers can pattern-match
+/// instead of parsing error strings.
+#[derive(Debug)]
+enum NodeBinaryError {
+    NotFound,
+    Incompatible { version: String },
+}
+
+impl fmt::Display for NodeBinaryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotFound => write!(
+                f,
+                "Node.js not found. Please install Node.js 18-24 from https://nodejs.org"
+            ),
+            Self::Incompatible { version } => write!(
+                f,
+                "Node.js {} is not compatible. This app requires Node.js 18-24.",
+                version
+            ),
+        }
+    }
+}
 
 /// A persistent Node.js sidecar process that stays alive across multiple agent invocations.
 struct PersistentSidecar {
@@ -157,6 +280,33 @@ impl SidecarPool {
         result
     }
 
+    /// Pre-flight validation: check sidecar path and Node.js BEFORE attempting to spawn.
+    /// Returns immediately with a structured error if anything is wrong, avoiding the
+    /// 10-second timeout that users would otherwise experience.
+    async fn preflight_check(
+        &self,
+        app_handle: &tauri::AppHandle,
+    ) -> Result<(String, String), SidecarStartupError> {
+        // 1. Check sidecar bundle exists
+        let sidecar_path = resolve_sidecar_path(app_handle)
+            .map_err(|_| SidecarStartupError::SidecarMissing)?;
+
+        // 2. Check Node.js is available
+        let node_bin = resolve_node_binary()
+            .await
+            .map_err(|e| match e {
+                NodeBinaryError::NotFound => SidecarStartupError::NodeMissing,
+                NodeBinaryError::Incompatible { version } => {
+                    SidecarStartupError::NodeIncompatible {
+                        found: version,
+                        required: "18-24".to_string(),
+                    }
+                }
+            })?;
+
+        Ok((sidecar_path, node_bin))
+    }
+
     /// Internal: actually spawn and register a new persistent sidecar.
     /// Called with no pool lock held.
     async fn do_spawn(
@@ -164,8 +314,11 @@ impl SidecarPool {
         skill_name: &str,
         app_handle: &tauri::AppHandle,
     ) -> Result<(), String> {
-        let sidecar_path = resolve_sidecar_path(app_handle)?;
-        let node_bin = resolve_node_binary().await?;
+        // Run pre-flight checks for immediate, actionable errors
+        let (sidecar_path, node_bin) = self.preflight_check(app_handle).await.map_err(|e| {
+            events::emit_init_error(app_handle, &e);
+            e.to_string()
+        })?;
 
         let mut child = Command::new(&node_bin)
             .arg(&sidecar_path)
@@ -174,7 +327,13 @@ impl SidecarPool {
             .stderr(std::process::Stdio::piped())
             .stdin(std::process::Stdio::piped())
             .spawn()
-            .map_err(|e| format!("Failed to spawn persistent sidecar: {}", e))?;
+            .map_err(|e| {
+                let err = SidecarStartupError::SpawnFailed {
+                    detail: e.to_string(),
+                };
+                events::emit_init_error(app_handle, &err);
+                err.to_string()
+            })?;
 
         let pid = child.id().ok_or("Failed to get child PID")?;
         let stdin = child.stdin.take().ok_or("Failed to open stdin")?;
@@ -196,18 +355,27 @@ impl SidecarPool {
         )
         .await
         .map_err(|_| {
-            format!(
-                "Timeout waiting for sidecar_ready from persistent sidecar (pid {})",
-                pid
-            )
+            let err = SidecarStartupError::ReadyTimeout { pid };
+            events::emit_init_error(app_handle, &err);
+            err.to_string()
         })?
-        .map_err(|e| format!("Error reading sidecar_ready: {}", e))?;
+        .map_err(|e| {
+            let err = SidecarStartupError::Other {
+                detail: format!("Error reading sidecar_ready: {}", e),
+            };
+            events::emit_init_error(app_handle, &err);
+            err.to_string()
+        })?;
 
         if ready_timeout == 0 {
-            return Err(format!(
-                "Persistent sidecar (pid {}) closed stdout before sending sidecar_ready",
-                pid
-            ));
+            let err = SidecarStartupError::Other {
+                detail: format!(
+                    "Persistent sidecar (pid {}) closed stdout before sending sidecar_ready",
+                    pid
+                ),
+            };
+            events::emit_init_error(app_handle, &err);
+            return Err(err.to_string());
         }
 
         // Validate the ready signal
@@ -215,17 +383,22 @@ impl SidecarPool {
         match serde_json::from_str::<serde_json::Value>(ready_line) {
             Ok(val) => {
                 if val.get("type").and_then(|t| t.as_str()) != Some("sidecar_ready") {
-                    return Err(format!(
-                        "Expected sidecar_ready but got: {}",
-                        ready_line
-                    ));
+                    let err = SidecarStartupError::Other {
+                        detail: format!("Expected sidecar_ready but got: {}", ready_line),
+                    };
+                    events::emit_init_error(app_handle, &err);
+                    return Err(err.to_string());
                 }
             }
             Err(e) => {
-                return Err(format!(
-                    "Failed to parse sidecar_ready signal: {} (line: {})",
-                    e, ready_line
-                ));
+                let err = SidecarStartupError::Other {
+                    detail: format!(
+                        "Failed to parse sidecar_ready signal: {} (line: {})",
+                        e, ready_line
+                    ),
+                };
+                events::emit_init_error(app_handle, &err);
+                return Err(err.to_string());
             }
         }
 
@@ -644,7 +817,7 @@ fn resolve_sidecar_path(app_handle: &tauri::AppHandle) -> Result<String, String>
     Err("Could not find agent-runner.js -- run 'npm run build' in app/sidecar/ first".to_string())
 }
 
-async fn resolve_node_binary() -> Result<String, String> {
+async fn resolve_node_binary() -> Result<String, NodeBinaryError> {
     let candidates: Vec<std::path::PathBuf> = {
         let mut v = vec![std::path::PathBuf::from("node")];
         for p in &[
@@ -657,7 +830,7 @@ async fn resolve_node_binary() -> Result<String, String> {
         v
     };
 
-    let mut first_available: Option<String> = None;
+    let mut first_available: Option<(String, String)> = None;
 
     for candidate in &candidates {
         let output = Command::new(candidate).arg("--version").output().await;
@@ -668,7 +841,7 @@ async fn resolve_node_binary() -> Result<String, String> {
                 let path_str = candidate.to_string_lossy().to_string();
 
                 if first_available.is_none() {
-                    first_available = Some(path_str.clone());
+                    first_available = Some((path_str.clone(), version.clone()));
                 }
 
                 if is_node_compatible(&version) {
@@ -678,11 +851,11 @@ async fn resolve_node_binary() -> Result<String, String> {
         }
     }
 
-    if let Some(path) = first_available {
-        return Ok(path);
+    if let Some((_path, version)) = first_available {
+        return Err(NodeBinaryError::Incompatible { version });
     }
 
-    Err("Node.js not found. Please install Node.js 18+ from https://nodejs.org".to_string())
+    Err(NodeBinaryError::NotFound)
 }
 
 fn is_node_compatible(version: &str) -> bool {
