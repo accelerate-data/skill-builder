@@ -14,7 +14,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useAgentStore } from "@/stores/agent-store";
-import { useSettingsStore } from "@/stores/settings-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import {
   runWorkflowStep,
@@ -96,7 +95,6 @@ export const StepRerunChat = forwardRef<StepRerunChatHandle, StepRerunChatProps>
   // Stores
   const currentRun = useAgentStore((s) => currentAgentId ? s.runs[currentAgentId] : null);
   const agentRegisterRun = useAgentStore((s) => s.registerRun);
-  const agentTimeout = useSettingsStore((s) => s.agentTimeout);
   const { setRunning } = useWorkflowStore();
 
   const isAgentRunning = currentRun?.status === "running";
@@ -242,7 +240,6 @@ export const StepRerunChat = forwardRef<StepRerunChatHandle, StepRerunChatProps>
         workspacePath,
         false, // resume
         true,  // rerun
-        agentTimeout,
       );
 
       agentRegisterRun(agentId, model);

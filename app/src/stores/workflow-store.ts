@@ -21,11 +21,6 @@ interface WorkflowState {
   initProgressMessage: string | null;
   hydrated: boolean;
 
-  /** Whether the current step has timed out (agent took too long). */
-  isTimedOut: boolean;
-  /** Timestamp (ms) when the timeout was triggered, for elapsed-time display. */
-  timeoutStartTime: number | null;
-
   /** Structured runtime error from a failed sidecar startup (shown in RuntimeErrorDialog). */
   runtimeError: RuntimeError | null;
 
@@ -40,10 +35,6 @@ interface WorkflowState {
   rerunFromStep: (stepId: number) => void;
   loadWorkflowState: (completedStepIds: number[]) => void;
   setHydrated: (hydrated: boolean) => void;
-  /** Mark the current step as timed out and record the timestamp. */
-  setTimedOut: () => void;
-  /** Clear the timeout state (e.g. after retry or cancel). */
-  clearTimeout: () => void;
   /** Set a structured runtime error from a sidecar startup failure. */
   setRuntimeError: (error: RuntimeError) => void;
   /** Clear the runtime error (e.g. after user dismisses the dialog). */
@@ -118,8 +109,6 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
   isInitializing: false,
   initStartTime: null,
   initProgressMessage: null,
-  isTimedOut: false,
-  timeoutStartTime: null,
   runtimeError: null,
   hydrated: false,
 
@@ -134,8 +123,6 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       isInitializing: false,
       initStartTime: null,
       initProgressMessage: null,
-      isTimedOut: false,
-      timeoutStartTime: null,
       runtimeError: null,
       hydrated: false,
     }),
@@ -164,10 +151,6 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
     set({ isInitializing: false, initStartTime: null, initProgressMessage: null }),
 
   setInitProgressMessage: (message) => set({ initProgressMessage: message }),
-
-  setTimedOut: () => set({ isTimedOut: true, timeoutStartTime: Date.now() }),
-
-  clearTimeout: () => set({ isTimedOut: false, timeoutStartTime: null }),
 
   setRuntimeError: (error) => set({ runtimeError: error }),
 
@@ -213,8 +196,6 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       isInitializing: false,
       initStartTime: null,
       initProgressMessage: null,
-      isTimedOut: false,
-      timeoutStartTime: null,
       runtimeError: null,
       hydrated: false,
     }),

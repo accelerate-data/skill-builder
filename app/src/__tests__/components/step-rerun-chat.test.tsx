@@ -171,7 +171,7 @@ describe("StepRerunChat", () => {
   it("auto-launches rerun agent on mount when no existing session", async () => {
     render(<StepRerunChat {...defaultProps} />);
 
-    // Should call runWorkflowStep with rerun: true and default agentTimeout
+    // Should call runWorkflowStep with rerun: true
     await waitFor(() => {
       expect(mockRunWorkflowStep).toHaveBeenCalledWith(
         "saas-revenue",
@@ -180,7 +180,6 @@ describe("StepRerunChat", () => {
         "/workspace",
         false, // resume
         true,  // rerun
-        90,    // agentTimeout (default)
       );
     });
 
@@ -462,7 +461,6 @@ describe("StepRerunChat", () => {
         "/workspace",
         false,
         true,
-        90,
       );
     });
   });

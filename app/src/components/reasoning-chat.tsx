@@ -102,8 +102,6 @@ export const ReasoningChat = forwardRef<ReasoningChatHandle, ReasoningChatProps>
   const { updateStepStatus, setRunning, currentStep, skillType } = useWorkflowStore();
   const skillsPath = useSettingsStore((s) => s.skillsPath);
   const debugMode = useSettingsStore((s) => s.debugMode);
-  const agentTimeout = useSettingsStore((s) => s.agentTimeout);
-
   // Derive agent name so resume turns load the full agent persona (e.g., "domain-reasoning")
   const agentName = skillType ? `${skillType}-reasoning` : undefined;
 
@@ -359,7 +357,7 @@ export const ReasoningChat = forwardRef<ReasoningChatHandle, ReasoningChatProps>
 
       // Use runWorkflowStep which stages artifacts, copies prompts,
       // and builds the proper prompt from agents/reasoning.md
-      const agentId = await runWorkflowStep(skillName, 4, domain, workspacePath, false, false, agentTimeout);
+      const agentId = await runWorkflowStep(skillName, 4, domain, workspacePath, false, false);
       agentRegisterRun(agentId, "opus");
       setCurrentAgentId(agentId);
     } catch (err) {

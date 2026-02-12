@@ -508,9 +508,7 @@ impl SidecarPool {
     /// Send an agent request to the persistent sidecar for a skill.
     /// The request_id is set to the agent_id so events route to the correct frontend handler.
     ///
-    /// `timeout_secs` controls how long to wait before treating the request as timed out.
-    /// After that duration, if the request is still in `pending_requests`, an `agent_exit`
-    /// event is emitted with `success: false` so the frontend can show a timeout dialog.
+    /// The request runs until the agent completes or the user cancels manually.
     ///
     /// Issue 1 fix: stdin writes are serialized via `Mutex<ChildStdin>`.
     /// Issue 4 fix: on any error after `get_or_spawn`, an `agent_exit` event is emitted
@@ -521,14 +519,13 @@ impl SidecarPool {
         agent_id: &str,
         config: SidecarConfig,
         app_handle: &tauri::AppHandle,
-        timeout_secs: u64,
     ) -> Result<(), String> {
         // Ensure we have a sidecar running
         self.get_or_spawn(skill_name, app_handle).await?;
 
         // Issue 4: If anything below fails, emit agent_exit so the frontend doesn't hang.
         let result = self
-            .do_send_request(skill_name, agent_id, config, app_handle, timeout_secs)
+            .do_send_request(skill_name, agent_id, config, app_handle)
             .await;
 
         if let Err(ref e) = result {
@@ -552,7 +549,6 @@ impl SidecarPool {
         agent_id: &str,
         config: SidecarConfig,
         app_handle: &tauri::AppHandle,
-        timeout_secs: u64,
     ) -> Result<(), String> {
         // Build the request message (before acquiring any lock)
         let request = serde_json::json!({
@@ -626,43 +622,6 @@ impl SidecarPool {
             skill_name,
             pid
         );
-
-        // Spawn a background timeout task. If the request is still pending after
-        // `timeout_secs`, emit an `agent_exit` event with `success: false` so the
-        // frontend can show the timeout dialog and offer retry/cancel.
-        if timeout_secs > 0 {
-            let timeout_pending = self.pending_requests.clone();
-            let timeout_app_handle = app_handle.clone();
-            let timeout_agent_id = agent_id.to_string();
-            let timeout_skill_name = skill_name.to_string();
-
-            tokio::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_secs(timeout_secs)).await;
-
-                let still_pending = {
-                    let mut pending = timeout_pending.lock().await;
-                    if pending.remove(&timeout_agent_id) {
-                        true
-                    } else {
-                        false
-                    }
-                };
-
-                if still_pending {
-                    log::warn!(
-                        "Agent request '{}' on skill '{}' timed out after {}s",
-                        timeout_agent_id,
-                        timeout_skill_name,
-                        timeout_secs,
-                    );
-                    events::handle_sidecar_exit(
-                        &timeout_app_handle,
-                        &timeout_agent_id,
-                        false,
-                    );
-                }
-            });
-        }
 
         Ok(())
     }

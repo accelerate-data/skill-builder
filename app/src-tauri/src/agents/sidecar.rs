@@ -32,16 +32,13 @@ pub struct SidecarConfig {
 /// Spawn an agent using the persistent sidecar pool, which reuses a long-lived
 /// Node.js process per skill to reduce startup latency.
 ///
-/// `timeout_secs` controls how long to wait before treating the request as timed out.
-/// Pass 0 to disable the timeout (e.g. for long-running refinement chats).
-/// The default of 90 matches the frontend `DEFAULT_AGENT_TIMEOUT`.
+/// The request runs until the agent completes or the user cancels manually.
 pub async fn spawn_sidecar(
     agent_id: String,
     mut config: SidecarConfig,
     pool: super::sidecar_pool::SidecarPool,
     app_handle: tauri::AppHandle,
     skill_name: String,
-    timeout_secs: u64,
 ) -> Result<(), String> {
     // Resolve the SDK cli.js path so the bundled SDK can find it
     if config.path_to_claude_code_executable.is_none() {
@@ -50,7 +47,7 @@ pub async fn spawn_sidecar(
         }
     }
 
-    pool.send_request(&skill_name, &agent_id, config, &app_handle, timeout_secs)
+    pool.send_request(&skill_name, &agent_id, config, &app_handle)
         .await?;
 
     Ok(())
