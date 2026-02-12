@@ -58,24 +58,45 @@ jobs:
         working-directory: app
         run: npx tauri build --no-bundle
 
-      - name: Zip macOS app bundle
+      - name: Package macOS release
         if: matrix.os == 'macos-latest'
-        working-directory: app/src-tauri/target/release/bundle/macos
-        run: zip -r "Skill Builder.app.zip" "Skill Builder.app"
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          STAGE="SkillBuilder-v${VERSION}-macos"
+          mkdir -p "$STAGE"
+          cp -R "app/src-tauri/target/release/bundle/macos/Skill Builder.app" "$STAGE/"
+          cat > "$STAGE/run.sh" << 'SCRIPT'
+          #!/bin/bash
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          xattr -cr "$DIR/Skill Builder.app"
+          open "$DIR/Skill Builder.app"
+          SCRIPT
+          chmod +x "$STAGE/run.sh"
+          zip -r "${STAGE}.zip" "$STAGE"
 
-      - name: Upload macOS artifacts
-        if: matrix.os == 'macos-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact-name }}
-          path: app/src-tauri/target/release/bundle/macos/Skill Builder.app.zip
-
-      - name: Upload Windows artifacts
+      - name: Package Windows release
         if: matrix.os == 'windows-latest'
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          STAGE="SkillBuilder-v${VERSION}-windows"
+          mkdir -p "$STAGE"
+          cp "app/src-tauri/target/release/skill-builder.exe" "$STAGE/"
+          cat > "$STAGE/run.bat" << 'SCRIPT'
+          @echo off
+          cd /d "%~dp0"
+          start "" "skill-builder.exe"
+          SCRIPT
+          7z a "${STAGE}.zip" "$STAGE"
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact-name }}
-          path: app/src-tauri/target/release/skill-builder.exe
+          path: SkillBuilder-v*.zip
 
   release:
     runs-on: ubuntu-latest
@@ -93,6 +114,4 @@ jobs:
         with:
           tag_name: v${{ github.event.inputs.version }}
           name: Skill Builder v${{ github.event.inputs.version }}
-          files: |
-            artifacts/**/*.zip
-            artifacts/**/*.exe
+          files: artifacts/**/*.zip
