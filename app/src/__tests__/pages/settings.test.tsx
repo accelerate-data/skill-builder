@@ -40,6 +40,7 @@ const defaultSettings: AppSettings = {
   skills_path: null,
   preferred_model: null,
   debug_mode: false,
+  verbose_logging: false,
   extended_context: false,
   extended_thinking: false,
   splash_shown: false,
@@ -51,6 +52,7 @@ const populatedSettings: AppSettings = {
   skills_path: null,
   preferred_model: "sonnet",
   debug_mode: false,
+  verbose_logging: false,
   extended_context: false,
   extended_thinking: false,
   splash_shown: false,
@@ -69,6 +71,8 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
       error: null,
       source: "system",
     },
+    get_log_file_path: "/tmp/com.skillbuilder.app/skill-builder.log",
+    set_log_level: undefined,
   });
 }
 
@@ -453,4 +457,108 @@ describe("SettingsPage", () => {
     expect(screen.getByText("Unknown")).toBeInTheDocument();
   });
 
+  it("renders Verbose Logging card with toggle", async () => {
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Verbose Logging")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: /Verbose logging/i })).toBeInTheDocument();
+  });
+
+  it("calls set_log_level when verbose logging toggle is changed", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks(populatedSettings);
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    const verboseSwitch = screen.getByRole("switch", { name: /Verbose logging/i });
+    await user.click(verboseSwitch);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("set_log_level", { verbose: true });
+    });
+  });
+
+  it("auto-saves verbose_logging (not debug_mode) when verbose logging toggle is changed", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks(populatedSettings);
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    const verboseSwitch = screen.getByRole("switch", { name: /Verbose logging/i });
+    await user.click(verboseSwitch);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
+        settings: expect.objectContaining({
+          verbose_logging: true,
+          debug_mode: false,
+        }),
+      });
+    });
+  });
+
+  it("renders Log File card with path and Open button", async () => {
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Log File")).toBeInTheDocument();
+    expect(screen.getByText("/tmp/com.skillbuilder.app/skill-builder.log")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open/i })).toBeInTheDocument();
+  });
+
+  it("opens log directory when Open button is clicked", async () => {
+    const { mockRevealItemInDir } = await import("@/test/mocks/tauri");
+    const user = userEvent.setup();
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    const openButton = screen.getByRole("button", { name: /Open/i });
+    await user.click(openButton);
+
+    await waitFor(() => {
+      expect(mockRevealItemInDir).toHaveBeenCalledWith("/tmp/com.skillbuilder.app/skill-builder.log");
+    });
+  });
+
+  it("shows 'Not available' when log file path is not set", async () => {
+    // Override invoke so get_log_file_path rejects
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "get_log_file_path") return Promise.reject(new Error("not available"));
+      if (cmd === "check_node") return Promise.resolve({
+        available: true,
+        version: "20.0.0",
+        meets_minimum: true,
+        error: null,
+      });
+      return Promise.resolve(undefined);
+    });
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Not available")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open/i })).toBeDisabled();
+  });
 });

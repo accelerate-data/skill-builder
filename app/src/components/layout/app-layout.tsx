@@ -28,6 +28,7 @@ export function AppLayout() {
         skillsPath: s.skills_path,
         preferredModel: s.preferred_model,
         debugMode: s.debug_mode,
+        verboseLogging: s.verbose_logging,
         extendedContext: s.extended_context,
       });
       setSettingsLoaded(true);

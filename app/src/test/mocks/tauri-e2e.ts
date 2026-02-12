@@ -11,6 +11,7 @@ const defaultSettings = {
   workspace_path: null,
   preferred_model: null,
   debug_mode: false,
+  verbose_logging: false,
 };
 
 const mockResponses: Record<string, unknown> = {

@@ -6,6 +6,7 @@ interface SettingsState {
   skillsPath: string | null;
   preferredModel: string | null;
   debugMode: boolean;
+  verboseLogging: boolean;
   extendedContext: boolean;
   extendedThinking: boolean;
   /** Agent timeout in seconds. If an agent step takes longer, a timeout dialog is shown. */
@@ -24,6 +25,7 @@ const initialState = {
   skillsPath: null,
   preferredModel: null,
   debugMode: false,
+  verboseLogging: false,
   extendedContext: false,
   extendedThinking: false,
   agentTimeout: DEFAULT_AGENT_TIMEOUT,

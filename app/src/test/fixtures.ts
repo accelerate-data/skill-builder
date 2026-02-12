@@ -10,6 +10,7 @@ export function makeAppSettings(overrides?: Partial<AppSettings>): AppSettings {
     skills_path: null,
     preferred_model: null,
     debug_mode: false,
+    verbose_logging: false,
     extended_context: false,
     extended_thinking: false,
     splash_shown: false,

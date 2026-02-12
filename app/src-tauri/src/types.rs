@@ -10,6 +10,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub debug_mode: bool,
     #[serde(default)]
+    pub verbose_logging: bool,
+    #[serde(default)]
     pub extended_context: bool,
     #[serde(default)]
     pub extended_thinking: bool,
@@ -25,6 +27,7 @@ impl Default for AppSettings {
             skills_path: None,
             preferred_model: None,
             debug_mode: false,
+            verbose_logging: false,
             extended_context: false,
             extended_thinking: false,
             splash_shown: false,
@@ -179,6 +182,7 @@ mod tests {
         assert!(settings.skills_path.is_none());
         assert!(settings.preferred_model.is_none());
         assert!(!settings.debug_mode);
+        assert!(!settings.verbose_logging);
         assert!(!settings.extended_context);
         assert!(!settings.extended_thinking);
         assert!(!settings.splash_shown);
@@ -192,6 +196,7 @@ mod tests {
             skills_path: Some("/home/user/output".to_string()),
             preferred_model: Some("sonnet".to_string()),
             debug_mode: false,
+            verbose_logging: false,
             extended_context: false,
             extended_thinking: true,
             splash_shown: false,
@@ -223,6 +228,7 @@ mod tests {
         let settings: AppSettings = serde_json::from_str(json).unwrap();
         assert!(settings.skills_path.is_none());
         assert!(!settings.debug_mode);
+        assert!(!settings.verbose_logging);
         assert!(!settings.extended_thinking);
     }
 

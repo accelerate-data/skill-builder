@@ -18,6 +18,19 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   save: mockDialogSave,
 }));
 
+// Mock @tauri-apps/plugin-opener
+export const mockRevealItemInDir = vi.fn(() => Promise.resolve());
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  revealItemInDir: mockRevealItemInDir,
+  openPath: vi.fn(() => Promise.resolve()),
+  openUrl: vi.fn(() => Promise.resolve()),
+}));
+
+// Mock @tauri-apps/plugin-log
+vi.mock("@tauri-apps/plugin-log", () => ({
+  attachConsole: vi.fn(() => Promise.resolve(() => {})),
+}));
+
 // Mock @tauri-apps/api/app
 export const mockGetVersion = vi.fn(() => Promise.resolve("0.1.0"));
 
@@ -62,4 +75,5 @@ export function resetTauriMocks(): void {
   mockGetCurrentWindow.mockClear();
   mockDialogSave.mockReset();
   mockGetVersion.mockReset().mockReturnValue(Promise.resolve("0.1.0"));
+  mockRevealItemInDir.mockReset().mockReturnValue(Promise.resolve());
 }

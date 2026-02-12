@@ -1,13 +1,18 @@
 mod agents;
 mod commands;
 mod db;
+mod logging;
 mod types;
 
 pub use types::*;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Truncate the log file before the plugin opens it so each session starts fresh.
+    logging::truncate_log_file();
+
     tauri::Builder::default()
+        .plugin(logging::build_log_plugin().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -15,6 +20,18 @@ pub fn run() {
             use tauri::Manager;
             let db = db::init_db(app).expect("failed to initialize database");
             app.manage(db);
+
+            // Apply persisted verbose_logging setting to the log level
+            {
+                let db_state = app.state::<db::Db>();
+                let conn = db_state.0.lock().expect("failed to lock db for settings");
+                if let Ok(settings) = db::read_settings(&conn) {
+                    logging::set_log_level(settings.verbose_logging);
+                    log::debug!("Log level initialized from settings: verbose={}", settings.verbose_logging);
+                }
+            }
+
+            log::info!("Skill Builder starting up");
 
             // Initialize workspace directory and deploy bundled prompts
             let db_state = app.state::<db::Db>();
@@ -33,6 +50,8 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::save_settings,
             commands::settings::test_api_key,
+            commands::settings::set_log_level,
+            commands::settings::get_log_file_path,
             commands::skill::list_skills,
             commands::skill::create_skill,
             commands::skill::delete_skill,

@@ -21,6 +21,7 @@ export interface AppSettings {
   skills_path: string | null
   preferred_model: string | null
   debug_mode: boolean
+  verbose_logging: boolean
   extended_context: boolean
   extended_thinking: boolean
   splash_shown: boolean

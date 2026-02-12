@@ -82,6 +82,17 @@ pub async fn test_api_key(api_key: String) -> Result<bool, String> {
     Ok(status != 401)
 }
 
+#[tauri::command]
+pub fn set_log_level(verbose: bool) -> Result<(), String> {
+    crate::logging::set_log_level(verbose);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_log_file_path(app: tauri::AppHandle) -> Result<String, String> {
+    crate::logging::get_log_file_path(&app)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

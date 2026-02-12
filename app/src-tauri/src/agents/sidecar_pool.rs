@@ -413,7 +413,7 @@ impl SidecarPool {
             let mut lines = stderr_reader.lines();
 
             while let Ok(Some(line)) = lines.next_line().await {
-                log::debug!("[persistent-sidecar:{}] {}", skill_name_stderr, line);
+                log::debug!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
             }
         });
 
@@ -426,6 +426,7 @@ impl SidecarPool {
             let mut lines = reader.lines();
 
             while let Ok(Some(line)) = lines.next_line().await {
+                log::debug!("[sidecar-stdout:{}] {}", skill_name_stdout, line);
                 // Parse the line to extract request_id for routing
                 match serde_json::from_str::<serde_json::Value>(&line) {
                     Ok(msg) => {
