@@ -14,6 +14,10 @@ app/src-tauri/test-results/
 app/playwright-report/
 app/playwright-artifacts/
 
+# Bundled Node.js binary (downloaded during CI build, not committed)
+app/src-tauri/resources/node/*
+!app/src-tauri/resources/node/.gitkeep
+
 # Claude Code (track .claude/settings.json for shared hooks, ignore the rest)
 .claude/*
 !.claude/settings.json

@@ -22,6 +22,15 @@ const mockResponses: Record<string, unknown> = {
     version: "v20.11.0",
     meets_minimum: true,
     error: null,
+    source: "system",
+  },
+  check_startup_deps: {
+    all_ok: true,
+    checks: [
+      { name: "Node.js", ok: true, detail: "v20.11.0 (system)" },
+      { name: "Agent sidecar", ok: true, detail: "sidecar/dist/agent-runner.js" },
+      { name: "Claude SDK", ok: true, detail: "sidecar/dist/sdk/cli.js" },
+    ],
   },
   list_skills: [],
   create_skill: undefined,

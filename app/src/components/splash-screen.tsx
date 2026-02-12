@@ -1,19 +1,53 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { AlertCircle, RefreshCw, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useNodeValidation } from "@/hooks/use-node-validation";
+import type { DepStatus } from "@/lib/types";
 
 interface SplashScreenProps {
   onDismiss: () => void;
+  onReady: () => void;
 }
 
-export function SplashScreen({ onDismiss }: SplashScreenProps) {
+function DepRow({ dep }: { dep: DepStatus }) {
+  return (
+    <div className="flex items-start gap-2 text-left text-sm">
+      {dep.ok ? (
+        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+      ) : (
+        <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="font-medium">{dep.name}</p>
+        <p className="text-muted-foreground break-all">{dep.detail}</p>
+      </div>
+    </div>
+  );
+}
+
+export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
   const [fading, setFading] = useState(false);
+  const { deps, isChecking, error, retry } = useNodeValidation();
+
+  const onReadyRef = useRef(onReady);
+  const onDismissRef = useRef(onDismiss);
+  useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
+  useEffect(() => { onDismissRef.current = onDismiss; }, [onDismiss]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setFading(true);
-      setTimeout(onDismiss, 400);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [onDismiss]);
+    if (isChecking) return;
+    if (deps?.all_ok) {
+      // Small pause so the splash is visible before fading out (5s for testing, revert to 600)
+      const timer = setTimeout(() => {
+        onReadyRef.current();
+        setFading(true);
+        setTimeout(() => onDismissRef.current(), 400);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [isChecking, deps]);
+
+  const hasFailed = !isChecking && (error !== null || (deps !== null && !deps.all_ok));
 
   return (
     <div
@@ -45,6 +79,45 @@ export function SplashScreen({ onDismiss }: SplashScreenProps) {
             without notice. Use at your own risk.
           </p>
         </div>
+
+        {/* Dependency checklist */}
+        <div className="w-full rounded-lg border bg-muted/30 px-4 py-3">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Startup checks
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {isChecking && !deps && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                <span>Checking dependencies...</span>
+              </div>
+            )}
+            {deps?.checks.map((dep) => (
+              <DepRow key={dep.name} dep={dep} />
+            ))}
+          </div>
+        </div>
+
+        {/* Invoke-level error */}
+        {error && (
+          <div className="flex w-full items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-left text-sm">
+            <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+            <p className="text-destructive">{error}</p>
+          </div>
+        )}
+
+        {/* Retry button when any check fails */}
+        {hasFailed && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={retry}
+            disabled={isChecking}
+          >
+            <RefreshCw className="size-4" />
+            Retry
+          </Button>
+        )}
       </div>
     </div>
   );

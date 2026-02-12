@@ -42,7 +42,21 @@ vi.mock("@/components/close-guard", () => ({
 }));
 
 vi.mock("@/components/splash-screen", () => ({
-  SplashScreen: () => null,
+  SplashScreen: ({
+    onReady,
+    onDismiss,
+  }: {
+    onReady: () => void;
+    onDismiss: () => void;
+  }) => {
+    // Simulate immediate successful validation. Schedule via queueMicrotask
+    // to avoid setting parent state during render.
+    queueMicrotask(() => {
+      onReady();
+      onDismiss();
+    });
+    return null;
+  },
 }));
 
 // Mock sonner

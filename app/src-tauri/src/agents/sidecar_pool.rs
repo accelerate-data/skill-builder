@@ -109,8 +109,8 @@ impl fmt::Display for SidecarStartupError {
     }
 }
 
-/// Structured error from `resolve_node_binary()` so callers can pattern-match
-/// instead of parsing error strings.
+/// Structured error from `resolve_node_binary_for_preflight()` so callers can
+/// pattern-match instead of parsing error strings.
 #[derive(Debug)]
 enum NodeBinaryError {
     NotFound,
@@ -291,8 +291,8 @@ impl SidecarPool {
         let sidecar_path = resolve_sidecar_path(app_handle)
             .map_err(|_| SidecarStartupError::SidecarMissing)?;
 
-        // 2. Check Node.js is available
-        let node_bin = resolve_node_binary()
+        // 2. Check Node.js is available (bundled-first waterfall)
+        let node_bin = resolve_node_binary_for_preflight(app_handle)
             .await
             .map_err(|e| match e {
                 NodeBinaryError::NotFound => SidecarStartupError::NodeMissing,
@@ -771,6 +771,11 @@ fn scan_skills_dir(cwd: &Path) -> Vec<String> {
 // These are kept as separate functions here to avoid making the private functions
 // in sidecar.rs public (which would change the existing module's API surface).
 
+/// Public accessor for startup dependency checks.
+pub fn resolve_sidecar_path_public(app_handle: &tauri::AppHandle) -> Result<String, String> {
+    resolve_sidecar_path(app_handle)
+}
+
 fn resolve_sidecar_path(app_handle: &tauri::AppHandle) -> Result<String, String> {
     use tauri::Manager;
 
@@ -817,7 +822,136 @@ fn resolve_sidecar_path(app_handle: &tauri::AppHandle) -> Result<String, String>
     Err("Could not find agent-runner.js -- run 'npm run build' in app/sidecar/ first".to_string())
 }
 
-async fn resolve_node_binary() -> Result<String, NodeBinaryError> {
+/// Result of Node.js binary resolution: the path and where it was found.
+pub struct NodeResolution {
+    pub path: String,
+    pub source: String,
+    pub version: Option<String>,
+    pub meets_minimum: bool,
+}
+
+/// Map OS + architecture to the Node.js download directory convention.
+fn node_platform_arch() -> &'static str {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => "darwin-arm64",
+        ("macos", "x86_64") => "darwin-x64",
+        ("windows", "x86_64") => "win-x64",
+        ("windows", "aarch64") => "win-arm64",
+        (os, arch) => {
+            log::warn!("Unsupported platform: {os}-{arch}");
+            "unknown"
+        }
+    }
+}
+
+/// Unified Node.js resolution: bundled-first, then system fallback.
+///
+/// 1. Check bundled path (`{resource_dir}/node/{arch}/bin/node`) -- if executable, use it.
+/// 2. Fall back to system Node (PATH search, validate version 18-24) -- if found, use it.
+/// 3. Neither found -> error.
+///
+/// Returns `NodeResolution` with full metadata (path, source, version, meets_minimum).
+/// Used by `check_node` and `check_startup_deps` commands that need rich status info.
+pub async fn resolve_node_binary(app_handle: &tauri::AppHandle) -> Result<NodeResolution, String> {
+    use tauri::Manager;
+
+    let arch = node_platform_arch();
+    let binary_name = if cfg!(windows) { "node.exe" } else { "node" };
+
+    // Step 1: Check for bundled Node.js via Tauri resource_dir
+    if let Ok(resource_dir) = app_handle.path().resource_dir() {
+        let bundled_path = resource_dir
+            .join("node")
+            .join(arch)
+            .join("bin")
+            .join(binary_name);
+
+        if let Some(resolution) = try_bundled_node(&bundled_path).await {
+            return Ok(resolution);
+        }
+    }
+
+    // Step 2: Portable exe fallback -- check {exe_dir}/resources/node/{arch}/bin/node
+    // This handles Windows portable builds (--no-bundle) where resource_dir() may not
+    // resolve correctly but resources are copied alongside the exe.
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let portable_path = exe_dir
+                .join("resources")
+                .join("node")
+                .join(arch)
+                .join("bin")
+                .join(binary_name);
+
+            if let Some(resolution) = try_bundled_node(&portable_path).await {
+                return Ok(resolution);
+            }
+        }
+    }
+
+    // Step 3: Fall back to system Node.js
+    resolve_system_node().await
+}
+
+/// Internal: resolve Node.js binary path for `preflight_check()`.
+///
+/// Uses the same bundled-first waterfall as `resolve_node_binary()` but returns
+/// `Result<String, NodeBinaryError>` for compatibility with `preflight_check()`'s
+/// structured error mapping into `SidecarStartupError`.
+///
+/// Unlike the public `resolve_node_binary()`, this function is strict: if a Node.js
+/// binary is found but has an incompatible version, it returns `NodeBinaryError::Incompatible`
+/// rather than a best-effort `NodeResolution` with `meets_minimum: false`.
+async fn resolve_node_binary_for_preflight(
+    app_handle: &tauri::AppHandle,
+) -> Result<String, NodeBinaryError> {
+    // Delegate to the public resolver which does the full bundled-first waterfall
+    match resolve_node_binary(app_handle).await {
+        Ok(resolution) if resolution.meets_minimum => Ok(resolution.path),
+        Ok(resolution) => {
+            // Found Node but incompatible version
+            Err(NodeBinaryError::Incompatible {
+                version: resolution.version.unwrap_or_else(|| "unknown".to_string()),
+            })
+        }
+        Err(_) => Err(NodeBinaryError::NotFound),
+    }
+}
+
+/// Try to use a bundled Node.js binary at the given path.
+/// Returns `Some(NodeResolution)` if the binary exists and executes successfully.
+async fn try_bundled_node(bundled_path: &std::path::Path) -> Option<NodeResolution> {
+    if !bundled_path.exists() {
+        return None;
+    }
+
+    let path_str = bundled_path.to_string_lossy().to_string();
+    let output = Command::new(bundled_path).arg("--version").output().await;
+
+    match output {
+        Ok(out) if out.status.success() => {
+            let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            let meets_minimum = is_node_compatible(&version);
+            log::info!("Using bundled Node.js {} at {}", version, path_str);
+            Some(NodeResolution {
+                path: path_str,
+                source: "bundled".to_string(),
+                version: Some(version),
+                meets_minimum,
+            })
+        }
+        _ => {
+            log::warn!(
+                "Bundled Node.js at {} exists but failed to execute, trying next candidate",
+                path_str
+            );
+            None
+        }
+    }
+}
+
+/// System Node.js discovery: searches PATH and well-known locations, validates version 18-24.
+async fn resolve_system_node() -> Result<NodeResolution, String> {
     let candidates: Vec<std::path::PathBuf> = {
         let mut v = vec![std::path::PathBuf::from("node")];
         for p in &[
@@ -830,7 +964,7 @@ async fn resolve_node_binary() -> Result<String, NodeBinaryError> {
         v
     };
 
-    let mut first_available: Option<(String, String)> = None;
+    let mut first_available: Option<(String, String)> = None; // (path, version)
 
     for candidate in &candidates {
         let output = Command::new(candidate).arg("--version").output().await;
@@ -845,17 +979,34 @@ async fn resolve_node_binary() -> Result<String, NodeBinaryError> {
                 }
 
                 if is_node_compatible(&version) {
-                    return Ok(path_str);
+                    log::info!(
+                        "Using system Node.js {} at {}",
+                        version,
+                        path_str
+                    );
+                    return Ok(NodeResolution {
+                        path: path_str,
+                        source: "system".to_string(),
+                        version: Some(version),
+                        meets_minimum: true,
+                    });
                 }
             }
         }
     }
 
-    if let Some((_path, version)) = first_available {
-        return Err(NodeBinaryError::Incompatible { version });
+    // Found a Node but it doesn't meet version requirements -- still return it
+    // (check_node and check_startup_deps callers want a best-effort path to report the mismatch)
+    if let Some((path, version)) = first_available {
+        return Ok(NodeResolution {
+            path,
+            source: "system".to_string(),
+            version: Some(version),
+            meets_minimum: false,
+        });
     }
 
-    Err(NodeBinaryError::NotFound)
+    Err("Node.js not found. Install Node.js 18+ from https://nodejs.org or use the bundled app.".to_string())
 }
 
 fn is_node_compatible(version: &str) -> bool {
@@ -945,6 +1096,17 @@ mod tests {
         assert!(is_node_compatible("v24.13.0"));
         assert!(!is_node_compatible("v25.0.0"));
         assert!(!is_node_compatible("v16.0.0"));
+    }
+
+    #[test]
+    fn test_node_platform_arch() {
+        let arch = node_platform_arch();
+        // On macOS, this should be one of the known mappings
+        assert!(
+            arch == "darwin-arm64" || arch == "darwin-x64",
+            "Expected darwin-arm64 or darwin-x64, got: {}",
+            arch
+        );
     }
 
     #[tokio::test]

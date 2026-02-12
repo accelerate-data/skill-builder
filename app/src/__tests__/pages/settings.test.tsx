@@ -29,6 +29,7 @@ vi.mock("@/lib/tauri", () => ({
       version: "20.0.0",
       meets_minimum: true,
       error: null,
+      source: "system",
     })
   ),
   getDataDir: vi.fn(() => Promise.resolve("/Users/test/Library/Application Support/com.skill-builder.app")),
@@ -70,6 +71,7 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
       version: "20.0.0",
       meets_minimum: true,
       error: null,
+      source: "system",
     },
   });
 }

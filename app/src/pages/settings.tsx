@@ -83,7 +83,7 @@ export default function SettingsPage() {
         const result = await checkNode()
         setNodeStatus(result)
       } catch {
-        setNodeStatus({ available: false, version: null, meets_minimum: false, error: "Failed to check Node.js" })
+        setNodeStatus({ available: false, version: null, meets_minimum: false, error: "Failed to check Node.js", source: "" })
       } finally {
         setNodeLoading(false)
       }

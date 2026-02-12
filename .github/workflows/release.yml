@@ -48,6 +48,83 @@ jobs:
           node -e "const fs=require('fs'); const f='src-tauri/tauri.conf.json'; const c=JSON.parse(fs.readFileSync(f,'utf8')); c.version=process.env.RELEASE_VERSION; fs.writeFileSync(f,JSON.stringify(c,null,2)+'\n');"
           node -e "const fs=require('fs'); const f='package.json'; const c=JSON.parse(fs.readFileSync(f,'utf8')); c.version=process.env.RELEASE_VERSION; fs.writeFileSync(f,JSON.stringify(c,null,2)+'\n');"
 
+      # Bundle Node.js 22 LTS binary into the app so it works on clean machines
+      # without Node.js installed. Adds ~40-70MB to the app package size.
+      # macOS: downloads the official Node.js tar.gz and extracts just the `node` binary.
+      # Windows: downloads the official Node.js zip and extracts `node.exe`.
+      - name: Bundle Node.js 22 LTS binary (macOS)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE_VERSION="v22.14.0"
+
+          # Detect runner architecture → Node.js platform string
+          RUNNER_ARCH="$(uname -m)"
+          if [ "$RUNNER_ARCH" = "arm64" ]; then
+            NODE_ARCH="darwin-arm64"
+          else
+            NODE_ARCH="darwin-x64"
+          fi
+
+          DEST="app/src-tauri/resources/node/${NODE_ARCH}/bin"
+          mkdir -p "$DEST"
+
+          TARBALL="node-${NODE_VERSION}-${NODE_ARCH}.tar.gz"
+          URL="https://nodejs.org/dist/${NODE_VERSION}/${TARBALL}"
+
+          echo "Downloading Node.js ${NODE_VERSION} for ${NODE_ARCH}..."
+          curl -fsSL "$URL" -o "/tmp/${TARBALL}"
+
+          echo "Verifying SHA256 checksum..."
+          curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/SHASUMS256.txt" -o "/tmp/SHASUMS256.txt"
+          grep "${TARBALL}" /tmp/SHASUMS256.txt | shasum -a 256 -c -
+
+          echo "Extracting node binary..."
+          tar -xzf "/tmp/${TARBALL}" -C /tmp "node-${NODE_VERSION}-${NODE_ARCH}/bin/node"
+          mv "/tmp/node-${NODE_VERSION}-${NODE_ARCH}/bin/node" "${DEST}/node"
+          chmod +x "${DEST}/node"
+
+          # Verify the binary works
+          "${DEST}/node" --version
+
+          # Report size for documentation
+          NODE_SIZE=$(du -sh "${DEST}/node" | cut -f1)
+          echo "Bundled node binary size: ${NODE_SIZE}"
+
+          # Cleanup
+          rm -rf "/tmp/${TARBALL}" "/tmp/node-${NODE_VERSION}-${NODE_ARCH}"
+
+      - name: Bundle Node.js 22 LTS binary (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE_VERSION="v22.14.0"
+          NODE_ARCH="win-x64"
+
+          DEST="app/src-tauri/resources/node/${NODE_ARCH}/bin"
+          mkdir -p "$DEST"
+
+          ZIPFILE="node-${NODE_VERSION}-${NODE_ARCH}.zip"
+          URL="https://nodejs.org/dist/${NODE_VERSION}/${ZIPFILE}"
+
+          echo "Downloading Node.js ${NODE_VERSION} for ${NODE_ARCH}..."
+          curl -fsSL "$URL" -o "/tmp/${ZIPFILE}"
+
+          echo "Verifying SHA256 checksum..."
+          curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/SHASUMS256.txt" -o "/tmp/SHASUMS256.txt"
+          grep "${ZIPFILE}" /tmp/SHASUMS256.txt | sha256sum -c -
+
+          echo "Extracting node.exe..."
+          unzip -j "/tmp/${ZIPFILE}" "node-${NODE_VERSION}-${NODE_ARCH}/node.exe" -d "${DEST}/"
+
+          # Verify the binary works
+          "${DEST}/node.exe" --version
+
+          # Cleanup
+          rm -f "/tmp/${ZIPFILE}"
+
       - name: Build Tauri app (macOS)
         if: matrix.os == 'macos-latest'
         working-directory: app
@@ -85,6 +162,32 @@ jobs:
           STAGE="SkillBuilder-v${VERSION}-windows"
           mkdir -p "$STAGE"
           cp "app/src-tauri/target/release/skill-builder.exe" "$STAGE/"
+
+          # Copy sidecar JS files (agent-runner + SDK)
+          # The Rust exe-relative fallback looks for {exe_dir}/sidecar/dist/...
+          mkdir -p "$STAGE/sidecar/dist/sdk"
+          cp "app/sidecar/dist/agent-runner.js" "$STAGE/sidecar/dist/"
+          cp "app/sidecar/dist/sdk/cli.js" "$STAGE/sidecar/dist/sdk/"
+          cp "app/sidecar/dist/sdk/manifest.json" "$STAGE/sidecar/dist/sdk/"
+          cp app/sidecar/dist/sdk/*.wasm "$STAGE/sidecar/dist/sdk/" 2>/dev/null || true
+          if [ -d "app/sidecar/dist/sdk/vendor" ]; then
+            cp -r "app/sidecar/dist/sdk/vendor" "$STAGE/sidecar/dist/sdk/"
+          fi
+
+          # Copy bundled Node.js binary
+          # The Rust exe-relative fallback looks for {exe_dir}/resources/node/{arch}/bin/node.exe
+          if [ -d "app/src-tauri/resources/node" ]; then
+            cp -r "app/src-tauri/resources/node" "$STAGE/resources/node"
+          fi
+
+          # Copy agents and references (used by the sidecar at runtime)
+          if [ -d "agents" ]; then
+            cp -r "agents" "$STAGE/agents"
+          fi
+          if [ -d "references" ]; then
+            cp -r "references" "$STAGE/references"
+          fi
+
           cat > "$STAGE/run.bat" << 'SCRIPT'
           @echo off
           cd /d "%~dp0"

@@ -56,6 +56,11 @@ pub async fn spawn_sidecar(
     Ok(())
 }
 
+/// Public accessor for startup dependency checks.
+pub fn resolve_sdk_cli_path_public(app_handle: &tauri::AppHandle) -> Result<String, String> {
+    resolve_sdk_cli_path(app_handle)
+}
+
 /// Resolve the path to the SDK's cli.js, which the bundled SDK needs to spawn.
 /// Looks in sidecar/dist/sdk/cli.js (where build.js copies it).
 fn resolve_sdk_cli_path(app_handle: &tauri::AppHandle) -> Result<String, String> {

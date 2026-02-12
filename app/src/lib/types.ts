@@ -41,6 +41,18 @@ export interface NodeStatus {
   version: string | null
   meets_minimum: boolean
   error: string | null
+  source: string
+}
+
+export interface DepStatus {
+  name: string
+  ok: boolean
+  detail: string
+}
+
+export interface StartupDeps {
+  all_ok: boolean
+  checks: DepStatus[]
 }
 
 export interface WorkflowStep {

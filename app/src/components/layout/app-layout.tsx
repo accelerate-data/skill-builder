@@ -16,6 +16,7 @@ export function AppLayout() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [reconciled, setReconciled] = useState(false);
   const [splashDismissed, setSplashDismissed] = useState(false);
+  const [nodeReady, setNodeReady] = useState(false);
   const [orphans, setOrphans] = useState<OrphanSkill[]>([]);
 
   // Hydrate settings store from Tauri backend on app startup
@@ -100,7 +101,7 @@ export function AppLayout() {
     setSplashDismissed(true);
   };
 
-  const ready = settingsLoaded && reconciled;
+  const ready = settingsLoaded && reconciled && nodeReady;
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -112,8 +113,11 @@ export function AppLayout() {
         </main>
       </div>
       <CloseGuard />
-      {settingsLoaded && !splashDismissed && (
-        <SplashScreen onDismiss={handleSplashDismiss} />
+      {!splashDismissed && (
+        <SplashScreen
+          onDismiss={handleSplashDismiss}
+          onReady={() => setNodeReady(true)}
+        />
       )}
       {orphans.length > 0 && (
         <OrphanResolutionDialog
