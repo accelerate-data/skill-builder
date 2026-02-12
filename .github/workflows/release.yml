@@ -41,19 +41,12 @@ jobs:
 
       - name: Stamp version into config files
         working-directory: app
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          node -e "
-            const fs = require('fs');
-            const tauriConf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
-            tauriConf.version = '${{ github.event.inputs.version }}';
-            fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(tauriConf, null, 2) + '\n');
-          "
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = '${{ github.event.inputs.version }}';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
+          node -e "const fs=require('fs'); const f='src-tauri/tauri.conf.json'; const c=JSON.parse(fs.readFileSync(f,'utf8')); c.version=process.env.RELEASE_VERSION; fs.writeFileSync(f,JSON.stringify(c,null,2)+'\n');"
+          node -e "const fs=require('fs'); const f='package.json'; const c=JSON.parse(fs.readFileSync(f,'utf8')); c.version=process.env.RELEASE_VERSION; fs.writeFileSync(f,JSON.stringify(c,null,2)+'\n');"
 
       - name: Build Tauri app
         working-directory: app
