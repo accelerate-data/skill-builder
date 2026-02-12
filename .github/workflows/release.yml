@@ -177,6 +177,7 @@ jobs:
           # Copy bundled Node.js binary
           # The Rust exe-relative fallback looks for {exe_dir}/resources/node/{arch}/bin/node.exe
           if [ -d "app/src-tauri/resources/node" ]; then
+            mkdir -p "$STAGE/resources"
             cp -r "app/src-tauri/resources/node" "$STAGE/resources/node"
           fi
 
