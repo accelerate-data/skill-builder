@@ -3,8 +3,7 @@ import { invoke } from "@tauri-apps/api/core"
 import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
-import { openPath } from "@tauri-apps/plugin-opener"
-import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, ExternalLink, FolderOpen, FolderSearch, Trash2, Database } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, ExternalLink, FolderOpen, FolderSearch, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -374,7 +373,7 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Workspace Folder</CardTitle>
           <CardDescription>
-            Skills and working files are stored in this directory. This is managed automatically.
+            Working files are stored in this directory and is managed automatically.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -410,19 +409,10 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-2">
-            <Database className="size-4 shrink-0 text-muted-foreground" />
-            <code className="select-all text-sm text-muted-foreground flex-1 break-all">
+            <FolderOpen className="size-4 text-muted-foreground" />
+            <code className="text-sm text-muted-foreground flex-1">
               {dataDir || "Unknown"}
             </code>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => { if (dataDir) openPath(dataDir) }}
-              disabled={!dataDir}
-            >
-              <FolderOpen className="size-4" />
-              Open
-            </Button>
           </div>
         </CardContent>
       </Card>
