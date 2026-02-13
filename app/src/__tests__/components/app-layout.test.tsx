@@ -85,6 +85,7 @@ const defaultSettings: AppSettings = {
   extended_context: false,
   extended_thinking: false,
   splash_shown: false,
+  github_pat: null,
 };
 
 const emptyReconciliation: ReconciliationResult = {

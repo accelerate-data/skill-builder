@@ -25,6 +25,7 @@ export interface AppSettings {
   extended_context: boolean
   extended_thinking: boolean
   splash_shown: boolean
+  github_pat: string | null
 }
 
 export interface SkillSummary {

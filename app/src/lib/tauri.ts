@@ -133,8 +133,14 @@ export const saveWorkflowState = (
 export const readFile = (filePath: string) =>
   invoke<string>("read_file", { filePath });
 
+export const readFileAsBase64 = (filePath: string) =>
+  invoke<string>("read_file_as_base64", { filePath });
+
 export const writeFile = (path: string, content: string) =>
   invoke<void>("write_file", { path, content });
+
+export const writeBase64ToTempFile = (fileName: string, base64Content: string) =>
+  invoke<string>("write_base64_to_temp_file", { fileName, base64Content });
 
 // --- Lifecycle ---
 
@@ -185,6 +191,34 @@ export const reconcileStartup = () =>
 
 export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
   invoke("resolve_orphan", { skillName, action });
+
+// --- Feedback ---
+
+export interface CreateGithubIssueRequest {
+  title: string;
+  body: string;
+  labels: string[];
+  attachments: FeedbackAttachment[];
+}
+
+export interface FeedbackAttachment {
+  name: string;
+  base64Content: string;
+  mimeType: string;
+  size: number;
+}
+
+export interface CreateGithubIssueResponse {
+  url: string;
+  number: number;
+  failedUploads: string[];
+}
+
+export const createGithubIssue = (request: CreateGithubIssueRequest) =>
+  invoke<CreateGithubIssueResponse>("create_github_issue", { request });
+
+export const testGithubPat = (githubPat: string) =>
+  invoke<string>("test_github_pat", { githubPat });
 
 // --- Agent Prompts ---
 

@@ -17,6 +17,8 @@ pub struct AppSettings {
     pub extended_thinking: bool,
     #[serde(default)]
     pub splash_shown: bool,
+    #[serde(default)]
+    pub github_pat: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -31,6 +33,7 @@ impl Default for AppSettings {
             extended_context: false,
             extended_thinking: false,
             splash_shown: false,
+            github_pat: None,
         }
     }
 }
@@ -186,6 +189,7 @@ mod tests {
         assert!(!settings.extended_context);
         assert!(!settings.extended_thinking);
         assert!(!settings.splash_shown);
+        assert!(settings.github_pat.is_none());
     }
 
     #[test]
@@ -200,6 +204,7 @@ mod tests {
             extended_context: false,
             extended_thinking: true,
             splash_shown: false,
+            github_pat: Some("ghp_testtoken123".to_string()),
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();
@@ -223,13 +228,14 @@ mod tests {
 
     #[test]
     fn test_app_settings_deserialize_without_optional_fields() {
-        // Simulates loading settings saved before skills_path / debug_mode / extended_thinking existed
+        // Simulates loading settings saved before skills_path / debug_mode / extended_thinking / github_pat existed
         let json = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","extended_context":false,"splash_shown":false}"#;
         let settings: AppSettings = serde_json::from_str(json).unwrap();
         assert!(settings.skills_path.is_none());
         assert!(!settings.debug_mode);
         assert!(!settings.verbose_logging);
         assert!(!settings.extended_thinking);
+        assert!(settings.github_pat.is_none());
     }
 
     #[test]

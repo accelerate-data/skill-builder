@@ -29,6 +29,7 @@ vi.mock("@/lib/tauri", () => ({
     })
   ),
   getDataDir: vi.fn(() => Promise.resolve("/Users/test/Library/Application Support/com.skill-builder.app")),
+  testGithubPat: vi.fn(() => Promise.resolve("Authenticated as 'testuser' — can access hbanerjee74/skill-builder")),
 }));
 
 // Import after mocks are set up
@@ -44,6 +45,7 @@ const defaultSettings: AppSettings = {
   extended_context: false,
   extended_thinking: false,
   splash_shown: false,
+  github_pat: null,
 };
 
 const populatedSettings: AppSettings = {
@@ -56,6 +58,7 @@ const populatedSettings: AppSettings = {
   extended_context: false,
   extended_thinking: false,
   splash_shown: false,
+  github_pat: null,
 };
 
 function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
@@ -145,8 +148,9 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    const testButton = screen.getByRole("button", { name: /Test/i });
-    await user.click(testButton);
+    const testButtons = screen.getAllByRole("button", { name: /Test/i });
+    // First "Test" button is the Anthropic API key test button
+    await user.click(testButtons[0]);
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("test_api_key", {

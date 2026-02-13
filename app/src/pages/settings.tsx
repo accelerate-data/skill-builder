@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import type { AppSettings } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
-import { checkNode, getDataDir, type NodeStatus } from "@/lib/tauri"
+import { checkNode, getDataDir, testGithubPat, type NodeStatus } from "@/lib/tauri"
 
 const MODEL_OPTIONS = [
   { value: "sonnet", label: "Claude Sonnet 4.5", description: "Fast and capable" },
@@ -36,11 +36,15 @@ export default function SettingsPage() {
   const [verboseLogging, setVerboseLogging] = useState(false)
   const [extendedContext, setExtendedContext] = useState(false)
   const [extendedThinking, setExtendedThinking] = useState(false)
+  const [githubPat, setGithubPat] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState(false)
   const [testing, setTesting] = useState(false)
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null)
   const [showApiKey, setShowApiKey] = useState(false)
+  const [showGithubPat, setShowGithubPat] = useState(false)
+  const [testingPat, setTestingPat] = useState(false)
+  const [patValid, setPatValid] = useState<boolean | null>(null)
   const [nodeStatus, setNodeStatus] = useState<NodeStatus | null>(null)
   const [nodeLoading, setNodeLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
@@ -64,6 +68,7 @@ export default function SettingsPage() {
             setVerboseLogging(result.verbose_logging ?? false)
             setExtendedContext(result.extended_context ?? false)
             setExtendedThinking(result.extended_thinking ?? false)
+            setGithubPat(result.github_pat)
             setLoading(false)
           }
           return
@@ -120,6 +125,7 @@ export default function SettingsPage() {
     verboseLogging: boolean;
     extendedContext: boolean;
     extendedThinking: boolean;
+    githubPat: string | null;
   }>) => {
     const settings = {
       anthropic_api_key: overrides.apiKey !== undefined ? overrides.apiKey : apiKey,
@@ -130,6 +136,7 @@ export default function SettingsPage() {
       verbose_logging: overrides.verboseLogging !== undefined ? overrides.verboseLogging : verboseLogging,
       extended_context: overrides.extendedContext !== undefined ? overrides.extendedContext : extendedContext,
       extended_thinking: overrides.extendedThinking !== undefined ? overrides.extendedThinking : extendedThinking,
+      github_pat: overrides.githubPat !== undefined ? overrides.githubPat : githubPat,
     }
     try {
       await invoke("save_settings", { settings })
@@ -143,6 +150,7 @@ export default function SettingsPage() {
         verboseLogging: settings.verbose_logging,
         extendedContext: settings.extended_context,
         extendedThinking: settings.extended_thinking,
+        githubPat: settings.github_pat,
       })
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -200,6 +208,28 @@ export default function SettingsPage() {
       toast.error(`Failed to clear workspace: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity })
     } finally {
       setClearing(false)
+    }
+  }
+
+  const handleTestGithubPat = async () => {
+    if (!githubPat) {
+      toast.error("Enter a GitHub token first", { duration: Infinity })
+      return
+    }
+    setTestingPat(true)
+    setPatValid(null)
+    try {
+      const message = await testGithubPat(githubPat)
+      setPatValid(true)
+      toast.success(message)
+    } catch (err) {
+      setPatValid(false)
+      toast.error(
+        `GitHub PAT error: ${err instanceof Error ? err.message : String(err)}`,
+        { duration: Infinity },
+      )
+    } finally {
+      setTestingPat(false)
     }
   }
 
@@ -271,6 +301,69 @@ export default function SettingsPage() {
                   <CheckCircle2 className="size-3.5" />
                 ) : null}
                 {apiKeyValid ? "Valid" : "Test"}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>GitHub Integration</CardTitle>
+          <CardDescription>
+            Personal access token for submitting feedback as GitHub issues.
+            Create one at{" "}
+            <a
+              href="https://github.com/settings/tokens"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              github.com/settings/tokens
+            </a>
+            {" "}with the <code className="text-xs">public_repo</code> scope (classic token required).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="github-pat">GitHub Personal Access Token</Label>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Input
+                  id="github-pat"
+                  type={showGithubPat ? "text" : "password"}
+                  placeholder="ghp_..."
+                  value={githubPat || ""}
+                  onChange={(e) => setGithubPat(e.target.value || null)}
+                  onBlur={(e) => autoSave({ githubPat: e.target.value || null })}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="absolute right-2 top-1/2 -translate-y-1/2"
+                  onClick={() => setShowGithubPat(!showGithubPat)}
+                >
+                  {showGithubPat ? (
+                    <EyeOff className="size-3.5" />
+                  ) : (
+                    <Eye className="size-3.5" />
+                  )}
+                </Button>
+              </div>
+              <Button
+                variant={patValid ? "default" : "outline"}
+                size="sm"
+                onClick={handleTestGithubPat}
+                disabled={testingPat || !githubPat}
+                className={patValid ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+              >
+                {testingPat ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : patValid ? (
+                  <CheckCircle2 className="size-3.5" />
+                ) : null}
+                {patValid ? "Valid" : "Test"}
               </Button>
             </div>
           </div>

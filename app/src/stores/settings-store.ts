@@ -9,6 +9,7 @@ interface SettingsState {
   verboseLogging: boolean;
   extendedContext: boolean;
   extendedThinking: boolean;
+  githubPat: string | null;
   isConfigured: boolean;
   setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset">>) => void;
   reset: () => void;
@@ -23,6 +24,7 @@ const initialState = {
   verboseLogging: false,
   extendedContext: false,
   extendedThinking: false,
+  githubPat: null,
   isConfigured: false,
 };
 
