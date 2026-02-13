@@ -60,19 +60,7 @@ Optional fields (`sessionId`, `betas`, `pathToClaudeCodeExecutable`) are omitted
 
 ### Model selection
 
-The app has a **global user preference** in Settings (Sonnet 4.5, Haiku 4.5, or Opus 4.6) that applies to all agent steps. This differs from the plugin, which uses per-agent model tiers defined in agent frontmatter. The Rust backend passes the user's selected model to every sidecar invocation.
-
-## Workflow (9 steps)
-
-0. **Research Concepts** -- research agent writes `clarifications-concepts.md`
-1. **Concepts Review** -- user answers questions via form UI
-2. **Research Patterns + Data + Merge** -- single orchestrator (spawns sub-agents internally)
-3. **Human Review** -- user answers merged questions via form UI
-4. **Reasoning** -- multi-turn conversation, produces `decisions.md`
-5. **Build** -- creates SKILL.md + reference files
-6. **Validate** -- checks against best practices
-7. **Test** -- generates and evaluates test prompts
-8. **Refine Skill** -- interactive chat to review, iterate, and polish the skill
+The app has a **global user preference** in Settings (Sonnet 4.5, Haiku 4.5, or Opus 4.6) that overrides the shared model tiers (see CLAUDE.md). The Rust backend passes the user's selected model to every sidecar invocation.
 
 ## Directory Layout
 

@@ -61,13 +61,3 @@ For test commands, tiers, and quick rules, see the Testing section in CLAUDE.md.
 
 - **`references/shared-context.md`**: Read by every agent. Changes here affect all agents.
 - **Plugin caching**: Plugins are copied to a cache dir on install. All file references must be within the plugin directory or in the user's CWD.
-
-### Extended Thinking
-
-Claude Code subagent frontmatter does not currently support per-agent thinking configuration. The reasoning and build agent prompts are optimized for thinking mode using goal-oriented patterns (not step-by-step prescriptions). When Claude Code adds `thinking` or `effort` as frontmatter fields, update:
-- reasoning agents: `effort: max`
-- build agents: `effort: high`
-- research orchestrators: `effort: high`
-- validate/test agents: `effort: medium`
-- merge agent: thinking disabled (haiku)
-

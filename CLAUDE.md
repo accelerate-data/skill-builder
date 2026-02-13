@@ -5,6 +5,38 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 @import CLAUDE-APP.md
 @import CLAUDE-PLUGIN.md
 
+## Workflow (9 steps)
+
+0. **Research Concepts** -- research agent writes `clarifications-concepts.md`
+1. **Concepts Review** -- user answers questions
+2. **Research Patterns + Data + Merge** -- orchestrator spawns sub-agents
+3. **Human Review** -- user answers merged questions
+4. **Reasoning** -- multi-turn conversation, produces `decisions.md`
+5. **Build** -- creates SKILL.md + reference files
+6. **Validate** -- checks against best practices
+7. **Test** -- generates and evaluates test prompts
+8. **Refine Skill** -- interactive chat to review, iterate, and polish
+
+## Model Tiers
+
+| Role | Model |
+|---|---|
+| Research agents (Steps 0, 2) | sonnet |
+| Merge (Step 2) | haiku |
+| Reasoning (Step 4) | opus |
+| Build / Validate / Test (Steps 5-7) | sonnet |
+
+The app overrides this with a global user preference in Settings. The plugin uses per-agent model tiers defined in agent frontmatter.
+
+## Extended Thinking
+
+Agent prompts are optimized for thinking mode using goal-oriented patterns (not step-by-step prescriptions). When Claude Code adds `thinking` or `effort` as frontmatter fields, update:
+- reasoning agents: `effort: max`
+- build agents: `effort: high`
+- research orchestrators: `effort: high`
+- validate/test agents: `effort: medium`
+- merge agent: thinking disabled (haiku)
+
 ## Dev Commands
 
 ```bash
@@ -54,7 +86,7 @@ Before writing any test code, read existing tests for the files you changed:
 
 ### Choosing which tests to run
 
-Before committing, consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files you changed.
+Consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files you're changing — during planning to scope the work, and before committing to verify coverage.
 
 **App quick rules:**
 - Changed a store? → `./tests/run.sh unit` + E2E tag from manifest
