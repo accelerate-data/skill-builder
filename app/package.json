@@ -15,8 +15,14 @@
     "postinstall": "cd sidecar && npm install",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:unit": "vitest run src/__tests__/stores/ src/__tests__/lib/ src/__tests__/hooks/",
+    "test:integration": "vitest run src/__tests__/components/ src/__tests__/pages/",
     "test:e2e": "playwright test",
-    "test:all": "vitest run && playwright test"
+    "test:e2e:dashboard": "playwright test --grep @dashboard",
+    "test:e2e:settings": "playwright test --grep @settings",
+    "test:e2e:workflow": "playwright test --grep '@workflow|@workflow-agent'",
+    "test:e2e:navigation": "playwright test --grep @navigation",
+    "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e"
   },
   "dependencies": {
     "@tanstack/react-router": "^1.158.4",

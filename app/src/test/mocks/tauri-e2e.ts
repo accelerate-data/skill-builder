@@ -68,6 +68,17 @@ const mockResponses: Record<string, unknown> = {
   run_parallel_agents: { agent_id_a: "agent-001", agent_id_b: "agent-002" },
   package_skill: { file_path: "/tmp/test/my-skill.skill", size_bytes: 12345 },
   get_agent_prompt: "# Sample Agent Prompt\n\nThis is a test prompt for the agent.\n\n## Instructions\n\nFollow these steps...",
+  // Workflow state
+  get_workflow_state: { run: null, steps: [] },
+  save_workflow_state: undefined,
+  capture_step_artifacts: [],
+  get_artifact_content: null,
+  save_artifact_content: undefined,
+  reset_workflow_step: undefined,
+  // Sidecar lifecycle
+  cleanup_skill_sidecar: undefined,
+  // Reconciliation
+  reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0 },
 };
 
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {

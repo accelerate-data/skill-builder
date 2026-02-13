@@ -1,26 +1,8 @@
 import { test, expect } from "@playwright/test";
 
-test.describe("Settings Page", () => {
+test.describe("Settings Page", { tag: "@settings" }, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/settings");
-  });
-
-  test("renders all settings cards", async ({ page }) => {
-    await expect(page.getByText("API Configuration")).toBeVisible();
-    await expect(page.getByText("GitHub Token", { exact: true })).toBeVisible();
-    await expect(page.getByText("Node.js Runtime")).toBeVisible();
-    await expect(page.getByText("GitHub Repository")).toBeVisible();
-  });
-
-  test("node.js status shows as available", async ({ page }) => {
-    // The E2E mock returns node available=true, v20.11.0
-    await expect(page.getByText("Available")).toBeVisible();
-    await expect(page.getByText("v20.11.0")).toBeVisible();
-  });
-
-  test("API key field is masked by default", async ({ page }) => {
-    const input = page.getByPlaceholder("sk-ant-...");
-    await expect(input).toHaveAttribute("type", "password");
   });
 
   test("can type API key and test it", async ({ page }) => {

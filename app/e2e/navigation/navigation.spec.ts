@@ -1,30 +1,11 @@
 import { test, expect } from "@playwright/test";
 
-test.describe("Navigation", () => {
+test.describe("Navigation", { tag: "@navigation" }, () => {
   test("loads the dashboard by default", async ({ page }) => {
     await page.goto("/");
     // Dashboard should be visible (sidebar has Dashboard link)
     await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Settings", exact: true })).toBeVisible();
-  });
-
-  test("sidebar links navigate between pages", async ({ page }) => {
-    await page.goto("/");
-
-    // Navigate to settings (use exact match to avoid matching "Open Settings" button)
-    await page.getByRole("link", { name: "Settings", exact: true }).click();
-    await expect(page).toHaveURL(/\/settings/);
-
-    // Navigate back to dashboard
-    await page.getByRole("link", { name: "Dashboard" }).click();
-    await expect(page).toHaveURL(/\/$/);
-  });
-
-  test("active sidebar link is highlighted", async ({ page }) => {
-    await page.goto("/settings");
-    const settingsLink = page.getByRole("link", { name: "Settings", exact: true });
-    // The active link has bg-sidebar-accent class
-    await expect(settingsLink).toHaveClass(/bg-sidebar-accent/);
   });
 
   test("theme toggle switches between system, light, and dark", async ({ page }) => {

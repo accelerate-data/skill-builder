@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test.describe("Dashboard", () => {
+test.describe("Dashboard", { tag: "@dashboard" }, () => {
   test("shows empty state when no skills exist", async ({ page }) => {
     await page.goto("/");
     // The mock returns empty skills array, so empty state should show

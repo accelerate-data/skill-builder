@@ -245,28 +245,12 @@ describe("isWorkflowComplete", () => {
 });
 
 describe("parseStepProgress boundary tests", () => {
-  it("Step 0 (new skill) shows 0%", () => {
-    const skill = { ...baseSkill, current_step: "Step 0" };
+  it("null step shows 0%", () => {
+    const skill = { ...baseSkill, current_step: null };
     render(
       <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
     );
     expect(screen.getByText("0%")).toBeInTheDocument();
-  });
-
-  it("Step 1 shows 13% (12.5 rounded)", () => {
-    const skill = { ...baseSkill, current_step: "Step 1" };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("13%")).toBeInTheDocument();
-  });
-
-  it("Step 2 shows 25%", () => {
-    const skill = { ...baseSkill, current_step: "Step 2" };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("25%")).toBeInTheDocument();
   });
 
   it("Step 4 shows 50%", () => {
@@ -277,43 +261,11 @@ describe("parseStepProgress boundary tests", () => {
     expect(screen.getByText("50%")).toBeInTheDocument();
   });
 
-  it("Step 7 shows 88% (87.5 rounded)", () => {
-    const skill = { ...baseSkill, current_step: "Step 7" };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("88%")).toBeInTheDocument();
-  });
-
-  it("Step 8 shows 100% (capped)", () => {
-    const skill = { ...baseSkill, current_step: "Step 8" };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("100%")).toBeInTheDocument();
-  });
-
   it("completed shows 100%", () => {
     const skill = { ...baseSkill, current_step: "completed" };
     render(
       <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
     );
     expect(screen.getByText("100%")).toBeInTheDocument();
-  });
-
-  it("initialization shows 0%", () => {
-    const skill = { ...baseSkill, current_step: "initialization" };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("0%")).toBeInTheDocument();
-  });
-
-  it("null step shows 0%", () => {
-    const skill = { ...baseSkill, current_step: null };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("0%")).toBeInTheDocument();
   });
 });

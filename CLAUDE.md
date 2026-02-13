@@ -11,8 +11,16 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 # Desktop app
 cd app && npm install && npm run sidecar:build
 npm run dev                              # Dev mode (hot reload)
-npm test                                 # Vitest (frontend)
-npm run test:e2e                         # Playwright (E2E)
+
+# Testing (all from app/)
+./tests/run.sh                           # All levels (unit + integration + e2e)
+./tests/run.sh unit                      # Level 1: stores, utils, hooks, rust, sidecar
+./tests/run.sh integration               # Level 2: component + page tests
+./tests/run.sh e2e                       # Level 3: Playwright
+./tests/run.sh e2e --tag @workflow       # Level 3, filtered by tag
+npm run test:unit                        # Unit tests only (frontend)
+npm run test:integration                 # Integration tests only (frontend)
+npm run test:e2e                         # All E2E tests
 cd src-tauri && cargo test               # Rust tests
 
 # Plugin
@@ -50,5 +58,6 @@ When the user runs /create-issue or asks to create a Linear issue, log a bug, fi
 or track a feature idea, read and follow the skill at `.claude/skills/create-linear-issue/SKILL.md`.
 
 ### /implement-issue
-When the user runs /implement-issue or asks to implement, build, fix, or work on a Linear issue,
+When the user runs /implement-issue, or mentions a Linear issue identifier (e.g. "VD-123", "implement VD-123",
+"work on VD-452", "build VD-100", "fix VD-99"), or asks to implement, build, fix, or work on a Linear issue,
 read and follow the skill at `.claude/skills/implement-linear-issue/SKILL.md`.

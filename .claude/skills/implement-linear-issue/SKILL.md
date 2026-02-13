@@ -75,7 +75,7 @@ Spawn a `feature-dev:code-reviewer` sub-agent. Fix high/medium issues, re-review
 
 ### Phase 6: Test
 
-Run only relevant tests, not the full suite. Fix failures and re-run. Max 3 attempts, then escalate to user.
+Consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files changed. Run only those tests using the harness (`./tests/run.sh [level] [--tag TAG]`). Fix failures and re-run. Max 3 attempts, then escalate to user.
 
 ### Phase 7: Create PR
 
@@ -117,4 +117,4 @@ Only enter when all ACs are verified.
 - **Check off your ACs on Linear** after tests pass
 - Implementation Updates section → coordinator-only
 - Sub-agents can spawn their own sub-agents for parallelism
-- **Run only relevant tests** for files touched, not the full suite
+- **Run only relevant tests** — consult `app/tests/TEST_MANIFEST.md` for the source-to-test mapping, then use `./tests/run.sh [level] [--tag TAG]`

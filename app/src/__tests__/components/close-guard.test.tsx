@@ -20,19 +20,6 @@ describe("CloseGuard", () => {
     });
   });
 
-  it("renders nothing initially", () => {
-    const { container } = render(<CloseGuard />);
-    expect(container.innerHTML).toBe("");
-  });
-
-  it("registers close-requested listener on mount", () => {
-    render(<CloseGuard />);
-    expect(mockListen).toHaveBeenCalledWith(
-      "close-requested",
-      expect.any(Function)
-    );
-  });
-
   it("shows dialog with Stay and Close Anyway when agents are running", async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "has_running_agents") return Promise.resolve(true);

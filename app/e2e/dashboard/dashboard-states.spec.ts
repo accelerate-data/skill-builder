@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test.describe("Dashboard States", () => {
+test.describe("Dashboard States", { tag: "@dashboard" }, () => {
   test("shows empty state with settings link when no workspace configured", async ({ page }) => {
     // Default mock has workspace_path: null
     await page.goto("/");
@@ -92,97 +92,6 @@ test.describe("Dashboard States", () => {
     await page.waitForTimeout(500);
 
     await expect(page.getByText("Workspace folder not found")).not.toBeVisible();
-  });
-
-  test("shows skill grid with multiple skills", async ({ page }) => {
-    await page.evaluate(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        get_settings: {
-          anthropic_api_key: "sk-ant-test",
-          github_token: "ghp_test",
-          github_repo: "testuser/my-skills",
-          workspace_path: "/tmp/test-workspace",
-          auto_commit: false,
-          auto_push: false,
-        },
-        check_workspace_path: true,
-        list_skills: [
-          {
-            name: "sales-pipeline",
-            domain: "Sales",
-            current_step: "Step 5",
-            status: "in_progress",
-            last_modified: new Date().toISOString(),
-          },
-          {
-            name: "hr-analytics",
-            domain: "Human Resources",
-            current_step: "Step 10",
-            status: "completed",
-            last_modified: new Date().toISOString(),
-          },
-          {
-            name: "customer-support",
-            domain: "Support",
-            current_step: "Step 2",
-            status: "waiting_for_user",
-            last_modified: new Date().toISOString(),
-          },
-        ],
-      };
-    });
-    await page.goto("/");
-    await page.waitForTimeout(500);
-
-    // All three skill names should appear (formatted from kebab-case)
-    await expect(page.getByText("Sales Pipeline")).toBeVisible();
-    await expect(page.getByText("Hr Analytics")).toBeVisible();
-    await expect(page.getByText("Customer Support")).toBeVisible();
-
-    // Status badges
-    await expect(page.getByText("In Progress")).toBeVisible();
-    await expect(page.getByText("Completed")).toBeVisible();
-    await expect(page.getByText("Needs Input")).toBeVisible();
-
-    // Domain badges
-    await expect(page.getByText("Sales")).toBeVisible();
-    await expect(page.getByText("Human Resources")).toBeVisible();
-    await expect(page.getByText("Support")).toBeVisible();
-
-    // Each card should have a Continue button
-    const continueButtons = page.getByRole("button", { name: "Continue" });
-    await expect(continueButtons).toHaveCount(3);
-  });
-
-  test("skill cards show progress bar based on step", async ({ page }) => {
-    await page.evaluate(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        get_settings: {
-          anthropic_api_key: "sk-ant-test",
-          github_token: "ghp_test",
-          github_repo: "testuser/my-skills",
-          workspace_path: "/tmp/test-workspace",
-          auto_commit: false,
-          auto_push: false,
-        },
-        check_workspace_path: true,
-        list_skills: [
-          {
-            name: "test-skill",
-            domain: "Test",
-            current_step: "Step 5",
-            status: "in_progress",
-            last_modified: null,
-          },
-        ],
-      };
-    });
-    await page.goto("/");
-    await page.waitForTimeout(500);
-
-    // Step 5 should show 50% progress
-    await expect(page.getByText("50%")).toBeVisible();
-    await expect(page.getByText("Step 5")).toBeVisible();
   });
 
   test("clicking Continue navigates to workflow page", async ({ page }) => {

@@ -11,14 +11,24 @@ describe("useSkillStore", () => {
     });
   });
 
-  it("starts with empty skills and no active skill", () => {
+  it("starts with empty defaults and supports basic setters", () => {
     const state = useSkillStore.getState();
     expect(state.skills).toEqual([]);
     expect(state.activeSkill).toBeNull();
     expect(state.isLoading).toBe(false);
+
+    // setActiveSkill
+    useSkillStore.getState().setActiveSkill("my-skill");
+    expect(useSkillStore.getState().activeSkill).toBe("my-skill");
+    useSkillStore.getState().setActiveSkill(null);
+    expect(useSkillStore.getState().activeSkill).toBeNull();
+
+    // setLoading
+    useSkillStore.getState().setLoading(true);
+    expect(useSkillStore.getState().isLoading).toBe(true);
   });
 
-  it("setSkills stores skills and clears loading", () => {
+  it("setSkills stores skills, clears loading, and replaces previous skills", () => {
     useSkillStore.getState().setLoading(true);
 
     const skills = [
@@ -27,42 +37,20 @@ describe("useSkillStore", () => {
     ];
     useSkillStore.getState().setSkills(skills);
 
-    const state = useSkillStore.getState();
+    let state = useSkillStore.getState();
     expect(state.skills).toHaveLength(2);
     expect(state.skills[0].name).toBe("skill-a");
     expect(state.skills[1].domain).toBe("finance");
     expect(state.isLoading).toBe(false);
-  });
 
-  it("setActiveSkill sets and clears active skill", () => {
-    useSkillStore.getState().setActiveSkill("my-skill");
-    expect(useSkillStore.getState().activeSkill).toBe("my-skill");
-
-    useSkillStore.getState().setActiveSkill(null);
-    expect(useSkillStore.getState().activeSkill).toBeNull();
-  });
-
-  it("setLoading updates loading state", () => {
-    useSkillStore.getState().setLoading(true);
-    expect(useSkillStore.getState().isLoading).toBe(true);
-
-    useSkillStore.getState().setLoading(false);
-    expect(useSkillStore.getState().isLoading).toBe(false);
-  });
-
-  it("setSkills replaces previous skills entirely", () => {
-    useSkillStore.getState().setSkills([
-      makeSkillSummary({ name: "old-skill" }),
-    ]);
-    expect(useSkillStore.getState().skills).toHaveLength(1);
-
+    // Replaces previous skills entirely
     useSkillStore.getState().setSkills([
       makeSkillSummary({ name: "new-a" }),
       makeSkillSummary({ name: "new-b" }),
       makeSkillSummary({ name: "new-c" }),
     ]);
 
-    const state = useSkillStore.getState();
+    state = useSkillStore.getState();
     expect(state.skills).toHaveLength(3);
     expect(state.skills.map((s) => s.name)).toEqual(["new-a", "new-b", "new-c"]);
   });

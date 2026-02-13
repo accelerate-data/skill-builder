@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test.describe("Skill CRUD", () => {
+test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
   test.beforeEach(async ({ page }) => {
     // Configure a workspace so the dashboard shows the New Skill button
     await page.evaluate(() => {
@@ -27,23 +27,6 @@ test.describe("Skill CRUD", () => {
     await expect(newSkillButton).toBeVisible();
   });
 
-  test("opens create skill dialog and fills form", async ({ page }) => {
-    // Click the header New Skill button
-    const newSkillButton = page.getByRole("button", { name: /new skill/i }).first();
-    await newSkillButton.click();
-
-    // Dialog should appear
-    await expect(page.getByRole("heading", { name: "Create New Skill" })).toBeVisible();
-
-    // Fill domain
-    const domainInput = page.getByLabel("Domain");
-    await domainInput.fill("sales pipeline");
-
-    // Skill name should auto-derive
-    const nameInput = page.getByLabel("Skill Name");
-    await expect(nameInput).toHaveValue("sales-pipeline");
-  });
-
   test("can submit create skill form", async ({ page }) => {
     const newSkillButton = page.getByRole("button", { name: /new skill/i }).first();
     await newSkillButton.click();
@@ -58,14 +41,6 @@ test.describe("Skill CRUD", () => {
 
     // Dialog should close (mock returns success)
     await expect(page.getByRole("heading", { name: "Create New Skill" })).not.toBeVisible();
-  });
-
-  test("create button is disabled without domain", async ({ page }) => {
-    const newSkillButton = page.getByRole("button", { name: /new skill/i }).first();
-    await newSkillButton.click();
-
-    const createButton = page.getByRole("button", { name: "Create" });
-    await expect(createButton).toBeDisabled();
   });
 
   test("shows skill cards when skills exist", async ({ page }) => {

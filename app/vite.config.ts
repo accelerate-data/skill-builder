@@ -24,6 +24,8 @@ export default defineConfig(async () => ({
       // In E2E mode, replace Tauri invoke with mock responses
       ...(isE2E && {
         "@tauri-apps/api/core": path.resolve(__dirname, "./src/test/mocks/tauri-e2e.ts"),
+        "@tauri-apps/api/event": path.resolve(__dirname, "./src/test/mocks/tauri-e2e-event.ts"),
+        "@tauri-apps/api/window": path.resolve(__dirname, "./src/test/mocks/tauri-e2e-window.ts"),
         "@tauri-apps/plugin-dialog": path.resolve(__dirname, "./src/test/mocks/tauri-e2e-dialog.ts"),
       }),
     },

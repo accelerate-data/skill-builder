@@ -98,7 +98,7 @@ The plugin uses the same skill output layout (`SKILL.md` + `references/`) but wr
 
 **Unit tests (Vitest):** `@tauri-apps/api/core` is globally mocked in `src/test/setup.ts`. Use `mockInvoke` from `src/test/mocks/tauri.ts` to configure return values per command.
 
-**E2E tests (Playwright):** Vite aliases replace `@tauri-apps/api/core` with `src/test/mocks/tauri-e2e.ts` when `TAURI_E2E=true`. Override specific commands via `window.__TAURI_MOCK_OVERRIDES__` in tests.
+**E2E tests (Playwright):** Vite aliases replace `@tauri-apps/api/core`, `@tauri-apps/api/event`, and `@tauri-apps/api/window` with mocks in `src/test/mocks/tauri-e2e*.ts` when `TAURI_E2E=true`. Override specific commands via `window.__TAURI_MOCK_OVERRIDES__` in tests. Agent lifecycle events can be simulated using the helpers in `e2e/helpers/agent-simulator.ts`.
 
 ### When to write tests
 
@@ -109,4 +109,17 @@ The plugin uses the same skill output layout (`SKILL.md` + `references/`) but wr
 5. **Bug fix** -> regression test
 
 Purely cosmetic changes or simple wiring don't require tests. If unclear, ask the user.
+
+### Choosing which tests to run
+
+Before committing, consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files you changed. The manifest maps every source file to its unit tests, integration tests, and E2E tags.
+
+**Quick rules:**
+- Changed a store? → `./tests/run.sh unit` + E2E tag from manifest
+- Changed a component? → `./tests/run.sh integration` + E2E tag from manifest
+- Changed a Rust command? → `cargo test` + E2E tag if UI-facing
+- Changed `src/lib/tauri.ts` or test mocks? → `./tests/run.sh` (all levels)
+- Unsure? → `./tests/run.sh` runs everything
+
+**E2E tags:** `@dashboard`, `@settings`, `@workflow`, `@workflow-agent`, `@navigation`
 
