@@ -28,7 +28,7 @@ Fixes <issue-id>
 
 The test plan section is **checked during `/close-issue`** — unchecked items block the merge.
 
-- **Automated tests**: Mark `[x]` immediately after Phase 6 passes. Include test counts.
+- **Automated tests**: Mark `[x]` immediately after tests pass. Include test counts.
 - **Manual tests**: Leave `[ ]` unchecked. The user checks these off on the PR after manual testing.
 - Write manual test items as concrete steps the user can follow (action → expected result).
 - Cover every user-visible behavior change — not internals.

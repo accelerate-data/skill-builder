@@ -1,8 +1,7 @@
 ---
 name: close-linear-issue
 description: |
-  Closes a completed Linear issue after manual testing. Rebases the feature branch onto main,
-  merges the PR, moves the issue to Done, and cleans up the worktree and remote branch.
+  Closes a completed Linear issue after testing. Merges the PR, moves the issue to Done, and cleans up.
   Triggers on "close <issue-id>", "complete <issue-id>", "merge <issue-id>", "ship <issue-id>", or "/close-issue".
 ---
 
@@ -15,6 +14,16 @@ You are a **coordinator**. Orchestrate sub-agents via `Task` — do not run git 
 Proceed autonomously. Only confirm with the user:
 - Unverified test plan items (Verify)
 - Merge conflicts that require human judgment (Merge)
+
+## Outcomes
+
+Track these based on the issue's state:
+
+- Issue, PR, and worktree identified
+- Test plan verified (or user accepted risk)
+- PR merged into main
+- Linear issue moved to Done
+- Worktree and branches cleaned up
 
 ## Identify
 

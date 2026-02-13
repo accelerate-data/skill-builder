@@ -1,12 +1,8 @@
 ---
 name: create-linear-issue
 description: |
-  Creates well-structured Linear issues from short product thoughts, feature requests, or bug reports.
-  Also decomposes large existing issues into smaller ones.
-  Triggers on "create issue", "log a bug", "file a ticket", "new feature", "something is broken",
-  "break down <issue-id>", "decompose <issue-id>", "split <issue-id>", or "/create-issue".
-  Classifies as feature or bug, explores the codebase for feasibility,
-  and produces product-level issues with no implementation details.
+  Creates Linear issues from product thoughts, feature requests, or bug reports. Decomposes large issues into smaller ones.
+  Triggers on "create issue", "log a bug", "file a ticket", "new feature", "break down <issue-id>", or "/create-issue".
 ---
 
 # Create Linear Issue
@@ -20,6 +16,15 @@ You are a **coordinator**. Turn a short product thought into a clear, product-le
 2. **Act autonomously.** Only confirm: decisions (approach, labels), destructive actions (creating labels/issues), and genuine ambiguity.
 
 3. **Confirm before creating.** Always present the issue details (project, labels, estimate, title, description) for user approval before calling `create_issue`.
+
+## Outcomes
+
+Track these based on the request:
+
+- Request understood (feature, bug, or decompose)
+- Requirements drafted with user input
+- Estimate confirmed
+- Issue created on Linear (or child issues for decompose)
 
 ## Understand the Request
 
@@ -41,7 +46,7 @@ See [linear-operations.md](references/linear-operations.md) for the estimate tab
 
 ## Create the Issue
 
-Fetch projects and labels from Linear. Confirm details with user — project, labels, and estimate. Compose the issue with a clear title (short, action-oriented, under 80 chars), context, requirements, and testable acceptance criteria. Create via sub-agent (`assignee: "me"`). Return issue ID and URL.
+Fetch projects and labels from Linear. Confirm details with user — project, labels, and estimate. Compose the issue with a clear title (short, action-oriented, under 80 chars), context, requirements, and testable acceptance criteria. Create via sub-agent using `linear-server:create_issue` (`assignee: "me"`). Return issue ID and URL.
 
 ## Decompose Path
 

@@ -1,8 +1,7 @@
 ---
 name: implement-linear-issue
 description: |
-  Implements a Linear issue end-to-end: worktree setup, dependency-aware planning, parallel execution
-  via agent teams, code review, targeted testing, PR creation, and Linear status management.
+  Implements a Linear issue end-to-end, from planning through PR creation.
   Triggers on "implement <issue-id>", "work on <issue-id>", "build <issue-id>", "fix <issue-id>", or "/implement-issue".
 ---
 
@@ -30,7 +29,14 @@ When the user expands or changes scope during the conversation, update the Linea
 
 ## Objectives
 
-Given the issue, deliver a working implementation that satisfies all acceptance criteria, passes tests, and is ready for human review. How you get there depends on the issue.
+Given the issue, deliver a working implementation that satisfies all acceptance criteria, passes tests, and is ready for human review. How you get there depends on the issue. Plan your approach based on the issue's complexity and constraints, then track these outcomes:
+
+- Issue assigned and worktree ready
+- Plan approved by user (if full flow)
+- All ACs implemented and checked off on Linear
+- Code review passed
+- Tests passing
+- PR created and linked
 
 **Deciding your approach:**
 - XS/S estimate + isolated changes → single agent implements directly. See [fast-path.md](references/fast-path.md). Skip team orchestration.

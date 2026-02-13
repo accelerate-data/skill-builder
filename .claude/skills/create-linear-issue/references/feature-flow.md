@@ -25,7 +25,7 @@ The team lead synthesizes into 2-3 product-level options. Always include the use
 
 ## Step 3: User Picks
 
-Present options via `AskUserQuestion`.
+Present options to the user for selection.
 
 ## Step 4: Requirements Definition
 
