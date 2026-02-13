@@ -611,16 +611,57 @@ impl SidecarPool {
         // concurrent writes to the same skill's sidecar while allowing different
         // skills to write fully in parallel.
         {
-            let mut stdin = stdin_handle.lock().await;
-            stdin
-                .write_all(request_line.as_bytes())
-                .await
-                .map_err(|e| format!("Failed to write to sidecar stdin: {}", e))?;
+            let mut stdin_guard = stdin_handle.lock().await;
 
-            stdin
-                .flush()
-                .await
-                .map_err(|e| format!("Failed to flush sidecar stdin: {}", e))?;
+            // Write with timeout (10s)
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                stdin_guard.write_all(request_line.as_bytes()),
+            )
+            .await
+            {
+                Err(_) => {
+                    log::warn!(
+                        "Stdin write timed out for skill '{}' — killing sidecar",
+                        skill_name
+                    );
+                    drop(stdin_guard); // release mutex before removing
+                    self.remove_and_kill_sidecar(skill_name).await;
+                    return Err(format!(
+                        "Stdin write timed out after 10s for skill '{}'",
+                        skill_name
+                    ));
+                }
+                Ok(Err(e)) => {
+                    return Err(format!("Failed to write to sidecar stdin: {}", e));
+                }
+                Ok(Ok(())) => {}
+            }
+
+            // Flush with timeout (5s)
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                stdin_guard.flush(),
+            )
+            .await
+            {
+                Err(_) => {
+                    log::warn!(
+                        "Stdin flush timed out for skill '{}' — killing sidecar",
+                        skill_name
+                    );
+                    drop(stdin_guard); // release mutex before removing
+                    self.remove_and_kill_sidecar(skill_name).await;
+                    return Err(format!(
+                        "Stdin flush timed out after 5s for skill '{}'",
+                        skill_name
+                    ));
+                }
+                Ok(Err(e)) => {
+                    return Err(format!("Failed to flush sidecar stdin: {}", e));
+                }
+                Ok(Ok(())) => {}
+            }
         }
 
         log::info!(
@@ -629,6 +670,33 @@ impl SidecarPool {
             skill_name,
             pid
         );
+
+        // Spawn response timeout watchdog (5 minutes)
+        let timeout_pending = self.pending_requests.clone();
+        let timeout_app_handle = app_handle.clone();
+        let timeout_agent_id = agent_id.to_string();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+
+            // Check if request is still pending
+            let still_pending = {
+                let mut pending = timeout_pending.lock().await;
+                pending.remove(&timeout_agent_id)
+            };
+
+            if still_pending {
+                log::warn!(
+                    "Agent request '{}' timed out after 5 minutes",
+                    timeout_agent_id
+                );
+                // Capture partial artifacts before emitting exit
+                crate::commands::workflow::capture_artifacts_on_error(
+                    &timeout_app_handle,
+                    &timeout_agent_id,
+                );
+                events::handle_sidecar_exit(&timeout_app_handle, &timeout_agent_id, false);
+            }
+        });
 
         Ok(())
     }
@@ -694,6 +762,22 @@ impl SidecarPool {
         }
 
         Ok(())
+    }
+
+    /// Remove a sidecar from the pool and kill it immediately.
+    /// Used when stdin writes time out and the sidecar is presumed hung.
+    async fn remove_and_kill_sidecar(&self, skill_name: &str) {
+        let mut pool = self.sidecars.lock().await;
+        if let Some(mut sidecar) = pool.remove(skill_name) {
+            sidecar.stdout_task.abort();
+            sidecar.stderr_task.abort();
+            let _ = sidecar.child.kill().await;
+            log::info!(
+                "Killed hung sidecar for '{}' (pid {})",
+                skill_name,
+                sidecar.pid
+            );
+        }
     }
 
     /// Shutdown all persistent sidecars. Called on app exit.
