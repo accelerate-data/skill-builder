@@ -82,28 +82,70 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
 /// Copy bundled agent .md files and references into workspace.
 /// Creates the directories if they don't exist. Overwrites existing files
 /// to keep them in sync with the app version.
+///
+/// Resolution order:
+/// 1. Dev mode: repo root from `CARGO_MANIFEST_DIR` (compile-time path)
+/// 2. Production: Tauri resource directory (bundled in the app)
 pub fn ensure_workspace_prompts(
-    _app_handle: &tauri::AppHandle,
+    app_handle: &tauri::AppHandle,
     workspace_path: &str,
 ) -> Result<(), String> {
+    use tauri::Manager;
+
+    // Try dev mode first: resolve from CARGO_MANIFEST_DIR (only works during development)
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent() // app/
         .and_then(|p| p.parent()) // repo root
-        .ok_or("Could not resolve repo root")?
-        .to_path_buf();
+        .map(|p| p.to_path_buf());
+
+    let agents_src = repo_root.as_ref().map(|r| r.join("agents"));
+    let refs_src = repo_root.as_ref().map(|r| r.join("references"));
+
+    // Fall back to Tauri resource directory for production builds
+    let resource_agents;
+    let resource_refs;
+    let agents_dir = match agents_src {
+        Some(ref p) if p.is_dir() => p.as_path(),
+        _ => {
+            resource_agents = app_handle
+                .path()
+                .resource_dir()
+                .map(|r| r.join("agents"))
+                .unwrap_or_default();
+            if resource_agents.is_dir() {
+                resource_agents.as_path()
+            } else {
+                return Ok(()); // No agents found anywhere — skip silently
+            }
+        }
+    };
+
+    let refs_dir = match refs_src {
+        Some(ref p) if p.is_dir() => p.as_path(),
+        _ => {
+            resource_refs = app_handle
+                .path()
+                .resource_dir()
+                .map(|r| r.join("references"))
+                .unwrap_or_default();
+            if resource_refs.is_dir() {
+                resource_refs.as_path()
+            } else {
+                &Path::new("") // Will fail is_dir check below
+            }
+        }
+    };
 
     // Copy agents/ directory
-    let agents_src = repo_root.join("agents");
-    if agents_src.is_dir() {
-        copy_directory_to(&agents_src, workspace_path, "agents")?;
+    if agents_dir.is_dir() {
+        copy_directory_to(agents_dir, workspace_path, "agents")?;
         // Also copy to .claude/agents/ with flattened names for SDK loading
-        copy_agents_to_claude_dir(&agents_src, workspace_path)?;
+        copy_agents_to_claude_dir(agents_dir, workspace_path)?;
     }
 
     // Copy references/ directory
-    let refs_src = repo_root.join("references");
-    if refs_src.is_dir() {
-        copy_directory_to(&refs_src, workspace_path, "references")?;
+    if refs_dir.is_dir() {
+        copy_directory_to(refs_dir, workspace_path, "references")?;
     }
 
     Ok(())

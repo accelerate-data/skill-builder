@@ -11,11 +11,10 @@ Every sub-agent must commit + push before reporting completion.
 Title: `[ISSUE-ID]: issue title`
 
 ```markdown
+Fixes [ISSUE-ID]
+
 ## Summary
 [2-3 sentences from implementation status]
-
-## Linear Issue
-[Link to Linear issue]
 
 ## Changes
 - [Bullet list from team reports]
