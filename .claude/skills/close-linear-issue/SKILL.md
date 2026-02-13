@@ -55,7 +55,7 @@ If CI or merge fails, report to user and stop.
 Run in **parallel** (two `Task` calls in one turn):
 
 - Move issue to **Done** via `linear-server:update_issue`. Add a closing comment via `linear-server:create_comment` with the PR URL and merge commit. (model: `haiku`)
-- From the **main repo directory** (not the worktree): remove the worktree, delete the local branch, pull latest main. If worktree has uncommitted changes, report back — coordinator will ask user before force-removing.
+- From the **main repo directory** (not the worktree): remove the worktree, delete the local branch, delete the remote branch (`git push origin --delete <branchName>` — do NOT rely on `--delete-branch` from the merge step), pull latest main. If worktree has uncommitted changes, report back — coordinator will ask user before force-removing.
 
 Report to user: issue closed, PR merged, worktree and branches removed.
 
