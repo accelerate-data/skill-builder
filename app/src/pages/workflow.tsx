@@ -48,6 +48,7 @@ import {
   saveArtifactContent,
   readFile,
   cleanupSkillSidecar,
+  hasStepArtifacts,
 } from "@/lib/tauri";
 
 // --- Step config ---
@@ -191,6 +192,12 @@ export default function WorkflowPage() {
   // Pending step switch — set when user clicks a sidebar step while agent is running
   const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(null);
 
+  // Track whether error state has partial artifacts
+  const [errorHasArtifacts, setErrorHasArtifacts] = useState(false);
+
+  // Confirmation dialog for resetting steps with partial output
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
   const stepConfig = STEP_CONFIGS[currentStep];
   const isHumanReviewStep = stepConfig?.type === "human";
 
@@ -248,6 +255,7 @@ export default function WorkflowPage() {
     setHasPartialOutput(false);
     setReasoningPhase("not_started");
     setRerunStepId(null);
+    setErrorHasArtifacts(false);
   }, [currentStep]);
 
   // Detect partial output from interrupted runs
@@ -274,6 +282,18 @@ export default function WorkflowPage() {
       .then((exists) => setHasPartialOutput(exists))
       .catch(() => setHasPartialOutput(false));
   }, [currentStep, steps, workspacePath, skillName, hydrated]);
+
+  // Check for partial artifacts when step is in error state
+  useEffect(() => {
+    const stepStatus = steps[currentStep]?.status;
+    if (stepStatus === "error" && skillName) {
+      hasStepArtifacts(skillName, currentStep)
+        .then(setErrorHasArtifacts)
+        .catch(() => setErrorHasArtifacts(false));
+    } else {
+      setErrorHasArtifacts(false);
+    }
+  }, [steps, currentStep, skillName]);
 
   // Persist workflow state to SQLite when steps change
   useEffect(() => {
@@ -519,9 +539,10 @@ export default function WorkflowPage() {
   // Handle completion from the rerun chat
   const handleRerunComplete = useCallback(() => {
     setRerunStepId(null);
-    // Step stays in completed status -- the rerun chat has already captured artifacts
+    // Ensure the step is marked as completed (handles error → completed transition)
+    updateStepStatus(currentStep, "completed");
     toast.success(`Step ${currentStep + 1} rerun completed`);
-  }, [currentStep]);
+  }, [currentStep, updateStepStatus]);
 
   // Reload the file content (after user edits externally).
   // Same priority as initial load: skill context dir > SQLite > workspace.
@@ -748,20 +769,41 @@ export default function WorkflowPage() {
 
     // Error state with retry
     if (currentStepDef?.status === "error" && !activeAgentId) {
+      const canContinueInChat = errorHasArtifacts && RERUN_CHAT_STEPS.has(currentStep);
+
       return (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
           <AlertCircle className="size-8 text-destructive/50" />
           <div className="text-center">
             <p className="font-medium text-destructive">Step {currentStep + 1} failed</p>
             <p className="mt-1 text-sm">
-              An error occurred. You can retry this step.
+              {canContinueInChat
+                ? "This step has partial output. You can continue in chat or reset."
+                : "An error occurred. You can retry this step."}
             </p>
           </div>
           <div className="flex gap-2">
+            {canContinueInChat && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  clearRuns();
+                  setRerunStepId(currentStep);
+                }}
+              >
+                <MessageSquare className="size-3.5" />
+                Continue in Chat
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
               onClick={async () => {
+                // Show confirmation if partial output exists
+                if (errorHasArtifacts) {
+                  setShowResetConfirm(true);
+                  return;
+                }
                 // Full reset: clear artifacts on disk, clear agent runs, then revert step
                 if (workspacePath) {
                   try {
@@ -778,10 +820,12 @@ export default function WorkflowPage() {
               <RotateCcw className="size-3.5" />
               Reset Step
             </Button>
-            <Button size="sm" onClick={() => handleStartStep()}>
-              <Play className="size-3.5" />
-              Retry
-            </Button>
+            {!canContinueInChat && (
+              <Button size="sm" onClick={() => handleStartStep()}>
+                <Play className="size-3.5" />
+                Retry
+              </Button>
+            )}
           </div>
         </div>
       );
@@ -864,6 +908,41 @@ export default function WorkflowPage() {
         error={runtimeError}
         onDismiss={clearRuntimeError}
       />
+
+      {/* Reset confirmation dialog — shown when resetting a step with partial output */}
+      {showResetConfirm && (
+        <Dialog open onOpenChange={(open) => { if (!open) setShowResetConfirm(false); }}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Reset Step?</DialogTitle>
+              <DialogDescription>
+                This step has partial output that will be deleted. Continue?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowResetConfirm(false)}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={async () => {
+                setShowResetConfirm(false);
+                // Full reset: clear artifacts on disk, clear agent runs, then revert step
+                if (workspacePath) {
+                  try {
+                    await resetWorkflowStep(workspacePath, skillName, currentStep);
+                  } catch {
+                    // best-effort — proceed even if disk cleanup fails
+                  }
+                }
+                clearRuns();
+                rerunFromStep(currentStep);
+                toast.success(`Reset step ${currentStep + 1}`);
+              }}>
+                Reset
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       <div className="flex h-full -m-6">
         <WorkflowSidebar

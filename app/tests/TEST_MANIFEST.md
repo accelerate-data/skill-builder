@@ -36,7 +36,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | Source | Unit Tests | Integration Tests | E2E Tag |
 |---|---|---|---|
 | `src/pages/dashboard.tsx` | -- | `pages/dashboard.test.tsx` (18) | `@dashboard` |
-| `src/pages/workflow.tsx` | -- | `pages/workflow.test.tsx` (36) | `@workflow`, `@workflow-agent` |
+| `src/pages/workflow.tsx` | -- | `pages/workflow.test.tsx` (37) | `@workflow`, `@workflow-agent` |
 | `src/pages/settings.tsx` | -- | `pages/settings.test.tsx` (30) | `@settings` |
 | `src/pages/skills.tsx` | -- | `pages/skills.test.tsx` (9) | -- |
 | `src/pages/prompts.tsx` | -- | `pages/prompts.test.tsx` (6) | -- |
@@ -54,7 +54,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/components/feedback-dialog.tsx` | -- | `components/feedback-dialog.test.tsx` (21) | `@workflow` |
 | `src/components/reasoning-chat.tsx` | -- | `components/reasoning-chat.test.tsx` (16) | `@workflow` |
 | `src/components/refinement-chat.tsx` | -- | `components/refinement-chat.test.tsx` (11) | `@workflow` |
-| `src/components/step-rerun-chat.tsx` | -- | `components/step-rerun-chat.test.tsx` (12) | `@workflow` |
+| `src/components/step-rerun-chat.tsx` | -- | `components/step-rerun-chat.test.tsx` (13) | `@workflow` |
 | `src/components/close-guard.tsx` | -- | `components/close-guard.test.tsx` (4) | `@navigation` |
 | `src/components/imported-skill-card.tsx` | -- | `components/imported-skill-card.test.tsx` (12) | -- |
 | `src/components/orphan-resolution-dialog.tsx` | -- | `components/orphan-resolution-dialog.test.tsx` (11) | -- |
@@ -66,9 +66,9 @@ Maps every source file to its tests across all layers. Use this to determine whi
 
 | Source | Cargo Tests | E2E Tag |
 |---|---|---|
-| `src-tauri/src/db.rs` | `cargo test db` (33) | -- |
+| `src-tauri/src/db.rs` | `cargo test db` (46) | -- |
 | `src-tauri/src/types.rs` | `cargo test types` (4) | -- |
-| `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (68) | `@workflow` |
+| `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (72) | `@workflow` |
 | `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (33) | `@dashboard` |
 | `src-tauri/src/commands/skill.rs` | `cargo test commands::skill` (19) | `@dashboard` |
 | `src-tauri/src/commands/imported_skills.rs` | `cargo test commands::imported_skills` (25) | -- |

@@ -95,7 +95,7 @@ export const StepRerunChat = forwardRef<StepRerunChatHandle, StepRerunChatProps>
   // Stores
   const currentRun = useAgentStore((s) => currentAgentId ? s.runs[currentAgentId] : null);
   const agentRegisterRun = useAgentStore((s) => s.registerRun);
-  const { setRunning } = useWorkflowStore();
+  const { setRunning, updateStepStatus } = useWorkflowStore();
 
   const isAgentRunning = currentRun?.status === "running";
   const model = STEP_MODEL_MAP[stepId] ?? "sonnet";
@@ -316,8 +316,10 @@ export const StepRerunChat = forwardRef<StepRerunChatHandle, StepRerunChatProps>
     } catch {
       // Best-effort
     }
+    // Update step status to completed (handles error → completed transition)
+    updateStepStatus(stepId, "completed");
     onComplete();
-  }, [skillName, stepId, workspacePath, onComplete]);
+  }, [skillName, stepId, workspacePath, updateStepStatus, onComplete]);
 
   // Expose completeStep to parent via ref
   useImperativeHandle(ref, () => ({ completeStep: handleComplete }), [handleComplete]);

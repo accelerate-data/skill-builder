@@ -386,6 +386,44 @@ describe("StepRerunChat", () => {
       "/workspace",
     );
 
+    // Should update step status to completed
+    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+
+    // Should call onComplete callback
+    expect(defaultProps.onComplete).toHaveBeenCalled();
+  });
+
+  it("completeStep transitions step from error to completed", async () => {
+    const ref = createRef<StepRerunChatHandle>();
+
+    // Set step 0 to error status
+    useWorkflowStore.getState().updateStepStatus(0, "error");
+
+    render(<StepRerunChat {...defaultProps} ref={ref} />);
+
+    await waitFor(() => {
+      expect(mockRunWorkflowStep).toHaveBeenCalled();
+    });
+
+    act(() => {
+      simulateAgentCompletion("agent-1", AGENT_RERUN_SUMMARY);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Reviewing existing output/)).toBeInTheDocument();
+    });
+
+    // Verify step is still in error state
+    expect(useWorkflowStore.getState().steps[0].status).toBe("error");
+
+    // Call completeStep via ref
+    await act(async () => {
+      await ref.current?.completeStep();
+    });
+
+    // Should transition from error → completed
+    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+
     // Should call onComplete callback
     expect(defaultProps.onComplete).toHaveBeenCalled();
   });

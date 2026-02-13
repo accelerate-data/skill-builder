@@ -456,6 +456,11 @@ impl SidecarPool {
                                         let mut pending = stdout_pending.lock().await;
                                         pending.remove(request_id);
                                     }
+                                    // Capture any partial artifacts written before the error
+                                    crate::commands::workflow::capture_artifacts_on_error(
+                                        &app_handle_stdout,
+                                        request_id,
+                                    );
                                     events::handle_sidecar_exit(
                                         &app_handle_stdout,
                                         request_id,
@@ -535,6 +540,8 @@ impl SidecarPool {
                 skill_name,
                 e
             );
+            // Capture any partial artifacts written before the error
+            crate::commands::workflow::capture_artifacts_on_error(app_handle, agent_id);
             events::handle_sidecar_exit(app_handle, agent_id, false);
         }
 

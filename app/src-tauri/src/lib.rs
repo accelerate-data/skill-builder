@@ -73,6 +73,7 @@ pub fn run() {
             commands::workflow::capture_step_artifacts,
             commands::workflow::get_artifact_content,
             commands::workflow::save_artifact_content,
+            commands::workflow::has_step_artifacts,
             commands::workflow::get_agent_prompt,
             commands::lifecycle::has_running_agents,
             commands::sidecar_lifecycle::cleanup_skill_sidecar,

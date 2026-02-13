@@ -431,6 +431,21 @@ pub fn delete_all_artifacts(conn: &Connection, skill_name: &str) -> Result<(), S
     Ok(())
 }
 
+pub fn has_artifacts(
+    conn: &Connection,
+    skill_name: &str,
+    step_id: i32,
+) -> Result<bool, String> {
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM workflow_artifacts WHERE skill_name = ?1 AND step_id = ?2",
+            [skill_name, &step_id.to_string()],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(count > 0)
+}
+
 // --- Skill Tags ---
 
 pub fn get_tags_for_skills(

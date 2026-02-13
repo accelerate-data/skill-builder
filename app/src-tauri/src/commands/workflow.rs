@@ -1119,6 +1119,131 @@ pub fn reset_workflow_step(
 
 // --- Artifact commands ---
 
+/// Parse agent_id (format: "{skill_name}-step{step_id}-{timestamp}") to extract skill_name and step_id.
+/// Returns None if the format doesn't match the expected pattern.
+fn parse_agent_id(agent_id: &str) -> Option<(String, u32)> {
+    // agent_id format: {skill_name}-step{step_id}-{timestamp}
+    // We need to extract skill_name and step_id
+    // Example: "my-skill-step5-123456789"
+
+    // Find the last occurrence of "-step" to handle skill names with hyphens
+    if let Some(step_idx) = agent_id.rfind("-step") {
+        let skill_name = &agent_id[..step_idx];
+        let rest = &agent_id[step_idx + 5..]; // +5 to skip "-step"
+
+        // Find the next hyphen to separate step_id from timestamp
+        if let Some(hyphen_idx) = rest.find('-') {
+            let step_id_str = &rest[..hyphen_idx];
+            if let Ok(step_id) = step_id_str.parse::<u32>() {
+                return Some((skill_name.to_string(), step_id));
+            }
+        }
+    }
+    None
+}
+
+/// Capture artifacts on error — called from sidecar_pool when an agent fails.
+/// This is best-effort: logs errors but doesn't propagate them to avoid interfering
+/// with error event emission.
+pub fn capture_artifacts_on_error(
+    app_handle: &tauri::AppHandle,
+    agent_id: &str,
+) {
+    use tauri::Manager;
+
+    // Parse agent_id to extract skill_name and step_id
+    let (skill_name, step_id) = match parse_agent_id(agent_id) {
+        Some(parsed) => parsed,
+        None => {
+            log::warn!(
+                "Failed to parse agent_id '{}' for artifact capture on error",
+                agent_id
+            );
+            return;
+        }
+    };
+
+    log::info!(
+        "Capturing artifacts on error for skill '{}', step {}",
+        skill_name,
+        step_id
+    );
+
+    // Get DB state
+    let db = match app_handle.try_state::<Db>() {
+        Some(db) => db,
+        None => {
+            log::error!("DB state not available for artifact capture on error");
+            return;
+        }
+    };
+
+    // Get workspace_path and skills_path from settings
+    let (workspace_path, skills_path) = {
+        let conn = match db.0.lock() {
+            Ok(conn) => conn,
+            Err(e) => {
+                log::error!("Failed to lock DB for artifact capture on error: {}", e);
+                return;
+            }
+        };
+
+        let settings = match crate::db::read_settings(&conn) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Failed to read settings for artifact capture on error: {}", e);
+                return;
+            }
+        };
+
+        let workspace_path = match settings.workspace_path {
+            Some(wp) => wp,
+            None => {
+                log::error!("Workspace path not set for artifact capture on error");
+                return;
+            }
+        };
+
+        (workspace_path, settings.skills_path)
+    };
+
+    // Capture artifacts (best-effort)
+    {
+        let conn = match db.0.lock() {
+            Ok(conn) => conn,
+            Err(e) => {
+                log::error!("Failed to lock DB for artifact capture on error: {}", e);
+                return;
+            }
+        };
+
+        match capture_artifacts_inner(
+            &conn,
+            &skill_name,
+            step_id,
+            &workspace_path,
+            skills_path.as_deref(),
+        ) {
+            Ok(artifacts) => {
+                log::info!(
+                    "Captured {} artifact(s) on error for skill '{}', step {}",
+                    artifacts.len(),
+                    skill_name,
+                    step_id
+                );
+            }
+            Err(e) => {
+                log::warn!(
+                    "Failed to capture artifacts on error for skill '{}', step {}: {}",
+                    skill_name,
+                    step_id,
+                    e
+                );
+            }
+        }
+    }
+}
+
 /// Core logic for capturing step artifacts — takes `&Connection` directly so
 /// it cannot re-lock the Db mutex (prevents deadlock by construction).
 fn capture_artifacts_inner(
@@ -1267,6 +1392,16 @@ pub fn save_artifact_content(
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     crate::db::save_artifact(&conn, &skill_name, step_id, &relative_path, &content)
+}
+
+#[tauri::command]
+pub fn has_step_artifacts(
+    skill_name: String,
+    step_id: u32,
+    db: tauri::State<'_, Db>,
+) -> Result<bool, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::has_artifacts(&conn, &skill_name, step_id as i32)
 }
 
 #[cfg(test)]
@@ -2691,5 +2826,111 @@ mod tests {
     fn test_build_betas_none() {
         let betas = build_betas(false, None, "claude-sonnet-4-5-20250929");
         assert_eq!(betas, None);
+    }
+
+    #[test]
+    fn test_parse_agent_id_valid() {
+        // Standard format
+        let (skill_name, step_id) = parse_agent_id("my-skill-step5-123456789").unwrap();
+        assert_eq!(skill_name, "my-skill");
+        assert_eq!(step_id, 5);
+
+        // Skill name with hyphens
+        let (skill_name, step_id) = parse_agent_id("my-cool-skill-step0-987654321").unwrap();
+        assert_eq!(skill_name, "my-cool-skill");
+        assert_eq!(step_id, 0);
+
+        // Different step IDs
+        let (skill_name, step_id) = parse_agent_id("test-step2-111111111").unwrap();
+        assert_eq!(skill_name, "test");
+        assert_eq!(step_id, 2);
+
+        let (skill_name, step_id) = parse_agent_id("test-step7-222222222").unwrap();
+        assert_eq!(skill_name, "test");
+        assert_eq!(step_id, 7);
+    }
+
+    #[test]
+    fn test_parse_agent_id_invalid() {
+        // Missing step marker
+        assert!(parse_agent_id("my-skill-123456789").is_none());
+
+        // Invalid step ID (not a number)
+        assert!(parse_agent_id("my-skill-stepX-123456789").is_none());
+
+        // Missing timestamp
+        assert!(parse_agent_id("my-skill-step5").is_none());
+
+        // Empty string
+        assert!(parse_agent_id("").is_none());
+
+        // Wrong format
+        assert!(parse_agent_id("invalid-format").is_none());
+    }
+
+    #[test]
+    fn test_has_step_artifacts_integration() {
+        // Create a temporary database
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+
+        // Create the workflow_artifacts table
+        conn.execute(
+            "CREATE TABLE workflow_artifacts (
+                skill_name TEXT NOT NULL,
+                step_id INTEGER NOT NULL,
+                relative_path TEXT NOT NULL,
+                content TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (skill_name, step_id, relative_path)
+            )",
+            [],
+        )
+        .unwrap();
+
+        // Initially, no artifacts exist
+        assert_eq!(crate::db::has_artifacts(&conn, "test-skill", 0).unwrap(), false);
+
+        // Insert an artifact
+        crate::db::save_artifact(
+            &conn,
+            "test-skill",
+            0,
+            "context/clarifications-concepts.md",
+            "# Test content",
+        )
+        .unwrap();
+
+        // Now has_artifacts should return true
+        assert_eq!(crate::db::has_artifacts(&conn, "test-skill", 0).unwrap(), true);
+
+        // Different step should still return false
+        assert_eq!(crate::db::has_artifacts(&conn, "test-skill", 1).unwrap(), false);
+
+        // Different skill should return false
+        assert_eq!(crate::db::has_artifacts(&conn, "other-skill", 0).unwrap(), false);
+
+        // Add another artifact to the same step
+        crate::db::save_artifact(
+            &conn,
+            "test-skill",
+            0,
+            "context/another-file.md",
+            "# More content",
+        )
+        .unwrap();
+
+        // Should still return true
+        assert_eq!(crate::db::has_artifacts(&conn, "test-skill", 0).unwrap(), true);
+    }
+
+    #[test]
+    fn test_capture_artifacts_on_error_with_invalid_agent_id() {
+        // This test verifies that capture_artifacts_on_error handles invalid agent_ids gracefully
+        // We can't easily create a full Tauri app handle in a unit test, so we just test
+        // the parse_agent_id function which is the first thing capture_artifacts_on_error does
+        assert!(parse_agent_id("invalid-agent-id").is_none());
+        assert!(parse_agent_id("").is_none());
     }
 }

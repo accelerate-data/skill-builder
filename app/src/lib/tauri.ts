@@ -184,6 +184,9 @@ export const saveArtifactContent = (
   content: string,
 ) => invoke("save_artifact_content", { skillName, stepId, relativePath, content });
 
+export const hasStepArtifacts = (skillName: string, stepId: number) =>
+  invoke<boolean>("has_step_artifacts", { skillName, stepId });
+
 // --- Reconciliation ---
 
 export const reconcileStartup = () =>
