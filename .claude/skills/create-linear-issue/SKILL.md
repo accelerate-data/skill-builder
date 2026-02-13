@@ -2,8 +2,10 @@
 name: create-linear-issue
 description: |
   Creates well-structured Linear issues from short product thoughts, feature requests, or bug reports.
+  Also decomposes large existing issues into smaller ones.
   Triggers on "create issue", "log a bug", "file a ticket", "new feature", "something is broken",
-  or "/create-issue". Classifies as feature or bug, explores the codebase for feasibility,
+  "break down VD-123", "decompose VD-123", "split VD-123", or "/create-issue".
+  Classifies as feature or bug, explores the codebase for feasibility,
   and produces product-level issues with no implementation details.
 ---
 
@@ -28,7 +30,9 @@ You are a **coordinator**. Turn a short product thought into a clear, product-le
 
 ## Phase 1: Classify & Clarify
 
-Classify as `feature` or `bug`. Ask **at most 2** targeted clarifications. Don't ask what you can infer.
+If the user provides an existing issue ID with decompose intent (e.g., "break down VD-123"), follow the **Decompose Path** below instead.
+
+Otherwise, classify as `feature` or `bug` using `AskUserQuestion` with structured options when choices are finite. Ask **at most 2** targeted clarifications. Don't ask what you can infer.
 
 ## Phase 2a: Feature Path
 
@@ -46,7 +50,7 @@ Sub-agent investigates code + git history. Returns user-visible symptoms, reprod
 
 See [linear-operations.md](references/linear-operations.md) for the estimate table.
 
-**L is the maximum.** If scope exceeds L, decompose into multiple issues. Present estimate to user; they can override.
+**L is the maximum.** If scope exceeds L, switch to the **Decompose Path** to break it into smaller issues. Present estimate to user; they can override.
 
 ## Phase 4: Create Linear Issue
 
@@ -72,3 +76,39 @@ See [linear-operations.md](references/linear-operations.md) for MCP tools.
 ```
 
 4. Spawn a sub-agent with the full payload to create the issue (`assignee: "me"`). It returns the issue ID/URL.
+
+## Decompose Path
+
+Triggered when the user provides an existing issue ID with intent to break it down (e.g., "break down VD-123", "decompose VD-123", "split VD-123").
+
+```
+- [ ] Step 1: Fetch issue
+- [ ] Step 2: Analyze & propose
+- [ ] Step 3: Create child issues
+```
+
+### Step 1: Fetch Issue
+
+Spawn parallel sub-agents:
+- **`general-purpose`** (model: `haiku`): Fetch the issue via `linear-server:get_issue`. Return title, description, requirements, ACs, estimate.
+- **`general-purpose`** (model: `haiku`): Fetch projects and labels from Linear.
+
+### Step 2: Analyze & Propose
+
+Spawn a `feature-dev:code-explorer` sub-agent with the issue requirements. It scans the codebase to map each requirement to affected areas and estimate per-area effort.
+
+Using the analysis, split into 2-4 child issues, each ≤ L estimate. Each child gets: title, requirements subset, ACs, and estimate. Present to user via `AskUserQuestion` for confirmation.
+
+### Step 3: Create Child Issues
+
+Spawn parallel sub-agents to create each child issue on Linear (`assignee: "me"`). Reference the parent issue ID in each child's Context section. Update the parent issue description to list the child issues.
+
+## Sub-agent Type Selection
+
+| Task | subagent_type | model |
+|---|---|---|
+| Codebase feasibility | feature-dev:code-explorer | default |
+| Bug investigation (needs git history) | Explore | default |
+| External research | general-purpose | default |
+| Requirements drafting | general-purpose | sonnet |
+| Linear operations | general-purpose | haiku |

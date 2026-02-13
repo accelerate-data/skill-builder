@@ -8,7 +8,7 @@ In both cases, the codebase is reviewed internally for feasibility. The differen
 
 ## Step 2a: Direct Path
 
-Spawn a single sub-agent to review the codebase and draft requirements. It returns:
+Spawn a single `feature-dev:code-explorer` sub-agent to review the codebase and assess feasibility. It returns:
 
 **INTERNAL (coordinator only):** feasibility, scope signal (XS/S/M/L), constraints.
 
@@ -18,7 +18,7 @@ Spawn a single sub-agent to review the codebase and draft requirements. It retur
 
 Spawn an **exploration team lead** that coordinates parallel sub-agents:
 
-1. **Codebase analyst** — feasibility, constraints, scope (internal only)
+1. **Codebase analyst** (`feature-dev:code-explorer`) — feasibility, constraints, scope (internal only)
 2. **External researcher** — how similar products handle this, UX patterns, backend patterns
 
 The team lead synthesizes into 2-3 product-level options. Always include the user's original approach. No implementation details.

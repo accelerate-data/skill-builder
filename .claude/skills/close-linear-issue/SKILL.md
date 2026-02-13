@@ -42,7 +42,7 @@ Report to user: issue status, PR URL, worktree path.
 
 ### Phase 2: Confirm Manual Testing
 
-Ask the user if manual testing passed. If issues remain, stop — use the implement skill to fix first.
+Confirm with `AskUserQuestion`: "Tests passed — ready to merge", "Found issues — need fixes first", "Skip — merge without testing". If issues found, stop and let the user fix via the implement skill.
 
 ### Phase 3: Rebase + Merge
 

@@ -55,7 +55,9 @@ Both frontends use the same files -- no conversion needed:
 
 ### /create-issue
 When the user runs /create-issue or asks to create a Linear issue, log a bug, file a ticket,
-or track a feature idea, read and follow the skill at `.claude/skills/create-linear-issue/SKILL.md`.
+track a feature idea, break down a large issue, or decompose an issue into smaller ones
+(e.g. "break down VD-123", "decompose VD-123", "split VD-123"),
+read and follow the skill at `.claude/skills/create-linear-issue/SKILL.md`.
 
 ### /implement-issue
 When the user runs /implement-issue, or mentions a Linear issue identifier (e.g. "VD-123", "implement VD-123",

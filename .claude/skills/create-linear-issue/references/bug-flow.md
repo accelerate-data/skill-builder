@@ -2,7 +2,7 @@
 
 ## Step 1: Investigation
 
-Spawn a sub-agent to review code and recent git history. It returns the standard split:
+Spawn an `Explore` sub-agent to review code and recent git history. It returns the standard split:
 
 **INTERNAL (coordinator only):** likely root cause, affected scope, recent relevant commits, estimated fix complexity (XS/S/M/L).
 

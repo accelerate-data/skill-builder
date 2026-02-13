@@ -24,3 +24,7 @@ The plan must cover:
 ## Present Plan to User
 
 Show work streams, dependency chain, AC mapping, and risks. User may approve, adjust, or reorder.
+
+## On Plan Rejection
+
+If the user rejects the plan, spawn the planning agent again with the user's feedback. The revised plan must present 2-3 alternative approaches with trade-offs (e.g., scope, complexity, risk). The user picks an approach, and planning continues from there. If the chosen approach changes the issue's requirements or ACs, update the Linear issue via `linear-server:update_issue` before proceeding to execution.
