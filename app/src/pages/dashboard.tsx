@@ -149,7 +149,7 @@ export default function DashboardPage() {
         {workspacePath && skillsPath && (
           <NewSkillDialog
             workspacePath={workspacePath}
-            onCreated={() => { loadSkills(); loadTags(); }}
+            onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
             tagSuggestions={availableTags}
           />
         )}
@@ -269,7 +269,7 @@ export default function DashboardPage() {
             <CardContent className="flex justify-center">
               <NewSkillDialog
                 workspacePath={workspacePath}
-                onCreated={() => { loadSkills(); loadTags(); }}
+                onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
                 tagSuggestions={availableTags}
               />
             </CardContent>

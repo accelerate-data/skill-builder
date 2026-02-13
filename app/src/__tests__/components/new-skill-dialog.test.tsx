@@ -10,18 +10,25 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
+// Mock @tanstack/react-router
+const mockNavigate = vi.fn();
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => mockNavigate,
+}));
+
 import NewSkillDialog from "@/components/new-skill-dialog";
 
 describe("NewSkillDialog", () => {
   beforeEach(() => {
     resetTauriMocks();
+    mockNavigate.mockReset();
     vi.mocked(toast.success).mockReset();
     vi.mocked(toast.error).mockReset();
   });
 
   it("renders trigger button", () => {
     render(
-      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
     );
     expect(
       screen.getByRole("button", { name: /New Skill/i })
@@ -31,7 +38,7 @@ describe("NewSkillDialog", () => {
   it("opens dialog when trigger button is clicked", async () => {
     const user = userEvent.setup();
     render(
-      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
     );
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
@@ -45,7 +52,7 @@ describe("NewSkillDialog", () => {
   it("renders domain and skill name inputs in dialog", async () => {
     const user = userEvent.setup();
     render(
-      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
     );
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
@@ -57,7 +64,7 @@ describe("NewSkillDialog", () => {
   it("auto-generates kebab-case name from domain input", async () => {
     const user = userEvent.setup();
     render(
-      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
     );
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
@@ -72,7 +79,7 @@ describe("NewSkillDialog", () => {
   it("disables Create button when domain is empty", async () => {
     const user = userEvent.setup();
     render(
-      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
     );
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
@@ -84,7 +91,7 @@ describe("NewSkillDialog", () => {
   it("enables Create button when domain has text and skill type is selected", async () => {
     const user = userEvent.setup();
     render(
-      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
     );
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
@@ -102,7 +109,7 @@ describe("NewSkillDialog", () => {
   it("disables Create button when skill type is not selected", async () => {
     const user = userEvent.setup();
     render(
-      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
     );
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
@@ -117,7 +124,7 @@ describe("NewSkillDialog", () => {
 
   it("calls invoke create_skill and onCreated on successful submit", async () => {
     const user = userEvent.setup();
-    const onCreated = vi.fn();
+    const onCreated = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     mockInvoke.mockResolvedValue(undefined);
 
     render(
@@ -153,12 +160,65 @@ describe("NewSkillDialog", () => {
     );
   });
 
+  it("navigates to skill editor after successful creation", async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    mockInvoke.mockResolvedValue(undefined);
+
+    render(
+      <NewSkillDialog workspacePath="/workspace" onCreated={onCreated} />
+    );
+
+    await user.click(screen.getByRole("button", { name: /New Skill/i }));
+
+    await user.click(screen.getByRole("radio", { name: /Domain/i }));
+
+    const domainInput = screen.getByLabelText("Domain");
+    await user.type(domainInput, "Sales Pipeline");
+
+    const createButton = screen.getByRole("button", { name: /^Create$/i });
+    await user.click(createButton);
+
+    await waitFor(() => {
+      expect(onCreated).toHaveBeenCalled();
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/skill/$skillName",
+      params: { skillName: "sales-pipeline" },
+    });
+  });
+
+  it("does not navigate on failed creation", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockRejectedValue(new Error("Skill already exists"));
+
+    render(
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
+    );
+
+    await user.click(screen.getByRole("button", { name: /New Skill/i }));
+    await user.click(screen.getByRole("radio", { name: /Platform/i }));
+
+    const domainInput = screen.getByLabelText("Domain");
+    await user.type(domainInput, "Test Skill");
+
+    const createButton = screen.getByRole("button", { name: /^Create$/i });
+    await user.click(createButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("Skill already exists")).toBeInTheDocument();
+    });
+
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it("shows error message on failed submit", async () => {
     const user = userEvent.setup();
     mockInvoke.mockRejectedValue(new Error("Skill already exists"));
 
     render(
-      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
     );
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
@@ -180,7 +240,7 @@ describe("NewSkillDialog", () => {
   it("has Cancel button that closes dialog", async () => {
     const user = userEvent.setup();
     render(
-      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
     );
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
@@ -196,7 +256,7 @@ describe("NewSkillDialog", () => {
   it("renders tag input in dialog", async () => {
     const user = userEvent.setup();
     render(
-      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
     );
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
@@ -210,7 +270,7 @@ describe("NewSkillDialog", () => {
     mockInvoke.mockResolvedValue(undefined);
 
     render(
-      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
     );
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
@@ -241,7 +301,7 @@ describe("NewSkillDialog", () => {
   it("allows editing the skill name independently", async () => {
     const user = userEvent.setup();
     render(
-      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
     );
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
@@ -259,7 +319,7 @@ describe("NewSkillDialog", () => {
   it("renders skill type radio group with 4 options", async () => {
     const user = userEvent.setup();
     render(
-      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
     );
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
@@ -280,7 +340,7 @@ describe("NewSkillDialog", () => {
     mockInvoke.mockResolvedValue(undefined);
 
     render(
-      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
     );
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
@@ -308,7 +368,7 @@ describe("NewSkillDialog", () => {
     render(
       <NewSkillDialog
         workspacePath="/workspace"
-        onCreated={vi.fn()}
+        onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)}
         tagSuggestions={["analytics", "salesforce", "workday"]}
       />
     );
@@ -331,7 +391,7 @@ describe("NewSkillDialog", () => {
     render(
       <NewSkillDialog
         workspacePath="/workspace"
-        onCreated={vi.fn()}
+        onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)}
         tagSuggestions={["analytics", "salesforce", "workday"]}
       />
     );
@@ -379,7 +439,7 @@ describe("NewSkillDialog", () => {
     render(
       <NewSkillDialog
         workspacePath="/workspace"
-        onCreated={vi.fn()}
+        onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)}
         tagSuggestions={["Analytics", "Salesforce"]}
       />
     );
@@ -400,7 +460,7 @@ describe("NewSkillDialog", () => {
     render(
       <NewSkillDialog
         workspacePath="/workspace"
-        onCreated={vi.fn()}
+        onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)}
         tagSuggestions={["analytics", "anomaly"]}
       />
     );
