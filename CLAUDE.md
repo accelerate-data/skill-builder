@@ -33,13 +33,16 @@ claude --plugin-dir .                    # Load plugin locally
 
 ### When to write tests
 
-1. **New state logic** (store actions, derived state) -> store unit tests
-2. **New Rust command** with testable logic -> `#[cfg(test)]` tests
-3. **New UI interaction** (button states, form validation) -> component test
-4. **New page or major flow** -> E2E test (happy path)
-5. **Bug fix** -> regression test
+**App:**
+1. New state logic (store actions, derived state) → store unit tests
+2. New Rust command with testable logic → `#[cfg(test)]` tests
+3. New UI interaction (button states, form validation) → component test
+4. New page or major flow → E2E test (happy path)
+5. Bug fix → regression test
 
 Purely cosmetic changes or simple wiring don't require tests. If unclear, ask the user.
+
+**Plugin:** Agent prompts and coordinator changes are validated by the existing test tiers — don't write new tests, run the appropriate tier instead (see below).
 
 ### Test discipline
 
@@ -51,15 +54,36 @@ Before writing any test code, read existing tests for the files you changed:
 
 ### Choosing which tests to run
 
-Before committing, consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files you changed. The manifest maps every source file to its unit tests, integration tests, and E2E tags.
+Before committing, consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files you changed.
 
-**Quick rules:**
+**App quick rules:**
 - Changed a store? → `./tests/run.sh unit` + E2E tag from manifest
 - Changed a component? → `./tests/run.sh integration` + E2E tag from manifest
 - Changed a Rust command? → `cargo test` + E2E tag if UI-facing
 - Changed `src/lib/tauri.ts` or test mocks? → `./tests/run.sh` (all levels)
-- Changed shared files (`agents/`, `references/`, `.claude-plugin/`)? → `./tests/run.sh plugin --tag <tag>`
 - Unsure? → `./tests/run.sh` runs everything
+
+**Plugin quick rules:**
+- Changed an agent prompt (`agents/`)? → `./scripts/test-plugin.sh t1`
+- Changed the coordinator (`skills/start/SKILL.md`)? → `./scripts/test-plugin.sh t1 t2 t3`
+- Changed `references/shared-context.md`? → `./scripts/test-plugin.sh t1`
+- Changed `.claude-plugin/plugin.json`? → `./scripts/test-plugin.sh t1 t2`
+- Unsure? → `./scripts/test-plugin.sh` runs all tiers
+
+**Cross-cutting** (shared files affect both app and plugin):
+- Changed `agents/`, `references/`, or `.claude-plugin/`? → run both `./tests/run.sh plugin --tag <tag>` and `./scripts/test-plugin.sh t1`
+
+### Plugin test tiers
+
+| Tier | Name | What it tests | Cost |
+|---|---|---|---|
+| **T1** | Structural Validation | Plugin manifest, agent count (27), frontmatter, model tiers | Free |
+| **T2** | Plugin Loading | Plugin loads into `claude -p`, skill trigger responds | ~$0.05 |
+| **T3** | Start Mode Detection | Modes A/B/C detected correctly using fixtures | ~$0.25 |
+| **T4** | Agent Smoke Tests | Merge deduplicates, reasoning produces decisions, build creates SKILL.md | ~$0.50 |
+| **T5** | Full E2E Workflow | End-to-end `/skill-builder:start` with auto-answered gates | ~$5.00 |
+
+Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_T5`, `KEEP_TEMP`, `VERBOSE`.
 
 **E2E tags:** `@dashboard`, `@settings`, `@workflow`, `@workflow-agent`, `@navigation`
 

@@ -55,30 +55,7 @@ Edit `skills/start/SKILL.md`. This contains the full coordinator logic: session 
 
 Run manually: `./scripts/validate.sh`
 
-**Test harness** (`scripts/test-plugin.sh`):
-
-```bash
-./scripts/test-plugin.sh           # Run all tiers
-./scripts/test-plugin.sh t1        # Run only T1 (free, no LLM)
-./scripts/test-plugin.sh t1 t2     # Run T1 and T2
-./scripts/test-plugin.sh --list    # List available tiers
-```
-
-| Tier | Name | What it tests | Cost |
-|---|---|---|---|
-| **T1** | Structural Validation | Plugin validate, agent count (27), frontmatter, model tiers | Free |
-| **T2** | Plugin Loading | Plugin loads into `claude -p`, skill trigger responds | ~$0.05 |
-| **T3** | Start Mode Detection | Modes A/B/C detected correctly using fixtures | ~$0.25 |
-| **T4** | Agent Smoke Tests | Merge deduplicates, reasoning produces decisions, build creates SKILL.md | ~$0.50 |
-| **T5** | Full E2E Workflow | End-to-end `/skill-builder:start` with auto-answered gates | ~$5.00 |
-
-Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_T5`, `KEEP_TEMP`, `VERBOSE`.
-
-**Live testing** (interactive):
-```bash
-claude --plugin-dir .
-/skill-builder:start
-```
+For test commands, tiers, and quick rules, see the Testing section in CLAUDE.md.
 
 ### Key constraints
 
