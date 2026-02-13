@@ -17,33 +17,22 @@ vi.mock("@tauri-apps/api/app", () => ({
   getVersion: vi.fn(() => Promise.resolve("1.2.3")),
 }));
 
-const { mockStartAgent, mockGetWorkspacePath, mockReadFileAsBase64, mockCreateGithubIssue, mockOpenFileDialog } = vi.hoisted(() => ({
+const { mockStartAgent, mockGetWorkspacePath, mockCreateGithubIssue } = vi.hoisted(() => ({
   mockStartAgent: vi.fn<(...args: unknown[]) => Promise<string>>(() =>
     Promise.resolve("feedback-123"),
   ),
   mockGetWorkspacePath: vi.fn<() => Promise<string>>(() =>
     Promise.resolve("/workspace"),
   ),
-  mockReadFileAsBase64: vi.fn<(filePath: string) => Promise<string>>(() =>
-    Promise.resolve("aGVsbG8gd29ybGQ="),
-  ),
-  mockCreateGithubIssue: vi.fn<(request: unknown) => Promise<{ url: string; number: number; failedUploads: string[] }>>(() =>
-    Promise.resolve({ url: "https://github.com/hbanerjee74/skill-builder/issues/42", number: 42, failedUploads: [] }),
-  ),
-  mockOpenFileDialog: vi.fn<() => Promise<string | string[] | null>>(() =>
-    Promise.resolve(null),
+  mockCreateGithubIssue: vi.fn<(request: unknown) => Promise<{ url: string; number: number }>>(() =>
+    Promise.resolve({ url: "https://github.com/hbanerjee74/skill-builder/issues/42", number: 42 }),
   ),
 }));
 
 vi.mock("@/lib/tauri", () => ({
   startAgent: mockStartAgent,
   getWorkspacePath: mockGetWorkspacePath,
-  readFileAsBase64: mockReadFileAsBase64,
   createGithubIssue: mockCreateGithubIssue,
-}));
-
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-  open: mockOpenFileDialog,
 }));
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
@@ -146,13 +135,10 @@ describe("FeedbackDialog", () => {
     useAgentStore.getState().clearRuns();
     mockStartAgent.mockReset().mockResolvedValue("feedback-123");
     mockGetWorkspacePath.mockReset().mockResolvedValue("/workspace");
-    mockReadFileAsBase64.mockReset().mockResolvedValue("aGVsbG8gd29ybGQ=");
     mockCreateGithubIssue.mockReset().mockResolvedValue({
       url: "https://github.com/hbanerjee74/skill-builder/issues/42",
       number: 42,
-      failedUploads: [],
     });
-    mockOpenFileDialog.mockReset().mockResolvedValue(null);
     vi.mocked(toast.success).mockReset();
     vi.mocked(toast.warning).mockReset();
     vi.mocked(toast.error).mockReset();
@@ -318,7 +304,6 @@ describe("FeedbackDialog", () => {
       title: string;
       body: string;
       labels: string[];
-      attachments: unknown[];
     };
     expect(request.title).toBe("Refined: App crashes on startup");
     expect(request.body).toContain("## Problem");
@@ -326,7 +311,6 @@ describe("FeedbackDialog", () => {
     expect(request.labels).toContain("bug");
     expect(request.labels).toContain("v1.2.3");
     expect(request.labels).toContain("crash");
-    expect(request.attachments).toEqual([]);
   });
 
   it("shows success toast with GitHub issue URL on submission completion", async () => {
@@ -359,47 +343,6 @@ describe("FeedbackDialog", () => {
           duration: Infinity,
         }),
       );
-    });
-  });
-
-  it("shows persistent warning toast with issue link when image uploads fail", async () => {
-    mockCreateGithubIssue.mockResolvedValue({
-      url: "https://github.com/hbanerjee74/skill-builder/issues/42",
-      number: 42,
-      failedUploads: ["screenshot.png"],
-    });
-
-    const user = userEvent.setup();
-    render(<FeedbackDialog />);
-
-    await user.click(screen.getByTitle("Send feedback"));
-    await user.type(screen.getByLabelText("Title"), "App crashes");
-    await user.click(screen.getByRole("button", { name: /Analyze/i }));
-
-    await waitFor(() => {
-      expect(mockStartAgent).toHaveBeenCalledTimes(1);
-    });
-
-    const enrichAgentId = mockStartAgent.mock.calls[0][0] as string;
-    act(() => {
-      simulateEnrichmentComplete(enrichAgentId);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Create GitHub Issue/i })).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole("button", { name: /Create GitHub Issue/i }));
-
-    await waitFor(() => {
-      expect(toast.warning).toHaveBeenCalledWith(
-        "Issue #42 created — 1 image could not be uploaded",
-        expect.objectContaining({
-          description: "Open the issue and drag-and-drop your images into a comment.",
-          duration: Infinity,
-        }),
-      );
-      expect(toast.success).not.toHaveBeenCalled();
     });
   });
 
@@ -465,143 +408,4 @@ describe("FeedbackDialog", () => {
     });
   });
 
-  it("renders Attach file button in input step", async () => {
-    const user = userEvent.setup();
-    render(<FeedbackDialog />);
-
-    await user.click(screen.getByTitle("Send feedback"));
-    expect(screen.getByRole("button", { name: /Attach file/i })).toBeInTheDocument();
-  });
-
-  it("opens file dialog when Attach file is clicked", async () => {
-    const user = userEvent.setup();
-    render(<FeedbackDialog />);
-
-    await user.click(screen.getByTitle("Send feedback"));
-    await user.click(screen.getByRole("button", { name: /Attach file/i }));
-
-    expect(mockOpenFileDialog).toHaveBeenCalledTimes(1);
-    expect(mockOpenFileDialog).toHaveBeenCalledWith(
-      expect.objectContaining({ multiple: true }),
-    );
-  });
-
-  it("shows attachment preview after file is attached", async () => {
-    mockOpenFileDialog.mockResolvedValue("/path/to/screenshot.png");
-    // Must be valid base64 since atob() is called to compute size
-    mockReadFileAsBase64.mockResolvedValue("UE5HIGZha2UgZGF0YQ==");
-
-    const user = userEvent.setup();
-    render(<FeedbackDialog />);
-
-    await user.click(screen.getByTitle("Send feedback"));
-    await user.click(screen.getByRole("button", { name: /Attach file/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText("screenshot.png")).toBeInTheDocument();
-      expect(screen.getByText("Attachments (1/5)")).toBeInTheDocument();
-    });
-  });
-
-  it("shows remove button on attachment hover", async () => {
-    mockOpenFileDialog.mockResolvedValue("/path/to/file.txt");
-    mockReadFileAsBase64.mockResolvedValue("aGVsbG8="); // "hello"
-
-    const user = userEvent.setup();
-    render(<FeedbackDialog />);
-
-    await user.click(screen.getByTitle("Send feedback"));
-    await user.click(screen.getByRole("button", { name: /Attach file/i }));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Remove file.txt")).toBeInTheDocument();
-    });
-  });
-
-  it("removes attachment when remove button is clicked", async () => {
-    mockOpenFileDialog.mockResolvedValue("/path/to/file.txt");
-    mockReadFileAsBase64.mockResolvedValue("aGVsbG8=");
-
-    const user = userEvent.setup();
-    render(<FeedbackDialog />);
-
-    await user.click(screen.getByTitle("Send feedback"));
-    await user.click(screen.getByRole("button", { name: /Attach file/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText("file.txt")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByLabelText("Remove file.txt"));
-
-    await waitFor(() => {
-      expect(screen.queryByText("file.txt")).not.toBeInTheDocument();
-    });
-  });
-
-  it("shows error toast when file read fails", async () => {
-    mockOpenFileDialog.mockResolvedValue("/path/to/bad-file.txt");
-    mockReadFileAsBase64.mockRejectedValue("Permission denied");
-
-    const user = userEvent.setup();
-    render(<FeedbackDialog />);
-
-    await user.click(screen.getByTitle("Send feedback"));
-    await user.click(screen.getByRole("button", { name: /Attach file/i }));
-
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Failed to read file: Permission denied");
-    });
-  });
-
-  it("passes attachments to createGithubIssue when submitting with files", async () => {
-    mockOpenFileDialog.mockResolvedValue("/path/to/screenshot.png");
-    mockReadFileAsBase64.mockResolvedValue("UE5HIGZha2UgZGF0YQ==");
-
-    const user = userEvent.setup();
-    render(<FeedbackDialog />);
-
-    // Open dialog and attach file
-    await user.click(screen.getByTitle("Send feedback"));
-    await user.click(screen.getByRole("button", { name: /Attach file/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText("screenshot.png")).toBeInTheDocument();
-    });
-
-    // Fill in title and analyze
-    await user.type(screen.getByLabelText("Title"), "App crashes");
-    await user.click(screen.getByRole("button", { name: /Analyze/i }));
-
-    await waitFor(() => {
-      expect(mockStartAgent).toHaveBeenCalledTimes(1);
-    });
-
-    const enrichAgentId = mockStartAgent.mock.calls[0][0] as string;
-    act(() => {
-      simulateEnrichmentComplete(enrichAgentId);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Create GitHub Issue/i })).toBeInTheDocument();
-    });
-
-    // Submit
-    await user.click(screen.getByRole("button", { name: /Create GitHub Issue/i }));
-
-    await waitFor(() => {
-      expect(mockCreateGithubIssue).toHaveBeenCalledTimes(1);
-    });
-
-    const request = mockCreateGithubIssue.mock.calls[0][0] as {
-      title: string;
-      body: string;
-      labels: string[];
-      attachments: Array<{ name: string; base64Content: string; mimeType: string; size: number }>;
-    };
-    expect(request.attachments).toHaveLength(1);
-    expect(request.attachments[0].name).toBe("screenshot.png");
-    expect(request.attachments[0].mimeType).toBe("image/png");
-    expect(request.attachments[0].base64Content).toBe("UE5HIGZha2UgZGF0YQ==");
-  });
 });

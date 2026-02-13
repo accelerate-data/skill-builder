@@ -7,31 +7,15 @@ pub struct CreateGithubIssueRequest {
     pub title: String,
     pub body: String,
     pub labels: Vec<String>,
-    pub attachments: Vec<FeedbackAttachment>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct FeedbackAttachment {
-    pub name: String,
-    #[serde(rename = "base64Content")]
-    pub base64_content: String,
-    #[serde(rename = "mimeType")]
-    pub mime_type: String,
-    pub size: u64,
 }
 
 #[derive(Debug, Serialize)]
 pub struct CreateGithubIssueResponse {
     pub url: String,
     pub number: u64,
-    #[serde(rename = "failedUploads")]
-    pub failed_uploads: Vec<String>,
 }
 
-/// Create a GitHub issue with optional attachments.
-/// Images are uploaded to the repo's `attachments` branch and embedded inline.
-/// Falls back gracefully for non-collaborators (listed by name instead).
-/// Small text files are included inline as code blocks.
+/// Create a GitHub issue via the GitHub API.
 #[tauri::command]
 pub async fn create_github_issue(
     db: tauri::State<'_, crate::db::Db>,
@@ -48,74 +32,12 @@ pub async fn create_github_issue(
 
     let client = reqwest::Client::new();
 
-    // 2. Process attachments into markdown
-    let mut attachment_markdown = String::new();
-    let mut has_attachments = false;
-    let mut failed_uploads: Vec<String> = Vec::new();
-
-    for att in &request.attachments {
-        if att.mime_type.starts_with("image/") {
-            // Upload image to repo and embed inline
-            match upload_attachment_to_repo(&client, &github_pat, &att.name, &att.base64_content).await {
-                Ok(image_url) => {
-                    if !has_attachments {
-                        attachment_markdown.push_str("\n\n## Attachments\n\n");
-                        has_attachments = true;
-                    }
-                    attachment_markdown.push_str(&format!(
-                        "![{}]({})\n\n",
-                        att.name, image_url
-                    ));
-                }
-                Err(e) => {
-                    log::warn!("Failed to upload image {}: {}", att.name, e);
-                    failed_uploads.push(att.name.clone());
-                    if !has_attachments {
-                        attachment_markdown.push_str("\n\n## Attachments\n\n");
-                        has_attachments = true;
-                    }
-                    attachment_markdown.push_str(&format!(
-                        "- {} ({} bytes) — _image not embedded, please add via comment below_\n",
-                        att.name, att.size
-                    ));
-                }
-            }
-        } else if is_text_type(&att.mime_type) && att.size < 10240 {
-            // Inline small text files as code blocks
-            use base64::Engine;
-            if let Ok(bytes) =
-                base64::engine::general_purpose::STANDARD.decode(&att.base64_content)
-            {
-                if let Ok(text) = String::from_utf8(bytes) {
-                    if !has_attachments {
-                        attachment_markdown.push_str("\n\n## Attachments\n\n");
-                        has_attachments = true;
-                    }
-                    attachment_markdown.push_str(&format!(
-                        "<details>\n<summary>{} ({} bytes)</summary>\n\n```\n{}\n```\n\n</details>\n\n",
-                        att.name, att.size, text
-                    ));
-                }
-            }
-        } else {
-            // Large or binary files: mention by name
-            if !has_attachments {
-                attachment_markdown.push_str("\n\n## Attachments\n\n");
-                has_attachments = true;
-            }
-            attachment_markdown.push_str(&format!("- {} ({} bytes)\n", att.name, att.size));
-        }
-    }
-
-    // 3. Build full body
-    let full_body = format!("{}{}", request.body, attachment_markdown);
-
-    // 4. Ensure labels exist (create if needed, best-effort)
+    // 2. Ensure labels exist (create if needed, best-effort)
     for label in &request.labels {
         ensure_label(&client, &github_pat, label).await.ok();
     }
 
-    // 5. Create the issue
+    // 3. Create the issue
     let response = client
         .post(format!(
             "https://api.github.com/repos/{}/issues",
@@ -127,7 +49,7 @@ pub async fn create_github_issue(
         .header("X-GitHub-Api-Version", "2022-11-28")
         .json(&serde_json::json!({
             "title": request.title,
-            "body": full_body,
+            "body": request.body,
             "labels": request.labels,
         }))
         .send()
@@ -153,157 +75,7 @@ pub async fn create_github_issue(
         .as_u64()
         .ok_or("Missing number in response")?;
 
-    Ok(CreateGithubIssueResponse { url, number, failed_uploads })
-}
-
-/// Upload a file to the repo's `attachments` branch via the GitHub Contents API.
-/// Returns the raw URL that serves the actual binary file with correct MIME type.
-/// This lets images render inline in GitHub issues.
-async fn upload_attachment_to_repo(
-    client: &reqwest::Client,
-    pat: &str,
-    filename: &str,
-    base64_content: &str,
-) -> Result<String, String> {
-    let branch = "attachments";
-
-    // Ensure the attachments branch exists
-    ensure_attachments_branch(client, pat, branch).await?;
-
-    // Use a unique path to avoid collisions: attachments/{timestamp}-{filename}
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let path = format!("feedback/{}-{}", timestamp, filename);
-
-    let response = client
-        .put(format!(
-            "https://api.github.com/repos/{}/contents/{}",
-            GITHUB_REPO, path
-        ))
-        .header("Authorization", format!("Bearer {}", pat))
-        .header("Accept", "application/vnd.github+json")
-        .header("User-Agent", "SkillBuilder")
-        .header("X-GitHub-Api-Version", "2022-11-28")
-        .json(&serde_json::json!({
-            "message": format!("feedback attachment: {}", filename),
-            "content": base64_content,
-            "branch": branch,
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("Upload failed: {e}"))?;
-
-    let status = response.status();
-    let body: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse upload response: {e}"))?;
-
-    if !status.is_success() {
-        let msg = body["message"].as_str().unwrap_or("Unknown error");
-        return Err(format!("Upload error ({}): {}", status, msg));
-    }
-
-    let download_url = body["content"]["download_url"]
-        .as_str()
-        .ok_or("Missing download_url in response")?
-        .to_string();
-
-    Ok(download_url)
-}
-
-/// Ensure the `attachments` branch exists in the repo. Creates it from the default
-/// branch HEAD if it doesn't exist yet.
-async fn ensure_attachments_branch(
-    client: &reqwest::Client,
-    pat: &str,
-    branch: &str,
-) -> Result<(), String> {
-    // Check if branch exists
-    let check = client
-        .get(format!(
-            "https://api.github.com/repos/{}/branches/{}",
-            GITHUB_REPO, branch
-        ))
-        .header("Authorization", format!("Bearer {}", pat))
-        .header("Accept", "application/vnd.github+json")
-        .header("User-Agent", "SkillBuilder")
-        .header("X-GitHub-Api-Version", "2022-11-28")
-        .send()
-        .await
-        .map_err(|e| format!("Branch check failed: {e}"))?;
-
-    if check.status().is_success() {
-        return Ok(());
-    }
-
-    // Get the default branch SHA to branch from
-    let repo_response = client
-        .get(format!("https://api.github.com/repos/{}", GITHUB_REPO))
-        .header("Authorization", format!("Bearer {}", pat))
-        .header("Accept", "application/vnd.github+json")
-        .header("User-Agent", "SkillBuilder")
-        .header("X-GitHub-Api-Version", "2022-11-28")
-        .send()
-        .await
-        .map_err(|e| format!("Repo fetch failed: {e}"))?;
-
-    let repo: serde_json::Value = repo_response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse repo: {e}"))?;
-
-    let default_branch = repo["default_branch"]
-        .as_str()
-        .unwrap_or("main");
-
-    let ref_response = client
-        .get(format!(
-            "https://api.github.com/repos/{}/git/ref/heads/{}",
-            GITHUB_REPO, default_branch
-        ))
-        .header("Authorization", format!("Bearer {}", pat))
-        .header("Accept", "application/vnd.github+json")
-        .header("User-Agent", "SkillBuilder")
-        .header("X-GitHub-Api-Version", "2022-11-28")
-        .send()
-        .await
-        .map_err(|e| format!("Ref fetch failed: {e}"))?;
-
-    let ref_data: serde_json::Value = ref_response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse ref: {e}"))?;
-
-    let sha = ref_data["object"]["sha"]
-        .as_str()
-        .ok_or("Missing SHA for default branch")?;
-
-    // Create the branch
-    let create = client
-        .post(format!(
-            "https://api.github.com/repos/{}/git/refs",
-            GITHUB_REPO
-        ))
-        .header("Authorization", format!("Bearer {}", pat))
-        .header("Accept", "application/vnd.github+json")
-        .header("User-Agent", "SkillBuilder")
-        .header("X-GitHub-Api-Version", "2022-11-28")
-        .json(&serde_json::json!({
-            "ref": format!("refs/heads/{}", branch),
-            "sha": sha,
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("Branch creation failed: {e}"))?;
-
-    if create.status().is_success() || create.status() == reqwest::StatusCode::UNPROCESSABLE_ENTITY {
-        Ok(())
-    } else {
-        Err(format!("Failed to create branch: {}", create.status()))
-    }
+    Ok(CreateGithubIssueResponse { url, number })
 }
 
 /// Ensure a label exists on the repo (best-effort, 422 = already exists).
@@ -411,8 +183,4 @@ pub async fn test_github_pat(github_pat: String) -> Result<String, String> {
         "Authenticated as '{}' — can access {}",
         username, GITHUB_REPO
     ))
-}
-
-fn is_text_type(mime: &str) -> bool {
-    mime.starts_with("text/") || mime == "application/json"
 }

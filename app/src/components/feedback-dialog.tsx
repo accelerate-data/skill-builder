@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { getVersion } from "@tauri-apps/api/app"
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog"
-import { Bug, FileText, Lightbulb, Loader2, MessageSquarePlus, Paperclip, X } from "lucide-react"
+import { Bug, Lightbulb, Loader2, MessageSquarePlus } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,8 +20,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { startAgent, getWorkspacePath, readFileAsBase64, createGithubIssue } from "@/lib/tauri"
-import type { FeedbackAttachment as TauriFeedbackAttachment } from "@/lib/tauri"
+import { startAgent, getWorkspacePath, createGithubIssue } from "@/lib/tauri"
 import { useAgentStore } from "@/stores/agent-store"
 
 // ---------------------------------------------------------------------------
@@ -37,41 +35,7 @@ export interface EnrichedIssue {
   version: string
 }
 
-export interface Attachment {
-  name: string
-  size: number
-  mimeType: string
-  base64Content: string
-}
-
 type DialogStep = "input" | "enriching" | "review" | "submitting"
-
-const MAX_FILE_SIZE_BYTES = 5_242_880 // 5 MB
-const MAX_ATTACHMENTS = 5
-
-function getMimeType(ext: string): string {
-  const map: Record<string, string> = {
-    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
-    gif: "image/gif", webp: "image/webp", bmp: "image/bmp",
-    txt: "text/plain", log: "text/plain", md: "text/markdown",
-    json: "application/json", csv: "text/csv",
-  }
-  return map[ext] || "application/octet-stream"
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function base64ByteLength(base64: string): number {
-  let len = base64.length
-  // Remove padding
-  if (base64.endsWith("==")) len -= 2
-  else if (base64.endsWith("=")) len -= 1
-  return Math.floor((len * 3) / 4)
-}
 
 // ---------------------------------------------------------------------------
 // Prompt builders
@@ -179,9 +143,6 @@ export function FeedbackDialog() {
   // --- Enrichment result ---
   const [enriched, setEnriched] = useState<EnrichedIssue | null>(null)
 
-  // --- Attachments ---
-  const [attachments, setAttachments] = useState<Attachment[]>([])
-
   // --- Agent tracking ---
   const [pendingAgentId, setPendingAgentId] = useState<string | null>(null)
 
@@ -189,7 +150,6 @@ export function FeedbackDialog() {
     setTitle("")
     setDescription("")
     setEnriched(null)
-    setAttachments([])
     setStep("input")
     setPendingAgentId(null)
   }
@@ -238,80 +198,6 @@ export function FeedbackDialog() {
   // Handlers
   // -----------------------------------------------------------------------
 
-  const handleAttachFile = async () => {
-    const result = await openFileDialog({
-      multiple: true,
-      filters: [
-        { name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"] },
-        { name: "Text & Logs", extensions: ["txt", "log", "md", "json", "csv"] },
-        { name: "All Files", extensions: ["*"] },
-      ],
-    })
-    if (!result) return
-    const paths = Array.isArray(result) ? result : [result]
-    for (const filePath of paths) {
-      if (attachments.length >= MAX_ATTACHMENTS) {
-        toast.error(`Maximum ${MAX_ATTACHMENTS} attachments allowed`)
-        break
-      }
-      try {
-        const base64Content = await readFileAsBase64(filePath)
-        const name = filePath.split(/[/\\]/).pop() || "file"
-        const ext = name.split(".").pop()?.toLowerCase() || ""
-        const mimeType = getMimeType(ext)
-        const size = base64ByteLength(base64Content)
-        if (size > MAX_FILE_SIZE_BYTES) {
-          toast.error(`${name} exceeds 5 MB limit`)
-          continue
-        }
-        setAttachments((prev) => [...prev, { name, size, mimeType, base64Content }])
-      } catch (e) {
-        toast.error(`Failed to read file: ${e}`)
-      }
-    }
-  }
-
-  const handlePaste = useCallback(
-    (e: React.ClipboardEvent) => {
-      const items = e.clipboardData?.items
-      if (!items) return
-      for (const item of Array.from(items)) {
-        if (!item.type.startsWith("image/")) continue
-        e.preventDefault()
-        const blob = item.getAsFile()
-        if (!blob) continue
-        if (blob.size > MAX_FILE_SIZE_BYTES) {
-          toast.error("Pasted image exceeds 5 MB limit")
-          return
-        }
-        const reader = new FileReader()
-        reader.onload = () => {
-          const dataUrl = reader.result as string
-          const base64Content = dataUrl.split(",")[1]
-          const ext = blob.type.split("/")[1] || "png"
-          setAttachments((prev) => {
-            if (prev.length >= MAX_ATTACHMENTS) {
-              toast.error(`Maximum ${MAX_ATTACHMENTS} attachments allowed`)
-              return prev
-            }
-            toast.success("Image pasted from clipboard")
-            return [
-              ...prev,
-              {
-                name: `clipboard-${Date.now()}.${ext}`,
-                size: blob.size,
-                mimeType: blob.type,
-                base64Content,
-              },
-            ]
-          })
-        }
-        reader.readAsDataURL(blob)
-      }
-    },
-    [],
-  )
-
   const handleAnalyze = async () => {
     if (!title.trim()) return
     setStep("enriching")
@@ -355,42 +241,19 @@ export function FeedbackDialog() {
         (l) => l !== typeLabel && l !== versionLabel,
       )]
 
-      const feedbackAttachments: TauriFeedbackAttachment[] = attachments.map((att) => ({
-        name: att.name,
-        base64Content: att.base64Content,
-        mimeType: att.mimeType,
-        size: att.size,
-      }))
-
       const result = await createGithubIssue({
         title: enriched.title,
         body: enriched.body,
         labels: allLabels,
-        attachments: feedbackAttachments,
       })
 
-      if (result.failedUploads.length > 0) {
-        const count = result.failedUploads.length
-        toast.warning(
-          `Issue #${result.number} created — ${count} image${count > 1 ? "s" : ""} could not be uploaded`,
-          {
-            description: "Open the issue and drag-and-drop your images into a comment.",
-            action: {
-              label: "Open issue",
-              onClick: () => { openUrl(result.url) },
-            },
-            duration: Infinity,
-          },
-        )
-      } else {
-        toast.success(`Issue #${result.number} created`, {
-          action: {
-            label: "Open",
-            onClick: () => { openUrl(result.url) },
-          },
-          duration: Infinity,
-        })
-      }
+      toast.success(`Issue #${result.number} created`, {
+        action: {
+          label: "Open",
+          onClick: () => { openUrl(result.url) },
+        },
+        duration: Infinity,
+      })
 
       resetForm()
       setOpen(false)
@@ -418,46 +281,6 @@ export function FeedbackDialog() {
   // Render helpers
   // -----------------------------------------------------------------------
 
-  const renderAttachmentPreviews = (readOnly = false) => {
-    if (attachments.length === 0) return null
-    return (
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-muted-foreground">
-          Attachments ({attachments.length}/{MAX_ATTACHMENTS})
-        </p>
-        <div className="grid grid-cols-2 gap-2">
-          {attachments.map((att, i) => (
-            <div key={i} className="group relative flex items-center gap-2 rounded-md border p-2">
-              {att.mimeType.startsWith("image/") ? (
-                <img
-                  src={`data:${att.mimeType};base64,${att.base64Content}`}
-                  alt={att.name}
-                  className="h-12 w-12 rounded object-cover"
-                />
-              ) : (
-                <FileText className="h-12 w-12 text-muted-foreground" />
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm">{att.name}</p>
-                <p className="text-xs text-muted-foreground">{formatFileSize(att.size)}</p>
-              </div>
-              {!readOnly && (
-                <button
-                  type="button"
-                  onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
-                  className="absolute -right-1 -top-1 rounded-full bg-destructive p-0.5 text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
-                  aria-label={`Remove ${att.name}`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
   const renderInputStep = () => (
     <>
       <div className="grid gap-4 py-2">
@@ -478,22 +301,9 @@ export function FeedbackDialog() {
             placeholder="Provide additional details, steps to reproduce, or expected behavior"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            onPaste={handlePaste}
             rows={4}
           />
         </div>
-
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={handleAttachFile}>
-            <Paperclip className="mr-1.5 h-4 w-4" />
-            Attach file
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            or paste an image into the description
-          </span>
-        </div>
-
-        {renderAttachmentPreviews()}
       </div>
 
       <DialogFooter>
@@ -602,13 +412,6 @@ export function FeedbackDialog() {
               />
             </div>
 
-            {/* ── Attachments (read-only) ── */}
-            {attachments.length > 0 && (
-              <>
-                <Separator />
-                {renderAttachmentPreviews(true)}
-              </>
-            )}
           </div>
         </ScrollArea>
 
