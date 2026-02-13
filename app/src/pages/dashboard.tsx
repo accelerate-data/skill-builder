@@ -26,6 +26,7 @@ import {
 import SkillCard from "@/components/skill-card"
 import NewSkillDialog from "@/components/new-skill-dialog"
 import DeleteSkillDialog from "@/components/delete-skill-dialog"
+import EditTagsDialog from "@/components/edit-tags-dialog"
 import TagFilter from "@/components/tag-filter"
 import { OnboardingDialog } from "@/components/onboarding-dialog"
 import { useSettingsStore } from "@/stores/settings-store"
@@ -38,6 +39,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [workspacePath, setWorkspacePath] = useState("")
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
+  const [editTagsTarget, setEditTagsTarget] = useState<SkillSummary | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
@@ -296,10 +298,21 @@ export default function DashboardPage() {
               onContinue={handleContinue}
               onDelete={setDeleteTarget}
               onDownload={handleDownload}
+              onEditTags={setEditTagsTarget}
             />
           ))}
         </div>
       )}
+
+      <EditTagsDialog
+        skill={editTagsTarget}
+        open={editTagsTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditTagsTarget(null)
+        }}
+        onSaved={() => { loadSkills(); loadTags(); }}
+        availableTags={availableTags}
+      />
 
       <DeleteSkillDialog
         skill={deleteTarget}

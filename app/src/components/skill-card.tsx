@@ -11,10 +11,11 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { Progress } from "@/components/ui/progress"
-import { Download, Play, Trash2 } from "lucide-react"
+import { Download, Play, Tag, Trash2 } from "lucide-react"
 import type { SkillSummary, SkillType } from "@/lib/types"
 import { SKILL_TYPE_LABELS, SKILL_TYPE_COLORS } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -24,6 +25,7 @@ interface SkillCardProps {
   onContinue: (skill: SkillSummary) => void
   onDelete: (skill: SkillSummary) => void
   onDownload?: (skill: SkillSummary) => void
+  onEditTags?: (skill: SkillSummary) => void
 }
 
 function parseStepProgress(currentStep: string | null): number {
@@ -117,6 +119,7 @@ export default function SkillCard({
   onContinue,
   onDelete,
   onDownload,
+  onEditTags,
 }: SkillCardProps) {
   const progress = parseStepProgress(skill.current_step)
   const relativeTime = formatRelativeTime(skill.last_modified)
@@ -185,6 +188,11 @@ export default function SkillCard({
         </Card>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        <ContextMenuItem onSelect={() => onEditTags?.(skill)}>
+          <Tag className="size-4" />
+          Edit Tags
+        </ContextMenuItem>
+        <ContextMenuSeparator />
         <ContextMenuItem
           disabled={!canDownload}
           onSelect={() => canDownload && onDownload?.(skill)}

@@ -51,6 +51,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/components/skill-card.tsx` | -- | `components/skill-card.test.tsx` (34) | `@dashboard` |
 | `src/components/new-skill-dialog.tsx` | -- | `components/new-skill-dialog.test.tsx` (19) | `@dashboard` |
 | `src/components/delete-skill-dialog.tsx` | -- | `components/delete-skill-dialog.test.tsx` (8) | `@dashboard` |
+| `src/components/edit-tags-dialog.tsx` | -- | `components/edit-tags-dialog.test.tsx` (9) | `@dashboard` |
 | `src/components/feedback-dialog.tsx` | -- | `components/feedback-dialog.test.tsx` (21) | `@workflow` |
 | `src/components/reasoning-chat.tsx` | -- | `components/reasoning-chat.test.tsx` (16) | `@workflow` |
 | `src/components/refinement-chat.tsx` | -- | `components/refinement-chat.test.tsx` (11) | `@workflow` |
