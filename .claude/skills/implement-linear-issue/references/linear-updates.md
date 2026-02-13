@@ -9,16 +9,10 @@
 
 ## What to Include
 
-Always include:
 - **Status** (In Progress / Blocked / Ready for Review)
 - **Branch** and **PR** (once created)
 - **What was done** — brief list of completed work
 - **Tests** — what was tested
-
-Include only when relevant:
-- In-progress or remaining work (multi-stream only)
-- Notes for reviewer (non-obvious decisions, follow-up work)
-- Blockers
 
 Keep it concise. A fast-path S issue needs 5-10 lines, not a full report.
 

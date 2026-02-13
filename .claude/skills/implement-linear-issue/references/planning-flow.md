@@ -14,21 +14,13 @@ The plan must cover:
 1. **Work streams** — what can run in parallel vs. what has dependencies
 2. **AC mapping** — which stream/task addresses each acceptance criterion. Flag any uncovered ACs.
 3. **Test strategy** — consult `app/tests/TEST_MANIFEST.md` to identify which tests cover the files being changed. For each work stream, specify:
-   - **Update**: existing test files that need changes to match new behavior (e.g. changed function signatures, new props, altered state transitions)
-   - **Remove**: tests that become redundant or test behavior that no longer exists (e.g. deleted features, replaced flows)
-   - **Add**: new test files for new source files, or new test cases in existing files for new behavior
-   - **Run**: the full set of tests to execute after implementation (unit, integration, E2E tags)
+   - **Update**: existing test files that need changes to match new behavior
+   - **Remove**: tests that become redundant or test deleted behavior
+   - **Add**: new test files for genuinely new behavior
+   - **Run**: the full set of tests to execute after implementation
    - **Manifest**: flag which rows in `app/tests/TEST_MANIFEST.md` need adding, updating, or removing
 4. **Risk notes** — shared files, potential conflicts between streams
-
-Format is flexible — clarity matters more than structure.
 
 ## Present Plan to User
 
 Show work streams, dependency chain, AC mapping, and risks. User may approve, adjust, or reorder.
-
-## Parallelization Principles
-
-1. Independent tasks run simultaneously
-2. Sequential if touching same files
-3. Front-load risky/uncertain work

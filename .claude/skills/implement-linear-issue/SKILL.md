@@ -75,7 +75,7 @@ Spawn a `feature-dev:code-reviewer` sub-agent. Fix high/medium issues, re-review
 
 ### Phase 6: Test
 
-Consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files changed. Run only those tests using the harness (`./tests/run.sh [level] [--tag TAG]`). If shared files were changed (`agents/`, `references/`, `skills/start/`, `.claude-plugin/`), also run `./tests/run.sh plugin --tag <relevant-tag>`. Fix failures and re-run. Max 3 attempts, then escalate to user.
+Consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files changed. Run only those tests using the harness. If shared files were changed (`agents/`, `references/`, `skills/start/`, `.claude-plugin/`), also run plugin tests with the relevant tag. Fix failures and re-run. Max 3 attempts, then escalate to user.
 
 ### Phase 7: Create PR
 
@@ -83,12 +83,7 @@ Create a PR and link it to the Linear issue. See [git-and-pr.md](references/git-
 
 ### Phase 8: Verify Acceptance Criteria
 
-Coding agents checked off ACs incrementally in Phase 4. This is a **completeness check**:
-
-1. Fetch the issue from Linear
-2. Verify all ACs are checked off
-3. If any missed → spawn fix agent, then re-verify
-4. If ACs remain unmet after fixes → keep In Progress, report to user with details
+Coding agents checked off ACs incrementally in Phase 4. This is a **completeness check** — fetch the issue, verify all ACs are checked. If any missed, spawn a fix agent and re-verify. If ACs remain unmet after fixes, keep In Progress and report to user.
 
 ### Phase 9: Complete
 
@@ -117,4 +112,4 @@ Only enter when all ACs are verified.
 - **Check off your ACs on Linear** after tests pass
 - Implementation Updates section → coordinator-only
 - Sub-agents can spawn their own sub-agents for parallelism
-- **Run only relevant tests** — consult `app/tests/TEST_MANIFEST.md` for the source-to-test mapping, then use `./tests/run.sh [level] [--tag TAG]`. For shared files (`agents/`, `references/`, `.claude-plugin/`), also run `./tests/run.sh plugin --tag <tag>`
+- **Run only relevant tests** — consult `app/tests/TEST_MANIFEST.md` for the source-to-test mapping. For shared files (`agents/`, `references/`, `.claude-plugin/`), also run plugin tests

@@ -1,11 +1,5 @@
 # Git and PR Conventions
 
-## Commit Format
-
-`type(scope): description` — types: `feat`, `fix`, `refactor`, `test`, `chore`
-
-Every sub-agent must commit + push before reporting completion.
-
 ## PR Body Template
 
 Title: `[ISSUE-ID]: issue title`
