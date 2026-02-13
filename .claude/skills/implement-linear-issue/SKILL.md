@@ -19,81 +19,43 @@ Do not ask permission for non-destructive work. Only confirm with the user:
 
 ## Scope Changes
 
-When the user expands or changes scope during the conversation, update the Linear issue immediately — add new ACs, update the description, then continue implementing against the updated issue.
+When the user expands or changes scope during the conversation, update the Linear issue immediately — add new ACs, update the description. If work streams are in flight, assess whether changes invalidate their work before continuing.
 
-## Progress Checklist
+## Setup (do these steps exactly)
 
-Copy and track:
-```
-- [ ] Phase 1: Setup (fetch, assign, worktree)
-- [ ] Phase 2: Assess complexity
-- [ ] Phase 3: Plan (or fast path)
-- [ ] Phase 4: Execute
-- [ ] Phase 5: Code review
-- [ ] Phase 6: Test
-- [ ] Phase 7: Create PR
-- [ ] Phase 8: Verify ACs
-- [ ] Phase 9: Complete
-```
-
-## Workflow
-
-### Phase 1: Setup
-
-1. Fetch the issue via `linear-server:get_issue`. Get: ID, title, description, requirements, acceptance criteria, estimate, branch name, **status**.
+1. Fetch the issue via `linear-server:get_issue`. Get: ID, title, description, requirements, acceptance criteria, estimate, branchName, **status**.
 2. **Guard: status must be Todo.** If the issue is not in Todo, stop and tell the user the current status. Do not proceed.
 3. **Assign to me + move to In Progress** in a single `linear-server:update_issue` call (`assignee: "me"`, `state: "In Progress"`).
 4. **Create a git worktree** at `../worktrees/<branchName>` using the `branchName` from the issue. Reuse if it already exists. All subsequent sub-agents work in this worktree path, NOT the main repo.
 
-### Phase 2: Assess Complexity
+## Objectives
 
-Evaluate whether to use the fast path or full flow. See [fast-path.md](references/fast-path.md).
+Given the issue, deliver a working implementation that satisfies all acceptance criteria, passes tests, and is ready for human review. How you get there depends on the issue.
 
-- **XS/S estimate** + straightforward description → fast path (skip to Phase 5 after single agent completes)
-- **M or larger**, or multi-component → full flow (Phase 3+)
+**Deciding your approach:**
+- XS/S estimate + isolated changes → single agent implements directly. See [fast-path.md](references/fast-path.md). Skip team orchestration.
+- M or larger, or multi-component → plan first, then execute in parallel. See [planning-flow.md](references/planning-flow.md) and [agent-team-guidelines.md](references/agent-team-guidelines.md).
 - User can override in either direction.
+- Present the plan to the user before execution begins.
 
-### Phase 3: Plan
+**During implementation:**
+- Each coding agent checks off its ACs on Linear after tests pass via `linear-server:update_issue`.
+- Coordinator writes Implementation Updates at checkpoints. See [linear-updates.md](references/linear-updates.md).
 
-See [planning-flow.md](references/planning-flow.md).
+**Before declaring done:**
+- Code review: see [review-flow.md](references/review-flow.md). Max 2 cycles.
+- Tests pass for changed files per the project's test strategy. Max 3 attempts, then escalate to user.
+- All ACs verified checked on Linear. If any missed, spawn a fix agent and re-verify.
+- PR created and linked. See [git-and-pr.md](references/git-and-pr.md). **Do NOT remove the worktree** — user tests manually on it.
 
-Spawn a planning agent. It returns work streams, dependencies, AC mapping, and risks. Present the plan to the user for approval.
+## Completion (do these steps exactly)
 
-### Phase 4: Execute
-
-See [agent-team-guidelines.md](references/agent-team-guidelines.md).
-
-1. Launch parallel work streams via `Task` tool. **Include in each team lead's prompt**: the issue ID, the exact AC text their stream owns (from the plan's AC mapping), and the instruction to check them off on Linear after tests pass.
-2. Each stream commits + pushes before reporting back
-3. **Each coding agent checks off its ACs on Linear** after tests pass via `linear-server:update_issue`
-4. Coordinator consolidates status → single Linear update at checkpoints (implementation updates section). See [linear-updates.md](references/linear-updates.md).
-
-### Phase 5: Code Review
-
-See [review-flow.md](references/review-flow.md).
-
-Spawn a `feature-dev:code-reviewer` sub-agent. Fix high/medium issues, re-review. Max 2 cycles.
-
-### Phase 6: Test
-
-Run tests covering changed files per the project's test strategy. Max 3 attempts, then escalate to user.
-
-### Phase 7: Create PR
-
-Create a PR and link it to the Linear issue. See [git-and-pr.md](references/git-and-pr.md) for the PR body template. **Do NOT remove the worktree** — user tests manually on it.
-
-### Phase 8: Verify Acceptance Criteria
-
-Coding agents checked off ACs incrementally in Phase 4. This is a **completeness check** — fetch the issue, verify all ACs are checked. If any missed, spawn a fix agent and re-verify. If ACs remain unmet after fixes, keep In Progress and report to user.
-
-### Phase 9: Complete
-
-Only enter when all ACs are verified.
+Only enter when all ACs are verified and PR is created.
 
 1. Write final Implementation Updates to Linear. See [linear-updates.md](references/linear-updates.md).
-2. Move issue to Review via `linear-server:update_issue`
-3. Report to user: what was done, PR URL, worktree path (for manual testing)
-4. **Do NOT remove the worktree**
+2. Move issue to Review via `linear-server:update_issue`.
+3. Report to user: what was done, PR URL, worktree path (for manual testing).
+4. **Do NOT remove the worktree.**
 
 ## Sub-agent Type Selection
 
@@ -114,3 +76,14 @@ Only enter when all ACs are verified.
 - Implementation Updates section → coordinator-only
 - Sub-agents can spawn their own sub-agents for parallelism
 - **Run only relevant tests** — follow the project's test strategy
+
+## Error Recovery
+
+| Situation | Action |
+|---|---|
+| Sub-agent fails | Max 2 retries, then escalate to user |
+| Worktree exists on wrong branch | Remove and recreate |
+| Linear API fails | Retry once, then continue and note for user |
+| Scope changes mid-execution | Reassess in-flight work, re-plan if needed |
+| Tests fail after 3 attempts | Escalate to user with failure details |
+| ACs remain unmet after fixes | Keep In Progress, report to user |
