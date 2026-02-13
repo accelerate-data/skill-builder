@@ -51,6 +51,19 @@ Both frontends use the same files -- no conversion needed:
 - `agents/shared/` -- 3 shared sub-agents (merge, research-patterns, research-data)
 - `references/shared-context.md` -- domain definitions, file formats, content principles
 
+## Skill Configuration
+
+Project-specific values referenced by skills in `.claude/skills/`:
+
+### Test Strategy
+- **Test manifest**: `app/tests/TEST_MANIFEST.md` (source-to-test mapping)
+- **Shared files** (require cross-cutting tests): `agents/`, `references/`, `.claude-plugin/`
+- **Plugin tests**: run `scripts/test-plugin.sh` when shared files change
+
+### Issue Management
+- **PR title format**: `VD-XXX: short description`
+- **PR body link**: `Fixes VD-XXX`
+
 ## Custom Skills
 
 ### /create-issue

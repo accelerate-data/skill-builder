@@ -2,10 +2,10 @@
 
 ## PR Body Template
 
-Title: `VD-XXX: short description`
+Title: `<issue-id>: short description`
 
 ```markdown
-Fixes VD-XXX
+Fixes <issue-id>
 
 ## Summary
 [2-3 sentences from implementation status]

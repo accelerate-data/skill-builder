@@ -9,8 +9,7 @@ Use when ALL are true:
 
 ## How It Works
 
-Skip team orchestration. Spawn a **single `general-purpose` sub-agent** that implements, updates/adds/removes tests as needed, commits, pushes, and checks off ACs on Linear. The agent must read existing tests before writing any — update broken tests, remove redundant ones, and only add tests for genuinely new behavior. If tests were added, removed, or renamed, update `app/tests/TEST_MANIFEST.md` to keep the source-to-test mapping current.
-
+Skip team orchestration. Spawn a **single `general-purpose` sub-agent** that implements, updates/adds/removes tests as needed, commits, pushes, and checks off ACs on Linear. The agent must read existing tests before writing any — update broken tests, remove redundant ones, and only add tests for genuinely new behavior.
 Proceed directly to **Phase 5 (Code Review)**. Code review and PR creation are never skipped.
 
 Phase 9 Linear updates still apply — write what was done, tests, and PR link.

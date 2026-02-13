@@ -3,7 +3,7 @@ name: implement-linear-issue
 description: |
   Implements a Linear issue end-to-end: worktree setup, dependency-aware planning, parallel execution
   via agent teams, code review, targeted testing, PR creation, and Linear status management.
-  Triggers on "implement VD-123", "work on VD-123", "build VD-123", "fix VD-123", or "/implement-issue".
+  Triggers on "implement <issue-id>", "work on <issue-id>", "build <issue-id>", "fix <issue-id>", or "/implement-issue".
 ---
 
 # Implement Linear Issue
@@ -75,7 +75,7 @@ Spawn a `feature-dev:code-reviewer` sub-agent. Fix high/medium issues, re-review
 
 ### Phase 6: Test
 
-Run tests covering changed files per `app/tests/TEST_MANIFEST.md`. For shared files (`agents/`, `references/`, `.claude-plugin/`), also run plugin tests. Max 3 attempts, then escalate to user.
+Run tests covering changed files per the project's test strategy. Max 3 attempts, then escalate to user.
 
 ### Phase 7: Create PR
 
@@ -112,4 +112,4 @@ Only enter when all ACs are verified.
 - **Check off your ACs on Linear** after tests pass
 - Implementation Updates section → coordinator-only
 - Sub-agents can spawn their own sub-agents for parallelism
-- **Run only relevant tests** — consult `app/tests/TEST_MANIFEST.md` for the source-to-test mapping. For shared files (`agents/`, `references/`, `.claude-plugin/`), also run plugin tests
+- **Run only relevant tests** — follow the project's test strategy

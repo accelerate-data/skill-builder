@@ -13,7 +13,6 @@ Team leads coordinate within their stream — spawning sub-agents for parallel t
   3. Remove tests that are now redundant
   4. Add new tests only for genuinely new behavior
   5. Never add tests just to increase count — every test must catch a real regression
-  6. Update `app/tests/TEST_MANIFEST.md` if you added new source/test files, removed test files, or changed E2E tags
 - Commit + push before reporting (conventional commit format)
 - Check off your ACs on Linear after tests pass
 - Report back: what completed, tests updated/added/removed, ACs addressed, blockers

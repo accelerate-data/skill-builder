@@ -4,7 +4,7 @@ description: |
   Creates well-structured Linear issues from short product thoughts, feature requests, or bug reports.
   Also decomposes large existing issues into smaller ones.
   Triggers on "create issue", "log a bug", "file a ticket", "new feature", "something is broken",
-  "break down VD-123", "decompose VD-123", "split VD-123", or "/create-issue".
+  "break down <issue-id>", "decompose <issue-id>", "split <issue-id>", or "/create-issue".
   Classifies as feature or bug, explores the codebase for feasibility,
   and produces product-level issues with no implementation details.
 ---
@@ -30,7 +30,7 @@ You are a **coordinator**. Turn a short product thought into a clear, product-le
 
 ## Phase 1: Classify & Clarify
 
-If the user provides an existing issue ID with decompose intent (e.g., "break down VD-123"), follow the **Decompose Path** below instead.
+If the user provides an existing issue ID with decompose intent (e.g., "break down <issue-id>"), follow the **Decompose Path** below instead.
 
 Otherwise, classify as `feature` or `bug` using `AskUserQuestion` with structured options when choices are finite. Ask **at most 2** targeted clarifications. Don't ask what you can infer.
 
@@ -79,7 +79,7 @@ See [linear-operations.md](references/linear-operations.md) for MCP tools.
 
 ## Decompose Path
 
-Triggered when the user provides an existing issue ID with intent to break it down (e.g., "break down VD-123", "decompose VD-123", "split VD-123").
+Triggered when the user provides an existing issue ID with intent to break it down (e.g., "break down <issue-id>", "decompose <issue-id>", "split <issue-id>").
 
 ```
 - [ ] Step 1: Fetch issue

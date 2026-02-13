@@ -3,7 +3,7 @@ name: close-linear-issue
 description: |
   Closes a completed Linear issue after manual testing. Rebases the feature branch onto main,
   merges the PR, moves the issue to Done, and cleans up the worktree and remote branch.
-  Triggers on "close VD-123", "complete VD-123", "merge VD-123", "ship VD-123", or "/close-issue".
+  Triggers on "close <issue-id>", "complete <issue-id>", "merge <issue-id>", "ship <issue-id>", or "/close-issue".
 ---
 
 # Close Linear Issue
