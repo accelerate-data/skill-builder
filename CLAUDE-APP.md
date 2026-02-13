@@ -92,6 +92,14 @@ The app has a **global user preference** in Settings (Sonnet 4.5, Haiku 4.5, or 
 
 The plugin uses the same skill output layout (`SKILL.md` + `references/`) but writes everything to the user's CWD with no separate workspace.
 
+## Code Style
+
+- TypeScript strict mode, no `any`
+- Zustand stores: one file per store in `app/src/stores/`
+- Rust commands: one module per concern in `app/src-tauri/src/commands/`
+- Tailwind 4 + shadcn/ui for all UI components
+- Verify before committing: `cd app && npx tsc --noEmit` (frontend) + `cargo check --manifest-path app/src-tauri/Cargo.toml` (backend)
+
 ## Testing
 
 ### Mocking Tauri APIs

@@ -95,18 +95,12 @@ When you add, remove, or rename test files, update `app/tests/TEST_MANIFEST.md` 
 
 ## Code Style
 
-- TypeScript strict mode, no `any`
-- Zustand stores: one file per store in `app/src/stores/`
-- Rust commands: one module per concern in `app/src-tauri/src/commands/`
-- Tailwind 4 + shadcn/ui for all UI components
 - Granular commits: one concern per commit, run tests before each
 
 ## Gotchas
 
 - **SDK has NO team tools**: `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. Use the Task tool for sub-agents. Multiple Task calls in same turn run in parallel.
-- **Node.js 18-24 only**: Node 25+ causes SDK crashes. Checked at app startup.
 - **Parallel worktrees**: Set `DEV_PORT=<port>` to avoid conflicts (convention: `1000 + issue_number`).
-- **Verify before committing**: `cd app && npx tsc --noEmit` (frontend) + `cargo check --manifest-path app/src-tauri/Cargo.toml` (backend)
 
 ## Shared Components
 
