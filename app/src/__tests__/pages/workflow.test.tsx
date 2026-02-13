@@ -68,7 +68,7 @@ vi.mock("@/components/step-rerun-chat", () => ({
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
-import { getWorkflowState, saveWorkflowState, getArtifactContent, saveArtifactContent, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar, hasStepArtifacts } from "@/lib/tauri";
+import { getWorkflowState, saveWorkflowState, getArtifactContent, saveArtifactContent, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar } from "@/lib/tauri";
 
 describe("WorkflowPage — agent completion lifecycle", () => {
   beforeEach(() => {
