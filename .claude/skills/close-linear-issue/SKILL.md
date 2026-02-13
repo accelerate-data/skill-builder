@@ -40,9 +40,19 @@ If already **Done**, skip to Phase 4 (cleanup only). If no PR exists, stop.
 
 Report to user: issue status, PR URL, worktree path.
 
-### Phase 2: Confirm Manual Testing
+### Phase 2: Verify Test Plan
 
-Confirm with `AskUserQuestion`: "Tests passed — ready to merge", "Found issues — need fixes first", "Skip — merge without testing". If issues found, stop and let the user fix via the implement skill.
+1. Fetch the PR body (`gh pr view <number> --json body`).
+2. Parse the **## Test plan** section. Extract every checkbox line (`- [ ]` or `- [x]`).
+3. If **all checkboxes are checked** → proceed to Phase 3 automatically.
+4. If **unchecked items exist** → show them to the user with `AskUserQuestion`:
+   - List every unchecked item verbatim
+   - Options:
+     - "All verified — check them off and merge": update the PR body to check off all items (`gh pr edit <number> --body ...`), then proceed to Phase 3.
+     - "Not yet — I'll test now": stop and tell the user to check off items on the PR after testing, then run `/close-issue` again.
+     - "Found issues — need fixes first": stop and let the user fix via the implement skill.
+     - "Skip — merge without testing": proceed (user accepts the risk).
+5. If **no test plan section found** → warn the user and ask whether to proceed without one.
 
 ### Phase 3: Rebase + Merge
 
