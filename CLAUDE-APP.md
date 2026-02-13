@@ -119,7 +119,10 @@ Before committing, consult `app/tests/TEST_MANIFEST.md` to determine which tests
 - Changed a component? → `./tests/run.sh integration` + E2E tag from manifest
 - Changed a Rust command? → `cargo test` + E2E tag if UI-facing
 - Changed `src/lib/tauri.ts` or test mocks? → `./tests/run.sh` (all levels)
+- Changed shared files (`agents/`, `references/`, `.claude-plugin/`)? → `./tests/run.sh plugin --tag <tag>`
 - Unsure? → `./tests/run.sh` runs everything
 
 **E2E tags:** `@dashboard`, `@settings`, `@workflow`, `@workflow-agent`, `@navigation`
+
+**Plugin tags:** `@structure`, `@agents`, `@coordinator`, `@workflow`, `@all`
 

@@ -101,6 +101,26 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `e2e/workflow/workflow-agent.spec.ts` | `@workflow-agent` | 4 |
 | `e2e/navigation/navigation.spec.ts` | `@navigation` | 2 |
 
+### CLI Plugin (shared with desktop app)
+
+Agents and references are shared between the desktop app and the CLI plugin. Changes to these files require plugin tests too.
+
+| Source Pattern | Plugin Tag | Plugin Tiers | Desktop App Impact |
+|---|---|---|---|
+| `agents/{type}/*.md` (24 files) | `@agents` | t1, t4 | -- |
+| `agents/shared/*.md` (3 files) | `@agents` | t1, t4 | -- |
+| `skills/start/SKILL.md` | `@coordinator` | t1, t2, t3 | -- |
+| `references/shared-context.md` | `@agents` | t1, t4 | -- |
+| `.claude-plugin/plugin.json` | `@structure` | t1 | -- |
+
+**Commands:**
+```bash
+./scripts/test-plugin.sh --tag @agents        # Agent prompts changed
+./scripts/test-plugin.sh --tag @coordinator   # Coordinator skill changed
+./scripts/test-plugin.sh --tag @structure     # Plugin manifest changed
+./scripts/test-plugin.sh t1                   # Quick structural check (free, no LLM)
+```
+
 ## Change Impact Rules
 
 ### Shared infrastructure (run everything)

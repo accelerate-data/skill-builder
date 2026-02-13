@@ -4,8 +4,9 @@ set -euo pipefail
 # Unified test runner for the Skill Builder desktop app.
 #
 # Usage: ./tests/run.sh [level] [--tag TAG]
-# Levels: unit, integration, e2e, all (default: all)
-# Tags: @dashboard, @settings, @workflow, @workflow-agent, @navigation
+# Levels: unit, integration, e2e, plugin, all (default: all)
+# Tags (E2E): @dashboard, @settings, @workflow, @workflow-agent, @navigation
+# Tags (plugin): @structure, @agents, @coordinator, @workflow, @all
 
 # ---------------------------------------------------------------------------
 # Resolve paths
@@ -30,7 +31,7 @@ TAG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    unit|integration|e2e|all)
+    unit|integration|e2e|plugin|all)
       LEVEL="$1"
       shift
       ;;
@@ -49,17 +50,19 @@ while [[ $# -gt 0 ]]; do
       echo "  unit          Pure logic: stores, utils, hooks, Rust, sidecar"
       echo "  integration   Component rendering with mocked APIs"
       echo "  e2e           Full browser tests (Playwright)"
+      echo "  plugin        CLI plugin tests (scripts/test-plugin.sh)"
       echo "  all           Run all levels sequentially (default)"
       echo ""
       echo "Options:"
-      echo "  --tag TAG     Filter E2E tests by Playwright tag"
-      echo "                Tags: @dashboard, @settings, @workflow, @workflow-agent, @navigation"
+      echo "  --tag TAG     Filter tests by tag"
+      echo "    E2E tags:    @dashboard, @settings, @workflow, @workflow-agent, @navigation"
+      echo "    Plugin tags: @structure, @agents, @coordinator, @workflow, @all"
       echo ""
       echo "Examples:"
       echo "  ./tests/run.sh                         # Run everything"
       echo "  ./tests/run.sh unit                    # Unit tests only"
       echo "  ./tests/run.sh e2e --tag @dashboard    # Dashboard E2E tests"
-      echo "  ./tests/run.sh e2e --tag @workflow     # Workflow E2E tests"
+      echo "  ./tests/run.sh plugin --tag @agents    # Plugin agent tests"
       exit 0
       ;;
     *)
@@ -146,6 +149,28 @@ run_e2e() {
 }
 
 # ---------------------------------------------------------------------------
+# Level: plugin
+# ---------------------------------------------------------------------------
+run_plugin() {
+  local tag_args=()
+  if [[ -n "$TAG" ]]; then
+    tag_args=(--tag "$TAG")
+  fi
+
+  header "Plugin Tests${TAG:+ (tag: $TAG)}"
+  PLUGIN_SCRIPT="$APP_DIR/../scripts/test-plugin.sh"
+  if [[ ! -x "$PLUGIN_SCRIPT" ]]; then
+    fail "Plugin tests (scripts/test-plugin.sh not found)"
+    return
+  fi
+  if ("$PLUGIN_SCRIPT" "${tag_args[@]+"${tag_args[@]}"}"); then
+    pass "Plugin tests${TAG:+ ($TAG)}"
+  else
+    fail "Plugin tests${TAG:+ ($TAG)}"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Run the requested level(s)
 # ---------------------------------------------------------------------------
 case "$LEVEL" in
@@ -158,10 +183,14 @@ case "$LEVEL" in
   e2e)
     run_e2e
     ;;
+  plugin)
+    run_plugin
+    ;;
   all)
     run_unit
     run_integration
     run_e2e
+    run_plugin
     ;;
 esac
 

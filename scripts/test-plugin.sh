@@ -61,6 +61,25 @@ is_valid_tier() {
   esac
 }
 
+# ---------- Tag-to-tier mapping ----------
+# Tags let you run tests by what changed, not by tier number.
+#   @structure  → t1 (plugin.json, agent file count, frontmatter)
+#   @agents     → t1 t4 (agent prompts, model tiers, smoke tests)
+#   @coordinator → t1 t2 t3 (SKILL.md, plugin loading, mode detection)
+#   @workflow   → t3 t5 (mode detection, full E2E)
+#   @all        → t1 t2 t3 t4 t5
+
+tiers_for_tag() {
+  case "$1" in
+    @structure)   echo "t1" ;;
+    @agents)      echo "t1 t4" ;;
+    @coordinator) echo "t1 t2 t3" ;;
+    @workflow)    echo "t3 t5" ;;
+    @all)         echo "$ALL_TIERS" ;;
+    *)            echo "" ;;
+  esac
+}
+
 # ---------- Parse arguments ----------
 if [ "${1:-}" = "--list" ]; then
   echo "Available tiers:"
@@ -68,7 +87,14 @@ if [ "${1:-}" = "--list" ]; then
     printf "  %-4s  %s\n" "$tier" "$(tier_label $tier)"
   done
   echo ""
-  echo "Usage: $0 [t1|t2|t3|t4|t5|...]"
+  echo "Available tags:"
+  echo "  @structure    t1 — plugin manifest, agent files, frontmatter"
+  echo "  @agents       t1 t4 — agent prompts, model tiers, smoke tests"
+  echo "  @coordinator  t1 t2 t3 — coordinator skill, plugin loading, modes"
+  echo "  @workflow     t3 t5 — mode detection, full E2E workflow"
+  echo "  @all          t1-t5 — everything"
+  echo ""
+  echo "Usage: $0 [t1|t2|t3|t4|t5|--tag TAG|...]"
   echo "  No args = run all tiers"
   exit 0
 fi
@@ -77,15 +103,35 @@ REQUESTED_TIERS=""
 if [ $# -eq 0 ]; then
   REQUESTED_TIERS="$ALL_TIERS"
 else
-  for arg in "$@"; do
-    tier=$(echo "$arg" | tr '[:upper:]' '[:lower:]')
-    if ! is_valid_tier "$tier"; then
-      echo "ERROR: Unknown tier '$arg'. Use --list to see options."
-      exit 1
+  while [ $# -gt 0 ]; do
+    arg="$1"
+    if [ "$arg" = "--tag" ]; then
+      tag="${2:-}"
+      if [ -z "$tag" ]; then
+        echo "ERROR: --tag requires a value. Use --list to see options."
+        exit 1
+      fi
+      tag_tiers=$(tiers_for_tag "$tag")
+      if [ -z "$tag_tiers" ]; then
+        echo "ERROR: Unknown tag '$tag'. Use --list to see options."
+        exit 1
+      fi
+      REQUESTED_TIERS="$REQUESTED_TIERS $tag_tiers"
+      shift 2
+    else
+      tier=$(echo "$arg" | tr '[:upper:]' '[:lower:]')
+      if ! is_valid_tier "$tier"; then
+        echo "ERROR: Unknown tier '$arg'. Use --list to see options."
+        exit 1
+      fi
+      REQUESTED_TIERS="$REQUESTED_TIERS $tier"
+      shift
     fi
-    REQUESTED_TIERS="$REQUESTED_TIERS $tier"
   done
 fi
+
+# Deduplicate tiers while preserving order
+REQUESTED_TIERS=$(echo "$REQUESTED_TIERS" | tr ' ' '\n' | awk '!seen[$0]++' | tr '\n' ' ')
 
 # ---------- Preflight checks ----------
 echo "============================================"
