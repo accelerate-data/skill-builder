@@ -40,7 +40,12 @@ pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
                         subtype: subtype.to_string(),
                         timestamp,
                     };
-                    let _ = app_handle.emit("agent-init-progress", &progress);
+                    if let Err(e) = app_handle.emit("agent-init-progress", &progress) {
+                        log::warn!(
+                            "Failed to emit agent-init-progress for {}: {}",
+                            agent_id, e
+                        );
+                    }
                     return;
                 }
             }
@@ -49,7 +54,9 @@ pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
                 agent_id: agent_id.to_string(),
                 message,
             };
-            let _ = app_handle.emit("agent-message", &event);
+            if let Err(e) = app_handle.emit("agent-message", &event) {
+                log::warn!("Failed to emit agent-message for {}: {}", agent_id, e);
+            }
         }
         Err(e) => {
             log::warn!("Failed to parse sidecar output: {}", e);
@@ -58,13 +65,18 @@ pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
 }
 
 pub fn handle_sidecar_exit(app_handle: &tauri::AppHandle, agent_id: &str, success: bool) {
-    let _ = app_handle.emit(
+    if let Err(e) = app_handle.emit(
         "agent-exit",
         serde_json::json!({
             "agent_id": agent_id,
             "success": success,
         }),
-    );
+    ) {
+        log::warn!(
+            "Failed to emit agent-exit for {} (success={}): {}",
+            agent_id, success, e
+        );
+    }
 }
 
 /// Emit a structured error event when sidecar startup fails.
@@ -81,5 +93,10 @@ pub fn emit_init_error(app_handle: &tauri::AppHandle, error: &SidecarStartupErro
         payload.message,
         payload.fix_hint
     );
-    let _ = app_handle.emit("agent-init-error", &payload);
+    if let Err(e) = app_handle.emit("agent-init-error", &payload) {
+        log::error!(
+            "Failed to emit agent-init-error [{}]: {}",
+            payload.error_type, e
+        );
+    }
 }
