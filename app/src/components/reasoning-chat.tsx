@@ -7,6 +7,7 @@ import {
   User,
   ChevronRight,
   ChevronDown,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ interface ReasoningChatProps {
   domain: string;
   workspacePath: string;
   onPhaseChange?: (phase: ReasoningPhase) => void;
+  onReset?: () => void;
 }
 
 interface ChatMessage {
@@ -71,6 +73,7 @@ export const ReasoningChat = forwardRef<ReasoningChatHandle, ReasoningChatProps>
   domain,
   workspacePath,
   onPhaseChange,
+  onReset,
 }, ref) {
   // Core state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -669,6 +672,19 @@ export const ReasoningChat = forwardRef<ReasoningChatHandle, ReasoningChatProps>
               Session active
             </Badge>
           )}
+          <div className="ml-auto">
+            {onReset && phase === "awaiting_feedback" && !isAgentRunning && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onReset}
+                className="text-muted-foreground"
+              >
+                <RotateCcw className="size-3.5" />
+                Reset
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>

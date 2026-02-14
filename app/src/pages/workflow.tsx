@@ -508,7 +508,9 @@ export default function WorkflowPage() {
       return;
     }
 
-    // For other steps (human review, reasoning, refinement), use the legacy destructive reset
+    // For steps not in RERUN_CHAT_STEPS (human review, reasoning, refinement),
+    // use destructive reset. Step 4 (reasoning) intentionally uses this path
+    // to clear the chat session file and start fresh.
     try {
       await resetWorkflowStep(workspacePath, skillName, currentStep);
       clearRuns();
@@ -742,6 +744,7 @@ export default function WorkflowPage() {
           domain={domain ?? ""}
           workspacePath={workspacePath ?? ""}
           onPhaseChange={setReasoningPhase}
+          onReset={handleRerunStep}
         />
       );
     }

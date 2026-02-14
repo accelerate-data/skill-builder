@@ -1078,6 +1078,14 @@ fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32, skill
             let _ = std::fs::remove_file(&path);
         }
     }
+
+    // Step 4 (reasoning): also delete the chat session file so reset starts fresh
+    if step_id == 4 {
+        let session = skill_dir.join("logs").join("reasoning-chat.json");
+        if session.exists() {
+            let _ = std::fs::remove_file(&session);
+        }
+    }
 }
 
 /// Delete output files for the given step and all subsequent steps.
