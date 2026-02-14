@@ -6,6 +6,8 @@ import {
   User,
   Bot,
   RotateCcw,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -19,7 +21,9 @@ import {
   runWorkflowStep,
   startAgent,
   captureStepArtifacts,
+  getArtifactContent,
 } from "@/lib/tauri";
+import { countDecisions } from "@/lib/reasoning-parser";
 import { saveChatSession, loadChatSession } from "@/lib/chat-storage";
 import { AgentStatusHeader } from "@/components/agent-status-header";
 import { MessageItem, TurnMarker, computeMessageGroups, spacingClasses } from "@/components/agent-output-panel";
@@ -82,6 +86,10 @@ export const StepRerunChat = forwardRef<StepRerunChatHandle, StepRerunChatProps>
   const [userInput, setUserInput] = useState("");
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
+
+  // Decisions panel
+  const [decisionsContent, setDecisionsContent] = useState<string | null>(null);
+  const [showDecisions, setShowDecisions] = useState(false);
 
   // Session restored flag
   const [restored, setRestored] = useState(false);
@@ -166,6 +174,24 @@ export const StepRerunChat = forwardRef<StepRerunChatHandle, StepRerunChatProps>
     }
   }, [currentRun?.sessionId, sessionId]);
 
+  // Load decisions on mount (may already exist from a previous step)
+  useEffect(() => {
+    getArtifactContent(skillName, "context/decisions.md")
+      .then((artifact) => {
+        if (artifact?.content) setDecisionsContent(artifact.content);
+      })
+      .catch(() => {});
+  }, [skillName]);
+
+  const loadDecisions = useCallback(async () => {
+    try {
+      const artifact = await getArtifactContent(skillName, "context/decisions.md");
+      if (artifact?.content) setDecisionsContent(artifact.content);
+    } catch {
+      // Decisions may not exist yet
+    }
+  }, [skillName]);
+
   // --- Agent completion handler ---
 
   const handleAgentTurnComplete = useCallback(() => {
@@ -198,8 +224,10 @@ export const StepRerunChat = forwardRef<StepRerunChatHandle, StepRerunChatProps>
         });
       }
 
-      // Capture artifacts after each turn
-      captureStepArtifacts(skillName, stepId, workspacePath).catch(() => {});
+      // Capture artifacts after each turn, then refresh decisions
+      captureStepArtifacts(skillName, stepId, workspacePath)
+        .then(() => loadDecisions())
+        .catch(() => {});
 
       setRunning(false);
     } else if (currentRun.status === "error") {
@@ -219,7 +247,7 @@ export const StepRerunChat = forwardRef<StepRerunChatHandle, StepRerunChatProps>
       setRunning(false);
       toast.error(`Rerun agent encountered an error on step "${stepLabel}"`, { duration: Infinity });
     }
-  }, [currentRun?.status, currentAgentId, currentRun, sessionId, saveSession, skillName, stepId, workspacePath, stepLabel, setRunning]);
+  }, [currentRun?.status, currentAgentId, currentRun, sessionId, saveSession, skillName, stepId, workspacePath, stepLabel, setRunning, loadDecisions]);
 
   useEffect(() => {
     handleAgentTurnComplete();
@@ -426,6 +454,35 @@ export const StepRerunChat = forwardRef<StepRerunChatHandle, StepRerunChatProps>
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
+
+      {/* Decisions panel (collapsible) */}
+      {decisionsContent && (() => {
+        const count = countDecisions(decisionsContent);
+        return (
+          <div className="border-t">
+            <button
+              onClick={() => setShowDecisions(!showDecisions)}
+              className="flex w-full items-center gap-2 px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {showDecisions ? (
+                <ChevronDown className="size-3.5" />
+              ) : (
+                <ChevronRight className="size-3.5" />
+              )}
+              Current Decisions ({count} {count === 1 ? "decision" : "decisions"})
+            </button>
+            {showDecisions && (
+              <div className="max-h-[300px] overflow-y-auto border-t px-4 py-3">
+                <div className="markdown-body compact">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {decisionsContent}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Input area */}
       <div className="border-t bg-background p-4">

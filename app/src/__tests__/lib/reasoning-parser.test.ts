@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseAgentResponseType,
   countDecisions,
+  parseFrontmatter,
 } from "@/lib/reasoning-parser";
 
 describe("parseAgentResponseType", () => {
@@ -91,5 +92,72 @@ describe("countDecisions", () => {
 
   it("returns 0 for content without decision headings", () => {
     expect(countDecisions("# Some other file\nNo decisions here.")).toBe(0);
+  });
+});
+
+describe("parseFrontmatter", () => {
+  it("parses numeric values", () => {
+    const content = "---\ndecision_count: 5\nround: 2\n---\n\n## Decisions";
+    const result = parseFrontmatter(content);
+    expect(result).toEqual({ decision_count: 5, round: 2 });
+  });
+
+  it("parses string values", () => {
+    const content = '---\ntitle: "My Skill"\n---\n\nContent';
+    const result = parseFrontmatter(content);
+    expect(result).toEqual({ title: "My Skill" });
+  });
+
+  it("parses array values", () => {
+    const content = '---\nquestion_count: 8\nsections:\n  - "Entity Model"\n  - "Metrics"\n---\n\nContent';
+    const result = parseFrontmatter(content);
+    expect(result).toEqual({
+      question_count: 8,
+      sections: ["Entity Model", "Metrics"],
+    });
+  });
+
+  it("returns null for content without frontmatter", () => {
+    const content = "## Decisions\n\n### D1: Something";
+    expect(parseFrontmatter(content)).toBeNull();
+  });
+
+  it("returns null for malformed frontmatter (no closing ---)", () => {
+    const content = "---\ndecision_count: 5\n\n## Decisions";
+    expect(parseFrontmatter(content)).toBeNull();
+  });
+
+  it("handles Windows-style line endings", () => {
+    const content = "---\r\ndecision_count: 3\r\nround: 1\r\n---\r\n\r\n## Decisions";
+    const result = parseFrontmatter(content);
+    expect(result).toEqual({ decision_count: 3, round: 1 });
+  });
+
+  it("handles horizontal rules in body content", () => {
+    const content = "---\ndecision_count: 2\n---\n\n## Section\n\nDivider:\n\n---\n\n### D1: First";
+    const result = parseFrontmatter(content);
+    expect(result).toEqual({ decision_count: 2 });
+  });
+
+  it("returns null for empty frontmatter block", () => {
+    const content = "---\n\n---\n\n## Content";
+    expect(parseFrontmatter(content)).toBeNull();
+  });
+});
+
+describe("countDecisions with frontmatter", () => {
+  it("uses frontmatter decision_count when available", () => {
+    const content = "---\ndecision_count: 3\nround: 1\n---\n\n## Decisions\n\n### D1: First\n### D2: Second\n### D3: Third";
+    expect(countDecisions(content)).toBe(3);
+  });
+
+  it("falls back to regex when no frontmatter", () => {
+    const content = "## Decisions\n\n### D1: First\n### D2: Second";
+    expect(countDecisions(content)).toBe(2);
+  });
+
+  it("falls back to regex when frontmatter has no decision_count", () => {
+    const content = "---\nround: 1\n---\n\n## Decisions\n\n### D1: First";
+    expect(countDecisions(content)).toBe(1);
   });
 });

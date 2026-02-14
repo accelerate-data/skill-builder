@@ -65,9 +65,19 @@ Additionally:
 
 ## File Formats
 
+All agent output files use YAML frontmatter for structured metadata. The frontmatter block is delimited by `---` and must be the first thing in the file. When rewriting an existing file, always include the frontmatter block with updated counts — add it if the file you are rewriting does not already have one.
+
 ### `clarifications-*.md` (written by research agents to context directory)
 
 ```
+---
+question_count: 8
+sections:
+  - "Entity Model"
+  - "Metrics & KPIs"
+  - "Business Rules"
+---
+
 ## [Section Heading]
 
 ### Q1: [Short question title]
@@ -82,7 +92,27 @@ Additionally:
 
 ### `clarifications.md` (merged file, PM answers inline)
 
-Same format as above. The `**Answer**:` field contains the PM's chosen letter and notes.
+```
+---
+question_count: 12
+sections:
+  - "Entity Model"
+  - "Metrics & KPIs"
+  - "Business Rules"
+duplicates_removed: 3
+---
+
+## [Section Heading]
+
+### Q1: [Short question title]
+**Question**: [Full question text]
+**Choices**:
+  a) [Choice] — [brief rationale]
+  b) [Choice] — [brief rationale]
+  c) Other (please specify)
+**Recommendation**: [letter] — [why]
+**Answer**: [PM writes chosen letter and any notes here]
+```
 
 **Auto-fill rule:** If a question's `**Answer**:` field is empty or missing, treat the `**Recommendation**:` choice as the answer. Do not ask for clarification on unanswered questions — use the recommendation and proceed.
 
@@ -91,6 +121,11 @@ Same format as above. The `**Answer**:` field contains the PM's chosen letter an
 This file is a **clean snapshot**, not a cumulative log. Each time the reasoning agent updates it, it rewrites the entire file by merging existing decisions with new ones. If a new decision supersedes or refines an earlier one, the earlier entry is replaced — not kept alongside.
 
 ```
+---
+decision_count: 5
+round: 2
+---
+
 ## Decisions
 
 ### D1: [Decision title]

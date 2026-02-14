@@ -27,7 +27,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | Source | Unit Tests | Integration Tests | E2E Tag |
 |---|---|---|---|
 | `src/lib/utils.ts` | `lib/utils.test.ts` (3) | -- | -- |
-| `src/lib/reasoning-parser.ts` | `lib/reasoning-parser.test.ts` (12) | `components/reasoning-chat.test.tsx` | -- |
+| `src/lib/reasoning-parser.ts` | `lib/reasoning-parser.test.ts` (23) | `components/reasoning-chat.test.tsx` | -- |
 | `src/lib/chat-storage.ts` | `lib/chat-storage.test.ts` (8) | -- | -- |
 | `src/lib/types.ts` | -- | _(used by many integration tests)_ | -- |
 | `src/lib/tauri.ts` | -- | -- | _all tags_ |
