@@ -85,7 +85,7 @@ npm run test:e2e             # E2E tests (Playwright)
 
 ## Contributing
 
-This project uses Claude Code for AI-assisted development. See [`CLAUDE.md`](CLAUDE.md) for development instructions, code style rules, and common gotchas. Platform-specific guides:
+This project supports Codex and Claude-based AI-assisted development. For Codex sessions, start with [`AGENTS.md`](AGENTS.md). Legacy Claude-focused guidance remains in [`CLAUDE.md`](CLAUDE.md). Platform-specific guides:
 
 - [`CLAUDE-APP.md`](CLAUDE-APP.md) -- desktop app development
 - [`CLAUDE-PLUGIN.md`](CLAUDE-PLUGIN.md) -- plugin development
