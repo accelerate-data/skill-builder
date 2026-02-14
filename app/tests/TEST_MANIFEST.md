@@ -49,6 +49,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/components/agent-output-panel.tsx` | -- | `components/agent-output-panel.test.tsx` (105) | `@workflow-agent` |
 | `src/components/agent-initializing-indicator.tsx` | -- | `components/agent-initializing-indicator.test.tsx` (10) | `@workflow-agent` |
 | `src/components/agent-status-header.tsx` | -- | `components/agent-status-header.test.tsx` (20) | `@workflow-agent` |
+| `src/components/about-dialog.tsx` | -- | `components/about-dialog.test.tsx` (5) | `@settings` |
 | `src/components/skill-card.tsx` | -- | `components/skill-card.test.tsx` (34) | `@dashboard` |
 | `src/components/new-skill-dialog.tsx` | -- | `components/new-skill-dialog.test.tsx` (21) | `@dashboard` |
 | `src/components/delete-skill-dialog.tsx` | -- | `components/delete-skill-dialog.test.tsx` (8) | `@dashboard` |

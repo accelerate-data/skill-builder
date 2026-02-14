@@ -9,10 +9,10 @@ export const SKILL_TYPE_LABELS: Record<SkillType, string> = {
 };
 
 export const SKILL_TYPE_COLORS: Record<SkillType, string> = {
-  platform: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  domain: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  source: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
-  "data-engineering": "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+  platform: "bg-[#E8F4F5] text-[#0E7C86] dark:bg-[#0E7C86]/15 dark:text-[#2EC4B6]",
+  domain: "bg-[#EBF3EC] text-[#2D7A35] dark:bg-[#2D7A35]/15 dark:text-[#5D9B62]",
+  source: "bg-[#FDF0EB] text-[#A85A33] dark:bg-[#A85A33]/15 dark:text-[#D4916E]",
+  "data-engineering": "bg-[#F0ECF5] text-[#5E4B8B] dark:bg-[#5E4B8B]/15 dark:text-[#A08DC4]",
 };
 
 export interface AppSettings {

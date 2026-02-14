@@ -287,7 +287,8 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Skill Builder v0.1.0")).toBeInTheDocument();
+      const matches = screen.getAllByText("Skill Builder v0.1.0");
+      expect(matches.length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -298,7 +299,8 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Skill Builder vdev")).toBeInTheDocument();
+      const matches = screen.getAllByText("Skill Builder vdev");
+      expect(matches.length).toBeGreaterThanOrEqual(1);
     });
   });
 

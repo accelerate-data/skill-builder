@@ -4,7 +4,7 @@ import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
 import { revealItemInDir } from "@tauri-apps/plugin-opener"
-import { Loader2, Eye, EyeOff, CheckCircle2, ExternalLink, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, ExternalLink, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import {
@@ -24,6 +24,7 @@ import { useAuthStore } from "@/stores/auth-store"
 import { getDataDir } from "@/lib/tauri"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
+import { AboutDialog } from "@/components/about-dialog"
 
 const MODEL_OPTIONS = [
   { value: "sonnet", label: "Claude Sonnet 4.5", description: "Fast and capable" },
@@ -50,6 +51,7 @@ export default function SettingsPage() {
   const [dataDir, setDataDir] = useState<string | null>(null)
   const [logFilePath, setLogFilePath] = useState<string | null>(null)
   const [loginDialogOpen, setLoginDialogOpen] = useState(false)
+  const [aboutDialogOpen, setAboutDialogOpen] = useState(false)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
   const { user, isLoggedIn, logout } = useAuthStore()
   const { theme, setTheme } = useTheme()
@@ -566,6 +568,22 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>About</CardTitle>
+          <CardDescription>
+            Skill Builder v{appVersion}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="outline" size="sm" onClick={() => setAboutDialogOpen(true)}>
+            <Info className="size-4" />
+            About Skill Builder
+          </Button>
+        </CardContent>
+      </Card>
+
+      <AboutDialog open={aboutDialogOpen} onOpenChange={setAboutDialogOpen} />
       <GitHubLoginDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
     </div>
   )

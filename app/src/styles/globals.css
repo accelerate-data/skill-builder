@@ -3,6 +3,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -47,86 +48,86 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --background: oklch(0.984 0.003 90);
+  --foreground: oklch(0.185 0.008 260);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.185 0.008 260);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.965 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.965 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.965 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --popover-foreground: oklch(0.185 0.008 260);
+  --primary: oklch(0.530 0.095 195);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.955 0.005 85);
+  --secondary-foreground: oklch(0.395 0.030 240);
+  --muted: oklch(0.955 0.005 85);
+  --muted-foreground: oklch(0.530 0.006 85);
+  --accent: oklch(0.955 0.005 85);
+  --accent-foreground: oklch(0.530 0.095 195);
+  --destructive: oklch(0.570 0.180 25);
+  --destructive-foreground: oklch(0.570 0.180 25);
+  --border: oklch(0.910 0.006 85);
+  --input: oklch(0.910 0.006 85);
+  --ring: oklch(0.600 0.120 50);
   --radius: 0.625rem;
-  --sidebar-background: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.965 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-background: oklch(0.965 0.004 85);
+  --sidebar-foreground: oklch(0.185 0.008 260);
+  --sidebar-primary: oklch(0.530 0.095 195);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.940 0.005 85);
+  --sidebar-accent-foreground: oklch(0.185 0.008 260);
+  --sidebar-border: oklch(0.910 0.006 85);
+  --sidebar-ring: oklch(0.600 0.120 50);
 
   /* Chat message type colors */
-  --chat-tool-bg: oklch(0.967 0.001 264.542);
-  --chat-tool-border: oklch(0.707 0.015 264.532);
-  --chat-question-bg: oklch(0.962 0.018 272.314);
-  --chat-question-border: oklch(0.585 0.193 277.023);
-  --chat-result-bg: oklch(0.979 0.021 166.113);
-  --chat-result-border: oklch(0.765 0.177 163.223);
-  --chat-error-bg: oklch(0.971 0.013 17.38);
-  --chat-error-border: oklch(0.637 0.237 25.331);
-  --chat-muted: oklch(0.551 0.018 264.364);
+  --chat-tool-bg: oklch(0.960 0.015 195);
+  --chat-tool-border: oklch(0.720 0.055 195);
+  --chat-question-bg: oklch(0.965 0.020 50);
+  --chat-question-border: oklch(0.600 0.120 50);
+  --chat-result-bg: oklch(0.965 0.020 145);
+  --chat-result-border: oklch(0.600 0.100 145);
+  --chat-error-bg: oklch(0.970 0.015 25);
+  --chat-error-border: oklch(0.570 0.180 25);
+  --chat-muted: oklch(0.530 0.006 85);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
-  --sidebar-background: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+  --background: oklch(0.160 0.003 280);
+  --foreground: oklch(0.945 0.003 90);
+  --card: oklch(0.200 0.005 260);
+  --card-foreground: oklch(0.945 0.003 90);
+  --popover: oklch(0.200 0.005 260);
+  --popover-foreground: oklch(0.945 0.003 90);
+  --primary: oklch(0.740 0.115 180);
+  --primary-foreground: oklch(0.160 0.003 280);
+  --secondary: oklch(0.230 0.005 260);
+  --secondary-foreground: oklch(0.945 0.003 90);
+  --muted: oklch(0.230 0.005 260);
+  --muted-foreground: oklch(0.680 0.005 85);
+  --accent: oklch(0.230 0.005 260);
+  --accent-foreground: oklch(0.740 0.115 180);
+  --destructive: oklch(0.250 0.050 25);
+  --destructive-foreground: oklch(0.700 0.140 25);
+  --border: oklch(0.290 0.006 260);
+  --input: oklch(0.290 0.006 260);
+  --ring: oklch(0.695 0.100 55);
+  --sidebar-background: oklch(0.180 0.005 260);
+  --sidebar-foreground: oklch(0.945 0.003 90);
+  --sidebar-primary: oklch(0.740 0.115 180);
+  --sidebar-primary-foreground: oklch(0.160 0.003 280);
+  --sidebar-accent: oklch(0.240 0.006 260);
+  --sidebar-accent-foreground: oklch(0.945 0.003 90);
+  --sidebar-border: oklch(0.290 0.006 260);
+  --sidebar-ring: oklch(0.695 0.100 55);
 
   /* Chat message type colors */
-  --chat-tool-bg: oklch(0.3 0.005 264.532 / 0.3);
-  --chat-tool-border: oklch(0.446 0.014 264.532);
-  --chat-question-bg: oklch(0.257 0.09 281.288 / 0.3);
-  --chat-question-border: oklch(0.536 0.209 271.921);
-  --chat-result-bg: oklch(0.262 0.065 163.62 / 0.3);
-  --chat-result-border: oklch(0.696 0.17 162.48);
-  --chat-error-bg: oklch(0.258 0.092 26.042 / 0.3);
-  --chat-error-border: oklch(0.577 0.245 27.325);
-  --chat-muted: oklch(0.707 0.015 264.532);
+  --chat-tool-bg: oklch(0.250 0.020 195 / 0.35);
+  --chat-tool-border: oklch(0.530 0.060 195);
+  --chat-question-bg: oklch(0.250 0.050 50 / 0.35);
+  --chat-question-border: oklch(0.600 0.120 50);
+  --chat-result-bg: oklch(0.250 0.030 145 / 0.35);
+  --chat-result-border: oklch(0.600 0.100 145);
+  --chat-error-bg: oklch(0.250 0.050 25 / 0.35);
+  --chat-error-border: oklch(0.570 0.180 25);
+  --chat-muted: oklch(0.680 0.005 85);
 }
 
 @keyframes message-fade-in {

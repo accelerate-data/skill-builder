@@ -19,7 +19,9 @@ function DepRow({ dep }: { dep: DepStatus }) {
       )}
       <div className="min-w-0 flex-1">
         <p className="font-medium">{dep.name}</p>
-        <p className="text-muted-foreground break-all">{dep.detail}</p>
+        {!dep.ok && (
+          <p className="text-muted-foreground break-all">{dep.detail}</p>
+        )}
       </div>
     </div>
   );
@@ -55,34 +57,16 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
     >
       <div className="flex max-w-lg flex-col items-center gap-6 rounded-xl border bg-card p-10 text-center shadow-lg">
         <img
-          src="/ad-favicon.svg"
-          alt="Accelerated Data"
-          className="h-20 w-auto"
+          src="/icon-256.png"
+          alt="Skill Builder"
+          className="size-20"
         />
 
-        <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-bold tracking-tight">Skill Builder</h1>
-          <p className="text-muted-foreground">
-            Build Claude skills for Vibedata with AI-powered multi-agent
-            workflows. Create domain knowledge packages that help data and
-            analytics engineers build silver and gold layer models.
-          </p>
-        </div>
-
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
-          <p className="font-medium text-amber-600 dark:text-amber-400">
-            Demo Software
-          </p>
-          <p className="mt-1">
-            This software is provided as-is for demonstration and experimental
-            purposes. It is not officially supported and may change or break
-            without notice. Use at your own risk.
-          </p>
-        </div>
+        <h1 className="text-3xl font-bold tracking-tight">Skill Builder</h1>
 
         {/* Dependency checklist */}
         <div className="w-full rounded-lg border bg-muted/30 px-4 py-3">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="mb-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Startup checks
           </p>
           <div className="flex flex-col gap-1.5">
@@ -97,6 +81,10 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
             ))}
           </div>
         </div>
+
+        <p className="text-xs text-muted-foreground/50">
+          Experimental software — not for production use
+        </p>
 
         {/* Invoke-level error */}
         {error && (

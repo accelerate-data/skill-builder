@@ -22,6 +22,62 @@ pub fn run() {
         .setup(|app| {
             use tauri::Manager;
 
+            // Native app menu with About item (macOS)
+            {
+                use tauri::menu::{AboutMetadata, MenuBuilder, PredefinedMenuItem, SubmenuBuilder};
+                let icon = app.default_window_icon().cloned();
+                let about = PredefinedMenuItem::about(
+                    app,
+                    Some("About Skill Builder"),
+                    Some(AboutMetadata {
+                        name: Some("Skill Builder".to_string()),
+                        version: Some(app.config().version.clone().unwrap_or_default()),
+                        copyright: Some(format!("© {} Accelerate Data, Inc.", chrono::Utc::now().format("%Y"))),
+                        credits: Some("Built with Tauri, Claude Agent SDK, and React\n\nPowered by Claude from Anthropic".to_string()),
+                        icon,
+                        ..Default::default()
+                    }),
+                )?;
+
+                let app_submenu = SubmenuBuilder::new(app, "Skill Builder")
+                    .item(&about)
+                    .separator()
+                    .services()
+                    .separator()
+                    .hide()
+                    .hide_others()
+                    .show_all()
+                    .separator()
+                    .quit()
+                    .build()?;
+
+                let edit_submenu = SubmenuBuilder::new(app, "Edit")
+                    .undo()
+                    .redo()
+                    .separator()
+                    .cut()
+                    .copy()
+                    .paste()
+                    .select_all()
+                    .build()?;
+
+                let window_submenu = SubmenuBuilder::new(app, "Window")
+                    .minimize()
+                    .maximize()
+                    .separator()
+                    .fullscreen()
+                    .close_window()
+                    .build()?;
+
+                let menu = MenuBuilder::new(app)
+                    .item(&app_submenu)
+                    .item(&edit_submenu)
+                    .item(&window_submenu)
+                    .build()?;
+
+                app.set_menu(menu)?;
+            }
+
             // Truncate the log file now that the Tauri path resolver is available.
             // Uses app_log_dir() so the path always matches the log plugin's target.
             logging::truncate_log_file(app.handle());

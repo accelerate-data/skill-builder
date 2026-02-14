@@ -168,7 +168,7 @@ describe("SkillCard", () => {
     );
     const typeBadge = screen.getByText("Platform");
     expect(typeBadge).toBeInTheDocument();
-    expect(typeBadge.className).toContain("bg-blue-100");
+    expect(typeBadge.className).toContain("bg-[#E8F4F5]");
   });
 
   it("does not render type badge when skill_type is null", () => {

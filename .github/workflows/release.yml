@@ -58,8 +58,12 @@ jobs:
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          node -e "const fs=require('fs'); const f='src-tauri/tauri.conf.json'; const c=JSON.parse(fs.readFileSync(f,'utf8')); c.version=process.env.RELEASE_VERSION; fs.writeFileSync(f,JSON.stringify(c,null,2)+'\n');"
+          # Tauri config only accepts X.Y.Z — strip any pre-release suffix (e.g. 0.9.7-rc1 → 0.9.7)
+          TAURI_VERSION="${RELEASE_VERSION%%-*}"
+          export TAURI_VERSION
+          node -e "const fs=require('fs'); const f='src-tauri/tauri.conf.json'; const c=JSON.parse(fs.readFileSync(f,'utf8')); c.version=process.env.TAURI_VERSION; fs.writeFileSync(f,JSON.stringify(c,null,2)+'\n');"
           node -e "const fs=require('fs'); const f='package.json'; const c=JSON.parse(fs.readFileSync(f,'utf8')); c.version=process.env.RELEASE_VERSION; fs.writeFileSync(f,JSON.stringify(c,null,2)+'\n');"
+          sed -i.bak "s/^version = \".*\"/version = \"${RELEASE_VERSION}\"/" src-tauri/Cargo.toml && rm -f src-tauri/Cargo.toml.bak
 
       - name: Cache bundled Node.js binary
         id: node-cache
