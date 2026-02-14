@@ -112,8 +112,11 @@ Agents and references are shared between the desktop app and the CLI plugin. Cha
 
 | Source Pattern | Plugin Tag | Plugin Tiers | Desktop App Impact |
 |---|---|---|---|
-| `agents/{type}/*.md` (28 files) | `@agents` | t1, t4 | -- |
+| `agents/templates/*.md` (5 files) | `@agents` | t1, t4 | Run `build-agents.sh` first |
+| `agents/types/*/config.conf` (4 files) | `@agents` | t1, t4 | Run `build-agents.sh` first |
+| `agents/{type}/*.md` (20 generated files) | `@agents` | t1, t4 | -- |
 | `agents/shared/*.md` (3 files) | `@agents` | t1, t4 | -- |
+| `scripts/build-agents.sh` | `@agents` | t1 | Run to regenerate agents |
 | `skills/start/SKILL.md` | `@coordinator` | t1, t2, t3 | -- |
 | `references/shared-context.md` | `@agents` | t1, t4 | -- |
 | `.claude-plugin/plugin.json` | `@structure` | t1 | -- |

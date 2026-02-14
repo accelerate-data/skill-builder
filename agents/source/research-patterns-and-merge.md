@@ -1,4 +1,6 @@
 ---
+# AUTO-GENERATED — do not edit. Source: agents/templates/research-patterns-and-merge.md + agents/types/source/config.conf
+# Regenerate with: scripts/build-agents.sh
 name: source-research-patterns-and-merge
 description: Orchestrates parallel research into business patterns and data modeling then merges results. Called during Step 3 to orchestrate parallel research and merge results.
 model: sonnet
@@ -10,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 Orchestrate parallel research into business patterns and data modeling by spawning sub-agents via the Task tool, then have a merger sub-agent combine the results.
 
-Focus on data extraction patterns, API structures, authentication flows, rate limits, and source-specific data quality considerations.
+Emphasize extraction strategies, pagination patterns, webhook handling, and source-specific data freshness guarantees.
 
 ## Context
 - The coordinator tells you:
@@ -22,29 +24,13 @@ Focus on data extraction patterns, API structures, authentication flows, rate li
 
 ## Rerun / Resume Mode
 
-If the coordinator's prompt contains `[RERUN MODE]`:
-
-1. Read the existing output files from the context directory using the Read tool: `clarifications-patterns.md`, `clarifications-data.md`, and/or `clarifications.md` (whichever exist).
-2. Present a concise summary (3-5 bullets) of what was previously produced — key business patterns identified, data modeling decisions, number of clarification questions per file, and any notable findings or gaps.
-3. **STOP here.** Do NOT spawn sub-agents, do NOT re-run research, do NOT proceed with normal execution.
-4. Wait for the user to provide direction on what to improve or change.
-5. After receiving user feedback, proceed with targeted changes incorporating that feedback — you may re-run specific sub-agents or edit the output directly as needed.
-
-If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section and proceed normally below.
+See `references/agent-protocols.md` — read and follow the Rerun/Resume Mode protocol defined there. The coordinator's prompt will contain `[RERUN MODE]` if this is a rerun.
 
 ---
 
 ## Before You Start
 
-**Check for existing output files:**
-- Use the Glob or Read tool to check if any of the output files already exist in the context directory:
-  - `clarifications-patterns.md`
-  - `clarifications-data.md`
-  - `clarifications.md`
-- **If any exist:** Read them first. Your goal is to UPDATE and IMPROVE the existing files rather than rewriting from scratch. Preserve any existing questions that are still relevant, refine wording where needed, and add new questions discovered during research. Remove questions that are no longer applicable.
-- **If they don't exist:** Proceed normally with fresh research.
-
-This same pattern applies to the sub-agents below — instruct them to check for their output files and update rather than overwrite if they exist.
+See `references/agent-protocols.md` — read and follow the Before You Start protocol. Check if your output file already exists and update rather than overwrite.
 
 ## Phase 1: Parallel Research
 
@@ -59,7 +45,7 @@ Prompt it to:
 - The answered domain concepts file is at: `clarifications-concepts.md` in the context directory
 - Write output to: `clarifications-patterns.md` in the context directory
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
 **Sub-agent 2: Data Modeling & Source Systems** (`name: "data-researcher"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
 
@@ -70,7 +56,7 @@ Prompt it to:
 - The answered domain concepts file is at: `clarifications-concepts.md` in the context directory
 - Write output to: `clarifications-data.md` in the context directory
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
 ## Phase 2: Merge
 
@@ -82,7 +68,7 @@ Prompt it to:
 - The context directory is: [pass the context directory path]
 - Write merged output to: `clarifications.md` in the context directory
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] questions)`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
 ## Error Handling
 
@@ -95,7 +81,7 @@ Three files in the context directory: `clarifications-patterns.md`, `clarificati
 When all three sub-agents have completed, respond with only a single line: Done — research and merge complete. Do not echo file contents.
 
 ## Success Criteria
-- Both sub-agents produce research files with substantive findings
-- Merged output is organized by topic with deduplicated questions
+- Both research sub-agents produce output files with 5+ questions each
+- Merger produces a deduplicated `clarifications.md` with clear section organization
 - All questions follow the shared context file format
-- No duplicate questions survive the merge
+- Cross-cutting questions that span patterns and data modeling are identified and grouped

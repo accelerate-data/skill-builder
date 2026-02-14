@@ -37,15 +37,15 @@ Configure your Anthropic API key and workspace folder in Settings before running
 
 The workflow guides you through building a skill in 9 steps:
 
+0. **Init** -- select skill type and name, detect previous progress
 1. **Research concepts** -- agents identify key entities, metrics, and KPIs
 2. **Review concept questions** -- you answer clarification questions
 3. **Research patterns + data + merge** -- agents research business patterns and data models
 4. **Review merged questions** -- you answer a consolidated set of questions
 5. **Reasoning** -- agent analyzes your answers, detects gaps and contradictions
 6. **Build** -- agent creates SKILL.md and reference files
-7. **Validate** -- agent checks against best practices
-8. **Test** -- agent generates and evaluates test prompts
-9. **Refine** -- iterative improvement via chat (app) or packaging (plugin)
+7. **Validate & Test** -- agent checks against best practices, generates and evaluates test prompts
+8. **Package / Refine** -- zip for distribution (plugin) or iterative improvement via chat (app)
 
 Skills are organized by type: **domain** (business knowledge), **platform** (tool-specific), **source** (extraction patterns), and **data-engineering** (technical patterns).
 
@@ -54,7 +54,9 @@ Skills are organized by type: **domain** (business knowledge), **platform** (too
 ```
 skill-builder/
 ├── agents/                  # Agent prompts (shared by both frontends)
-│   ├── {type}/              # 7 agents per skill type (4 types)
+│   ├── {type}/              # 5 agents per skill type (4 types = 20 generated)
+│   ├── templates/           # 5 phase templates (source of truth)
+│   ├── types/               # 4 type configs (focus, examples)
 │   └── shared/              # 3 shared sub-agents
 ├── references/              # Shared context for agents
 ├── skills/start/SKILL.md    # Plugin coordinator (entry point)

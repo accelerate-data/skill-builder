@@ -44,9 +44,9 @@ echo "=== Agents ==="
 # Shared agents (no type prefix)
 SHARED_AGENTS="shared/research-patterns:research-patterns:sonnet shared/research-data:research-data:sonnet shared/merge:merge:haiku"
 
-# Type-specific agents: each type dir has 6 agents
+# Type-specific agents: each type dir has 5 agents
 TYPE_DIRS="domain platform source data-engineering"
-TYPE_AGENTS="research-concepts:sonnet reasoning:opus build:sonnet validate:sonnet test:sonnet validate-and-test:sonnet research-patterns-and-merge:sonnet"
+TYPE_AGENTS="research-concepts:sonnet reasoning:opus build:sonnet validate-and-test:sonnet research-patterns-and-merge:sonnet"
 
 # Build full list: path:expected_name:expected_model
 ALL_AGENTS="$SHARED_AGENTS"
@@ -118,9 +118,10 @@ for entry in $ALL_AGENTS; do
   fi
 done
 
-# Check for unique names across all agents
+# Check for unique names across all agents (frontmatter only)
 echo "=== Name Uniqueness ==="
-all_names=$(grep -rh "^name:" agents/ | sed 's/name: *//' | sort)
+all_names=$(find agents/ -name "*.md" ! -path "agents/templates/*" ! -path "agents/types/*" -exec \
+  awk 'BEGIN{n=0} /^---$/{n++; next} n==1 && /^name:/{sub(/^name: */, ""); print}' {} \; | sort)
 dupes=$(echo "$all_names" | uniq -d)
 if [ -z "$dupes" ]; then
   pass "all $(echo "$all_names" | wc -l | tr -d ' ') agent names are unique"

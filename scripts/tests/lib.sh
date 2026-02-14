@@ -134,6 +134,9 @@ trap cleanup_temp_dirs EXIT
 
 # ---------- Claude invocation helpers ----------
 
+# Allow tests to spawn claude from within a Claude Code session
+unset CLAUDECODE 2>/dev/null || true
+
 # Portable timeout: try timeout (Linux), gtimeout (macOS coreutils), then perl fallback
 _timeout_cmd() {
   if command -v timeout >/dev/null 2>&1; then

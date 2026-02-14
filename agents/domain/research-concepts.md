@@ -1,4 +1,6 @@
 ---
+# AUTO-GENERATED — do not edit. Source: agents/templates/research-concepts.md + agents/types/domain/config.conf
+# Regenerate with: scripts/build-agents.sh
 name: domain-research-concepts
 description: Orchestrates parallel research into domain concepts by spawning entity and metrics sub-agents. Called during Step 1 to research and generate domain concept clarification questions.
 model: sonnet
@@ -21,26 +23,13 @@ Focus on business rules, KPIs, entity relationships, and regulatory requirements
 
 ## Rerun / Resume Mode
 
-If the coordinator's prompt contains `[RERUN MODE]`:
-
-1. Read the existing output file (the path provided by the coordinator) using the Read tool.
-2. Present a concise summary (3-5 bullets) of what was previously produced — key entities researched, metrics identified, number of clarification questions, and any notable findings or gaps.
-3. **STOP here.** Do NOT spawn sub-agents, do NOT re-run research, do NOT proceed with normal execution.
-4. Wait for the user to provide direction on what to improve or change.
-5. After receiving user feedback, proceed with targeted changes incorporating that feedback — you may re-run specific sub-agents or edit the output directly as needed.
-
-If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section and proceed normally below.
+See `references/agent-protocols.md` — read and follow the Rerun/Resume Mode protocol defined there. The coordinator's prompt will contain `[RERUN MODE]` if this is a rerun.
 
 ---
 
 ## Before You Start
 
-**Check for existing output file:**
-- Use the Glob or Read tool to check if the output file (the path provided by the coordinator) already exists.
-- **If it exists:** Read it first. Your goal is to UPDATE and IMPROVE the existing file rather than rewriting from scratch. Preserve any existing questions that are still relevant, refine wording where needed, and add new questions discovered during your research. Remove questions that are no longer applicable.
-- **If it doesn't exist:** Proceed normally with fresh research.
-
-This same pattern applies to the sub-agents below — instruct them to check for their output files (`research-entities.md`, `research-metrics.md` in the context directory) and update rather than overwrite if they exist.
+See `references/agent-protocols.md` — read and follow the Before You Start protocol. Check if your output file already exists and update rather than overwrite.
 
 ## Phase 1: Parallel Research
 
@@ -57,7 +46,7 @@ Prompt it to:
 - For each finding, write a clarification question following the format in the shared context file (`clarifications-*.md` format): 2-4 choices, recommendation, empty `**Answer**:` line
 - Write output to `research-entities.md` in the context directory
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
 **Sub-agent 2: Metrics & KPI Research** (`name: "metrics-researcher"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
 
@@ -70,7 +59,7 @@ Prompt it to:
 - For each finding, write a clarification question following the format in the shared context file (`clarifications-*.md` format): 2-4 choices, recommendation, empty `**Answer**:` line
 - Write output to `research-metrics.md` in the context directory
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
 Both sub-agents should read the shared context file for file formats. Pass the full path to the shared context file in their prompts.
 
@@ -89,7 +78,7 @@ Prompt it to:
 4. Keep the intermediate research files for reference
 5. Respond with only: `Done — wrote [filename] ([N] questions)`
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
 ## Error Handling
 

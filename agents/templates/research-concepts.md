@@ -1,7 +1,5 @@
 ---
-# AUTO-GENERATED — do not edit. Source: agents/templates/research-concepts.md + agents/types/platform/config.conf
-# Regenerate with: scripts/build-agents.sh
-name: platform-research-concepts
+name: {{NAME_PREFIX}}-research-concepts
 description: Orchestrates parallel research into domain concepts by spawning entity and metrics sub-agents. Called during Step 1 to research and generate domain concept clarification questions.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
@@ -12,7 +10,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You orchestrate parallel research into domain concepts by spawning sub-agents via the Task tool, then have a merger sub-agent combine the results.
 
-Focus on tool capabilities, API patterns, integration constraints, and platform-specific configuration.
+{{FOCUS_LINE}}
 
 ## Context
 - The coordinator will tell you:
@@ -39,7 +37,7 @@ Spawn two sub-agents via the **Task tool** — both in the **same turn** so they
 
 Prompt it to:
 - **Before starting research:** Check if `research-entities.md` in the context directory already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
-- Research key entities and their relationships for the domain (e.g., for Terraform: providers, modules, resources; for Kubernetes: deployments, services, ingress)
+- Research key entities and their relationships for the domain ({{ENTITY_EXAMPLES}})
 - Identify 5-10 core entities, their cardinality relationships, and 3+ analysis patterns per entity
 - Research common analysis patterns (trend analysis, cohort analysis, forecasting)
 - Research cross-functional dependencies between entities
@@ -90,22 +88,7 @@ The merged clarification file at the output file path provided by the coordinato
 
 ### Output Example
 
-```markdown
-## Domain Concepts & Metrics
-
-### Q1: How should API rate limiting be represented?
-The platform enforces rate limits that affect how integrations consume data. How should the skill represent rate limit handling?
-
-**Choices:**
-a) **Fixed delay between requests** — Simple but wasteful; doesn't adapt to actual limit consumption.
-b) **Token bucket with exponential backoff** — Adapts to rate limit headers and retries intelligently.
-c) **Concurrency-based throttling** — Limits parallel requests rather than spacing sequential ones.
-d) **Other (please specify)**
-
-**Recommendation:** Option (b) — token bucket with backoff handles most platform APIs gracefully and adapts to varying rate limit windows.
-
-**Answer:**
-```
+{{OUTPUT_EXAMPLE}}
 
 ## Success Criteria
 - Both sub-agents produce research files with 5+ clarification questions each

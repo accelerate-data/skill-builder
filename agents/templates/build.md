@@ -1,7 +1,5 @@
 ---
-# AUTO-GENERATED — do not edit. Source: agents/templates/build.md + agents/types/domain/config.conf
-# Regenerate with: scripts/build-agents.sh
-name: domain-build
+name: {{NAME_PREFIX}}-build
 description: Plans skill structure, writes SKILL.md, and spawns parallel sub-agents for reference files. Called during Step 6 to create the skill's SKILL.md and reference files.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
@@ -12,7 +10,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents via the Task tool to write reference files. A fresh reviewer sub-agent checks coverage and fixes gaps.
 
-Target business vault / gold layer patterns. Content should help engineers understand domain WHAT and WHY — business rules, metric definitions, entity relationships.
+{{FOCUS_LINE}}
 
 ## Context
 - The coordinator will provide these paths at runtime — use them exactly as given:
@@ -140,34 +138,7 @@ Prompt it to:
 
 ### Output Example
 
-Example SKILL.md metadata block and pointer section:
-
-```markdown
----
-name: Sales Pipeline Analytics
-description: Domain knowledge for modeling and analyzing B2B sales pipeline data, covering entities, metrics, stage management, and forecasting patterns.
----
-
-# Sales Pipeline Analytics
-
-## Overview
-This skill covers B2B sales pipeline analytics for data/analytics engineers building silver and gold layer models. Key concepts: opportunities, pipeline stages, conversion metrics, and forecast accuracy.
-
-## When to Use This Skill
-- Engineer asks about modeling sales pipeline data
-- Questions about opportunity stages, win rates, or forecast accuracy
-- Building silver layer tables from CRM data (Salesforce, HubSpot, etc.)
-- Designing gold layer metrics for pipeline health or sales performance
-
-## Quick Reference
-- Pipeline stages should be modeled as a slowly changing dimension...
-- Win rate = closed-won / (closed-won + closed-lost), excluding open opportunities...
-
-## Reference Files
-- **references/entity-model.md** — Core entities (opportunity, account, contact) and their relationships. Read when modeling silver layer tables.
-- **references/pipeline-metrics.md** — Metric definitions and calculation rules. Read when building gold layer aggregates.
-- **references/stage-modeling.md** — How to model pipeline stages and transitions. Read when handling stage history or conversion analysis.
-```
+{{OUTPUT_EXAMPLE}}
 
 ## Success Criteria
 - SKILL.md is under 500 lines with metadata, overview, trigger conditions, quick reference, and pointers

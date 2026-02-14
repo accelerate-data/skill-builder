@@ -29,14 +29,15 @@ run_t1() {
     record_result "$tier" "validate_sh_overall" "FAIL" "$fail_count individual failures"
   fi
 
-  # ---- T1.3: Agent file count (27 = 6 per type × 4 types + 3 shared) ----
+  # ---- T1.3: Agent file count (23 = 5 per type × 4 types + 3 shared) ----
   local agent_count
-  agent_count=$(find "$PLUGIN_DIR/agents" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
-  assert_count_eq "$tier" "agent_file_count_is_27" "27" "$agent_count"
+  agent_count=$(find "$PLUGIN_DIR/agents" -name "*.md" -type f \
+    -not -path "*/templates/*" -not -path "*/types/*" 2>/dev/null | wc -l | tr -d ' ')
+  assert_count_eq "$tier" "agent_file_count_is_23" "23" "$agent_count"
 
   # ---- T1.4: Each expected agent exists in correct subdirectory ----
   local type_dirs="domain platform source data-engineering"
-  local type_agents="research-concepts research-patterns-and-merge reasoning build validate test"
+  local type_agents="research-concepts research-patterns-and-merge reasoning build validate-and-test"
   local shared_agents="merge research-patterns research-data"
 
   for dir in $type_dirs; do
@@ -83,7 +84,7 @@ run_t1() {
   expected_model_for() {
     case "$1" in
       research-concepts|research-patterns|research-data|research-patterns-and-merge) echo "sonnet" ;;
-      build|validate|test) echo "sonnet" ;;
+      build|validate-and-test) echo "sonnet" ;;
       merge) echo "haiku" ;;
       reasoning) echo "opus" ;;
       *) echo "unknown" ;;

@@ -1,7 +1,5 @@
 ---
-# AUTO-GENERATED — do not edit. Source: agents/templates/research-patterns-and-merge.md + agents/types/platform/config.conf
-# Regenerate with: scripts/build-agents.sh
-name: platform-research-patterns-and-merge
+name: {{NAME_PREFIX}}-research-patterns-and-merge
 description: Orchestrates parallel research into business patterns and data modeling then merges results. Called during Step 3 to orchestrate parallel research and merge results.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
@@ -12,7 +10,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 Orchestrate parallel research into business patterns and data modeling by spawning sub-agents via the Task tool, then have a merger sub-agent combine the results.
 
-Emphasize integration patterns, API versioning strategies, and cross-platform interoperability concerns.
+{{FOCUS_LINE}}
 
 ## Context
 - The coordinator tells you:

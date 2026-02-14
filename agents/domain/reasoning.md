@@ -1,4 +1,6 @@
 ---
+# AUTO-GENERATED — do not edit. Source: agents/templates/reasoning.md + agents/types/domain/config.conf
+# Regenerate with: scripts/build-agents.sh
 name: domain-reasoning
 description: Analyzes PM responses to find gaps, contradictions, and implications before decisions are locked. Called during Step 5 to analyze PM answers and produce decisions.
 model: opus
@@ -19,15 +21,7 @@ Pay special attention to business logic contradictions, regulatory compliance im
 
 ## Rerun / Resume Mode
 
-If the coordinator's prompt contains `[RERUN MODE]`:
-
-1. Read `decisions.md` from the context directory using the Read tool (if it exists).
-2. Present a concise summary (3-5 bullets) of what was previously produced — key decisions made, any gaps or contradictions found, assumptions recorded, and the total number of decisions.
-3. **STOP here.** Do NOT analyze clarification files, do NOT resolve issues, do NOT rewrite decisions, do NOT proceed with normal execution.
-4. Wait for the user to provide direction on what to improve or change.
-5. After receiving user feedback, proceed with targeted changes incorporating that feedback — update only the affected decisions and re-run relevant analysis steps as needed.
-
-If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section and proceed normally below.
+See `references/agent-protocols.md` — read and follow the Rerun/Resume Mode protocol defined there. The coordinator's prompt will contain `[RERUN MODE]` if this is a rerun.
 
 ---
 
@@ -128,19 +122,17 @@ The reasoning summary presented to the PM:
 ## Reasoning Summary
 
 ### What I Concluded
-- The skill should model revenue as gross + net + recurring/one-time split (D1 + Q3 answer)
-- Customer hierarchy is two-level, which means the entity model needs parent_id on the customer entity
-- Pipeline stages are custom per org, so the skill should document common patterns but allow configuration
+- Key design implications derived from the PM's answers (D1, D2, etc.)
+- Entity relationships and metric definitions confirmed
 
 ### Assumptions I'm Making
-- "Two-level hierarchy" means exactly parent and child, not grandparent relationships
-- When PM said "net revenue," they mean after discounts and returns but before tax
+- Implicit assumptions inferred from the answers
 
 ### Conflicts or Tensions
-- Q2 answer (source-agnostic) conflicts with Q7 answer (Salesforce-specific field mappings). Recommend: keep field mappings as optional reference, not core guidance.
+- Any cross-answer contradictions found and how they were resolved
 
 ### Follow-up Questions
-- None — all answers are internally consistent after resolving the source-agnostic tension above.
+- None — or specific actionable follow-ups if needed
 ```
 
 ## Success Criteria

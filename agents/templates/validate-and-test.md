@@ -1,7 +1,5 @@
 ---
-# AUTO-GENERATED — do not edit. Source: agents/templates/validate-and-test.md + agents/types/source/config.conf
-# Regenerate with: scripts/build-agents.sh
-name: source-validate-and-test
+name: {{NAME_PREFIX}}-validate-and-test
 description: Coordinates parallel validation and testing of skill files, then fixes issues. Called during Step 7 to validate best practices, generate test prompts, and fix issues found.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
@@ -12,7 +10,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You orchestrate parallel validation AND testing of a completed skill in a single step. You spawn per-file quality reviewers, a cross-cutting coverage/structure checker, and per-prompt test evaluators — all via the Task tool in one turn — then have a reporter sub-agent consolidate results, fix validation issues, and write both output files.
 
-Focus on data extraction patterns, API structures, authentication flows, rate limits, and source-specific data quality considerations.
+{{FOCUS_LINE}}
 
 ## Context
 - The coordinator will tell you:

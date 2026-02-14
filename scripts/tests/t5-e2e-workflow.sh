@@ -15,7 +15,7 @@ Domain: pet store analytics
 Skill name: pet-store-analytics
 
 IMPORTANT — AUTOMATED TEST RUN:
-This is an automated test. For ALL human review gates (Steps 2, 4, 5, 6, 7, 8):
+This is an automated test. For ALL human review gates (Steps 2, 4, 5, 6, 7):
 - Do NOT wait for human input.
 - Accept the agent's recommendations as-is and proceed to the next step immediately.
 - When a step says 'wait for the user to confirm', treat it as 'the user confirmed, proceed.'
@@ -24,7 +24,7 @@ This is an automated test. For ALL human review gates (Steps 2, 4, 5, 6, 7, 8):
 Work in this directory: $workspace
 The plugin root is: $PLUGIN_DIR
 
-Complete all 9 steps (Steps 0-9). If you hit a budget limit, that's OK — go as far as you can.
+Complete all steps (Steps 0-8). If you hit a budget limit, that's OK — go as far as you can.
 
 When you finish (or are forced to stop), write the number of the last completed step to: \
 $workspace/test-status.txt (just the number, e.g., '7')"
@@ -94,25 +94,24 @@ $workspace/test-status.txt (just the number, e.g., '7')"
     record_result "$tier" "step6_references_created" "SKIP" "may not have reached step 6"
   fi
 
-  # Step 7: Validation
+  # Step 7: Validate & Test
   if [[ -f "$workspace/context/agent-validation-log.md" ]]; then
     record_result "$tier" "step7_validation_log" "PASS"
   else
     record_result "$tier" "step7_validation_log" "SKIP" "may not have reached step 7"
   fi
 
-  # Step 8: Testing
   if [[ -f "$workspace/context/test-skill.md" ]]; then
-    record_result "$tier" "step8_test_report" "PASS"
+    record_result "$tier" "step7_test_report" "PASS"
   else
-    record_result "$tier" "step8_test_report" "SKIP" "may not have reached step 8"
+    record_result "$tier" "step7_test_report" "SKIP" "may not have reached step 7"
   fi
 
-  # Step 9: Package
+  # Step 8: Package
   if [[ -f "$workspace/${skill_name}.skill" ]]; then
-    record_result "$tier" "step9_skill_packaged" "PASS"
+    record_result "$tier" "step8_skill_packaged" "PASS"
   else
-    record_result "$tier" "step9_skill_packaged" "SKIP" "may not have reached step 9"
+    record_result "$tier" "step8_skill_packaged" "SKIP" "may not have reached step 8"
   fi
 
   # Report how far we got

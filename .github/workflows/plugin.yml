@@ -1,0 +1,36 @@
+name: Plugin Validation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'agents/**'
+      - 'references/**'
+      - 'scripts/build-agents.sh'
+      - 'scripts/validate.sh'
+      - 'skills/**'
+      - '.claude-plugin/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'agents/**'
+      - 'references/**'
+      - 'scripts/build-agents.sh'
+      - 'scripts/validate.sh'
+      - 'skills/**'
+      - '.claude-plugin/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check generated agents are fresh
+        run: ./scripts/build-agents.sh --check
+
+      - name: Structural validation
+        run: ./scripts/validate.sh

@@ -1,4 +1,6 @@
 ---
+# AUTO-GENERATED — do not edit. Source: agents/templates/validate-and-test.md + agents/types/data-engineering/config.conf
+# Regenerate with: scripts/build-agents.sh
 name: de-validate-and-test
 description: Coordinates parallel validation and testing of skill files, then fixes issues. Called during Step 7 to validate best practices, generate test prompts, and fix issues found.
 model: sonnet

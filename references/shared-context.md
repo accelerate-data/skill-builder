@@ -80,20 +80,9 @@ Additionally:
 **Answer**:
 ```
 
-### `clarifications.md` (merged file in context directory, PM answers inline)
+### `clarifications.md` (merged file, PM answers inline)
 
-```
-## [Section Heading]
-
-### Q1: [Short question title]
-**Question**: [Full question text]
-**Choices**:
-  a) [Choice] — [brief rationale]
-  b) [Choice] — [brief rationale]
-  c) Other (please specify)
-**Recommendation**: [letter] — [why]
-**Answer**: [PM writes chosen letter and any notes here]
-```
+Same format as above. The `**Answer**:` field contains the PM's chosen letter and notes.
 
 **Auto-fill rule:** If a question's `**Answer**:` field is empty or missing, treat the `**Recommendation**:` choice as the answer. Do not ask for clarification on unanswered questions — use the recommendation and proceed.
 

@@ -1,4 +1,6 @@
 ---
+# AUTO-GENERATED — do not edit. Source: agents/templates/build.md + agents/types/source/config.conf
+# Regenerate with: scripts/build-agents.sh
 name: source-build
 description: Plans skill structure, writes SKILL.md, and spawns parallel sub-agents for reference files. Called during Step 6 to create the skill's SKILL.md and reference files.
 model: sonnet
@@ -10,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents via the Task tool to write reference files. A fresh reviewer sub-agent checks coverage and fixes gaps.
 
-Focus on data extraction patterns, API structures, authentication flows, rate limits, and source-specific data quality considerations.
+Target extraction pipeline patterns. Content should help engineers understand source WHAT and WHY — API endpoint behaviors, data schemas, quality gotchas.
 
 ## Context
 - The coordinator will provide these paths at runtime — use them exactly as given:
@@ -24,15 +26,7 @@ Focus on data extraction patterns, API structures, authentication flows, rate li
 
 ## Rerun / Resume Mode
 
-If the coordinator's prompt contains `[RERUN MODE]`:
-
-1. Read the existing `SKILL.md` from the skill output directory and all files in `references/` using the Read tool.
-2. Present a concise summary (3-5 bullets) of what was previously produced — skill structure, number of reference files, key topics covered, and any notable content gaps or issues.
-3. **STOP here.** Do NOT spawn sub-agents, do NOT rewrite files, do NOT proceed with normal execution.
-4. Wait for the user to provide direction on what to improve or change.
-5. After receiving user feedback, proceed with targeted changes incorporating that feedback — you may re-run specific sub-agents or edit files directly as needed.
-
-If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section and proceed normally below.
+See `references/agent-protocols.md` — read and follow the Rerun/Resume Mode protocol defined there. The coordinator's prompt will contain `[RERUN MODE]` if this is a rerun.
 
 ---
 
@@ -46,11 +40,7 @@ Before writing any files, plan the overall skill structure:
 
 ## Before You Start
 
-1. **Create the skill output directory** if it doesn't already exist (use `mkdir -p` via Bash). Also create the `references/` subdirectory inside it.
-2. Check if `SKILL.md` already exists in the skill output directory.
-
-- **If it exists**: Read it and all files in `references/`. Compare against `decisions.md` to identify what changed. Only rewrite files that need updating — leave unchanged files alone. Skip Phase 1 planning if the structure is still valid.
-- **If it doesn't exist**: Proceed normally from Phase 1.
+See `references/agent-protocols.md` — read and follow the Before You Start protocol. Check if your output file already exists and update rather than overwrite.
 
 ## Phase 1: Plan the Skill Structure
 
@@ -115,11 +105,9 @@ The file should:
 - Be self-contained — a reader should understand it without reading other reference files
 
 Topic: [TOPIC DESCRIPTION — what this file should cover, based on the decisions]
-
-When finished, respond with only a single line: Done — wrote [filename] ([N] lines). Do not echo file contents.
 ```
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] lines)`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
 ## Phase 4: Review and Fix Gaps
 
@@ -133,7 +121,7 @@ Prompt it to:
 5. Ensure SKILL.md's pointers accurately describe each reference file
 6. Respond with only: `Done — reviewed and fixed [N] issues`
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — reviewed and fixed [N] issues`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
 ## Error Handling
 
