@@ -33,7 +33,7 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
 /// segment when the macOS file picker doubles it (e.g. `/foo/Skills/Skills`
 /// becomes `/foo/Skills`).
 fn normalize_path(raw: &str) -> String {
-    let trimmed = raw.trim_end_matches(|c| c == '/' || c == '\\');
+    let trimmed = raw.trim_end_matches(['/', '\\']);
     let parts: Vec<&str> = trimmed.split('/').collect();
     if parts.len() >= 2 && parts[parts.len() - 1] == parts[parts.len() - 2] {
         parts[..parts.len() - 1].join("/")

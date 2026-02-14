@@ -460,7 +460,7 @@ pub fn get_tags_for_skills(
     if skill_names.len() > 900 {
         let mut map: HashMap<String, Vec<String>> = HashMap::new();
         for chunk in skill_names.chunks(900) {
-            let chunk_result = get_tags_for_skills(conn, &chunk.to_vec())?;
+            let chunk_result = get_tags_for_skills(conn, chunk)?;
             map.extend(chunk_result);
         }
         return Ok(map);

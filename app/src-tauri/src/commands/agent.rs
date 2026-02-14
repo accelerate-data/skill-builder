@@ -2,6 +2,7 @@ use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn start_agent(
     app: tauri::AppHandle,

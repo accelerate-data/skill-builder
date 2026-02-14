@@ -677,35 +677,30 @@ impl SidecarPool {
 
                                 // Log lifecycle events at INFO so the log file tells the full story.
                                 // Streaming messages (assistant, user, tool_use, etc.) stay at debug.
-                                if let Some(msg_type) = msg.get("type").and_then(|t| t.as_str()) {
-                                    match msg_type {
-                                        "system" => {
-                                            let subtype = msg.get("subtype")
-                                                .and_then(|s| s.as_str())
-                                                .unwrap_or("unknown");
-                                            // Surface SDK stderr in the app log — this is
-                                            // diagnostic output (not agent content) and is
-                                            // critical for debugging startup failures.
-                                            if subtype == "sdk_stderr" {
-                                                let data = msg.get("data")
-                                                    .and_then(|d| d.as_str())
-                                                    .unwrap_or("");
-                                                log::warn!(
-                                                    "[persistent-sidecar:{}] Agent '{}' stderr: {}",
-                                                    skill_name_stdout,
-                                                    request_id,
-                                                    data,
-                                                );
-                                            } else {
-                                                log::debug!(
-                                                    "[persistent-sidecar:{}] Agent '{}': {}",
-                                                    skill_name_stdout,
-                                                    request_id,
-                                                    subtype,
-                                                );
-                                            }
-                                        }
-                                        _ => {}
+                                if let Some("system") = msg.get("type").and_then(|t| t.as_str()) {
+                                    let subtype = msg.get("subtype")
+                                        .and_then(|s| s.as_str())
+                                        .unwrap_or("unknown");
+                                    // Surface SDK stderr in the app log — this is
+                                    // diagnostic output (not agent content) and is
+                                    // critical for debugging startup failures.
+                                    if subtype == "sdk_stderr" {
+                                        let data = msg.get("data")
+                                            .and_then(|d| d.as_str())
+                                            .unwrap_or("");
+                                        log::warn!(
+                                            "[persistent-sidecar:{}] Agent '{}' stderr: {}",
+                                            skill_name_stdout,
+                                            request_id,
+                                            data,
+                                        );
+                                    } else {
+                                        log::debug!(
+                                            "[persistent-sidecar:{}] Agent '{}': {}",
+                                            skill_name_stdout,
+                                            request_id,
+                                            subtype,
+                                        );
                                     }
                                 }
 
@@ -1466,7 +1461,7 @@ fn is_node_compatible(version: &str) -> bool {
     let trimmed = version.strip_prefix('v').unwrap_or(version);
     if let Some(major_str) = trimmed.split('.').next() {
         if let Ok(major) = major_str.parse::<u32>() {
-            return major >= 18 && major <= 24;
+            return (18..=24).contains(&major);
         }
     }
     false

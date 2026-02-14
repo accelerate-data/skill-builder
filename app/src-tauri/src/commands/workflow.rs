@@ -131,7 +131,7 @@ pub fn ensure_workspace_prompts(
             if resource_refs.is_dir() {
                 resource_refs.as_path()
             } else {
-                &Path::new("") // Will fail is_dir check below
+                Path::new("") // Will fail is_dir check below
             }
         }
     };
@@ -732,6 +732,7 @@ fn validate_decisions_exist(
     validate_decisions_exist_inner(skill_name, workspace_path, skills_path, &conn)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn run_workflow_step(
     app: tauri::AppHandle,
