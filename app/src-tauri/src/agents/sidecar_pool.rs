@@ -410,13 +410,20 @@ impl SidecarPool {
             e.to_string()
         })?;
 
-        let mut child = Command::new(&node_bin)
-            .arg(&sidecar_path)
+        let mut cmd = Command::new(&node_bin);
+        cmd.arg(&sidecar_path)
             .arg("--persistent")
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
-            .stdin(std::process::Stdio::piped())
-            .spawn()
+            .stdin(std::process::Stdio::piped());
+
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+
+        let mut child = cmd.spawn()
             .map_err(|e| {
                 let err = SidecarStartupError::SpawnFailed {
                     detail: e.to_string(),
@@ -1142,7 +1149,17 @@ async fn try_bundled_node(bundled_path: &std::path::Path) -> Option<NodeResoluti
     }
 
     let path_str = bundled_path.to_string_lossy().to_string();
-    let output = Command::new(bundled_path).arg("--version").output().await;
+
+    let mut cmd = Command::new(bundled_path);
+    cmd.arg("--version");
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let output = cmd.output().await;
 
     match output {
         Ok(out) if out.status.success() => {
@@ -1183,7 +1200,16 @@ async fn resolve_system_node() -> Result<NodeResolution, String> {
     let mut first_available: Option<(String, String)> = None; // (path, version)
 
     for candidate in &candidates {
-        let output = Command::new(candidate).arg("--version").output().await;
+        let mut cmd = Command::new(candidate);
+        cmd.arg("--version");
+
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+
+        let output = cmd.output().await;
 
         if let Ok(out) = output {
             if out.status.success() {
