@@ -49,13 +49,13 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/components/agent-output-panel.tsx` | -- | `components/agent-output-panel.test.tsx` (105) | `@workflow-agent` |
 | `src/components/agent-initializing-indicator.tsx` | -- | `components/agent-initializing-indicator.test.tsx` (10) | `@workflow-agent` |
 | `src/components/agent-status-header.tsx` | -- | `components/agent-status-header.test.tsx` (20) | `@workflow-agent` |
-| `src/components/about-dialog.tsx` | -- | `components/about-dialog.test.tsx` (5) | `@settings` |
+| `src/components/about-dialog.tsx` | -- | `components/about-dialog.test.tsx` (9) | `@settings` |
 | `src/components/skill-card.tsx` | -- | `components/skill-card.test.tsx` (34) | `@dashboard` |
 | `src/components/new-skill-dialog.tsx` | -- | `components/new-skill-dialog.test.tsx` (21) | `@dashboard` |
 | `src/components/delete-skill-dialog.tsx` | -- | `components/delete-skill-dialog.test.tsx` (8) | `@dashboard` |
 | `src/components/edit-tags-dialog.tsx` | -- | `components/edit-tags-dialog.test.tsx` (9) | `@dashboard` |
 | `src/components/feedback-dialog.tsx` | -- | `components/feedback-dialog.test.tsx` (18) | `@workflow` |
-| `src/components/reasoning-chat.tsx` | -- | `components/reasoning-chat.test.tsx` (16) | `@workflow` |
+| `src/components/reasoning-chat.tsx` | -- | `components/reasoning-chat.test.tsx` (19) | `@workflow` |
 | `src/components/refinement-chat.tsx` | -- | `components/refinement-chat.test.tsx` (11) | `@workflow` |
 | `src/components/step-rerun-chat.tsx` | -- | `components/step-rerun-chat.test.tsx` (13) | `@workflow` |
 | `src/components/close-guard.tsx` | -- | `components/close-guard.test.tsx` (4) | `@navigation` |
@@ -63,7 +63,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/components/orphan-resolution-dialog.tsx` | -- | `components/orphan-resolution-dialog.test.tsx` (11) | -- |
 | `src/components/tag-filter.tsx` | -- | `components/tag-filter.test.tsx` (6) | -- |
 | `src/components/tag-input.tsx` | -- | `components/tag-input.test.tsx` (17) | -- |
-| `src/components/github-login-dialog.tsx` | -- | `components/github-login-dialog.test.tsx` (pending) | `@settings` |
+| `src/components/github-login-dialog.tsx` | -- | `components/github-login-dialog.test.tsx` (7) | `@settings` |
 | `src/components/layout/app-layout.tsx` | -- | `components/app-layout.test.tsx` (8) | `@navigation` |
 
 ### Rust Backend
