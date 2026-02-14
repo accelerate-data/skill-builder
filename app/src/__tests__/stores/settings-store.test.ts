@@ -60,4 +60,5 @@ describe("useSettingsStore", () => {
     expect(state.workspacePath).toBeNull();
     expect(state.isConfigured).toBe(false);
   });
+
 });

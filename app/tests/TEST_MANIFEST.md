@@ -72,8 +72,8 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | Source | Cargo Tests | E2E Tag |
 |---|---|---|
 | `src-tauri/src/db.rs` | `cargo test db` (46) | -- |
-| `src-tauri/src/types.rs` | `cargo test types` (4) | -- |
-| `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (82) | `@workflow` |
+| `src-tauri/src/types.rs` | `cargo test types` (5) | -- |
+| `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (57) | `@workflow` |
 | `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (33) | `@dashboard` |
 | `src-tauri/src/commands/skill.rs` | `cargo test commands::skill` (19) | `@dashboard` |
 | `src-tauri/src/commands/imported_skills.rs` | `cargo test commands::imported_skills` (25) | -- |
@@ -83,7 +83,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src-tauri/src/commands/clarification.rs` | `cargo test commands::clarification` (1) | `@workflow` |
 | `src-tauri/src/commands/github_auth.rs` | -- | `@settings` |
 | `src-tauri/src/agents/sidecar.rs` | `cargo test agents::sidecar` (2) | `@workflow-agent` |
-| `src-tauri/src/agents/sidecar_pool.rs` | `cargo test agents::sidecar_pool` (21) | `@workflow-agent` |
+| `src-tauri/src/agents/sidecar_pool.rs` | `cargo test agents::sidecar_pool` (23) | `@workflow-agent` |
 
 ### Sidecar (Node.js Agent Runner)
 

@@ -2280,4 +2280,5 @@ mod tests {
         assert!(super::workspace_already_copied(&path_a));
         assert!(!super::workspace_already_copied(&path_b));
     }
+
 }

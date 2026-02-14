@@ -122,6 +122,7 @@ mod tests {
             max_thinking_tokens: None,
             path_to_claude_code_executable: None,
             agent_name: Some("domain-research-concepts".to_string()),
+
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -157,6 +158,7 @@ mod tests {
             max_thinking_tokens: Some(32000),
             path_to_claude_code_executable: None,
             agent_name: None,
+
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -164,4 +166,5 @@ mod tests {
 
         assert_eq!(parsed["maxThinkingTokens"], 32000);
     }
+
 }

@@ -23,8 +23,9 @@ export function buildQueryOptions(
   return {
     ...agentField,
     ...modelField,
-    // Always pass settingSources so the SDK loads project-level settings (agents, CLAUDE.md).
-    settingSources: ['project' as const],
+    // Load project settings (skill discovery, CLAUDE.md) and user settings
+    // (MCP servers from ~/.claude/settings.json).
+    settingSources: ['project' as const, 'user' as const],
     cwd: config.cwd,
     allowedTools: config.allowedTools,
     maxTurns: config.maxTurns ?? 50,

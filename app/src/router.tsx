@@ -9,7 +9,6 @@ import SettingsPage from "./pages/settings";
 import WorkflowPage from "./pages/workflow";
 import PromptsPage from "./pages/prompts";
 import SkillsPage from "./pages/skills";
-
 const rootRoute = createRootRoute({
   component: AppLayout,
 });
