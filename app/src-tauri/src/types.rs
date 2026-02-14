@@ -82,6 +82,10 @@ pub struct SkillSummary {
     #[serde(default)]
     pub tags: Vec<String>,
     pub skill_type: Option<String>,
+    #[serde(default)]
+    pub author_login: Option<String>,
+    #[serde(default)]
+    pub author_avatar: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,6 +132,10 @@ pub struct WorkflowRunRow {
     pub skill_type: String,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(default)]
+    pub author_login: Option<String>,
+    #[serde(default)]
+    pub author_avatar: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

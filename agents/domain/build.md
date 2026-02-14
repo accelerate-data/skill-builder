@@ -69,7 +69,7 @@ Decide how many reference files are needed based on the decisions. Write out the
 If SKILL.md already exists, read it first and update only the sections affected by changed decisions — don't rewrite from scratch unless the content is substantially wrong. Do NOT delegate SKILL.md to a sub-agent.
 
 If SKILL.md doesn't exist, write it from scratch. It should contain:
-- **Metadata block** at the top: skill name, one-line description (~100 words max)
+- **Metadata block** at the top: skill name, one-line description (~100 words max), and optionally `author`, `created` (YYYY-MM-DD), and `modified` (YYYY-MM-DD) fields. If the coordinator provides an author name, include it. Use the created/modified dates from the coordinator if provided, otherwise omit them.
 - **Overview**: what domain this covers, who it's for, key concepts at a glance
 - **When to use this skill**: trigger conditions / user intent patterns
 - **Quick reference**: the most important guidance — enough to answer simple questions without loading reference files
@@ -146,6 +146,9 @@ Example SKILL.md metadata block and pointer section:
 ---
 name: Sales Pipeline Analytics
 description: Domain knowledge for modeling and analyzing B2B sales pipeline data, covering entities, metrics, stage management, and forecasting patterns.
+author: octocat
+created: 2025-06-15
+modified: 2025-06-15
 ---
 
 # Sales Pipeline Analytics

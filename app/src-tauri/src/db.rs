@@ -21,6 +21,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
     run_migrations(&conn)?;
     run_add_skill_type_migration(&conn)?;
     run_lock_table_migration(&conn)?;
+    run_author_migration(&conn)?;
     Ok(Db(Mutex::new(conn)))
 }
 
@@ -141,6 +142,23 @@ fn run_lock_table_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     )
 }
 
+fn run_author_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let has_author = conn
+        .prepare("PRAGMA table_info(workflow_runs)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).any(|name| name == "author_login"))
+        })
+        .unwrap_or(false);
+    if !has_author {
+        conn.execute_batch(
+            "ALTER TABLE workflow_runs ADD COLUMN author_login TEXT;
+             ALTER TABLE workflow_runs ADD COLUMN author_avatar TEXT;",
+        )?;
+    }
+    Ok(())
+}
+
 pub fn read_settings(conn: &Connection) -> Result<AppSettings, String> {
     let mut stmt = conn
         .prepare("SELECT value FROM settings WHERE key = ?1")
@@ -186,13 +204,27 @@ pub fn save_workflow_run(
     Ok(())
 }
 
+pub fn set_skill_author(
+    conn: &Connection,
+    skill_name: &str,
+    author_login: &str,
+    author_avatar: Option<&str>,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE workflow_runs SET author_login = ?2, author_avatar = ?3 WHERE skill_name = ?1",
+        rusqlite::params![skill_name, author_login, author_avatar],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn get_workflow_run(
     conn: &Connection,
     skill_name: &str,
 ) -> Result<Option<WorkflowRunRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at
+            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar
              FROM workflow_runs WHERE skill_name = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -206,6 +238,8 @@ pub fn get_workflow_run(
             skill_type: row.get(4)?,
             created_at: row.get(5)?,
             updated_at: row.get(6)?,
+            author_login: row.get(7)?,
+            author_avatar: row.get(8)?,
         })
     });
 
@@ -226,7 +260,7 @@ pub fn get_skill_type(conn: &Connection, skill_name: &str) -> Result<String, Str
 pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at
+            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar
              FROM workflow_runs ORDER BY skill_name",
         )
         .map_err(|e| e.to_string())?;
@@ -241,6 +275,8 @@ pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, 
                 skill_type: row.get(4)?,
                 created_at: row.get(5)?,
                 updated_at: row.get(6)?,
+                author_login: row.get(7)?,
+                author_avatar: row.get(8)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -723,6 +759,7 @@ mod tests {
         run_migrations(&conn).unwrap();
         run_add_skill_type_migration(&conn).unwrap();
         run_lock_table_migration(&conn).unwrap();
+        run_author_migration(&conn).unwrap();
         conn
     }
 
@@ -886,6 +923,50 @@ mod tests {
     }
 
     #[test]
+    fn test_set_skill_author() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "domain").unwrap();
+
+        // Set author with avatar
+        set_skill_author(&conn, "test-skill", "testuser", Some("https://avatars.example.com/u/123")).unwrap();
+        let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
+        assert_eq!(run.author_login.as_deref(), Some("testuser"));
+        assert_eq!(run.author_avatar.as_deref(), Some("https://avatars.example.com/u/123"));
+    }
+
+    #[test]
+    fn test_set_skill_author_without_avatar() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "domain").unwrap();
+
+        // Set author without avatar
+        set_skill_author(&conn, "test-skill", "testuser", None).unwrap();
+        let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
+        assert_eq!(run.author_login.as_deref(), Some("testuser"));
+        assert!(run.author_avatar.is_none());
+    }
+
+    #[test]
+    fn test_workflow_run_default_no_author() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "domain").unwrap();
+        let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
+        assert!(run.author_login.is_none());
+        assert!(run.author_avatar.is_none());
+    }
+
+    #[test]
+    fn test_author_migration_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        run_add_skill_type_migration(&conn).unwrap();
+        run_lock_table_migration(&conn).unwrap();
+        run_author_migration(&conn).unwrap();
+        // Running again should not error
+        run_author_migration(&conn).unwrap();
+    }
+
+    #[test]
     fn test_workflow_steps_crud() {
         let conn = create_test_db();
         save_workflow_step(&conn, "test-skill", 0, "completed").unwrap();
@@ -1011,6 +1092,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
         run_add_skill_type_migration(&conn).unwrap();
+        run_author_migration(&conn).unwrap();
 
         // Verify skill_type column exists by inserting a row with it
         save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "platform").unwrap();

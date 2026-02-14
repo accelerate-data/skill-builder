@@ -4,6 +4,9 @@ Example SKILL.md metadata block and pointer section:
 ---
 name: Stripe Data Extraction
 description: Source system knowledge for extracting and modeling data from the Stripe API, covering API endpoints, webhooks, event schemas, and data quality patterns.
+author: octocat
+created: 2025-06-15
+modified: 2025-06-15
 ---
 
 # Stripe Data Extraction

@@ -68,6 +68,8 @@ const sampleSkills: SkillSummary[] = [
     last_modified: new Date().toISOString(),
     tags: ["salesforce", "crm"],
     skill_type: "platform",
+    author_login: null,
+    author_avatar: null,
   },
   {
     name: "hr-analytics",
@@ -77,6 +79,8 @@ const sampleSkills: SkillSummary[] = [
     last_modified: new Date().toISOString(),
     tags: ["workday"],
     skill_type: "domain",
+    author_login: null,
+    author_avatar: null,
   },
 ];
 
@@ -355,6 +359,8 @@ describe("DashboardPage", () => {
           last_modified: new Date().toISOString(),
           tags: ["salesforce"],
           skill_type: "platform",
+          author_login: null,
+          author_avatar: null,
         },
       ],
     });

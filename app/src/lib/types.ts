@@ -58,6 +58,8 @@ export interface SkillSummary {
   last_modified: string | null
   tags: string[]
   skill_type: string | null
+  author_login: string | null
+  author_avatar: string | null
 }
 
 export interface NodeStatus {

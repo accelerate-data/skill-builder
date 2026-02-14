@@ -12,6 +12,8 @@ const baseSkill: SkillSummary = {
   last_modified: new Date().toISOString(),
   tags: [],
   skill_type: null,
+  author_login: null,
+  author_avatar: null,
 };
 
 describe("SkillCard", () => {
@@ -179,6 +181,42 @@ describe("SkillCard", () => {
     expect(screen.queryByText("Domain")).not.toBeInTheDocument();
     expect(screen.queryByText("Source")).not.toBeInTheDocument();
     expect(screen.queryByText("Data Engineering")).not.toBeInTheDocument();
+  });
+
+  it("renders author avatar when author_login and author_avatar are set", () => {
+    const skill = {
+      ...baseSkill,
+      author_login: "octocat",
+      author_avatar: "https://avatars.githubusercontent.com/u/583231",
+    };
+    render(
+      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
+    );
+    const avatar = screen.getByAltText("octocat");
+    expect(avatar).toBeInTheDocument();
+    expect(avatar).toHaveAttribute(
+      "src",
+      "https://avatars.githubusercontent.com/u/583231"
+    );
+  });
+
+  it("renders author login text when avatar is missing", () => {
+    const skill = {
+      ...baseSkill,
+      author_login: "octocat",
+      author_avatar: null,
+    };
+    render(
+      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
+    );
+    expect(screen.getByText("octocat")).toBeInTheDocument();
+  });
+
+  it("does not render author section when author_login is null", () => {
+    render(
+      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
+    );
+    expect(screen.queryByAltText("octocat")).not.toBeInTheDocument();
   });
 });
 

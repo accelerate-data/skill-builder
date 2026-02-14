@@ -190,9 +190,33 @@ export default function SkillCard({
             <Trash2 className="size-3" />
           </Button>
         </div>
-        {relativeTime && (
-          <span className="text-xs text-muted-foreground">{relativeTime}</span>
-        )}
+        <div className="flex items-center gap-2">
+          {skill.author_login && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-1">
+                    {skill.author_avatar ? (
+                      <img
+                        src={skill.author_avatar}
+                        alt={skill.author_login}
+                        className="size-4 rounded-full"
+                      />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">{skill.author_login}</span>
+                    )}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{skill.author_login}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {relativeTime && (
+            <span className="text-xs text-muted-foreground">{relativeTime}</span>
+          )}
+        </div>
       </CardFooter>
     </Card>
   )

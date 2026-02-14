@@ -33,6 +33,8 @@ export function makeSkillSummary(overrides?: Partial<SkillSummary>): SkillSummar
     last_modified: "2026-01-15T10:00:00Z",
     tags: [],
     skill_type: null,
+    author_login: null,
+    author_avatar: null,
     ...overrides,
   };
 }

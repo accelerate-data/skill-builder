@@ -50,7 +50,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/components/agent-initializing-indicator.tsx` | -- | `components/agent-initializing-indicator.test.tsx` (10) | `@workflow-agent` |
 | `src/components/agent-status-header.tsx` | -- | `components/agent-status-header.test.tsx` (20) | `@workflow-agent` |
 | `src/components/about-dialog.tsx` | -- | `components/about-dialog.test.tsx` (9) | `@settings` |
-| `src/components/skill-card.tsx` | -- | `components/skill-card.test.tsx` (34) | `@dashboard` |
+| `src/components/skill-card.tsx` | -- | `components/skill-card.test.tsx` (36) | `@dashboard` |
 | `src/components/new-skill-dialog.tsx` | -- | `components/new-skill-dialog.test.tsx` (21) | `@dashboard` |
 | `src/components/delete-skill-dialog.tsx` | -- | `components/delete-skill-dialog.test.tsx` (8) | `@dashboard` |
 | `src/components/reset-step-dialog.tsx` | -- | `components/reset-step-dialog.test.tsx` (7) | `@workflow` |
@@ -71,7 +71,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 
 | Source | Cargo Tests | E2E Tag |
 |---|---|---|
-| `src-tauri/src/db.rs` | `cargo test db` (42) | -- |
+| `src-tauri/src/db.rs` | `cargo test db` (46) | -- |
 | `src-tauri/src/types.rs` | `cargo test types` (4) | -- |
 | `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (82) | `@workflow` |
 | `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (33) | `@dashboard` |

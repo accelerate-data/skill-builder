@@ -20,6 +20,8 @@ const sampleSkill: SkillSummary = {
   last_modified: new Date().toISOString(),
   tags: ["analytics", "crm"],
   skill_type: null,
+  author_login: null,
+  author_avatar: null,
 };
 
 describe("EditTagsDialog", () => {

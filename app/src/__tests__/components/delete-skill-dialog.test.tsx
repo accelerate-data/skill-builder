@@ -21,6 +21,8 @@ const sampleSkill: SkillSummary = {
   last_modified: new Date().toISOString(),
   tags: [],
   skill_type: null,
+  author_login: null,
+  author_avatar: null,
 };
 
 describe("DeleteSkillDialog", () => {

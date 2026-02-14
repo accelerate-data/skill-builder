@@ -306,6 +306,7 @@ fn derive_agent_name(skill_type: &str, prompt_template: &str) -> String {
     format!("{}-{}", skill_type, phase)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_prompt(
     _prompt_file: &str,
     output_file: &str,
@@ -314,6 +315,8 @@ fn build_prompt(
     workspace_path: &str,
     skills_path: Option<&str>,
     _skill_type: &str,
+    author_login: Option<&str>,
+    created_at: Option<&str>,
 ) -> String {
     let base = Path::new(workspace_path);
     let skill_dir = base.join(skill_name);
@@ -332,7 +335,7 @@ fn build_prompt(
         skill_dir.join(output_file)
     };
 
-    format!(
+    let mut prompt = format!(
         "The domain is: {}. The skill name is: {}. \
          The shared context file is: {}. \
          The skill directory is: {}. \
@@ -348,7 +351,21 @@ fn build_prompt(
         skill_output_dir.display(),
         skill_output_context_dir.display(),
         output_path.display(),
-    )
+    );
+
+    if let Some(author) = author_login {
+        prompt.push_str(&format!(" The author of this skill is: {}.", author));
+        if let Some(created) = created_at {
+            let created_date = &created[..10.min(created.len())];
+            let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+            prompt.push_str(&format!(
+                " The skill was created on: {}. Today's date (for the modified timestamp) is: {}.",
+                created_date, today
+            ));
+        }
+    }
+
+    prompt
 }
 
 const VALID_SKILL_TYPES: &[&str] = &["platform", "domain", "source", "data-engineering"];
@@ -570,6 +587,8 @@ struct WorkflowSettings {
     debug_mode: bool,
     extended_thinking: bool,
     skill_type: String,
+    author_login: Option<String>,
+    created_at: Option<String>,
 }
 
 /// Read all workflow settings from the DB in a single lock acquisition.
@@ -600,6 +619,13 @@ fn read_workflow_settings(
     // Get skill type
     let skill_type = crate::db::get_skill_type(&conn, skill_name)?;
 
+    // Read author info from workflow run
+    let run_row = crate::db::get_workflow_run(&conn, skill_name)
+        .ok()
+        .flatten();
+    let author_login = run_row.as_ref().and_then(|r| r.author_login.clone());
+    let created_at = run_row.as_ref().map(|r| r.created_at.clone());
+
     Ok(WorkflowSettings {
         skills_path,
         api_key,
@@ -607,6 +633,8 @@ fn read_workflow_settings(
         debug_mode,
         extended_thinking,
         skill_type,
+        author_login,
+        created_at,
     })
 }
 
@@ -639,6 +667,8 @@ async fn run_workflow_step_inner(
         workspace_path,
         settings.skills_path.as_deref(),
         &settings.skill_type,
+        settings.author_login.as_deref(),
+        settings.created_at.as_deref(),
     );
 
     // In rerun mode, prepend a marker so the agent knows to summarize
@@ -1261,6 +1291,8 @@ mod tests {
             "/home/user/.vibedata",
             None,
             "domain",
+            None,
+            None,
         );
         // Should NOT contain "Read X and Y and follow the instructions"
         assert!(!prompt.contains("Read"));
@@ -1286,6 +1318,8 @@ mod tests {
             "/home/user/.vibedata",
             Some("/home/user/my-skills"),
             "domain",
+            None,
+            None,
         );
         // Should NOT contain "Read X and Y and follow the instructions"
         assert!(!prompt.contains("Read"));
@@ -1312,6 +1346,8 @@ mod tests {
             "/home/user/.vibedata",
             Some("/home/user/my-skills"),
             "domain",
+            None,
+            None,
         );
         // Should NOT contain "Read X and Y and follow the instructions"
         assert!(!prompt.contains("Read"));
@@ -1333,12 +1369,49 @@ mod tests {
             "/home/user/.vibedata",
             None,
             "platform",
+            None,
+            None,
         );
         // Should NOT contain "Read X and Y and follow the instructions"
         assert!(!prompt.contains("Read"));
         assert!(!prompt.contains("follow the instructions"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
+    }
+
+    #[test]
+    fn test_build_prompt_with_author_info() {
+        let prompt = build_prompt(
+            "build.md",
+            "skill/SKILL.md",
+            "my-skill",
+            "e-commerce",
+            "/home/user/.vibedata",
+            Some("/home/user/my-skills"),
+            "domain",
+            Some("octocat"),
+            Some("2025-06-15T12:00:00Z"),
+        );
+        assert!(prompt.contains("The author of this skill is: octocat."));
+        assert!(prompt.contains("The skill was created on: 2025-06-15."));
+        assert!(prompt.contains("Today's date (for the modified timestamp) is:"));
+    }
+
+    #[test]
+    fn test_build_prompt_without_author_info() {
+        let prompt = build_prompt(
+            "build.md",
+            "skill/SKILL.md",
+            "my-skill",
+            "e-commerce",
+            "/home/user/.vibedata",
+            Some("/home/user/my-skills"),
+            "domain",
+            None,
+            None,
+        );
+        assert!(!prompt.contains("The author of this skill is:"));
+        assert!(!prompt.contains("The skill was created on:"));
     }
 
     #[test]
@@ -1860,6 +1933,8 @@ mod tests {
             "/home/user/.vibedata",
             Some("/home/user/my-skills"),
             "domain",
+            None,
+            None,
         );
         assert!(prompt.contains(
             "The skill output context directory (persisted clarifications and decisions) is: /home/user/my-skills/my-skill/context"
@@ -1877,6 +1952,8 @@ mod tests {
             "/workspace",
             None,
             "domain",
+            None,
+            None,
         );
         assert!(prompt.contains(
             "The skill output context directory (persisted clarifications and decisions) is: /workspace/my-skill/context"
@@ -2112,6 +2189,8 @@ mod tests {
             "/home/user/.vibedata",
             None,
             "domain",
+            None,
+            None,
         );
 
         // Simulate the rerun logic from run_workflow_step
@@ -2135,6 +2214,8 @@ mod tests {
             "/workspace",
             None,
             "domain",
+            None,
+            None,
         );
         assert!(!prompt.contains("[RERUN MODE]"));
     }
@@ -2221,6 +2302,8 @@ mod tests {
                 "/workspace",
                 None,
                 "domain",
+                None,
+                None,
             );
             let rerun_prompt = format!("[RERUN MODE]\n\n{}", &base_prompt);
 

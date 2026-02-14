@@ -4,6 +4,9 @@ Example SKILL.md metadata block and pointer section:
 ---
 name: Streaming Pipeline Patterns
 description: Data engineering knowledge for building and operating streaming data pipelines, covering exactly-once semantics, windowing strategies, backpressure handling, and state management.
+author: octocat
+created: 2025-06-15
+modified: 2025-06-15
 ---
 
 # Streaming Pipeline Patterns

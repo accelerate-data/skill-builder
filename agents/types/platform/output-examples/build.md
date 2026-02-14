@@ -4,6 +4,9 @@ Example SKILL.md metadata block and pointer section:
 ---
 name: Terraform Module Patterns
 description: Platform knowledge for structuring and managing Terraform modules, covering provider configuration, state management, and module composition patterns.
+author: octocat
+created: 2025-06-15
+modified: 2025-06-15
 ---
 
 # Terraform Module Patterns

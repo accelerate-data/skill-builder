@@ -4,6 +4,9 @@ Example SKILL.md metadata block and pointer section:
 ---
 name: Sales Pipeline Analytics
 description: Domain knowledge for modeling and analyzing B2B sales pipeline data, covering entities, metrics, stage management, and forecasting patterns.
+author: octocat
+created: 2025-06-15
+modified: 2025-06-15
 ---
 
 # Sales Pipeline Analytics
