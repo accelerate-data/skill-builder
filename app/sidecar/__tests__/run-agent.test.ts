@@ -143,6 +143,35 @@ describe("runAgentRequest", () => {
       permissionMode: "bypassPermissions",
     });
   });
+
+  it("routes SDK stderr through onMessage as sdk_stderr system events", async () => {
+    // Capture the stderr callback that buildQueryOptions passes to the SDK
+    let capturedStderr: ((data: string) => void) | undefined;
+    mockQuery.mockImplementation((args: Record<string, unknown>) => {
+      const opts = args.options as Record<string, unknown>;
+      capturedStderr = opts.stderr as (data: string) => void;
+      async function* fakeConversation() {
+        yield { type: "result", content: "done" };
+      }
+      return fakeConversation() as ReturnType<typeof query>;
+    });
+
+    const messages: Record<string, unknown>[] = [];
+    await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
+
+    // The stderr handler should have been passed to the SDK
+    expect(capturedStderr).toBeDefined();
+
+    // Simulate SDK subprocess stderr output
+    capturedStderr!("some debug output\n");
+
+    const stderrMsg = messages.find(
+      (m) => m.type === "system" && m.subtype === "sdk_stderr",
+    );
+    expect(stderrMsg).toBeDefined();
+    expect(stderrMsg!.data).toBe("some debug output");
+    expect(stderrMsg!.timestamp).toEqual(expect.any(Number));
+  });
 });
 
 describe("emitSystemEvent", () => {

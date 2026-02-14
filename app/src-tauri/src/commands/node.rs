@@ -97,8 +97,73 @@ pub async fn check_startup_deps(app: tauri::AppHandle) -> Result<StartupDeps, St
     };
     checks.push(sdk);
 
+    // 4. Git (required by Claude Code for version control operations)
+    //    Windows: also validates git-bash which the SDK needs for the Bash tool
+    let git_check = check_git_available().await;
+    checks.push(git_check);
+
     let all_ok = checks.iter().all(|c| c.ok);
     Ok(StartupDeps { all_ok, checks })
+}
+
+/// Check that git is available on PATH (both platforms) and git-bash is
+/// available on Windows (required by the Claude Code SDK for the Bash tool).
+async fn check_git_available() -> DepStatus {
+    // Check git on PATH
+    let git_output = tokio::process::Command::new("git")
+        .arg("--version")
+        .output()
+        .await;
+
+    let git_version = match git_output {
+        Ok(out) if out.status.success() => {
+            Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        }
+        _ => None,
+    };
+
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, also need git-bash for the SDK's Bash tool
+        match (git_version, sidecar_pool::find_git_bash()) {
+            (Some(ver), Some(bash_path)) => DepStatus {
+                name: "Git".to_string(),
+                ok: true,
+                detail: format!("{} (bash: {})", ver, bash_path),
+            },
+            (Some(ver), None) => DepStatus {
+                name: "Git".to_string(),
+                ok: false,
+                detail: format!("{} found but bash.exe missing — install Git for Windows from https://git-scm.com/downloads/win", ver),
+            },
+            (None, Some(bash_path)) => DepStatus {
+                name: "Git".to_string(),
+                ok: false,
+                detail: format!("git not on PATH (bash at {})", bash_path),
+            },
+            (None, None) => DepStatus {
+                name: "Git".to_string(),
+                ok: false,
+                detail: "Not found — install Git for Windows from https://git-scm.com/downloads/win".to_string(),
+            },
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        match git_version {
+            Some(ver) => DepStatus {
+                name: "Git".to_string(),
+                ok: true,
+                detail: ver,
+            },
+            None => DepStatus {
+                name: "Git".to_string(),
+                ok: false,
+                detail: "Not found — install via Xcode CLT (xcode-select --install) or https://git-scm.com".to_string(),
+            },
+        }
+    }
 }
 
 /// Parse a version string like "v20.11.0" and check if major >= min_major.

@@ -19,8 +19,14 @@ export interface PingRequest {
   type: "ping";
 }
 
+/** Incoming cancel envelope: abort a specific in-flight request. */
+export interface CancelRequest {
+  type: "cancel";
+  request_id: string;
+}
+
 /** Union of all valid incoming messages. */
-export type IncomingMessage = AgentRequest | ShutdownRequest | PingRequest;
+export type IncomingMessage = AgentRequest | ShutdownRequest | PingRequest | CancelRequest;
 
 /**
  * Write a single JSON line to stdout.
@@ -54,6 +60,11 @@ export function parseIncomingMessage(line: string): IncomingMessage | null {
 
   if (obj.type === "ping") {
     return { type: "ping" };
+  }
+
+  if (obj.type === "cancel") {
+    if (typeof obj.request_id !== "string" || !obj.request_id) return null;
+    return { type: "cancel", request_id: obj.request_id };
   }
 
   if (obj.type === "agent_request") {
@@ -103,8 +114,12 @@ export async function runPersistent(
     crlfDelay: Infinity,
   });
 
-  // Track in-flight requests so we can wait for them before shutdown
+  // Track in-flight requests so we can wait for them before shutdown.
+  // Also track the current request's AbortController and ID so we can cancel
+  // a stuck request when a new one arrives or Rust sends a cancel message.
   const inFlight = new Set<Promise<void>>();
+  let currentAbort: AbortController | null = null;
+  let currentRequestId: string | null = null;
 
   for await (const line of rl) {
     const message = parseIncomingMessage(line);
@@ -133,15 +148,35 @@ export async function runPersistent(
       return;
     }
 
-    if (message.type === "agent_request") {
-      const { request_id, config } = message;
+    if (message.type === "cancel") {
+      // Rust sends cancel when a request times out.
+      // Abort the matching in-flight request so the SDK stops waiting.
+      if (currentAbort && currentRequestId === message.request_id) {
+        currentAbort.abort();
+      }
+      continue;
+    }
 
-      // Run the agent request, streaming wrapped messages
+    if (message.type === "agent_request") {
+      // If a previous request is still in-flight (e.g., SDK hanging on API),
+      // abort it before starting the new one.
+      if (inFlight.size > 0 && currentAbort) {
+        currentAbort.abort();
+        await Promise.allSettled(inFlight);
+      }
+
+      const { request_id, config } = message;
+      const abortController = new AbortController();
+      currentAbort = abortController;
+      currentRequestId = request_id;
+
+      // Run the agent request without blocking the readline loop.
+      // This lets ping/shutdown messages be processed while the agent runs.
       const requestPromise = (async () => {
         try {
           await runAgentRequest(config, (msg) => {
             writeLine(wrapWithRequestId(request_id, msg));
-          });
+          }, abortController.signal);
         } catch (err) {
           const errorMessage =
             err instanceof Error ? err.message : String(err);
@@ -151,15 +186,23 @@ export async function runPersistent(
               message: errorMessage,
             }),
           );
+        } finally {
+          // Signal to Rust that this request is fully complete and the sidecar
+          // is ready for the next one.
+          writeLine(
+            wrapWithRequestId(request_id, { type: "request_complete" }),
+          );
         }
       })();
 
       inFlight.add(requestPromise);
-      requestPromise.finally(() => inFlight.delete(requestPromise));
-
-      // Wait for this request to finish before accepting the next one.
-      // The protocol is sequential: one request at a time.
-      await requestPromise;
+      requestPromise.finally(() => {
+        inFlight.delete(requestPromise);
+        if (currentAbort === abortController) {
+          currentAbort = null;
+          currentRequestId = null;
+        }
+      });
     }
   }
 

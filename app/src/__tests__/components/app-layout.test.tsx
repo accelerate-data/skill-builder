@@ -81,7 +81,7 @@ const defaultSettings: AppSettings = {
   skills_path: "/home/user/skills",
   preferred_model: "sonnet",
   debug_mode: false,
-  verbose_logging: false,
+  log_level: "info",
   extended_context: false,
   extended_thinking: false,
   splash_shown: false,

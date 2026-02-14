@@ -163,9 +163,11 @@ jobs:
           mkdir -p "$STAGE"
           cp "app/src-tauri/target/release/skill-builder.exe" "$STAGE/"
 
-          # Copy sidecar JS files (agent-runner + SDK)
+          # Copy sidecar JS files (bootstrap + agent-runner + SDK)
           # The Rust exe-relative fallback looks for {exe_dir}/sidecar/dist/...
           mkdir -p "$STAGE/sidecar/dist/sdk"
+          cp "app/sidecar/dist/package.json" "$STAGE/sidecar/dist/"
+          cp "app/sidecar/dist/bootstrap.js" "$STAGE/sidecar/dist/"
           cp "app/sidecar/dist/agent-runner.js" "$STAGE/sidecar/dist/"
           cp "app/sidecar/dist/sdk/cli.js" "$STAGE/sidecar/dist/sdk/"
           cp "app/sidecar/dist/sdk/manifest.json" "$STAGE/sidecar/dist/sdk/"
@@ -189,11 +191,6 @@ jobs:
             cp -r "references" "$STAGE/references"
           fi
 
-          cat > "$STAGE/run.bat" << 'SCRIPT'
-          @echo off
-          cd /d "%~dp0"
-          start "" "skill-builder.exe"
-          SCRIPT
           7z a "${STAGE}.zip" "$STAGE"
 
       - name: Upload artifacts

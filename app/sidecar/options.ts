@@ -8,7 +8,11 @@ import type { SidecarConfig } from "./config.js";
  *  - model only      → model
  *  - both            → agent + model (model overrides front-matter)
  */
-export function buildQueryOptions(config: SidecarConfig, abortController: AbortController) {
+export function buildQueryOptions(
+  config: SidecarConfig,
+  abortController: AbortController,
+  stderr?: (data: string) => void,
+) {
   // --- agent / model resolution ---
   const agentField = config.agentName ? { agent: config.agentName } : {};
 
@@ -40,5 +44,6 @@ export function buildQueryOptions(config: SidecarConfig, abortController: AbortC
     ...(config.sessionId ? { resume: config.sessionId } : {}),
     ...(config.betas ? { betas: config.betas } : {}),
     ...(config.maxThinkingTokens ? { maxThinkingTokens: config.maxThinkingTokens } : {}),
+    ...(stderr ? { stderr } : {}),
   };
 }

@@ -1216,7 +1216,7 @@ pub fn capture_artifacts_on_error(
         }
     };
 
-    log::info!(
+    log::debug!(
         "Capturing artifacts on error for skill '{}', step {}",
         skill_name,
         step_id
@@ -1252,7 +1252,7 @@ pub fn capture_artifacts_on_error(
         let workspace_path = match settings.workspace_path {
             Some(wp) => wp,
             None => {
-                log::error!("Workspace path not set for artifact capture on error");
+                log::warn!("Workspace path not set for artifact capture on error");
                 return;
             }
         };
@@ -1276,7 +1276,7 @@ pub fn capture_artifacts_on_error(
             )
         },
         |attempt, max, error, delay_ms| {
-            log::warn!(
+            log::debug!(
                 "Retry {attempt}/{max} for artifact capture (skill: {skill_name_ref}, step: {step_id}): {error} — retrying in {delay_ms}ms"
             );
         },
@@ -1284,7 +1284,7 @@ pub fn capture_artifacts_on_error(
 
     match result {
         Ok(artifacts) => {
-            log::info!(
+            log::debug!(
                 "Captured {} artifact(s) on error for skill '{}', step {}",
                 artifacts.len(),
                 skill_name,

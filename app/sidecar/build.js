@@ -1,5 +1,5 @@
 import { build } from "esbuild";
-import { cpSync, mkdirSync, existsSync } from "fs";
+import { cpSync, mkdirSync, existsSync, writeFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -19,6 +19,20 @@ await build({
 });
 
 console.log("Built dist/agent-runner.js");
+
+// Write a minimal package.json so Node.js treats .js files as ESM.
+// In dev mode, Node.js walks up to sidecar/package.json which has "type": "module".
+// In release builds, no parent package.json exists, so Node.js defaults to CommonJS
+// and crashes with "SyntaxError: Cannot use import statement outside a module".
+writeFileSync(
+  resolve(__dirname, "dist/package.json"),
+  JSON.stringify({ type: "module" }) + "\n",
+);
+console.log("Wrote dist/package.json (ESM marker)");
+
+// Copy bootstrap.js (thin wrapper that catches module-load errors)
+cpSync(resolve(__dirname, "bootstrap.js"), resolve(__dirname, "dist/bootstrap.js"));
+console.log("Copied dist/bootstrap.js");
 
 // Copy SDK runtime files needed by cli.js at runtime.
 // The SDK's query() spawns cli.js as a child process, and cli.js

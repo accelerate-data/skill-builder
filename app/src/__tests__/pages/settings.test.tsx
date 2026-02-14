@@ -41,7 +41,7 @@ const defaultSettings: AppSettings = {
   skills_path: null,
   preferred_model: null,
   debug_mode: false,
-  verbose_logging: false,
+  log_level: "info",
   extended_context: false,
   extended_thinking: false,
   splash_shown: false,
@@ -54,7 +54,7 @@ const populatedSettings: AppSettings = {
   skills_path: null,
   preferred_model: "sonnet",
   debug_mode: false,
-  verbose_logging: false,
+  log_level: "info",
   extended_context: false,
   extended_thinking: false,
   splash_shown: false,
@@ -461,7 +461,7 @@ describe("SettingsPage", () => {
     expect(screen.getByText("Unknown")).toBeInTheDocument();
   });
 
-  it("renders Verbose Logging card with toggle", async () => {
+  it("renders Log Level card with select dropdown", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
@@ -469,11 +469,11 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Verbose Logging")).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: /Verbose logging/i })).toBeInTheDocument();
+    expect(screen.getAllByText("Log Level").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("combobox", { name: /Log Level/i })).toBeInTheDocument();
   });
 
-  it("calls set_log_level when verbose logging toggle is changed", async () => {
+  it("calls set_log_level when log level is changed", async () => {
     const user = userEvent.setup();
     setupDefaultMocks(populatedSettings);
     render(<SettingsPage />);
@@ -482,15 +482,15 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    const verboseSwitch = screen.getByRole("switch", { name: /Verbose logging/i });
-    await user.click(verboseSwitch);
+    const select = screen.getByRole("combobox", { name: /Log Level/i });
+    await user.selectOptions(select, "debug");
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("set_log_level", { verbose: true });
+      expect(mockInvoke).toHaveBeenCalledWith("set_log_level", { level: "debug" });
     });
   });
 
-  it("auto-saves verbose_logging (not debug_mode) when verbose logging toggle is changed", async () => {
+  it("auto-saves log_level when log level select is changed", async () => {
     const user = userEvent.setup();
     setupDefaultMocks(populatedSettings);
     render(<SettingsPage />);
@@ -499,13 +499,13 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    const verboseSwitch = screen.getByRole("switch", { name: /Verbose logging/i });
-    await user.click(verboseSwitch);
+    const select = screen.getByRole("combobox", { name: /Log Level/i });
+    await user.selectOptions(select, "debug");
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
         settings: expect.objectContaining({
-          verbose_logging: true,
+          log_level: "debug",
           debug_mode: false,
         }),
       });

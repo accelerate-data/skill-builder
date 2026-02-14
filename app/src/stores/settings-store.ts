@@ -6,7 +6,7 @@ interface SettingsState {
   skillsPath: string | null;
   preferredModel: string | null;
   debugMode: boolean;
-  verboseLogging: boolean;
+  logLevel: string;
   extendedContext: boolean;
   extendedThinking: boolean;
   githubPat: string | null;
@@ -21,7 +21,7 @@ const initialState = {
   skillsPath: null,
   preferredModel: null,
   debugMode: false,
-  verboseLogging: false,
+  logLevel: "info",
   extendedContext: false,
   extendedThinking: false,
   githubPat: null,

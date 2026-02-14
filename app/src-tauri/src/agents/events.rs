@@ -40,6 +40,7 @@ pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
                         subtype: subtype.to_string(),
                         timestamp,
                     };
+                    log::debug!("[event:agent-init-progress:{}] {}", agent_id, subtype);
                     if let Err(e) = app_handle.emit("agent-init-progress", &progress) {
                         log::warn!(
                             "Failed to emit agent-init-progress for {}: {}",
@@ -54,6 +55,8 @@ pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
                 agent_id: agent_id.to_string(),
                 message,
             };
+            // Agent message content is captured in per-request JSONL transcripts —
+            // no need to dump it into the app log (even at DEBUG, it's enormous).
             if let Err(e) = app_handle.emit("agent-message", &event) {
                 log::warn!("Failed to emit agent-message for {}: {}", agent_id, e);
             }
@@ -65,6 +68,7 @@ pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
 }
 
 pub fn handle_sidecar_exit(app_handle: &tauri::AppHandle, agent_id: &str, success: bool) {
+    log::info!("[event:agent-exit:{}] success={}", agent_id, success);
     if let Err(e) = app_handle.emit(
         "agent-exit",
         serde_json::json!({
@@ -80,6 +84,7 @@ pub fn handle_sidecar_exit(app_handle: &tauri::AppHandle, agent_id: &str, succes
 }
 
 pub fn handle_agent_shutdown(app_handle: &tauri::AppHandle, agent_id: &str) {
+    log::info!("[event:agent-shutdown:{}]", agent_id);
     if let Err(e) = app_handle.emit(
         "agent-shutdown",
         serde_json::json!({

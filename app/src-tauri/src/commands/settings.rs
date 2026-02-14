@@ -83,8 +83,8 @@ pub async fn test_api_key(api_key: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub fn set_log_level(verbose: bool) -> Result<(), String> {
-    crate::logging::set_log_level(verbose);
+pub fn set_log_level(level: String) -> Result<(), String> {
+    crate::logging::set_log_level(&level);
     Ok(())
 }
 

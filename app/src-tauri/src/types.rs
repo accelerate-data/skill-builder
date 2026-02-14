@@ -9,8 +9,9 @@ pub struct AppSettings {
     pub preferred_model: Option<String>,
     #[serde(default)]
     pub debug_mode: bool,
-    #[serde(default)]
-    pub verbose_logging: bool,
+    /// One of "error", "warn", "info", "debug". Defaults to "info".
+    #[serde(default = "default_log_level")]
+    pub log_level: String,
     #[serde(default)]
     pub extended_context: bool,
     #[serde(default)]
@@ -29,7 +30,7 @@ impl Default for AppSettings {
             skills_path: None,
             preferred_model: None,
             debug_mode: false,
-            verbose_logging: false,
+            log_level: "info".to_string(),
             extended_context: false,
             extended_thinking: false,
             splash_shown: false,
@@ -98,6 +99,10 @@ pub struct SkillFileEntry {
     pub is_directory: bool,
     pub is_readonly: bool,
     pub size_bytes: u64,
+}
+
+fn default_log_level() -> String {
+    "info".to_string()
 }
 
 fn default_skill_type() -> String {
@@ -185,7 +190,7 @@ mod tests {
         assert!(settings.skills_path.is_none());
         assert!(settings.preferred_model.is_none());
         assert!(!settings.debug_mode);
-        assert!(!settings.verbose_logging);
+        assert_eq!(settings.log_level, "info");
         assert!(!settings.extended_context);
         assert!(!settings.extended_thinking);
         assert!(!settings.splash_shown);
@@ -200,7 +205,7 @@ mod tests {
             skills_path: Some("/home/user/output".to_string()),
             preferred_model: Some("sonnet".to_string()),
             debug_mode: false,
-            verbose_logging: false,
+            log_level: "info".to_string(),
             extended_context: false,
             extended_thinking: true,
             splash_shown: false,
@@ -228,14 +233,20 @@ mod tests {
 
     #[test]
     fn test_app_settings_deserialize_without_optional_fields() {
-        // Simulates loading settings saved before skills_path / debug_mode / extended_thinking / github_pat existed
+        // Simulates loading settings saved before skills_path / debug_mode / extended_thinking / github_pat / log_level existed
         let json = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","extended_context":false,"splash_shown":false}"#;
         let settings: AppSettings = serde_json::from_str(json).unwrap();
         assert!(settings.skills_path.is_none());
         assert!(!settings.debug_mode);
-        assert!(!settings.verbose_logging);
+        assert_eq!(settings.log_level, "info");
         assert!(!settings.extended_thinking);
         assert!(settings.github_pat.is_none());
+
+        // Simulates loading settings that still have the old verbose_logging boolean field
+        let json_old = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","verbose_logging":true,"extended_context":false,"splash_shown":false}"#;
+        let settings_old: AppSettings = serde_json::from_str(json_old).unwrap();
+        // Old verbose_logging is ignored; log_level defaults to "info"
+        assert_eq!(settings_old.log_level, "info");
     }
 
     #[test]

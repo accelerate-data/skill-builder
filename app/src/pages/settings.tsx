@@ -33,7 +33,7 @@ export default function SettingsPage() {
   const [skillsPath, setSkillsPath] = useState<string | null>(null)
   const [preferredModel, setPreferredModel] = useState<string>("sonnet")
   const [debugMode, setDebugMode] = useState(false)
-  const [verboseLogging, setVerboseLogging] = useState(false)
+  const [logLevel, setLogLevel] = useState("info")
   const [extendedContext, setExtendedContext] = useState(false)
   const [extendedThinking, setExtendedThinking] = useState(false)
   const [githubPat, setGithubPat] = useState<string | null>(null)
@@ -65,7 +65,7 @@ export default function SettingsPage() {
             setSkillsPath(result.skills_path)
             setPreferredModel(result.preferred_model || "sonnet")
             setDebugMode(result.debug_mode ?? false)
-            setVerboseLogging(result.verbose_logging ?? false)
+            setLogLevel(result.log_level ?? "info")
             setExtendedContext(result.extended_context ?? false)
             setExtendedThinking(result.extended_thinking ?? false)
             setGithubPat(result.github_pat)
@@ -122,7 +122,7 @@ export default function SettingsPage() {
     skillsPath: string | null;
     preferredModel: string;
     debugMode: boolean;
-    verboseLogging: boolean;
+    logLevel: string;
     extendedContext: boolean;
     extendedThinking: boolean;
     githubPat: string | null;
@@ -133,7 +133,7 @@ export default function SettingsPage() {
       skills_path: overrides.skillsPath !== undefined ? overrides.skillsPath : skillsPath,
       preferred_model: overrides.preferredModel !== undefined ? overrides.preferredModel : preferredModel,
       debug_mode: overrides.debugMode !== undefined ? overrides.debugMode : debugMode,
-      verbose_logging: overrides.verboseLogging !== undefined ? overrides.verboseLogging : verboseLogging,
+      log_level: overrides.logLevel !== undefined ? overrides.logLevel : logLevel,
       extended_context: overrides.extendedContext !== undefined ? overrides.extendedContext : extendedContext,
       extended_thinking: overrides.extendedThinking !== undefined ? overrides.extendedThinking : extendedThinking,
       github_pat: overrides.githubPat !== undefined ? overrides.githubPat : githubPat,
@@ -147,7 +147,7 @@ export default function SettingsPage() {
         skillsPath: settings.skills_path,
         preferredModel: settings.preferred_model,
         debugMode: settings.debug_mode,
-        verboseLogging: settings.verbose_logging,
+        logLevel: settings.log_level,
         extendedContext: settings.extended_context,
         extendedThinking: settings.extended_thinking,
         githubPat: settings.github_pat,
@@ -418,24 +418,31 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Verbose Logging</CardTitle>
+          <CardTitle>Log Level</CardTitle>
           <CardDescription>
-            Enable debug-level logging for detailed Rust backend, sidecar, and frontend activity.
-            Log file is recreated each session.
+            Controls how much detail is written to the app log file.
+            Each level includes everything above it: Error &lt; Warn &lt; Info &lt; Debug.
+            Chat transcripts (JSONL) are always captured regardless of this setting.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="verbose-logging">Verbose logging (debug-level output)</Label>
-            <Switch
-              id="verbose-logging"
-              checked={verboseLogging}
-              onCheckedChange={(checked) => {
-                setVerboseLogging(checked)
-                autoSave({ verboseLogging: checked })
-                invoke("set_log_level", { verbose: checked }).catch(() => {})
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="log-level-select">Log Level</Label>
+            <select
+              id="log-level-select"
+              value={logLevel}
+              onChange={(e) => {
+                setLogLevel(e.target.value)
+                autoSave({ logLevel: e.target.value })
+                invoke("set_log_level", { level: e.target.value }).catch(() => {})
               }}
-            />
+              className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="error">Error — only errors</option>
+              <option value="warn">Warn — errors + warnings</option>
+              <option value="info">Info — errors + warnings + lifecycle (default)</option>
+              <option value="debug">Debug — everything (verbose)</option>
+            </select>
           </div>
         </CardContent>
       </Card>

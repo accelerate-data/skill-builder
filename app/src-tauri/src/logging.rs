@@ -3,30 +3,27 @@ use tauri_plugin_log::{Target, TargetKind};
 /// The log file name written to the app log directory each session.
 const LOG_FILE_NAME: &str = "skill-builder";
 
-/// Truncate the log file before the Tauri builder starts so each session
-/// gets a fresh log.
+/// Truncate the log file so each session starts fresh.
 ///
-/// This must be called BEFORE `tauri::Builder::default()` because the
-/// log plugin opens the file during builder construction.
-pub fn truncate_log_file() {
-    // On macOS the log dir is ~/Library/Logs/{identifier}.
-    // On Linux it's $XDG_DATA_HOME/{identifier}/logs.
-    // On Windows it's {FOLDERID_LocalAppData}/{identifier}/logs.
-    //
-    // We use the same identifier that Tauri resolves from tauri.conf.json.
-    // The `dirs` crate (a transitive dependency) provides the base directories.
-    #[cfg(target_os = "macos")]
-    let base = dirs::home_dir().map(|h| h.join("Library").join("Logs"));
-    #[cfg(target_os = "linux")]
-    let base = dirs::data_local_dir().map(|d| d.join("logs"));
-    #[cfg(target_os = "windows")]
-    let base = dirs::data_local_dir().map(|d| d.join("logs"));
-
-    if let Some(base_dir) = base {
-        let log_dir = base_dir.join("com.skillbuilder.app");
-        let log_file = log_dir.join(format!("{}.log", LOG_FILE_NAME));
-        if log_file.exists() {
-            let _ = std::fs::write(&log_file, "");
+/// Called from `.setup()` after the log plugin has already opened the file.
+/// We use the Tauri path resolver to guarantee the path matches the plugin's
+/// target — the old approach of guessing the path via `dirs` could diverge
+/// from what `tauri-plugin-log` actually resolves (especially in dev builds).
+pub fn truncate_log_file(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    match app.path().app_log_dir() {
+        Ok(log_dir) => {
+            let log_file = log_dir.join(format!("{}.log", LOG_FILE_NAME));
+            if log_file.exists() {
+                // Truncate to zero — the log plugin holds an append-mode handle,
+                // so subsequent writes land at offset 0 in the now-empty file.
+                if let Err(e) = std::fs::write(&log_file, "") {
+                    eprintln!("Failed to truncate log file {:?}: {}", log_file, e);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to resolve app log dir for truncation: {}", e);
         }
     }
 }
@@ -39,7 +36,7 @@ pub fn truncate_log_file() {
 ///
 /// Targets:
 /// - **LogDir**: persistent file in the app log directory (fresh each session
-///   via `truncate_log_file()` called before the builder starts).
+///   via `truncate_log_file()` called during `.setup()`).
 /// - **Stderr**: visible in terminals / dev consoles for CLI users.
 pub fn build_log_plugin() -> tauri_plugin_log::Builder {
     tauri_plugin_log::Builder::new()
@@ -49,22 +46,30 @@ pub fn build_log_plugin() -> tauri_plugin_log::Builder {
             }),
             Target::new(TargetKind::Stderr),
         ])
-        .level(log::LevelFilter::Info)
+        // Set the plugin filter wide open — actual filtering is done by
+        // `log::set_max_level()` in `set_log_level()`, which is called
+        // during setup and whenever the user changes the setting.
+        .level(log::LevelFilter::Debug)
         .max_file_size(50_000_000) // 50 MB safety cap
 }
 
-/// Switch the runtime log level between `Info` and `Debug`.
+/// Set the runtime log level.
+///
+/// Accepts one of `"error"`, `"warn"`, `"info"`, `"debug"` (case-insensitive).
+/// Falls back to `Info` for unrecognized values.
 ///
 /// Called from the `set_log_level` Tauri command and during `.setup()` after
-/// reading the persisted `debug_mode` setting.
-pub fn set_log_level(verbose: bool) {
-    let level = if verbose {
-        log::LevelFilter::Debug
-    } else {
-        log::LevelFilter::Info
+/// reading the persisted setting.
+pub fn set_log_level(level: &str) {
+    let filter = match level.to_lowercase().as_str() {
+        "error" => log::LevelFilter::Error,
+        "warn" => log::LevelFilter::Warn,
+        "info" => log::LevelFilter::Info,
+        "debug" => log::LevelFilter::Debug,
+        _ => log::LevelFilter::Info,
     };
-    log::set_max_level(level);
-    log::info!("Log level set to {}", level);
+    log::set_max_level(filter);
+    log::info!("Log level set to {}", filter);
 }
 
 /// Return the absolute path to the log file.

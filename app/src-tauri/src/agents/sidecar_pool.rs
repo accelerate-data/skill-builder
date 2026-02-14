@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::io::Write as _;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::Arc;
@@ -96,10 +97,10 @@ impl SidecarStartupError {
                 "Check file permissions and ensure the sidecar bundle exists. Try running `npm run sidecar:build` in the app/ directory.".to_string()
             }
             SidecarStartupError::ReadyTimeout { .. } => {
-                "Check the app logs for details (Help > Open Log Directory). The sidecar process may have crashed during initialization.".to_string()
+                "Check the app logs for details (Settings > Log File). The sidecar process may have crashed during initialization.".to_string()
             }
             SidecarStartupError::Other { .. } => {
-                "Check the app logs for details (Help > Open Log Directory).".to_string()
+                "Check the app logs for details (Settings > Log File).".to_string()
             }
         }
     }
@@ -223,6 +224,8 @@ fn spawn_heartbeat_task(
                 break;
             }
 
+            log::debug!("[heartbeat:{}] ping sent", skill_name);
+
             // Wait 5 seconds for pong response
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
@@ -244,6 +247,10 @@ fn spawn_heartbeat_task(
     })
 }
 
+/// A per-request JSONL log file handle, shared between `do_send_request` (which creates it)
+/// and the stdout reader task (which appends each message line).
+type RequestLogFile = Arc<Mutex<Option<std::fs::File>>>;
+
 /// Pool of persistent sidecar processes, one per skill.
 /// Reuses existing processes across agent invocations to reduce startup latency.
 /// Wraps an `Arc` so cloning is cheap and all clones share the same pool.
@@ -254,8 +261,10 @@ pub struct SidecarPool {
     /// while the pool lock is released during the spawn + sidecar_ready wait.
     spawning: Arc<Mutex<HashSet<String>>>,
     /// Tracks agent_ids of in-flight requests (removed when result/error received).
-    /// Used by timeout tasks to determine whether a request already completed.
     pending_requests: Arc<Mutex<HashSet<String>>>,
+    /// Per-request JSONL log files, keyed by agent_id.
+    /// The stdout reader appends each message to the matching file.
+    request_logs: Arc<Mutex<HashMap<String, RequestLogFile>>>,
 }
 
 impl SidecarPool {
@@ -264,6 +273,7 @@ impl SidecarPool {
             sidecars: Arc::new(Mutex::new(HashMap::new())),
             spawning: Arc::new(Mutex::new(HashSet::new())),
             pending_requests: Arc::new(Mutex::new(HashSet::new())),
+            request_logs: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -423,6 +433,16 @@ impl SidecarPool {
             cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
 
+        // On Windows, the Claude Code SDK requires git-bash. Auto-detect it
+        // so the user doesn't have to configure CLAUDE_CODE_GIT_BASH_PATH.
+        #[cfg(target_os = "windows")]
+        if std::env::var("CLAUDE_CODE_GIT_BASH_PATH").is_err() {
+            if let Some(bash_path) = find_git_bash() {
+                log::info!("Auto-detected git-bash at {}", bash_path);
+                cmd.env("CLAUDE_CODE_GIT_BASH_PATH", &bash_path);
+            }
+        }
+
         let mut child = cmd.spawn()
             .map_err(|e| {
                 let err = SidecarStartupError::SpawnFailed {
@@ -443,34 +463,103 @@ impl SidecarPool {
             pid
         );
 
-        // Wait for the sidecar_ready signal on stdout
+        // Start early stderr capture for startup diagnostics.
+        // Lines are collected in a shared buffer so that if startup fails (timeout,
+        // stdout closes, parse error) we can surface the actual Node.js crash reason
+        // in the error message shown to the user.
+        let early_stderr = Arc::new(Mutex::new(Vec::<String>::new()));
+        let early_stderr_clone = early_stderr.clone();
+        let skill_name_stderr = skill_name.to_string();
+        let stderr_task = tokio::spawn(async move {
+            let stderr_reader = BufReader::new(stderr);
+            let mut lines = stderr_reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let result = AssertUnwindSafe(async {
+                    log::debug!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
+                })
+                .catch_unwind()
+                .await;
+
+                if let Err(panic_info) = result {
+                    eprintln!(
+                        "stderr reader panicked for skill '{}': {:?} (line: {})",
+                        skill_name_stderr, panic_info, line
+                    );
+                }
+
+                let mut buf = early_stderr_clone.lock().await;
+                if buf.len() < 50 {
+                    buf.push(line);
+                }
+            }
+        });
+
+        // Helper: wait for the stderr task to finish (process is dead, so stderr
+        // will close quickly) then drain the collected lines. This avoids the race
+        // where we drain the buffer before the tokio task has read any lines.
+        let drain_stderr = |task: tokio::task::JoinHandle<()>, buf: Arc<Mutex<Vec<String>>>| async move {
+            // Give the stderr reader up to 2s to finish reading remaining lines
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(2), task).await;
+            let buf = buf.lock().await;
+            buf.join("\n")
+        };
+
+        // Wait for the sidecar_ready signal on stdout.
+        // Uses match instead of map_err so we can .await the stderr buffer drain.
         let mut reader = BufReader::new(stdout);
         let mut ready_line = String::new();
-        let ready_timeout = tokio::time::timeout(
+        let ready_result = tokio::time::timeout(
             std::time::Duration::from_secs(10),
             reader.read_line(&mut ready_line),
         )
-        .await
-        .map_err(|_| {
-            let err = SidecarStartupError::ReadyTimeout { pid };
-            events::emit_init_error(app_handle, &err);
-            err.to_string()
-        })?
-        .map_err(|e| {
-            let err = SidecarStartupError::Other {
-                detail: format!("Error reading sidecar_ready: {}", e),
-            };
-            events::emit_init_error(app_handle, &err);
-            err.to_string()
-        })?;
+        .await;
 
-        if ready_timeout == 0 {
-            let err = SidecarStartupError::Other {
-                detail: format!(
+        let bytes_read = match ready_result {
+            Err(_) => {
+                // Timeout waiting for sidecar_ready
+                let stderr_lines = drain_stderr(stderr_task, early_stderr).await;
+                let err = if stderr_lines.is_empty() {
+                    SidecarStartupError::ReadyTimeout { pid }
+                } else {
+                    SidecarStartupError::Other {
+                        detail: format!(
+                            "Agent runtime started (pid {}) but failed to initialize within 10 seconds. Stderr:\n{}",
+                            pid, stderr_lines
+                        ),
+                    }
+                };
+                events::emit_init_error(app_handle, &err);
+                return Err(err.to_string());
+            }
+            Ok(Err(e)) => {
+                // IO error reading stdout
+                let stderr_lines = drain_stderr(stderr_task, early_stderr).await;
+                let detail = if stderr_lines.is_empty() {
+                    format!("Error reading sidecar_ready: {}", e)
+                } else {
+                    format!("Error reading sidecar_ready: {}. Stderr:\n{}", e, stderr_lines)
+                };
+                let err = SidecarStartupError::Other { detail };
+                events::emit_init_error(app_handle, &err);
+                return Err(err.to_string());
+            }
+            Ok(Ok(n)) => n,
+        };
+
+        if bytes_read == 0 {
+            let stderr_lines = drain_stderr(stderr_task, early_stderr).await;
+            let detail = if stderr_lines.is_empty() {
+                format!(
                     "Persistent sidecar (pid {}) closed stdout before sending sidecar_ready",
                     pid
-                ),
+                )
+            } else {
+                format!(
+                    "Persistent sidecar (pid {}) closed stdout before sending sidecar_ready. Stderr:\n{}",
+                    pid, stderr_lines
+                )
             };
+            let err = SidecarStartupError::Other { detail };
             events::emit_init_error(app_handle, &err);
             return Err(err.to_string());
         }
@@ -480,20 +569,34 @@ impl SidecarPool {
         match serde_json::from_str::<serde_json::Value>(ready_line) {
             Ok(val) => {
                 if val.get("type").and_then(|t| t.as_str()) != Some("sidecar_ready") {
-                    let err = SidecarStartupError::Other {
-                        detail: format!("Expected sidecar_ready but got: {}", ready_line),
+                    let stderr_lines = drain_stderr(stderr_task, early_stderr).await;
+                    let detail = if stderr_lines.is_empty() {
+                        format!("Expected sidecar_ready but got: {}", ready_line)
+                    } else {
+                        format!(
+                            "Expected sidecar_ready but got: {}. Stderr:\n{}",
+                            ready_line, stderr_lines
+                        )
                     };
+                    let err = SidecarStartupError::Other { detail };
                     events::emit_init_error(app_handle, &err);
                     return Err(err.to_string());
                 }
             }
             Err(e) => {
-                let err = SidecarStartupError::Other {
-                    detail: format!(
+                let stderr_lines = drain_stderr(stderr_task, early_stderr).await;
+                let detail = if stderr_lines.is_empty() {
+                    format!(
                         "Failed to parse sidecar_ready signal: {} (line: {})",
                         e, ready_line
-                    ),
+                    )
+                } else {
+                    format!(
+                        "Failed to parse sidecar_ready signal: {} (line: {}). Stderr:\n{}",
+                        e, ready_line, stderr_lines
+                    )
                 };
+                let err = SidecarStartupError::Other { detail };
                 events::emit_init_error(app_handle, &err);
                 return Err(err.to_string());
             }
@@ -502,29 +605,8 @@ impl SidecarPool {
         log::info!("Persistent sidecar for '{}' is ready (pid {})", skill_name, pid);
 
         // Issue 3: Store JoinHandles so we can abort them on shutdown/crash-respawn
-
-        // Spawn stderr reader for logging (panic-safe: log and continue on panic)
-        let skill_name_stderr = skill_name.to_string();
-        let stderr_task = tokio::spawn(async move {
-            let stderr_reader = BufReader::new(stderr);
-            let mut lines = stderr_reader.lines();
-
-            while let Ok(Some(line)) = lines.next_line().await {
-                let result = AssertUnwindSafe(async {
-                    log::debug!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
-                })
-                .catch_unwind()
-                .await;
-
-                if let Err(panic_info) = result {
-                    // stderr panics are non-fatal — log and continue
-                    eprintln!(
-                        "stderr reader panicked for skill '{}': {:?} (line: {})",
-                        skill_name_stderr, panic_info, line
-                    );
-                }
-            }
-        });
+        // The stderr_task is already spawned above and will keep running,
+        // draining to log::debug for the lifetime of the sidecar process.
 
         // Create last_pong timestamp for heartbeat tracking
         let last_pong = Arc::new(Mutex::new(tokio::time::Instant::now()));
@@ -532,6 +614,7 @@ impl SidecarPool {
         // Spawn stdout reader that routes messages by request_id
         let stdout_pool = self.sidecars.clone();
         let stdout_pending = self.pending_requests.clone();
+        let stdout_request_logs = self.request_logs.clone();
         let skill_name_stdout = skill_name.to_string();
         let app_handle_stdout = app_handle.clone();
         let stdout_last_pong = last_pong.clone();
@@ -543,7 +626,8 @@ impl SidecarPool {
             let mut lines = reader.lines();
 
             while let Ok(Some(line)) = lines.next_line().await {
-                log::debug!("[sidecar-stdout:{}] {}", skill_name_stdout, line);
+                // Raw stdout lines are captured in per-request JSONL transcripts
+                // ({cwd}/{skill_name}/logs/) — no need to duplicate in the app log.
 
                 // Wrap per-line processing in catch_unwind so a panic in JSON
                 // parsing or message routing doesn't kill the reader silently.
@@ -557,10 +641,22 @@ impl SidecarPool {
                             if msg.get("type").and_then(|t| t.as_str()) == Some("pong") {
                                 let mut pong_guard = stdout_last_pong.lock().await;
                                 *pong_guard = tokio::time::Instant::now();
+                                log::debug!("[heartbeat:{}] pong received", skill_name_stdout);
                                 return;
                             }
 
                             if let Some(request_id) = msg.get("request_id").and_then(|r| r.as_str()) {
+                                // Intercept request_complete — sidecar signals it's ready for
+                                // the next request. Log but don't forward to the event system.
+                                if msg.get("type").and_then(|t| t.as_str()) == Some("request_complete") {
+                                    log::debug!(
+                                        "[persistent-sidecar:{}] Request '{}' complete — sidecar ready",
+                                        skill_name_stdout,
+                                        request_id,
+                                    );
+                                    return;
+                                }
+
                                 // Route this message to the correct agent using the request_id as agent_id
                                 events::handle_sidecar_message(
                                     &app_handle_stdout,
@@ -568,10 +664,62 @@ impl SidecarPool {
                                     &line,
                                 );
 
-                                // Check if this is a result or error — if so, emit exit event
-                                // and remove from pending_requests so timeout tasks know it completed.
+                                // Append to per-request JSONL transcript
+                                {
+                                    let logs = stdout_request_logs.lock().await;
+                                    if let Some(log_file) = logs.get(request_id) {
+                                        let mut guard = log_file.lock().await;
+                                        if let Some(ref mut f) = *guard {
+                                            let _ = writeln!(f, "{}", line);
+                                        }
+                                    }
+                                }
+
+                                // Log lifecycle events at INFO so the log file tells the full story.
+                                // Streaming messages (assistant, user, tool_use, etc.) stay at debug.
                                 if let Some(msg_type) = msg.get("type").and_then(|t| t.as_str()) {
+                                    match msg_type {
+                                        "system" => {
+                                            let subtype = msg.get("subtype")
+                                                .and_then(|s| s.as_str())
+                                                .unwrap_or("unknown");
+                                            // Surface SDK stderr in the app log — this is
+                                            // diagnostic output (not agent content) and is
+                                            // critical for debugging startup failures.
+                                            if subtype == "sdk_stderr" {
+                                                let data = msg.get("data")
+                                                    .and_then(|d| d.as_str())
+                                                    .unwrap_or("");
+                                                log::warn!(
+                                                    "[persistent-sidecar:{}] Agent '{}' stderr: {}",
+                                                    skill_name_stdout,
+                                                    request_id,
+                                                    data,
+                                                );
+                                            } else {
+                                                log::debug!(
+                                                    "[persistent-sidecar:{}] Agent '{}': {}",
+                                                    skill_name_stdout,
+                                                    request_id,
+                                                    subtype,
+                                                );
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+
+                                // Check if this is a result or error — if so, emit exit event
+                                // and remove from pending_requests.
+                                if let Some(msg_type) = msg.get("type").and_then(|t| t.as_str()) {
+                                    let is_terminal = msg_type == "result" || msg_type == "error";
+
                                     if msg_type == "result" {
+                                        log::debug!(
+                                            "[persistent-sidecar:{}] Agent '{}' completed successfully",
+                                            skill_name_stdout,
+                                            request_id,
+                                        );
                                         {
                                             let mut pending = stdout_pending.lock().await;
                                             pending.remove(request_id);
@@ -582,6 +730,15 @@ impl SidecarPool {
                                             true,
                                         );
                                     } else if msg_type == "error" {
+                                        let error_detail = msg.get("message")
+                                            .and_then(|m| m.as_str())
+                                            .unwrap_or("(no message)");
+                                        log::info!(
+                                            "[persistent-sidecar:{}] Agent error for '{}': {}",
+                                            skill_name_stdout,
+                                            request_id,
+                                            error_detail,
+                                        );
                                         {
                                             let mut pending = stdout_pending.lock().await;
                                             pending.remove(request_id);
@@ -597,21 +754,27 @@ impl SidecarPool {
                                             false,
                                         );
                                     }
+
+                                    // Close and remove the JSONL log file on terminal messages
+                                    if is_terminal {
+                                        let mut logs = stdout_request_logs.lock().await;
+                                        logs.remove(request_id);
+                                    }
                                 }
                             } else {
                                 log::warn!(
-                                    "[persistent-sidecar:{}] Message without request_id: {}",
+                                    "[persistent-sidecar:{}] Message without request_id (len={})",
                                     skill_name_stdout,
-                                    line
+                                    line.len(),
                                 );
                             }
                         }
                         Err(e) => {
-                            log::warn!(
-                                "[persistent-sidecar:{}] Failed to parse stdout: {} (line: {})",
+                            log::debug!(
+                                "[persistent-sidecar:{}] Failed to parse stdout as JSON: {} (len={})",
                                 skill_name_stdout,
                                 e,
-                                line
+                                line.len(),
                             );
                         }
                     }
@@ -621,10 +784,10 @@ impl SidecarPool {
 
                 if let Err(panic_info) = process_result {
                     log::error!(
-                        "stdout reader panicked for skill '{}': {:?} (line: {}) — removing from pool",
+                        "stdout reader panicked for skill '{}': {:?} (len={}) — removing from pool",
                         skill_name_stdout,
                         panic_info,
-                        line
+                        line.len()
                     );
                     remove_and_cleanup_sidecar(&panic_pool, &skill_name_stdout).await;
                     return; // exit the task — sidecar is cleaned up
@@ -689,7 +852,7 @@ impl SidecarPool {
             .await;
 
         if let Err(ref e) = result {
-            log::error!(
+            log::warn!(
                 "send_request failed for agent '{}' on skill '{}': {}",
                 agent_id,
                 skill_name,
@@ -724,7 +887,7 @@ impl SidecarPool {
         request_line.push('\n');
 
         // Emit redacted config to frontend (same as spawn_sidecar does)
-        {
+        let config_event = {
             let mut config_val = serde_json::to_value(&config).unwrap_or_default();
             if let Some(obj) = config_val.as_object_mut() {
                 obj.insert("apiKey".to_string(), serde_json::json!("[REDACTED]"));
@@ -733,16 +896,51 @@ impl SidecarPool {
 
             let discovered_skills = scan_skills_dir(Path::new(&config.cwd));
 
-            let config_event = serde_json::json!({
+            let event = serde_json::json!({
                 "type": "config",
                 "config": config_val,
                 "discoveredSkills": discovered_skills,
             });
-            events::handle_sidecar_message(app_handle, agent_id, &config_event.to_string());
+            events::handle_sidecar_message(app_handle, agent_id, &event.to_string());
+            event
+        };
+
+        // Create per-request JSONL transcript file alongside chat storage:
+        //   {cwd}/{skill_name}/logs/{step_label}-{iso_timestamp}.jsonl
+        //
+        // The step_label is extracted from agent_id which has the format:
+        //   {skill_name}-{label}-{timestamp_ms}
+        // e.g. "dbt-step5-1707654321000" → label = "step5"
+        {
+            let step_label = extract_step_label(agent_id, skill_name);
+            let now = chrono::Local::now();
+            let ts = now.format("%Y-%m-%dT%H-%M-%S").to_string();
+            let log_dir = Path::new(&config.cwd).join(skill_name).join("logs");
+            let log_path = log_dir.join(format!("{}-{}.jsonl", step_label, ts));
+
+            match std::fs::create_dir_all(&log_dir)
+                .and_then(|_| std::fs::File::create(&log_path))
+            {
+                Ok(mut f) => {
+                    // Write redacted config as the first line
+                    let _ = writeln!(f, "{}", config_event);
+                    let log_handle: RequestLogFile = Arc::new(Mutex::new(Some(f)));
+                    let mut logs = self.request_logs.lock().await;
+                    logs.insert(agent_id.to_string(), log_handle);
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to create JSONL transcript at {}: {}",
+                        log_path.display(),
+                        e,
+                    );
+                    // Non-fatal — agent still runs, just no transcript
+                }
+            }
         }
 
         // Register this request as pending BEFORE sending to stdin, so the
-        // stdout reader and timeout task both know it's in-flight.
+        // stdout reader knows it's in-flight.
         {
             let mut pending = self.pending_requests.lock().await;
             pending.insert(agent_id.to_string());
@@ -753,7 +951,6 @@ impl SidecarPool {
             let pool = self.sidecars.lock().await;
             let sidecar = pool.get(skill_name).ok_or_else(|| {
                 // Remove from pending since we never sent the request
-                // (can't await here, but the timeout task will handle cleanup)
                 format!(
                     "Sidecar for '{}' not found in pool after get_or_spawn",
                     skill_name
@@ -819,39 +1016,16 @@ impl SidecarPool {
             }
         }
 
-        log::info!(
+        log::debug!(
             "Sent agent request '{}' to persistent sidecar for '{}' (pid {})",
             agent_id,
             skill_name,
             pid
         );
 
-        // Spawn response timeout watchdog (5 minutes)
-        let timeout_pending = self.pending_requests.clone();
-        let timeout_app_handle = app_handle.clone();
-        let timeout_agent_id = agent_id.to_string();
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(300)).await;
-
-            // Check if request is still pending
-            let still_pending = {
-                let mut pending = timeout_pending.lock().await;
-                pending.remove(&timeout_agent_id)
-            };
-
-            if still_pending {
-                log::warn!(
-                    "Agent request '{}' timed out after 5 minutes",
-                    timeout_agent_id
-                );
-                // Capture partial artifacts before emitting exit
-                crate::commands::workflow::capture_artifacts_on_error(
-                    &timeout_app_handle,
-                    &timeout_agent_id,
-                );
-                events::handle_sidecar_exit(&timeout_app_handle, &timeout_agent_id, false);
-            }
-        });
+        // No response timeout — the heartbeat task (30s ping / 5s pong) already
+        // detects dead sidecars. If the sidecar is alive, the SDK is legitimately
+        // working; complex agents (reasoning, merging) can take 10+ minutes.
 
         Ok(())
     }
@@ -885,6 +1059,19 @@ impl SidecarPool {
                 for agent_id in &to_shutdown {
                     events::handle_agent_shutdown(app_handle, agent_id);
                     pending.remove(agent_id);
+                }
+            }
+
+            // Close JSONL transcripts for this skill's requests
+            {
+                let mut logs = self.request_logs.lock().await;
+                let to_close: Vec<String> = logs
+                    .keys()
+                    .filter(|agent_id| agent_id.starts_with(&format!("{}-", skill_name)))
+                    .cloned()
+                    .collect();
+                for agent_id in to_close {
+                    logs.remove(&agent_id);
                 }
             }
 
@@ -969,6 +1156,26 @@ impl SidecarPool {
     }
 }
 
+/// Extract the step label (e.g. "step5", "review-step2") from an agent_id.
+///
+/// Agent IDs have the format `{skill_name}-{label}-{timestamp_ms}`.
+/// We strip the `{skill_name}-` prefix and the `-{timestamp_ms}` suffix.
+fn extract_step_label<'a>(agent_id: &'a str, skill_name: &str) -> &'a str {
+    let without_prefix = agent_id
+        .strip_prefix(skill_name)
+        .and_then(|s| s.strip_prefix('-'))
+        .unwrap_or(agent_id);
+
+    // The timestamp is the last `-` separated numeric segment
+    if let Some(last_dash) = without_prefix.rfind('-') {
+        let suffix = &without_prefix[last_dash + 1..];
+        if suffix.chars().all(|c| c.is_ascii_digit()) && !suffix.is_empty() {
+            return &without_prefix[..last_dash];
+        }
+    }
+    without_prefix
+}
+
 /// Scan `{cwd}/.claude/skills/` for active skill directories (those containing SKILL.md).
 /// Returns a list of skill directory names that the SDK will discover.
 fn scan_skills_dir(cwd: &Path) -> Vec<String> {
@@ -1002,25 +1209,12 @@ pub fn resolve_sidecar_path_public(app_handle: &tauri::AppHandle) -> Result<Stri
 fn resolve_sidecar_path(app_handle: &tauri::AppHandle) -> Result<String, String> {
     use tauri::Manager;
 
-    if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        let sidecar = resource_dir
-            .join("sidecar")
-            .join("dist")
-            .join("agent-runner.js");
-        if sidecar.exists() {
-            return sidecar
-                .to_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| "Invalid sidecar path".to_string());
-        }
-    }
+    // Prefer bootstrap.js (catches module-load errors) with agent-runner.js as fallback.
+    let entry_files = ["bootstrap.js", "agent-runner.js"];
 
-    if let Ok(exe_dir) = std::env::current_exe() {
-        if let Some(dir) = exe_dir.parent() {
-            let sidecar = dir
-                .join("sidecar")
-                .join("dist")
-                .join("agent-runner.js");
+    if let Ok(resource_dir) = app_handle.path().resource_dir() {
+        for entry in &entry_files {
+            let sidecar = resource_dir.join("sidecar").join("dist").join(entry);
             if sidecar.exists() {
                 return sidecar
                     .to_str()
@@ -1030,19 +1224,36 @@ fn resolve_sidecar_path(app_handle: &tauri::AppHandle) -> Result<String, String>
         }
     }
 
-    let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .map(|p| p.join("sidecar").join("dist").join("agent-runner.js"));
-    if let Some(path) = dev_path {
-        if path.exists() {
-            return path
-                .to_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| "Invalid sidecar path".to_string());
+    if let Ok(exe_dir) = std::env::current_exe() {
+        if let Some(dir) = exe_dir.parent() {
+            for entry in &entry_files {
+                let sidecar = dir.join("sidecar").join("dist").join(entry);
+                if sidecar.exists() {
+                    return sidecar
+                        .to_str()
+                        .map(|s| s.to_string())
+                        .ok_or_else(|| "Invalid sidecar path".to_string());
+                }
+            }
         }
     }
 
-    Err("Could not find agent-runner.js -- run 'npm run build' in app/sidecar/ first".to_string())
+    let dev_base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|p| p.join("sidecar").join("dist"));
+    if let Some(base) = dev_base {
+        for entry in &entry_files {
+            let path = base.join(entry);
+            if path.exists() {
+                return path
+                    .to_str()
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| "Invalid sidecar path".to_string());
+            }
+        }
+    }
+
+    Err("Could not find bootstrap.js or agent-runner.js -- run 'npm run build' in app/sidecar/ first".to_string())
 }
 
 /// Result of Node.js binary resolution: the path and where it was found.
@@ -1261,6 +1472,42 @@ fn is_node_compatible(version: &str) -> bool {
     false
 }
 
+/// Auto-detect git-bash on Windows.
+/// Checks PATH then standard install locations.
+/// Public so `check_startup_deps` can call it for preflight validation.
+#[cfg(target_os = "windows")]
+pub fn find_git_bash() -> Option<String> {
+    use std::path::PathBuf;
+
+    // 1. Check if bash.exe is already in PATH
+    if let Ok(output) = std::process::Command::new("where").arg("bash.exe").output() {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // `where` can return multiple lines — pick the first Git one
+            for line in stdout.lines() {
+                let trimmed = line.trim();
+                if trimmed.contains("Git") && PathBuf::from(trimmed).exists() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    // 2. Check standard install locations
+    let candidates = [
+        r"C:\Program Files\Git\bin\bash.exe",
+        r"C:\Program Files (x86)\Git\bin\bash.exe",
+    ];
+
+    for path in &candidates {
+        if PathBuf::from(path).exists() {
+            return Some(path.to_string());
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1413,27 +1660,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_pending_requests_timeout_removes_if_still_pending() {
-        // Simulate the timeout task logic: if the request is still pending
-        // after the timeout period, it should be removed.
+    async fn test_pending_requests_remove_returns_true_if_present() {
+        // Removing a pending request should return true and clear it from the set.
         let pool = SidecarPool::new();
 
         {
             let mut pending = pool.pending_requests.lock().await;
-            pending.insert("agent-timeout-test".to_string());
+            pending.insert("agent-pending-test".to_string());
         }
 
-        // Simulate timeout check: request is still pending
-        let still_pending = {
+        let was_pending = {
             let mut pending = pool.pending_requests.lock().await;
-            pending.remove("agent-timeout-test")
+            pending.remove("agent-pending-test")
         };
-        assert!(still_pending, "Request should still be pending at timeout");
+        assert!(was_pending, "Request should have been pending");
 
-        // After removal, it should no longer be in the set
         {
             let pending = pool.pending_requests.lock().await;
-            assert!(!pending.contains("agent-timeout-test"));
+            assert!(!pending.contains("agent-pending-test"));
         }
     }
 
@@ -1479,9 +1723,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_pending_requests_completed_before_timeout() {
-        // Simulate the case where a request completes before the timeout fires.
-        // The stdout reader removes it, so the timeout task should find it absent.
+    async fn test_pending_requests_remove_returns_false_if_already_completed() {
+        // After the stdout reader removes a completed request, a second remove
+        // should return false (idempotent).
         let pool = SidecarPool::new();
 
         {
@@ -1495,12 +1739,12 @@ mod tests {
             pending.remove("agent-fast");
         }
 
-        // Simulate timeout check: request should NOT be pending
+        // Second remove should return false
         let still_pending = {
             let mut pending = pool.pending_requests.lock().await;
             pending.remove("agent-fast")
         };
-        assert!(!still_pending, "Request should have been completed before timeout");
+        assert!(!still_pending, "Request should have already been removed");
     }
 
     #[tokio::test]
@@ -1540,5 +1784,76 @@ mod tests {
 
         assert!(result.is_ok(), "Non-panicking code should return Ok");
         assert_eq!(result.unwrap(), "result");
+    }
+
+    // -----------------------------------------------------------------
+    // extract_step_label tests
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn test_extract_step_label_basic() {
+        assert_eq!(extract_step_label("dbt-step5-1707654321000", "dbt"), "step5");
+    }
+
+    #[test]
+    fn test_extract_step_label_review() {
+        assert_eq!(
+            extract_step_label("dbt-review-step2-1707654321000", "dbt"),
+            "review-step2"
+        );
+    }
+
+    #[test]
+    fn test_extract_step_label_no_timestamp() {
+        // If there's no numeric suffix, return everything after skill name
+        assert_eq!(extract_step_label("dbt-step5", "dbt"), "step5");
+    }
+
+    #[test]
+    fn test_extract_step_label_skill_name_mismatch() {
+        // If skill_name doesn't match the prefix, fall back to stripping timestamp from full id
+        assert_eq!(
+            extract_step_label("other-step5-1707654321000", "dbt"),
+            "other-step5"
+        );
+    }
+
+    #[test]
+    fn test_extract_step_label_multi_word_skill() {
+        assert_eq!(
+            extract_step_label("my-skill-step0-1707654321000", "my-skill"),
+            "step0"
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // request_logs tests
+    // -----------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_request_logs_empty_after_init() {
+        let pool = SidecarPool::new();
+        let logs = pool.request_logs.lock().await;
+        assert!(logs.is_empty(), "Request logs should be empty after creation");
+    }
+
+    #[tokio::test]
+    async fn test_request_logs_insert_and_remove() {
+        let pool = SidecarPool::new();
+
+        // Simulate creating a log file handle
+        let log_handle: RequestLogFile = Arc::new(Mutex::new(None));
+        {
+            let mut logs = pool.request_logs.lock().await;
+            logs.insert("agent-123".to_string(), log_handle);
+            assert!(logs.contains_key("agent-123"));
+        }
+
+        // Simulate terminal message cleanup
+        {
+            let mut logs = pool.request_logs.lock().await;
+            logs.remove("agent-123");
+            assert!(!logs.contains_key("agent-123"));
+        }
     }
 }

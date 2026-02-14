@@ -8,9 +8,6 @@ pub use types::*;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Truncate the log file before the plugin opens it so each session starts fresh.
-    logging::truncate_log_file();
-
     tauri::Builder::default()
         .plugin(logging::build_log_plugin().build())
         .plugin(tauri_plugin_opener::init())
@@ -18,16 +15,27 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             use tauri::Manager;
+
+            // Truncate the log file now that the Tauri path resolver is available.
+            // Uses app_log_dir() so the path always matches the log plugin's target.
+            logging::truncate_log_file(app.handle());
+
             let db = db::init_db(app).expect("failed to initialize database");
             app.manage(db);
 
-            // Apply persisted verbose_logging setting to the log level
+            // Apply persisted log level setting (fall back to info if DB read fails)
             {
                 let db_state = app.state::<db::Db>();
                 let conn = db_state.0.lock().expect("failed to lock db for settings");
-                if let Ok(settings) = db::read_settings(&conn) {
-                    logging::set_log_level(settings.verbose_logging);
-                    log::debug!("Log level initialized from settings: verbose={}", settings.verbose_logging);
+                match db::read_settings(&conn) {
+                    Ok(settings) => {
+                        logging::set_log_level(&settings.log_level);
+                        log::debug!("Log level initialized from settings: {}", settings.log_level);
+                    }
+                    Err(e) => {
+                        logging::set_log_level("info");
+                        log::warn!("Failed to read settings for log level, defaulting to info: {}", e);
+                    }
                 }
             }
 

@@ -139,4 +139,15 @@ describe("buildQueryOptions", () => {
     );
     expect(opts.cwd).toBe("/my/project");
   });
+
+  it("passes stderr callback when provided", () => {
+    const handler = (_data: string) => {};
+    const opts = buildQueryOptions(makeConfig(), new AbortController(), handler);
+    expect(opts.stderr).toBe(handler);
+  });
+
+  it("omits stderr when not provided", () => {
+    const opts = buildQueryOptions(makeConfig(), new AbortController());
+    expect(opts).not.toHaveProperty("stderr");
+  });
 });
