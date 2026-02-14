@@ -1578,11 +1578,15 @@ mod tests {
     #[test]
     fn test_node_platform_arch() {
         let arch = node_platform_arch();
-        // On macOS, this should be one of the known mappings
+        let expected: &[&str] = match std::env::consts::OS {
+            "macos" => &["darwin-arm64", "darwin-x64"],
+            "windows" => &["win-x64", "win-arm64"],
+            _ => &["unknown"], // Linux and others — not a release target
+        };
         assert!(
-            arch == "darwin-arm64" || arch == "darwin-x64",
-            "Expected darwin-arm64 or darwin-x64, got: {}",
-            arch
+            expected.contains(&arch),
+            "Expected one of {:?}, got: {}",
+            expected, arch
         );
     }
 
