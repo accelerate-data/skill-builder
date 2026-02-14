@@ -54,7 +54,7 @@ Skills are organized by type: **domain** (business knowledge), **platform** (too
 ```
 skill-builder/
 ├── agents/                  # Agent prompts (shared by both frontends)
-│   ├── {type}/              # 6 agents per skill type (4 types)
+│   ├── {type}/              # 7 agents per skill type (4 types)
 │   └── shared/              # 3 shared sub-agents
 ├── references/              # Shared context for agents
 ├── skills/start/SKILL.md    # Plugin coordinator (entry point)

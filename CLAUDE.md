@@ -109,7 +109,7 @@ Consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files yo
 
 | Tier | Name | What it tests | Cost |
 |---|---|---|---|
-| **T1** | Structural Validation | Plugin manifest, agent count (27), frontmatter, model tiers | Free |
+| **T1** | Structural Validation | Plugin manifest, agent count (31), frontmatter, model tiers | Free |
 | **T2** | Plugin Loading | Plugin loads into `claude -p`, skill trigger responds | ~$0.05 |
 | **T3** | Start Mode Detection | Modes A/B/C detected correctly using fixtures | ~$0.25 |
 | **T4** | Agent Smoke Tests | Merge deduplicates, reasoning produces decisions, build creates SKILL.md | ~$0.50 |
@@ -137,7 +137,7 @@ When you add, remove, or rename tests (including adding tests to existing files)
 ## Shared Components
 
 Both frontends use the same files -- no conversion needed:
-- `agents/{type}/` -- 6 agents per type (domain, platform, source, data-engineering)
+- `agents/{type}/` -- 7 agents per type (domain, platform, source, data-engineering)
 - `agents/shared/` -- 3 shared sub-agents (merge, research-patterns, research-data)
 - `references/shared-context.md` -- domain definitions, file formats, content principles
 
