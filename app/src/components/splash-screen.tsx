@@ -39,12 +39,12 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
   useEffect(() => {
     if (isChecking) return;
     if (deps?.all_ok) {
-      // Keep splash visible for 5s so startup checks are readable
+      // Keep splash visible briefly so startup checks are readable
       const timer = setTimeout(() => {
         onReadyRef.current();
         setFading(true);
-        setTimeout(() => onDismissRef.current(), 400);
-      }, 5000);
+        setTimeout(() => onDismissRef.current(), 500);
+      }, 1000);
       return () => clearTimeout(timer);
     }
   }, [isChecking, deps]);
@@ -53,16 +53,25 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm transition-opacity duration-400 ${fading ? "opacity-0" : "opacity-100"}`}
+      className={`fixed inset-0 z-50 flex items-center justify-center overflow-hidden transition-all duration-500 ${fading ? "opacity-0 scale-[0.98]" : "opacity-100 scale-100"}`}
     >
-      <div className="flex max-w-lg flex-col items-center gap-6 rounded-xl border bg-card p-10 text-center shadow-lg">
+      {/* Gradient backdrop */}
+      <div className="absolute inset-0 bg-background">
+        <div className="absolute inset-0 opacity-30 dark:opacity-20">
+          <div className="absolute -top-1/4 -left-1/4 h-3/4 w-3/4 rounded-full bg-[oklch(0.7_0.12_230)] blur-[120px]" />
+          <div className="absolute -right-1/4 -bottom-1/4 h-3/4 w-3/4 rounded-full bg-[oklch(0.7_0.10_300)] blur-[120px]" />
+          <div className="absolute top-1/2 left-1/2 h-1/2 w-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(0.7_0.08_180)] blur-[100px]" />
+        </div>
+      </div>
+      {/* Card */}
+      <div className="relative z-10 flex max-w-lg flex-col items-center gap-6 rounded-xl border bg-card p-10 text-center shadow-lg">
         <img
           src="/icon-256.png"
           alt="Skill Builder"
-          className="size-20"
+          className="size-20 animate-splash-logo"
         />
 
-        <h1 className="text-3xl font-bold tracking-tight">Skill Builder</h1>
+        <h1 className="text-3xl font-bold tracking-tight animate-splash-title">Skill Builder</h1>
 
         {/* Dependency checklist */}
         <div className="w-full rounded-lg border bg-muted/30 px-4 py-3">
@@ -71,13 +80,15 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
           </p>
           <div className="flex flex-col gap-1.5">
             {isChecking && !deps && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground animate-splash-row" style={{ animationDelay: '300ms' }}>
                 <Loader2 className="size-4 animate-spin" />
                 <span>Checking dependencies...</span>
               </div>
             )}
-            {deps?.checks.map((dep) => (
-              <DepRow key={dep.name} dep={dep} />
+            {deps?.checks.map((dep, i) => (
+              <div key={dep.name} className="animate-splash-row" style={{ animationDelay: `${300 + i * 120}ms` }}>
+                <DepRow dep={dep} />
+              </div>
             ))}
           </div>
         </div>
