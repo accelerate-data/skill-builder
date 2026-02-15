@@ -71,10 +71,10 @@ Maps every source file to its tests across all layers. Use this to determine whi
 
 | Source | Cargo Tests | E2E Tag |
 |---|---|---|
-| `src-tauri/src/db.rs` | `cargo test db` (46) | -- |
+| `src-tauri/src/db.rs` | `cargo test db` (56) | -- |
 | `src-tauri/src/types.rs` | `cargo test types` (5) | -- |
 | `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (57) | `@workflow` |
-| `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (33) | `@dashboard` |
+| `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (47) | `@dashboard` |
 | `src-tauri/src/commands/skill.rs` | `cargo test commands::skill` (19) | `@dashboard` |
 | `src-tauri/src/commands/imported_skills.rs` | `cargo test commands::imported_skills` (25) | -- |
 | `src-tauri/src/commands/files.rs` | `cargo test commands::files` (19) | `@workflow` |

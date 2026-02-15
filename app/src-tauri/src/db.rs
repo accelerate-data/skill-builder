@@ -286,6 +286,34 @@ pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, 
 }
 
 pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), String> {
+    // Delete chat messages via subquery (child of chat_sessions)
+    conn.execute(
+        "DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE skill_name = ?1)",
+        [skill_name],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Delete chat sessions
+    conn.execute(
+        "DELETE FROM chat_sessions WHERE skill_name = ?1",
+        [skill_name],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Delete workflow artifacts
+    conn.execute(
+        "DELETE FROM workflow_artifacts WHERE skill_name = ?1",
+        [skill_name],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Delete skill locks
+    conn.execute(
+        "DELETE FROM skill_locks WHERE skill_name = ?1",
+        [skill_name],
+    )
+    .map_err(|e| e.to_string())?;
+
     conn.execute(
         "DELETE FROM workflow_runs WHERE skill_name = ?1",
         [skill_name],

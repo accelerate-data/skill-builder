@@ -8,8 +8,9 @@ const WORKSPACE_DIR_NAME: &str = ".vibedata";
 
 /// Inspect files on disk to determine the furthest completed step for a skill.
 /// Returns `None` if no steps have been completed (no output files found),
-/// or `Some(n)` where n is the furthest completed step number. Only counts a
-/// step as complete if at least one of its expected output files exists.
+/// or `Some(n)` where n is the furthest completed step number. A step counts
+/// as complete only if ALL of its expected output files exist. Partial output
+/// (some but not all files) is cleaned up defensively.
 fn detect_furthest_step(
     workspace_path: &str,
     skill_name: &str,
@@ -24,31 +25,118 @@ fn detect_furthest_step(
 
     for step_id in [0u32, 2, 4, 5, 6] {
         let files = get_step_output_files(step_id);
-        let has_output = if step_id == 5 {
-            // Step 5 output may live in skills_path or workspace_path
+        let (has_all, has_any) = if step_id == 5 {
             let output_dir = if let Some(sp) = skills_path {
                 Path::new(sp).join(skill_name)
             } else {
                 skill_dir.clone()
             };
-            output_dir.join("SKILL.md").exists()
-                || output_dir.join("references").is_dir()
+            let exists = output_dir.join("SKILL.md").exists();
+            (exists, exists)
         } else if skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6) {
-            // Context files (all steps) live in skills_path when configured
             let target_dir = Path::new(skills_path.unwrap()).join(skill_name);
-            files.iter().any(|f| target_dir.join(f).exists())
+            let all = files.iter().all(|f| target_dir.join(f).exists());
+            let any = files.iter().any(|f| target_dir.join(f).exists());
+            (all, any)
         } else {
-            files.iter().any(|f| skill_dir.join(f).exists())
+            let all = files.iter().all(|f| skill_dir.join(f).exists());
+            let any = files.iter().any(|f| skill_dir.join(f).exists());
+            (all, any)
         };
 
-        if has_output {
-            // Steps 1 and 3 are human review — if step 2 output exists,
-            // step 1 must have been completed; if step 4 exists, step 3 was done.
+        if has_all {
             furthest = Some(step_id);
+        } else {
+            if has_any {
+                // Partial output — clean up orphaned files from this incomplete step
+                log::info!(
+                    "[detect_furthest_step] step {} has partial output for '{}', cleaning up",
+                    step_id, skill_name
+                );
+                cleanup_step_files(workspace_path, skill_name, step_id, skills_path);
+            }
+            // Stop at first incomplete step — later steps can't be valid
+            // without earlier ones completing first. Clean up any files from
+            // steps beyond this point.
+            break;
         }
     }
 
     furthest
+}
+
+/// Delete output files for a single step from both workspace and skills_path.
+/// Used defensively to clean up partial output from interrupted agent runs.
+fn cleanup_step_files(
+    workspace_path: &str,
+    skill_name: &str,
+    step_id: u32,
+    skills_path: Option<&str>,
+) {
+    let skill_dir = Path::new(workspace_path).join(skill_name);
+    let files = get_step_output_files(step_id);
+
+    if step_id == 5 {
+        let output_dir = if let Some(sp) = skills_path {
+            Path::new(sp).join(skill_name)
+        } else {
+            skill_dir.clone()
+        };
+        let skill_md = output_dir.join("SKILL.md");
+        if skill_md.exists() {
+            let _ = std::fs::remove_file(&skill_md);
+            log::info!("[cleanup_step_files] deleted {}", skill_md.display());
+        }
+        let refs_dir = output_dir.join("references");
+        if refs_dir.is_dir() {
+            // Only delete if non-empty (empty dir is from create_skill_inner)
+            if std::fs::read_dir(&refs_dir).map(|mut d| d.next().is_some()).unwrap_or(false) {
+                let _ = std::fs::remove_dir_all(&refs_dir);
+                // Recreate empty dir (create_skill_inner expects it)
+                let _ = std::fs::create_dir_all(&refs_dir);
+                log::info!("[cleanup_step_files] cleaned references/ in {}", output_dir.display());
+            }
+        }
+        return;
+    }
+
+    // Context files — check both workspace and skills_path locations
+    let context_dir = if let Some(sp) = skills_path {
+        if matches!(step_id, 0 | 2 | 4 | 6) {
+            Path::new(sp).join(skill_name)
+        } else {
+            skill_dir.clone()
+        }
+    } else {
+        skill_dir.clone()
+    };
+
+    for file in &files {
+        for dir in [&skill_dir, &context_dir] {
+            let path = dir.join(file);
+            if path.exists() {
+                let _ = std::fs::remove_file(&path);
+                log::info!("[cleanup_step_files] deleted {}", path.display());
+            }
+        }
+    }
+}
+
+/// Clean up files from all steps after the reconciled step.
+/// Removes both partial and complete output for future steps to prevent
+/// stale files from causing incorrect reconciliation on next startup.
+fn cleanup_future_steps(
+    workspace_path: &str,
+    skill_name: &str,
+    after_step: i32,
+    skills_path: Option<&str>,
+) {
+    for step_id in [0u32, 2, 4, 5, 6] {
+        if (step_id as i32) <= after_step {
+            continue;
+        }
+        cleanup_step_files(workspace_path, skill_name, step_id, skills_path);
+    }
 }
 
 /// Core reconciliation logic. Compares DB state with filesystem state and resolves
@@ -179,6 +267,10 @@ pub fn reconcile_on_startup(
                             }
                         }
                     }
+
+                    // Defensive: clean up any files from steps beyond the reconciled point.
+                    // Prevents stale future-step files from causing incorrect reconciliation.
+                    cleanup_future_steps(workspace_path, &run.skill_name, disk_step, skills_path);
                 } else if run.current_step > 0 {
                     // No output files on disk but DB thinks we're past step 0.
                     // Reset to step 0 pending — all work was lost.
@@ -191,6 +283,8 @@ pub fn reconcile_on_startup(
                         &run.skill_type,
                     )?;
                     crate::db::reset_workflow_steps_from(conn, &run.skill_name, 0)?;
+                    // Defensive: clean up any lingering files from all steps
+                    cleanup_future_steps(workspace_path, &run.skill_name, -1, skills_path);
                     notifications.push(format!(
                         "'{}' was reset from step {} to step 0 (no output files found)",
                         run.skill_name, run.current_step
@@ -1048,7 +1142,8 @@ mod tests {
 
     #[test]
     fn test_detect_furthest_step_skill_md_only() {
-        // SKILL.md exists but no context files — step 5 is detected
+        // SKILL.md exists but no context files (steps 0/2/4 missing).
+        // Detection stops at first incomplete step, so step 5 is NOT reached.
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().join("workspace");
         let skills = tmp.path().join("skills");
@@ -1062,13 +1157,140 @@ mod tests {
             "my-skill",
             Some(skills.to_str().unwrap()),
         );
-        assert_eq!(step, Some(5));
+        assert_eq!(step, None, "step 5 without earlier steps should not be detected");
     }
 
     #[test]
     fn test_detect_furthest_step_nonexistent_dir() {
         let step = detect_furthest_step("/nonexistent/path", "no-skill", None);
         assert_eq!(step, None);
+    }
+
+    #[test]
+    fn test_detect_step5_ignores_empty_references_dir() {
+        // Regression: create_skill_inner creates an empty references/ dir in
+        // skills_path at skill creation time. detect_furthest_step must not
+        // treat this as proof that step 5 (build) completed.
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let skills = tmp.path().join("skills");
+
+        std::fs::create_dir_all(workspace.join("my-skill")).unwrap();
+        // Simulate create_skill_inner: empty context/ and references/ dirs
+        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
+        std::fs::create_dir_all(skills.join("my-skill").join("references")).unwrap();
+
+        // Only step 0 output files exist
+        create_step_output(&skills, "my-skill", 0);
+
+        let step = detect_furthest_step(
+            workspace.to_str().unwrap(),
+            "my-skill",
+            Some(skills.to_str().unwrap()),
+        );
+        // Should detect step 0 only — NOT step 5
+        assert_eq!(step, Some(0));
+    }
+
+    #[test]
+    fn test_detect_partial_step0_output_cleaned_up() {
+        // If step 0 has only 2 of 3 expected files, it should not count as
+        // completed and the partial files should be cleaned up.
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        create_skill_dir(tmp.path(), "partial", "test");
+
+        let skill_dir = tmp.path().join("partial");
+        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+        // Write only 2 of 3 step 0 files
+        std::fs::write(skill_dir.join("context/research-entities.md"), "# partial").unwrap();
+        std::fs::write(skill_dir.join("context/research-metrics.md"), "# partial").unwrap();
+
+        let step = detect_furthest_step(workspace, "partial", None);
+        assert_eq!(step, None, "partial step 0 should not be detected");
+
+        // Partial files should have been cleaned up
+        assert!(!skill_dir.join("context/research-entities.md").exists());
+        assert!(!skill_dir.join("context/research-metrics.md").exists());
+    }
+
+    #[test]
+    fn test_detect_partial_step0_with_skills_path_cleaned_up() {
+        // Same as above but with skills_path configured
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let skills = tmp.path().join("skills");
+
+        std::fs::create_dir_all(workspace.join("my-skill")).unwrap();
+        let target = skills.join("my-skill");
+        std::fs::create_dir_all(target.join("context")).unwrap();
+        // Write only 2 of 3 step 0 files in skills_path
+        std::fs::write(target.join("context/research-entities.md"), "# partial").unwrap();
+        std::fs::write(target.join("context/research-metrics.md"), "# partial").unwrap();
+
+        let step = detect_furthest_step(
+            workspace.to_str().unwrap(),
+            "my-skill",
+            Some(skills.to_str().unwrap()),
+        );
+        assert_eq!(step, None, "partial step 0 in skills_path should not be detected");
+
+        // Partial files should have been cleaned up from skills_path
+        assert!(!target.join("context/research-entities.md").exists());
+        assert!(!target.join("context/research-metrics.md").exists());
+    }
+
+    #[test]
+    fn test_cleanup_future_steps() {
+        // If reconciled to step 2, files from steps 4/5/6 should be cleaned up
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        create_skill_dir(tmp.path(), "my-skill", "test");
+
+        // Create complete output for steps 0, 2, 4
+        create_step_output(tmp.path(), "my-skill", 0);
+        create_step_output(tmp.path(), "my-skill", 2);
+        create_step_output(tmp.path(), "my-skill", 4);
+
+        // Clean up everything after step 2
+        cleanup_future_steps(workspace, "my-skill", 2, None);
+
+        // Step 0 and 2 files should remain
+        let skill_dir = tmp.path().join("my-skill");
+        assert!(skill_dir.join("context/clarifications-concepts.md").exists());
+        assert!(skill_dir.join("context/clarifications.md").exists());
+
+        // Step 4 files should be gone
+        assert!(!skill_dir.join("context/decisions.md").exists());
+    }
+
+    #[test]
+    fn test_reconcile_cleans_future_step_files() {
+        // Scenario: DB at step 5, disk has step 0 output + stale step 4 file.
+        // Reconciler should reset to step 0 and clean up the step 4 file.
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        create_skill_dir(tmp.path(), "my-skill", "test");
+        create_step_output(tmp.path(), "my-skill", 0);
+        // Stale step 4 file from a previous run
+        create_step_output(tmp.path(), "my-skill", 4);
+
+        // DB thinks we're at step 5
+        crate::db::save_workflow_run(&conn, "my-skill", "test", 5, "pending", "domain").unwrap();
+
+        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+
+        // Should reset to step 0 (disk has step 0 complete, but step 2 is missing)
+        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        assert_eq!(run.current_step, 0, "should reconcile to step 0");
+
+        // Step 4 file should be cleaned up (future step)
+        let skill_dir = tmp.path().join("my-skill");
+        assert!(!skill_dir.join("context/decisions.md").exists(), "step 4 file should be cleaned up");
+
+        assert!(!result.notifications.is_empty());
     }
 
     // --- read_domain_from_disk tests ---
