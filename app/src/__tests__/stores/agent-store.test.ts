@@ -673,3 +673,95 @@ describe("RAF batching", () => {
     expect(useAgentStore.getState().runs["agent-1"].messages).toHaveLength(0);
   });
 });
+
+describe("result message metadata", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+  });
+
+  it("extracts resultSubtype from successful result message", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    useAgentStore.getState().addMessage("agent-1", {
+      type: "result",
+      content: "Done",
+      raw: { subtype: "success", stop_reason: "end_turn" },
+      timestamp: Date.now(),
+    });
+    flushMessageBuffer();
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.resultSubtype).toBe("success");
+    expect(run.stopReason).toBe("end_turn");
+    expect(run.resultErrors).toBeUndefined();
+  });
+
+  it("extracts error_max_turns subtype and errors array", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    useAgentStore.getState().addMessage("agent-1", {
+      type: "result",
+      content: undefined,
+      raw: {
+        subtype: "error_max_turns",
+        is_error: true,
+        errors: ["Max turns reached"],
+        stop_reason: "end_turn",
+      },
+      timestamp: Date.now(),
+    });
+    flushMessageBuffer();
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.resultSubtype).toBe("error_max_turns");
+    expect(run.resultErrors).toEqual(["Max turns reached"]);
+    expect(run.stopReason).toBe("end_turn");
+  });
+
+  it("extracts error_max_budget_usd subtype", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    useAgentStore.getState().addMessage("agent-1", {
+      type: "result",
+      content: undefined,
+      raw: {
+        subtype: "error_max_budget_usd",
+        is_error: true,
+        errors: ["Budget exceeded"],
+      },
+      timestamp: Date.now(),
+    });
+    flushMessageBuffer();
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.resultSubtype).toBe("error_max_budget_usd");
+    expect(run.resultErrors).toEqual(["Budget exceeded"]);
+  });
+
+  it("extracts refusal stop_reason", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    useAgentStore.getState().addMessage("agent-1", {
+      type: "result",
+      content: "Refused",
+      raw: { subtype: "success", stop_reason: "refusal" },
+      timestamp: Date.now(),
+    });
+    flushMessageBuffer();
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.stopReason).toBe("refusal");
+  });
+
+  it("leaves metadata undefined when result has no subtype or stop_reason", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    useAgentStore.getState().addMessage("agent-1", {
+      type: "result",
+      content: "Done",
+      raw: { usage: { input_tokens: 10, output_tokens: 5 } },
+      timestamp: Date.now(),
+    });
+    flushMessageBuffer();
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.resultSubtype).toBeUndefined();
+    expect(run.stopReason).toBeUndefined();
+    expect(run.resultErrors).toBeUndefined();
+  });
+});

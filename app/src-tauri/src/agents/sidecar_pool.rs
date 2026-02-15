@@ -710,11 +710,25 @@ impl SidecarPool {
                                     let is_terminal = msg_type == "result" || msg_type == "error";
 
                                     if msg_type == "result" {
-                                        log::debug!(
-                                            "[persistent-sidecar:{}] Agent '{}' completed successfully",
-                                            skill_name_stdout,
-                                            request_id,
-                                        );
+                                        // Check subtype and is_error to detect SDK error results
+                                        let subtype = msg.get("subtype").and_then(|s| s.as_str()).unwrap_or("success");
+                                        let is_error = msg.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
+                                        let success = !is_error && !subtype.starts_with("error_");
+
+                                        if success {
+                                            log::debug!(
+                                                "[persistent-sidecar:{}] Agent '{}' completed successfully",
+                                                skill_name_stdout,
+                                                request_id,
+                                            );
+                                        } else {
+                                            log::warn!(
+                                                "[persistent-sidecar:{}] Agent '{}' finished with error: subtype={}",
+                                                skill_name_stdout,
+                                                request_id,
+                                                subtype,
+                                            );
+                                        }
                                         {
                                             let mut pending = stdout_pending.lock().await;
                                             pending.remove(request_id);
@@ -722,7 +736,7 @@ impl SidecarPool {
                                         events::handle_sidecar_exit(
                                             &app_handle_stdout,
                                             request_id,
-                                            true,
+                                            success,
                                         );
                                     } else if msg_type == "error" {
                                         let error_detail = msg.get("message")

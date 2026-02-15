@@ -85,6 +85,22 @@ export interface CompactionEvent {
   timestamp: number;
 }
 
+export type ResultSubtype =
+  | "success"
+  | "error_max_turns"
+  | "error_during_execution"
+  | "error_max_budget_usd"
+  | "error_max_structured_output_retries";
+
+export type StopReason =
+  | "end_turn"
+  | "max_tokens"
+  | "stop_sequence"
+  | "tool_use"
+  | "pause_turn"
+  | "refusal"
+  | "model_context_window_exceeded";
+
 export interface AgentRun {
   agentId: string;
   model: string;
@@ -100,6 +116,9 @@ export interface AgentRun {
   compactionEvents: CompactionEvent[];
   thinkingEnabled: boolean;
   agentName?: string;
+  resultSubtype?: ResultSubtype;
+  resultErrors?: string[];
+  stopReason?: StopReason;
 }
 
 interface AgentState {
@@ -258,6 +277,9 @@ export const useAgentStore = create<AgentState>((set) => ({
         let contextHistory = run.contextHistory;
         let contextWindow = run.contextWindow;
         let compactionEvents = run.compactionEvents;
+        let resultSubtype = run.resultSubtype;
+        let resultErrors = run.resultErrors;
+        let stopReason = run.stopReason;
 
         if (message.type === "result") {
           const usage = raw.usage as
@@ -284,6 +306,16 @@ export const useAgentStore = create<AgentState>((set) => ({
                 break;
               }
             }
+          }
+          // Extract result subtype, errors, and stop_reason
+          if (typeof raw.subtype === "string") {
+            resultSubtype = raw.subtype as ResultSubtype;
+          }
+          if (Array.isArray(raw.errors)) {
+            resultErrors = raw.errors as string[];
+          }
+          if (typeof raw.stop_reason === "string") {
+            stopReason = raw.stop_reason as StopReason;
           }
         }
 
@@ -369,6 +401,9 @@ export const useAgentStore = create<AgentState>((set) => ({
           contextHistory,
           contextWindow,
           compactionEvents,
+          resultSubtype,
+          resultErrors,
+          stopReason,
         };
       }
 

@@ -174,6 +174,103 @@ describe("runAgentRequest", () => {
   });
 });
 
+describe("result message error subtypes", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("forwards error_max_turns result with subtype, is_error, and stop_reason intact", async () => {
+    const errorResult = {
+      type: "result",
+      subtype: "error_max_turns",
+      is_error: true,
+      errors: ["Max turns reached"],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 500, output_tokens: 100 },
+      total_cost_usd: 0.02,
+    };
+
+    async function* fakeConversation() {
+      yield { type: "assistant", message: { content: [{ type: "text", text: "Working..." }] } };
+      yield errorResult;
+    }
+    mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
+
+    const messages: Record<string, unknown>[] = [];
+    await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
+
+    // Find the result message (after system events)
+    const result = messages.find((m) => m.type === "result");
+    expect(result).toBeDefined();
+    expect(result!.subtype).toBe("error_max_turns");
+    expect(result!.is_error).toBe(true);
+    expect(result!.errors).toEqual(["Max turns reached"]);
+    expect(result!.stop_reason).toBe("end_turn");
+  });
+
+  it("forwards error_max_budget_usd result intact", async () => {
+    async function* fakeConversation() {
+      yield {
+        type: "result",
+        subtype: "error_max_budget_usd",
+        is_error: true,
+        errors: ["Budget exceeded"],
+        stop_reason: "end_turn",
+      };
+    }
+    mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
+
+    const messages: Record<string, unknown>[] = [];
+    await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
+
+    const result = messages.find((m) => m.type === "result");
+    expect(result!.subtype).toBe("error_max_budget_usd");
+    expect(result!.is_error).toBe(true);
+  });
+
+  it("forwards refusal stop_reason on success result", async () => {
+    async function* fakeConversation() {
+      yield {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        stop_reason: "refusal",
+        result: "I cannot help with that.",
+      };
+    }
+    mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
+
+    const messages: Record<string, unknown>[] = [];
+    await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
+
+    const result = messages.find((m) => m.type === "result");
+    expect(result!.stop_reason).toBe("refusal");
+    expect(result!.subtype).toBe("success");
+  });
+
+  it("forwards clean success result with all fields", async () => {
+    async function* fakeConversation() {
+      yield {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        stop_reason: "end_turn",
+        result: "Done!",
+        total_cost_usd: 0.01,
+      };
+    }
+    mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
+
+    const messages: Record<string, unknown>[] = [];
+    await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
+
+    const result = messages.find((m) => m.type === "result");
+    expect(result!.subtype).toBe("success");
+    expect(result!.is_error).toBe(false);
+    expect(result!.stop_reason).toBe("end_turn");
+  });
+});
+
 describe("emitSystemEvent", () => {
   it("emits a system event with correct format", () => {
     const messages: Record<string, unknown>[] = [];

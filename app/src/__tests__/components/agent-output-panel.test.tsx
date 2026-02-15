@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { useAgentStore, type AgentMessage } from "@/stores/agent-store";
+import { useAgentStore, flushMessageBuffer, type AgentMessage } from "@/stores/agent-store";
 
 // Polyfill scrollIntoView for jsdom
 if (!Element.prototype.scrollIntoView) {
@@ -1363,5 +1363,205 @@ describe("CollapsibleToolCall", () => {
     const button = screen.getByRole("button");
     expect(button.getAttribute("aria-label")).toContain("Reading app.ts");
     expect(button.getAttribute("aria-label")).toContain("expand");
+  });
+});
+
+describe("MessageItem — result error subtypes", () => {
+  it("renders error styling for error_max_turns result", () => {
+    render(
+      <MessageItem
+        message={{
+          type: "result",
+          content: undefined as unknown as string,
+          raw: { subtype: "error_max_turns", is_error: true, errors: ["Max turns reached"] },
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    expect(screen.getByText("Agent reached the maximum number of turns allowed.")).toBeInTheDocument();
+  });
+
+  it("renders error styling for error_max_budget_usd result", () => {
+    render(
+      <MessageItem
+        message={{
+          type: "result",
+          content: undefined as unknown as string,
+          raw: { subtype: "error_max_budget_usd", is_error: true },
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    expect(screen.getByText("Agent exceeded the maximum cost budget.")).toBeInTheDocument();
+  });
+
+  it("renders error styling for error_during_execution result", () => {
+    render(
+      <MessageItem
+        message={{
+          type: "result",
+          content: undefined as unknown as string,
+          raw: { subtype: "error_during_execution", is_error: true, errors: ["Connection failed"] },
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    expect(screen.getByText("An error occurred during agent execution.")).toBeInTheDocument();
+  });
+
+  it("renders refusal message for stop_reason refusal", () => {
+    render(
+      <MessageItem
+        message={{
+          type: "result",
+          content: "Refused",
+          raw: { subtype: "success", stop_reason: "refusal" },
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    expect(screen.getByText(/Agent declined this request/)).toBeInTheDocument();
+  });
+
+  it("renders green checkmark for clean success result", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "result",
+          content: "Agent finished successfully",
+          raw: { subtype: "success", stop_reason: "end_turn" },
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    expect(screen.getByText("Agent finished successfully")).toBeInTheDocument();
+    // Should use green text for success
+    const wrapper = container.firstChild as HTMLElement;
+    expect(wrapper.className).toContain("text-green");
+  });
+
+  it("treats is_error=true without error_ subtype as error", () => {
+    render(
+      <MessageItem
+        message={{
+          type: "result",
+          content: undefined as unknown as string,
+          raw: { is_error: true, errors: ["Unexpected failure"] },
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    expect(screen.getByText("Unexpected failure")).toBeInTheDocument();
+  });
+});
+
+describe("End-to-end: SDK result → store → UI", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+  });
+
+  it("error_max_turns result flows through store and renders error in UI", () => {
+    // Simulate the exact message shape the SDK sends
+    const sdkResultMessage = {
+      type: "result",
+      subtype: "error_max_turns",
+      is_error: true,
+      errors: ["Turn limit reached"],
+      stop_reason: "end_turn",
+      result: "",
+      total_cost_usd: 0.05,
+      usage: { input_tokens: 1000, output_tokens: 200 },
+      duration_ms: 5000,
+      num_turns: 2,
+    };
+
+    // Step 1: Message flows into store (simulates use-agent-stream.ts)
+    useAgentStore.getState().startRun("e2e-agent", "sonnet");
+    useAgentStore.getState().addMessage("e2e-agent", {
+      type: sdkResultMessage.type,
+      content: sdkResultMessage.result || undefined,
+      raw: sdkResultMessage as unknown as Record<string, unknown>,
+      timestamp: Date.now(),
+    });
+    // Flush the RAF buffer
+    flushMessageBuffer();
+
+    // Step 2: Verify store extracted metadata
+    const run = useAgentStore.getState().runs["e2e-agent"];
+    expect(run.resultSubtype).toBe("error_max_turns");
+    expect(run.resultErrors).toEqual(["Turn limit reached"]);
+    expect(run.stopReason).toBe("end_turn");
+    expect(run.totalCost).toBe(0.05);
+
+    // Step 3: Simulate completeRun (from agent-exit event with success=false)
+    // The Rust backend checks subtype.starts_with("error_") → success=false
+    const isError = sdkResultMessage.is_error || sdkResultMessage.subtype.startsWith("error_");
+    useAgentStore.getState().completeRun("e2e-agent", !isError);
+    expect(useAgentStore.getState().runs["e2e-agent"].status).toBe("error");
+
+    // Step 4: Render the result message and verify UI
+    const message = run.messages[0];
+    render(<MessageItem message={message} />);
+    expect(screen.getByText("Agent reached the maximum number of turns allowed.")).toBeInTheDocument();
+  });
+
+  it("clean success result flows through store and renders green checkmark", () => {
+    const sdkResultMessage = {
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      stop_reason: "end_turn",
+      result: "Skill built successfully",
+      total_cost_usd: 0.10,
+      usage: { input_tokens: 2000, output_tokens: 500 },
+    };
+
+    useAgentStore.getState().startRun("e2e-agent", "sonnet");
+    useAgentStore.getState().addMessage("e2e-agent", {
+      type: sdkResultMessage.type,
+      content: sdkResultMessage.result || undefined,
+      raw: sdkResultMessage as unknown as Record<string, unknown>,
+      timestamp: Date.now(),
+    });
+    flushMessageBuffer();
+
+    const run = useAgentStore.getState().runs["e2e-agent"];
+    expect(run.resultSubtype).toBe("success");
+    expect(run.stopReason).toBe("end_turn");
+
+    // Rust backend: !is_error && !subtype.starts_with("error_") → success=true
+    useAgentStore.getState().completeRun("e2e-agent", true);
+    expect(useAgentStore.getState().runs["e2e-agent"].status).toBe("completed");
+
+    const { container } = render(<MessageItem message={run.messages[0]} />);
+    expect(screen.getByText("Skill built successfully")).toBeInTheDocument();
+    expect((container.firstChild as HTMLElement).className).toContain("text-green");
+  });
+
+  it("refusal stop_reason flows through store and renders refusal message", () => {
+    const sdkResultMessage = {
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      stop_reason: "refusal",
+      result: "I cannot assist with that request.",
+      total_cost_usd: 0.01,
+      usage: { input_tokens: 100, output_tokens: 20 },
+    };
+
+    useAgentStore.getState().startRun("e2e-agent", "sonnet");
+    useAgentStore.getState().addMessage("e2e-agent", {
+      type: sdkResultMessage.type,
+      content: sdkResultMessage.result || undefined,
+      raw: sdkResultMessage as unknown as Record<string, unknown>,
+      timestamp: Date.now(),
+    });
+    flushMessageBuffer();
+
+    const run = useAgentStore.getState().runs["e2e-agent"];
+    expect(run.stopReason).toBe("refusal");
+
+    render(<MessageItem message={run.messages[0]} />);
+    expect(screen.getByText(/Agent declined this request/)).toBeInTheDocument();
   });
 });

@@ -13,6 +13,7 @@ import {
   MessageCircleQuestion,
   CheckCircle2,
   XCircle,
+  AlertTriangle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -221,6 +222,14 @@ export const categoryStyles: Record<MessageCategory, string> = {
   config:
     "border-l-2 border-l-blue-400 bg-blue-50 dark:bg-blue-950/30 rounded-md px-3 py-1",
   status: "",
+};
+
+/** User-friendly labels for SDK result error subtypes. */
+const RESULT_ERROR_LABELS: Record<string, string> = {
+  error_max_turns: "Agent reached the maximum number of turns allowed.",
+  error_max_budget_usd: "Agent exceeded the maximum cost budget.",
+  error_during_execution: "An error occurred during agent execution.",
+  error_max_structured_output_retries: "Agent failed to produce valid structured output after multiple retries.",
 };
 
 // --- Message grouping ---
@@ -439,6 +448,31 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
   }
 
   if (category === "result") {
+    const subtype = (message.raw as Record<string, unknown>).subtype as string | undefined;
+    const isError = (message.raw as Record<string, unknown>).is_error as boolean | undefined;
+    const errors = (message.raw as Record<string, unknown>).errors as string[] | undefined;
+    const resultStopReason = (message.raw as Record<string, unknown>).stop_reason as string | undefined;
+    const hasErrorSubtype = isError || (subtype && subtype.startsWith("error_"));
+
+    if (hasErrorSubtype) {
+      const errorMessage = RESULT_ERROR_LABELS[subtype ?? ""] ?? errors?.join("; ") ?? "Agent ended with an error";
+      return (
+        <div className={`${categoryStyles.error} flex items-start gap-2 text-sm text-destructive`}>
+          <AlertTriangle className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
+          <span>{errorMessage}</span>
+        </div>
+      );
+    }
+
+    if (resultStopReason === "refusal") {
+      return (
+        <div className={`${categoryStyles.error} flex items-start gap-2 text-sm text-destructive`}>
+          <XCircle className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
+          <span>Agent declined this request due to safety constraints. Please revise your prompt.</span>
+        </div>
+      );
+    }
+
     return (
       <div className={`${wrapperClass} flex items-start gap-2 text-sm text-green-700 dark:text-green-400`}>
         <CheckCircle2 className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
