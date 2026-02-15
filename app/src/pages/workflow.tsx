@@ -50,6 +50,7 @@ import {
   acquireLock,
   releaseLock,
   verifyStepOutput,
+  endWorkflowSession,
 } from "@/lib/tauri";
 
 // --- Step config ---
@@ -135,6 +136,15 @@ export default function WorkflowPage() {
     withResolver: true,
   });
 
+  /** End the active workflow session (fire-and-forget) and clear the store field. */
+  const endActiveSession = useCallback(() => {
+    const sessionId = useWorkflowStore.getState().workflowSessionId;
+    if (sessionId) {
+      endWorkflowSession(sessionId).catch(() => {});
+      useWorkflowStore.setState({ workflowSessionId: null });
+    }
+  }, []);
+
   const handleNavStay = useCallback(() => {
     resetBlocker?.();
   }, [resetBlocker]);
@@ -151,6 +161,9 @@ export default function WorkflowPage() {
     useWorkflowStore.setState({ workflowSessionId: null });
     useAgentStore.getState().clearRuns();
 
+    // Fire-and-forget: end workflow session
+    endActiveSession();
+
     // Fire-and-forget: shut down persistent sidecar for this skill
     cleanupSkillSidecar(skillName).catch(() => {});
 
@@ -158,11 +171,12 @@ export default function WorkflowPage() {
     releaseLock(skillName).catch(() => {});
 
     proceed?.();
-  }, [proceed, skillName]);
+  }, [proceed, skillName, endActiveSession]);
 
   // Safety-net cleanup: revert running state on unmount (e.g. if the
   // component is removed without going through the blocker dialog).
-  // Also flushes buffered agent messages and shuts down the persistent sidecar.
+  // Also flushes buffered agent messages, ends the workflow session,
+  // and shuts down the persistent sidecar.
   useEffect(() => {
     return () => {
       // Flush any pending RAF-batched messages so they aren't lost
@@ -178,6 +192,13 @@ export default function WorkflowPage() {
       }
       // Clear session ID so the next "Continue" starts a fresh session
       useWorkflowStore.setState({ workflowSessionId: null });
+
+      // Fire-and-forget: end workflow session
+      const sessionId = store.workflowSessionId;
+      if (sessionId) {
+        endWorkflowSession(sessionId).catch(() => {});
+        useWorkflowStore.setState({ workflowSessionId: null });
+      }
 
       // Fire-and-forget: shut down persistent sidecar for this skill
       cleanupSkillSidecar(skillName).catch(() => {});
@@ -847,6 +868,8 @@ export default function WorkflowPage() {
                   setShowResetConfirm(true);
                   return;
                 }
+                // End active session — reset starts a fresh workflow context
+                endActiveSession();
                 // Full reset: clear artifacts on disk, clear agent runs, then revert step
                 if (workspacePath) {
                   try {
@@ -961,6 +984,8 @@ export default function WorkflowPage() {
         onOpenChange={(open) => { if (!open) setResetTarget(null) }}
         onReset={() => {
           if (resetTarget !== null) {
+            // End active session — resetting to a prior step starts a fresh workflow context
+            endActiveSession();
             clearRuns();
             rerunFromStep(resetTarget);
             setResetTarget(null);
@@ -984,6 +1009,8 @@ export default function WorkflowPage() {
               </Button>
               <Button variant="destructive" onClick={async () => {
                 setShowResetConfirm(false);
+                // End active session — reset starts a fresh workflow context
+                endActiveSession();
                 // Full reset: clear artifacts on disk, clear agent runs, then revert step
                 if (workspacePath) {
                   try {

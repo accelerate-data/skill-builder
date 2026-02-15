@@ -81,7 +81,7 @@ The app supports GitHub OAuth via the [device flow](https://docs.github.com/en/a
 - `<skill-name>/<skill-name>.skill` — packaged zip
 
 **App database** (`~/.local/share/com.skillbuilder.app/skill-builder.db`):
-- Workflow runs, steps, artifacts, agent runs, chat sessions, settings, tags, imported skills
+- Workflow runs, steps, artifacts, agent runs, workflow sessions, chat sessions, settings, tags, imported skills
 - DB is the source of truth for skill metadata; filesystem is secondary
 - WAL mode enabled for concurrent access; skill locks prevent multiple agents on the same skill
 - Instance UUID distinguishes parallel app instances sharing the same database

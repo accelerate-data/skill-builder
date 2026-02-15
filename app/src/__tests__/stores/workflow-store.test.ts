@@ -1,5 +1,10 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useWorkflowStore } from "@/stores/workflow-store";
+
+// Mock the tauri module so createWorkflowSession doesn't call native code
+vi.mock("@/lib/tauri", () => ({
+  createWorkflowSession: vi.fn(() => Promise.resolve()),
+}));
 
 describe("useWorkflowStore", () => {
   beforeEach(() => {
@@ -226,6 +231,59 @@ describe("useWorkflowStore", () => {
       const state = useWorkflowStore.getState();
       expect(state.isInitializing).toBe(false);
       expect(state.initStartTime).toBeNull();
+    });
+  });
+
+  describe("workflowSessionId lifecycle", () => {
+    it("starts with null workflowSessionId", () => {
+      expect(useWorkflowStore.getState().workflowSessionId).toBeNull();
+    });
+
+    it("creates a session ID when setRunning(true) is called", async () => {
+      const { createWorkflowSession } = await import("@/lib/tauri");
+      useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+      useWorkflowStore.getState().setRunning(true);
+
+      const state = useWorkflowStore.getState();
+      expect(state.workflowSessionId).toBeTruthy();
+      expect(typeof state.workflowSessionId).toBe("string");
+      // createWorkflowSession should have been called fire-and-forget
+      expect(createWorkflowSession).toHaveBeenCalledWith(
+        state.workflowSessionId,
+        "test-skill",
+      );
+    });
+
+    it("does not create a new session if one already exists", async () => {
+      const { createWorkflowSession } = await import("@/lib/tauri");
+      vi.mocked(createWorkflowSession).mockClear();
+
+      useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+      useWorkflowStore.getState().setRunning(true);
+      const firstId = useWorkflowStore.getState().workflowSessionId;
+
+      useWorkflowStore.getState().setRunning(true);
+      expect(useWorkflowStore.getState().workflowSessionId).toBe(firstId);
+      // Should only have been called once
+      expect(createWorkflowSession).toHaveBeenCalledTimes(1);
+    });
+
+    it("clears session ID on reset", () => {
+      useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+      useWorkflowStore.getState().setRunning(true);
+      expect(useWorkflowStore.getState().workflowSessionId).toBeTruthy();
+
+      useWorkflowStore.getState().reset();
+      expect(useWorkflowStore.getState().workflowSessionId).toBeNull();
+    });
+
+    it("clears session ID on initWorkflow", () => {
+      useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+      useWorkflowStore.getState().setRunning(true);
+      expect(useWorkflowStore.getState().workflowSessionId).toBeTruthy();
+
+      useWorkflowStore.getState().initWorkflow("new-skill", "new domain");
+      expect(useWorkflowStore.getState().workflowSessionId).toBeNull();
     });
   });
 

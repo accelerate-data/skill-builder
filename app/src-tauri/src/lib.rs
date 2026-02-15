@@ -164,6 +164,8 @@ pub fn run() {
             commands::workspace::clear_workspace,
             commands::workspace::reconcile_startup,
             commands::workspace::resolve_orphan,
+            commands::workspace::create_workflow_session,
+            commands::workspace::end_workflow_session,
             commands::imported_skills::upload_skill,
             commands::imported_skills::list_imported_skills,
             commands::imported_skills::toggle_skill_active,
@@ -199,11 +201,12 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 use tauri::Manager;
 
-                // Release all skill locks held by this instance
+                // Release all skill locks and close workflow sessions held by this instance
                 let instance = app_handle.state::<InstanceInfo>();
                 let db_state = app_handle.state::<crate::db::Db>();
                 if let Ok(conn) = db_state.0.lock() {
                     let _ = crate::db::release_all_instance_locks(&conn, &instance.id);
+                    let _ = crate::db::end_all_sessions_for_pid(&conn, instance.pid);
                 }
 
                 // Shutdown all persistent sidecars on app exit

@@ -83,6 +83,14 @@ pub fn create_test_db() -> rusqlite::Connection {
             instance_id TEXT NOT NULL,
             pid INTEGER NOT NULL,
             acquired_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS workflow_sessions (
+            session_id TEXT PRIMARY KEY,
+            skill_name TEXT NOT NULL,
+            pid INTEGER NOT NULL,
+            started_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            ended_at TEXT,
+            reset_marker TEXT
         );",
     )
     .unwrap();

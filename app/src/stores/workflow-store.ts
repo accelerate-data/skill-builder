@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { RuntimeError } from "@/components/runtime-error-dialog";
+import { createWorkflowSession } from "@/lib/tauri";
 
 export interface WorkflowStep {
   id: number;
@@ -15,6 +16,7 @@ interface WorkflowState {
   currentStep: number;
   steps: WorkflowStep[];
   isRunning: boolean;
+  /** Active workflow session ID for usage tracking. Created when running starts, ended on navigate-away. */
   workflowSessionId: string | null;
   isInitializing: boolean;
   initStartTime: number | null;
@@ -94,7 +96,7 @@ const defaultSteps: WorkflowStep[] = [
   },
 ];
 
-export const useWorkflowStore = create<WorkflowState>((set) => ({
+export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   skillName: null,
   domain: null,
   skillType: null,
@@ -135,15 +137,22 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       ),
     })),
 
-  setRunning: (running) => set((state) => ({
-    isRunning: running,
-    // Generate a session ID only once per workflow execution.
-    // initWorkflow() and reset() clear it, so the next "Continue" from the
-    // dashboard creates a fresh one.
-    workflowSessionId: running
-      ? (state.workflowSessionId ?? crypto.randomUUID())
-      : state.workflowSessionId,
-  })),
+  setRunning: (running) => {
+    if (running && !get().workflowSessionId) {
+      // Generate a session ID only once per workflow execution.
+      // initWorkflow() and reset() clear it, so the next "Continue" from the
+      // dashboard creates a fresh one.
+      const sessionId = crypto.randomUUID();
+      const skillName = get().skillName;
+      set({ isRunning: true, workflowSessionId: sessionId });
+      // Fire-and-forget: persist session to SQLite
+      if (skillName) {
+        createWorkflowSession(sessionId, skillName).catch(() => {});
+      }
+    } else {
+      set({ isRunning: running });
+    }
+  },
 
   setInitializing: () =>
     set({

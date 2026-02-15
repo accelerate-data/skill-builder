@@ -73,11 +73,21 @@ function getModelColor(model: string): string {
 }
 
 function formatCost(amount: number): string {
-  return `$${amount.toFixed(4)}`
+  return `$${amount.toFixed(2)}`
 }
 
 function formatTokens(count: number): string {
   return count.toLocaleString()
+}
+
+function formatSessionTime(iso: string): string {
+  try {
+    const date = new Date(iso)
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+      + " " + date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+  } catch {
+    return ""
+  }
 }
 
 interface StepSummary {
@@ -374,6 +384,7 @@ export default function UsagePage() {
                         <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                       )}
                       <span className="font-medium truncate">{session.skill_name}</span>
+                      <span className="text-muted-foreground text-xs shrink-0">{formatSessionTime(session.started_at)}</span>
                       <span className="ml-auto shrink-0 font-mono">{formatCost(session.total_cost)}</span>
                       <span className="shrink-0 text-muted-foreground font-mono text-xs">
                         {formatTokens(session.total_input_tokens + session.total_output_tokens)} tokens
@@ -394,7 +405,7 @@ export default function UsagePage() {
                               className="flex items-center justify-between py-1 px-2 hover:bg-muted/40 rounded text-xs"
                             >
                               <div className="flex items-center gap-2 min-w-0">
-                                <span className="truncate font-medium">{step.name}</span>
+                                <span className="w-36 truncate font-medium">{step.name}</span>
                                 <Badge variant="outline" className="shrink-0 text-xs">
                                   {step.model}
                                 </Badge>

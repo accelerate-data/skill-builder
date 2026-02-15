@@ -24,6 +24,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
     run_author_migration(&conn)?;
     run_usage_tracking_migration(&conn)?;
     run_workflow_session_migration(&conn)?;
+    run_sessions_table_migration(&conn)?;
     Ok(Db(Mutex::new(conn)))
 }
 
@@ -144,6 +145,35 @@ fn run_lock_table_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     )
 }
 
+fn run_sessions_table_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS workflow_sessions (
+            session_id TEXT PRIMARY KEY,
+            skill_name TEXT NOT NULL,
+            pid INTEGER NOT NULL,
+            started_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            ended_at TEXT,
+            reset_marker TEXT
+        );",
+    )?;
+
+    // Idempotent ALTER for existing databases that already have the table without reset_marker
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(workflow_sessions)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+
+    if !columns.iter().any(|name| name == "reset_marker") {
+        conn.execute_batch(
+            "ALTER TABLE workflow_sessions ADD COLUMN reset_marker TEXT;",
+        )?;
+    }
+    Ok(())
+}
+
 fn run_author_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     let has_author = conn
         .prepare("PRAGMA table_info(workflow_runs)")
@@ -241,6 +271,21 @@ pub fn persist_agent_run(
     session_id: Option<&str>,
     workflow_session_id: Option<&str>,
 ) -> Result<(), String> {
+    // Don't overwrite a completed/error run with shutdown status — the completed
+    // data is more valuable than the partial shutdown snapshot.
+    if status == "shutdown" {
+        let existing_status: Option<String> = conn
+            .query_row(
+                "SELECT status FROM agent_runs WHERE agent_id = ?1",
+                rusqlite::params![agent_id],
+                |row| row.get(0),
+            )
+            .ok();
+        if matches!(existing_status.as_deref(), Some("completed") | Some("error")) {
+            return Ok(());
+        }
+    }
+
     conn.execute(
         "INSERT OR REPLACE INTO agent_runs
          (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
@@ -270,53 +315,36 @@ pub fn persist_agent_run(
 }
 
 pub fn get_usage_summary(conn: &Connection, hide_cancelled: bool) -> Result<UsageSummary, String> {
-    if hide_cancelled {
-        // Aggregate at session level first, filtering zero-cost sessions
-        let mut stmt = conn
-            .prepare(
-                "SELECT COALESCE(SUM(sub.session_cost), 0.0),
-                        COUNT(*),
-                        COALESCE(AVG(sub.session_cost), 0.0)
-                 FROM (
-                   SELECT workflow_session_id, SUM(total_cost) as session_cost
-                   FROM agent_runs
-                   WHERE reset_marker IS NULL
-                     AND workflow_session_id IS NOT NULL
-                   GROUP BY workflow_session_id
-                   HAVING SUM(total_cost) > 0
-                 ) sub",
-            )
-            .map_err(|e| e.to_string())?;
-
-        stmt.query_row([], |row| {
-            Ok(UsageSummary {
-                total_cost: row.get(0)?,
-                total_runs: row.get(1)?,
-                avg_cost_per_run: row.get(2)?,
-            })
-        })
-        .map_err(|e| e.to_string())
+    let having = if hide_cancelled {
+        "HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(ar.agent_id) = 0"
     } else {
-        let mut stmt = conn
-            .prepare(
-                "SELECT COALESCE(SUM(total_cost), 0.0),
-                        COUNT(DISTINCT workflow_session_id),
-                        COALESCE(SUM(total_cost) / NULLIF(COUNT(DISTINCT workflow_session_id), 0), 0.0)
-                 FROM agent_runs
-                 WHERE reset_marker IS NULL
-                   AND workflow_session_id IS NOT NULL",
-            )
-            .map_err(|e| e.to_string())?;
+        ""
+    };
+    let sql = format!(
+        "SELECT COALESCE(SUM(sub.session_cost), 0.0),
+                COUNT(*),
+                COALESCE(AVG(sub.session_cost), 0.0)
+         FROM (
+           SELECT ws.session_id, COALESCE(SUM(ar.total_cost), 0.0) as session_cost
+           FROM workflow_sessions ws
+           LEFT JOIN agent_runs ar ON ar.workflow_session_id = ws.session_id
+                                  AND ar.reset_marker IS NULL
+           WHERE ws.reset_marker IS NULL
+           GROUP BY ws.session_id
+           {}
+         ) sub",
+        having
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 
-        stmt.query_row([], |row| {
-            Ok(UsageSummary {
-                total_cost: row.get(0)?,
-                total_runs: row.get(1)?,
-                avg_cost_per_run: row.get(2)?,
-            })
+    stmt.query_row([], |row| {
+        Ok(UsageSummary {
+            total_cost: row.get(0)?,
+            total_runs: row.get(1)?,
+            avg_cost_per_run: row.get(2)?,
         })
-        .map_err(|e| e.to_string())
-    }
+    })
+    .map_err(|e| e.to_string())
 }
 
 pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRecord>, String> {
@@ -360,27 +388,54 @@ pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRe
 }
 
 pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize, hide_cancelled: bool) -> Result<Vec<WorkflowSessionRecord>, String> {
-    let having = if hide_cancelled { "HAVING SUM(total_cost) > 0" } else { "" };
-    let sql = format!(
-        "SELECT workflow_session_id,
-                skill_name, MIN(step_id), MAX(step_id),
-                GROUP_CONCAT(DISTINCT step_id), COUNT(*),
-                COALESCE(SUM(total_cost), 0.0),
-                COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
-                COALESCE(SUM(cache_read_tokens), 0), COALESCE(SUM(cache_write_tokens), 0),
-                COALESCE(SUM(duration_ms), 0),
-                MIN(started_at), MAX(completed_at)
-         FROM agent_runs
-         WHERE reset_marker IS NULL
-           AND workflow_session_id IS NOT NULL
-         GROUP BY workflow_session_id, skill_name
-         {}
-         ORDER BY MAX(completed_at) DESC
-         LIMIT ?1",
-        having
-    );
+    let sql = if hide_cancelled {
+        "SELECT ws.session_id,
+                ws.skill_name,
+                COALESCE(MIN(ar.step_id), 0),
+                COALESCE(MAX(ar.step_id), 0),
+                COALESCE(GROUP_CONCAT(DISTINCT ar.step_id), ''),
+                COUNT(ar.agent_id),
+                COALESCE(SUM(ar.total_cost), 0.0),
+                COALESCE(SUM(ar.input_tokens), 0),
+                COALESCE(SUM(ar.output_tokens), 0),
+                COALESCE(SUM(ar.cache_read_tokens), 0),
+                COALESCE(SUM(ar.cache_write_tokens), 0),
+                COALESCE(SUM(ar.duration_ms), 0),
+                ws.started_at,
+                ws.ended_at
+         FROM workflow_sessions ws
+         LEFT JOIN agent_runs ar ON ar.workflow_session_id = ws.session_id
+                                AND ar.reset_marker IS NULL
+         WHERE ws.reset_marker IS NULL
+         GROUP BY ws.session_id
+         HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(ar.agent_id) = 0
+         ORDER BY ws.started_at DESC
+         LIMIT ?1"
+    } else {
+        "SELECT ws.session_id,
+                ws.skill_name,
+                COALESCE(MIN(ar.step_id), 0),
+                COALESCE(MAX(ar.step_id), 0),
+                COALESCE(GROUP_CONCAT(DISTINCT ar.step_id), ''),
+                COUNT(ar.agent_id),
+                COALESCE(SUM(ar.total_cost), 0.0),
+                COALESCE(SUM(ar.input_tokens), 0),
+                COALESCE(SUM(ar.output_tokens), 0),
+                COALESCE(SUM(ar.cache_read_tokens), 0),
+                COALESCE(SUM(ar.cache_write_tokens), 0),
+                COALESCE(SUM(ar.duration_ms), 0),
+                ws.started_at,
+                ws.ended_at
+         FROM workflow_sessions ws
+         LEFT JOIN agent_runs ar ON ar.workflow_session_id = ws.session_id
+                                AND ar.reset_marker IS NULL
+         WHERE ws.reset_marker IS NULL
+         GROUP BY ws.session_id
+         ORDER BY ws.started_at DESC
+         LIMIT ?1"
+    };
     let mut stmt = conn
-        .prepare(&sql)
+        .prepare(sql)
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
@@ -448,18 +503,24 @@ pub fn get_session_agent_runs(conn: &Connection, session_id: &str) -> Result<Vec
 }
 
 pub fn get_usage_by_step(conn: &Connection, hide_cancelled: bool) -> Result<Vec<UsageByStep>, String> {
-    let extra = if hide_cancelled { " AND total_cost > 0" } else { "" };
-    let sql = format!(
+    let sql = if hide_cancelled {
         "SELECT step_id, COALESCE(SUM(total_cost), 0.0), COUNT(*)
          FROM agent_runs
          WHERE reset_marker IS NULL
-           AND workflow_session_id IS NOT NULL{}
+           AND workflow_session_id IS NOT NULL
+           AND total_cost > 0
          GROUP BY step_id
-         ORDER BY SUM(total_cost) DESC",
-        extra
-    );
+         ORDER BY SUM(total_cost) DESC"
+    } else {
+        "SELECT step_id, COALESCE(SUM(total_cost), 0.0), COUNT(*)
+         FROM agent_runs
+         WHERE reset_marker IS NULL
+           AND workflow_session_id IS NOT NULL
+         GROUP BY step_id
+         ORDER BY SUM(total_cost) DESC"
+    };
     let mut stmt = conn
-        .prepare(&sql)
+        .prepare(sql)
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
@@ -479,18 +540,24 @@ pub fn get_usage_by_step(conn: &Connection, hide_cancelled: bool) -> Result<Vec<
 }
 
 pub fn get_usage_by_model(conn: &Connection, hide_cancelled: bool) -> Result<Vec<UsageByModel>, String> {
-    let extra = if hide_cancelled { " AND total_cost > 0" } else { "" };
-    let sql = format!(
+    let sql = if hide_cancelled {
         "SELECT model, COALESCE(SUM(total_cost), 0.0), COUNT(*)
          FROM agent_runs
          WHERE reset_marker IS NULL
-           AND workflow_session_id IS NOT NULL{}
+           AND workflow_session_id IS NOT NULL
+           AND total_cost > 0
          GROUP BY model
-         ORDER BY SUM(total_cost) DESC",
-        extra
-    );
+         ORDER BY SUM(total_cost) DESC"
+    } else {
+        "SELECT model, COALESCE(SUM(total_cost), 0.0), COUNT(*)
+         FROM agent_runs
+         WHERE reset_marker IS NULL
+           AND workflow_session_id IS NOT NULL
+         GROUP BY model
+         ORDER BY SUM(total_cost) DESC"
+    };
     let mut stmt = conn
-        .prepare(&sql)
+        .prepare(sql)
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
@@ -510,6 +577,11 @@ pub fn get_usage_by_model(conn: &Connection, hide_cancelled: bool) -> Result<Vec
 pub fn reset_usage(conn: &Connection) -> Result<(), String> {
     conn.execute(
         "UPDATE agent_runs SET reset_marker = datetime('now') || 'Z' WHERE reset_marker IS NULL",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE workflow_sessions SET reset_marker = datetime('now') || 'Z' WHERE reset_marker IS NULL",
         [],
     )
     .map_err(|e| e.to_string())?;
@@ -667,6 +739,13 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
     // Delete skill locks
     conn.execute(
         "DELETE FROM skill_locks WHERE skill_name = ?1",
+        [skill_name],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Delete workflow sessions
+    conn.execute(
+        "DELETE FROM workflow_sessions WHERE skill_name = ?1",
         [skill_name],
     )
     .map_err(|e| e.to_string())?;
@@ -1135,6 +1214,101 @@ pub fn check_pid_alive(pid: u32) -> bool {
         .unwrap_or(false)
 }
 
+// --- Workflow Sessions ---
+
+pub fn create_workflow_session(
+    conn: &Connection,
+    session_id: &str,
+    skill_name: &str,
+    pid: u32,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR IGNORE INTO workflow_sessions (session_id, skill_name, pid) VALUES (?1, ?2, ?3)",
+        rusqlite::params![session_id, skill_name, pid as i64],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn end_workflow_session(conn: &Connection, session_id: &str) -> Result<(), String> {
+    conn.execute(
+        "UPDATE workflow_sessions SET ended_at = datetime('now') || 'Z' WHERE session_id = ?1 AND ended_at IS NULL",
+        [session_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn end_all_sessions_for_pid(conn: &Connection, pid: u32) -> Result<u32, String> {
+    let count = conn
+        .execute(
+            "UPDATE workflow_sessions SET ended_at = datetime('now') || 'Z' WHERE pid = ?1 AND ended_at IS NULL",
+            rusqlite::params![pid as i64],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(count as u32)
+}
+
+pub fn reconcile_orphaned_sessions(conn: &Connection) -> Result<u32, String> {
+    // Find all sessions that were never ended
+    let mut stmt = conn
+        .prepare("SELECT session_id, skill_name, pid FROM workflow_sessions WHERE ended_at IS NULL")
+        .map_err(|e| e.to_string())?;
+
+    let orphans: Vec<(String, String, u32)> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)? as u32,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let mut reconciled = 0u32;
+    for (session_id, skill_name, pid) in orphans {
+        if !check_pid_alive(pid) {
+            // Process is dead — close the session with the best available timestamp.
+            // Use the latest agent_runs completed_at for this session, or fall back to started_at.
+            let fallback_time: Option<String> = conn
+                .query_row(
+                    "SELECT COALESCE(
+                        (SELECT MAX(completed_at) FROM agent_runs WHERE session_id = ?1 AND completed_at IS NOT NULL),
+                        (SELECT started_at FROM workflow_sessions WHERE session_id = ?1)
+                    )",
+                    [&session_id],
+                    |row| row.get(0),
+                )
+                .ok();
+
+            if let Some(ended_at) = fallback_time {
+                conn.execute(
+                    "UPDATE workflow_sessions SET ended_at = ?1 WHERE session_id = ?2",
+                    rusqlite::params![ended_at, session_id],
+                )
+                .map_err(|e| e.to_string())?;
+            } else {
+                // No timestamp available — use current time
+                conn.execute(
+                    "UPDATE workflow_sessions SET ended_at = datetime('now') || 'Z' WHERE session_id = ?1",
+                    [&session_id],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+
+            log::info!(
+                "Reconciled orphaned session {} for skill '{}' (PID {} is dead)",
+                session_id, skill_name, pid
+            );
+            reconciled += 1;
+        }
+    }
+
+    Ok(reconciled)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1147,6 +1321,7 @@ mod tests {
         run_author_migration(&conn).unwrap();
         run_usage_tracking_migration(&conn).unwrap();
         run_workflow_session_migration(&conn).unwrap();
+        run_sessions_table_migration(&conn).unwrap();
         conn
     }
 
@@ -1732,9 +1907,62 @@ mod tests {
     }
 
     #[test]
+    fn test_persist_agent_run_shutdown_does_not_overwrite_completed() {
+        let conn = create_test_db();
+        let ws = Some("wf-session-1");
+
+        // First persist as completed with real data
+        persist_agent_run(
+            &conn, "agent-1", "my-skill", 0, "sonnet", "completed",
+            1000, 500, 200, 100, 0.15, 8000, None, ws,
+        )
+        .unwrap();
+
+        // Then attempt to overwrite with shutdown (partial/zero data)
+        persist_agent_run(
+            &conn, "agent-1", "my-skill", 0, "sonnet", "shutdown",
+            0, 0, 0, 0, 0.0, 0, None, ws,
+        )
+        .unwrap();
+
+        // Completed data should be preserved
+        let runs = get_recent_runs(&conn, 10).unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].status, "completed");
+        assert_eq!(runs[0].input_tokens, 1000);
+        assert!((runs[0].total_cost - 0.15).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_persist_agent_run_shutdown_overwrites_running() {
+        let conn = create_test_db();
+        let ws = Some("wf-session-1");
+
+        // First persist as running (agent start)
+        persist_agent_run(
+            &conn, "agent-1", "my-skill", 0, "sonnet", "running",
+            0, 0, 0, 0, 0.0, 0, None, ws,
+        )
+        .unwrap();
+
+        // Then shutdown with partial data — should succeed
+        persist_agent_run(
+            &conn, "agent-1", "my-skill", 0, "sonnet", "shutdown",
+            500, 200, 0, 0, 0.05, 3000, None, ws,
+        )
+        .unwrap();
+
+        let runs = get_recent_runs(&conn, 10).unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].status, "shutdown");
+        assert_eq!(runs[0].input_tokens, 500);
+    }
+
+    #[test]
     fn test_get_usage_summary_correct_aggregates() {
         let conn = create_test_db();
         let ws = Some("wf-session-1");
+        create_workflow_session(&conn, "wf-session-1", "skill-a", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
             1000, 500, 0, 0, 0.10, 5000, None, ws,
@@ -1772,6 +2000,7 @@ mod tests {
     fn test_reset_usage_marks_runs() {
         let conn = create_test_db();
         let ws = Some("wf-session-r");
+        create_workflow_session(&conn, "wf-session-r", "skill-a", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
             1000, 500, 0, 0, 0.10, 5000, None, ws,
@@ -1785,7 +2014,7 @@ mod tests {
 
         reset_usage(&conn).unwrap();
 
-        // After reset, summary should show zero
+        // After reset, summary should show zero (both agent_runs and workflow_sessions are marked)
         let summary = get_usage_summary(&conn, false).unwrap();
         assert_eq!(summary.total_runs, 0);
         assert!((summary.total_cost - 0.0).abs() < f64::EPSILON);
@@ -1794,7 +2023,12 @@ mod tests {
         let runs = get_recent_runs(&conn, 10).unwrap();
         assert!(runs.is_empty());
 
+        // Recent workflow sessions should also be empty
+        let sessions = get_recent_workflow_sessions(&conn, 10, false).unwrap();
+        assert!(sessions.is_empty());
+
         // New runs after reset should still be visible
+        create_workflow_session(&conn, "wf-session-r2", "skill-b", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-3", "skill-b", 6, "sonnet", "completed",
             500, 200, 0, 0, 0.05, 3000, None, Some("wf-session-r2"),
@@ -1810,6 +2044,7 @@ mod tests {
     fn test_get_usage_by_step_groups_correctly() {
         let conn = create_test_db();
         let ws = Some("wf-session-s");
+        create_workflow_session(&conn, "wf-session-s", "skill-a", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
             1000, 500, 0, 0, 0.10, 5000, None, ws,
@@ -1845,6 +2080,7 @@ mod tests {
     fn test_get_usage_by_model_groups_correctly() {
         let conn = create_test_db();
         let ws = Some("wf-session-m");
+        create_workflow_session(&conn, "wf-session-m", "skill-a", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
             1000, 500, 0, 0, 0.10, 5000, None, ws,
@@ -1905,5 +2141,302 @@ mod tests {
         assert_eq!(step_name(8), "Package/Refine");
         assert_eq!(step_name(-1), "Chat");
         assert_eq!(step_name(99), "Step 99");
+    }
+
+    // --- Workflow Session tests ---
+
+    #[test]
+    fn test_create_workflow_session() {
+        let conn = create_test_db();
+        create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+
+        let ended_at: Option<String> = conn
+            .query_row(
+                "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(ended_at.is_none());
+    }
+
+    #[test]
+    fn test_create_workflow_session_idempotent() {
+        let conn = create_test_db();
+        create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+        // Second insert with same ID should be ignored (INSERT OR IGNORE)
+        create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM workflow_sessions WHERE session_id = 'sess-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_end_workflow_session() {
+        let conn = create_test_db();
+        create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+        end_workflow_session(&conn, "sess-1").unwrap();
+
+        let ended_at: Option<String> = conn
+            .query_row(
+                "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(ended_at.is_some());
+    }
+
+    #[test]
+    fn test_end_workflow_session_idempotent() {
+        let conn = create_test_db();
+        create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+        end_workflow_session(&conn, "sess-1").unwrap();
+
+        let first_ended: String = conn
+            .query_row(
+                "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        // Calling again should not update (WHERE ended_at IS NULL won't match)
+        end_workflow_session(&conn, "sess-1").unwrap();
+
+        let second_ended: String = conn
+            .query_row(
+                "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(first_ended, second_ended);
+    }
+
+    #[test]
+    fn test_end_all_sessions_for_pid() {
+        let conn = create_test_db();
+        create_workflow_session(&conn, "sess-1", "skill-a", 100).unwrap();
+        create_workflow_session(&conn, "sess-2", "skill-b", 100).unwrap();
+        create_workflow_session(&conn, "sess-3", "skill-c", 200).unwrap();
+
+        let count = end_all_sessions_for_pid(&conn, 100).unwrap();
+        assert_eq!(count, 2);
+
+        // sess-3 (pid 200) should still be open
+        let ended: Option<String> = conn
+            .query_row(
+                "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-3'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(ended.is_none());
+    }
+
+    #[test]
+    fn test_reconcile_orphaned_sessions_dead_pid() {
+        let conn = create_test_db();
+        // PID 99999999 is dead
+        create_workflow_session(&conn, "sess-1", "my-skill", 99999999).unwrap();
+
+        let reconciled = reconcile_orphaned_sessions(&conn).unwrap();
+        assert_eq!(reconciled, 1);
+
+        // Session should now be ended
+        let ended_at: Option<String> = conn
+            .query_row(
+                "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(ended_at.is_some());
+    }
+
+    #[test]
+    fn test_reconcile_orphaned_sessions_live_pid() {
+        let conn = create_test_db();
+        let pid = std::process::id();
+        create_workflow_session(&conn, "sess-1", "my-skill", pid).unwrap();
+
+        let reconciled = reconcile_orphaned_sessions(&conn).unwrap();
+        assert_eq!(reconciled, 0);
+
+        // Session should still be open
+        let ended_at: Option<String> = conn
+            .query_row(
+                "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(ended_at.is_none());
+    }
+
+    #[test]
+    fn test_delete_workflow_run_cascades_sessions() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "my-skill", "domain", 0, "pending", "domain").unwrap();
+        create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+
+        delete_workflow_run(&conn, "my-skill").unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM workflow_sessions WHERE skill_name = 'my-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_sessions_table_migration_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        run_sessions_table_migration(&conn).unwrap();
+        // Running again should not error
+        run_sessions_table_migration(&conn).unwrap();
+    }
+
+    #[test]
+    fn test_get_usage_summary_hide_cancelled() {
+        let conn = create_test_db();
+
+        // Session with real cost
+        create_workflow_session(&conn, "sess-cost", "skill-a", 1000).unwrap();
+        persist_agent_run(
+            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
+            1000, 500, 200, 100, 0.15, 8000, None, Some("sess-cost"),
+        )
+        .unwrap();
+
+        // Session with zero cost (cancelled)
+        create_workflow_session(&conn, "sess-zero", "skill-b", 2000).unwrap();
+        persist_agent_run(
+            &conn, "agent-2", "skill-b", 0, "sonnet", "shutdown",
+            0, 0, 0, 0, 0.0, 0, None, Some("sess-zero"),
+        )
+        .unwrap();
+
+        let summary = get_usage_summary(&conn, true).unwrap();
+        assert_eq!(summary.total_runs, 1);
+        assert!((summary.total_cost - 0.15).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_get_recent_workflow_sessions_returns_sessions() {
+        let conn = create_test_db();
+
+        // Session 1
+        create_workflow_session(&conn, "sess-1", "skill-a", 1000).unwrap();
+        persist_agent_run(
+            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
+            1000, 500, 200, 100, 0.10, 5000, None, Some("sess-1"),
+        )
+        .unwrap();
+
+        // Session 2
+        create_workflow_session(&conn, "sess-2", "skill-b", 2000).unwrap();
+        persist_agent_run(
+            &conn, "agent-2", "skill-b", 3, "opus", "completed",
+            2000, 1000, 400, 200, 0.30, 10000, None, Some("sess-2"),
+        )
+        .unwrap();
+
+        let sessions = get_recent_workflow_sessions(&conn, 10, false).unwrap();
+        assert_eq!(sessions.len(), 2);
+
+        // Find each session by ID (ordering may vary when timestamps match)
+        let s1 = sessions.iter().find(|s| s.session_id == "sess-1").unwrap();
+        assert_eq!(s1.skill_name, "skill-a");
+        assert!((s1.total_cost - 0.10).abs() < 1e-10);
+        assert_eq!(s1.total_input_tokens, 1000);
+        assert_eq!(s1.total_output_tokens, 500);
+
+        let s2 = sessions.iter().find(|s| s.session_id == "sess-2").unwrap();
+        assert_eq!(s2.skill_name, "skill-b");
+        assert!((s2.total_cost - 0.30).abs() < 1e-10);
+        assert_eq!(s2.total_input_tokens, 2000);
+        assert_eq!(s2.total_output_tokens, 1000);
+    }
+
+    #[test]
+    fn test_get_recent_workflow_sessions_hide_cancelled() {
+        let conn = create_test_db();
+
+        // Session with cost
+        create_workflow_session(&conn, "sess-good", "skill-a", 1000).unwrap();
+        persist_agent_run(
+            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
+            1000, 500, 0, 0, 0.10, 5000, None, Some("sess-good"),
+        )
+        .unwrap();
+
+        // Session with zero cost
+        create_workflow_session(&conn, "sess-cancelled", "skill-b", 2000).unwrap();
+        persist_agent_run(
+            &conn, "agent-2", "skill-b", 0, "sonnet", "shutdown",
+            0, 0, 0, 0, 0.0, 0, None, Some("sess-cancelled"),
+        )
+        .unwrap();
+
+        let sessions = get_recent_workflow_sessions(&conn, 10, true).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id, "sess-good");
+    }
+
+    #[test]
+    fn test_get_usage_summary_multiple_sessions() {
+        let conn = create_test_db();
+
+        // Session 1: two agent runs
+        create_workflow_session(&conn, "sess-1", "skill-a", 1000).unwrap();
+        persist_agent_run(
+            &conn, "agent-1a", "skill-a", 1, "sonnet", "completed",
+            1000, 500, 0, 0, 0.10, 5000, None, Some("sess-1"),
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn, "agent-1b", "skill-a", 3, "opus", "completed",
+            2000, 1000, 0, 0, 0.30, 10000, None, Some("sess-1"),
+        )
+        .unwrap();
+
+        // Session 2: one agent run
+        create_workflow_session(&conn, "sess-2", "skill-b", 2000).unwrap();
+        persist_agent_run(
+            &conn, "agent-2a", "skill-b", 1, "sonnet", "completed",
+            500, 200, 0, 0, 0.05, 3000, None, Some("sess-2"),
+        )
+        .unwrap();
+
+        // Session 3: two agent runs
+        create_workflow_session(&conn, "sess-3", "skill-c", 3000).unwrap();
+        persist_agent_run(
+            &conn, "agent-3a", "skill-c", 5, "opus", "completed",
+            3000, 1500, 0, 0, 0.50, 15000, None, Some("sess-3"),
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn, "agent-3b", "skill-c", 6, "sonnet", "completed",
+            800, 400, 0, 0, 0.08, 4000, None, Some("sess-3"),
+        )
+        .unwrap();
+
+        let summary = get_usage_summary(&conn, false).unwrap();
+        // 3 sessions (not 5 agent runs)
+        assert_eq!(summary.total_runs, 3);
+        // Total cost: 0.10 + 0.30 + 0.05 + 0.50 + 0.08 = 1.03
+        assert!((summary.total_cost - 1.03).abs() < 1e-10);
     }
 }

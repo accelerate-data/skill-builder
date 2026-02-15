@@ -169,6 +169,14 @@ export const getWorkspacePath = () =>
 export const cleanupSkillSidecar = (skillName: string) =>
   invoke<void>("cleanup_skill_sidecar", { skillName });
 
+// --- Workflow Sessions ---
+
+export const createWorkflowSession = (sessionId: string, skillName: string) =>
+  invoke<void>("create_workflow_session", { sessionId, skillName });
+
+export const endWorkflowSession = (sessionId: string) =>
+  invoke<void>("end_workflow_session", { sessionId });
+
 // --- Reconciliation ---
 
 export const reconcileStartup = () =>

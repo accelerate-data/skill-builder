@@ -42,11 +42,15 @@ vi.mock("@/lib/tauri", () => ({
   acquireLock: vi.fn(() => Promise.resolve()),
   releaseLock: vi.fn(() => Promise.resolve()),
   persistAgentRun: vi.fn(() => Promise.resolve()),
+  createWorkflowSession: vi.fn(() => Promise.resolve()),
+  endWorkflowSession: vi.fn(() => Promise.resolve()),
+  verifyStepOutput: vi.fn(() => Promise.resolve(true)),
+  previewStepReset: vi.fn(() => Promise.resolve([])),
 }));
 
 // Mock heavy sub-components to isolate the effect lifecycle
 vi.mock("@/components/workflow-sidebar", () => ({
-  WorkflowSidebar: () => <div data-testid="workflow-sidebar" />,
+  WorkflowSidebar: vi.fn(() => <div data-testid="workflow-sidebar" />),
 }));
 vi.mock("@/components/agent-output-panel", () => ({
   AgentOutputPanel: () => <div data-testid="agent-output" />,
@@ -70,7 +74,8 @@ vi.mock("@/components/step-rerun-chat", () => ({
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
-import { getWorkflowState, saveWorkflowState, writeFile, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar } from "@/lib/tauri";
+import { getWorkflowState, saveWorkflowState, writeFile, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar, endWorkflowSession, previewStepReset } from "@/lib/tauri";
+import { WorkflowSidebar } from "@/components/workflow-sidebar";
 
 describe("WorkflowPage — agent completion lifecycle", () => {
   beforeEach(() => {
@@ -340,6 +345,24 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     // cleanupSkillSidecar should be called with the skill name
     expect(vi.mocked(cleanupSkillSidecar)).toHaveBeenCalledWith("test-skill");
+  });
+
+  it("calls endWorkflowSession on unmount when session is active", async () => {
+    vi.mocked(endWorkflowSession).mockClear();
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setRunning(true);
+    const sessionId = useWorkflowStore.getState().workflowSessionId;
+    expect(sessionId).toBeTruthy();
+
+    const { unmount } = render(<WorkflowPage />);
+
+    act(() => {
+      unmount();
+    });
+
+    expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
   });
 
   it("calls cleanupSkillSidecar on unmount even when not running", async () => {
@@ -1298,5 +1321,174 @@ describe("WorkflowPage — rerun integration", () => {
 
     // Verify step status changed from error -> completed
     expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+  });
+});
+
+describe("WorkflowPage — reset flow session lifecycle", () => {
+  beforeEach(() => {
+    resetTauriMocks();
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+
+    useSettingsStore.getState().setSettings({
+      workspacePath: "/test/workspace",
+      skillsPath: "/test/skills",
+      anthropicApiKey: "sk-test",
+    });
+
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
+    mockToast.info.mockClear();
+    mockBlocker.proceed.mockClear();
+    mockBlocker.reset.mockClear();
+    mockBlocker.status = "idle";
+
+    vi.mocked(saveWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(readFile).mockClear();
+    vi.mocked(writeFile).mockClear();
+    vi.mocked(runWorkflowStep).mockClear();
+    vi.mocked(resetWorkflowStep).mockClear();
+    vi.mocked(endWorkflowSession).mockClear();
+  });
+
+  afterEach(() => {
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+    // Restore the default sidebar mock in case a test overrode it
+    vi.mocked(WorkflowSidebar).mockImplementation(() => <div data-testid="workflow-sidebar" />);
+  });
+
+  it("calls endWorkflowSession on error state reset button", async () => {
+    // Set up workflow with an active session
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setRunning(true); // creates a session ID
+    const sessionId = useWorkflowStore.getState().workflowSessionId;
+    expect(sessionId).toBeTruthy();
+
+    // Put step 0 in error state (agent failed, not running anymore)
+    useWorkflowStore.getState().updateStepStatus(0, "error");
+    useWorkflowStore.getState().setRunning(false);
+
+    // readFile rejects — no partial artifacts on disk
+    vi.mocked(readFile).mockRejectedValue("not found");
+
+    render(<WorkflowPage />);
+
+    // Wait for the error UI to render with the "Reset Step" button
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Reset Step/ })).toBeTruthy();
+    });
+
+    // Click the "Reset Step" button (no artifacts → no confirmation dialog)
+    await act(async () => {
+      screen.getByRole("button", { name: /Reset Step/ }).click();
+    });
+
+    // endWorkflowSession should have been called with the session ID
+    expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
+  });
+
+  it("calls endWorkflowSession on reset confirmation dialog", async () => {
+    // Set up workflow with an active session
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setRunning(true); // creates a session ID
+    const sessionId = useWorkflowStore.getState().workflowSessionId;
+    expect(sessionId).toBeTruthy();
+
+    // Put step 0 in error state
+    useWorkflowStore.getState().updateStepStatus(0, "error");
+    useWorkflowStore.getState().setRunning(false);
+
+    // readFile returns content for the step's output file → errorHasArtifacts = true
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path.includes("clarifications-concepts.md")) {
+        return Promise.resolve("partial content");
+      }
+      return Promise.reject("not found");
+    });
+
+    render(<WorkflowPage />);
+
+    // Wait for artifact detection to complete — "Continue in Chat" only appears
+    // when errorHasArtifacts is true (requires the readFile promise to resolve)
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Continue in Chat/ })).toBeTruthy();
+    });
+
+    // Click "Reset Step" — should show confirmation dialog (since artifacts exist)
+    await act(async () => {
+      screen.getByRole("button", { name: /Reset Step/ }).click();
+    });
+
+    // Confirmation dialog should appear with "Reset Step?" title
+    await waitFor(() => {
+      expect(screen.getByText("Reset Step?")).toBeTruthy();
+    });
+
+    // Click "Reset" in the confirmation dialog (destructive variant)
+    await act(async () => {
+      screen.getByRole("button", { name: "Reset" }).click();
+    });
+
+    // endWorkflowSession should have been called with the session ID
+    expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
+  });
+
+  it("calls endWorkflowSession on ResetStepDialog reset", async () => {
+    // Override WorkflowSidebar mock to expose onStepClick for this test
+    vi.mocked(WorkflowSidebar).mockImplementation(({ onStepClick }: { onStepClick?: (id: number) => void }) => (
+      <div data-testid="workflow-sidebar">
+        <button data-testid="sidebar-step-0" onClick={() => onStepClick?.(0)}>Step 0</button>
+      </div>
+    ));
+
+    // Mock previewStepReset so the ResetStepDialog can load
+    vi.mocked(previewStepReset).mockResolvedValue([]);
+
+    // Set up workflow with an active session
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setRunning(true); // creates a session ID
+    const sessionId = useWorkflowStore.getState().workflowSessionId;
+    expect(sessionId).toBeTruthy();
+
+    // Complete steps 0-2 and navigate to step 3
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().updateStepStatus(2, "completed");
+    useWorkflowStore.getState().setCurrentStep(3);
+    useWorkflowStore.getState().setRunning(false);
+
+    render(<WorkflowPage />);
+
+    // Click step 0 in the sidebar — triggers ResetStepDialog (since step 0 < currentStep 3)
+    await act(async () => {
+      screen.getByTestId("sidebar-step-0").click();
+    });
+
+    // ResetStepDialog should appear
+    await waitFor(() => {
+      expect(screen.getByText("Reset to Earlier Step")).toBeTruthy();
+    });
+
+    // Wait for the preview to load and the Reset button to be enabled
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Reset" })).toBeEnabled();
+    });
+
+    // Click "Reset" in the ResetStepDialog
+    await act(async () => {
+      screen.getByRole("button", { name: "Reset" }).click();
+    });
+
+    // endWorkflowSession should have been called with the session ID
+    await waitFor(() => {
+      expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
+    });
   });
 });

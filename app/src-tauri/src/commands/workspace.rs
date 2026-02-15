@@ -523,6 +523,17 @@ pub fn reconcile_startup(db: tauri::State<'_, Db>) -> Result<ReconciliationResul
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
     let skills_path = settings.skills_path;
 
+    // Reconcile orphaned workflow sessions from crashed instances
+    match crate::db::reconcile_orphaned_sessions(&conn) {
+        Ok(count) if count > 0 => {
+            log::info!("Reconciled {} orphaned workflow session(s)", count);
+        }
+        Err(e) => {
+            log::warn!("Failed to reconcile orphaned sessions: {}", e);
+        }
+        _ => {}
+    }
+
     reconcile_on_startup(&conn, &workspace_path, skills_path.as_deref())
 }
 
@@ -537,6 +548,28 @@ pub fn resolve_orphan(
     let skills_path = settings.skills_path;
 
     resolve_orphan_inner(&conn, &skill_name, &action, skills_path.as_deref())
+}
+
+// --- Workflow Sessions ---
+
+#[tauri::command]
+pub fn create_workflow_session(
+    db: tauri::State<'_, Db>,
+    instance: tauri::State<'_, crate::InstanceInfo>,
+    session_id: String,
+    skill_name: String,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::create_workflow_session(&conn, &session_id, &skill_name, instance.pid)
+}
+
+#[tauri::command]
+pub fn end_workflow_session(
+    db: tauri::State<'_, Db>,
+    session_id: String,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::end_workflow_session(&conn, &session_id)
 }
 
 #[cfg(test)]
