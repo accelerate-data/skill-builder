@@ -602,14 +602,11 @@ pub fn read_settings(conn: &Connection) -> Result<AppSettings, String> {
     }
 }
 
-/// Read settings and hydrate secrets from the OS keychain.
+/// Read settings (including secrets stored directly in SQLite).
 ///
-/// Use this for all code paths that need to *use* settings (commands, etc.).
-/// Use `read_settings()` only for migration paths that need the raw DB state.
+/// Alias for `read_settings()` — kept for call-site compatibility.
 pub fn read_settings_hydrated(conn: &Connection) -> Result<AppSettings, String> {
-    let mut settings = read_settings(conn)?;
-    crate::keychain::hydrate_secrets(&mut settings);
-    Ok(settings)
+    read_settings(conn)
 }
 
 pub fn write_settings(conn: &Connection, settings: &AppSettings) -> Result<(), String> {

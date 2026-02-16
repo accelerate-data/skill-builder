@@ -668,7 +668,7 @@ fn read_workflow_settings(
 ) -> Result<WorkflowSettings, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
-    // Read all settings in one pass (hydrated from OS keychain)
+    // Read all settings in one pass
     let settings = crate::db::read_settings_hydrated(&conn)?;
     let skills_path = settings.skills_path;
     let api_key = settings.anthropic_api_key

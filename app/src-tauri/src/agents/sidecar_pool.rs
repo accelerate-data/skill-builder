@@ -284,26 +284,35 @@ pub struct SidecarPool {
 
 impl SidecarPool {
     pub fn new() -> Self {
-        let pool = SidecarPool {
+        SidecarPool {
             sidecars: Arc::new(Mutex::new(HashMap::new())),
             spawning: Arc::new(Mutex::new(HashSet::new())),
             pending_requests: Arc::new(Mutex::new(HashSet::new())),
             request_logs: Arc::new(Mutex::new(HashMap::new())),
             idle_cleanup_task: Arc::new(Mutex::new(None)),
-        };
+        }
+    }
 
-        // Spawn the idle cleanup background task
-        let cleanup_pool = pool.clone();
+    /// Start the background idle cleanup task. Must be called from within
+    /// a Tokio runtime context. In the app, use `start_on_tauri_runtime()`
+    /// from `setup()` which runs on the main (non-Tokio) thread.
+    pub fn start(&self) {
+        let cleanup_pool = self.clone();
         let task = tokio::spawn(async move {
             cleanup_pool.idle_cleanup_loop().await;
         });
-        // Store the handle so we can abort it on shutdown
-        // (uses try_lock since we just created the pool and nothing else holds the lock)
-        if let Ok(mut guard) = pool.idle_cleanup_task.try_lock() {
+        if let Ok(mut guard) = self.idle_cleanup_task.try_lock() {
             *guard = Some(task);
         }
+    }
 
-        pool
+    /// Start the cleanup task via Tauri's async runtime. Safe to call from
+    /// the main macOS thread (e.g. inside `setup()`), which is not a Tokio thread.
+    pub fn start_on_tauri_runtime(&self) {
+        let pool = self.clone();
+        tauri::async_runtime::spawn(async move {
+            pool.start();
+        });
     }
 
     /// Background loop that periodically checks for idle sidecars and shuts them down.
@@ -2056,13 +2065,14 @@ mod tests {
     // -----------------------------------------------------------------
 
     #[tokio::test]
-    async fn test_idle_cleanup_task_created_on_init() {
-        // Verify that the idle cleanup task is spawned when the pool is created
+    async fn test_idle_cleanup_task_created_on_start() {
+        // Verify that the idle cleanup task is spawned when start() is called
         let pool = SidecarPool::new();
+        pool.start();
         let guard = pool.idle_cleanup_task.lock().await;
         assert!(
             guard.is_some(),
-            "Idle cleanup task should be spawned on pool creation"
+            "Idle cleanup task should be spawned after start()"
         );
         // The task should be running (not finished)
         assert!(
@@ -2077,6 +2087,7 @@ mod tests {
         // We can't call shutdown_all without an AppHandle, but we can
         // test the abort mechanism directly.
         let pool = SidecarPool::new();
+        pool.start();
 
         // Verify task exists
         {

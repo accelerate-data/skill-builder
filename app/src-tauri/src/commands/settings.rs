@@ -68,9 +68,7 @@ pub fn save_settings(
     let new_sp = settings.skills_path.as_deref();
     handle_skills_path_change(old_sp, new_sp)?;
 
-    // Store secrets in the OS keychain, keep non-secret data in SQLite
-    let cleaned = crate::keychain::extract_and_store_secrets(&settings);
-    crate::db::write_settings(&conn, &cleaned)?;
+    crate::db::write_settings(&conn, &settings)?;
     Ok(())
 }
 
