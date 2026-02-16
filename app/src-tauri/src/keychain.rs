@@ -395,6 +395,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires real OS keychain — fails in CI (headless runners)
     fn test_migrate_secrets_with_real_values() {
         reset_keychain_flag();
         let mut settings = AppSettings::default();
@@ -444,6 +445,7 @@ mod tests {
         }
 
         #[test]
+        #[ignore] // Requires real OS keychain — fails in CI (headless runners)
         fn test_store_and_retrieve() {
             reset_keychain_flag();
             cleanup_test_key();
