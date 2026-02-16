@@ -134,7 +134,7 @@ describe("useWorkflowStore", () => {
     });
   });
 
-  it("rerunFromStep resets target step and all subsequent steps to pending", () => {
+  it("resetToStep resets target step and all subsequent steps to pending", () => {
     const store = useWorkflowStore.getState();
     // Complete steps 0 through 5
     for (let i = 0; i <= 5; i++) {
@@ -144,7 +144,7 @@ describe("useWorkflowStore", () => {
     store.setRunning(true);
 
     // Rerun from step 3
-    useWorkflowStore.getState().rerunFromStep(3);
+    useWorkflowStore.getState().resetToStep(3);
 
     const state = useWorkflowStore.getState();
     // Steps 0-2 should remain completed
@@ -161,14 +161,14 @@ describe("useWorkflowStore", () => {
     expect(state.isRunning).toBe(false);
   });
 
-  it("rerunFromStep from step 0 resets all steps", () => {
+  it("resetToStep from step 0 resets all steps", () => {
     const store = useWorkflowStore.getState();
     for (let i = 0; i <= 6; i++) {
       store.updateStepStatus(i, "completed");
     }
     store.setCurrentStep(6);
 
-    useWorkflowStore.getState().rerunFromStep(0);
+    useWorkflowStore.getState().resetToStep(0);
 
     const state = useWorkflowStore.getState();
     state.steps.forEach((step) => {

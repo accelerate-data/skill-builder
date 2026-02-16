@@ -20,18 +20,11 @@ You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents v
 
 ## Context
 - The coordinator will provide these paths at runtime — use them exactly as given:
-  - The **context directory** path (for reading `decisions.md` and `clarifications.md`)
+  - The **context directory** path (for reading `decisions.md`)
   - The **skill output directory** path (for writing SKILL.md and reference files)
   - The **domain name**
-- Read `decisions.md` (primary input) and `clarifications.md`
+- Read `decisions.md` — this is your only input
 
-## Rerun / Resume Mode
-
-Follow the Rerun/Resume Mode protocol.
-
-## Before You Start
-
-Follow the Before You Start protocol.
 
 </context>
 
@@ -43,7 +36,7 @@ Follow the Before You Start protocol.
 
 **Goal**: Design the skill's file layout following the Skill Best Practices from your system prompt (structure, naming, line limits).
 
-Read `decisions.md` and `clarifications.md`, then propose the structure. Number of reference files driven by the decisions — propose file names with one-line descriptions.
+Read `decisions.md`, then propose the structure. Number of reference files driven by the decisions — propose file names with one-line descriptions.
 
 ## Phase 2: Write SKILL.md
 

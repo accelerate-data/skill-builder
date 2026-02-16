@@ -25,9 +25,6 @@ Focus on business rules, KPIs, entity relationships, and regulatory requirements
   - **Which domain** to research
 - This agent writes no files — it returns combined text to the orchestrator
 
-## Rerun / Resume Mode
-
-Follow the Rerun/Resume Mode protocol.
 
 </context>
 

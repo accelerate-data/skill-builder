@@ -2,6 +2,7 @@ pub mod agent;
 pub mod clarification;
 pub mod feedback;
 pub mod files;
+pub mod git;
 pub mod github_auth;
 pub mod github_import;
 pub mod imported_skills;

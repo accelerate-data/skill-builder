@@ -32,9 +32,6 @@ Only evaluate: conformance to Skill Best Practices and Content Principles from y
   - The **context directory** path (containing `decisions.md`, `clarifications.md`, and where to write output files)
   - The **domain name**
 
-## Rerun / Resume Mode
-
-Follow the Rerun/Resume Mode protocol. For this agent, read both `agent-validation-log.md` and `test-skill.md` from the context directory. Summarize validation pass/fail counts, decisions coverage, test results, and key gaps found.
 
 </context>
 

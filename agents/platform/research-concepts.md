@@ -25,9 +25,6 @@ Focus on tool capabilities, API patterns, integration constraints, and platform-
   - **Which domain** to research
 - This agent writes no files — it returns combined text to the orchestrator
 
-## Rerun / Resume Mode
-
-Follow the Rerun/Resume Mode protocol.
 
 </context>
 

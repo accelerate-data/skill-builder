@@ -500,6 +500,26 @@ pub fn init_workspace(
     // Clean up stale root-level files from pre-reorganization layout
     migrate_workspace_layout(&workspace_path);
 
+    // One-time git upgrade: if skills_path has content but no .git, init + snapshot
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        if let Ok(settings) = crate::db::read_settings(&conn) {
+            if let Some(ref sp) = settings.skills_path {
+                let sp_path = std::path::Path::new(sp);
+                if sp_path.exists() && !sp_path.join(".git").exists() {
+                    log::info!("One-time git upgrade: initializing repo at {}", sp);
+                    if let Err(e) = crate::git::ensure_repo(sp_path) {
+                        log::warn!("Failed to init git repo at {}: {}", sp, e);
+                    } else if let Err(e) =
+                        crate::git::commit_all(sp_path, "initial snapshot of existing skills")
+                    {
+                        log::warn!("Failed to create initial snapshot at {}: {}", sp, e);
+                    }
+                }
+            }
+        }
+    }
+
     Ok(workspace_path)
 }
 

@@ -25,9 +25,6 @@ Focus on data extraction patterns, API structures, authentication flows, rate li
   - **Which domain** to research
 - This agent writes no files — it returns combined text to the orchestrator
 
-## Rerun / Resume Mode
-
-Follow the Rerun/Resume Mode protocol.
 
 </context>
 

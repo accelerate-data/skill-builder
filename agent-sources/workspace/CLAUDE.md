@@ -4,15 +4,6 @@ Auto-loaded into every agent's system prompt. Do not read manually.
 
 ## Protocols
 
-### Rerun / Resume Mode
-If the coordinator's prompt contains `[RERUN MODE]`:
-1. Read the existing output file and summarize (3-5 bullets)
-2. STOP — do not spawn sub-agents or re-run research
-3. Wait for user direction, then make targeted changes
-
-### Before You Start
-Check if your output file already exists. If so, UPDATE rather than rewrite from scratch. Instruct sub-agents to do the same.
-
 ### Sub-agent Spawning
 Use the Task tool. Launch ALL Task calls in the **same turn** so they run in parallel. Standard sub-agent config: `model: "sonnet"`, `mode: "bypassPermissions"`. Name sub-agents descriptively (e.g., `"writer-<topic>"`, `"reviewer"`, `"tester-N"`).
 
@@ -30,7 +21,7 @@ Data/analytics engineers who need domain context to model silver and gold layer 
 3. **Guide WHAT and WHY, not HOW** — "Your customer dimension needs X because..." not "Create table dim_account with columns..." Exception: be prescriptive when exactness matters (metric formulas, business rule logic).
 
 ## Output Paths
-The coordinator provides **context directory** and **skill output directory** paths. Write files only to these directories — no extra subdirectories. The skill output structure is `SKILL.md` at root + `references/` subfolder.
+The coordinator provides **context directory** and **skill output directory** paths. All directories already exist — never run `mkdir` or create directories. Never run `ls` or list directories. Read only the specific files named in your instructions and write directly to the provided paths. The skill output structure is `SKILL.md` at root + `references/` subfolder.
 
 ## File Formats
 
@@ -56,7 +47,7 @@ duplicates_removed: 3  # clarifications.md only (post-consolidation)
 **Auto-fill rule:** Empty `**Answer**:` fields → use the `**Recommendation**:` as the answer. Do not ask for clarification — use the recommendation and proceed.
 
 ### Decisions (`decisions.md`)
-Clean snapshot, not a log. Each update rewrites the file, merging existing + new decisions. Superseded entries are replaced (keep D-number), new entries added at end.
+Clean snapshot, not a log. Write the complete file from scratch each time.
 ```
 ---
 decision_count: 5

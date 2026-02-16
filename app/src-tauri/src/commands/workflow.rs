@@ -490,7 +490,8 @@ fn build_prompt(
         "The domain is: {}. The skill name is: {}. \
          The skill directory is: {}. \
          The context directory is: {}. \
-         The skill output directory (SKILL.md and references/) is: {}.",
+         The skill output directory (SKILL.md and references/) is: {}. \
+         All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
         domain,
         skill_name,
         skill_dir.display(),
@@ -664,8 +665,6 @@ fn read_workflow_settings(
     skill_name: &str,
     step_id: u32,
     workspace_path: &str,
-    _resume: bool,
-    _rerun: bool,
 ) -> Result<WorkflowSettings, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
@@ -717,7 +716,6 @@ async fn run_workflow_step_inner(
     step_id: u32,
     domain: &str,
     workspace_path: &str,
-    rerun: bool,
     settings: &WorkflowSettings,
 ) -> Result<String, String> {
     let step = get_step_config(step_id)?;
@@ -726,7 +724,7 @@ async fn run_workflow_step_inner(
     } else {
         None
     };
-    let mut prompt = build_prompt(
+    let prompt = build_prompt(
         skill_name,
         domain,
         workspace_path,
@@ -735,12 +733,6 @@ async fn run_workflow_step_inner(
         settings.author_login.as_deref(),
         settings.created_at.as_deref(),
     );
-
-    // In rerun mode, prepend a marker so the agent knows to summarize
-    // existing output before regenerating.
-    if rerun {
-        prompt = format!("[RERUN MODE]\n\n{}", prompt);
-    }
 
     let agent_name = derive_agent_name(workspace_path, &settings.skill_type, &step.prompt_template);
     let agent_id = make_agent_id(skill_name, &format!("step{}", step_id));
@@ -791,7 +783,6 @@ pub async fn run_workflow_step(
     domain: String,
     workspace_path: String,
     resume: bool,
-    rerun: bool,
 ) -> Result<String, String> {
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path).await?;
@@ -799,15 +790,14 @@ pub async fn run_workflow_step(
     // Step 0 fresh start — wipe the context directory and all artifacts so
     // the agent doesn't see stale files from a previous workflow run.
     // Skip this when resuming a paused step to preserve partial progress.
-    // Also skip when rerunning — we want to keep existing output files intact.
-    if step_id == 0 && !resume && !rerun {
+    if step_id == 0 && !resume {
         let context_dir = Path::new(&workspace_path).join(&skill_name).join("context");
         if context_dir.is_dir() {
             let _ = std::fs::remove_dir_all(&context_dir);
         }
     }
 
-    let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path, resume, rerun)?;
+    let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
 
     run_workflow_step_inner(
         &app,
@@ -816,7 +806,6 @@ pub async fn run_workflow_step(
         step_id,
         &domain,
         &workspace_path,
-        rerun,
         &settings,
     )
     .await
@@ -990,6 +979,40 @@ pub fn save_workflow_state(
     for step in &step_statuses {
         crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status)?;
     }
+
+    // Auto-commit when a step is completed.
+    // Called on every debounced save (~300ms) but commit_all is a no-op when
+    // nothing changed on disk, so redundant calls are cheap.
+    let has_completed_step = step_statuses.iter().any(|s| s.status == "completed");
+    if has_completed_step {
+        log::info!("[save_workflow_state] Step completed for '{}', checking git auto-commit", skill_name);
+        if let Ok(settings) = crate::db::read_settings(&conn) {
+            if let Some(ref sp) = settings.skills_path {
+                let completed_steps: Vec<i32> = step_statuses
+                    .iter()
+                    .filter(|s| s.status == "completed")
+                    .map(|s| s.step_id)
+                    .collect();
+                let msg = format!(
+                    "{}: step {} completed",
+                    skill_name,
+                    completed_steps
+                        .iter()
+                        .map(|id| id.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                if let Err(e) = crate::git::commit_all(std::path::Path::new(sp), &msg) {
+                    log::warn!("Git auto-commit failed ({}): {}", msg, e);
+                }
+            } else {
+                log::debug!("[save_workflow_state] skills_path not configured — skipping git auto-commit");
+            }
+        } else {
+            log::warn!("[save_workflow_state] Failed to read settings — skipping git auto-commit");
+        }
+    }
+
     Ok(())
 }
 
@@ -1154,6 +1177,15 @@ pub fn reset_workflow_step(
     );
     let skills_path = read_skills_path(&db);
     log::info!("[reset_workflow_step] skills_path={:?}", skills_path);
+
+    // Auto-commit: checkpoint before artifacts are deleted
+    if let Some(ref sp) = skills_path {
+        let msg = format!("{}: checkpoint before reset to step {}", skill_name, from_step_id);
+        if let Err(e) = crate::git::commit_all(std::path::Path::new(sp), &msg) {
+            log::warn!("Git auto-commit failed ({}): {}", msg, e);
+        }
+    }
+
     delete_step_output_files(&workspace_path, &skill_name, from_step_id, skills_path.as_deref());
 
     // Reset steps in SQLite
@@ -1313,8 +1345,7 @@ mod tests {
             None,
             None,
         );
-        // Should NOT contain "Read X and Y and follow the instructions"
-        assert!(!prompt.contains("Read"));
+        // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
@@ -1336,8 +1367,7 @@ mod tests {
             None,
             None,
         );
-        // Should NOT contain "Read X and Y and follow the instructions"
-        assert!(!prompt.contains("Read"));
+        // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
         // skill output directory should use skills_path
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
@@ -1359,8 +1389,7 @@ mod tests {
             None,
             None,
         );
-        // Should NOT contain "Read X and Y and follow the instructions"
-        assert!(!prompt.contains("Read"));
+        // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
         // skill output directory should still use skills_path
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
@@ -1378,8 +1407,7 @@ mod tests {
             None,
             None,
         );
-        // Should NOT contain "Read X and Y and follow the instructions"
-        assert!(!prompt.contains("Read"));
+        // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
@@ -2016,84 +2044,9 @@ mod tests {
         }
     }
 
-    // --- VD-407: rerun mode tests ---
-
-    #[test]
-    fn test_rerun_prompt_prepending() {
-        // When rerun is true, the prompt should be prepended with [RERUN MODE]
-        let base_prompt = build_prompt(
-            "my-skill",
-            "e-commerce",
-            "/home/user/.vibedata",
-            None,
-            "domain",
-            None,
-            None,
-        );
-
-        // Simulate the rerun logic from run_workflow_step
-        let rerun_prompt = format!("[RERUN MODE]\n\n{}", &base_prompt);
-
-        assert!(rerun_prompt.starts_with("[RERUN MODE]\n\n"));
-        assert!(rerun_prompt.contains("e-commerce"));
-        assert!(rerun_prompt.contains("my-skill"));
-        // The original prompt content should follow the rerun marker
-        assert!(rerun_prompt.contains("The domain is: e-commerce"));
-    }
-
-    #[test]
-    fn test_rerun_prompt_not_prepended_when_false() {
-        // When rerun is false, the prompt should NOT have [RERUN MODE]
-        let prompt = build_prompt(
-            "my-skill",
-            "analytics",
-            "/workspace",
-            None,
-            "domain",
-            None,
-            None,
-        );
-        assert!(!prompt.contains("[RERUN MODE]"));
-    }
-
-    #[test]
-    fn test_rerun_mode_preserves_step0_context() {
-        // In rerun mode, step 0 should NOT wipe the context directory.
-        // We verify this by checking the condition: step_id == 0 && !resume && !rerun
-        // When rerun=true, the condition is false, so context is preserved.
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
-        let skill_dir = tmp.path().join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-
-        // Write a context file that should survive rerun
-        std::fs::write(
-            skill_dir.join("context/research-entities.md"),
-            "# Existing concepts from previous run",
-        ).unwrap();
-
-        // Simulate the rerun guard: when rerun=true, we skip the wipe
-        let step_id: u32 = 0;
-        let resume = false;
-        let rerun = true;
-        if step_id == 0 && !resume && !rerun {
-            let context_dir = Path::new(workspace).join("my-skill").join("context");
-            if context_dir.is_dir() {
-                let _ = std::fs::remove_dir_all(&context_dir);
-            }
-        }
-
-        // Context file should still exist
-        assert!(skill_dir.join("context/research-entities.md").exists());
-        let content = std::fs::read_to_string(
-            skill_dir.join("context/research-entities.md"),
-        ).unwrap();
-        assert_eq!(content, "# Existing concepts from previous run");
-    }
-
     #[test]
     fn test_normal_mode_wipes_step0_context() {
-        // Confirm that without rerun, step 0 context IS wiped (baseline behavior)
+        // Step 0 fresh start wipes the context directory
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skill_dir = tmp.path().join("my-skill");
@@ -2106,8 +2059,7 @@ mod tests {
 
         let step_id: u32 = 0;
         let resume = false;
-        let rerun = false;
-        if step_id == 0 && !resume && !rerun {
+        if step_id == 0 && !resume {
             let context_dir = Path::new(workspace).join("my-skill").join("context");
             if context_dir.is_dir() {
                 let _ = std::fs::remove_dir_all(&context_dir);
@@ -2116,42 +2068,6 @@ mod tests {
 
         // Context directory should have been wiped
         assert!(!skill_dir.join("context/research-entities.md").exists());
-    }
-
-    #[test]
-    fn test_rerun_prompt_for_all_agent_steps() {
-        // Verify rerun prompt works correctly for every agent step
-        let agent_steps: Vec<(u32, &str)> = vec![
-            (0, "research.md"),
-            (2, "detailed-research.md"),
-            (4, "confirm-decisions.md"),
-            (5, "generate-skill.md"),
-            (6, "validate-skill.md"),
-        ];
-
-        for (step_id, _prompt_template) in agent_steps {
-            let base_prompt = build_prompt(
-                "test-skill",
-                "test-domain",
-                "/workspace",
-                None,
-                "domain",
-                None,
-                None,
-            );
-            let rerun_prompt = format!("[RERUN MODE]\n\n{}", &base_prompt);
-
-            assert!(
-                rerun_prompt.starts_with("[RERUN MODE]\n\n"),
-                "Step {} rerun prompt should start with [RERUN MODE]",
-                step_id,
-            );
-            assert!(
-                rerun_prompt.contains("test-domain"),
-                "Step {} rerun prompt should contain domain",
-                step_id,
-            );
-        }
     }
 
     #[test]

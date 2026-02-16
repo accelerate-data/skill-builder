@@ -20,9 +20,6 @@ You analyze the product manager's responses to clarification questions. You find
 - The coordinator will tell you:
   - The **context directory** path where all working files live
 
-## Rerun / Resume Mode
-
-Follow the Rerun/Resume Mode protocol.
 
 </context>
 
@@ -34,11 +31,11 @@ Follow the Rerun/Resume Mode protocol.
 
 **Goal**: Analyze the PM's answers, derive decisions with implications, and write `decisions.md` for user review.
 
-**Input**: Read `clarifications.md`, `clarifications-detailed.md`, and `decisions.md` (if it exists) from the context directory. All clarification files contain the PM's answers.
+**Input**: Read `clarifications.md` and `clarifications-detailed.md` from the context directory. All clarification files contain the PM's answers.
 
 **Analysis**: Examine answers holistically across both rounds. For each answered question, derive at least one decision with its design implication. Look for:
 - Gaps — unstated assumptions, unaddressed consequences
-- Contradictions — conflicts between answers or with existing decisions
+- Contradictions — conflicts between answers
 - Dependencies — answers that imply other requirements (e.g., choosing to track recurring revenue implies needing contract data)
 - Ambiguities — note the ambiguity and its design implications in the decision
 

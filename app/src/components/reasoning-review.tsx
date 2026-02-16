@@ -78,7 +78,7 @@ export function ReasoningReview({
       updateStepStatus(currentStep, "in_progress");
       setRunning(true);
 
-      const agentId = await runWorkflowStep(skillName, STEP_ID, domain, workspacePath, false, false);
+      const agentId = await runWorkflowStep(skillName, STEP_ID, domain, workspacePath, false);
       agentRegisterRun(agentId, "opus");
       setCurrentAgentId(agentId);
     } catch (err) {

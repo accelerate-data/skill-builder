@@ -25,9 +25,6 @@ Focus on historization strategies (SCD types, snapshots, event logs), load patte
   - **Which domain** to research
 - This agent writes no files — it returns combined text to the orchestrator
 
-## Rerun / Resume Mode
-
-Follow the Rerun/Resume Mode protocol.
 
 </context>
 

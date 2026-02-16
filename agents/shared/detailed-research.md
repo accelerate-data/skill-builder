@@ -21,9 +21,6 @@ You orchestrate a second, deeper research pass. The PM has already answered firs
   - The **context directory** path (contains `clarifications.md` with PM's first-round answers; write `clarifications-detailed.md` here)
   - **Which domain** to research
 
-## Rerun / Resume Mode
-
-Follow the Rerun/Resume Mode protocol.
 
 </context>
 

@@ -71,6 +71,15 @@ pub fn create_skill(
     // Read settings from DB
     let settings = conn.as_deref().and_then(|c| crate::db::read_settings(c).ok());
     let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
+
+    // Require skills_path to be configured
+    if skills_path.is_none() {
+        return Err(
+            "Skills output path is not configured. Please set it in Settings before creating skills."
+                .to_string(),
+        );
+    }
+
     let author_login = settings.as_ref().and_then(|s| s.github_user_login.clone());
     let author_avatar = settings.as_ref().and_then(|s| s.github_user_avatar.clone());
     create_skill_inner(
@@ -147,6 +156,14 @@ fn create_skill_inner(
         }
     }
 
+    // Auto-commit: skill created
+    if let Some(sp) = skills_path {
+        let msg = format!("{}: created", name);
+        if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
+            log::warn!("Git auto-commit failed ({}): {}", msg, e);
+        }
+    }
+
     Ok(())
 }
 
@@ -179,6 +196,7 @@ fn delete_skill_inner(
         "[delete_skill] skill={} workspace={} skills_path={:?}",
         name, workspace_path, skills_path
     );
+
     let base = Path::new(workspace_path).join(name);
 
     // Delete workspace working directory if it exists
@@ -208,6 +226,14 @@ fn delete_skill_inner(
         }
     } else {
         log::info!("[delete_skill] no skills_path configured, skipping output dir cleanup");
+    }
+
+    // Auto-commit: record the deletion in git
+    if let Some(sp) = skills_path {
+        let msg = format!("{}: deleted", name);
+        if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
+            log::warn!("Git auto-commit failed ({}): {}", msg, e);
+        }
     }
 
     // Full DB cleanup: workflow_run + steps + agent_runs + tags

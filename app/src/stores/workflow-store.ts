@@ -35,7 +35,7 @@ interface WorkflowState {
   setInitializing: () => void;
   clearInitializing: () => void;
   setInitProgressMessage: (message: string) => void;
-  rerunFromStep: (stepId: number) => void;
+  resetToStep: (stepId: number) => void;
   loadWorkflowState: (completedStepIds: number[], savedCurrentStep?: number) => void;
   setHydrated: (hydrated: boolean) => void;
   /** Set a structured runtime error from a sidecar startup failure. */
@@ -164,7 +164,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   clearRuntimeError: () => set({ runtimeError: null }),
 
-  rerunFromStep: (stepId) =>
+  resetToStep: (stepId) =>
     set((state) => ({
       currentStep: stepId,
       isRunning: false,

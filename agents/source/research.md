@@ -24,19 +24,12 @@ Orchestrate parallel research by spawning three sub-agents via the Task tool —
   - The **skill name**
   - The **context directory** path (write `clarifications.md` here)
 
-## Rerun / Resume Mode
-
-Follow the Rerun/Resume Mode protocol.
 
 </context>
 
 ---
 
 <instructions>
-
-## Before You Start
-
-Follow the Before You Start protocol.
 
 ## Phase 1: Parallel Research
 
