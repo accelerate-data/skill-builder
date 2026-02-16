@@ -10,7 +10,7 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 0. **Init** -- skill type selection, name confirmation, resume detection
 1. **Research** -- research orchestrator spawns concepts + practices + implementation sub-agents, consolidation agent produces `clarifications.md`
 2. **Review** -- user answers `clarifications.md`
-3. **Detailed Research** -- detailed-research agent writes `clarifications-detailed.md`
+3. **Detailed Research** -- detailed-research orchestrator spawns per-section sub-agents + consolidation → `clarifications-detailed.md`
 4. **Review** -- user answers `clarifications-detailed.md`
 5. **Confirm Decisions** -- confirm-decisions agent produces `decisions.md`
 6. **Generate Skill** -- creates SKILL.md + reference files
@@ -21,9 +21,10 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 | Role | Model |
 |---|---|
 | Research agents (Steps 1, 3) | sonnet |
-| Consolidate Research (Step 1) | opus |
+| Consolidate Research (Steps 1, 3) | opus |
 | Confirm Decisions (Step 5) | opus |
 | Generate / Validate (Steps 6-7) | sonnet |
+| Test evaluators (Step 7) | haiku |
 
 The app overrides this with a global user preference in Settings. The plugin uses per-agent model tiers defined in agent frontmatter.
 

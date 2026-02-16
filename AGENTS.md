@@ -1,6 +1,6 @@
 # Skill Builder
 
-Codex repo instructions for developing Skill Builder. This repo still contains Claude-specific runtime components, but day-to-day coding guidance should come from this file when using Codex.
+Instructions for non-Claude agents (Codex, etc.). All authoritative details are in `CLAUDE.md` (imports `CLAUDE-APP.md` and `CLAUDE-PLUGIN.md`). This file provides a minimal onramp — refer to those docs for dev commands, testing, architecture, and code style.
 
 ## Project Scope
 
@@ -8,102 +8,17 @@ Multi-agent workflow for creating domain-specific skills. Two frontends share th
 - Claude Code plugin (CLI)
 - Tauri desktop app (GUI)
 
-Shared assets:
-- `agents/{type}/` and `agents/shared/`
-- `workspace/CLAUDE.md` (auto-loaded agent instructions)
+See `CLAUDE.md` for the 7-step workflow, model tiers, dev commands, testing strategy, shared components, and gotchas.
 
-## Workflow (7 steps)
-
-0. Init — skill type, name, resume detection
-1. Research — concepts + practices + implementation → consolidate → `clarifications.md`
-2. Review (human) — user answers `clarifications.md`
-3. Detailed Research — `clarifications-detailed.md`
-4. Review (human) — user answers `clarifications-detailed.md`
-5. Confirm Decisions — `decisions.md`
-6. Generate Skill — `SKILL.md` + references
-7. Validate Skill — checks + test prompts
-
-## Model Tiers (source of truth in prompts/config)
-
-| Role | Model |
-|---|---|
-| Research (steps 1, 3) | sonnet |
-| Consolidate Research (step 1) | opus |
-| Confirm Decisions (step 5) | opus |
-| Generate / Validate (steps 6-7) | sonnet |
-
-Desktop app can override with a global model preference in Settings.
-
-## Dev Commands
+## Quick Start
 
 ```bash
 # Desktop app
-cd app && npm install && npm run sidecar:build
-npm run dev
-
-# App tests
-./tests/run.sh
-./tests/run.sh unit
-./tests/run.sh integration
-./tests/run.sh e2e
-./tests/run.sh e2e --tag @workflow
-npm run test:unit
-npm run test:integration
-npm run test:e2e
-cd src-tauri && cargo test
+cd app && npm install && npm run sidecar:build && npm run dev
 
 # Plugin
-./scripts/validate.sh
-./scripts/test-plugin.sh
-claude --plugin-dir .
+./scripts/validate.sh && claude --plugin-dir .
 ```
-
-## Desktop App Notes
-
-- Architecture: React -> Tauri IPC -> Rust backend -> Node sidecar (`@anthropic-ai/claude-agent-sdk`).
-- Runtime requirement: Node.js `18-24` (Node 25+ is unsupported for sidecar SDK stability).
-- Sidecar logs are written per step to `{workspace}/{skill-name}/logs/*.jsonl` with redacted config on first line.
-- App workspace defaults to `~/.vibedata/`; DB is at `~/.local/share/com.skillbuilder.app/skill-builder.db`.
-- DB is the source of truth for metadata; filesystem artifacts are secondary.
-- Before committing app/backend changes, verify:
-  - `cd app && npx tsc --noEmit`
-  - `cargo check --manifest-path app/src-tauri/Cargo.toml`
-
-## Plugin Notes
-
-- Entry point is `skills/generate-skill/SKILL.md` via `/skill-builder:generate-skill`.
-- Plugin metadata/layout lives in `.claude-plugin/` and `.claude/`.
-- Agent prompts are in `agents/`; coordinator orchestrates them via `Task(...)`.
-- `workspace/CLAUDE.md` is auto-loaded into every agent's system prompt and is high-impact.
-- Plugin install caching means file references must stay within plugin dir or user CWD.
-- Automated structural checks run via `.claude/settings.json` hook and `./scripts/validate.sh`.
-
-## Testing Rules
-
-- Read existing tests for files you modify before adding new tests.
-- Add tests for new behavior and regressions; remove obsolete tests.
-- Do not add tests just to increase count.
-- Keep `app/tests/TEST_MANIFEST.md` in sync when test mappings/counts change.
-
-Quick routing:
-- Store changes -> `./tests/run.sh unit` + mapped E2E tag
-- Component changes -> `./tests/run.sh integration` + mapped E2E tag
-- Rust command changes -> `cargo test` (+ E2E tag if UI-facing)
-- Shared bridge/mocks changes -> `./tests/run.sh`
-- Agent/coordinator/plugin manifest changes -> `./scripts/test-plugin.sh` appropriate tiers
-- Tauri unit-test command mocking -> `app/src/test/mocks/tauri.ts`
-- Tauri E2E mocking/overrides -> `app/src/test/mocks/tauri-e2e*.ts`, `window.__TAURI_MOCK_OVERRIDES__`
-
-## Code Style
-
-- Make granular commits (one concern per commit).
-- Run relevant tests before commit.
-- TypeScript strict mode; avoid `any`.
-
-## Gotchas
-
-- Claude Agent SDK has no team tools (`TeamCreate`, `TaskCreate`, `SendMessage`); use `Task`.
-- Parallel worktrees: `npm run dev` auto-assigns a free port.
 
 ## Skills
 
@@ -122,6 +37,6 @@ Use these repo-local skills when requests match:
 
 ## Reference Docs
 
-- `CLAUDE.md` (legacy Claude-focused dev guide)
+- `CLAUDE.md` (primary dev guide — workflow, testing, shared components)
 - `CLAUDE-APP.md` (desktop app deep dive)
 - `CLAUDE-PLUGIN.md` (plugin deep dive)
