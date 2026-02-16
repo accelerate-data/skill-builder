@@ -177,6 +177,15 @@ export interface AvailableSkill {
   description: string | null
 }
 
+export interface TeamRepoSkill {
+  path: string
+  name: string
+  domain: string | null
+  description: string | null
+  creator: string | null
+  created_at: string | null
+}
+
 export interface PushResult {
   pr_url: string
   pr_number: number

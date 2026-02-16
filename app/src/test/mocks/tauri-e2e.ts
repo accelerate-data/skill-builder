@@ -83,6 +83,8 @@ const mockResponses: Record<string, unknown> = {
   release_lock: undefined,
   get_locked_skills: [],
   check_lock: false,
+  list_team_repo_skills: [],
+  import_team_repo_skill: "imported-skill",
 };
 
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {

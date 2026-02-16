@@ -5,7 +5,7 @@ use std::path::Path;
 
 /// Build a `reqwest::Client` with standard GitHub API headers.
 /// If an OAuth token is available in settings, it is included as a Bearer token.
-fn build_github_client(token: Option<&str>) -> reqwest::Client {
+pub(crate) fn build_github_client(token: Option<&str>) -> reqwest::Client {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("Accept", "application/vnd.github+json".parse().unwrap());
     headers.insert("User-Agent", "SkillBuilder".parse().unwrap());
@@ -143,7 +143,7 @@ pub async fn list_github_skills(
         .await
 }
 
-async fn list_github_skills_inner(
+pub(crate) async fn list_github_skills_inner(
     owner: &str,
     repo: &str,
     branch: &str,
@@ -157,6 +157,7 @@ async fn list_github_skills_inner(
         "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
         owner, repo, branch
     );
+    log::info!("[list_github_skills_inner] fetching tree from {}/{} branch={}", owner, repo, branch);
 
     let response = client
         .get(&tree_url)
@@ -214,6 +215,11 @@ async fn list_github_skills_inner(
         })
         .collect();
 
+    log::info!(
+        "[list_github_skills_inner] found {} SKILL.md files in {}/{}: {:?}",
+        skill_md_paths.len(), owner, repo, skill_md_paths
+    );
+
     if skill_md_paths.is_empty() {
         return Ok(Vec::new());
     }
@@ -245,7 +251,7 @@ async fn list_github_skills_inner(
             }
         };
 
-        let (fm_name, fm_description, fm_domain) =
+        let (fm_name, fm_description, fm_domain, _fm_type) =
             super::imported_skills::parse_frontmatter(&content);
 
         // Derive skill directory path (parent of SKILL.md)
@@ -390,7 +396,7 @@ pub async fn import_github_skills(
 }
 
 /// Import a single skill directory from the repo tree.
-async fn import_single_skill(
+pub(crate) async fn import_single_skill(
     client: &reqwest::Client,
     owner: &str,
     repo: &str,
@@ -474,7 +480,7 @@ async fn import_single_skill(
         .await
         .map_err(|e| format!("Failed to read SKILL.md content: {}", e))?;
 
-    let (fm_name, fm_description, fm_domain) =
+    let (fm_name, fm_description, fm_domain, _fm_type) =
         super::imported_skills::parse_frontmatter(&skill_md_content);
 
     let skill_name = fm_name.unwrap_or_else(|| dir_name.to_string());
@@ -714,12 +720,13 @@ mod tests {
     #[test]
     fn test_parse_frontmatter_accessible() {
         // Verify that the pub(crate) parse_frontmatter is callable from here
-        let (name, desc, domain) = super::super::imported_skills::parse_frontmatter(
+        let (name, desc, domain, skill_type) = super::super::imported_skills::parse_frontmatter(
             "---\nname: test\ndescription: a test\ndomain: analytics\n---\n# Content",
         );
         assert_eq!(name.as_deref(), Some("test"));
         assert_eq!(desc.as_deref(), Some("a test"));
         assert_eq!(domain.as_deref(), Some("analytics"));
+        assert!(skill_type.is_none());
     }
 
     // --- validate_skill_name reuse test ---

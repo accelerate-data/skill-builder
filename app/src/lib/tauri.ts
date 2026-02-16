@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo, TeamRepoSkill } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo, TeamRepoSkill } from "@/lib/types";
 
 // --- Settings ---
 
@@ -292,4 +292,12 @@ export const reconcileManifests = () =>
 
 export const listUserRepos = () =>
   invoke<GitHubRepo[]>("list_user_repos")
+
+// --- Team Repo Import ---
+
+export const listTeamRepoSkills = () =>
+  invoke<TeamRepoSkill[]>("list_team_repo_skills")
+
+export const importTeamRepoSkill = (skillPath: string, skillName: string, force: boolean = false) =>
+  invoke<string>("import_team_repo_skill", { skillPath, skillName, force })
 

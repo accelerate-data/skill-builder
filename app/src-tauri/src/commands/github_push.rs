@@ -850,8 +850,8 @@ fn build_dir_tree(repo: &git2::Repository, dir: &Path) -> Result<git2::Oid, Stri
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
 
-        // Skip hidden files/dirs (e.g. .git)
-        if name_str.starts_with('.') {
+        // Skip hidden files/dirs (e.g. .git) but keep .skill-builder manifest
+        if name_str.starts_with('.') && name_str != ".skill-builder" {
             continue;
         }
 
@@ -879,7 +879,7 @@ fn build_dir_tree(repo: &git2::Repository, dir: &Path) -> Result<git2::Oid, Stri
 }
 
 /// Fetch the default branch name for a GitHub repository.
-async fn get_default_branch(
+pub(crate) async fn get_default_branch(
     client: &reqwest::Client,
     token: &str,
     owner: &str,

@@ -20,18 +20,20 @@ pub(crate) fn validate_skill_name(name: &str) -> Result<(), String> {
 }
 
 /// Parse YAML frontmatter from SKILL.md content.
-/// Extracts `name`, `description`, and `domain` fields from YAML between `---` markers.
-pub(crate) fn parse_frontmatter(content: &str) -> (Option<String>, Option<String>, Option<String>) {
+/// Extracts `name`, `description`, `domain`, and `skill_type` fields from YAML between `---` markers.
+pub(crate) fn parse_frontmatter(
+    content: &str,
+) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {
-        return (None, None, None);
+        return (None, None, None, None);
     }
 
     // Find the closing ---
     let after_first = &trimmed[3..];
     let end = match after_first.find("\n---") {
         Some(pos) => pos,
-        None => return (None, None, None),
+        None => return (None, None, None, None),
     };
 
     let yaml_block = &after_first[..end];
@@ -39,6 +41,7 @@ pub(crate) fn parse_frontmatter(content: &str) -> (Option<String>, Option<String
     let mut name = None;
     let mut description = None;
     let mut domain = None;
+    let mut skill_type = None;
 
     for line in yaml_block.lines() {
         let line = line.trim();
@@ -48,10 +51,12 @@ pub(crate) fn parse_frontmatter(content: &str) -> (Option<String>, Option<String
             description = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
         } else if let Some(val) = line.strip_prefix("domain:") {
             domain = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
+        } else if let Some(val) = line.strip_prefix("type:") {
+            skill_type = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
         }
     }
 
-    (name, description, domain)
+    (name, description, domain, skill_type)
 }
 
 /// Derive a skill name from a zip filename by removing the extension
@@ -168,7 +173,7 @@ fn upload_skill_inner(
     let prefix = get_archive_prefix(&skill_md_path);
 
     // Parse frontmatter for metadata
-    let (fm_name, fm_description, fm_domain) = parse_frontmatter(&skill_md_content);
+    let (fm_name, fm_description, fm_domain, _fm_type) = parse_frontmatter(&skill_md_content);
 
     // Determine skill name: frontmatter name > filename
     let skill_name = fm_name
@@ -690,10 +695,11 @@ domain: e-commerce
 
 # My Skill
 "#;
-        let (name, desc, domain) = parse_frontmatter(content);
+        let (name, desc, domain, skill_type) = parse_frontmatter(content);
         assert_eq!(name.as_deref(), Some("my-skill"));
         assert_eq!(desc.as_deref(), Some("A great skill for analytics"));
         assert_eq!(domain.as_deref(), Some("e-commerce"));
+        assert!(skill_type.is_none());
     }
 
     #[test]
@@ -703,7 +709,7 @@ name: "quoted-name"
 description: 'single quoted'
 ---
 "#;
-        let (name, desc, _) = parse_frontmatter(content);
+        let (name, desc, _, _) = parse_frontmatter(content);
         assert_eq!(name.as_deref(), Some("quoted-name"));
         assert_eq!(desc.as_deref(), Some("single quoted"));
     }
@@ -711,10 +717,11 @@ description: 'single quoted'
     #[test]
     fn test_parse_frontmatter_no_frontmatter() {
         let content = "# Just a heading\nSome content";
-        let (name, desc, domain) = parse_frontmatter(content);
+        let (name, desc, domain, skill_type) = parse_frontmatter(content);
         assert!(name.is_none());
         assert!(desc.is_none());
         assert!(domain.is_none());
+        assert!(skill_type.is_none());
     }
 
     #[test]
@@ -724,10 +731,28 @@ name: only-name
 ---
 # Content
 "#;
-        let (name, desc, domain) = parse_frontmatter(content);
+        let (name, desc, domain, skill_type) = parse_frontmatter(content);
         assert_eq!(name.as_deref(), Some("only-name"));
         assert!(desc.is_none());
         assert!(domain.is_none());
+        assert!(skill_type.is_none());
+    }
+
+    #[test]
+    fn test_parse_frontmatter_with_type() {
+        let content = r#"---
+name: my-platform-skill
+description: A platform skill
+domain: aws
+type: platform
+---
+# My Skill
+"#;
+        let (name, desc, domain, skill_type) = parse_frontmatter(content);
+        assert_eq!(name.as_deref(), Some("my-platform-skill"));
+        assert_eq!(desc.as_deref(), Some("A platform skill"));
+        assert_eq!(domain.as_deref(), Some("aws"));
+        assert_eq!(skill_type.as_deref(), Some("platform"));
     }
 
     // --- Filename derivation tests ---

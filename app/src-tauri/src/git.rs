@@ -72,9 +72,9 @@ pub fn commit_all(path: &Path, message: &str) -> Result<Option<String>, String> 
         .index()
         .map_err(|e| format!("Failed to get index: {}", e))?;
 
-    // Stage all changes (add + modify + delete)
+    // Stage all changes (add + modify + delete), including dotfiles like .skill-builder
     index
-        .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+        .add_all(["*", ".*"].iter(), git2::IndexAddOption::DEFAULT, None)
         .map_err(|e| format!("Failed to stage files: {}", e))?;
 
     // Also remove deleted files from the index

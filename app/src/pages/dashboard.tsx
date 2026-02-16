@@ -28,6 +28,7 @@ import NewSkillDialog from "@/components/new-skill-dialog"
 import DeleteSkillDialog from "@/components/delete-skill-dialog"
 import EditTagsDialog from "@/components/edit-tags-dialog"
 import TagFilter from "@/components/tag-filter"
+import TeamRepoImportDialog from "@/components/team-repo-import-dialog"
 import { OnboardingDialog } from "@/components/onboarding-dialog"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useSkillStore } from "@/stores/skill-store"
@@ -203,11 +204,18 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Skills</h1>
         {workspacePath && skillsPath && (
-          <NewSkillDialog
-            workspacePath={workspacePath}
-            onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
-            tagSuggestions={availableTags}
-          />
+          <div className="flex items-center gap-2">
+            <TeamRepoImportDialog
+              onImported={async () => { await Promise.all([loadSkills(), loadTags()]); }}
+              remoteConfigured={remoteConfigured}
+              isLoggedIn={isLoggedIn}
+            />
+            <NewSkillDialog
+              workspacePath={workspacePath}
+              onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
+              tagSuggestions={availableTags}
+            />
+          </div>
         )}
       </div>
 

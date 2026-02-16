@@ -335,6 +335,16 @@ pub struct AvailableSkill {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamRepoSkill {
+    pub path: String,
+    pub name: String,
+    pub domain: Option<String>,
+    pub description: Option<String>,
+    pub creator: Option<String>,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillCommit {
     pub sha: String,
     pub message: String,

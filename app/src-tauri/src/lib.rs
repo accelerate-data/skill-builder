@@ -200,6 +200,8 @@ pub fn run() {
             commands::github_push::reconcile_manifests,
             commands::github_push::write_skill_manifest,
             commands::github_push::list_user_repos,
+            commands::team_import::list_team_repo_skills,
+            commands::team_import::import_team_repo_skill,
             commands::usage::persist_agent_run,
             commands::usage::get_usage_summary,
             commands::usage::get_recent_runs,
