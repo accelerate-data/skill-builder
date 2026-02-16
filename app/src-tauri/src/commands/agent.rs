@@ -19,8 +19,15 @@ pub async fn start_agent(
     _step_label: String,
     agent_name: Option<String>,
 ) -> Result<String, String> {
+    log::info!(
+        "[start_agent] agent_id={} model={} skill_name={} agent_name={:?}",
+        agent_id, model, skill_name, agent_name
+    );
     let (api_key, extended_context, extended_thinking) = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[start_agent] Failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
         let settings = crate::db::read_settings(&conn)?;
         let key = settings
             .anthropic_api_key

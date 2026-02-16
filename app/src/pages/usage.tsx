@@ -157,7 +157,7 @@ export default function UsagePage() {
         const agents = await getSessionAgentRuns(sessionId)
         setSessionAgents((prev) => ({ ...prev, [sessionId]: agents }))
       } catch (err) {
-        console.warn("Failed to load session agents:", err)
+        console.error("Failed to load session agents:", err)
       } finally {
         setLoadingSessions((prev) => {
           const next = new Set(prev)

@@ -75,6 +75,7 @@ export default function NewSkillDialog({
         tags: tags.length > 0 ? tags : null,
         skillType: skillType || null,
       })
+      console.log(`[skill] Created skill "${name}"`)
       toast.success(`Skill "${name}" created`)
       const skillName = name.trim()
       await onCreated()

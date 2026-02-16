@@ -7,6 +7,7 @@ use crate::types::AppSettings;
 
 #[tauri::command]
 pub fn get_data_dir(app: tauri::AppHandle) -> Result<String, String> {
+    log::info!("[get_data_dir]");
     let data_dir = app
         .path()
         .app_data_dir()
@@ -25,7 +26,11 @@ pub fn get_data_dir(app: tauri::AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[get_settings]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_settings] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::read_settings(&conn)
 }
 
@@ -47,6 +52,7 @@ pub fn save_settings(
     db: tauri::State<'_, Db>,
     settings: AppSettings,
 ) -> Result<(), String> {
+    log::info!("[save_settings]");
     let mut settings = settings;
     // Normalize skills_path before persisting
     if let Some(ref sp) = settings.skills_path {
@@ -172,6 +178,7 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
 
 #[tauri::command]
 pub async fn test_api_key(api_key: String) -> Result<bool, String> {
+    log::info!("[test_api_key]");
     let client = reqwest::Client::new();
     let resp = client
         .post("https://api.anthropic.com/v1/messages")
@@ -196,12 +203,14 @@ pub async fn test_api_key(api_key: String) -> Result<bool, String> {
 
 #[tauri::command]
 pub fn set_log_level(level: String) -> Result<(), String> {
+    log::info!("[set_log_level] level={}", level);
     crate::logging::set_log_level(&level);
     Ok(())
 }
 
 #[tauri::command]
 pub fn get_log_file_path(app: tauri::AppHandle) -> Result<String, String> {
+    log::info!("[get_log_file_path]");
     crate::logging::get_log_file_path(&app)
 }
 

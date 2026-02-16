@@ -40,6 +40,7 @@ fn build_github_client(token: Option<&str>) -> reqwest::Client {
 /// - `owner/repo`
 #[tauri::command]
 pub fn parse_github_url(url: String) -> Result<GitHubRepoInfo, String> {
+    log::info!("[parse_github_url] url={}", url);
     parse_github_url_inner(&url)
 }
 
@@ -130,6 +131,7 @@ pub async fn list_github_skills(
     branch: String,
     subpath: Option<String>,
 ) -> Result<Vec<AvailableSkill>, String> {
+    log::info!("[list_github_skills] owner={} repo={} branch={} subpath={:?}", owner, repo, branch, subpath);
     // Read OAuth token if available
     let token = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -285,6 +287,7 @@ pub async fn import_github_skills(
     branch: String,
     skill_paths: Vec<String>,
 ) -> Result<Vec<ImportedSkill>, String> {
+    log::info!("[import_github_skills] owner={} repo={} branch={} skill_paths={:?}", owner, repo, branch, skill_paths);
     // Read settings
     let (workspace_path, token) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;

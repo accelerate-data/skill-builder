@@ -1,3 +1,4 @@
+import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
 
 /**
@@ -40,12 +41,12 @@ export function buildQueryOptions(
     abortController,
     // Use the same Node binary that's running this sidecar process,
     // so the SDK spawns cli.js with a compatible Node version.
-    executable: process.execPath,
+    executable: process.execPath as 'node',
     ...(config.pathToClaudeCodeExecutable
       ? { pathToClaudeCodeExecutable: config.pathToClaudeCodeExecutable }
       : {}),
     ...(config.sessionId ? { resume: config.sessionId } : {}),
-    ...(config.betas ? { betas: config.betas } : {}),
+    ...(config.betas ? { betas: config.betas as Options['betas'] } : {}),
     ...(config.maxThinkingTokens ? { maxThinkingTokens: config.maxThinkingTokens } : {}),
     ...(stderr ? { stderr } : {}),
   };

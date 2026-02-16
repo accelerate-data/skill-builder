@@ -132,7 +132,11 @@ pub fn upload_skill(
     file_path: String,
     db: tauri::State<'_, Db>,
 ) -> Result<ImportedSkill, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[upload_skill] file_path={}", file_path);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[upload_skill] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     let settings = crate::db::read_settings(&conn)?;
     let workspace_path = settings
         .workspace_path
@@ -305,7 +309,11 @@ fn extract_archive(
 pub fn list_imported_skills(
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<ImportedSkill>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[list_imported_skills]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[list_imported_skills] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::list_imported_skills(&conn)
 }
 
@@ -315,7 +323,11 @@ pub fn toggle_skill_active(
     active: bool,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[toggle_skill_active] skill_name={} active={}", skill_name, active);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[toggle_skill_active] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     let settings = crate::db::read_settings(&conn)?;
     let workspace_path = settings
         .workspace_path
@@ -389,7 +401,11 @@ pub fn delete_imported_skill(
     skill_name: String,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[delete_imported_skill] skill_name={}", skill_name);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[delete_imported_skill] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     let settings = crate::db::read_settings(&conn)?;
     let workspace_path = settings
         .workspace_path
@@ -437,7 +453,11 @@ pub fn get_skill_content(
     skill_name: String,
     db: tauri::State<'_, Db>,
 ) -> Result<String, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[get_skill_content] skill_name={}", skill_name);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_skill_content] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     let skill = crate::db::get_imported_skill(&conn, &skill_name)?
         .ok_or_else(|| format!("Imported skill '{}' not found", skill_name))?;
 
@@ -456,7 +476,11 @@ pub fn update_trigger_text(
     trigger_text: String,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[update_trigger_text] skill_name={}", skill_name);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[update_trigger_text] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::update_trigger_text(&conn, &skill_name, &trigger_text)?;
 
     // Regenerate CLAUDE.md with updated trigger text
@@ -474,7 +498,11 @@ pub fn update_trigger_text(
 pub fn regenerate_claude_md(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[regenerate_claude_md]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[regenerate_claude_md] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     let settings = crate::db::read_settings(&conn)?;
     let workspace_path = settings
         .workspace_path
@@ -488,6 +516,7 @@ pub async fn generate_trigger_text(
     skill_name: String,
     db: tauri::State<'_, Db>,
 ) -> Result<String, String> {
+    log::info!("[generate_trigger_text] skill_name={}", skill_name);
     let (api_key, context) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings(&conn)?;

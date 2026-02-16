@@ -347,7 +347,7 @@ export default function WorkflowPage() {
           : "pending";
 
       saveWorkflowState(skillName, domain, latestStore.currentStep, status, stepStatuses, skillType ?? undefined).catch(
-        (err) => console.warn("Failed to persist workflow state:", err)
+        (err) => console.error("Failed to persist workflow state:", err)
       );
     }, 300);
 
@@ -471,6 +471,7 @@ export default function WorkflowPage() {
       setInitializing();
       setHasPartialOutput(false);
 
+      console.log(`[workflow] Starting step ${currentStep} for skill "${skillName}"`);
       const agentId = await runWorkflowStep(
         skillName,
         currentStep,

@@ -1,8 +1,11 @@
 mod agents;
+mod cleanup;
 mod commands;
 mod db;
+mod fs_validation;
 pub mod git;
 mod logging;
+mod reconciliation;
 mod types;
 
 pub use types::*;

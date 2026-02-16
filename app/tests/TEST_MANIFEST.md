@@ -84,8 +84,8 @@ Maps every source file to its tests across all layers. Use this to determine whi
 |---|---|---|
 | `src-tauri/src/db.rs` | `cargo test db` (84) | -- |
 | `src-tauri/src/types.rs` | `cargo test types` (5) | -- |
-| `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (54) | `@workflow` |
-| `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (42) | `@dashboard` |
+| `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (50) | `@workflow` |
+| `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (1) | `@dashboard` |
 | `src-tauri/src/commands/skill.rs` | `cargo test commands::skill` (19) | `@dashboard` |
 | `src-tauri/src/commands/imported_skills.rs` | `cargo test commands::imported_skills` (30) | -- |
 | `src-tauri/src/commands/files.rs` | `cargo test commands::files` (19) | `@workflow` |
@@ -93,6 +93,9 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src-tauri/src/commands/node.rs` | `cargo test commands::node` (6) | -- |
 | `src-tauri/src/commands/clarification.rs` | `cargo test commands::clarification` (1) | `@workflow` |
 | `src-tauri/src/commands/github_auth.rs` | -- | `@settings` |
+| `src-tauri/src/cleanup.rs` | `cargo test cleanup` (1) | -- |
+| `src-tauri/src/fs_validation.rs` | `cargo test fs_validation` (14) | -- |
+| `src-tauri/src/reconciliation.rs` | `cargo test reconciliation` (28) | `@dashboard` |
 | `src-tauri/src/agents/sidecar.rs` | `cargo test agents::sidecar` (2) | `@workflow-agent` |
 | `src-tauri/src/agents/sidecar_pool.rs` | `cargo test agents::sidecar_pool` (8) | `@workflow-agent` |
 
@@ -101,10 +104,8 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | Source | Unit Tests | E2E Tag |
 |---|---|---|
 | `sidecar/run-agent.ts` | `sidecar/__tests__/run-agent.test.ts` (14) | -- |
-| `sidecar/agent-runner.ts` | `sidecar/__tests__/agent-runner.test.ts` (13) | -- |
-| `sidecar/config.ts` | `sidecar/__tests__/config.test.ts` (5) | -- |
 | `sidecar/options.ts` | `sidecar/__tests__/options.test.ts` (20) | -- |
-| `sidecar/persistent-mode.ts` | `sidecar/__tests__/persistent-mode.test.ts` (34) | -- |
+| `sidecar/persistent-mode.ts` | `sidecar/__tests__/persistent-mode.test.ts` (33) | -- |
 | `sidecar/shutdown.ts` | `sidecar/__tests__/shutdown.test.ts` (5) | -- |
 
 ### E2E Test Files

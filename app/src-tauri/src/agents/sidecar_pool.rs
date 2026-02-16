@@ -224,7 +224,7 @@ fn spawn_heartbeat_task(
                 break;
             }
 
-            log::debug!("[heartbeat:{}] ping sent", skill_name);
+            log::trace!("[heartbeat:{}] ping sent", skill_name);
 
             // Wait 5 seconds for pong response
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -469,7 +469,7 @@ impl SidecarPool {
             let mut lines = stderr_reader.lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 let result = AssertUnwindSafe(async {
-                    log::debug!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
+                    log::trace!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
                 })
                 .catch_unwind()
                 .await;
@@ -635,7 +635,7 @@ impl SidecarPool {
                             if msg.get("type").and_then(|t| t.as_str()) == Some("pong") {
                                 let mut pong_guard = stdout_last_pong.lock().await;
                                 *pong_guard = tokio::time::Instant::now();
-                                log::debug!("[heartbeat:{}] pong received", skill_name_stdout);
+                                log::trace!("[heartbeat:{}] pong received", skill_name_stdout);
                                 return;
                             }
 
@@ -710,7 +710,7 @@ impl SidecarPool {
                                         let success = !is_error && !subtype.starts_with("error_");
 
                                         if success {
-                                            log::debug!(
+                                            log::info!(
                                                 "[persistent-sidecar:{}] Agent '{}' completed successfully",
                                                 skill_name_stdout,
                                                 request_id,
@@ -1009,7 +1009,7 @@ impl SidecarPool {
             }
         }
 
-        log::debug!(
+        log::info!(
             "Sent agent request '{}' to persistent sidecar for '{}' (pid {})",
             agent_id,
             skill_name,

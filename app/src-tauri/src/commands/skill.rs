@@ -8,7 +8,11 @@ pub fn list_skills(
     workspace_path: String,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<SkillSummary>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[list_skills]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[list_skills] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     list_skills_inner(&workspace_path, &conn)
 }
 
@@ -67,6 +71,7 @@ pub fn create_skill(
     skill_type: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
+    log::info!("[create_skill] name={} domain={} skill_type={:?}", name, domain, skill_type);
     let conn = db.0.lock().ok();
     // Read settings from DB
     let settings = conn.as_deref().and_then(|c| crate::db::read_settings(c).ok());
@@ -173,7 +178,11 @@ pub fn delete_skill(
     name: String,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[delete_skill] name={}", name);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[delete_skill] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     // Read skills_path from settings DB
     let skills_path = crate::db::read_settings(&conn)
         .ok()
@@ -251,13 +260,21 @@ pub fn update_skill_tags(
     tags: Vec<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[update_skill_tags] skill={} tags={:?}", skill_name, tags);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[update_skill_tags] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::set_skill_tags(&conn, &skill_name, &tags)
 }
 
 #[tauri::command]
 pub fn get_all_tags(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[get_all_tags]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_all_tags] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::get_all_tags(&conn)
 }
 
@@ -267,7 +284,11 @@ pub fn acquire_lock(
     instance: tauri::State<'_, crate::InstanceInfo>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[acquire_lock] skill={}", skill_name);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[acquire_lock] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::acquire_skill_lock(&conn, &skill_name, &instance.id, instance.pid)
 }
 
@@ -277,7 +298,11 @@ pub fn release_lock(
     instance: tauri::State<'_, crate::InstanceInfo>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[release_lock] skill={}", skill_name);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[release_lock] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::release_skill_lock(&conn, &skill_name, &instance.id)
 }
 
@@ -285,7 +310,11 @@ pub fn release_lock(
 pub fn get_locked_skills(
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<crate::types::SkillLock>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[get_locked_skills]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_locked_skills] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::reclaim_dead_locks(&conn)?;
     crate::db::get_all_skill_locks(&conn)
 }
@@ -296,7 +325,11 @@ pub fn check_lock(
     instance: tauri::State<'_, crate::InstanceInfo>,
     db: tauri::State<'_, Db>,
 ) -> Result<bool, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[check_lock] skill={}", skill_name);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[check_lock] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     match crate::db::get_skill_lock(&conn, &skill_name)? {
         Some(lock) => {
             if lock.instance_id == instance.id {

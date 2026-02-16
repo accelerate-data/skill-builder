@@ -19,7 +19,11 @@ pub fn persist_agent_run(
     session_id: Option<String>,
     workflow_session_id: Option<String>,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[persist_agent_run] agent={} skill={} step={} model={} status={}", agent_id, skill_name, step_id, model, status);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[persist_agent_run] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::persist_agent_run(
         &conn, &agent_id, &skill_name, step_id, &model, &status,
         input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
@@ -29,7 +33,11 @@ pub fn persist_agent_run(
 
 #[tauri::command]
 pub fn get_usage_summary(db: tauri::State<'_, Db>, hide_cancelled: bool) -> Result<UsageSummary, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[get_usage_summary] hide_cancelled={}", hide_cancelled);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_usage_summary] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::get_usage_summary(&conn, hide_cancelled)
 }
 
@@ -38,25 +46,41 @@ pub fn get_recent_runs(
     db: tauri::State<'_, Db>,
     limit: usize,
 ) -> Result<Vec<AgentRunRecord>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[get_recent_runs] limit={}", limit);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_recent_runs] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::get_recent_runs(&conn, limit)
 }
 
 #[tauri::command]
 pub fn get_usage_by_step(db: tauri::State<'_, Db>, hide_cancelled: bool) -> Result<Vec<UsageByStep>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[get_usage_by_step] hide_cancelled={}", hide_cancelled);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_usage_by_step] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::get_usage_by_step(&conn, hide_cancelled)
 }
 
 #[tauri::command]
 pub fn get_usage_by_model(db: tauri::State<'_, Db>, hide_cancelled: bool) -> Result<Vec<UsageByModel>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[get_usage_by_model] hide_cancelled={}", hide_cancelled);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_usage_by_model] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::get_usage_by_model(&conn, hide_cancelled)
 }
 
 #[tauri::command]
 pub fn reset_usage(db: tauri::State<'_, Db>) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[reset_usage]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[reset_usage] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::reset_usage(&conn)
 }
 
@@ -66,7 +90,11 @@ pub fn get_recent_workflow_sessions(
     limit: usize,
     hide_cancelled: bool,
 ) -> Result<Vec<WorkflowSessionRecord>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[get_recent_workflow_sessions] limit={} hide_cancelled={}", limit, hide_cancelled);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_recent_workflow_sessions] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::get_recent_workflow_sessions(&conn, limit, hide_cancelled)
 }
 
@@ -75,6 +103,10 @@ pub fn get_session_agent_runs(
     db: tauri::State<'_, Db>,
     session_id: String,
 ) -> Result<Vec<AgentRunRecord>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[get_session_agent_runs] session={}", session_id);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_session_agent_runs] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::get_session_agent_runs(&conn, &session_id)
 }

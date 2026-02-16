@@ -131,6 +131,7 @@ export default function SettingsPage() {
         extendedContext: settings.extended_context,
         extendedThinking: settings.extended_thinking,
       })
+      console.log("[settings] Settings saved")
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (err) {

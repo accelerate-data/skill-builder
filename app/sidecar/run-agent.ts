@@ -33,6 +33,7 @@ export async function runAgentRequest(
   externalSignal?: AbortSignal,
 ): Promise<void> {
   if (process.env.MOCK_AGENTS === "true") {
+    process.stderr.write("[sidecar] Mock agent mode\n");
     return runMockAgent(config, onMessage, externalSignal);
   }
 
@@ -70,6 +71,7 @@ export async function runAgentRequest(
   // Notify the UI that we're about to initialize the SDK
   emitSystemEvent(onMessage, "init_start");
 
+  process.stderr.write("[sidecar] Starting SDK query\n");
   const conversation = query({
     prompt: config.prompt,
     options,

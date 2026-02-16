@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
 export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill } from "@/lib/types";
@@ -8,39 +8,15 @@ export type { AppSettings, SkillSummary, NodeStatus, PackageResult, Reconciliati
 
 export const getSettings = () => invoke<AppSettings>("get_settings");
 
-export const saveSettings = (settings: AppSettings) =>
-  invoke("save_settings", { settings });
-
-export const testApiKey = (apiKey: string) =>
-  invoke<boolean>("test_api_key", { apiKey });
-
 export const getDataDir = () => invoke<string>("get_data_dir");
 
 // --- Skills ---
-
-export const listSkills = (workspacePath: string) =>
-  invoke<SkillSummary[]>("list_skills", { workspacePath });
-
-export const createSkill = (
-  workspacePath: string,
-  name: string,
-  domain: string,
-  tags?: string[],
-  skillType?: string
-) => invoke("create_skill", { workspacePath, name, domain, tags: tags ?? null, skillType: skillType ?? null });
 
 export const deleteSkill = (workspacePath: string, name: string) =>
   invoke("delete_skill", { workspacePath, name });
 
 export const updateSkillTags = (skillName: string, tags: string[]) =>
   invoke("update_skill_tags", { skillName, tags });
-
-export const getAllTags = () =>
-  invoke<string[]>("get_all_tags");
-
-// --- Node.js ---
-
-export const checkNode = () => invoke<NodeStatus>("check_node");
 
 // --- Agent ---
 
@@ -98,7 +74,7 @@ export const verifyStepOutput = (
 
 // --- Workflow State (SQLite) ---
 
-export interface WorkflowRunRow {
+interface WorkflowRunRow {
   skill_name: string;
   domain: string;
   current_step: number;
@@ -108,7 +84,7 @@ export interface WorkflowRunRow {
   updated_at: string;
 }
 
-export interface WorkflowStepRow {
+interface WorkflowStepRow {
   skill_name: string;
   step_id: number;
   status: string;
@@ -116,12 +92,12 @@ export interface WorkflowStepRow {
   completed_at: string | null;
 }
 
-export interface WorkflowStateResponse {
+interface WorkflowStateResponse {
   run: WorkflowRunRow | null;
   steps: WorkflowStepRow[];
 }
 
-export interface StepStatusUpdate {
+interface StepStatusUpdate {
   step_id: number;
   status: string;
 }
@@ -145,9 +121,6 @@ export const readFile = (filePath: string) =>
 
 export const writeFile = (path: string, content: string) =>
   invoke<void>("write_file", { path, content });
-
-export const writeBase64ToTempFile = (fileName: string, base64Content: string) =>
-  invoke<string>("write_base64_to_temp_file", { fileName, base64Content });
 
 // --- Lifecycle ---
 
@@ -183,13 +156,13 @@ export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
 
 // --- Feedback ---
 
-export interface CreateGithubIssueRequest {
+interface CreateGithubIssueRequest {
   title: string;
   body: string;
   labels: string[];
 }
 
-export interface CreateGithubIssueResponse {
+interface CreateGithubIssueResponse {
   url: string;
   number: number;
 }
@@ -213,7 +186,7 @@ export const githubLogout = () =>
 
 // --- Skill Locks ---
 
-export interface SkillLock {
+interface SkillLock {
   skill_name: string;
   instance_id: string;
   pid: number;
@@ -228,9 +201,6 @@ export const releaseLock = (skillName: string) =>
 
 export const getLockedSkills = () =>
   invoke<SkillLock[]>("get_locked_skills");
-
-export const checkLock = (skillName: string) =>
-  invoke<boolean>("check_lock", { skillName });
 
 // --- Agent Prompts ---
 
@@ -271,9 +241,6 @@ export const persistAgentRun = (params: {
 
 export const getUsageSummary = (hideCancelled: boolean = false) =>
   invoke<UsageSummary>("get_usage_summary", { hideCancelled });
-
-export const getRecentRuns = (limit: number = 50) =>
-  invoke<AgentRunRecord[]>("get_recent_runs", { limit });
 
 export const getRecentWorkflowSessions = (limit: number = 50, hideCancelled: boolean = false) =>
   invoke<WorkflowSessionRecord[]>("get_recent_workflow_sessions", { limit, hideCancelled });

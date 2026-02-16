@@ -38,6 +38,7 @@ export default function DeleteSkillDialog({
         workspacePath,
         name: skill.name,
       })
+      console.log(`[skill] Deleted skill "${skill.name}"`)
       toast.success(`Skill "${skill.name}" deleted`)
       onOpenChange(false)
       onDeleted()

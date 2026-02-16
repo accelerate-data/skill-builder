@@ -19,6 +19,7 @@ pub fn get_skill_history(
     limit: Option<usize>,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<SkillCommit>, String> {
+    log::info!("[get_skill_history] skill={} limit={:?}", skill_name, limit);
     let output_root = resolve_output_root(&db, &workspace_path)?;
     let root = Path::new(&output_root);
     if !root.join(".git").exists() {
@@ -35,6 +36,7 @@ pub fn get_skill_diff(
     sha_b: String,
     db: tauri::State<'_, Db>,
 ) -> Result<SkillDiff, String> {
+    log::info!("[get_skill_diff] skill={} sha_a={} sha_b={}", skill_name, sha_a, sha_b);
     let output_root = resolve_output_root(&db, &workspace_path)?;
     crate::git::get_diff(Path::new(&output_root), &sha_a, &sha_b, &skill_name)
 }
@@ -46,6 +48,7 @@ pub fn restore_skill_version(
     sha: String,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
+    log::info!("[restore_skill_version] skill={} sha={}", skill_name, sha);
     let output_root = resolve_output_root(&db, &workspace_path)?;
     let root = Path::new(&output_root);
     crate::git::restore_version(root, &sha, &skill_name)?;

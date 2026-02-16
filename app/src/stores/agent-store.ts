@@ -75,26 +75,26 @@ export interface AgentMessage {
   timestamp: number;
 }
 
-export interface ContextSnapshot {
+interface ContextSnapshot {
   turn: number;
   inputTokens: number;
   outputTokens: number;
 }
 
-export interface CompactionEvent {
+interface CompactionEvent {
   turn: number;
   preTokens: number;
   timestamp: number;
 }
 
-export type ResultSubtype =
+type ResultSubtype =
   | "success"
   | "error_max_turns"
   | "error_during_execution"
   | "error_max_budget_usd"
   | "error_max_structured_output_retries";
 
-export type StopReason =
+type StopReason =
   | "end_turn"
   | "max_tokens"
   | "stop_sequence"
@@ -103,7 +103,7 @@ export type StopReason =
   | "refusal"
   | "model_context_window_exceeded";
 
-export interface AgentRun {
+interface AgentRun {
   agentId: string;
   model: string;
   status: "running" | "completed" | "error" | "shutdown";
@@ -184,7 +184,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       totalCost: 0,
       durationMs: 0,
       workflowSessionId: workflow.workflowSessionId ?? undefined,
-    }).catch((err) => console.warn("Failed to persist agent start:", err));
+    }).catch((err) => console.error("Failed to persist agent start:", err));
   },
 
   registerRun: (agentId, model) =>
@@ -273,7 +273,7 @@ export const useAgentStore = create<AgentState>((set) => ({
         durationMs: Date.now() - runBeforeUpdate.startTime,
         sessionId: runBeforeUpdate.sessionId,
         workflowSessionId: workflow.workflowSessionId ?? undefined,
-      }).catch((err) => console.warn("Failed to persist agent run:", err));
+      }).catch((err) => console.error("Failed to persist agent run:", err));
     }
   },
 
@@ -314,7 +314,7 @@ export const useAgentStore = create<AgentState>((set) => ({
         totalCost: runBeforeUpdate.totalCost ?? 0,
         durationMs: Date.now() - runBeforeUpdate.startTime,
         workflowSessionId: workflow.workflowSessionId ?? undefined,
-      }).catch((err) => console.warn("Failed to persist agent shutdown:", err));
+      }).catch((err) => console.error("Failed to persist agent shutdown:", err));
     }
   },
 

@@ -3,6 +3,7 @@ use crate::types::{DepStatus, NodeStatus, StartupDeps};
 
 #[tauri::command]
 pub async fn check_node(app: tauri::AppHandle) -> Result<NodeStatus, String> {
+    log::info!("[check_node]");
     match sidecar_pool::resolve_node_binary(&app).await {
         Ok(resolution) => {
             let meets_minimum = resolution.meets_minimum;
@@ -37,6 +38,7 @@ pub async fn check_node(app: tauri::AppHandle) -> Result<NodeStatus, String> {
 
 #[tauri::command]
 pub async fn check_startup_deps(app: tauri::AppHandle) -> Result<StartupDeps, String> {
+    log::info!("[check_startup_deps]");
     let mut checks = Vec::new();
 
     // 1. Node.js

@@ -60,7 +60,7 @@ export function parseFrontmatter(content: string): Record<string, unknown> | nul
   return Object.keys(result).length > 0 ? result : null;
 }
 
-export type ResponseType = "follow_up" | "summary" | "gate_check" | "unknown";
+type ResponseType = "follow_up" | "summary" | "gate_check" | "unknown";
 
 /**
  * Classify an agent response by its content.

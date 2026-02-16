@@ -21,10 +21,17 @@ pub async fn create_github_issue(
     db: tauri::State<'_, crate::db::Db>,
     request: CreateGithubIssueRequest,
 ) -> Result<CreateGithubIssueResponse, String> {
+    log::info!("[create_github_issue] title={}", request.title);
     // 1. Get GitHub OAuth token from settings
     let github_token = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = crate::db::read_settings(&conn).map_err(|e| e.to_string())?;
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[create_github_issue] Failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        let settings = crate::db::read_settings(&conn).map_err(|e| {
+            log::error!("[create_github_issue] Failed to read settings: {}", e);
+            e.to_string()
+        })?;
         settings.github_oauth_token.ok_or_else(|| {
             "Not signed in to GitHub. Sign in with GitHub in Settings.".to_string()
         })?
@@ -54,7 +61,10 @@ pub async fn create_github_issue(
         }))
         .send()
         .await
-        .map_err(|e| format!("GitHub API request failed: {e}"))?;
+        .map_err(|e| {
+            log::error!("[create_github_issue] GitHub API request failed: {}", e);
+            format!("GitHub API request failed: {e}")
+        })?;
 
     let status = response.status();
     let body: serde_json::Value = response
@@ -64,6 +74,7 @@ pub async fn create_github_issue(
 
     if !status.is_success() {
         let message = body["message"].as_str().unwrap_or("Unknown error");
+        log::error!("[create_github_issue] GitHub API error ({}): {}", status, message);
         return Err(format!("GitHub API error ({}): {}", status, message));
     }
 

@@ -7,15 +7,19 @@ pub async fn has_running_agents(
     workflow_session_id: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<bool, String> {
+    log::info!("[has_running_agents] session_id={:?}", workflow_session_id);
     let session_id = match workflow_session_id {
         Some(id) => id,
         None => {
-            log::debug!("close-guard: has_running_agents called with no session, returning false");
+            log::info!("[has_running_agents] no session, returning false");
             return Ok(false);
         }
     };
 
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[has_running_agents] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     let count: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM agent_runs
@@ -24,8 +28,11 @@ pub async fn has_running_agents(
             rusqlite::params![session_id],
             |row| row.get(0),
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            log::error!("[has_running_agents] DB query failed: {}", e);
+            e.to_string()
+        })?;
     let running = count > 0;
-    log::debug!("close-guard: has_running_agents = {} ({} running for session {})", running, count, session_id);
+    log::info!("[has_running_agents] running={} count={} session={}", running, count, session_id);
     Ok(running)
 }

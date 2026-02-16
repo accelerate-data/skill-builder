@@ -6,6 +6,7 @@ const GITHUB_CLIENT_ID: &str = "Ov23linGGsgCgOEGIzwD";
 /// Start the GitHub Device Flow by requesting a device code.
 #[tauri::command]
 pub async fn github_start_device_flow() -> Result<DeviceFlowResponse, String> {
+    log::info!("[github_start_device_flow] starting device flow");
     let client = reqwest::Client::new();
 
     let response = client
@@ -67,6 +68,7 @@ pub async fn github_poll_for_token(
     db: tauri::State<'_, Db>,
     device_code: String,
 ) -> Result<GitHubAuthResult, String> {
+    log::info!("[github_poll_for_token] polling for token");
     let client = reqwest::Client::new();
 
     let response = client
@@ -130,7 +132,11 @@ pub async fn github_poll_for_token(
 /// Returns None if not signed in.
 #[tauri::command]
 pub fn github_get_user(db: tauri::State<'_, Db>) -> Result<Option<GitHubUser>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[github_get_user]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[github_get_user] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     let settings = crate::db::read_settings(&conn)?;
 
     if settings.github_oauth_token.is_some() {
@@ -150,7 +156,11 @@ pub fn github_get_user(db: tauri::State<'_, Db>) -> Result<Option<GitHubUser>, S
 /// Sign out of GitHub by clearing all OAuth fields from the database.
 #[tauri::command]
 pub fn github_logout(db: tauri::State<'_, Db>) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[github_logout]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[github_logout] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     let mut settings = crate::db::read_settings(&conn)?;
     settings.github_oauth_token = None;
     settings.github_user_login = None;

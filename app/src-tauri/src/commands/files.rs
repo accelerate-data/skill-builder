@@ -11,6 +11,7 @@ pub fn list_skill_files(
     workspace_path: String,
     skill_name: String,
 ) -> Result<Vec<SkillFileEntry>, String> {
+    log::info!("[list_skill_files] skill_name={}", skill_name);
     let skill_dir = Path::new(&workspace_path).join(&skill_name);
     if !skill_dir.exists() {
         return Ok(vec![]);
@@ -67,11 +68,16 @@ fn collect_entries(
 
 #[tauri::command]
 pub fn read_file(file_path: String) -> Result<String, String> {
-    fs::read_to_string(file_path).map_err(|e| e.to_string())
+    log::info!("[read_file] path={}", file_path);
+    fs::read_to_string(&file_path).map_err(|e| {
+        log::error!("[read_file] Failed to read {}: {}", file_path, e);
+        e.to_string()
+    })
 }
 
 #[tauri::command]
 pub fn write_file(path: String, content: String) -> Result<(), String> {
+    log::info!("[write_file] path={}", path);
     let file_path = Path::new(&path);
     if let Some(parent) = file_path.parent() {
         fs::create_dir_all(parent)
@@ -83,6 +89,7 @@ pub fn write_file(path: String, content: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn copy_file(src: String, dest: String) -> Result<(), String> {
+    log::info!("[copy_file] src={} dest={}", src, dest);
     fs::copy(&src, &dest)
         .map(|_| ())
         .map_err(|e| format!("Failed to copy {} to {}: {}", src, dest, e))
@@ -90,6 +97,7 @@ pub fn copy_file(src: String, dest: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn read_file_as_base64(file_path: String) -> Result<String, String> {
+    log::info!("[read_file_as_base64] path={}", file_path);
     let metadata =
         std::fs::metadata(&file_path).map_err(|e| format!("Cannot read file: {e}"))?;
     if metadata.len() > MAX_BASE64_FILE_SIZE {
@@ -101,6 +109,7 @@ pub fn read_file_as_base64(file_path: String) -> Result<String, String> {
 
 #[tauri::command]
 pub fn write_base64_to_temp_file(file_name: String, base64_content: String) -> Result<String, String> {
+    log::info!("[write_base64_to_temp_file] file_name={}", file_name);
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(&base64_content)
         .map_err(|e| format!("Invalid base64: {e}"))?;

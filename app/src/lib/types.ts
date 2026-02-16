@@ -80,18 +80,6 @@ export interface StartupDeps {
   checks: DepStatus[]
 }
 
-export interface WorkflowStep {
-  id: number
-  name: string
-  description: string
-  status: "pending" | "in_progress" | "waiting_for_user" | "completed" | "error"
-}
-
-export interface ParallelAgentResult {
-  agent_id_a: string
-  agent_id_b: string
-}
-
 export interface PackageResult {
   file_path: string
   size_bytes: number
