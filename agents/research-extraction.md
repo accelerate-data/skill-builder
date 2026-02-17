@@ -44,7 +44,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 **Research approach**: Investigate the platform's extraction surface by probing each extraction pattern (full, incremental, CDC) for silent data loss. Look for timestamp fields that miss system-initiated changes, soft delete mechanisms that require special API calls, multi-tenant filtering gaps, and parent-child relationships where changes to the parent do not propagate to child timestamps. Ask about scale-specific failures like governor limits and rate throttling that only appear in production volumes.
 
 **Constraints**:
-- Follow the Clarifications file format from your system prompt
+- Follow the Clarifications file format provided in the agent instructions
 - Always include "Other (please specify)" as a choice
 - Return the clarification text (do not write files)
 - Every question must present choices where different answers change the skill's design
@@ -53,7 +53,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 ## Error Handling
 
 - **If the domain is unclear or too broad:** Ask for clarification by returning a message explaining what additional context would help. Do not guess.
-- **If the Clarifications file format is not in your system prompt:** Use numbered questions with choices, recommendation, answer field.
+- **If the Clarifications file format is not provided in the agent instructions:** Use numbered questions with choices, recommendation, answer field.
 
 </instructions>
 

@@ -20,11 +20,16 @@ skill-builder/
 │   └── plugin-tests/                # Test harness scripts (T1-T5)
 ├── skills/
 │   └── generate-skill/
-│       └── SKILL.md                 # Coordinator skill (entry point, self-contained)
+│       ├── SKILL.md                 # Coordinator skill (entry point, self-contained)
+│       └── references/              # Agent instructions packaged from workspace/CLAUDE.md
+│           ├── protocols.md         # Sub-agent spawning rules
+│           ├── file-formats.md      # Clarifications + Decisions file specs
+│           ├── content-guidelines.md # Skill Users, Content Principles, Output Paths
+│           └── best-practices.md    # Skill structure rules, validation checklist
 ├── agents/                          # 26 agent prompts (flat directory, see CLAUDE.md for layout)
 └── agent-sources/
     └── workspace/
-        └── CLAUDE.md                # Agent instructions (app: auto-loaded; plugin: embedded in SKILL.md)
+        └── CLAUDE.md                # Agent instructions (app: auto-loaded; plugin: packaged as reference files)
 ```
 
 ## Architecture
@@ -35,7 +40,7 @@ Three layers:
 
 2. **Subagents** (`agents/*.md`) -- each has YAML frontmatter (name, model, tools, permissions) and markdown instructions. Agents are spawned via `Task(subagent_type: "skill-builder:{agent}")`.
 
-3. **Agent instructions** (`agent-sources/workspace/CLAUDE.md`) -- protocols, file formats, content principles, skill best practices. In the app, auto-loaded into every agent's system prompt. In the plugin, embedded directly in `skills/generate-skill/SKILL.md` so the coordinator skill is self-contained.
+3. **Agent instructions** (`agent-sources/workspace/CLAUDE.md`) -- protocols, file formats, content principles, skill best practices. In the app, auto-loaded into every agent's system prompt. In the plugin, packaged as reference files in `skills/generate-skill/references/` by `scripts/build-plugin-skill.sh`. The coordinator reads references and passes them inline to sub-agents via `<agent-instructions>` tags.
 
 ## Development Guide
 
@@ -54,6 +59,7 @@ Edit `skills/generate-skill/SKILL.md`. This contains the full coordinator logic:
 - All 26 agent files exist with valid frontmatter
 - Model tiers match the spec (sonnet/opus)
 - Coordinator skill exists with required keywords
+- 4 reference files exist in `skills/generate-skill/references/` with non-trivial content
 
 Run manually: `./scripts/validate.sh`
 
@@ -61,5 +67,5 @@ For test commands, tiers, and quick rules, see the Testing section in CLAUDE.md.
 
 ### Key constraints
 
-- **`agent-sources/workspace/CLAUDE.md`**: In the app, auto-loaded into every agent's system prompt. In the plugin, embedded in SKILL.md. Changes here affect all agents — remember to update SKILL.md when modifying this file.
+- **`agent-sources/workspace/CLAUDE.md`**: In the app, auto-loaded into every agent's system prompt. In the plugin, packaged into `skills/generate-skill/references/` by `scripts/build-plugin-skill.sh`. Changes here affect all agents — run `scripts/build-plugin-skill.sh` after modifying this file.
 - **Plugin caching**: Plugins are copied to a cache dir on install. All file references must be within the plugin directory or in the user's CWD.

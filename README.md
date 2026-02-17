@@ -8,15 +8,30 @@ Available as a **Claude Code plugin** (CLI) and a **Tauri desktop app** (GUI). B
 
 ### Plugin
 
-```bash
-# Install from marketplace
-/plugin marketplace add hbanerjee74/skill-builder
-/plugin install skill-builder@skill-builder-marketplace
+**Install from marketplace:**
 
-# Or load from local directory
+```bash
+# Inside a Claude Code session
+/install-plugin hbanerjee74/skill-builder
+```
+
+**Install from local directory:**
+
+```bash
+# Start Claude Code with the plugin loaded from a local checkout
 claude --plugin-dir /path/to/skill-builder
 
-# Run the workflow
+# Then trigger the workflow
+/skill-builder:generate-skill
+```
+
+**Manual testing (development):**
+
+```bash
+# From the repo root (or a worktree)
+claude --plugin-dir .
+
+# Inside the session, run:
 /skill-builder:generate-skill
 ```
 
@@ -64,8 +79,10 @@ Completed skills are version-controlled locally (auto-commits via git2) and can 
 skill-builder/
 ├── agents/                  # 26 agent prompts (shared by both frontends)
 ├── agent-sources/
-│   └── workspace/CLAUDE.md  # Agent instructions (app: auto-loaded; plugin: embedded in SKILL.md)
-├── skills/generate-skill/SKILL.md    # Plugin coordinator (self-contained entry point)
+│   └── workspace/CLAUDE.md  # Agent instructions (app: auto-loaded; plugin: packaged as references)
+├── skills/generate-skill/
+│   ├── SKILL.md             # Plugin coordinator (self-contained entry point)
+│   └── references/          # Agent instructions packaged by scripts/build-plugin-skill.sh
 ├── app/                     # Desktop application
 │   ├── src/                 # React 19 + Tailwind 4 + shadcn/ui
 │   ├── src-tauri/           # Rust backend (Tauri 2 + SQLite)

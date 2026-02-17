@@ -44,7 +44,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 **Research approach**: Investigate the domain's reconciliation landscape by identifying data that flows between multiple systems or modules and should match but diverges in practice. Look for known discrepancies between source systems, conflicting definitions of the same metric across teams, and accepted workarounds for data that never fully reconciles. Ask about which system wins when numbers disagree, what tolerance thresholds are acceptable, and whether reconciliation is automated or manual.
 
 **Constraints**:
-- Follow the Clarifications file format from your system prompt
+- Follow the Clarifications file format provided in the agent instructions
 - Always include "Other (please specify)" as a choice
 - Return the clarification text (do not write files)
 - Every question must present choices where different answers change the skill's design
@@ -53,7 +53,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 ## Error Handling
 
 - **If the domain is unclear or too broad:** Ask for clarification by returning a message explaining what additional context would help. Do not guess.
-- **If the Clarifications file format is not in your system prompt:** Use numbered questions with choices, recommendation, answer field.
+- **If the Clarifications file format is not provided in the agent instructions:** Use numbered questions with choices, recommendation, answer field.
 
 </instructions>
 

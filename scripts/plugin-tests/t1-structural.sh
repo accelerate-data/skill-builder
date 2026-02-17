@@ -115,7 +115,7 @@ run_t1() {
   # ---- T1.10: Coordinator references key concepts ----
   local coord_content
   coord_content=$(cat "$PLUGIN_DIR/skills/generate-skill/SKILL.md")
-  for keyword in "TeamCreate" "TeamDelete" "CLAUDE_PLUGIN_ROOT" "research-orchestrator" "skill-builder:" "Mode A" "Mode B" "Mode C"; do
+  for keyword in "TeamCreate" "TeamDelete" "CLAUDE_PLUGIN_ROOT" "references/protocols.md" "skill-builder:" "Mode A" "Mode B" "Mode C"; do
     local safe_name
     safe_name=$(echo "$keyword" | tr ' :' '__' | tr -cd '[:alnum:]_')
     if echo "$coord_content" | grep -q "$keyword"; then

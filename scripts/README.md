@@ -7,6 +7,7 @@ Automation scripts for the Skill Builder project.
 ```
 scripts/
 ├── README.md                      # This file
+├── build-plugin-skill.sh          # Package workspace CLAUDE.md into skill references
 ├── validate.sh                    # Structural validation (T1 checks)
 ├── test-plugin.sh                 # Full plugin test harness (T1-T5)
 ├── eval/                          # Skill evaluation harness
@@ -31,11 +32,17 @@ scripts/
 
 ## Scripts Overview
 
-### Plugin Validation
+### Plugin Build & Validation
+
+**`build-plugin-skill.sh`**
+- Packages `agent-sources/workspace/CLAUDE.md` into 4 reference files under `skills/generate-skill/references/`
+- Run after modifying workspace CLAUDE.md
+- Use `--check` flag to verify references are fresh (for CI)
+- Usage: `./scripts/build-plugin-skill.sh` or `./scripts/build-plugin-skill.sh --check`
 
 **`validate.sh`**
 - Structural validation (T1 checks)
-- Validates plugin manifest, agent frontmatter, model tiers
+- Validates plugin manifest, agent frontmatter, model tiers, reference files
 - Fast, runs in CI/CD
 - Usage: `./scripts/validate.sh`
 
@@ -56,13 +63,17 @@ scripts/
 ## Quick Commands
 
 ```bash
+# Build reference files (after modifying workspace CLAUDE.md)
+./scripts/build-plugin-skill.sh
+./scripts/build-plugin-skill.sh --check       # Verify references are fresh (CI)
+
 # Plugin validation
-./scripts/validate.sh                        # Structural validation (free)
-./scripts/test-plugin.sh                     # Full test harness (requires API key)
+./scripts/validate.sh                         # Structural validation (free)
+./scripts/test-plugin.sh                      # Full test harness (requires API key)
 
 # Skill evaluation
 ./scripts/eval/eval-skill-quality.sh \
-  --baseline agents/generate-skill.md \
+  --baseline path/to/SKILL.md \
   --prompts scripts/eval/prompts/data-engineering.txt
 
 # See eval/README.md for comprehensive evaluation documentation
@@ -86,6 +97,7 @@ scripts/
 
 **Validation (runs on every PR):**
 ```bash
+./scripts/build-plugin-skill.sh --check
 ./scripts/validate.sh
 ```
 
@@ -97,7 +109,7 @@ scripts/
 **Skill Evaluation (manual/scheduled):**
 ```bash
 ./scripts/eval/eval-skill-quality.sh \
-  --baseline agents/generate-skill.md \
+  --baseline path/to/SKILL.md \
   --prompts scripts/eval/prompts/data-engineering.txt \
   --perspective all \
   --format json \
@@ -107,9 +119,10 @@ scripts/
 ## Development Workflow
 
 1. **Modify agents** in `agents/`
-2. **Validate changes**: `./scripts/validate.sh`
-3. **Test locally**: `./scripts/test-plugin.sh`
-4. **Evaluate skills**: `./scripts/eval/eval-skill-quality.sh` (see eval/README.md)
+2. **Modify agent instructions** in `agent-sources/workspace/CLAUDE.md` → run `./scripts/build-plugin-skill.sh`
+3. **Validate changes**: `./scripts/validate.sh`
+4. **Test locally**: `./scripts/test-plugin.sh`
+5. **Evaluate skills**: `./scripts/eval/eval-skill-quality.sh` (see eval/README.md)
 
 ## See Also
 

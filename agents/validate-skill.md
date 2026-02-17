@@ -20,7 +20,7 @@ Do NOT evaluate:
 - **Domain correctness** — whether the PM's business decisions are sound (those are captured in `decisions.md` and are authoritative)
 - **User's business context** — whether the chosen entities, metrics, or patterns are right for their organization
 
-Only evaluate: conformance to Skill Best Practices and Content Principles from your system prompt, completeness against `decisions.md`, and content quality.
+Only evaluate: conformance to Skill Best Practices and Content Principles provided in the agent instructions, completeness against `decisions.md`, and content quality.
 
 </role>
 
@@ -98,7 +98,7 @@ All sub-agents **return text** — they do not write files.
 
 **Sub-agent A: Coverage & Structure Check** (`name: "coverage-structure"`)
 
-Cross-cutting checker. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Checks every decision and answered clarification is addressed (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns from your system prompt. Flags orphaned or unnecessary files.
+Cross-cutting checker. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Checks every decision and answered clarification is addressed (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns provided in the agent instructions. Flags orphaned or unnecessary files.
 
 Also verifies SKILL.md uses the correct architectural pattern for the skill type:
 - **Source/Domain** → interview-architecture (parallel sections, guided prompts, no dependency map)
@@ -110,7 +110,7 @@ Returns findings as text.
 
 **Sub-agent B: SKILL.md Quality Review** (`name: "reviewer-skill-md"`)
 
-Reads `SKILL.md` and `decisions.md`. Focuses on content quality (not structure — Sub-agent A handles that). Scores each section on the Quality Dimensions and flags anti-patterns from your system prompt. Returns PASS/FAIL per section and improvement suggestions for any FAIL as text.
+Reads `SKILL.md` and `decisions.md`. Focuses on content quality (not structure — Sub-agent A handles that). Scores each section on the Quality Dimensions and flags anti-patterns provided in the agent instructions. Returns PASS/FAIL per section and improvement suggestions for any FAIL as text.
 
 **Sub-agents C1..CN: One per reference file** (`name: "reviewer-<filename>"`)
 
@@ -209,7 +209,7 @@ Returns findings as text.
 
 **Sub-agent F: Prescriptiveness Checker** (`name: "prescriptiveness-checker"`, `model: "haiku"`)
 
-Reads SKILL.md and all `references/` files. Scans for prescriptive language patterns that violate the Content Principles from your system prompt:
+Reads SKILL.md and all `references/` files. Scans for prescriptive language patterns that violate the Content Principles provided in the agent instructions:
 
 **Patterns to detect:**
 - Imperative directives: "always", "never", "must", "shall", "do not"

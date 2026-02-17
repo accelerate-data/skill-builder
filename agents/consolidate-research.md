@@ -72,7 +72,7 @@ Arrange questions into logical sections. Within each section, order from broad s
 
 #### Step 4: Return output as text
 
-Return the complete `clarifications.md` content as text. The orchestrator will write it to disk. Follow the Clarifications file format from your system prompt — include YAML frontmatter with `question_count`, `sections`, and `duplicates_removed`. Number all questions sequentially (Q1, Q2, Q3...). For consolidated questions, note the source: `_Consolidated from: [sources]_` below the recommendation.
+Return the complete `clarifications.md` content as text. The orchestrator will write it to disk. Follow the Clarifications file format provided in the agent instructions — include YAML frontmatter with `question_count`, `sections`, and `duplicates_removed`. Number all questions sequentially (Q1, Q2, Q3...). For consolidated questions, note the source: `_Consolidated from: [sources]_` below the recommendation.
 
 **Critical:** Every question MUST end with a blank `**Answer**:` line followed by an empty line. This is where the user types their reply. The format for each question must be:
 

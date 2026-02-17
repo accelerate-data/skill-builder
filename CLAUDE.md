@@ -62,6 +62,8 @@ npm run test:e2e                         # All E2E tests
 cd src-tauri && cargo test               # Rust tests
 
 # Plugin
+./scripts/build-plugin-skill.sh         # Package workspace CLAUDE.md into skill references
+./scripts/build-plugin-skill.sh --check # Check if reference files are stale (CI)
 ./scripts/validate.sh                    # Structural validation
 ./scripts/test-plugin.sh                 # Full test harness (T1-T5)
 claude --plugin-dir .                    # Load plugin locally
@@ -116,7 +118,7 @@ Before writing any test code, read existing tests for the files you changed:
 **Plugin quick rules:**
 - Changed an agent (`agents/`)? → `./scripts/test-plugin.sh t1`
 - Changed the coordinator (`skills/generate-skill/SKILL.md`)? → `./scripts/test-plugin.sh t1 t2 t3`
-- Changed `agent-sources/workspace/CLAUDE.md` (agent instructions)? → `./scripts/test-plugin.sh t1`
+- Changed `agent-sources/workspace/CLAUDE.md` (agent instructions)? → `./scripts/build-plugin-skill.sh && ./scripts/test-plugin.sh t1`
 - Changed `.claude-plugin/plugin.json`? → `./scripts/test-plugin.sh t1 t2`
 - Unsure? → `./scripts/test-plugin.sh` runs all tiers
 
@@ -159,7 +161,7 @@ Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_
 
 **Environment variables:** `CLAUDE_BIN`, `JUDGE_MODEL` (default: sonnet), `RESPONSE_MODEL` (default: sonnet), `VERBOSE`, `INPUT_COST_PER_MTOK`, `OUTPUT_COST_PER_MTOK`.
 
-**Cost:** ~$0.50-1.00 per prompt (2 response generations + 2 judge calls). A full 5-prompt evaluation run costs ~$3-5.
+**Cost:** ~$0.70-1.40 per prompt (2 response generations + 2 judge calls). A full 5-prompt evaluation run costs ~$4-7.
 
 **When to use:**
 - After changing agent prompts in `agents/` — run baseline mode to verify the skill type still beats no-skill
@@ -183,7 +185,7 @@ Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the 
 
 Both frontends use the same files -- no conversion needed:
 - `agents/` -- 26 agents (18 research dimensions + planner + orchestrator + scope-advisor + consolidate-research + detailed-research + confirm-decisions + generate-skill + validate-skill)
-- `agent-sources/workspace/CLAUDE.md` -- agent instructions (protocols, content principles, best practices); the app deploys this to `.claude/CLAUDE.md` in workspace, the plugin embeds it in SKILL.md
+- `agent-sources/workspace/CLAUDE.md` -- agent instructions (protocols, content principles, best practices); the app deploys this to `.claude/CLAUDE.md` in workspace, the plugin packages it into `skills/generate-skill/references/` via `scripts/build-plugin-skill.sh`
 
 ## Skill Configuration
 

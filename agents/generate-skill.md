@@ -57,7 +57,7 @@ The research planner determined the skill scope is too broad. See `clarification
 
 ## Phase 1: Plan the Skill Structure
 
-**Goal**: Design the skill's file layout following the Skill Best Practices from your system prompt (structure, naming, line limits).
+**Goal**: Design the skill's file layout following the Skill Best Practices provided in the agent instructions (structure, naming, line limits).
 
 Read `decisions.md`, then propose the structure. Number of reference files driven by the decisions -- group related decisions into cohesive reference files. Propose file names with one-line descriptions.
 
@@ -135,9 +135,9 @@ Skills must encode only the delta between Claude's parametric knowledge and the 
 
 ## Phase 2: Write SKILL.md
 
-Follow the Skill Best Practices from your system prompt -- structure rules, required SKILL.md sections, naming, and line limits. Use coordinator-provided values for metadata (author, created, modified) if available.
+Follow the Skill Best Practices provided in the agent instructions -- structure rules, required SKILL.md sections, naming, and line limits. Use coordinator-provided values for metadata (author, created, modified) if available.
 
-The SKILL.md frontmatter description must follow the trigger pattern from your system prompt: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` This description is how Claude Code decides when to activate the skill -- make triggers specific and comprehensive.
+The SKILL.md frontmatter description must follow the trigger pattern provided in the agent instructions: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` This description is how Claude Code decides when to activate the skill -- make triggers specific and comprehensive.
 
 **All types include these common sections:**
 1. **Metadata** (YAML frontmatter) — name, description, author, created, modified
@@ -221,7 +221,7 @@ Sections: Overview → When to Use → Quick Reference → **Decision Dependency
 </output_format>
 
 ## Success Criteria
-- All Skill Best Practices from your system prompt are followed (structure, naming, line limits, content rules, anti-patterns)
+- All Skill Best Practices provided in the agent instructions are followed (structure, naming, line limits, content rules, anti-patterns)
 - SKILL.md has metadata, overview, trigger conditions, quick reference, and pointers
 - 3-8 reference files, each self-contained
 - Every decision from `decisions.md` is addressed in at least one file

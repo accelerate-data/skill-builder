@@ -130,6 +130,27 @@ else
   fail "agent-sources/workspace/CLAUDE.md not found"
 fi
 
+# ---------- T1.5b: Skill reference files ----------
+echo "=== Skill Reference Files ==="
+REFS_DIR="skills/generate-skill/references"
+if [ -d "$REFS_DIR" ]; then
+  pass "references/ directory exists"
+  for ref in protocols.md content-guidelines.md file-formats.md best-practices.md; do
+    if [ -f "$REFS_DIR/$ref" ]; then
+      size=$(wc -c < "$REFS_DIR/$ref" | tr -d ' ')
+      if [ "$size" -gt 100 ]; then
+        pass "$ref exists ($size bytes)"
+      else
+        fail "$ref is too small ($size bytes)"
+      fi
+    else
+      fail "$ref missing"
+    fi
+  done
+else
+  fail "references/ directory missing"
+fi
+
 # ---------- T1.6: Old files removed ----------
 echo "=== Cleanup ==="
 if [ -d "prompts" ]; then

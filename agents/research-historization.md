@@ -44,7 +44,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 **Research approach**: For each major entity in the domain, assess three factors: which columns change and how frequently, expected row volume growth over time, and whether regulatory or audit requirements demand bitemporal modeling. Use these factors to identify where the standard Type 2 recommendation breaks down -- for example, high-change-rate entities where snapshot-based approaches are more practical, or wide tables where row-versioning creates storage and query performance problems.
 
 **Constraints**:
-- Follow the Clarifications file format from your system prompt
+- Follow the Clarifications file format provided in the agent instructions
 - Always include "Other (please specify)" as a choice
 - Return the clarification text (do not write files)
 - Every question must present choices where different answers change the skill's design
@@ -53,7 +53,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 ## Error Handling
 
 - **If the domain is unclear or too broad:** Ask for clarification by returning a message explaining what additional context would help. Do not guess.
-- **If the Clarifications file format is not in your system prompt:** Use numbered questions with choices, recommendation, answer field.
+- **If the Clarifications file format is not provided in the agent instructions:** Use numbered questions with choices, recommendation, answer field.
 
 </instructions>
 

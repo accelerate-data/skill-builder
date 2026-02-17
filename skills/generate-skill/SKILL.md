@@ -23,15 +23,8 @@ You are the coordinator for the Skill Builder workflow. You orchestrate a 7-step
   - [Step 7: Validate Skill]
 - [Error Recovery]
 - [Progress Display]
-- [Agent Instructions]
-  - [Protocols]
-  - [Skill Users]
-  - [Content Principles]
-  - [Output Paths]
-- [File Formats]
-  - [Clarifications]
-  - [Decisions]
-- [Skill Best Practices]
+- [Reference Files]
+- [Passing Agent Instructions]
 
 ## Path Resolution
 
@@ -146,6 +139,11 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
      Domain: <domain>
      Context directory: ./<skillname>/context/
 
+     <agent-instructions>
+     {content of references/protocols.md}
+     {content of references/file-formats.md}
+     </agent-instructions>
+
      Return a 5-10 bullet summary of the key questions you generated."
    )
    ```
@@ -177,6 +175,11 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
      Domain: <domain>
      Context directory: ./<skillname>/context/
 
+     <agent-instructions>
+     {content of references/protocols.md}
+     {content of references/file-formats.md}
+     </agent-instructions>
+
      Read the answered clarifications.md and insert #### Refinements subsections for questions that need deeper exploration based on the user's answers.
 
      Return a 5-10 bullet summary of the refinement questions you generated."
@@ -204,6 +207,10 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
 
      Skill type: <skill_type>
      Context directory: ./<skillname>/context/
+
+     <agent-instructions>
+     {content of references/file-formats.md}
+     </agent-instructions>
 
      Analyze all answered clarifications and produce decisions.
      Think thoroughly about contradictions, gaps, and implications across all provided answers.
@@ -238,6 +245,12 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
      Context directory: ./<skillname>/context/
      Skill directory: ./<skillname>/
 
+     <agent-instructions>
+     {content of references/protocols.md}
+     {content of references/content-guidelines.md}
+     {content of references/best-practices.md}
+     </agent-instructions>
+
      Plan the skill structure before writing. Verify all decisions are reflected in the output.
      Read decisions.md and create the skill files.
      Return the proposed folder structure and a summary of what was created."
@@ -260,6 +273,12 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
      Domain: <domain>
      Skill directory: ./<skillname>/
      Context directory: ./<skillname>/context/
+
+     <agent-instructions>
+     {content of references/protocols.md}
+     {content of references/content-guidelines.md}
+     {content of references/best-practices.md}
+     </agent-instructions>
 
      Validate the skill against best practices and generate test prompts to evaluate coverage.
      Auto-fix straightforward issues found during validation.
@@ -305,94 +324,31 @@ At the start of each step, display progress to the user:
 [Step N/7] <Step name>
 ```
 
-## Agent Instructions
+## Reference Files
 
-### Protocols
+Agent instructions are packaged as reference files in `$PLUGIN_ROOT/skills/generate-skill/references/`. These contain the protocols, file formats, content guidelines, and best practices that agents need during execution.
 
-#### Sub-agent Spawning
-Use the Task tool. Launch ALL Task calls in the **same turn** so they run in parallel. Standard sub-agent config: `model: "sonnet"`, `mode: "bypassPermissions"`. Name sub-agents descriptively (e.g., `"writer-<topic>"`, `"reviewer"`, `"tester-N"`).
+| File | Contains | Used by steps |
+|------|----------|---------------|
+| `protocols.md` | Sub-agent spawning rules, output handling | 1, 3, 6, 7 |
+| `file-formats.md` | Clarifications and Decisions file format specs | 1, 3, 5 |
+| `content-guidelines.md` | Skill Users, Content Principles, Output Paths | 6, 7 |
+| `best-practices.md` | Skill structure rules, validation checklist, anti-patterns | 6, 7 |
 
-Sub-agents return their complete output as text — they do not write files. The orchestrator captures the returned text and passes it to downstream agents by including it directly in the prompt. Include this directive in every sub-agent prompt:
-> Do not provide progress updates. Return your complete output as text. Do not write files.
+## Passing Agent Instructions
 
-### Skill Users
-Data/analytics engineers who need domain context to model silver and gold layer tables. They know SQL/dbt — the skill provides WHAT and WHY (entities, metrics, business rules, pitfalls), not HOW.
+Before dispatching any sub-agent, read the relevant reference files (per the table above) and include their content in the sub-agent prompt within `<agent-instructions>` tags. This ensures agents have file formats, protocols, and best practices regardless of the user's local environment.
 
-### Content Principles
-1. **Omit what LLMs already know** — standard schemas, tool docs, well-documented systems. Test: "Would Claude know this without the skill?"
-2. **Focus on hard-to-find domain knowledge** — industry rules, edge cases, company-specific metrics, non-obvious entity relationships
-3. **Guide WHAT and WHY, not HOW** — "Your customer dimension needs X because..." not "Create table dim_account with columns..." Exception: be prescriptive when exactness matters (metric formulas, business rule logic).
-
-### Output Paths
-The coordinator provides **context directory** and **skill output directory** paths. Write files only to these directories — no extra subdirectories. The skill output structure is `SKILL.md` at root + `references/` subfolder.
-
-## File Formats
-
-IMPORTANT: All output files use YAML frontmatter (`---` delimited, first thing in file). Always include frontmatter with updated counts when rewriting.
-
-### Clarifications (`clarifications.md`)
-
-There is only one clarifications file. The detailed-research step inserts `#### Refinements` subsections in-place rather than creating a separate file.
-
+Example:
 ```
----
-question_count: 12
-sections: ["Entity Model", "Metrics & KPIs"]
-duplicates_removed: 3  # post-consolidation
----
-## [Section]
-### Q1: [Title]
-**Question**: [text]
-**Choices**:
-  a) [Choice] — [rationale]
-  b) [Choice] — [rationale]
-  c) Other (please specify)
-**Recommendation**: [letter] — [why]
-**Answer**: [PM's choice, or empty for unanswered]
+Task(
+  subagent_type: "skill-builder:...",
+  prompt: "...
 
-#### Refinements
+  <agent-instructions>
+  {content of references/protocols.md}
+  {content of references/file-formats.md}
+  </agent-instructions>
 
-**R1.1: Follow-up topic**
-Rationale...
-- [ ] Choice a
-- [ ] Choice b
-- [ ] Other (please specify)
-
-**Answer**:
-
+  Return ...")
 ```
-**Auto-fill rule:** Empty `**Answer**:` fields → use the `**Recommendation**:` as the answer. Do not ask for clarification — use the recommendation and proceed.
-
-### Decisions (`decisions.md`)
-Clean snapshot, not a log. Each update rewrites the file, merging existing + new decisions. Superseded entries are replaced (keep D-number), new entries added at end.
-```
----
-decision_count: 5
-conflicts_resolved: 2
-round: 2
----
-### D1: [Title]
-- **Question**: [original question]
-- **Decision**: [chosen answer]
-- **Implication**: [design impact]
-- **Status**: resolved | conflict-resolved | needs-review
-```
-Frontmatter counts give the user an at-a-glance summary: total decisions, how many had contradictions that the agent resolved (review these first). Each decision's `**Status**` field indicates whether it was straightforward (`resolved`), required the agent to pick between contradicting answers (`conflict-resolved`), or needs user input (`needs-review`).
-
-## Skill Best Practices
-
-Used by validate agents to check skill quality.
-
-**Core:** Concise (only add context Claude doesn't have). Match specificity to fragility. Test with all target models.
-
-**Structure:** Gerund names (`processing-pdfs`, lowercase+hyphens, max 64 chars). Description follows the trigger pattern: `[What it does]. Use when [user intent triggers]. [How it works at a high level]. Also use when [additional trigger phrases].` Example: `"Audit and improve CLAUDE.md files in repositories. Use when user asks to check, audit, or fix CLAUDE.md files. Scans for all CLAUDE.md files, evaluates quality, outputs report, then makes targeted updates. Also use when the user mentions 'CLAUDE.md maintenance'."` Max 1024 chars. SKILL.md body under 500 lines — concise enough to answer simple questions without loading reference files, with clear pointers for when to go deeper. If a section grows past a few paragraphs, it belongs in a reference file. Reference files one level deep from SKILL.md. TOC for files over 100 lines.
-
-**SKILL.md required sections:** Metadata block (name, description, optionally author/created/modified) | Overview (scope, audience, key concepts) | When to use (trigger conditions, user intent patterns) | Quick reference (most important guidance for simple questions) | Pointers to references (description of each file and when to read it).
-
-**Quality dimensions** (each scored 1-5): Actionability (could an engineer follow this?), Specificity (concrete details vs generic boilerplate), Domain Depth (hard-to-find knowledge vs surface-level), Self-Containment (WHAT and WHY without external lookups).
-
-**Content:** No time-sensitive info. Consistent terminology. Use templates for output format, examples for quality-dependent output. Feedback loops: validate, fix, repeat.
-
-**Checklist:** Specific description with key terms | under 500 lines | separate reference files if needed | no stale info | consistent terms | concrete examples | one-level refs | progressive disclosure | clear workflow steps | 3+ evaluations | tested with target models and real scenarios
-
-**Anti-patterns:** Windows paths | too many options (default + escape hatch) | nested refs | vague descriptions | over-explaining what Claude knows

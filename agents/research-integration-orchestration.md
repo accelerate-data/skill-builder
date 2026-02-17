@@ -44,7 +44,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 **Research approach**: Investigate how the platform connects to version control, CI/CD systems, orchestrators, monitoring tools, and data catalogs in the customer's actual deployment. Look for authentication token handoffs between tools, artifact format compatibility requirements, and orchestration timing dependencies where the order and coordination of operations across tool boundaries matters.
 
 **Constraints**:
-- Follow the Clarifications file format from your system prompt
+- Follow the Clarifications file format provided in the agent instructions
 - Always include "Other (please specify)" as a choice
 - Return the clarification text (do not write files)
 - Every question must present choices where different answers change the skill's design
@@ -53,7 +53,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 ## Error Handling
 
 - **If the domain is unclear or too broad:** Ask for clarification by returning a message explaining what additional context would help. Do not guess.
-- **If the Clarifications file format is not in your system prompt:** Use numbered questions with choices, recommendation, answer field.
+- **If the Clarifications file format is not provided in the agent instructions:** Use numbered questions with choices, recommendation, answer field.
 
 </instructions>
 

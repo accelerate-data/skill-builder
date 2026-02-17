@@ -44,7 +44,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 **Research approach**: Investigate the concrete segmentation dimensions and breakpoints the organization uses -- not just that segmentation exists, but the exact thresholds and compound criteria that define each segment. For period handling, determine the fiscal calendar structure (standard, 4-4-5, non-January start), how periods map to natural calendar boundaries, snapshot cadence and timing, and rules for records that span period boundaries (prorating, point-in-time attribution, period-end snapshotting).
 
 **Constraints**:
-- Follow the Clarifications file format from your system prompt
+- Follow the Clarifications file format provided in the agent instructions
 - Always include "Other (please specify)" as a choice
 - Return the clarification text (do not write files)
 - Every question must present choices where different answers change the skill's design
@@ -53,7 +53,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 ## Error Handling
 
 - **If the domain is unclear or too broad:** Ask for clarification by returning a message explaining what additional context would help. Do not guess.
-- **If the Clarifications file format is not in your system prompt:** Use numbered questions with choices, recommendation, answer field.
+- **If the Clarifications file format is not provided in the agent instructions:** Use numbered questions with choices, recommendation, answer field.
 
 </instructions>
 
