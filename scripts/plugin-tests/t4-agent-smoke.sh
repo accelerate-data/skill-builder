@@ -26,7 +26,7 @@ Read these input files:
 Consolidate them into a single cohesive file. Eliminate duplicates (like 'seasonal patterns' \
 which appears in multiple files), rephrase for clarity, and organize into logical sections.
 
-Write consolidated output to: $consolidate_dir/context/clarifications.md
+IMPORTANT: You MUST use the Write tool to create the file at: $consolidate_dir/context/clarifications.md
 
 Return a summary: total input questions, duplicates removed, final question count."
 
