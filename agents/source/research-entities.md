@@ -39,7 +39,7 @@ Focus on API entities, their relationships, and source-specific data structures.
 
 **Constraints**:
 - 5-10 core entities, 3+ analysis patterns per entity
-- Follow the Clarifications file format from your system prompt; always include "Other (please specify)"
+- Follow the Clarifications file format from your system prompt; always include "Other (please specify)". Every question must end with a blank `**Answer**:` line followed by an empty line
 - Return the clarification text (do not write files)
 - Every question must present choices where different answers change the skill's design
 - 5-10 questions expected

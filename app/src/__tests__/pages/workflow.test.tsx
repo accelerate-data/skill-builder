@@ -48,6 +48,19 @@ vi.mock("@/lib/tauri", () => ({
   previewStepReset: vi.fn(() => Promise.resolve([])),
 }));
 
+// Mock MDEditor — renders a textarea that calls onChange on input
+vi.mock("@uiw/react-md-editor", () => ({
+  __esModule: true,
+  default: ({ value, onChange, ...rest }: { value?: string; onChange?: (val?: string) => void; [key: string]: unknown }) => (
+    <textarea
+      data-testid="md-editor"
+      value={value ?? ""}
+      onChange={(e) => onChange?.(e.target.value)}
+      {...Object.fromEntries(Object.entries(rest).filter(([k]) => !["visibleDragbar"].includes(k)))}
+    />
+  ),
+}));
+
 // Mock heavy sub-components to isolate the effect lifecycle
 vi.mock("@/components/workflow-sidebar", () => ({
   WorkflowSidebar: vi.fn(() => <div data-testid="workflow-sidebar" />),
@@ -112,7 +125,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Agent completes — step should be marked completed and auto-advance
+    // Agent completes — should auto-advance to step 1 (human review)
     act(() => {
       useAgentStore.getState().completeRun("agent-1", true);
     });
@@ -123,18 +136,9 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     const wf = useWorkflowStore.getState();
 
-    // Step 0 completed
-    expect(wf.steps[0].status).toBe("completed");
-
-    // Auto-advances to step 1
+    // Auto-advanced to step 1 which shows the editor immediately
     expect(wf.currentStep).toBe(1);
-
-    // Step 1 is a human review step — should be set to waiting_for_user
     expect(wf.steps[1].status).toBe("waiting_for_user");
-
-    // No further steps affected
-    expect(wf.steps[2].status).toBe("pending");
-    expect(wf.steps[3].status).toBe("pending");
 
     // Running flag cleared
     expect(wf.isRunning).toBe(false);
@@ -714,8 +718,8 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     });
   });
 
-  it("does not auto-complete human review steps on advance", async () => {
-    // Simulate: step 0 is running an agent
+  it("auto-advances to human review step and sets waiting_for_user", async () => {
+    // Simulate: step 0 is running an agent (step 1 is human review)
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
@@ -735,8 +739,9 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
 
     const wf = useWorkflowStore.getState();
 
-    // Should advance to step 1 but NOT auto-complete it
+    // Should auto-advance to step 1 and show editor immediately
     expect(wf.currentStep).toBe(1);
+    // Human review step set to waiting_for_user (not auto-completed)
     expect(wf.steps[1].status).toBe("waiting_for_user");
   });
 
@@ -1021,6 +1026,313 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     // endWorkflowSession should have been called with the session ID
     await waitFor(() => {
       expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
+    });
+  });
+});
+
+describe("WorkflowPage — VD-615 markdown editor", () => {
+  beforeEach(() => {
+    resetTauriMocks();
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+
+    useSettingsStore.getState().setSettings({
+      workspacePath: "/test/workspace",
+      skillsPath: "/test/skills",
+      anthropicApiKey: "sk-test",
+    });
+
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
+    mockToast.info.mockClear();
+    mockBlocker.proceed.mockClear();
+    mockBlocker.reset.mockClear();
+    mockBlocker.status = "idle";
+
+    vi.mocked(saveWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(readFile).mockClear();
+    vi.mocked(writeFile).mockClear();
+  });
+
+  afterEach(() => {
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+  });
+
+  /** Helper: set up step 1 (human review) with content loaded */
+  function setupHumanReviewStep(content: string) {
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.md") {
+        return Promise.resolve(content);
+      }
+      return Promise.reject("not found");
+    });
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+    useWorkflowStore.getState().updateStepStatus(1, "waiting_for_user");
+  }
+
+  it("renders MDEditor textarea when in active editing mode", async () => {
+    setupHumanReviewStep("# Test Content");
+    render(<WorkflowPage />);
+
+    // Wait for editor to appear AND editorContent to sync from reviewContent
+    await waitFor(() => {
+      const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
+      expect(textarea.value).toBe("# Test Content");
+    });
+  });
+
+  it("Save button is disabled when there are no unsaved changes", async () => {
+    setupHumanReviewStep("# No changes");
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("md-editor")).toBeTruthy();
+    });
+
+    // Save button should be present but disabled
+    const saveButton = screen.getByRole("button", { name: /Save/ });
+    expect(saveButton).toBeDisabled();
+  });
+
+  it("Save button calls writeFile with correct path and editor content", async () => {
+    setupHumanReviewStep("# Original");
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("md-editor")).toBeTruthy();
+    });
+
+    // Simulate editing
+    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
+    await act(async () => {
+      // Fire change event to update editorContent
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype, "value"
+      )?.set;
+      nativeInputValueSetter?.call(textarea, "# Edited content");
+      textarea.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    // Save button should be enabled now
+    await waitFor(() => {
+      const saveButton = screen.getByRole("button", { name: /Save/ });
+      expect(saveButton).toBeEnabled();
+    });
+
+    // Click save
+    await act(async () => {
+      screen.getByRole("button", { name: /Save/ }).click();
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
+        "/test/workspace/test-skill/context/clarifications.md",
+        "# Edited content",
+      );
+    });
+
+    expect(mockToast.success).toHaveBeenCalledWith("Saved");
+  });
+
+  it("shows unsaved indicator dot when content is modified", async () => {
+    setupHumanReviewStep("# Original");
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("md-editor")).toBeTruthy();
+    });
+
+    // Initially no unsaved indicator
+    expect(document.querySelector(".bg-orange-500")).toBeNull();
+
+    // Edit content
+    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
+    await act(async () => {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype, "value"
+      )?.set;
+      nativeInputValueSetter?.call(textarea, "# Modified");
+      textarea.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    // Unsaved indicator (orange dot) should appear
+    await waitFor(() => {
+      expect(document.querySelector(".bg-orange-500")).toBeTruthy();
+    });
+  });
+
+  it("Complete Step with unsaved changes shows confirmation dialog", async () => {
+    setupHumanReviewStep("# Original");
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("md-editor")).toBeTruthy();
+    });
+
+    // Edit content to create unsaved changes
+    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
+    await act(async () => {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype, "value"
+      )?.set;
+      nativeInputValueSetter?.call(textarea, "# Edited");
+      textarea.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    // Wait for the Save button to become enabled (confirms unsaved changes are detected)
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Save/ })).toBeEnabled();
+    });
+
+    // Click "Complete Step"
+    await act(async () => {
+      screen.getByRole("button", { name: /Complete Step/ }).click();
+    });
+
+    // Unsaved changes dialog should appear
+    await waitFor(() => {
+      expect(screen.getByText("Unsaved Changes")).toBeTruthy();
+      expect(screen.getByText("Save & Continue")).toBeTruthy();
+      expect(screen.getByText("Discard & Continue")).toBeTruthy();
+    });
+  });
+
+  it("Save & Continue saves then completes the step", async () => {
+    setupHumanReviewStep("# Original");
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("md-editor")).toBeTruthy();
+    });
+
+    // Edit content
+    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
+    await act(async () => {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype, "value"
+      )?.set;
+      nativeInputValueSetter?.call(textarea, "# Save and continue");
+      textarea.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Save/ })).toBeEnabled();
+    });
+
+    // Click "Complete Step" → shows dialog
+    await act(async () => {
+      screen.getByRole("button", { name: /Complete Step/ }).click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Save & Continue")).toBeTruthy();
+    });
+
+    // Click "Save & Continue"
+    await act(async () => {
+      screen.getByText("Save & Continue").click();
+    });
+
+    // writeFile should be called exactly once (from handleSave only — handleAdvanceStep skips write)
+    await waitFor(() => {
+      expect(vi.mocked(writeFile)).toHaveBeenCalledTimes(1);
+    });
+
+    // The save handler writes the editor content
+    const saveCall = vi.mocked(writeFile).mock.calls[0];
+    expect(saveCall[0]).toBe("/test/workspace/test-skill/context/clarifications.md");
+    expect(saveCall[1]).toBe("# Save and continue");
+
+    // Step should be completed and advanced
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+      expect(useWorkflowStore.getState().currentStep).toBe(2);
+    });
+  });
+
+  it("Discard & Continue completes without saving editor changes", async () => {
+    setupHumanReviewStep("# Original");
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("md-editor")).toBeTruthy();
+    });
+
+    // Edit content
+    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
+    await act(async () => {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype, "value"
+      )?.set;
+      nativeInputValueSetter?.call(textarea, "# Discarded edits");
+      textarea.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Save/ })).toBeEnabled();
+    });
+
+    // Click "Complete Step" → shows dialog
+    await act(async () => {
+      screen.getByRole("button", { name: /Complete Step/ }).click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Discard & Continue")).toBeTruthy();
+    });
+
+    // Click "Discard & Continue"
+    await act(async () => {
+      screen.getByText("Discard & Continue").click();
+    });
+
+    // Discard path uses handleAdvanceStep — no writeFile call
+    expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+
+    // Step should be completed and advanced
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+      expect(useWorkflowStore.getState().currentStep).toBe(2);
+    });
+  });
+
+  it("shows nav guard with unsaved changes text when blocker is triggered", async () => {
+    setupHumanReviewStep("# Original");
+
+    // Simulate blocker triggered (not running, so it must be unsaved changes)
+    mockBlocker.status = "blocked";
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Unsaved Changes")).toBeTruthy();
+      expect(screen.getByText("You have unsaved edits that will be lost if you leave.")).toBeTruthy();
+    });
+  });
+
+  it("shows nav guard with agent running text when agent is running", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    mockBlocker.status = "blocked";
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Agent Running")).toBeTruthy();
+      expect(screen.getByText("An agent is still running on this step. Leaving will abandon it.")).toBeTruthy();
     });
   });
 });

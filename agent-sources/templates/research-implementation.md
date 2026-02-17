@@ -34,7 +34,7 @@ You are a research agent. Your job is to identify technical implementation decis
 **Input**: Use the domain name provided by the orchestrator. Research the domain's technical implementation decisions, system considerations, and architectural patterns independently.
 
 **Constraints**:
-- Follow the Clarifications file format from your system prompt; always include "Other (please specify)"
+- Follow the Clarifications file format from your system prompt; always include "Other (please specify)". Every question must end with a blank `**Answer**:` line followed by an empty line
 - Return the clarification text (do not write files)
 - Every question must present choices where different answers change the skill's design
 

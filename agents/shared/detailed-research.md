@@ -46,7 +46,7 @@ Each sub-agent's task:
 - Review the `clarifications.md` content and focus on the assigned section's answered questions
 - For each answered question, identify 0-2 follow-up questions that dig deeper into the PM's chosen direction
 - Look for cross-cutting implications with other sections
-- Follow the Clarifications file format from your system prompt — include YAML frontmatter with `question_count` and `sections`. Always include "Other (please specify)" as a choice.
+- Follow the Clarifications file format from your system prompt — include YAML frontmatter with `question_count` and `sections`. Always include "Other (please specify)" as a choice. Every question must end with a blank `**Answer**:` line followed by an empty line.
 - Every question must present choices where different answers change the skill's design
 - Do NOT re-ask first-round questions — build on the answers already given
 - Target 2-5 questions per section

@@ -38,7 +38,7 @@ Focus on data quality metrics, pipeline SLAs, and load performance measurements.
 **Scope**: Core metrics and KPIs, industry-specific variations, calculation pitfalls, and business rules commonly encoded incorrectly.
 
 **Constraints**:
-- Follow the Clarifications file format from your system prompt; always include "Other (please specify)"
+- Follow the Clarifications file format from your system prompt; always include "Other (please specify)". Every question must end with a blank `**Answer**:` line followed by an empty line
 - Return the clarification text (do not write files)
 - Every question must present choices where different answers change the skill's design
 - Each question should present choices where different answers change the skill's content

@@ -1,17 +1,16 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useBlocker, useNavigate } from "@tanstack/react-router";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import MDEditor from "@uiw/react-md-editor";
 import {
   Loader2,
   Play,
-  MessageSquare,
-  SkipForward,
   FileText,
-  ArrowRight,
   AlertCircle,
   RotateCcw,
   CheckCircle2,
+  Save,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -115,7 +114,7 @@ export default function WorkflowPage() {
   // value is current when the router re-evaluates after proceed().
   const { proceed, reset: resetBlocker, status: blockerStatus } = useBlocker({
     shouldBlockFn: () => {
-      return useWorkflowStore.getState().isRunning;
+      return useWorkflowStore.getState().isRunning || hasUnsavedChangesRef.current;
     },
     enableBeforeUnload: false,
     withResolver: true,
@@ -191,12 +190,38 @@ export default function WorkflowPage() {
     };
   }, [skillName]);
 
+  const stepConfig = STEP_CONFIGS[currentStep];
+  const isHumanReviewStep = stepConfig?.type === "human";
+
   // Human review state
   const [reviewContent, setReviewContent] = useState<string | null>(null);
   const [reviewFilePath, setReviewFilePath] = useState("");
   const [loadingReview, setLoadingReview] = useState(false);
   // Track whether current step has partial output from an interrupted run
   const [hasPartialOutput, setHasPartialOutput] = useState(false);
+
+  // Markdown editor state
+  const [editorContent, setEditorContent] = useState<string>("");
+  const [isSaving, setIsSaving] = useState(false);
+  // Explicit dirty flag — set on user edits, cleared on save/reload/load
+  const [editorDirty, setEditorDirty] = useState(false);
+  const hasUnsavedChanges = editorDirty;
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+
+  // Ref for navigation guard (shouldBlockFn runs outside React render cycle).
+  // Scoped to human review steps so it doesn't block on non-review steps.
+  const hasUnsavedChangesRef = useRef(false);
+  useEffect(() => {
+    hasUnsavedChangesRef.current = isHumanReviewStep && hasUnsavedChanges;
+  }, [isHumanReviewStep, hasUnsavedChanges]);
+
+  // Sync editorContent when reviewContent loads or reloads (clears dirty flag)
+  useEffect(() => {
+    if (reviewContent !== null) {
+      setEditorContent(reviewContent);
+      setEditorDirty(false);
+    }
+  }, [reviewContent]);
 
   // Pending step switch — set when user clicks a sidebar step while agent is running
   const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(null);
@@ -209,9 +234,6 @@ export default function WorkflowPage() {
 
   // Target step for reset confirmation dialog (when clicking a prior step)
   const [resetTarget, setResetTarget] = useState<number | null>(null);
-
-  const stepConfig = STEP_CONFIGS[currentStep];
-  const isHumanReviewStep = stepConfig?.type === "human";
 
   // Initialize workflow and restore state from SQLite
   useEffect(() => {
@@ -285,6 +307,7 @@ export default function WorkflowPage() {
   useEffect(() => {
     setHasPartialOutput(false);
     setErrorHasArtifacts(false);
+    hasUnsavedChangesRef.current = false;
   }, [currentStep]);
 
   // Consolidated step-artifact detection: partial output + error artifacts.
@@ -432,10 +455,10 @@ export default function WorkflowPage() {
         setRunning(false);
         toast.success(`Step ${step + 1} completed`);
 
-        // Auto-advance: persist next step in database for agent steps
-        // The completion screen still displays for user review
-        const stepConfig = STEP_CONFIGS[step];
-        if (stepConfig?.type === "agent") {
+        // Auto-advance all agent steps so the user lands directly on
+        // the next step (human review steps show the editor immediately).
+        const cfg = STEP_CONFIGS[step];
+        if (cfg?.type === "agent") {
           advanceToNextStep();
         }
       };
@@ -492,12 +515,6 @@ export default function WorkflowPage() {
     }
   };
 
-  const handleSkipHumanStep = () => {
-    updateStepStatus(currentStep, "completed");
-    advanceToNextStep();
-    toast.success(`Step ${currentStep + 1} skipped`);
-  };
-
   const handleStartStep = async (resume = false) => {
     if (!stepConfig) return;
 
@@ -511,15 +528,24 @@ export default function WorkflowPage() {
   };
 
   const handleReviewContinue = async () => {
-    // Save the content to workspace filesystem
+    // Save the editor content to workspace filesystem
     const config = HUMAN_REVIEW_STEPS[currentStep];
     if (config && reviewContent !== null && workspacePath) {
       try {
-        await writeFile(`${workspacePath}/${skillName}/${config.relativePath}`, reviewContent);
-      } catch {
-        // best-effort
+        const content = editorDirty ? editorContent : (reviewContent ?? "");
+        await writeFile(`${workspacePath}/${skillName}/${config.relativePath}`, content);
+        setReviewContent(content);
+      } catch (err) {
+        toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
+        return;
       }
     }
+    updateStepStatus(currentStep, "completed");
+    advanceToNextStep();
+  };
+
+  /** Advance without writing — used after handleSave() already persisted. */
+  const handleAdvanceStep = () => {
     updateStepStatus(currentStep, "completed");
     advanceToNextStep();
   };
@@ -548,6 +574,22 @@ export default function WorkflowPage() {
         if (!content) toast.error("Failed to reload file", { duration: Infinity });
       })
       .finally(() => setLoadingReview(false));
+  };
+
+  // Save editor content to workspace filesystem
+  const handleSave = async () => {
+    const config = HUMAN_REVIEW_STEPS[currentStep];
+    if (!config || !workspacePath) return;
+    setIsSaving(true);
+    try {
+      await writeFile(`${workspacePath}/${skillName}/${config.relativePath}`, editorContent);
+      setReviewContent(editorContent);
+      toast.success("Saved");
+    } catch (err) {
+      toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const currentStepDef = steps[currentStep];
@@ -597,7 +639,7 @@ export default function WorkflowPage() {
       );
     }
 
-    // Human review step — read-only markdown preview
+    // Human review step — editable markdown editor (active) or read-only preview (review mode)
     if (isHumanReviewStep) {
       if (loadingReview) {
         return (
@@ -608,63 +650,97 @@ export default function WorkflowPage() {
       }
 
       if (reviewContent !== null) {
+        // Review mode: read-only markdown preview
+        if (reviewMode) {
+          return (
+            <div className="flex h-full flex-col">
+              <div className="flex items-center justify-between pb-3">
+                <p className="text-xs text-muted-foreground font-mono">
+                  {reviewFilePath}
+                </p>
+              </div>
+              <ScrollArea className="min-h-0 flex-1 rounded-md border">
+                <div className="markdown-body max-w-none p-4">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {reviewContent}
+                  </ReactMarkdown>
+                </div>
+              </ScrollArea>
+            </div>
+          );
+        }
+
+        // Active editing mode: MDEditor
         return (
           <div className="flex h-full flex-col">
             <div className="flex items-center justify-between pb-3">
               <p className="text-xs text-muted-foreground font-mono">
                 {reviewFilePath}
               </p>
-              <Button variant="ghost" size="sm" onClick={handleReviewReload}>
-                Reload
-              </Button>
             </div>
-            <ScrollArea className="min-h-0 flex-1 rounded-md border">
-              <div className="markdown-body max-w-none p-4">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {reviewContent}
-                </ReactMarkdown>
+            <div className="min-h-0 flex-1" data-color-mode="dark">
+              <MDEditor
+                value={editorContent}
+                onChange={(val) => { setEditorContent(val ?? ""); setEditorDirty(true); }}
+                height="100%"
+                visibleDragbar={false}
+              />
+            </div>
+            <div className="flex items-center justify-between border-t pt-4">
+              <p className="text-sm text-muted-foreground">
+                Edit the markdown above, then save and continue.
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={!hasUnsavedChanges || isSaving}
+                >
+                  {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+                  Save
+                  {hasUnsavedChanges && (
+                    <span className="ml-1 size-2 rounded-full bg-orange-500" />
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReviewReload}
+                >
+                  <RotateCcw className="size-3.5" />
+                  Reload
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (hasUnsavedChanges) {
+                      setShowUnsavedDialog(true);
+                    } else {
+                      handleReviewContinue();
+                    }
+                  }}
+                >
+                  <CheckCircle2 className="size-3.5" />
+                  Complete Step
+                </Button>
               </div>
-            </ScrollArea>
-            {!reviewMode && (
-              <div className="flex items-center justify-between border-t pt-4">
-                <p className="text-sm text-muted-foreground">
-                  Edit this file directly, then continue to the next step.
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSkipHumanStep}
-                  >
-                    <SkipForward className="size-3.5" />
-                    Skip
-                  </Button>
-                  <Button size="sm" onClick={handleReviewContinue}>
-                    <CheckCircle2 className="size-3.5" />
-                    Complete Step
-                  </Button>
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         );
       }
 
-      // File not available yet
+      // File not available — this is an error (previous step should have produced it)
       return (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
-          <MessageSquare className="size-8 text-muted-foreground/50" />
-          <p className="text-sm">
-            No clarification file found. Run the previous step or continue.
-          </p>
-          {!reviewMode && (
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={handleSkipHumanStep}>
-                <ArrowRight className="size-3.5" />
-                Continue
-              </Button>
-            </div>
-          )}
+          <AlertCircle className="size-8 text-destructive/50" />
+          <div className="text-center">
+            <p className="font-medium text-destructive">Missing clarification file</p>
+            <p className="mt-1 text-sm">
+              Expected <code className="text-xs">{HUMAN_REVIEW_STEPS[currentStep]?.relativePath}</code> but it was not found.
+              The previous step may not have completed successfully.
+            </p>
+          </div>
         </div>
       );
     }
@@ -761,14 +837,16 @@ export default function WorkflowPage() {
 
   return (
     <>
-      {/* Navigation guard dialog — shown when user tries to leave while agent is running */}
+      {/* Navigation guard dialog — shown when user tries to leave while agent is running or unsaved changes */}
       {blockerStatus === "blocked" && (
         <Dialog open onOpenChange={(open) => { if (!open) handleNavStay(); }}>
           <DialogContent showCloseButton={false}>
             <DialogHeader>
-              <DialogTitle>Agent Running</DialogTitle>
+              <DialogTitle>{isRunning ? "Agent Running" : "Unsaved Changes"}</DialogTitle>
               <DialogDescription>
-                An agent is still running on this step. Leaving will abandon it.
+                {isRunning
+                  ? "An agent is still running on this step. Leaving will abandon it."
+                  : "You have unsaved edits that will be lost if you leave."}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -876,7 +954,37 @@ export default function WorkflowPage() {
         </Dialog>
       )}
 
-
+      {/* Unsaved changes confirmation dialog — shown when completing step with unsaved edits */}
+      {showUnsavedDialog && (
+        <Dialog open onOpenChange={(open) => { if (!open) setShowUnsavedDialog(false); }}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Unsaved Changes</DialogTitle>
+              <DialogDescription>
+                You have unsaved edits. Would you like to save before continuing?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowUnsavedDialog(false)}>
+                Cancel
+              </Button>
+              <Button variant="outline" onClick={() => {
+                setShowUnsavedDialog(false);
+                handleAdvanceStep();
+              }}>
+                Discard & Continue
+              </Button>
+              <Button onClick={async () => {
+                setShowUnsavedDialog(false);
+                await handleSave();
+                handleAdvanceStep();
+              }}>
+                Save & Continue
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       <div className="flex h-[calc(100%+3rem)] -m-6">
         <WorkflowSidebar

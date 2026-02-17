@@ -42,8 +42,12 @@ duplicates_removed: 3  # clarifications.md only (post-consolidation)
   b) [Choice] — [rationale]
   c) Other (please specify)
 **Recommendation**: [letter] — [why]
-**Answer**: [PM's choice, or empty for unanswered]
+
+**Answer**:
+
 ```
+Every question MUST end with a blank `**Answer**:` line followed by an empty line. This is where the user types their reply in the in-app editor. Never omit it, never pre-fill it.
+
 **Auto-fill rule:** Empty `**Answer**:` fields → use the `**Recommendation**:` as the answer. Do not ask for clarification — use the recommendation and proceed.
 
 ### Decisions (`decisions.md`)
