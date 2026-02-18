@@ -54,61 +54,67 @@ Given the issue, deliver a working implementation that satisfies all acceptance 
 - Each coding agent checks off its ACs on Linear after tests pass via `linear-server:update_issue`.
 - Coordinator writes Implementation Updates at checkpoints. See [linear-updates.md](references/linear-updates.md).
 
-**After every code-changing turn** (during implementation only — formal testing happens in the post-implementation pipeline):
+**After every code-changing turn** (during implementation only — formal testing happens in the quality gates):
 - Flag any gaps between implemented changes and the issue's requirements/ACs. If the user agrees to adjustments, update the Linear issue.
 
-## Post-Implementation Pipeline
+## Post-Implementation Quality Gates
 
-Execute these phases in order after all ACs are implemented. Each phase must pass before moving to the next. Copy this checklist and check off phases as you complete them:
+After all ACs are implemented, achieve every gate below. Plan your execution — parallelize independent gates, sequence dependent ones per the dependency graph.
+
+### Dependency Graph
 
 ```
-Pipeline Progress:
-- [ ] Phase 1: Unit & integration tests written/updated
-- [ ] Phase 2: E2E tests assessed and written (if needed)
-- [ ] Phase 3: Targeted tests passing
-- [ ] Phase 4: Logging compliance verified
-- [ ] Phase 5: Code simplified
-- [ ] Phase 6: Code review passed
-- [ ] Phase 7: Documentation updated
-- [ ] Phase 8: E2E tests passing
+tests written ──→ tests passing ──→ code simplified ──→ code reviewed ──┐
+                                                                        ├──→ final validation
+logging compliant (independent) ────────────────────────────────────────┘
+docs updated (after implementation) ────────────────────────────────────┘
 ```
 
-### Phase 1: Unit & Integration Tests
+Copy this checklist and check off gates as they pass:
 
-Ensure tests cover all changed behavior. Follow the project's test discipline in CLAUDE.md — update broken tests, remove redundant ones, add tests only for new behavior. Update `app/tests/TEST_MANIFEST.md` if new Rust commands, E2E spec files, or plugin source patterns were added.
+```
+Quality Gates:
+- [ ] Tests written
+- [ ] Tests passing
+- [ ] Logging compliant
+- [ ] Code simplified
+- [ ] Code reviewed
+- [ ] Docs updated
+- [ ] Final validation
+```
 
-### Phase 2: E2E Tests
+### Tests written
 
-Assess whether changes affect user-facing flows that warrant new Playwright E2E tests. If so, write specs with appropriate tags and update `app/tests/TEST_MANIFEST.md`. If not, note why and skip.
+Ensure unit, integration, and E2E tests cover all changed behavior. Follow the project's test discipline in CLAUDE.md — update broken tests, remove redundant ones, add tests only for new behavior. Assess whether changes affect user-facing flows that warrant new Playwright E2E specs. Update `app/tests/TEST_MANIFEST.md` if new Rust commands, E2E spec files, or plugin source patterns were added.
 
-### Phase 3: Run Targeted Tests
+### Tests passing
 
 Run tests per the project's test strategy (see CLAUDE.md "Choosing which tests to run"). Max 3 attempts per failure, then escalate to user.
 
-### Phase 4: Logging Compliance
+### Logging compliant
 
 Verify all changed code follows the project logging guidelines (CLAUDE-APP.md § Logging):
 - **Rust**: Every new `#[tauri::command]` has `info!` on entry (with key params) and `error!` on failure. Intermediate steps use `debug!`. No secrets logged.
 - **Frontend**: Caught errors use `console.error()`, unexpected states use `console.warn()`, significant user actions use `console.log()`. No render-cycle or state-read logging.
 - **Format**: Log messages include context — e.g. `info!("import_skills: importing {} from {}", count, repo)` not just `info!("importing")`.
 
-If any gaps, fix them and re-run affected tests.
+If any gaps, fix them and re-run affected tests. No dependency on other gates — can run in parallel with test writing.
 
-### Phase 5: Code Simplification
+### Code simplified
 
 Spawn `code-simplifier:code-simplifier` targeting the worktree. It reviews recently changed files and simplifies for clarity, consistency, and maintainability while preserving all functionality. Fix any issues it surfaces, then re-run affected tests to confirm nothing broke.
 
-### Phase 6: Code Review
+### Code reviewed
 
 Spawn `feature-dev:code-reviewer`. See [review-flow.md](references/review-flow.md). Max 2 review-fix cycles — fix high/medium issues, note low-severity if not straightforward.
 
-### Phase 7: Update Documentation
+### Docs updated
 
-Keep project docs in sync with changes. Check `CLAUDE.md` (and its `@import` files) and any `README.md` in changed directories. Update if the changes affect documented architecture, commands, conventions, or usage. Commit doc updates separately.
+Keep project docs in sync with changes. Check `CLAUDE.md` (and its `@import` files) and any `README.md` in changed directories. Update if the changes affect documented architecture, commands, conventions, or usage. Commit doc updates separately. No dependency on simplification or review — can run in parallel.
 
-### Phase 8: Run E2E Tests
+### Final validation
 
-Run E2E tests tagged for the changed areas. This is the final validation gate after simplification, review fixes, and doc updates. Fix failures. Max 3 attempts, then escalate to user.
+Run E2E tests tagged for the changed areas. This is the last gate — it catches regressions from review fixes, simplification, and doc updates. All other gates must pass first. Fix failures. Max 3 attempts, then escalate to user.
 
 ## Completion
 

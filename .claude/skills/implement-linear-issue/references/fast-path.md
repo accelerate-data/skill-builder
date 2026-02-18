@@ -10,6 +10,6 @@ Use when ALL are true:
 ## How It Works
 
 Skip team orchestration. Spawn a **single `general-purpose` sub-agent** that implements, updates/adds/removes tests as needed, commits, pushes, and checks off ACs on Linear. The agent must read existing tests before writing any — update broken tests, remove redundant ones, and only add tests for genuinely new behavior.
-Proceed directly to **Phase 5 (Code Review)**. Code review and PR creation are never skipped.
+Only the **code reviewed** and **final validation** gates apply — the single agent handles tests and logging inline. Code review and PR creation are never skipped.
 
-Phase 9 Linear updates still apply — write what was done, tests, and PR link.
+Linear updates still apply — write what was done, tests, and PR link.
