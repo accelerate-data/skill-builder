@@ -1,48 +1,63 @@
 # Plugin v2: Agent Mode Architecture
 
-> Redesign the skill-builder plugin with a state-aware router pattern, simplify
-> agent dispatch, and follow Claude skill best practices. The agents remain
-> shared with the app; the coordinator flow changes fundamentally.
+> The plugin and app share agents but need different flows. This doc designs
+> the plugin's own coordinator: an agent-mode router that dynamically selects
+> agents based on conversation context, supports offline clarifications, and
+> follows Claude skill best practices.
 
 ---
 
 ## 1. Motivation
 
-The current plugin (`/skill-builder:generate-skill`) has three problems:
+The plugin and the desktop app share the same 26 agents but have fundamentally
+different runtime contexts. The app has a Tauri frontend with a sidecar runtime
+that orchestrates agents through its own UI-driven flow. The plugin runs inside
+Claude Code where the coordinator is a SKILL.md prompt. Trying to keep the
+coordinator logic the same between both doesn't work -- the plugin needs its
+own flow optimized for the Claude Code context.
 
-1. **Unnecessary coordinator complexity** -- the SKILL.md uses `TeamCreate`,
-   `TaskCreate`, `SendMessage`, and `TeamDelete` to manage a team lifecycle
-   around agent dispatch. This is overhead -- the `Task` tool alone is
-   sufficient for spawning agents, and the team scaffolding (create team →
-   create tasks → send messages → shutdown agents → delete team) adds
-   complexity without adding value. Simplifying to direct `Task` dispatch
-   makes the coordinator easier to maintain and extend.
+### What's changing
 
-2. **Rigid workflow** -- the 7-step sequential flow forces users through every
-   phase even when they already have answers, want to skip research, or just
-   need to regenerate one section. Real skill-building happens iteratively, over
-   days, at the user's own pace.
+1. **Agent mode** -- the current plugin coordinator is a rigid 7-step sequential
+   script. Users must march through every phase even when they already have
+   answers, want to skip research, or just need to regenerate one section. Real
+   skill-building happens iteratively, over days, at the user's own pace. The
+   new coordinator should work like an intelligent assistant: the user triggers
+   it, describes what they need, and Claude dynamically selects which agents to
+   bring in based on the conversation and filesystem state.
 
-3. **Naming & conventions** -- the skill is named `generate-skill` (imperative)
-   rather than the recommended gerund form. The coordinator is 355 lines of
-   step-by-step script rather than a flexible router.
+2. **Offline clarifications** -- the plugin generates clarification questions
+   that users need domain expertise to answer. Users should be able to receive
+   questions, close their terminal, answer over days, and resume seamlessly.
+   The current flow assumes a single continuous session.
+
+3. **dbt specialization** -- the generated skills should be targeted and
+   directional, kicking in when someone uses Claude Code to build dbt silver
+   and gold models. The output should focus on what a data engineer or analytics
+   engineer actually needs.
+
+### While we're here
+
+- Rename the skill from `generate-skill` to `building-skills` to follow the
+  gerund naming convention recommended by Claude skill best practices.
 
 ### Goals
 
-- Simplify agent dispatch to use `Task` tool directly (remove team lifecycle
-  overhead from the coordinator)
+- Design a plugin-specific coordinator flow (agent-mode router)
 - Keep all 26 agents unchanged and shared between app and plugin
-- Replace the rigid 7-step flow with a state-aware router
+- Replace the rigid 7-step flow with a state-aware router that dynamically
+  selects agents based on conversation context
 - Support offline clarifications (user answers over days, resumes later)
 - Follow Claude skill best practices (gerund naming, progressive disclosure,
   description-driven discovery)
-- Specialize for dbt silver/gold model building
-- Make the plugin fast (adaptive depth, lighter models where possible)
+- Specialize output for dbt silver/gold model building
+- Make the plugin fast and flexible (adaptive depth, multiple workflow modes,
+  lighter models where possible)
 
 ### Non-goals
 
 - Changing agent prompts or frontmatter (shared with app)
-- Building a new desktop app UI
+- Changing the app's coordinator or sidecar runtime
 - Changing the 4 skill types or research dimension catalog
 
 ---
@@ -104,22 +119,23 @@ Scoping → Research → Clarification → [Refinement] → Decisions → Genera
    └─ Can pre-fill from user's first message
 ```
 
-### Simplifying agent dispatch
+### Agent dispatch
 
-The current SKILL.md wraps agent dispatch in a team lifecycle that adds
-complexity without value. Simplify to direct `Task` tool calls:
-
-| Primitive | Current Usage | Change |
-|-----------|---------------|--------|
-| `TeamCreate` | Step 0: create agent team | Remove -- not needed when using `Task` directly |
-| `TaskCreate` | Steps 1, 3: create team tasks | Remove -- coordinator tracks state via filesystem |
-| `SendMessage` | Step 5: send corrections; Step 7: shutdown | Remove -- spawn new `Task` with feedback instead |
-| `TeamDelete` | Step 7: cleanup | Remove -- no team to clean up |
-
-The `Task` tool is the only dispatch mechanism needed. Each `Task` call spawns
-a sub-agent, runs it, and returns the result. Multiple `Task` calls in the same
-turn run in parallel. This is already how the agents themselves work internally
+The router dispatches agents via the `Task` tool. Each `Task` call spawns a
+sub-agent, runs it, and returns the result. Multiple `Task` calls in the same
+turn run in parallel. This is how the agents themselves already work internally
 (research-orchestrator spawns dimension agents via `Task`).
+
+The current coordinator also uses `TeamCreate`, `TaskCreate`, `SendMessage`,
+and `TeamDelete` for team lifecycle management around agent dispatch. The new
+router replaces this with direct `Task` calls and filesystem-based state
+tracking, which is simpler and sufficient for the plugin's needs:
+
+| Current | Router Replacement |
+|---------|-------------------|
+| `TeamCreate` / `TeamDelete` | Not needed -- no team lifecycle to manage |
+| `TaskCreate` | Not needed -- router tracks state via `.session.json` and filesystem artifacts |
+| `SendMessage` | Not needed -- spawn a new `Task` with feedback context instead |
 
 ---
 
@@ -439,7 +455,7 @@ dimension selections:
 
 | File | Changes |
 |------|---------|
-| `protocols.md` | Remove TeamCreate/TaskCreate/SendMessage references. Document Task-only dispatch. |
+| `protocols.md` | Update dispatch examples to use direct `Task` calls. |
 | `file-formats.md` | Add `.session.json` spec. Keep clarifications/decisions format unchanged. |
 | `content-guidelines.md` | Add silver/gold boundary guidance. Add dbt activation trigger template. |
 | `best-practices.md` | Add gerund naming as default. Add skill composition guidance. |
@@ -459,14 +475,14 @@ format to the file-formats section.
 | Check | Change |
 |-------|--------|
 | Skill directory name | Update from `generate-skill` to `building-skills` |
-| Coordinator keywords | Remove `TeamCreate`, `TeamDelete` checks. Add router pattern checks (filesystem state detection, intent classification). |
+| Coordinator keywords | Replace team lifecycle checks with router pattern checks (filesystem state detection, intent classification). |
 | Reference file content | Add `.session.json` format check |
 
 ### Test tiers
 
 | Tier | Impact |
 |------|--------|
-| T1 (Structural) | Update expected skill name, remove team keyword checks |
+| T1 (Structural) | Update expected skill name, update coordinator keyword checks for router pattern |
 | T2 (Plugin Loading) | Update trigger command to `/skill-builder:building-skills` |
 | T3 (Start Mode) | Rewrite for new state detection (`.session.json` + artifacts) |
 | T4 (Agent Smoke) | No change -- agents unchanged |
@@ -486,7 +502,7 @@ format to the file-formats section.
 
 18 Linear issues across 4 phases, tracked in the **Skill Builder** project.
 
-### Phase 1: Structural Rename + Decouple (Foundation)
+### Phase 1: Structural Rename + Simplify Dispatch (Foundation)
 
 Start here. VD-672 and VD-673 are independent and can be implemented in
 parallel. VD-674 and VD-675 follow once both are done.
@@ -494,12 +510,12 @@ parallel. VD-674 and VD-675 follow once both are done.
 | Issue | Title | Size | Blocked By | Branch |
 |-------|-------|------|------------|--------|
 | [VD-672](https://linear.app/acceleratedata/issue/VD-672) | Rename skill from `generate-skill` to `building-skills` | S | -- | `feature/vd-672-rename-skill-from-generate-skill-to-building-skills` |
-| [VD-673](https://linear.app/acceleratedata/issue/VD-673) | Remove team primitives from coordinator SKILL.md | M | -- | `feature/vd-673-remove-team-primitives-from-coordinator-skillmd` |
+| [VD-673](https://linear.app/acceleratedata/issue/VD-673) | Simplify coordinator to direct Task dispatch | M | -- | `feature/vd-673-remove-team-primitives-from-coordinator-skillmd` |
 | [VD-674](https://linear.app/acceleratedata/issue/VD-674) | Update validation script and T1/T2 tests for rename | S | VD-672, VD-673 | `feature/vd-674-update-validation-script-and-t1t2-tests-for-rename` |
 | [VD-675](https://linear.app/acceleratedata/issue/VD-675) | Update plugin manifest and documentation for v2 | S | VD-672 | `feature/vd-675-update-plugin-manifest-and-documentation-for-v2` |
 
 **Definition of done:** Plugin loads with `/skill-builder:building-skills`
-trigger, zero team primitives in SKILL.md, all T1/T2 tests pass.
+trigger, coordinator uses direct `Task` dispatch, all T1/T2 tests pass.
 
 ### Phase 2: State-Aware Router (Core Architecture)
 
@@ -556,7 +572,7 @@ clarifications work.
 ```
 VD-672 (rename) ──┬──→ VD-674 (tests) ──→ done
                    │
-VD-673 (decouple) ┤
+VD-673 (simplify) ┤
                    │
                    ├──→ VD-675 (docs) ──→ done
                    │
@@ -577,18 +593,18 @@ VD-673 (decouple) ┤
                          tests)    all parallel)
 ```
 
-### Agent Decoupling Assessment
+### Shared Agents — No Changes Needed
 
-**No agent decoupling issues needed.** All 26 agents are fully
-environment-agnostic:
+All 26 agents are environment-agnostic and work in both the app and plugin
+without modification:
 
-- Zero references to `TeamCreate`, `TaskCreate`, `SendMessage`, `TeamDelete`
-- Zero references to `sidecar`, `tauri`, or app-specific paths
-- Zero references to `team_name` or plugin namespacing
 - All sub-agent dispatch uses the generic `Task` tool
 - All path parameters accepted at runtime from the coordinator
+- Zero references to app-specific paths, namespacing, or runtime assumptions
 
-The coupling lives entirely in the coordinator SKILL.md, addressed by VD-673.
+The agents are the shared foundation. Only the coordinator (SKILL.md) differs
+between app and plugin — the app has its own orchestration in the sidecar, and
+the plugin gets the new agent-mode router designed in this doc.
 
 ---
 
