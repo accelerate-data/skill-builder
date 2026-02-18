@@ -7,8 +7,24 @@ content guidelines that impact both the plugin and the desktop app.
 
 ## 1. Dimension Scoring in the Research Planner
 
-Replace binary (yes/no) dimension selection with a scoring mechanism. The
-planner evaluates all 18 dimensions and assigns a relevance score (1-5):
+Replace binary (yes/no) dimension selection with type-scoped scoring. The
+orchestrator pre-filters dimensions by skill type (5-6 per type), then the
+planner scores only those and selects the top 3-5.
+
+### Type-scoped dimension sets
+
+| Type | Dimensions | Count |
+|------|-----------|-------|
+| domain | entities, data-quality, metrics, business-rules, segmentation-and-periods, modeling-patterns | 6 |
+| data-engineering | entities, data-quality, pattern-interactions, load-merge-patterns, historization, layer-design | 6 |
+| platform | entities, platform-behavioral-overrides, config-patterns, integration-orchestration, operational-failure-modes | 5 |
+| source | entities, data-quality, extraction, field-semantics, lifecycle-and-state, reconciliation | 6 |
+
+No cross-type dimension picks — the skill type determines which dimensions
+the planner evaluates. The mapping comes from the per-type template structures
+in `dynamic-research-dimensions.md` Section 4.
+
+### Scoring rubric
 
 | Score | Meaning | Action |
 |-------|---------|--------|
@@ -18,10 +34,10 @@ planner evaluates all 18 dimensions and assigns a relevance score (1-5):
 | 2 | Low — mostly standard knowledge, small delta | Skip |
 | 1 | Redundant — Claude already knows this well | Skip |
 
-The planner picks the **top 3-5 dimensions by score** with a hard cap. The
-prompt frames scoring around: "What would a data engineer joining this team
-need to know to build correct dbt silver/gold models on day one that Claude
-can't already tell them?"
+The planner picks the **top 3-5 dimensions by score** from the type-scoped
+set of 5-6. The prompt frames scoring around: "What would a data engineer
+joining this team need to know to build correct dbt silver/gold models on day
+one that Claude can't already tell them?"
 
 ### Planner output format
 
@@ -44,8 +60,10 @@ dimensions:
 selected: [metrics, entities, business-rules]  # top 3-5
 ```
 
-**Scope-advisor as exception**: If the planner scores 6+ dimensions as 5s,
-scope is genuinely too broad — scope-advisor kicks in.
+**Scope-advisor as exception**: If the selected count exceeds the configured
+max_dimensions threshold, scope-advisor kicks in. With type-scoped sets of
+5-6, this only triggers when nearly all dimensions are critical for a
+genuinely complex domain.
 
 **Companion gap coverage**: The validate-skill companion recommender reads
 the planner's scoring output. Dimensions scored 2-3 that were skipped become
@@ -73,12 +91,12 @@ Refinement is skipped when all first-round clarification answers are:
 
 ## 3. Model Tier Optimization
 
-| Agent Group | Current | Proposed |
-|-------------|---------|----------|
-| Complex dimensions (entities, metrics, business-rules, modeling-patterns) | sonnet | sonnet (keep) |
-| Simpler dimensions (config-patterns, reconciliation, field-semantics, lifecycle-and-state) | sonnet | haiku (~30% savings) |
-| Research planner | opus | opus (keep) |
-| Consolidation | opus | opus (keep) |
+| Agent Group | Model | Notes |
+|-------------|-------|-------|
+| Complex dimensions (entities, metrics, business-rules, modeling-patterns + 10 others) | sonnet | Unchanged |
+| Simpler dimensions (config-patterns, reconciliation, field-semantics, lifecycle-and-state) | haiku | Changed from sonnet (~30% savings) |
+| Research planner | opus | Unchanged |
+| Consolidation | opus | Unchanged |
 
 ---
 

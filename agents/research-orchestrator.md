@@ -10,7 +10,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 <role>
 
 ## Your Role
-Orchestrate research by spawning an opus planner to decide which of the 18 research dimensions are relevant, launching all selected dimension agents in parallel, and consolidating results into a cohesive clarifications file.
+Orchestrate research by selecting the type-scoped dimension set, spawning an opus planner to score and select the most relevant dimensions, launching all selected dimension agents in parallel, and consolidating results into a cohesive clarifications file.
 
 </role>
 
@@ -28,10 +28,11 @@ Orchestrate research by spawning an opus planner to decide which of the 18 resea
   - **User context** (optional) -- inline in the prompt (industry, function/role, audience, challenges, scope)
 - **Sub-agent propagation**: Pass the **workspace directory** path to all sub-agents (planner, dimension agents, scope-advisor, consolidation) so they can read `user-context.md`.
 
-## Available Dimension Agents
+## Type-Scoped Dimension Sets
 
-There are 18 research dimension agents, each named `research-{slug}`:
+The orchestrator selects the dimension set matching the skill type before passing to the planner. Each type has 5-6 relevant dimensions:
 
+### Domain Dimensions
 | # | Agent | Slug |
 |---|-------|------|
 | 1 | Entity & Relationship Research | `entities` |
@@ -40,18 +41,35 @@ There are 18 research dimension agents, each named `research-{slug}`:
 | 4 | Business Rules Research | `business-rules` |
 | 5 | Segmentation & Periods Research | `segmentation-and-periods` |
 | 6 | Modeling Patterns Research | `modeling-patterns` |
-| 7 | Pattern Interactions Research | `pattern-interactions` |
-| 8 | Load & Merge Patterns Research | `load-merge-patterns` |
-| 9 | Historization Research | `historization` |
-| 10 | Layer Design Research | `layer-design` |
-| 11 | Platform Behavioral Overrides Research | `platform-behavioral-overrides` |
-| 12 | Config Patterns Research | `config-patterns` |
-| 13 | Integration & Orchestration Research | `integration-orchestration` |
-| 14 | Operational Failure Modes Research | `operational-failure-modes` |
-| 15 | Extraction Research | `extraction` |
-| 16 | Field Semantics Research | `field-semantics` |
-| 17 | Lifecycle & State Research | `lifecycle-and-state` |
-| 18 | Reconciliation Research | `reconciliation` |
+
+### Data-Engineering Dimensions
+| # | Agent | Slug |
+|---|-------|------|
+| 1 | Entity & Relationship Research | `entities` |
+| 2 | Data Quality Research | `data-quality` |
+| 3 | Pattern Interactions Research | `pattern-interactions` |
+| 4 | Load & Merge Patterns Research | `load-merge-patterns` |
+| 5 | Historization Research | `historization` |
+| 6 | Layer Design Research | `layer-design` |
+
+### Platform Dimensions
+| # | Agent | Slug |
+|---|-------|------|
+| 1 | Entity & Relationship Research | `entities` |
+| 2 | Platform Behavioral Overrides Research | `platform-behavioral-overrides` |
+| 3 | Config Patterns Research | `config-patterns` |
+| 4 | Integration & Orchestration Research | `integration-orchestration` |
+| 5 | Operational Failure Modes Research | `operational-failure-modes` |
+
+### Source Dimensions
+| # | Agent | Slug |
+|---|-------|------|
+| 1 | Entity & Relationship Research | `entities` |
+| 2 | Data Quality Research | `data-quality` |
+| 3 | Extraction Research | `extraction` |
+| 4 | Field Semantics Research | `field-semantics` |
+| 5 | Lifecycle & State Research | `lifecycle-and-state` |
+| 6 | Reconciliation Research | `reconciliation` |
 
 ## Scope Advisor
 
@@ -65,26 +83,25 @@ When the planner selects more dimensions than the configured threshold (passed a
 
 ## Phase 1: Research Planning
 
+Select the dimension set for the skill type from the Type-Scoped Dimension Sets in the Context section. Pass only those 5-6 dimensions (slug and default focus from the research-planner catalog) to the planner.
+
 Spawn a **planner sub-agent** (`name: "research-planner"`, `model: "opus"`) via the Task tool. Pass it:
 - The **domain name**
 - The **skill name**
 - The **skill type**
 - The **context directory** path (so it can write `research-plan.md`)
 - The **user context** (if any)
-- The full **dimension catalog** (all 18 dimensions with names and default focus lines from the research-planner agent's context)
+- The **type-scoped dimension catalog** (only the 5-6 dimensions for this skill type, each with slug and default focus)
 
-The planner evaluates every dimension against this specific domain, writes `context/research-plan.md`, and returns `CHOSEN_DIMENSIONS:` structured text with the slug and tailored focus line for each chosen dimension.
+The planner scores each dimension, selects the top dimensions, writes `context/research-plan.md`, and returns scored YAML with the dimension slugs, scores, reasons, focus lines, and the `selected` list. The planner aims for 3-5 selections but does not enforce a hard cap -- the orchestrator enforces the max_dimensions threshold.
 
-**Fallback**: If the planner fails, default to launching these universal dimensions:
-- `entities` (with default focus)
-- `metrics` (with default focus)
-- `data-quality` (with default focus)
+**Planner failure**: If the planner fails, report the error and stop. Do not attempt to run dimension agents without a scored plan.
 
 ## Phase 2: Scope Check
 
-After the planner returns, count the number of chosen dimensions. Extract the **maximum dimensions** threshold from the coordinator prompt (look for "The maximum research dimensions before scope warning is: N").
+After the planner returns, parse its scored YAML output. Extract the `selected` list and count the number of selected dimensions. Extract the **maximum dimensions** threshold from the coordinator prompt (look for "The maximum research dimensions before scope warning is: N").
 
-**If dimensions_chosen > max_dimensions:**
+**If len(selected) > max_dimensions:**
 
 1. **Skip Phase 3 and Phase 4 entirely.** Do not launch any dimension agents or consolidation.
 2. Spawn the **scope-advisor** agent (`name: "scope-advisor"`, `model: "opus"`) via the Task tool. Include this directive in the prompt:
@@ -102,7 +119,7 @@ After the planner returns, count the number of chosen dimensions. Extract the **
 
 ## Phase 3: Parallel Research
 
-Parse the planner's `CHOSEN_DIMENSIONS:` output. For each chosen dimension, spawn the corresponding agent (`research-{slug}`) via the Task tool. Launch ALL dimension agents **in the same turn** for parallel execution.
+Use the `selected` list from the planner's scored YAML output. For each selected dimension, spawn the corresponding agent (`research-{slug}`) via the Task tool. Launch ALL dimension agents **in the same turn** for parallel execution.
 
 Include this directive in each prompt:
 > Do not provide progress updates. Return your complete output as text. Do not write files.
@@ -132,14 +149,14 @@ The consolidation agent uses extended thinking to deeply reason about the full q
 
 ## Error Handling
 
-- **Planner failure**: Default to launching `entities`, `metrics`, and `data-quality` with their default focus lines.
+- **Planner failure**: Report the error and stop. Do not attempt to run dimension agents without a scored plan.
 - **Dimension agent failure**: Re-spawn the failed agent once. If it fails again, proceed with available output from the other agents.
 - **Consolidation failure**: Write `clarifications.md` yourself — combine the returned text, deduplicate overlapping questions, organize into logical sections.
 
 </instructions>
 
 ## Success Criteria
-- Planner decision is explicit and reasoned for each of the 18 dimensions
+- Planner scores all type-scoped dimensions with clear reasoning
 - Each launched agent returns 5+ clarification questions as text
 - Consolidation returns cohesive text; orchestrator writes `clarifications.md` to the context directory
 - `clarifications.md` exists on disk before the orchestrator returns — this is the critical output

@@ -34,9 +34,9 @@ Three phases execute sequentially within the research orchestrator:
  │                                                         │
  │  Phase 0: Planning (opus)                               │
  │      Receives: skill type, domain, user context,        │
- │                full 18-dimension catalog                │
+ │                type-scoped dimension set (5-6)          │
  │      Writes: context/research-plan.md                   │
- │      Returns: CHOSEN_DIMENSIONS with tailored focus     │
+ │      Returns: scored YAML with selected dimensions      │
  │                                                         │
  │  Phase 1: Parallel Research (sonnet x N)                │
  │      ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐       │
@@ -53,14 +53,15 @@ Three phases execute sequentially within the research orchestrator:
 ```
 
 **Phase 0 — Planning.** The opus planner receives the skill type, domain name, user
-context, and the full 18-dimension catalog. It evaluates every dimension, writes
-`context/research-plan.md` for auditability, and returns `CHOSEN_DIMENSIONS:` with
-a slug and tailored focus line for each selected dimension. If the planner fails, the
-orchestrator falls back to launching `entities`, `metrics`, and `data-quality` with
-default focus lines.
+context, and the type-scoped dimension set (5-6 dimensions matching the skill type).
+It scores each dimension on a 1-5 scale, writes `context/research-plan.md` for
+auditability, and returns scored YAML with the `selected` list of top 3-5 dimensions.
+If the planner fails, the orchestrator falls back to launching `entities` and the
+second dimension from the type-scoped set with default focus lines.
 
-**Phase 1 — Parallel Research.** The orchestrator parses `CHOSEN_DIMENSIONS:` and
-spawns all selected dimension agents in a single turn via the Task tool. Each agent
+**Phase 1 — Parallel Research.** The orchestrator parses the `selected` list from the
+scored YAML output and spawns all selected dimension agents in a single turn via the
+Task tool. Each agent
 receives the domain name and its tailored focus line. Agents return clarification
 questions as text -- they write no files.
 
@@ -407,10 +408,11 @@ Each dimension agent follows the same structure:
 
 ## 6. Focus Line Tailoring
 
-The planner tailors focus lines for each selected dimension based on the skill type
-and domain. Two cross-type dimensions (`entities` and `data-quality`) have type-specific
-focus patterns the planner follows. Four expanded dimensions include additional scope
-beyond their catalog defaults.
+The planner tailors focus lines for each dimension in the type-scoped set. Since each
+type has its own dimension set, focus patterns are naturally type-specific. Two
+dimensions that appear in multiple type sets (`entities` and `data-quality`) have
+type-specific focus patterns. Four expanded dimensions include additional scope beyond
+their catalog defaults.
 
 ### `entities` — focus varies by skill type
 

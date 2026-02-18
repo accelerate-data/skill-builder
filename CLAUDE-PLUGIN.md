@@ -57,7 +57,7 @@ Edit `skills/generate-skill/SKILL.md`. This contains the full coordinator logic:
 **Automated validation** runs after every Edit/Write via a Claude Code hook (`.claude/settings.json`). It checks:
 - Manifest validity (JSON, required fields)
 - All 26 agent files exist with valid frontmatter
-- Model tiers match the spec (sonnet/opus)
+- Model tiers match the spec (haiku/sonnet/opus)
 - Coordinator skill exists with required keywords
 - 4 reference files exist in `skills/generate-skill/references/` with non-trivial content
 

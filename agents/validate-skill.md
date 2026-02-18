@@ -184,7 +184,7 @@ Returns findings as text:
 
 **Sub-agent E: Companion Skill Recommender** (`name: "companion-recommender"`, `model: "sonnet"`)
 
-Reads SKILL.md, all reference files, and `decisions.md`. Analyzes the skill's content and recommends complementary skills that would compose well with it.
+Reads SKILL.md, all reference files, `decisions.md`, and `research-plan.md` from the context directory. Uses the research planner's dimension scores to identify companion skill candidates -- dimensions scored 2-3 that were skipped represent knowledge gaps that companion skills could fill. Analyzes the skill's content and recommends complementary skills that would compose well with it.
 
 **Recommendation scope** — recommendations depend on the current skill's type:
 

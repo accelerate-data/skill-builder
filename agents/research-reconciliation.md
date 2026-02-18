@@ -1,7 +1,7 @@
 ---
 name: research-reconciliation
 description: Questions about reconciliation points, source-of-truth resolution, tolerance levels
-model: sonnet
+model: haiku
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 

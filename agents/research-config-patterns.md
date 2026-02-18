@@ -1,7 +1,7 @@
 ---
 name: research-config-patterns
 description: Questions about dangerous configs, version-dependent configuration constraints, multi-axis compatibility
-model: sonnet
+model: haiku
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 

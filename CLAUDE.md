@@ -25,6 +25,7 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 | Role | Model |
 |---|---|
 | Research agents (Steps 1, 3) | sonnet |
+| Simpler research dimensions (config-patterns, reconciliation, field-semantics, lifecycle-and-state) | haiku |
 | Consolidate Research (Steps 1, 3) | opus |
 | Confirm Decisions (Step 5) | opus |
 | Generate / Validate (Steps 6-7) | sonnet |

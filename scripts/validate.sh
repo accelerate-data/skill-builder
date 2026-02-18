@@ -42,7 +42,7 @@ fi
 echo "=== Agents ==="
 
 # All 26 agents — flat in agents/ (name:expected_model)
-ALL_AGENTS="confirm-decisions:opus consolidate-research:opus detailed-research:sonnet generate-skill:sonnet research-business-rules:sonnet research-config-patterns:sonnet research-data-quality:sonnet research-entities:sonnet research-extraction:sonnet research-field-semantics:sonnet research-historization:sonnet research-integration-orchestration:sonnet research-layer-design:sonnet research-lifecycle-and-state:sonnet research-load-merge-patterns:sonnet research-metrics:sonnet research-modeling-patterns:sonnet research-operational-failure-modes:sonnet research-orchestrator:sonnet research-pattern-interactions:sonnet research-planner:opus research-platform-behavioral-overrides:sonnet research-reconciliation:sonnet research-segmentation-and-periods:sonnet scope-advisor:opus validate-skill:sonnet"
+ALL_AGENTS="confirm-decisions:opus consolidate-research:opus detailed-research:sonnet generate-skill:sonnet research-business-rules:sonnet research-config-patterns:haiku research-data-quality:sonnet research-entities:sonnet research-extraction:sonnet research-field-semantics:haiku research-historization:sonnet research-integration-orchestration:sonnet research-layer-design:sonnet research-lifecycle-and-state:haiku research-load-merge-patterns:sonnet research-metrics:sonnet research-modeling-patterns:sonnet research-operational-failure-modes:sonnet research-orchestrator:sonnet research-pattern-interactions:sonnet research-planner:opus research-platform-behavioral-overrides:sonnet research-reconciliation:haiku research-segmentation-and-periods:sonnet scope-advisor:opus validate-skill:sonnet"
 
 for entry in $ALL_AGENTS; do
   name="${entry%%:*}"

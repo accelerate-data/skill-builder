@@ -1,7 +1,7 @@
 ---
 name: research-field-semantics
 description: Questions about field semantic overrides, managed package modifications, field independence
-model: sonnet
+model: haiku
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 

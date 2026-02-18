@@ -1,7 +1,7 @@
 ---
 name: research-lifecycle-and-state
 description: Questions about state progressions, lifecycle variations, record type behaviors
-model: sonnet
+model: haiku
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 

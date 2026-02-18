@@ -64,6 +64,7 @@ run_t1() {
   expected_model_for() {
     case "$1" in
       consolidate-research|confirm-decisions|research-planner|scope-advisor) echo "opus" ;;
+      research-config-patterns|research-reconciliation|research-field-semantics|research-lifecycle-and-state) echo "haiku" ;;
       *) echo "sonnet" ;;
     esac
   }
