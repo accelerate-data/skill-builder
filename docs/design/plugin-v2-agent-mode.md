@@ -1,8 +1,8 @@
 # Plugin v2: Agent Mode Architecture
 
-> Redesign the skill-builder plugin to decouple from the desktop app, adopt a
-> state-aware router pattern, and follow Claude skill best practices. The agents
-> remain shared; the coordinator flow changes fundamentally.
+> Redesign the skill-builder plugin with a state-aware router pattern, simplify
+> agent dispatch, and follow Claude skill best practices. The agents remain
+> shared with the app; the coordinator flow changes fundamentally.
 
 ---
 
@@ -10,10 +10,13 @@
 
 The current plugin (`/skill-builder:generate-skill`) has three problems:
 
-1. **App coupling** -- the coordinator SKILL.md uses `TeamCreate`, `TaskCreate`,
-   `SendMessage`, and `TeamDelete`, which are Claude Code CLI-only primitives
-   that don't exist in the agent SDK. The app workaround is a separate sidecar
-   runtime. This coupling must be removed so the plugin stands alone.
+1. **Unnecessary coordinator complexity** -- the SKILL.md uses `TeamCreate`,
+   `TaskCreate`, `SendMessage`, and `TeamDelete` to manage a team lifecycle
+   around agent dispatch. This is overhead -- the `Task` tool alone is
+   sufficient for spawning agents, and the team scaffolding (create team →
+   create tasks → send messages → shutdown agents → delete team) adds
+   complexity without adding value. Simplifying to direct `Task` dispatch
+   makes the coordinator easier to maintain and extend.
 
 2. **Rigid workflow** -- the 7-step sequential flow forces users through every
    phase even when they already have answers, want to skip research, or just
@@ -26,8 +29,8 @@ The current plugin (`/skill-builder:generate-skill`) has three problems:
 
 ### Goals
 
-- Remove all app-specific primitives (`TeamCreate`, `TaskCreate`, `SendMessage`,
-  `TeamDelete`) from the coordinator
+- Simplify agent dispatch to use `Task` tool directly (remove team lifecycle
+  overhead from the coordinator)
 - Keep all 26 agents unchanged and shared between app and plugin
 - Replace the rigid 7-step flow with a state-aware router
 - Support offline clarifications (user answers over days, resumes later)
@@ -101,16 +104,17 @@ Scoping → Research → Clarification → [Refinement] → Decisions → Genera
    └─ Can pre-fill from user's first message
 ```
 
-### Removing app-specific primitives
+### Simplifying agent dispatch
 
-The current SKILL.md uses these Claude Code CLI-only constructs:
+The current SKILL.md wraps agent dispatch in a team lifecycle that adds
+complexity without value. Simplify to direct `Task` tool calls:
 
-| Primitive | Current Usage | Replacement |
-|-----------|---------------|-------------|
-| `TeamCreate` | Step 0: create agent team | Remove entirely -- not needed when using `Task` tool directly |
+| Primitive | Current Usage | Change |
+|-----------|---------------|--------|
+| `TeamCreate` | Step 0: create agent team | Remove -- not needed when using `Task` directly |
 | `TaskCreate` | Steps 1, 3: create team tasks | Remove -- coordinator tracks state via filesystem |
-| `SendMessage` | Step 5: send corrections; Step 7: shutdown | Remove -- use `Task` tool for corrections (spawn new agent with feedback) |
-| `TeamDelete` | Step 7: cleanup | Remove -- no team to delete |
+| `SendMessage` | Step 5: send corrections; Step 7: shutdown | Remove -- spawn new `Task` with feedback instead |
+| `TeamDelete` | Step 7: cleanup | Remove -- no team to clean up |
 
 The `Task` tool is the only dispatch mechanism needed. Each `Task` call spawns
 a sub-agent, runs it, and returns the result. Multiple `Task` calls in the same
