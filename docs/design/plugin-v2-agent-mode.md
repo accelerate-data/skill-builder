@@ -212,19 +212,27 @@ Formalize three concepts:
 6. **Cross-skill data persists** -- `.vibedata/plugin/` survives across skills.
    Dimension caching, user preferences, and plugin config live here.
 
-### Path resolution for agents
+### Path resolution
 
-The coordinator passes three paths to every agent:
+Two layers of path resolution: coordinator-internal and agent-facing.
 
-| Parameter | Source | Example |
-|-----------|--------|---------|
-| `workspace_dir` | `.vibedata/<skill-name>/` | `.vibedata/sales-pipeline/` |
-| `context_dir` | `<skill-dir>/context/` | `./sales-pipeline/context/` |
-| `skill_dir` | from `session.json.skill_dir` | `./sales-pipeline/` |
+**Coordinator-internal** (not passed to agents):
 
-Agents read/write internal state (session, logs) to `workspace_dir`.
-Agents read/write user-facing files (clarifications, decisions, validation logs) to `context_dir`.
-Agents write deployable output (SKILL.md, references) to `skill_dir`.
+| Path | Purpose |
+|------|---------|
+| `.vibedata/<skill-name>/` | Session state (`session.json`), logs. Only the coordinator reads/writes here. |
+| `.vibedata/plugin/` | Cross-skill config, dimension cache. |
+
+**Agent-facing** (passed to every agent by the coordinator):
+
+| Parameter | Example | Purpose |
+|-----------|---------|---------|
+| `context_dir` | `./sales-pipeline/context/` | User-facing working files (clarifications, decisions, validation logs) |
+| `skill_dir` | `./sales-pipeline/` | Deployable output (SKILL.md, references/) |
+
+These are the same two paths agents receive today (`Context directory` and
+`Skill directory`). No change to agent prompts or the app's coordinator.
+
 No agent constructs paths on its own — the coordinator provides them.
 
 ### Session manifest (`session.json`)
