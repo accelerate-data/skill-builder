@@ -12,6 +12,7 @@ interface ChatPanelProps {
 
 export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles }: ChatPanelProps) {
   const messages = useRefineStore((s) => s.messages);
+  const sessionExhausted = useRefineStore((s) => s.sessionExhausted);
 
   if (!hasSkill) {
     return (
@@ -24,9 +25,14 @@ export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles }: ChatP
   return (
     <div className="flex h-full flex-col">
       <ChatMessageList messages={messages} />
+      {sessionExhausted && (
+        <div className="border-t bg-muted px-3 py-2 text-center text-sm text-muted-foreground">
+          This refine session has reached its limit. Select the skill again to start a new session.
+        </div>
+      )}
       <ChatInputBar
         onSend={onSend}
-        isRunning={isRunning}
+        isRunning={isRunning || sessionExhausted}
         availableFiles={availableFiles}
       />
     </div>

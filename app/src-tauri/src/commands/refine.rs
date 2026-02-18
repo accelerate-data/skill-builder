@@ -6,7 +6,7 @@ use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
-use crate::types::{ConversationMessage, RefineFileDiff, RefineDiff, RefineSessionInfo, SkillFileContent};
+use crate::types::{RefineFileDiff, RefineDiff, RefineSessionInfo, SkillFileContent};
 
 /// Tools available to the refine-skill agent. Matches the agent's frontmatter
 /// `tools: Read, Edit, Write, Glob, Grep, Task`. Task is required for the
@@ -14,17 +14,24 @@ use crate::types::{ConversationMessage, RefineFileDiff, RefineDiff, RefineSessio
 const REFINE_TOOLS: &[&str] = &["Read", "Edit", "Write", "Glob", "Grep", "Task"];
 
 const REFINE_AGENT_NAME: &str = "refine-skill";
-const REFINE_MAX_TURNS: u32 = 20;
+/// Max agentic turns for the entire streaming session. Each user message may
+/// use multiple turns internally (tool calls, etc.). 400 covers ~20 messages
+/// × 20 turns each. When exhausted, the sidecar emits session_exhausted and
+/// the frontend shows a "session limit reached" notice.
+const REFINE_STREAM_MAX_TURNS: u32 = 400;
 
 // ─── Session management scaffolding ──────────────────────────────────────────
 
 /// In-memory state for a single refine session.
 ///
 /// Created by `start_refine_session`, used by `send_refine_message`.
-/// Each invocation of `send_refine_message` passes the full conversation history
-/// to the sidecar (the sidecar is stateless -- history is replayed per-call).
+/// The streaming session is started on the first message and maintained
+/// across subsequent messages — the SDK preserves full conversation state.
 pub struct RefineSession {
     pub skill_name: String,
+    /// Whether the sidecar streaming session has been started.
+    /// First `send_refine_message` sends `stream_start`, subsequent sends `stream_message`.
+    pub stream_started: bool,
 }
 
 /// Manages active refine sessions. Registered as Tauri managed state.
@@ -43,11 +50,10 @@ impl RefineSessionManager {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/// Build a SidecarConfig for a refine session message.
-/// Extracted for testability — `send_refine_message` calls this then spawns the sidecar.
+/// Build a SidecarConfig for the first refine message (stream_start).
+/// Extracted for testability — `send_refine_message` calls this then sends stream_start.
 fn build_refine_config(
     prompt: String,
-    conversation_history: Vec<ConversationMessage>,
     skill_name: &str,
     workspace_path: &str,
     api_key: String,
@@ -73,24 +79,51 @@ fn build_refine_config(
         api_key,
         cwd,
         allowed_tools: Some(REFINE_TOOLS.iter().map(|s| s.to_string()).collect()),
-        max_turns: Some(REFINE_MAX_TURNS),
+        // Use the streaming session max turns — covers all turns across all
+        // messages in this session (not per-message like the old one-shot mode).
+        max_turns: Some(REFINE_STREAM_MAX_TURNS),
         permission_mode: None,
-        // Do NOT pass session_id here — the sidecar interprets it as an SDK
-        // "resume" ID, but our session_id is an internal refine session tracker.
-        // Conversation context is passed via conversation_history instead.
         session_id: None,
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
         agent_name: Some(REFINE_AGENT_NAME.to_string()),
-        conversation_history: (!conversation_history.is_empty()).then(|| {
-            conversation_history
-                .into_iter()
-                .map(|m| serde_json::json!({"role": m.role, "content": m.content}))
-                .collect()
-        }),
+        conversation_history: None,
     };
 
     (config, agent_id)
+}
+
+/// Build a follow-up prompt for subsequent refine messages.
+/// Simpler than the first message — the SDK already has full context from the
+/// first turn (paths, skill type, domain, user context). Only includes command,
+/// file targeting, and the user's new message.
+fn build_followup_prompt(
+    user_message: &str,
+    skills_path: &str,
+    skill_name: &str,
+    target_files: Option<&[String]>,
+    command: Option<&str>,
+) -> String {
+    let skill_dir = Path::new(skills_path).join(skill_name);
+    let effective_command = command.unwrap_or("refine");
+
+    let mut prompt = format!("The command is: {}.", effective_command);
+
+    if let Some(files) = target_files {
+        if !files.is_empty() {
+            let abs_files: Vec<String> = files
+                .iter()
+                .map(|f| format!("{}/{}", skill_dir.display(), f))
+                .collect();
+            prompt.push_str(&format!(
+                "\n\nIMPORTANT: Only edit these files: {}. Do not modify any other files.",
+                abs_files.join(", ")
+            ));
+        }
+    }
+
+    prompt.push_str(&format!("\n\nCurrent request: {}", user_message));
+    prompt
 }
 
 /// Build the refine agent prompt with all runtime fields.
@@ -411,6 +444,7 @@ pub async fn start_refine_session(
         session_id.clone(),
         RefineSession {
             skill_name: skill_name.clone(),
+            stream_started: false,
         },
     );
 
@@ -425,19 +459,18 @@ pub async fn start_refine_session(
 
 /// Send a user message to the refine agent and stream responses back.
 ///
-/// Builds the full agent prompt server-side with all 3 directory paths (skill dir,
-/// context dir, workspace dir), skill type, command, and user context — matching
-/// the workflow pattern in `workflow.rs::build_prompt`.
+/// On the first call, starts a streaming session (stream_start) with the full
+/// agent prompt including all 3 directory paths, skill type, domain, command,
+/// and user context. On subsequent calls, pushes a follow-up message
+/// (stream_message) — the SDK maintains full conversation state.
 ///
 /// Returns the `agent_id` so the frontend can listen for `agent-message` and
-/// `agent-exit` events scoped to this request. Actual content streams via
-/// Tauri events (same mechanism as workflow agents).
+/// `agent-exit` events scoped to this request.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn send_refine_message(
     session_id: String,
     user_message: String,
-    conversation_history: Vec<ConversationMessage>,
     workspace_path: String,
     target_files: Option<Vec<String>>,
     command: Option<String>,
@@ -452,8 +485,8 @@ pub async fn send_refine_message(
         command
     );
 
-    // 1. Look up session
-    let skill_name = {
+    // 1. Look up session and check stream state
+    let (skill_name, stream_started) = {
         let map = sessions.0.lock().map_err(|e| {
             log::error!("[send_refine_message] Failed to acquire session lock: {}", e);
             e.to_string()
@@ -463,108 +496,164 @@ pub async fn send_refine_message(
             log::error!("[send_refine_message] {}", msg);
             msg
         })?;
-        session.skill_name.clone()
+        (session.skill_name.clone(), session.stream_started)
     };
-    log::info!("[send_refine_message] session={} skill={}", session_id, skill_name);
+    log::info!(
+        "[send_refine_message] session={} skill={} stream_started={}",
+        session_id, skill_name, stream_started
+    );
 
-    // 2. Read settings, workflow run data, and user context from DB in a single lock
-    let (api_key, extended_thinking, model, skills_path, domain, skill_type, user_context) = {
-        let conn = db.0.lock().map_err(|e| {
-            log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
-            e.to_string()
-        })?;
-        let settings = db::read_settings_hydrated(&conn).map_err(|e| {
-            log::error!("[send_refine_message] Failed to read settings: {}", e);
-            e
-        })?;
-        let key = settings.anthropic_api_key.ok_or_else(|| {
-            log::error!("[send_refine_message] Anthropic API key not configured");
-            "Anthropic API key not configured".to_string()
-        })?;
-        let model = settings
-            .preferred_model
-            .unwrap_or_else(|| "sonnet".to_string());
+    if !stream_started {
+        // ─── First message: start streaming session ───────────────────────
+        // 2. Read settings, workflow run data, and user context from DB
+        let (api_key, extended_thinking, model, skills_path, domain, skill_type, user_context) = {
+            let conn = db.0.lock().map_err(|e| {
+                log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
+                e.to_string()
+            })?;
+            let settings = db::read_settings_hydrated(&conn).map_err(|e| {
+                log::error!("[send_refine_message] Failed to read settings: {}", e);
+                e
+            })?;
+            let key = settings.anthropic_api_key.ok_or_else(|| {
+                log::error!("[send_refine_message] Anthropic API key not configured");
+                "Anthropic API key not configured".to_string()
+            })?;
+            let model = settings
+                .preferred_model
+                .unwrap_or_else(|| "sonnet".to_string());
 
-        let skills_path = settings
-            .skills_path
-            .unwrap_or_else(|| workspace_path.clone());
+            let skills_path = settings
+                .skills_path
+                .unwrap_or_else(|| workspace_path.clone());
 
-        // Get domain and skill_type from workflow_run
-        let run_row = db::get_workflow_run(&conn, &skill_name).ok().flatten();
-        let domain = run_row
-            .as_ref()
-            .map(|r| r.domain.clone())
-            .unwrap_or_else(|| skill_name.clone());
-        let skill_type = run_row
-            .as_ref()
-            .map(|r| r.skill_type.clone())
-            .unwrap_or_else(|| "domain".to_string());
+            let run_row = db::get_workflow_run(&conn, &skill_name).ok().flatten();
+            let domain = run_row
+                .as_ref()
+                .map(|r| r.domain.clone())
+                .unwrap_or_else(|| skill_name.clone());
+            let skill_type = run_row
+                .as_ref()
+                .map(|r| r.skill_type.clone())
+                .unwrap_or_else(|| "domain".to_string());
 
-        // Build inline user context (shared with workflow's build_prompt)
-        let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
-        let ctx = crate::commands::workflow::format_user_context(
-            settings.industry.as_deref(),
-            settings.function_role.as_deref(),
-            intake_json.as_deref(),
+            let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
+            let ctx = crate::commands::workflow::format_user_context(
+                settings.industry.as_deref(),
+                settings.function_role.as_deref(),
+                intake_json.as_deref(),
+            );
+
+            (key, settings.extended_thinking, model, skills_path, domain, skill_type, ctx)
+        };
+
+        // 3. Build full prompt with all paths, metadata, and user context
+        let prompt = build_refine_prompt(
+            &skill_name,
+            &domain,
+            &skill_type,
+            &workspace_path,
+            &skills_path,
+            &user_message,
+            target_files.as_deref(),
+            command.as_deref(),
+            user_context.as_deref(),
+        );
+        log::debug!(
+            "[send_refine_message] first message prompt ({} chars) for skill '{}' type={} command={:?}:\n{}",
+            prompt.len(),
+            skill_name,
+            skill_type,
+            command,
+            prompt
         );
 
-        (key, settings.extended_thinking, model, skills_path, domain, skill_type, ctx)
-    };
+        // 4. Build config and agent_id
+        let (mut config, agent_id) = build_refine_config(
+            prompt,
+            &skill_name,
+            &workspace_path,
+            api_key,
+            model,
+            extended_thinking,
+        );
 
-    // 3. Build full prompt with all paths, metadata, and user context
-    let prompt = build_refine_prompt(
-        &skill_name,
-        &domain,
-        &skill_type,
-        &workspace_path,
-        &skills_path,
-        &user_message,
-        target_files.as_deref(),
-        command.as_deref(),
-        user_context.as_deref(),
-    );
-    log::debug!(
-        "[send_refine_message] prompt ({} chars) for skill '{}' type={} command={:?}:\n{}",
-        prompt.len(),
-        skill_name,
-        skill_type,
-        command,
-        prompt
-    );
+        // Resolve SDK cli.js path
+        if config.path_to_claude_code_executable.is_none() {
+            if let Ok(cli_path) = sidecar::resolve_sdk_cli_path_public(&app) {
+                config.path_to_claude_code_executable = Some(cli_path);
+            }
+        }
 
-    // 4. Build config and agent_id — CWD is workspace_path (.vibedata),
-    //    not skills_path, so the sidecar can find .claude/agents/ and CLAUDE.md.
-    let (config, agent_id) = build_refine_config(
-        prompt,
-        conversation_history,
-        &skill_name,
-        &workspace_path,
-        api_key,
-        model,
-        extended_thinking,
-    );
+        log::debug!(
+            "[send_refine_message] starting stream session {} agent={} cwd={}",
+            session_id, agent_id, config.cwd,
+        );
 
-    log::debug!(
-        "[send_refine_message] spawning agent {} in cwd={}",
-        agent_id,
-        config.cwd,
-    );
+        // 5. Send stream_start via pool
+        pool.send_stream_start(
+            &skill_name,
+            &session_id,
+            &agent_id,
+            config,
+            &app,
+        )
+        .await
+        .map_err(|e| {
+            log::error!("[send_refine_message] Failed to start stream: {}", e);
+            e
+        })?;
 
-    // 5. Spawn via pool — events stream automatically to frontend
-    sidecar::spawn_sidecar(
-        agent_id.clone(),
-        config,
-        pool.inner().clone(),
-        app,
-        skill_name,
-    )
-    .await
-    .map_err(|e| {
-        log::error!("[send_refine_message] Failed to spawn sidecar: {}", e);
-        e
-    })?;
+        // Mark session as stream-started
+        {
+            let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
+            if let Some(session) = map.get_mut(&session_id) {
+                session.stream_started = true;
+            }
+        }
 
-    Ok(agent_id)
+        Ok(agent_id)
+    } else {
+        // ─── Follow-up message: push into existing stream ─────────────────
+        let skills_path = {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            let settings = db::read_settings(&conn)?;
+            settings.skills_path.unwrap_or_else(|| workspace_path.clone())
+        };
+
+        let prompt = build_followup_prompt(
+            &user_message,
+            &skills_path,
+            &skill_name,
+            target_files.as_deref(),
+            command.as_deref(),
+        );
+        log::debug!(
+            "[send_refine_message] follow-up prompt ({} chars) for skill '{}' command={:?}:\n{}",
+            prompt.len(), skill_name, command, prompt
+        );
+
+        let agent_id = format!(
+            "refine-{}-{}",
+            skill_name,
+            chrono::Utc::now().timestamp_millis()
+        );
+
+        pool.send_stream_message(
+            &skill_name,
+            &session_id,
+            &agent_id,
+            &prompt,
+            &app,
+        )
+        .await
+        .map_err(|e| {
+            log::error!("[send_refine_message] Failed to send stream message: {}", e);
+            e
+        })?;
+
+        Ok(agent_id)
+    }
 }
 
 // ─── close_refine_session ─────────────────────────────────────────────────────
@@ -574,21 +663,49 @@ pub async fn send_refine_message(
 /// Called by the frontend when navigating away from the refine chat or when
 /// the user explicitly ends the session. This frees the one-per-skill slot
 /// so a new session can be started for the same skill.
+///
+/// If a streaming session was started, sends `stream_end` to the sidecar to
+/// close the async generator and finish the SDK query.
 #[tauri::command]
-pub fn close_refine_session(
+pub async fn close_refine_session(
     session_id: String,
     sessions: tauri::State<'_, RefineSessionManager>,
+    pool: tauri::State<'_, SidecarPool>,
 ) -> Result<(), String> {
     log::info!("[close_refine_session] session={}", session_id);
-    let mut map = sessions.0.lock().map_err(|e| {
-        log::error!("[close_refine_session] Failed to acquire session lock: {}", e);
-        e.to_string()
-    })?;
-    if map.remove(&session_id).is_some() {
-        log::debug!("[close_refine_session] removed session {}", session_id);
+
+    let removed = {
+        let mut map = sessions.0.lock().map_err(|e| {
+            log::error!("[close_refine_session] Failed to acquire session lock: {}", e);
+            e.to_string()
+        })?;
+        map.remove(&session_id)
+    };
+
+    if let Some(session) = removed {
+        log::debug!(
+            "[close_refine_session] removed session {} (stream_started={})",
+            session_id,
+            session.stream_started
+        );
+
+        if session.stream_started {
+            // Send stream_end to close the sidecar streaming session
+            if let Err(e) = pool
+                .send_stream_end(&session.skill_name, &session_id)
+                .await
+            {
+                log::warn!(
+                    "[close_refine_session] Failed to send stream_end for session {}: {}",
+                    session_id,
+                    e
+                );
+            }
+        }
     } else {
         log::debug!("[close_refine_session] session {} not found (already closed)", session_id);
     }
+
     Ok(())
 }
 
@@ -798,6 +915,7 @@ mod tests {
                 session_id.clone(),
                 RefineSession {
                     skill_name: "my-skill".to_string(),
+                    stream_started: false,
                 },
             );
         }
@@ -817,6 +935,7 @@ mod tests {
                 "session-1".to_string(),
                 RefineSession {
                     skill_name: "my-skill".to_string(),
+                    stream_started: false,
                 },
             );
         }
@@ -840,13 +959,9 @@ mod tests {
 
     // ===== build_refine_config tests =====
 
-    fn base_refine_config(
-        prompt: &str,
-        history: Vec<ConversationMessage>,
-    ) -> (SidecarConfig, String) {
+    fn base_refine_config(prompt: &str) -> (SidecarConfig, String) {
         build_refine_config(
             prompt.to_string(),
-            history,
             "my-skill",
             "/home/user/.vibedata",
             "sk-test-key".to_string(),
@@ -859,14 +974,14 @@ mod tests {
     fn test_refine_config_always_uses_refine_skill_agent() {
         // agent_name must always be "refine-skill" — it handles /rewrite and /validate
         // as magic commands internally
-        let (config, _) = base_refine_config("improve metrics", vec![]);
+        let (config, _) = base_refine_config("improve metrics");
         assert_eq!(config.agent_name.as_deref(), Some("refine-skill"));
     }
 
     #[test]
     fn test_refine_config_includes_task_tool_for_magic_commands() {
         // /rewrite and /validate magic commands spawn sub-agents via Task
-        let (config, _) = base_refine_config("test prompt", vec![]);
+        let (config, _) = base_refine_config("test prompt");
         let tools = config.allowed_tools.unwrap();
         assert!(
             tools.contains(&"Task".to_string()),
@@ -876,7 +991,7 @@ mod tests {
 
     #[test]
     fn test_refine_config_includes_all_file_tools() {
-        let (config, _) = base_refine_config("edit SKILL.md", vec![]);
+        let (config, _) = base_refine_config("edit SKILL.md");
         let tools = config.allowed_tools.unwrap();
         for tool in &["Read", "Edit", "Write", "Glob", "Grep"] {
             assert!(
@@ -894,7 +1009,6 @@ mod tests {
         // which are deployed to the workspace root.
         let (config, _) = build_refine_config(
             "test".to_string(),
-            vec![],
             "data-engineering",
             "/home/user/.vibedata",
             "sk-key".to_string(),
@@ -905,28 +1019,16 @@ mod tests {
     }
 
     #[test]
-    fn test_refine_config_passes_conversation_history() {
-        // Multi-turn history is passed to the sidecar for context
-        let history = vec![
-            ConversationMessage { role: "user".into(), content: "Add metrics section".into() },
-            ConversationMessage { role: "assistant".into(), content: "Done. I added...".into() },
-        ];
-        let (config, _) = base_refine_config("Now add examples", history);
-        let ch = config.conversation_history.unwrap();
-        assert_eq!(ch.len(), 2);
-        assert_eq!(ch[0]["role"], "user");
-        assert_eq!(ch[1]["role"], "assistant");
-    }
-
-    #[test]
-    fn test_refine_config_empty_history_becomes_none() {
-        let (config, _) = base_refine_config("first message", vec![]);
+    fn test_refine_config_no_conversation_history() {
+        // Streaming mode: conversation_history is always None since
+        // the SDK maintains state across turns.
+        let (config, _) = base_refine_config("first message");
         assert!(config.conversation_history.is_none());
     }
 
     #[test]
     fn test_refine_config_agent_id_format() {
-        let (_, agent_id) = base_refine_config("test", vec![]);
+        let (_, agent_id) = base_refine_config("test");
         assert!(agent_id.starts_with("refine-my-skill-"));
     }
 
@@ -934,15 +1036,22 @@ mod tests {
     fn test_refine_config_session_id_is_none() {
         // session_id must NOT be passed to the sidecar — the SDK would interpret
         // it as a "resume" ID and fail with "No conversation found".
-        let (config, _) = base_refine_config("test", vec![]);
+        let (config, _) = base_refine_config("test");
         assert!(config.session_id.is_none());
+    }
+
+    #[test]
+    fn test_refine_config_uses_stream_max_turns() {
+        // Streaming sessions use the higher turn limit (400) since all turns
+        // across the entire session share one budget.
+        let (config, _) = base_refine_config("test");
+        assert_eq!(config.max_turns, Some(REFINE_STREAM_MAX_TURNS));
     }
 
     #[test]
     fn test_refine_config_extended_thinking_sets_budget() {
         let (config, _) = build_refine_config(
             "test".to_string(),
-            vec![],
             "my-skill",
             "/skills",
             "sk-key".to_string(),
@@ -954,18 +1063,14 @@ mod tests {
 
     #[test]
     fn test_refine_config_no_thinking_when_disabled() {
-        let (config, _) = base_refine_config("test", vec![]);
+        let (config, _) = base_refine_config("test");
         assert!(config.max_thinking_tokens.is_none());
     }
 
     #[test]
     fn test_refine_config_serialization_matches_sidecar_schema() {
         // End-to-end: build config, serialize to JSON, verify the sidecar sees correct fields
-        let history = vec![
-            ConversationMessage { role: "user".into(), content: "First request".into() },
-            ConversationMessage { role: "assistant".into(), content: "Done".into() },
-        ];
-        let (config, _) = base_refine_config("full prompt here", history);
+        let (config, _) = base_refine_config("full prompt here");
 
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -973,19 +1078,20 @@ mod tests {
         // Verify camelCase field names match sidecar's SidecarConfig interface
         assert_eq!(parsed["prompt"], "full prompt here");
         assert_eq!(parsed["agentName"], "refine-skill");
-        assert_eq!(parsed["maxTurns"], REFINE_MAX_TURNS);
+        assert_eq!(parsed["maxTurns"], REFINE_STREAM_MAX_TURNS);
         assert!(parsed["allowedTools"]
             .as_array()
             .unwrap()
             .contains(&serde_json::json!("Task")));
-        assert_eq!(parsed["conversationHistory"].as_array().unwrap().len(), 2);
+        // Streaming mode: no conversation history in config
+        assert!(parsed.get("conversationHistory").is_none());
         // sessionId must NOT be set — the SDK interprets it as "resume" and fails
         assert!(parsed.get("sessionId").is_none());
     }
 
     #[test]
     fn test_refine_config_serialization_omits_none_fields() {
-        let (config, _) = base_refine_config("test", vec![]);
+        let (config, _) = base_refine_config("test");
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
@@ -1109,6 +1215,7 @@ mod tests {
                 session_id.clone(),
                 RefineSession {
                     skill_name: "my-skill".to_string(),
+                    stream_started: false,
                 },
             );
             assert_eq!(map.len(), 1);
@@ -1172,25 +1279,91 @@ mod tests {
         assert!(result.stat.contains("1 deletion(s)(-)"));
     }
 
-    #[test]
-    fn test_refine_config_conversation_message_type_safety() {
-        // ConversationMessage struct enforces typed role+content at the IPC boundary
-        let history = vec![
-            ConversationMessage { role: "user".into(), content: "request".into() },
-            ConversationMessage { role: "assistant".into(), content: "response".into() },
-        ];
-        let (config, _) = base_refine_config("follow-up", history);
-        let json = serde_json::to_string(&config).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    // ===== build_followup_prompt tests =====
 
-        let ch = parsed["conversationHistory"].as_array().unwrap();
-        // Verify exact shape matches sidecar's expected { role, content } objects
-        assert_eq!(ch[0]["role"], "user");
-        assert_eq!(ch[0]["content"], "request");
-        assert_eq!(ch[1]["role"], "assistant");
-        assert_eq!(ch[1]["content"], "response");
-        // No extra fields
-        assert_eq!(ch[0].as_object().unwrap().len(), 2);
+    #[test]
+    fn test_followup_prompt_includes_command_and_message() {
+        let prompt = build_followup_prompt(
+            "Add SLA metrics", "/skills", "my-skill", None, Some("refine"),
+        );
+        assert!(prompt.contains("The command is: refine"));
+        assert!(prompt.contains("Current request: Add SLA metrics"));
+    }
+
+    #[test]
+    fn test_followup_prompt_default_command_is_refine() {
+        let prompt = build_followup_prompt("fix it", "/sk", "s", None, None);
+        assert!(prompt.contains("The command is: refine"));
+    }
+
+    #[test]
+    fn test_followup_prompt_file_targeting() {
+        let files = vec!["SKILL.md".to_string(), "references/api.md".to_string()];
+        let prompt = build_followup_prompt(
+            "update", "/skills", "my-skill", Some(&files), None,
+        );
+        assert!(prompt.contains("IMPORTANT: Only edit these files:"));
+        assert!(prompt.contains("/skills/my-skill/SKILL.md"));
+        assert!(prompt.contains("/skills/my-skill/references/api.md"));
+    }
+
+    #[test]
+    fn test_followup_prompt_no_file_constraint_when_empty() {
+        let prompt = build_followup_prompt("edit freely", "/sk", "s", None, None);
+        assert!(!prompt.contains("Only edit these files"));
+    }
+
+    #[test]
+    fn test_followup_prompt_does_not_include_paths() {
+        // Follow-up prompts don't repeat skill/context/workspace paths
+        let prompt = build_followup_prompt(
+            "add more", "/skills", "my-skill", None, None,
+        );
+        assert!(!prompt.contains("skill directory is:"));
+        assert!(!prompt.contains("context directory is:"));
+        assert!(!prompt.contains("workspace directory is:"));
+    }
+
+    // ===== session stream_started tests =====
+
+    #[test]
+    fn test_session_stream_started_defaults_to_false() {
+        let manager = RefineSessionManager::new();
+        {
+            let mut map = manager.0.lock().unwrap();
+            map.insert(
+                "s1".to_string(),
+                RefineSession {
+                    skill_name: "my-skill".to_string(),
+                    stream_started: false,
+                },
+            );
+        }
+        let map = manager.0.lock().unwrap();
+        assert!(!map.get("s1").unwrap().stream_started);
+    }
+
+    #[test]
+    fn test_session_stream_started_can_be_set() {
+        let manager = RefineSessionManager::new();
+        {
+            let mut map = manager.0.lock().unwrap();
+            map.insert(
+                "s1".to_string(),
+                RefineSession {
+                    skill_name: "my-skill".to_string(),
+                    stream_started: false,
+                },
+            );
+        }
+        {
+            let mut map = manager.0.lock().unwrap();
+            if let Some(session) = map.get_mut("s1") {
+                session.stream_started = true;
+            }
+        }
+        let map = manager.0.lock().unwrap();
+        assert!(map.get("s1").unwrap().stream_started);
     }
 
     #[test]

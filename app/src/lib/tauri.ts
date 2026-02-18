@@ -379,9 +379,8 @@ export const closeRefineSession = (sessionId: string) =>
 export const sendRefineMessage = (
   sessionId: string,
   userMessage: string,
-  conversationHistory: Array<{ role: "user" | "assistant"; content: string }>,
   workspacePath: string,
   targetFiles?: string[],
   command?: string,
-) => invoke<string>("send_refine_message", { sessionId, userMessage, conversationHistory, workspacePath, targetFiles: targetFiles ?? null, command: command ?? null })
+) => invoke<string>("send_refine_message", { sessionId, userMessage, workspacePath, targetFiles: targetFiles ?? null, command: command ?? null })
 

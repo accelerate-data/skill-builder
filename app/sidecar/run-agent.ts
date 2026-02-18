@@ -2,7 +2,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
 import { runMockAgent } from "./mock-agent.js";
 import { buildQueryOptions } from "./options.js";
-import { createAbortState } from "./shutdown.js";
+import { createAbortState, linkExternalSignal } from "./shutdown.js";
 
 /**
  * Emit a system-level progress event (not an SDK message).
@@ -13,28 +13,6 @@ export function emitSystemEvent(
   subtype: string,
 ): void {
   onMessage({ type: "system", subtype, timestamp: Date.now() });
-}
-
-/**
- * Format conversation history into a prompt for refine sessions.
- *
- * When history is present, prepends it as a "Conversation History" section
- * before the current request. Returns the prompt as-is when history is empty.
- */
-export function buildRefinePrompt(
-  prompt: string,
-  history: { role: "user" | "assistant"; content: string }[],
-): string {
-  if (history.length === 0) return prompt;
-
-  const formatted = history
-    .map((msg) => {
-      const label = msg.role === "user" ? "User" : "Assistant";
-      return `**${label}**: ${msg.content}`;
-    })
-    .join("\n\n");
-
-  return `## Conversation History\n\n${formatted}\n\n## Current Request\n\n${prompt}`;
 }
 
 /**
@@ -64,22 +42,8 @@ export async function runAgentRequest(
   }
 
   const state = createAbortState();
-
-  // Link external signal to internal abort so callers can cancel us
   if (externalSignal) {
-    if (externalSignal.aborted) {
-      state.aborted = true;
-      state.abortController.abort();
-    } else {
-      externalSignal.addEventListener(
-        "abort",
-        () => {
-          state.aborted = true;
-          state.abortController.abort();
-        },
-        { once: true },
-      );
-    }
+    linkExternalSignal(state, externalSignal);
   }
 
   // Route SDK subprocess stderr through onMessage so it gets wrapped with
@@ -90,22 +54,12 @@ export async function runAgentRequest(
 
   const options = buildQueryOptions(config, state.abortController, stderrHandler);
 
-  // Build the effective prompt, prepending conversation history for refine sessions
-  const history = config.conversationHistory ?? [];
-  const effectivePrompt = history.length > 0
-    ? buildRefinePrompt(config.prompt, history)
-    : config.prompt;
-
-  if (history.length > 0) {
-    process.stderr.write(`[sidecar] Refine mode: ${history.length} history messages\n`);
-  }
-
   // Notify the UI that we're about to initialize the SDK
   emitSystemEvent(onMessage, "init_start");
 
   process.stderr.write("[sidecar] Starting SDK query\n");
   const conversation = query({
-    prompt: effectivePrompt,
+    prompt: config.prompt,
     options,
   });
 

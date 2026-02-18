@@ -1,6 +1,7 @@
 import { createInterface, type Interface } from "node:readline";
 import { type SidecarConfig } from "./config.js";
 import { runAgentRequest } from "./run-agent.js";
+import { StreamSession } from "./stream-session.js";
 
 /** Incoming request envelope: run an agent. */
 interface AgentRequest {
@@ -25,8 +26,37 @@ interface CancelRequest {
   request_id: string;
 }
 
+/** Start a streaming session (first message). */
+interface StreamStartRequest {
+  type: "stream_start";
+  request_id: string;
+  session_id: string;
+  config: SidecarConfig;
+}
+
+/** Push a follow-up message into an active streaming session. */
+interface StreamMessageRequest {
+  type: "stream_message";
+  request_id: string;
+  session_id: string;
+  user_message: string;
+}
+
+/** Close a streaming session. */
+interface StreamEndRequest {
+  type: "stream_end";
+  session_id: string;
+}
+
 /** Union of all valid incoming messages. */
-type IncomingMessage = AgentRequest | ShutdownRequest | PingRequest | CancelRequest;
+type IncomingMessage =
+  | AgentRequest
+  | ShutdownRequest
+  | PingRequest
+  | CancelRequest
+  | StreamStartRequest
+  | StreamMessageRequest
+  | StreamEndRequest;
 
 /**
  * Write a single JSON line to stdout.
@@ -77,6 +107,38 @@ export function parseIncomingMessage(line: string): IncomingMessage | null {
     };
   }
 
+  if (obj.type === "stream_start") {
+    if (typeof obj.request_id !== "string" || !obj.request_id) return null;
+    if (typeof obj.session_id !== "string" || !obj.session_id) return null;
+    if (typeof obj.config !== "object" || obj.config === null) return null;
+    return {
+      type: "stream_start",
+      request_id: obj.request_id,
+      session_id: obj.session_id,
+      config: obj.config as SidecarConfig,
+    };
+  }
+
+  if (obj.type === "stream_message") {
+    if (typeof obj.request_id !== "string" || !obj.request_id) return null;
+    if (typeof obj.session_id !== "string" || !obj.session_id) return null;
+    if (typeof obj.user_message !== "string") return null;
+    return {
+      type: "stream_message",
+      request_id: obj.request_id,
+      session_id: obj.session_id,
+      user_message: obj.user_message,
+    };
+  }
+
+  if (obj.type === "stream_end") {
+    if (typeof obj.session_id !== "string" || !obj.session_id) return null;
+    return {
+      type: "stream_end",
+      session_id: obj.session_id,
+    };
+  }
+
   return null;
 }
 
@@ -122,6 +184,9 @@ export async function runPersistent(
   let currentAbort: AbortController | null = null;
   let currentRequestId: string | null = null;
 
+  // Active streaming sessions (refine chat uses these for multi-turn conversations)
+  const activeSessions = new Map<string, StreamSession>();
+
   for await (const line of rl) {
     const message = parseIncomingMessage(line);
 
@@ -156,6 +221,77 @@ export async function runPersistent(
       // Abort the matching in-flight request so the SDK stops waiting.
       if (currentAbort && currentRequestId === message.request_id) {
         currentAbort.abort();
+      }
+      continue;
+    }
+
+    if (message.type === "stream_start") {
+      const { request_id, session_id, config } = message;
+      process.stderr.write(
+        `[sidecar] Stream start: session=${session_id} request=${request_id}\n`,
+      );
+
+      if (activeSessions.has(session_id)) {
+        writeLine(
+          wrapWithRequestId(request_id, {
+            type: "error",
+            message: `Stream session '${session_id}' already exists`,
+          }),
+        );
+        continue;
+      }
+
+      const session = new StreamSession(
+        session_id,
+        request_id,
+        config,
+        (reqId, msg) => {
+          writeLine(wrapWithRequestId(reqId, msg));
+        },
+      );
+      activeSessions.set(session_id, session);
+      continue;
+    }
+
+    if (message.type === "stream_message") {
+      const { request_id, session_id, user_message } = message;
+      process.stderr.write(
+        `[sidecar] Stream message: session=${session_id} request=${request_id}\n`,
+      );
+
+      const session = activeSessions.get(session_id);
+      if (!session) {
+        writeLine(
+          wrapWithRequestId(request_id, {
+            type: "error",
+            message: `No stream session found for '${session_id}'`,
+          }),
+        );
+        continue;
+      }
+
+      try {
+        session.pushMessage(request_id, user_message);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        writeLine(
+          wrapWithRequestId(request_id, {
+            type: "error",
+            message: errorMessage,
+          }),
+        );
+      }
+      continue;
+    }
+
+    if (message.type === "stream_end") {
+      const { session_id } = message;
+      process.stderr.write(`[sidecar] Stream end: session=${session_id}\n`);
+
+      const session = activeSessions.get(session_id);
+      if (session) {
+        session.close();
+        activeSessions.delete(session_id);
       }
       continue;
     }

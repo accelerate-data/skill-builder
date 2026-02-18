@@ -33,10 +33,11 @@ interface SkillPickerProps {
   skills: SkillSummary[];
   selected: SkillSummary | null;
   isLoading: boolean;
+  disabled?: boolean;
   onSelect: (skill: SkillSummary) => void;
 }
 
-export function SkillPicker({ skills, selected, isLoading, onSelect }: SkillPickerProps) {
+export function SkillPicker({ skills, selected, isLoading, disabled, onSelect }: SkillPickerProps) {
   const [open, setOpen] = useState(false);
 
   if (isLoading) {
@@ -46,7 +47,7 @@ export function SkillPicker({ skills, selected, isLoading, onSelect }: SkillPick
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" className="w-64 justify-between">
+        <Button variant="outline" className="w-64 justify-between" disabled={disabled}>
           {selected ? (
             <span className="flex items-center gap-2 truncate">
               <span className="truncate">{selected.name}</span>

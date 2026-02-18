@@ -14,6 +14,30 @@ export function createAbortState(): AbortState {
 }
 
 /**
+ * Link an external AbortSignal to an internal AbortState.
+ * If the external signal is already aborted, aborts immediately.
+ * Otherwise, listens for the abort event and forwards it.
+ */
+export function linkExternalSignal(
+  state: AbortState,
+  signal: AbortSignal,
+): void {
+  if (signal.aborted) {
+    state.aborted = true;
+    state.abortController.abort();
+  } else {
+    signal.addEventListener(
+      "abort",
+      () => {
+        state.aborted = true;
+        state.abortController.abort();
+      },
+      { once: true },
+    );
+  }
+}
+
+/**
  * Handle a shutdown signal (SIGTERM / SIGINT).
  * Sets the aborted flag, calls abort(), and schedules a force exit.
  *

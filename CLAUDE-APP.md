@@ -18,9 +18,17 @@ React 19 (WebView) → Tauri IPC → Rust backend → spawns Node.js sidecar (`@
 
 ## Agent Orchestration
 
-Agents run via the **Claude Agent SDK** in a Node.js sidecar. Key files:
+Agents run via the **Claude Agent SDK** in a Node.js sidecar. Two modes:
+
+**One-shot mode** (workflow steps): `agent_request` → SDK `query()` → `result`/`error`
+**Streaming mode** (refine chat): `stream_start` → SDK `query({ prompt: AsyncGenerator })` → `stream_message` (repeating) → `stream_end`. SDK maintains full conversation state across turns. `turn_complete` signals each turn boundary; `session_exhausted` fires when maxTurns (400) is reached.
+
+Key files:
 - **Sidecar entry:** `app/sidecar/agent-runner.ts` — receives config JSON, calls SDK `query()`, streams JSON lines to stdout
+- **Streaming sessions:** `app/sidecar/stream-session.ts` — async generator push pattern for multi-turn conversations
+- **Persistent mode:** `app/sidecar/persistent-mode.ts` — message demultiplexer routing one-shot vs streaming
 - **Rust spawner:** `app/src-tauri/src/commands/agent.rs` — spawns sidecar, reads stdout, emits Tauri events
+- **Rust pool:** `app/src-tauri/src/agents/sidecar_pool.rs` — persistent sidecar lifecycle + stream methods
 - **Mock mode:** `app/sidecar/mock-agent.ts` + `mock-templates/` — set `MOCK_AGENTS=true` to replay without API calls
 - **Agent logs:** `{workspace}/{skill-name}/logs/{step_label}-{timestamp}.jsonl` — debug with `tail -f`
 

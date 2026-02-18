@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearch } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useSearch, useBlocker } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -12,14 +12,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
-import type { RefineCommand, RefineMessage, SkillFile } from "@/stores/refine-store";
-import { useAgentStore } from "@/stores/agent-store";
+import type { RefineCommand, SkillFile } from "@/stores/refine-store";
+import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
 import {
   listRefinableSkills,
   getSkillContentForRefine,
   startRefineSession,
   sendRefineMessage,
   closeRefineSession,
+  cleanupSkillSidecar,
 } from "@/lib/tauri";
 import type { SkillSummary } from "@/lib/types";
 import { ResizableSplitPane } from "@/components/refine/resizable-split-pane";
@@ -29,34 +30,6 @@ import { PreviewPanel } from "@/components/refine/preview-panel";
 
 // Ensure agent-stream listeners are registered
 import "@/hooks/use-agent-stream";
-
-/**
- * Build structured conversation history for the sidecar's conversationHistory parameter.
- * Includes all previous messages (user + agent) so the sidecar has full context.
- */
-function buildConversationHistory(
-  messages: RefineMessage[],
-  runs: Record<string, { messages: { type: string; content?: string }[] }>,
-): Array<{ role: "user" | "assistant"; content: string }> {
-  const history: Array<{ role: "user" | "assistant"; content: string }> = [];
-  for (const msg of messages) {
-    if (msg.role === "user" && msg.userText) {
-      history.push({ role: "user", content: msg.userText });
-    } else if (msg.role === "agent" && msg.agentId) {
-      const agentRun = runs[msg.agentId];
-      if (agentRun) {
-        const lastText = agentRun.messages
-          .filter((m) => m.type === "assistant" && m.content)
-          .map((m) => m.content)
-          .pop();
-        if (lastText) {
-          history.push({ role: "assistant", content: lastText });
-        }
-      }
-    }
-  }
-  return history;
-}
 
 /** Load skill files from disk, returning null on failure. */
 async function loadSkillFiles(basePath: string, skillName: string): Promise<SkillFile[] | null> {
@@ -94,8 +67,39 @@ export default function RefinePage() {
     activeAgentId ? s.runs[activeAgentId]?.status : undefined,
   );
 
-  const [pendingSwitchSkill, setPendingSwitchSkill] = useState<SkillSummary | null>(null);
   const autoSelectedRef = useRef(false);
+
+  // --- Navigation guard ---
+  // Block navigation while an agent is running and show a confirmation dialog.
+  const { proceed, reset: resetBlocker, status: blockerStatus } = useBlocker({
+    shouldBlockFn: () => useRefineStore.getState().isRunning,
+    enableBeforeUnload: false,
+    withResolver: true,
+  });
+
+  const handleNavStay = useCallback(() => {
+    resetBlocker?.();
+  }, [resetBlocker]);
+
+  const handleNavLeave = useCallback(() => {
+    const store = useRefineStore.getState();
+
+    store.setRunning(false);
+    store.setActiveAgentId(null);
+    useAgentStore.getState().clearRuns();
+
+    // Fire-and-forget: close refine session
+    if (store.sessionId) {
+      closeRefineSession(store.sessionId).catch(() => {});
+    }
+
+    // Fire-and-forget: shut down persistent sidecar for this skill
+    if (store.selectedSkill) {
+      cleanupSkillSidecar(store.selectedSkill.name).catch(() => {});
+    }
+
+    proceed?.();
+  }, [proceed]);
 
   // Available filenames for @file autocomplete
   const availableFiles = useMemo(
@@ -125,11 +129,6 @@ export default function RefinePage() {
   // --- Select a skill ---
   const handleSelectSkill = useCallback(
     async (skill: SkillSummary) => {
-      if (isRunning) {
-        setPendingSwitchSkill(skill);
-        return;
-      }
-
       console.log("[refine] selectSkill: %s", skill.name);
       const store = useRefineStore.getState();
 
@@ -170,7 +169,7 @@ export default function RefinePage() {
         store.setLoadingFiles(false);
       }
     },
-    [isRunning, workspacePath],
+    [workspacePath],
   );
 
   // --- Auto-select skill from search param ---
@@ -197,6 +196,19 @@ export default function RefinePage() {
       toast.error("Agent failed — check the chat for details", { duration: Infinity });
     }
 
+    // Check for session exhaustion — the SDK ran out of turns
+    const agentRun = useAgentStore.getState().runs[activeAgentId];
+    if (agentRun) {
+      const hasExhausted = agentRun.messages.some(
+        (m) => (m.raw as Record<string, unknown>)?.type === "session_exhausted",
+      );
+      if (hasExhausted) {
+        console.warn("[refine] session exhausted for agent %s", activeAgentId);
+        useRefineStore.getState().setSessionExhausted(true);
+        toast.info("This refine session has reached its limit. Please start a new session to continue.");
+      }
+    }
+
     // Re-read skill files to capture any changes the agent made
     const store = useRefineStore.getState();
     if (workspacePath && selectedSkill) {
@@ -209,32 +221,30 @@ export default function RefinePage() {
     store.setActiveAgentId(null);
   }, [activeAgentId, activeRunStatus, workspacePath, selectedSkill]);
 
-  // --- Cleanup on unmount ---
+  // --- Safety-net cleanup on unmount ---
+  // Catches cases where the component unmounts without going through the blocker dialog.
   useEffect(() => {
     return () => {
+      flushMessageBuffer();
+
       const store = useRefineStore.getState();
+      if (store.isRunning) {
+        store.setRunning(false);
+        store.setActiveAgentId(null);
+        useAgentStore.getState().clearRuns();
+      }
+
+      // Fire-and-forget: close refine session
       if (store.sessionId) {
         closeRefineSession(store.sessionId).catch(() => {});
       }
-      if (store.isRunning && store.activeAgentId) {
-        store.setRunning(false);
-        store.setActiveAgentId(null);
+
+      // Fire-and-forget: shut down persistent sidecar
+      if (store.selectedSkill) {
+        cleanupSkillSidecar(store.selectedSkill.name).catch(() => {});
       }
     };
   }, []);
-
-  // --- Confirm switch skill while running ---
-  const handleConfirmSwitch = useCallback(() => {
-    if (!pendingSwitchSkill) return;
-    const store = useRefineStore.getState();
-    if (store.sessionId) {
-      closeRefineSession(store.sessionId).catch(() => {});
-    }
-    store.setRunning(false);
-    store.setActiveAgentId(null);
-    setPendingSwitchSkill(null);
-    handleSelectSkill(pendingSwitchSkill);
-  }, [pendingSwitchSkill, handleSelectSkill]);
 
   // --- Send a message ---
   const handleSend = useCallback(
@@ -248,12 +258,6 @@ export default function RefinePage() {
 
       const model = preferredModel ?? "sonnet";
 
-      // Build structured conversation history BEFORE adding the new message
-      const conversationHistory = buildConversationHistory(
-        store.messages,
-        useAgentStore.getState().runs,
-      );
-
       // Snapshot baseline for diff
       store.snapshotBaseline();
 
@@ -265,11 +269,11 @@ export default function RefinePage() {
 
       try {
         // sendRefineMessage builds the full prompt server-side with all 3 paths,
-        // skill type, command, and user context. We pass raw user input.
+        // skill type, command, and user context. SDK maintains conversation state
+        // across turns via streaming input mode.
         const agentId = await sendRefineMessage(
           sessionId,
           text,
-          conversationHistory,
           workspacePath,
           targetFiles,
           command,
@@ -300,6 +304,7 @@ export default function RefinePage() {
           skills={refinableSkills}
           selected={selectedSkill}
           isLoading={isLoadingSkills}
+          disabled={isRunning}
           onSelect={handleSelectSkill}
         />
       </div>
@@ -319,27 +324,28 @@ export default function RefinePage() {
         />
       </div>
 
-      {/* Confirm switch skill dialog */}
-      <Dialog
-        open={!!pendingSwitchSkill}
-        onOpenChange={(open) => !open && setPendingSwitchSkill(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Switch skill?</DialogTitle>
-            <DialogDescription>
-              An agent is currently running. Switching skills will stop it and
-              clear the chat history.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPendingSwitchSkill(null)}>
-              Cancel
-            </Button>
-            <Button onClick={handleConfirmSwitch}>Switch</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Navigation guard dialog */}
+      {blockerStatus === "blocked" && (
+        <Dialog open onOpenChange={(open) => { if (!open) handleNavStay(); }}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Agent Running</DialogTitle>
+              <DialogDescription>
+                An agent is still running. Leaving will abandon it and end the session.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={handleNavStay}>
+                Stay
+              </Button>
+              <Button variant="destructive" onClick={handleNavLeave}>
+                Leave
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
     </div>
   );
 }

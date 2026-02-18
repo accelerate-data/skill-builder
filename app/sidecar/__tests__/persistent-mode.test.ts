@@ -133,6 +133,88 @@ describe("parseIncomingMessage", () => {
     const result = parseIncomingMessage(line);
     expect(result).toEqual({ type: "shutdown" });
   });
+
+  // --- stream_start ---
+
+  it("parses a valid stream_start", () => {
+    const line = JSON.stringify({
+      type: "stream_start",
+      request_id: "req_1",
+      session_id: "sess_1",
+      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+    });
+    const result = parseIncomingMessage(line);
+    expect(result).toEqual({
+      type: "stream_start",
+      request_id: "req_1",
+      session_id: "sess_1",
+      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+    });
+  });
+
+  it("returns null for stream_start missing session_id", () => {
+    const line = JSON.stringify({
+      type: "stream_start",
+      request_id: "req_1",
+      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+    });
+    expect(parseIncomingMessage(line)).toBeNull();
+  });
+
+  it("returns null for stream_start missing config", () => {
+    const line = JSON.stringify({
+      type: "stream_start",
+      request_id: "req_1",
+      session_id: "sess_1",
+    });
+    expect(parseIncomingMessage(line)).toBeNull();
+  });
+
+  // --- stream_message ---
+
+  it("parses a valid stream_message", () => {
+    const line = JSON.stringify({
+      type: "stream_message",
+      request_id: "req_2",
+      session_id: "sess_1",
+      user_message: "follow up",
+    });
+    const result = parseIncomingMessage(line);
+    expect(result).toEqual({
+      type: "stream_message",
+      request_id: "req_2",
+      session_id: "sess_1",
+      user_message: "follow up",
+    });
+  });
+
+  it("returns null for stream_message missing user_message", () => {
+    const line = JSON.stringify({
+      type: "stream_message",
+      request_id: "req_2",
+      session_id: "sess_1",
+    });
+    expect(parseIncomingMessage(line)).toBeNull();
+  });
+
+  // --- stream_end ---
+
+  it("parses a valid stream_end", () => {
+    const line = JSON.stringify({
+      type: "stream_end",
+      session_id: "sess_1",
+    });
+    const result = parseIncomingMessage(line);
+    expect(result).toEqual({
+      type: "stream_end",
+      session_id: "sess_1",
+    });
+  });
+
+  it("returns null for stream_end missing session_id", () => {
+    const line = JSON.stringify({ type: "stream_end" });
+    expect(parseIncomingMessage(line)).toBeNull();
+  });
 });
 
 // =====================================================================
@@ -322,48 +404,6 @@ describe("runPersistent", () => {
     expect(msg1.request_id).toBe("req_1");
     expect(msg1.type).toBe("result");
     expect(msg1.content).toBe("done");
-  });
-
-  it("passes conversationHistory through to SDK as formatted prompt", async () => {
-    async function* fakeConversation() {
-      yield { type: "result", content: "done" };
-    }
-    mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
-
-    const config = {
-      prompt: "Update the overview",
-      apiKey: "sk-test",
-      cwd: "/tmp/test",
-      conversationHistory: [
-        { role: "user", content: "Make metrics more specific" },
-        { role: "assistant", content: "Updated metrics section." },
-      ],
-    };
-
-    const input = createInputStream([
-      JSON.stringify({
-        type: "agent_request",
-        request_id: "req_refine",
-        config,
-      }),
-      JSON.stringify({ type: "shutdown" }),
-    ]);
-
-    const exitFn = vi.fn();
-    const capture = captureStdout();
-
-    try {
-      await runPersistent(input, exitFn);
-    } finally {
-      capture.restore();
-    }
-
-    // SDK should receive the formatted prompt with conversation history
-    const callArgs = mockQuery.mock.calls[0][0];
-    expect(callArgs.prompt).toContain("## Conversation History");
-    expect(callArgs.prompt).toContain("Make metrics more specific");
-    expect(callArgs.prompt).toContain("## Current Request");
-    expect(callArgs.prompt).toContain("Update the overview");
   });
 
   it("handles SDK errors per-request without crashing", async () => {

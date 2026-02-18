@@ -851,9 +851,58 @@ impl SidecarPool {
                                     }
                                 }
 
-                                // Check if this is a result or error — if so, emit exit event
-                                // and remove from pending_requests.
+                                // Check if this is a terminal or turn-boundary message.
                                 if let Some(msg_type) = msg.get("type").and_then(|t| t.as_str()) {
+                                    // turn_complete: streaming session finished one turn.
+                                    // Remove from pending and emit agent-exit so the frontend
+                                    // knows this turn is done. The session stays alive.
+                                    if msg_type == "turn_complete" {
+                                        log::info!(
+                                            "[persistent-sidecar:{}] Agent '{}' turn complete",
+                                            skill_name_stdout,
+                                            request_id,
+                                        );
+                                        {
+                                            let mut pending = stdout_pending.lock().await;
+                                            pending.remove(request_id);
+                                        }
+                                        events::handle_sidecar_exit(
+                                            &app_handle_stdout,
+                                            request_id,
+                                            true,
+                                        );
+                                        // Close JSONL log for this turn
+                                        let mut logs = stdout_request_logs.lock().await;
+                                        logs.remove(request_id);
+                                        return;
+                                    }
+
+                                    // session_exhausted: streaming session ran out of turns.
+                                    // Emit agent-exit with the exhausted flag so the frontend
+                                    // can show "session limit reached" notice.
+                                    if msg_type == "session_exhausted" {
+                                        log::info!(
+                                            "[persistent-sidecar:{}] Agent '{}' session exhausted",
+                                            skill_name_stdout,
+                                            request_id,
+                                        );
+                                        // The raw line was already forwarded at line 808,
+                                        // so the frontend already has the session_exhausted message.
+                                        // Just remove from pending and emit exit.
+                                        {
+                                            let mut pending = stdout_pending.lock().await;
+                                            pending.remove(request_id);
+                                        }
+                                        events::handle_sidecar_exit(
+                                            &app_handle_stdout,
+                                            request_id,
+                                            true,
+                                        );
+                                        let mut logs = stdout_request_logs.lock().await;
+                                        logs.remove(request_id);
+                                        return;
+                                    }
+
                                     let is_terminal = msg_type == "result" || msg_type == "error";
 
                                     if msg_type == "result" {
@@ -1197,6 +1246,199 @@ impl SidecarPool {
         // working; complex agents (reasoning, merging) can take 10+ minutes.
 
         Ok(())
+    }
+
+    // ─── Streaming session methods (refine chat) ─────────────────────────────
+
+    /// Write a JSON line to the sidecar's stdin with timeout and flush.
+    /// Shared helper used by stream_start, stream_message, and stream_end.
+    async fn write_to_sidecar_stdin(
+        &self,
+        skill_name: &str,
+        message: &serde_json::Value,
+    ) -> Result<(), String> {
+        let mut line = serde_json::to_string(message)
+            .map_err(|e| format!("Failed to serialize message: {}", e))?;
+        line.push('\n');
+
+        let stdin_handle = {
+            let pool = self.sidecars.lock().await;
+            let sidecar = pool.get(skill_name).ok_or_else(|| {
+                format!("Sidecar for '{}' not found in pool", skill_name)
+            })?;
+            sidecar.stdin.clone()
+        };
+
+        {
+            let mut stdin_guard = stdin_handle.lock().await;
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                stdin_guard.write_all(line.as_bytes()),
+            )
+            .await
+            {
+                Err(_) => {
+                    drop(stdin_guard);
+                    self.remove_and_kill_sidecar(skill_name).await;
+                    return Err(format!("Stdin write timed out for skill '{}'", skill_name));
+                }
+                Ok(Err(e)) => return Err(format!("Failed to write to sidecar stdin: {}", e)),
+                Ok(Ok(())) => {}
+            }
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                stdin_guard.flush(),
+            )
+            .await
+            {
+                Err(_) => {
+                    drop(stdin_guard);
+                    self.remove_and_kill_sidecar(skill_name).await;
+                    return Err(format!("Stdin flush timed out for skill '{}'", skill_name));
+                }
+                Ok(Err(e)) => return Err(format!("Failed to flush sidecar stdin: {}", e)),
+                Ok(Ok(())) => {}
+            }
+        }
+
+        // Update last_activity timestamp
+        let last_activity_handle = {
+            let pool = self.sidecars.lock().await;
+            pool.get(skill_name).map(|s| s.last_activity.clone())
+        };
+        if let Some(last_activity) = last_activity_handle {
+            let mut guard = last_activity.lock().await;
+            *guard = tokio::time::Instant::now();
+        }
+
+        Ok(())
+    }
+
+    /// Start a streaming session on the sidecar.
+    /// The first user message is embedded in the config.prompt field.
+    pub async fn send_stream_start(
+        &self,
+        skill_name: &str,
+        session_id: &str,
+        agent_id: &str,
+        config: SidecarConfig,
+        app_handle: &tauri::AppHandle,
+    ) -> Result<(), String> {
+        self.get_or_spawn(skill_name, app_handle).await?;
+
+        // Emit redacted config to frontend
+        {
+            let mut config_val = serde_json::to_value(&config).unwrap_or_default();
+            if let Some(obj) = config_val.as_object_mut() {
+                obj.insert("apiKey".to_string(), serde_json::json!("[REDACTED]"));
+                obj.remove("prompt");
+            }
+            let event = serde_json::json!({ "type": "config", "config": config_val });
+            events::handle_sidecar_message(app_handle, agent_id, &event.to_string());
+        }
+
+        // Create JSONL transcript
+        {
+            let step_label = extract_step_label(agent_id, skill_name);
+            let now = chrono::Local::now();
+            let ts = now.format("%Y-%m-%dT%H-%M-%S").to_string();
+            let log_dir = Path::new(&config.cwd).join(skill_name).join("logs");
+            let log_path = log_dir.join(format!("{}-{}.jsonl", step_label, ts));
+
+            if let Ok(f) = std::fs::create_dir_all(&log_dir).and_then(|_| std::fs::File::create(&log_path)) {
+                let log_handle: RequestLogFile = Arc::new(Mutex::new(Some(f)));
+                let mut logs = self.request_logs.lock().await;
+                logs.insert(agent_id.to_string(), log_handle);
+            }
+        }
+
+        // Register as pending
+        {
+            let mut pending = self.pending_requests.lock().await;
+            pending.insert(agent_id.to_string());
+        }
+
+        let message = serde_json::json!({
+            "type": "stream_start",
+            "request_id": agent_id,
+            "session_id": session_id,
+            "config": config,
+        });
+
+        let result = self.write_to_sidecar_stdin(skill_name, &message).await;
+        if let Err(ref e) = result {
+            log::error!("[send_stream_start] Failed for session '{}': {}", session_id, e);
+            events::handle_sidecar_exit(app_handle, agent_id, false);
+        } else {
+            log::info!(
+                "[send_stream_start] session={} agent={} on skill '{}'",
+                session_id, agent_id, skill_name,
+            );
+        }
+        result
+    }
+
+    /// Push a follow-up message into an active streaming session.
+    pub async fn send_stream_message(
+        &self,
+        skill_name: &str,
+        session_id: &str,
+        agent_id: &str,
+        user_message: &str,
+        app_handle: &tauri::AppHandle,
+    ) -> Result<(), String> {
+        // Verify sidecar exists before sending
+        {
+            let pool = self.sidecars.lock().await;
+            if !pool.contains_key(skill_name) {
+                return Err(format!("Sidecar for '{}' not found", skill_name));
+            }
+        }
+
+        // Register as pending
+        {
+            let mut pending = self.pending_requests.lock().await;
+            pending.insert(agent_id.to_string());
+        }
+
+        let message = serde_json::json!({
+            "type": "stream_message",
+            "request_id": agent_id,
+            "session_id": session_id,
+            "user_message": user_message,
+        });
+
+        let result = self.write_to_sidecar_stdin(skill_name, &message).await;
+        if let Err(ref e) = result {
+            log::error!("[send_stream_message] Failed for session '{}': {}", session_id, e);
+            events::handle_sidecar_exit(app_handle, agent_id, false);
+        } else {
+            log::info!(
+                "[send_stream_message] session={} agent={} on skill '{}'",
+                session_id, agent_id, skill_name,
+            );
+        }
+        result
+    }
+
+    /// Close a streaming session.
+    pub async fn send_stream_end(
+        &self,
+        skill_name: &str,
+        session_id: &str,
+    ) -> Result<(), String> {
+        let message = serde_json::json!({
+            "type": "stream_end",
+            "session_id": session_id,
+        });
+
+        let result = self.write_to_sidecar_stdin(skill_name, &message).await;
+        if let Err(ref e) = result {
+            log::warn!("[send_stream_end] Failed for session '{}': {}", session_id, e);
+        } else {
+            log::info!("[send_stream_end] session={} on skill '{}'", session_id, skill_name);
+        }
+        result
     }
 
     /// Shutdown a single skill's sidecar. Sends a shutdown message, waits up to 3 seconds,
