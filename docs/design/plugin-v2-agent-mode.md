@@ -140,56 +140,133 @@ tracking, which is simpler and sufficient for the plugin's needs:
 
 ---
 
-## 3. State Management
+## 3. Directory Structure
 
-### Filesystem as state store
+### Two directories, clearly separated
 
-The filesystem is the canonical state store. This already works for resume
-detection (Mode A/B/C in the current SKILL.md). Enhance it with a session
-manifest for richer resume.
+The current design mixes internal state (`context/`) with deployable output
+(`SKILL.md` + `references/`) inside a single `<skillname>/` directory. This
+makes it hard to move the skill output, pollutes the deliverable with working
+files, and gives agents no consistent place to look for things.
 
-#### Session manifest (`.session.json`)
+Formalize two concepts:
+
+| Concept | Purpose | Contents |
+|---------|---------|----------|
+| **Workspace dir** (`.vibedata/`) | Plugin internals — state, logs, config | Session manifests, clarifications, decisions, validation logs, plugin config |
+| **Skill dir** | Deployable skill output | `SKILL.md` + `references/` — nothing else |
+
+### Layout
+
+```
+.vibedata/                                  # Workspace (gitignored)
+├── plugin/                                 # Cross-skill plugin data
+│   ├── config.json                         # Plugin settings, preferences
+│   └── dimension-cache.json                # Cached planner selections (optional)
+│
+├── sales-pipeline/                         # Per-skill workspace
+│   ├── session.json                        # Session state (phase, progress, skill-dir path)
+│   ├── clarifications.md                   # Research output, user answers
+│   ├── decisions.md                        # Synthesized decisions
+│   ├── agent-validation-log.md             # Validation results
+│   ├── test-skill.md                       # Test prompt results
+│   └── logs/                               # Agent execution logs (optional)
+│
+└── revenue-recognition/                    # Another skill's workspace
+    ├── session.json
+    └── ...
+
+./sales-pipeline/                           # Skill output (deployable, location configurable)
+├── SKILL.md
+└── references/
+    ├── entity-model.md
+    └── metrics.md
+```
+
+### Key principles
+
+1. **Workspace is internal** -- `.vibedata/` is gitignored. Users never need to
+   look inside it. Agents read/write state here.
+
+2. **Skill dir is the deliverable** -- contains only `SKILL.md` + `references/`.
+   Clean enough to copy, zip, or `git add` directly.
+
+3. **Skill dir location is configurable** -- `session.json` tracks where the
+   skill dir lives via a `skill_dir` field. Default is `./<skill-name>/` in the
+   user's CWD, but the user can move it anywhere.
+
+4. **Moving the skill dir is first-class** -- the router supports:
+   - "Move my skill to `./skills/sales-pipeline/`"
+   - Updates `session.json.skill_dir`, done. All agents resolve paths from
+     the session manifest, so nothing else breaks.
+
+5. **Cross-skill data persists** -- `.vibedata/plugin/` survives across skills.
+   Dimension caching, user preferences, and plugin config live here.
+
+### Path resolution for agents
+
+The coordinator passes two paths to every agent:
+
+| Parameter | Source | Example |
+|-----------|--------|---------|
+| `workspace_dir` | `.vibedata/<skill-name>/` | `.vibedata/sales-pipeline/` |
+| `skill_dir` | from `session.json.skill_dir` | `./sales-pipeline/` |
+
+Agents read working files (clarifications, decisions) from `workspace_dir`.
+Agents write output files (SKILL.md, references) to `skill_dir`.
+No agent constructs paths on its own — the coordinator provides them.
+
+### Session manifest (`session.json`)
+
+Lives at `.vibedata/<skill-name>/session.json`:
 
 ```json
 {
   "skill_name": "sales-pipeline",
   "skill_type": "domain",
   "domain": "sales pipeline analytics",
+  "skill_dir": "./sales-pipeline/",
   "created_at": "2026-02-15T10:30:00Z",
   "last_activity": "2026-02-18T14:20:00Z",
   "current_phase": "clarification",
   "phases_completed": ["scoping", "research"],
+  "mode": "guided",
   "research_dimensions_used": ["entities", "metrics", "business-rules"],
   "clarification_status": {
     "total_questions": 15,
     "answered": 8
-  }
+  },
+  "auto_filled": false
 }
 ```
 
-Location: `./<skillname>/context/.session.json`
+### Artifact-to-phase mapping
 
-#### Artifact-to-phase mapping
+All artifacts live in the workspace dir (`.vibedata/<skill-name>/`):
 
 | Artifact | Phase Completed |
 |----------|-----------------|
-| `.session.json` with `phases_completed: ["scoping"]` | Scoping |
+| `session.json` with `phases_completed: ["scoping"]` | Scoping |
 | `clarifications.md` (no Refinements) | Research |
 | `clarifications.md` (answered, no Refinements) | Clarification |
 | `clarifications.md` (with `#### Refinements`) | Refinement |
 | `clarifications.md` (refinements answered) | Refinement review |
 | `decisions.md` | Decisions |
-| `SKILL.md` | Generation |
+| `SKILL.md` in skill dir | Generation |
 | `agent-validation-log.md` + `test-skill.md` | Validation |
+
+---
+
+## 4. State Management
 
 ### Offline clarification flow
 
-1. Research completes → coordinator writes `clarifications.md` + updates `.session.json`
-2. User told: "Questions are in `clarifications.md`. Answer them whenever you're ready."
+1. Research completes → coordinator writes `clarifications.md` to workspace dir + updates `session.json`
+2. User told: "Questions are in `.vibedata/sales-pipeline/clarifications.md`. Answer them whenever you're ready."
 3. User closes terminal, answers over days
 4. User returns, says "continue my skill" or triggers `/skill-builder:building-skills`
-5. Router reads `.session.json` → sees phase is "clarification", reads `clarifications.md`
-6. Counts answered vs unanswered questions
+5. Router scans `.vibedata/` for skill workspaces, reads `session.json`
+6. Counts answered vs unanswered questions in `clarifications.md`
 7. Presents status: "Welcome back. 8 of 15 questions answered. 7 remaining."
 8. User can: answer more, proceed with defaults for unanswered, or ask for help
 
@@ -203,7 +280,7 @@ this as "express mode":
 
 ---
 
-## 4. Naming
+## 5. Naming
 
 ### Skill rename
 
@@ -233,7 +310,7 @@ need gerund naming. The coordinator references them as
 
 ---
 
-## 5. Workflow Modes
+## 6. Workflow Modes
 
 ### Guided mode (default)
 
@@ -276,7 +353,7 @@ No explicit mode selection prompt needed -- it should feel natural.
 
 ---
 
-## 6. Speed Optimizations
+## 7. Speed Optimizations
 
 ### Adaptive research depth
 
@@ -326,7 +403,7 @@ Better planner input → fewer dimensions selected → fewer agents spawned → 
 
 ---
 
-## 7. dbt Silver/Gold Specialization
+## 8. dbt Silver/Gold Specialization
 
 ### Current state
 
@@ -370,7 +447,7 @@ Also use when the user mentions "[domain] models", "silver layer",
 
 ---
 
-## 8. Additional Improvements
+## 9. Additional Improvements
 
 ### Skill templates
 
@@ -450,14 +527,14 @@ dimension selections:
 
 ---
 
-## 9. Reference File Changes
+## 10. Reference File Changes
 
 ### Current reference files (keep structure, update content)
 
 | File | Changes |
 |------|---------|
-| `protocols.md` | Update dispatch examples to use direct `Task` calls. |
-| `file-formats.md` | Add `.session.json` spec. Keep clarifications/decisions format unchanged. |
+| `protocols.md` | Update dispatch examples to use direct `Task` calls. Document `workspace_dir` and `skill_dir` parameters that agents receive. |
+| `file-formats.md` | Add `session.json` spec. Add workspace/skill dir layout. Keep clarifications/decisions format unchanged. |
 | `content-guidelines.md` | Add silver/gold boundary guidance. Add dbt activation trigger template. |
 | `best-practices.md` | Add gerund naming as default. Add skill composition guidance. |
 
@@ -469,7 +546,7 @@ format to the file-formats section.
 
 ---
 
-## 10. Testing Impact
+## 11. Testing Impact
 
 ### Validation script (`scripts/validate.sh`)
 
@@ -477,7 +554,7 @@ format to the file-formats section.
 |-------|--------|
 | Skill directory name | Update from `generate-skill` to `building-skills` |
 | Coordinator keywords | Replace team lifecycle checks with router pattern checks (filesystem state detection, intent classification). |
-| Reference file content | Add `.session.json` format check |
+| Reference file content | Add `session.json` format check, workspace/skill dir layout check |
 
 ### Test tiers
 
@@ -499,7 +576,7 @@ format to the file-formats section.
 
 ---
 
-## 11. Implementation Plan
+## 12. Implementation Plan
 
 18 Linear issues across 4 phases, tracked in the **Skill Builder** project.
 
@@ -525,7 +602,7 @@ The critical path runs VD-676 → VD-677 → VD-678/VD-679 → VD-680. VD-677
 
 | Issue | Title | Size | Blocked By | Branch |
 |-------|-------|------|------------|--------|
-| [VD-676](https://linear.app/acceleratedata/issue/VD-676) | Implement `.session.json` state tracking | M | VD-672, VD-673 | `feature/vd-676-implement-sessionjson-state-tracking` |
+| [VD-676](https://linear.app/acceleratedata/issue/VD-676) | Formalize workspace/skill dir structure and session tracking | M | VD-672, VD-673 | `feature/vd-676-implement-sessionjson-state-tracking` |
 | [VD-677](https://linear.app/acceleratedata/issue/VD-677) | Replace step counter with state x intent router | **L** | VD-676 | `feature/vd-677-replace-step-counter-with-state-x-intent-router` |
 | [VD-678](https://linear.app/acceleratedata/issue/VD-678) | Add workflow modes: guided, express, iterative | M | VD-677 | `feature/vd-678-add-workflow-modes-guided-express-iterative` |
 | [VD-679](https://linear.app/acceleratedata/issue/VD-679) | Add auto-fill express flow for clarifications | S | VD-677 | `feature/vd-679-add-auto-fill-express-flow-for-clarifications` |
@@ -609,7 +686,7 @@ the plugin gets the new agent-mode router designed in this doc.
 
 ---
 
-## 12. Open Questions
+## 13. Open Questions
 
 1. **Template sourcing**: Where do skill templates live? Bundled in the plugin,
    or fetched from a registry?
