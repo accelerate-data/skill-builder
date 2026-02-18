@@ -29,7 +29,6 @@ import DeleteSkillDialog from "@/components/delete-skill-dialog"
 import EditSkillDialog from "@/components/edit-skill-dialog"
 import TagFilter from "@/components/tag-filter"
 import TeamRepoImportDialog from "@/components/team-repo-import-dialog"
-import { OnboardingDialog } from "@/components/onboarding-dialog"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useSkillStore } from "@/stores/skill-store"
 import { useAuthStore } from "@/stores/auth-store"
@@ -391,7 +390,6 @@ export default function DashboardPage() {
         onDeleted={() => { loadSkills(); loadTags(); }}
       />
 
-      <OnboardingDialog onComplete={() => { loadSettings(); loadSkills(); loadTags(); }} />
     </div>
   )
 }

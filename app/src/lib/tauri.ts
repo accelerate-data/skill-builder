@@ -8,7 +8,15 @@ export type { AppSettings, SkillSummary, NodeStatus, PackageResult, Reconciliati
 
 export const getSettings = () => invoke<AppSettings>("get_settings");
 
+export const saveSettings = (settings: AppSettings) =>
+  invoke<void>("save_settings", { settings });
+
+export const testApiKey = (apiKey: string) =>
+  invoke<boolean>("test_api_key", { apiKey });
+
 export const getDataDir = () => invoke<string>("get_data_dir");
+
+export const getDefaultSkillsPath = () => invoke<string>("get_default_skills_path");
 
 // --- Skills ---
 

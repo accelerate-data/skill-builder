@@ -65,6 +65,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `e2e/dashboard/dashboard-states.spec.ts` | `@dashboard` |
 | `e2e/dashboard/skill-crud.spec.ts` | `@dashboard` |
 | `e2e/dashboard/usage-multi-model.spec.ts` | `@dashboard` |
+| `e2e/setup/setup-screen.spec.ts` | `@workflow` |
 | `e2e/settings/settings.spec.ts` | `@settings` |
 | `e2e/workflow/workflow-agent.spec.ts` | `@workflow-agent` |
 | `e2e/navigation/navigation.spec.ts` | `@navigation` |

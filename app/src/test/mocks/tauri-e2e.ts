@@ -9,7 +9,7 @@
 const defaultSettings = {
   anthropic_api_key: "sk-ant-test-e2e",
   workspace_path: null,
-  skills_path: null,
+  skills_path: "/tmp/e2e-skills",
   preferred_model: null,
   log_level: "info",
 };
@@ -18,6 +18,7 @@ const mockResponses: Record<string, unknown> = {
   get_settings: defaultSettings,
   save_settings: undefined,
   test_api_key: true,
+  get_default_skills_path: "/tmp/e2e-skills",
   check_node: {
     available: true,
     version: "v20.11.0",

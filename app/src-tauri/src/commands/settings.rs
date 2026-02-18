@@ -264,6 +264,17 @@ pub fn get_log_file_path(app: tauri::AppHandle) -> Result<String, String> {
     crate::logging::get_log_file_path(&app)
 }
 
+#[tauri::command]
+pub fn get_default_skills_path() -> Result<String, String> {
+    log::info!("[get_default_skills_path]");
+    let home = dirs::home_dir()
+        .ok_or_else(|| "Could not determine home directory".to_string())?;
+    let path = home.join("skill-builder");
+    path.to_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Path contains invalid UTF-8".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -312,6 +323,14 @@ mod tests {
     fn test_normalize_path_root_duplicate() {
         // Edge case: root-level duplicate
         assert_eq!(normalize_path("/Skills/Skills"), "/Skills");
+    }
+
+    #[test]
+    fn test_get_default_skills_path_returns_home_skill_builder() {
+        let result = get_default_skills_path().unwrap();
+        assert!(result.ends_with("/skill-builder") || result.ends_with("\\skill-builder"));
+        // Should be an absolute path
+        assert!(result.starts_with('/') || result.chars().nth(1) == Some(':'));
     }
 
     // ===== handle_skills_path_change tests =====

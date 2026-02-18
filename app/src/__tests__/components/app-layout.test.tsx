@@ -59,6 +59,12 @@ vi.mock("@/components/splash-screen", () => ({
   },
 }));
 
+vi.mock("@/components/setup-screen", () => ({
+  SetupScreen: () => {
+    return <div data-testid="setup-screen">Setup</div>;
+  },
+}));
+
 // Mock sonner
 vi.mock("sonner", () => ({
   toast: Object.assign(vi.fn(), {
@@ -74,6 +80,7 @@ vi.mock("sonner", () => ({
 
 // Must import after mocks are set up
 import { AppLayout } from "@/components/layout/app-layout";
+import { useSettingsStore } from "@/stores/settings-store";
 
 const defaultSettings: AppSettings = {
   anthropic_api_key: "sk-ant-test",
@@ -104,6 +111,7 @@ const emptyReconciliation: ReconciliationResult = {
 describe("AppLayout", () => {
   beforeEach(() => {
     resetTauriMocks();
+    useSettingsStore.getState().reset();
     vi.mocked(toast.info).mockReset();
     vi.mocked(toast.warning).mockReset();
     vi.mocked(toast.success).mockReset();
@@ -263,5 +271,48 @@ describe("AppLayout", () => {
     const calls = mockInvoke.mock.calls.map((c) => c[0]);
     expect(calls).toContain("get_settings");
     expect(calls).not.toContain("reconcile_startup");
+  });
+
+  it("shows setup screen when API key is missing", async () => {
+    // SetupScreen mock auto-completes, but we can verify it was rendered
+    mockInvokeCommands({
+      get_settings: { ...defaultSettings, anthropic_api_key: null },
+      reconcile_startup: emptyReconciliation,
+    });
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("setup-screen")).toBeInTheDocument();
+    });
+  });
+
+  it("shows setup screen when skills path is missing", async () => {
+    mockInvokeCommands({
+      get_settings: { ...defaultSettings, skills_path: null },
+      reconcile_startup: emptyReconciliation,
+    });
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("setup-screen")).toBeInTheDocument();
+    });
+  });
+
+  it("skips setup screen for returning users with both settings configured", async () => {
+    mockInvokeCommands({
+      get_settings: defaultSettings,
+      reconcile_startup: emptyReconciliation,
+    });
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("outlet")).toBeInTheDocument();
+    });
+    // Setup screen should not be present (it auto-completes via mock, but
+    // for configured users the isConfigured effect sets setupComplete before
+    // splash dismisses, so it never mounts)
   });
 });

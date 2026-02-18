@@ -151,6 +151,7 @@ pub fn run() {
             commands::settings::test_api_key,
             commands::settings::set_log_level,
             commands::settings::get_log_file_path,
+            commands::settings::get_default_skills_path,
             commands::skill::list_skills,
             commands::skill::create_skill,
             commands::skill::delete_skill,
