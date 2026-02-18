@@ -173,7 +173,7 @@ Formalize three concepts:
     ├── session.json
     └── ...
 
-./sales-pipeline/                           # Skill dir (location configurable)
+~/skill-builder/sales-pipeline/             # Skill dir (default: ~/skill-builder/<skill-name>/)
 ├── SKILL.md                                # Deployable skill
 ├── references/                             # Deployable reference files
 │   ├── entity-model.md
@@ -201,8 +201,8 @@ Formalize three concepts:
    `context/` folder can be excluded from deployment.
 
 4. **Skill dir location is configurable** -- `session.json` tracks where the
-   skill dir lives via a `skill_dir` field. Default is `./<skill-name>/` in the
-   user's CWD, but the user can move it anywhere.
+   skill dir lives via a `skill_dir` field. Default is `~/skill-builder/<skill-name>/`,
+   but the user can move it anywhere.
 
 5. **Moving the skill dir is first-class** -- the router supports:
    - "Move my skill to `./skills/sales-pipeline/`"
@@ -227,13 +227,11 @@ Two layers of path resolution: coordinator-internal and agent-facing.
 
 | Parameter | Example | Purpose |
 |-----------|---------|---------|
-| `context_dir` | `./sales-pipeline/context/` | User-facing working files (clarifications, decisions, validation logs) |
-| `skill_dir` | `./sales-pipeline/` | Deployable output (SKILL.md, references/) |
+| `context_dir` | `~/skill-builder/sales-pipeline/context/` | User-facing working files (clarifications, decisions, validation logs) |
+| `skill_dir` | `~/skill-builder/sales-pipeline/` | Deployable output (SKILL.md, references/) |
 
 These are the same two paths agents receive today (`Context directory` and
 `Skill directory`). No change to agent prompts or the app's coordinator.
-
-No agent constructs paths on its own — the coordinator provides them.
 
 ### Session manifest (`session.json`)
 
@@ -244,7 +242,7 @@ Lives at `.vibedata/<skill-name>/session.json`:
   "skill_name": "sales-pipeline",
   "skill_type": "domain",
   "domain": "sales pipeline analytics",
-  "skill_dir": "./sales-pipeline/",
+  "skill_dir": "~/skill-builder/sales-pipeline/",
   "created_at": "2026-02-15T10:30:00Z",
   "last_activity": "2026-02-18T14:20:00Z",
   "current_phase": "clarification",
@@ -281,7 +279,7 @@ State in `.vibedata/<skill-name>/`, user-facing files in `<skill-dir>/context/`:
 ### Offline clarification flow
 
 1. Research completes → coordinator writes `clarifications.md` to context dir + updates `session.json`
-2. User told: "Questions are in `./sales-pipeline/context/clarifications.md`. Answer them whenever you're ready."
+2. User told: "Questions are in `~/skill-builder/sales-pipeline/context/clarifications.md`. Answer them whenever you're ready."
 3. User closes terminal, answers over days
 4. User returns, says "continue my skill" or triggers `/skill-builder:building-skills`
 5. Router scans `.vibedata/` for skill workspaces, reads `session.json`, locates context dir
@@ -370,9 +368,74 @@ Triggered by:
 The router infers the mode from the user's first message + filesystem state.
 No explicit mode selection prompt needed -- it should feel natural.
 
+### Explicit mode override
+
+Users can force a mode by naming it directly:
+
+- "build a skill in express mode"
+- "guided mode for this one"
+- "iterate on my sales-pipeline skill"
+
+An explicit mode override always wins over inference. The router sets
+`session.json.mode` accordingly and skips mode detection.
+
 ---
 
 ## 7. Speed Optimizations
+
+### Dimension scoring in the research planner
+
+The current planner selects dimensions binary (yes/no). Replace with a scoring
+mechanism: the planner evaluates all 18 dimensions and assigns a **relevance
+score** (1-5) based on delta value for the target data engineer:
+
+| Score | Meaning | Action |
+|-------|---------|--------|
+| 5 | Critical delta — data engineer will produce wrong models without this | Always include |
+| 4 | High value — non-obvious knowledge that saves significant rework | Include if in top 5 |
+| 3 | Moderate — useful but Claude's parametric knowledge covers 70%+ | Skip — note as companion candidate |
+| 2 | Low — mostly standard knowledge, small delta | Skip |
+| 1 | Redundant — Claude already knows this well | Skip |
+
+The planner picks the **top 3-5 dimensions by score** with a hard cap. The
+prompt frames scoring around: "What would a data engineer joining this team
+need to know to build correct dbt silver/gold models on day one that Claude
+can't already tell them?"
+
+**Planner output format** changes from a list of selected dimensions to:
+
+```yaml
+dimensions:
+  - slug: metrics
+    score: 5
+    reason: "Customer-specific KPI formulas — Claude defaults to industry standard"
+  - slug: entities
+    score: 5
+    reason: "Custom object model with managed package overrides"
+  - slug: business-rules
+    score: 4
+    reason: "Segmentation-dependent thresholds not in any docs"
+  - slug: field-semantics
+    score: 3
+    reason: "Some overrides but mostly standard Salesforce fields"
+    companion_note: "Consider a source skill for Salesforce extraction"
+  ...
+selected: [metrics, entities, business-rules]  # top 3-5
+```
+
+**Scope-advisor as exception**: The existing threshold guard still exists but
+should rarely fire. If the planner scores 6+ dimensions as 5s, the scope is
+genuinely too broad — scope-advisor kicks in. Under normal operation, the
+scoring mechanism produces a focused 3-5 dimension selection without hitting
+the threshold.
+
+**Companion gap coverage**: The validate-skill companion recommender reads the
+planner's scoring output. Dimensions scored 2-3 that were skipped become
+companion skill suggestions:
+
+> "This domain skill covers metrics and business rules. Consider building a
+> companion source skill for Salesforce extraction gotchas (field-semantics
+> scored 3, skipped from this skill)."
 
 ### Adaptive research depth
 
@@ -381,7 +444,7 @@ No explicit mode selection prompt needed -- it should feel natural.
 | User provides detailed domain spec | Skip research entirely |
 | First-round answers are specific and complete | Skip refinement (Step 3) |
 | User says "proceed with defaults" | Auto-fill, skip to decisions |
-| Skill type is data-engineering (narrow scope) | Use 3-5 dimensions, not 8+ |
+| Planner scoring selects ≤3 dimensions | Faster research, lower cost |
 
 ### Model tier optimization
 
@@ -410,15 +473,40 @@ Net: ~40% reduction in validation phase agents.
 
 ### Progressive scoping
 
-Before spawning the research planner, ask 2-3 scoping questions to give the
-planner better input:
-
-```
-"What are the 2-3 most important things Claude gets wrong when working in this domain?"
-"What makes your setup unique compared to standard [domain] implementations?"
-```
-
 Better planner input → fewer dimensions selected → fewer agents spawned → faster.
+
+**Plugin**: The router asks 2-3 scoping questions conversationally before
+spawning the planner.
+
+**App**: The init step becomes a **two-level wizard** with progressive
+disclosure. Level 1 is required, Level 2 is optional but improves results.
+
+#### Init wizard (app)
+
+**Level 1 — General Details** (required):
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| Skill name | text | Kebab-case identifier |
+| Skill type | select | domain / platform / source / data-engineering |
+| Domain description | textarea | What the skill covers |
+
+**Level 2 — Power User Details** (optional, expandable):
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| What does Claude get wrong? | textarea | Top 2-3 things Claude produces incorrectly for this domain |
+| What makes your setup unique? | textarea | How this differs from standard implementations |
+| Tool ecosystem | checkboxes | dbt, dlt, Elementary, Fabric — controls which tool-conventions references are loaded |
+| Workflow mode | select | Guided (default) / Express / Iterative — explicit mode override |
+
+Level 2 is collapsed by default with a "More options" expander. Users who
+skip it get reasonable defaults — the planner scores dimensions with less
+context but still works. Users who fill it get better dimension selection
+and faster research.
+
+Both levels feed into `build_prompt()` which passes all answers to the
+research planner's prompt template.
 
 ---
 
@@ -444,14 +532,18 @@ Each generated skill should articulate where silver ends and gold begins:
 
 #### dbt-specific research sub-concerns
 
-Enhance existing dimensions with dbt focus:
+Enhance existing dimensions with dbt focus. Each sub-concern represents
+knowledge the research planner should surface — things Claude's parametric
+knowledge gets wrong or misses for the customer's specific setup.
 
 | Dimension | dbt Sub-concern |
 |-----------|-----------------|
-| `layer-design` | Staging vs intermediate vs marts; `ref()` dependency chains |
-| `modeling-patterns` | Model types (view, table, incremental, snapshot, ephemeral) |
-| `config-patterns` | `dbt_project.yml`, custom materializations, meta fields |
-| `load-merge-patterns` | `is_incremental()` macros, merge predicates, `unique_key` |
+| `layer-design` | Staging vs intermediate vs marts; `ref()` dependency chains; naming conventions (`stg_`, `int_`, no prefix for marts); materialization per layer (view → table → incremental). With semantic layer: keep marts normalized (star schema), let MetricFlow denormalize dynamically |
+| `modeling-patterns` | Model types (view, table, incremental, snapshot, ephemeral). **Semantic models**: entities (primary/foreign/unique/natural), dimensions (categorical/time/SCD2), measures (all agg types including non-additive with `window_groupings`). **Metrics**: simple, ratio, derived (with `offset_window` for period-over-period), cumulative (sliding window vs grain-to-date), conversion (funnel). Saved queries and exports for Fabric (dynamic semantic layer API not supported on Fabric). Decision tree: when does a model need a semantic model vs a denormalized mart? |
+| `config-patterns` | `dbt_project.yml`, custom materializations, meta fields. **Model contracts**: enforced column types + constraints on public models. Platform-specific enforcement — most cloud warehouses only enforce `not_null` at DDL, everything else is metadata-only (Snowflake, BigQuery, Redshift). Postgres enforces all. Skills must include platform-specific guidance on when contracts replace tests vs when both are needed. **Model access**: private/protected/public modifiers control `ref()` scope; groups define team ownership. **Model versioning**: breaking changes to contracted public models trigger versioning with migration windows and deprecation dates |
+| `load-merge-patterns` | `is_incremental()` macros, merge predicates, `unique_key`; SCD2 via snapshots |
+| `data-quality` | **Testing pyramid** (bottom to top): (1) dbt generic tests — unique, not_null, accepted_values, relationships + dbt-utils (unique_combination_of_columns, expression_is_true, recency, equal_rowcount). (2) dbt singular tests — one-off SQL business rule assertions in `tests/`. (3) dbt unit tests (dbt 1.8+) — validate model SQL logic on mocked inputs, YAML-defined given/expect, test incremental logic with `is_incremental` override. Use for complex transformations, edge cases, business logic. CI-only, not production. (4) Elementary anomaly detection — volume_anomalies, freshness_anomalies, schema_changes, column_anomalies, dimension_anomalies. Self-adjusting thresholds from training periods. **Layer-specific strategy**: sources get freshness + schema monitoring + volume; staging gets PK + accepted_values + schema_changes_from_baseline; intermediate gets grain validation (equal_rowcount); marts get unit tests for complex logic + Elementary anomaly detection + contracts on public models. **Contract + test interaction**: on cloud warehouses, constraints beyond not_null are metadata-only — always pair with dbt tests for enforcement. Elementary schema_changes complements contracts (visibility without blocking builds). **Test configuration**: severity, store_failures, warn_if/error_if, where, tags for selective runs |
+| `reconciliation` | `dbt_utils.equal_rowcount`, `dbt_utils.equality` for cross-model validation; Elementary `volume_anomalies` for production monitoring; `edr monitor` → Slack/Teams alert chain |
 
 #### Activation trigger for generated skills
 
@@ -468,35 +560,181 @@ Also use when the user mentions "[domain] models", "silver layer",
 
 ## 9. Additional Improvements
 
-### Skill templates
+### Skill templates (standalone feature — app + plugin)
 
-Pre-built partial skills for common dbt scenarios:
+Pre-built starter skills for common dbt/dlt/Elementary scenarios. This is a
+**standalone feature** independent of the plugin v2 rewrite — it benefits
+both the app and the plugin equally.
+
+**Templates are hosted on GitHub** and imported using the same flow the app
+already has for skill import (`github_import.rs`). The app supports:
+- Public repo URL parsing (`owner/repo`, full GitHub URLs, branch/subpath)
+- Skill discovery via `SKILL.md` search in the repo
+- Batch import with frontmatter metadata extraction
+- Auto-generated trigger text via Claude Haiku
+
+The plugin gets the same capability: the coordinator can offer to import a
+template from GitHub when the user's request matches a known scenario, then
+customize it via the research/clarification flow instead of building from
+scratch.
+
+**Template repository structure:**
 
 ```
-templates/
-  dbt-incremental-silver/     # Incremental silver model patterns
-  dbt-snapshot-scd2/          # SCD Type 2 with dbt snapshots
-  salesforce-extraction/      # Salesforce → dbt pipeline
-  revenue-domain/             # Revenue recognition domain
+skill-builder-templates/              # Public GitHub repo
+├── dbt-incremental-silver/           # Incremental silver model patterns
+│   ├── SKILL.md
+│   └── references/
+├── dbt-snapshot-scd2/                # SCD Type 2 with dbt snapshots
+│   ├── SKILL.md
+│   └── references/
+├── dbt-semantic-layer/               # Semantic models + MetricFlow metrics
+│   ├── SKILL.md
+│   └── references/
+├── dlt-rest-api-connector/           # dlt REST API source → OneLake
+│   ├── SKILL.md
+│   └── references/
+├── elementary-data-quality/          # Elementary anomaly detection setup
+│   ├── SKILL.md
+│   └── references/
+├── salesforce-extraction/            # Salesforce → dbt pipeline
+│   ├── SKILL.md
+│   └── references/
+└── revenue-domain/                   # Revenue recognition domain
+    ├── SKILL.md
+    └── references/
 ```
 
-When a user's request matches a template, offer to start from it instead of
-doing full research. Dramatically reduces time-to-value for common scenarios.
+**Flow (same for app and plugin):**
+
+After the user answers basic scoping questions (name, type, domain), the
+system automatically checks the template repo for matches:
+
+```
+1. User completes scoping (name, type, domain keywords)
+2. System fetches template repo index from GitHub
+   - Matches on skill_type + domain keywords in template frontmatter
+   - Returns 0-3 ranked matches
+3. If matches found:
+   "I found 2 starter skills that match your domain:
+    • dbt-incremental-silver — Incremental silver model patterns
+    • elementary-data-quality — Elementary anomaly detection setup
+    Import one as a starting point, or build from scratch?"
+4. If user picks a template:
+   - Import SKILL.md + references/ into the skill dir
+   - Pre-populate context/ with template-specific clarification questions
+   - Continue at clarification step (skip research — template provides
+     the foundation, clarifications customize it)
+5. If user says "from scratch":
+   - Full research flow as normal
+6. If no matches:
+   - Full research flow, no prompt shown
+```
+
+**App implementation:** After the init wizard (Step 0) completes, before
+starting the research step, call the template repo API. Show a dialog with
+matches. On import, populate the skill folder and advance to clarification.
+
+**Plugin implementation:** After the router completes scoping, before
+spawning the research planner, check the template repo. Present matches
+conversationally. On import, write files to skill dir and proceed to
+clarification.
+
+**Template repo index:** Each template's `SKILL.md` frontmatter includes
+matching metadata:
+
+```yaml
+---
+name: dbt-incremental-silver
+description: "Incremental silver model patterns for dbt"
+type: data-engineering
+match_keywords: [incremental, silver, staging, is_incremental, merge]
+match_types: [data-engineering, platform]
+---
+```
+
+Matching uses a **haiku call** — pass all scoping inputs (skill name, type,
+domain description, and power-user answers if provided: "what does Claude
+get wrong", "what makes your setup unique", tool ecosystem selections) plus
+the template index (names + descriptions + match_keywords) to haiku, which
+returns ranked matches with reasoning. Cheap (~$0.01), more accurate than
+keyword grep, and the scoping context makes matches much sharper (e.g.,
+"SCD2 with dbt snapshots on Fabric" directly matches "dbt-snapshot-scd2").
 
 ### Skill composition
 
-Generated skills can declare dependencies:
+Skills reference each other via **semantic triggering** — the SKILL.md
+description field mentions related skills, and Claude Code's skill matching
+picks them up naturally:
 
 ```yaml
 # In generated SKILL.md frontmatter
 name: managing-sales-pipeline
-depends_on:
-  - salesforce-extraction    # Source skill
-  - dbt-on-fabric           # Platform skill
+description: >
+  Build dbt silver and gold models for sales pipeline analytics.
+  Use this skill in conjunction with "extracting-salesforce-data" when
+  building the ingestion layer, and with "dbt-on-fabric" when deploying
+  to Microsoft Fabric. Also use when the user mentions "pipeline models",
+  "sales forecasting", or "deal velocity".
 ```
 
-Cross-references in the output: "For Salesforce-specific extraction patterns,
-see the `salesforce-extraction` skill."
+No runtime dependency resolution — the user decides which skills to load.
+The description text is the mechanism: Claude Code matches it when the user
+asks about related topics.
+
+#### Companion skill report (first-class output)
+
+The validate-skill step produces a **companion skill report** as a
+first-class artifact at `<skill-dir>/context/companion-skills.md`. This is
+not a log entry — it's a standalone document the user reviews.
+
+The companion skill generator reads:
+- The planner's dimension scores (dimensions scored 2-3 that were skipped)
+- The generated skill's scope (what it covers vs what it doesn't)
+- The user's scoping answers (tool ecosystem, domain description)
+
+And produces:
+
+```markdown
+# Companion Skills for: managing-sales-pipeline
+
+## Recommended companions
+
+### 1. Source skill: Salesforce extraction
+- **Why**: This skill covers pipeline metrics and business rules but not
+  Salesforce-specific extraction gotchas (field-semantics scored 3, skipped).
+  CPQ overrides, soft delete handling, and SystemModstamp vs LastModifiedDate
+  are not covered.
+- **Trigger description**: "Use when extracting Salesforce data for the
+  sales pipeline. Covers CPQ field overrides, CDC patterns, and managed
+  package schema handling."
+- **Template match**: dbt-salesforce-extraction (92% match)
+
+### 2. Platform skill: dbt on Fabric
+- **Why**: This skill assumes dbt but does not cover Fabric-specific
+  materialization quirks or CI/CD patterns.
+- **Trigger description**: "Use when running dbt models on Microsoft Fabric.
+  Covers lakehouse vs warehouse, Fabric SQL dialect, and deployment patterns."
+- **Template match**: No template available — build from scratch
+
+## Already covered
+- Metrics and business rules (research dimension scored 5)
+- Entity model and relationships (research dimension scored 5)
+```
+
+#### App UI: companion skills menu
+
+The app reads `companion-skills.md` and shows a dedicated menu/panel:
+
+- List of recommended companion skills with reasoning
+- For each: match status against existing skills in workspace and template
+  repo (via haiku)
+- Actions: "Build this skill" (starts a new workflow pre-filled with the
+  companion's suggested scope) or "Import template" (if a template matches)
+- Status tracking: which companions have been built, which are pending
+
+This is a **helper for the user** — it surfaces what's missing and makes
+it easy to act on, but the user decides what to build next.
 
 ### Interactive + offline hybrid clarifications
 
@@ -513,9 +751,9 @@ important ones. How do you define pipeline coverage?
 [user answers 3-4 questions]
 
 Router: "Great. I've generated 12 more detailed questions in
-./sales-pipeline/context/clarifications.md. Answer them whenever
-you're ready -- I'll proceed with recommended defaults if you
-want to skip ahead."
+~/skill-builder/sales-pipeline/context/clarifications.md. Answer
+them whenever you're ready -- I'll proceed with recommended
+defaults if you want to skip ahead."
 ```
 
 ### Targeted regeneration
@@ -548,20 +786,121 @@ dimension selections:
 
 ## 10. Reference File Changes
 
+### Two types of reference content
+
+| Type | Purpose | Used by |
+|------|---------|---------|
+| **Customer-specific knowledge** | Research dimensions surface the customer's delta | Research agents (18 dimensions) |
+| **Tool best practices** | How dbt/dlt/Elementary/Fabric should work | generate-skill, validate-skill |
+
+Research agents don't need tool conventions — they research the customer's
+setup. The generate-skill and validate-skill agents need tool knowledge via
+reference files so generated skills align with dbt/dlt/Elementary best practices.
+
 ### Current reference files (keep structure, update content)
 
 | File | Changes |
 |------|---------|
 | `protocols.md` | Update dispatch examples to use direct `Task` calls. Document `workspace_dir` and `skill_dir` parameters that agents receive. |
 | `file-formats.md` | Add `session.json` spec. Add workspace/skill dir layout. Keep clarifications/decisions format unchanged. |
-| `content-guidelines.md` | Add silver/gold boundary guidance. Add dbt activation trigger template. |
+| `content-guidelines.md` | Add silver/gold boundary guidance per layer. Add dbt naming conventions (stg_, int_, no prefix for marts). Add dbt activation trigger template. Add dlt source extraction guidance (RESTAPIConfig as primary pattern). Add Elementary data quality test recommendations. Add Fabric context for OneLake destination. |
 | `best-practices.md` | Add gerund naming as default. Add skill composition guidance. |
+
+### Standalone convention skills
+
+Tool best practices are **standalone, publishable skills** — not bundled
+reference files. Each tool gets its own skill that can be independently
+versioned, imported, and deployed. Generated skills declare which convention
+skills they depend on in their frontmatter.
+
+#### Why standalone skills
+
+- **No duplication** — the same `dbt-conventions` skill works across all
+  dbt-related generated skills instead of copying reference files into each
+- **Independent versioning** — convention content evolves on its own cadence
+  (e.g., dbt 1.9 changes don't require regenerating every dbt skill)
+- **Composable** — a generated skill lists only what it actually needs
+  (a pure dbt skill doesn't pull in dlt conventions)
+- **Semantic triggering** — Claude Code naturally loads convention skills
+  when working on tasks that match their descriptions
+
+#### Convention skill catalog
+
+| Skill | Content | References |
+|-------|---------|------------|
+| `dbt-conventions` | Project structure, naming, materialization, SQL style, model contracts, access modifiers, versioning | `project-structure.md`, `testing-contracts.md` |
+| `dbt-semantic-layer` | Semantic model YAML, entity types, dimension types, measure aggregations, metric types, MetricFlow join inference, Fabric export limitations | `semantic-models.md` |
+| `dlt-conventions` | `RESTAPIConfig` schema, write dispositions, merge strategies, `dlt.sources.incremental`, schema contracts | `connector-patterns.md` |
+| `fabric-conventions` | OneLake filesystem destination, ABFSS URL format, auth patterns, delta table format, Fabric notebook setup, deployment via Notebook Activity | `platform-patterns.md` |
+| `elementary-conventions` | All anomaly test types, YAML config with parameters, what-to-test-first priority, alert configuration, dbt integration | `test-catalog.md` |
+| `pipeline-integration` | dlt → dbt → Elementary flow, shared naming conventions, timestamp alignment, credential sharing, orchestration chain | `cross-tool-patterns.md` |
+
+Each skill follows the standard structure:
+
+```
+<tool>-conventions/
+├── SKILL.md              # Description, when to use, activation trigger
+└── references/
+    └── *.md              # Tool-specific content
+```
+
+#### Generated skill frontmatter
+
+When the Skill Builder generates a SKILL.md, it includes a `conventions`
+field listing required convention skills:
+
+```yaml
+---
+description: Sales pipeline silver/gold layer design for dbt on Fabric
+conventions:
+  - dbt-conventions
+  - fabric-conventions
+  - elementary-conventions
+---
+```
+
+The `conventions` field serves as deployment documentation — the person
+deploying the generated skill knows to also deploy the listed convention
+skills in their Claude Code environment. Claude Code's semantic triggering
+handles the actual loading at runtime; no dependency resolution mechanism
+is needed.
+
+#### How generate-skill uses convention skills
+
+During skill building, the Skill Builder deploys the relevant convention
+skills to the workspace based on the user's tool ecosystem selection
+(from the init wizard). The generate-skill and validate-skill agents
+then have access to the convention content via the workspace's
+`.claude/skills/` folder. The `conventions` frontmatter in the generated
+SKILL.md is written based on which convention skills were active during
+generation.
+
+#### Publishing and distribution
+
+Convention skills are published to the same GitHub template repo used for
+skill templates (Section 9). They can be imported via the existing GitHub
+import infrastructure. The Skill Builder ships with bundled copies for
+offline use — the template repo is the canonical source for updates.
+
+### App deployment
+
+`ensure_workspace_prompts()` in `workflow.rs` already copies agents to
+`.claude/agents/`. Extend it to deploy convention skills to
+`.claude/skills/<tool>-conventions/` based on the user's tool ecosystem
+selection. Same copy-on-init pattern, no new mechanism needed.
+
+### Plugin packaging
+
+The build script packages the convention skills into the plugin's
+reference structure. The plugin coordinator deploys the relevant
+convention skills to `.vibedata/skills/` based on tool ecosystem
+selection during init.
 
 ### Build script update
 
 `scripts/build-plugin-skill.sh` extracts from `agent-sources/workspace/CLAUDE.md`.
 Update extraction boundaries if the source sections change. Add `.session.json`
-format to the file-formats section.
+format to the file-formats section. Add convention skills to the build output.
 
 ---
 
