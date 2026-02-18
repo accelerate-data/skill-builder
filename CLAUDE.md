@@ -196,18 +196,18 @@ Both frontends use the same files -- no conversion needed:
 
 ## Custom Skills
 
-### /create-issue
-When the user runs /create-issue or asks to create a Linear issue, log a bug, file a ticket,
+### /create-linear-issue
+When the user runs /create-linear-issue or asks to create a Linear issue, log a bug, file a ticket,
 track a feature idea, break down a large issue, or decompose an issue into smaller ones
 (e.g. "break down VD-123", "decompose VD-123", "split VD-123"),
 read and follow the skill at `.claude/skills/create-linear-issue/SKILL.md`.
 
-### /implement-issue
-When the user runs /implement-issue, or mentions a Linear issue identifier (e.g. "VD-123", "implement VD-123",
-"work on VD-452", "build VD-100", "fix VD-99"), or asks to implement, build, fix, or work on a Linear issue,
+### /implement-linear-issue
+When the user runs /implement-linear-issue, or mentions a Linear issue identifier (e.g. "VD-123", "implement VD-123",
+"work on VD-452", "working on VD-100", "build VD-100", "fix VD-99"), or asks to implement, build, fix, or work on a Linear issue,
 read and follow the skill at `.claude/skills/implement-linear-issue/SKILL.md`.
 
-### /close-issue
-When the user runs /close-issue, or asks to close, complete, merge, or ship a Linear issue (e.g. "close VD-123",
+### /close-linear-issue
+When the user runs /close-linear-issue, or asks to close, complete, merge, or ship a Linear issue (e.g. "close VD-123",
 "merge VD-453", "ship VD-100", "complete VD-99"), read and follow the skill at
 `.claude/skills/close-linear-issue/SKILL.md`.

@@ -2,7 +2,8 @@
 name: implement-linear-issue
 description: |
   Implements a Linear issue end-to-end, from planning through PR creation.
-  Triggers on "implement <issue-id>", "work on <issue-id>", "build <issue-id>", "fix <issue-id>", or "/implement-issue".
+  Triggers on "implement <issue-id>", "work on <issue-id>", "working on <issue-id>", "build <issue-id>", "fix <issue-id>", or "/implement-issue".
+  Also triggers when the user simply mentions a Linear issue identifier (e.g. "VD-123").
 ---
 
 # Implement Linear Issue
@@ -23,9 +24,12 @@ When the user expands or changes scope during the conversation, update the Linea
 ## Setup (do these steps exactly)
 
 1. Fetch the issue via `linear-server:get_issue`. Get: ID, title, description, requirements, acceptance criteria, estimate, branchName, **status**.
-2. **Guard: status must be Todo.** If the issue is not in Todo, stop and tell the user the current status. Do not proceed.
-3. **Assign to me + move to In Progress** in a single `linear-server:update_issue` call (`assignee: "me"`, `state: "In Progress"`).
-4. **Create a git worktree** at `../worktrees/<branchName>` using the `branchName` from the issue. Reuse if it already exists. All subsequent sub-agents work in this worktree path, NOT the main repo.
+2. **Guard on status:**
+   - **Done / Cancelled / Duplicate** → Stop and tell the user. Do not proceed.
+   - **Todo** → Assign to me + move to In Progress via `linear-server:update_issue` (`assignee: "me"`, `state: "In Progress"`).
+   - **In Progress** → Already active. Skip status change (assign to me if unassigned). Resume work.
+   - **In Review** → Move back to In Progress via `linear-server:update_issue`. Resume work — likely addressing review feedback or continuing the pipeline.
+3. **Create a git worktree** at `../worktrees/<branchName>` using the `branchName` from the issue. Reuse if it already exists. All subsequent sub-agents work in this worktree path, NOT the main repo.
 
 ## Objectives
 
