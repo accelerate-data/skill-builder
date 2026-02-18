@@ -7,7 +7,7 @@ test.describe("Navigation", { tag: "@navigation" }, () => {
     await waitForAppReady(page);
     // Dashboard should be visible (sidebar has Dashboard link)
     await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Settings", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Settings/i })).toBeVisible();
   });
 
   test("theme toggle switches between system, light, and dark", async ({ page }) => {

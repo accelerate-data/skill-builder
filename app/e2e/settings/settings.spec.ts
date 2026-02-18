@@ -19,8 +19,8 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
   });
 
   test("GitHub account shows sign-in button when not logged in", async ({ page }) => {
-    // Switch to GitHub tab
-    await page.getByRole("tab", { name: /GitHub/i }).click();
+    // Switch to GitHub section
+    await page.getByRole("button", { name: /GitHub/i }).click();
 
     // Default mock returns github_get_user: null — user is not logged in
     await expect(page.getByText("GitHub Account", { exact: true })).toBeVisible();
@@ -39,8 +39,8 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
   });
 
   test("remote repository section requires GitHub login", async ({ page }) => {
-    // Switch to GitHub tab
-    await page.getByRole("tab", { name: /GitHub/i }).click();
+    // Switch to GitHub section
+    await page.getByRole("button", { name: /GitHub/i }).click();
 
     // Without being logged in, the Remote Repository card should show a message
     await expect(page.getByText("Remote Repository")).toBeVisible();
