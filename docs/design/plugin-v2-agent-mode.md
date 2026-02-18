@@ -149,71 +149,82 @@ The current design mixes internal state (`context/`) with deployable output
 makes it hard to move the skill output, pollutes the deliverable with working
 files, and gives agents no consistent place to look for things.
 
-Formalize two concepts:
+Formalize three concepts:
 
 | Concept | Purpose | Contents |
 |---------|---------|----------|
-| **Workspace dir** (`.vibedata/`) | Plugin internals — state, logs, config | Session manifests, clarifications, decisions, validation logs, plugin config |
-| **Skill dir** | Deployable skill output | `SKILL.md` + `references/` — nothing else |
+| **Plugin workspace** (`.vibedata/`) | Plugin internals — state, logs, config | Session manifests, logs, plugin config. Local only, never committed. |
+| **Skill context** (`<skill-dir>/context/`) | User-facing working files | `clarifications.md`, `decisions.md`, `agent-validation-log.md`, `test-skill.md` — files the user reads and edits |
+| **Skill output** (`<skill-dir>/`) | Deployable skill | `SKILL.md` + `references/` |
 
 ### Layout
 
 ```
-.vibedata/                                  # Workspace (gitignored)
+.vibedata/                                  # Plugin workspace (local only)
 ├── plugin/                                 # Cross-skill plugin data
 │   ├── config.json                         # Plugin settings, preferences
 │   └── dimension-cache.json                # Cached planner selections (optional)
 │
-├── sales-pipeline/                         # Per-skill workspace
+├── sales-pipeline/                         # Per-skill internal state
 │   ├── session.json                        # Session state (phase, progress, skill-dir path)
-│   ├── clarifications.md                   # Research output, user answers
-│   ├── decisions.md                        # Synthesized decisions
-│   ├── agent-validation-log.md             # Validation results
-│   ├── test-skill.md                       # Test prompt results
 │   └── logs/                               # Agent execution logs (optional)
 │
-└── revenue-recognition/                    # Another skill's workspace
+└── revenue-recognition/                    # Another skill's internal state
     ├── session.json
     └── ...
 
-./sales-pipeline/                           # Skill output (deployable, location configurable)
-├── SKILL.md
-└── references/
-    ├── entity-model.md
-    └── metrics.md
+./sales-pipeline/                           # Skill dir (location configurable)
+├── SKILL.md                                # Deployable skill
+├── references/                             # Deployable reference files
+│   ├── entity-model.md
+│   └── metrics.md
+└── context/                                # User-facing working files
+    ├── clarifications.md                   # Questions for the user to answer
+    ├── decisions.md                        # Synthesized decisions for user review
+    ├── agent-validation-log.md             # Validation results for user review
+    └── test-skill.md                       # Test prompt results for user review
 ```
 
 ### Key principles
 
-1. **Workspace is internal** -- `.vibedata/` is gitignored. Users never need to
-   look inside it. Agents read/write state here.
+1. **Plugin workspace is internal** -- `.vibedata/` is a local plugin data
+   directory. Users never need to look inside it. Session state, logs, and
+   plugin config live here.
 
-2. **Skill dir is the deliverable** -- contains only `SKILL.md` + `references/`.
-   Clean enough to copy, zip, or `git add` directly.
+2. **Context is user-facing** -- `<skill-dir>/context/` contains files the user
+   needs to read and edit: `clarifications.md` (answer questions here) and
+   `decisions.md` (review decisions here). These live alongside the skill output
+   so the user can find them naturally.
 
-3. **Skill dir location is configurable** -- `session.json` tracks where the
+3. **Skill output is the deliverable** -- `SKILL.md` + `references/` at the
+   skill dir root. Clean enough to copy, zip, or `git add` directly. The
+   `context/` folder can be excluded from deployment.
+
+4. **Skill dir location is configurable** -- `session.json` tracks where the
    skill dir lives via a `skill_dir` field. Default is `./<skill-name>/` in the
    user's CWD, but the user can move it anywhere.
 
-4. **Moving the skill dir is first-class** -- the router supports:
+5. **Moving the skill dir is first-class** -- the router supports:
    - "Move my skill to `./skills/sales-pipeline/`"
-   - Updates `session.json.skill_dir`, done. All agents resolve paths from
-     the session manifest, so nothing else breaks.
+   - Updates `session.json.skill_dir`, moves the files, done. All agents
+     resolve paths from the session manifest, so nothing else breaks.
 
-5. **Cross-skill data persists** -- `.vibedata/plugin/` survives across skills.
+6. **Cross-skill data persists** -- `.vibedata/plugin/` survives across skills.
    Dimension caching, user preferences, and plugin config live here.
 
 ### Path resolution for agents
 
-The coordinator passes two paths to every agent:
+The coordinator passes three paths to every agent:
 
 | Parameter | Source | Example |
 |-----------|--------|---------|
 | `workspace_dir` | `.vibedata/<skill-name>/` | `.vibedata/sales-pipeline/` |
+| `context_dir` | `<skill-dir>/context/` | `./sales-pipeline/context/` |
 | `skill_dir` | from `session.json.skill_dir` | `./sales-pipeline/` |
 
-Agents read working files (clarifications, decisions) from `workspace_dir`.
-Agents write output files (SKILL.md, references) to `skill_dir`.
+Agents read/write internal state (session, logs) to `workspace_dir`.
+Agents read/write user-facing files (clarifications, decisions, validation logs) to `context_dir`.
+Agents write deployable output (SKILL.md, references) to `skill_dir`.
 No agent constructs paths on its own — the coordinator provides them.
 
 ### Session manifest (`session.json`)
@@ -242,7 +253,7 @@ Lives at `.vibedata/<skill-name>/session.json`:
 
 ### Artifact-to-phase mapping
 
-All artifacts live in the workspace dir (`.vibedata/<skill-name>/`):
+State in `.vibedata/<skill-name>/`, user-facing files in `<skill-dir>/context/`:
 
 | Artifact | Phase Completed |
 |----------|-----------------|
@@ -261,11 +272,11 @@ All artifacts live in the workspace dir (`.vibedata/<skill-name>/`):
 
 ### Offline clarification flow
 
-1. Research completes → coordinator writes `clarifications.md` to workspace dir + updates `session.json`
-2. User told: "Questions are in `.vibedata/sales-pipeline/clarifications.md`. Answer them whenever you're ready."
+1. Research completes → coordinator writes `clarifications.md` to context dir + updates `session.json`
+2. User told: "Questions are in `./sales-pipeline/context/clarifications.md`. Answer them whenever you're ready."
 3. User closes terminal, answers over days
 4. User returns, says "continue my skill" or triggers `/skill-builder:building-skills`
-5. Router scans `.vibedata/` for skill workspaces, reads `session.json`
+5. Router scans `.vibedata/` for skill workspaces, reads `session.json`, locates context dir
 6. Counts answered vs unanswered questions in `clarifications.md`
 7. Presents status: "Welcome back. 8 of 15 questions answered. 7 remaining."
 8. User can: answer more, proceed with defaults for unanswered, or ask for help
