@@ -391,6 +391,48 @@ pub struct FileDiff {
     pub new_content: Option<String>,
 }
 
+// ─── Refine session types (VD-702) ──────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillFileContent {
+    /// Relative path from the skill root (e.g. "SKILL.md", "references/guide.md")
+    pub path: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefineFileDiff {
+    pub path: String,
+    /// One of "added", "modified", "deleted"
+    pub status: String,
+    /// Unified diff text for this file
+    pub diff: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefineDiff {
+    /// Human-readable change summary (e.g. "1 file(s) changed, 3 insertion(s)(+)")
+    pub stat: String,
+    pub files: Vec<RefineFileDiff>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefineSessionInfo {
+    pub session_id: String,
+    pub skill_name: String,
+    pub created_at: String,
+}
+
+/// A single message in a refine conversation history.
+/// Typed struct ensures Tauri IPC rejects malformed payloads at the boundary
+/// rather than silently forwarding broken JSON to the sidecar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationMessage {
+    pub role: String,
+    pub content: String,
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -511,6 +553,7 @@ mod tests {
             max_thinking_tokens: None,
             path_to_claude_code_executable: None,
             agent_name: Some("research-entities".to_string()),
+            conversation_history: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"apiKey\""));

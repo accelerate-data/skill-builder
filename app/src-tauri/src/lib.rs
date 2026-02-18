@@ -141,6 +141,7 @@ pub fn run() {
             Ok(())
         })
         .manage(agents::sidecar_pool::SidecarPool::new())
+        .manage(commands::refine::RefineSessionManager::new())
         .invoke_handler(tauri::generate_handler![
             commands::agent::start_agent,
             commands::node::check_node,
@@ -164,6 +165,7 @@ pub fn run() {
             commands::skill::release_lock,
             commands::skill::get_locked_skills,
             commands::skill::check_lock,
+            commands::skill::list_refinable_skills,
             commands::clarification::save_raw_file,
             commands::files::list_skill_files,
             commands::files::read_file,
@@ -224,6 +226,12 @@ pub fn run() {
             commands::git::get_skill_history,
             commands::git::get_skill_diff,
             commands::git::restore_skill_version,
+            commands::skill::list_refinable_skills,
+            commands::refine::get_skill_content_for_refine,
+            commands::refine::get_refine_diff,
+            commands::refine::start_refine_session,
+            commands::refine::send_refine_message,
+            commands::refine::close_refine_session,
         ])
         .on_window_event(|window, event| {
             use tauri::Emitter;

@@ -87,6 +87,29 @@ const mockResponses: Record<string, unknown> = {
   check_lock: false,
   list_team_repo_skills: [],
   import_team_repo_skill: "imported-skill",
+  // Refine page
+  start_refine_session: {
+    session_id: "e2e-refine-session-001",
+    skill_name: "test-skill",
+    created_at: new Date().toISOString(),
+  },
+  send_refine_message: "refine-test-skill-e2e-001",
+  close_refine_session: undefined,
+  list_refinable_skills: [
+    {
+      name: "test-skill",
+      display_name: "Test Skill",
+      domain: "Testing",
+      current_step: null,
+      status: "completed",
+      last_modified: null,
+      skill_type: "domain",
+    },
+  ],
+  get_skill_content_for_refine: [
+    { path: "SKILL.md", content: "# Test Skill\n\nA skill for testing.\n\n## Instructions\n\nFollow these steps..." },
+    { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
+  ],
   // Auth
   github_get_user: null,
   github_logout: undefined,

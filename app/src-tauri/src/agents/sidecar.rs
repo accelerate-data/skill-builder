@@ -27,6 +27,11 @@ pub struct SidecarConfig {
     pub path_to_claude_code_executable: Option<String>,
     #[serde(rename = "agentName", skip_serializing_if = "Option::is_none")]
     pub agent_name: Option<String>,
+    #[serde(
+        rename = "conversationHistory",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub conversation_history: Option<Vec<serde_json::Value>>,
 }
 
 /// Spawn an agent using the persistent sidecar pool, which reuses a long-lived
@@ -122,7 +127,7 @@ mod tests {
             max_thinking_tokens: None,
             path_to_claude_code_executable: None,
             agent_name: Some("research-entities".to_string()),
-
+            conversation_history: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -158,7 +163,7 @@ mod tests {
             max_thinking_tokens: Some(32000),
             path_to_claude_code_executable: None,
             agent_name: None,
-
+            conversation_history: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();

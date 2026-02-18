@@ -32,6 +32,7 @@ pub async fn start_agent(
         let key = settings
             .anthropic_api_key
             .ok_or_else(|| "Anthropic API key not configured".to_string())?;
+
         (key, settings.extended_thinking)
     };
 
@@ -54,6 +55,7 @@ pub async fn start_agent(
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
         agent_name,
+        conversation_history: None,
     };
 
     sidecar::spawn_sidecar(

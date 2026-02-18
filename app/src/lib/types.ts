@@ -74,6 +74,28 @@ export interface SkillSummary {
   intake_json: string | null
 }
 
+export interface SkillFileContent {
+  path: string
+  content: string
+}
+
+export interface RefineFileDiff {
+  path: string
+  status: string
+  diff: string
+}
+
+export interface RefineDiff {
+  stat: string
+  files: RefineFileDiff[]
+}
+
+export interface RefineSessionInfo {
+  session_id: string
+  skill_name: string
+  created_at: string
+}
+
 export const INTAKE_PLACEHOLDERS: Record<string, {
   audience: string; challenges: string; scope: string;
   unique_setup: string; claude_mistakes: string;
@@ -257,5 +279,14 @@ export interface GitHubRepo {
   name: string
   description: string | null
   is_private: boolean
+}
+
+export interface SkillFileEntry {
+  name: string
+  relative_path: string
+  absolute_path: string
+  is_directory: boolean
+  is_readonly: boolean
+  size_bytes: number
 }
 

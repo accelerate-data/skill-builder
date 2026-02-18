@@ -10,7 +10,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/skills");
+    await page.goto("/settings?tab=skills-library");
     await waitForAppReady(page);
 
     // Empty state card should be visible (CardTitle renders as <div>, not a heading)
@@ -25,23 +25,25 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(emptyCard.getByRole("button", { name: /import from github/i })).toBeVisible();
   });
 
-  test("shows page header with action buttons", async ({ page }) => {
+  test("shows action buttons in Skills Library tab", async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
         list_imported_skills: [],
       };
     });
 
-    await page.goto("/skills");
+    await page.goto("/settings?tab=skills-library");
     await waitForAppReady(page);
 
-    // Page header
-    await expect(page.getByRole("heading", { name: "Skills Library" })).toBeVisible();
+    // Settings page header
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
 
-    // Header action buttons (scoped to the row containing the h1, not the empty state card)
-    const headerRow = page.getByRole("heading", { name: "Skills Library" }).locator("..");
-    await expect(headerRow.getByRole("button", { name: /import from github/i })).toBeVisible();
-    await expect(headerRow.getByRole("button", { name: /upload skill/i })).toBeVisible();
+    // Skills Library tab should be active
+    await expect(page.getByRole("tab", { name: "Skills Library" })).toHaveAttribute("data-state", "active");
+
+    // Action buttons
+    await expect(page.getByRole("button", { name: /import from github/i }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /upload skill/i }).first()).toBeVisible();
   });
 
   test("shows populated state with skill cards", async ({ page }) => {
@@ -51,7 +53,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     }, importedSkillsFixture);
 
-    await page.goto("/skills");
+    await page.goto("/settings?tab=skills-library");
     await waitForAppReady(page);
 
     // Both skill cards should be visible (CardTitle renders as <div>, not a heading)
@@ -75,7 +77,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     }, importedSkillsFixture);
 
-    await page.goto("/skills");
+    await page.goto("/settings?tab=skills-library");
     await waitForAppReady(page);
 
     // Find the switch for data-analytics skill
@@ -100,7 +102,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     }, importedSkillsFixture);
 
-    await page.goto("/skills");
+    await page.goto("/settings?tab=skills-library");
     await waitForAppReady(page);
 
     // Find the delete button for data-analytics (CardTitle is a <div>, not a heading)
@@ -137,7 +139,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       { skills: importedSkillsFixture, content: mockSkillContent }
     );
 
-    await page.goto("/skills");
+    await page.goto("/settings?tab=skills-library");
     await waitForAppReady(page);
 
     // Click the Preview button for data-analytics (CardTitle is a <div>, not a heading)
@@ -169,7 +171,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       { skills: importedSkillsFixture, content: mockSkillContent }
     );
 
-    await page.goto("/skills");
+    await page.goto("/settings?tab=skills-library");
     await waitForAppReady(page);
 
     // Open preview (CardTitle is a <div>, not a heading)
@@ -192,7 +194,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/skills");
+    await page.goto("/settings?tab=skills-library");
     await waitForAppReady(page);
 
     // Verify the Upload Skill button exists and is clickable
@@ -208,7 +210,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/skills");
+    await page.goto("/settings?tab=skills-library");
     await waitForAppReady(page);
 
     // Click Import from GitHub button
@@ -249,7 +251,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/skills");
+    await page.goto("/settings?tab=skills-library");
     await waitForAppReady(page);
 
     // Open GitHub import dialog
@@ -293,7 +295,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/skills");
+    await page.goto("/settings?tab=skills-library");
     await waitForAppReady(page);
 
     // Open dialog and navigate to step 2
@@ -343,7 +345,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/skills");
+    await page.goto("/settings?tab=skills-library");
     await waitForAppReady(page);
 
     // Navigate to step 2
@@ -403,7 +405,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/skills");
+    await page.goto("/settings?tab=skills-library");
     await waitForAppReady(page);
 
     // Step 1: Enter URL
@@ -475,7 +477,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/skills");
+    await page.goto("/settings?tab=skills-library");
     await waitForAppReady(page);
 
     // Navigate through steps 1-2
@@ -522,7 +524,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/skills");
+    await page.goto("/settings?tab=skills-library");
     await waitForAppReady(page);
 
     // Navigate to step 2

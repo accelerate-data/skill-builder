@@ -781,7 +781,7 @@ export default function SettingsPage() {
                       size="sm"
                       onClick={handleClearWorkspace}
                       disabled={clearing || !workspacePath}
-                      className="text-destructive hover:text-destructive"
+                      className="text-destructive-foreground hover:text-destructive-foreground"
                     >
                       {clearing ? (
                         <Loader2 className="size-4 animate-spin" />

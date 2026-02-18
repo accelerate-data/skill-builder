@@ -95,8 +95,13 @@ export function AppLayout() {
         e.preventDefault();
         navigate({ to: "/" });
       }
-      // Cmd+2 -> Usage
+      // Cmd+2 -> Prompts
       if ((e.metaKey || e.ctrlKey) && e.key === "2") {
+        e.preventDefault();
+        navigate({ to: "/prompts" });
+      }
+      // Cmd+3 -> Usage
+      if ((e.metaKey || e.ctrlKey) && e.key === "3") {
         e.preventDefault();
         navigate({ to: "/usage" });
       }

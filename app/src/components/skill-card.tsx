@@ -2,7 +2,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
-  CardContent,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -15,7 +14,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { Progress } from "@/components/ui/progress"
-import { Download, Lock, Play, Tag, Trash2, Upload } from "lucide-react"
+import { Download, Lock, MessageSquare, Play, Tag, Trash2, Upload } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -33,6 +32,7 @@ interface SkillCardProps {
   onDelete: (skill: SkillSummary) => void
   onDownload?: (skill: SkillSummary) => void
   onEdit?: (skill: SkillSummary) => void
+  onRefine?: (skill: SkillSummary) => void
   onPushToRemote?: (skill: SkillSummary) => void
   remoteConfigured?: boolean
   isGitHubLoggedIn?: boolean
@@ -73,58 +73,6 @@ export function isWorkflowComplete(skill: SkillSummary): boolean {
   return false
 }
 
-function formatSkillName(name: string): string {
-  return name
-    .split("-")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ")
-}
-
-function formatRelativeTime(dateString: string | null): string {
-  if (!dateString) return ""
-  try {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMinutes = Math.floor(diffMs / 60000)
-
-    if (diffMinutes < 1) return "just now"
-    if (diffMinutes < 60) return `${diffMinutes}m ago`
-    const diffHours = Math.floor(diffMinutes / 60)
-    if (diffHours < 24) return `${diffHours}h ago`
-    const diffDays = Math.floor(diffHours / 24)
-    if (diffDays < 30) return `${diffDays}d ago`
-    return date.toLocaleDateString()
-  } catch {
-    return ""
-  }
-}
-
-function statusVariant(
-  status: string | null
-): "default" | "secondary" | "outline" {
-  switch (status) {
-    case "completed":
-      return "default"
-    case "waiting_for_user":
-      return "outline"
-    default:
-      return "secondary"
-  }
-}
-
-function statusLabel(status: string | null): string {
-  switch (status) {
-    case "in_progress":
-      return "In Progress"
-    case "waiting_for_user":
-      return "Needs Input"
-    case "completed":
-      return "Completed"
-    default:
-      return status || "Unknown"
-  }
-}
 
 export default function SkillCard({
   skill,
@@ -133,61 +81,59 @@ export default function SkillCard({
   onDelete,
   onDownload,
   onEdit,
+  onRefine,
   onPushToRemote,
   remoteConfigured,
   isGitHubLoggedIn,
 }: SkillCardProps) {
   const progress = parseStepProgress(skill.current_step, skill.status)
-  const relativeTime = formatRelativeTime(skill.last_modified)
   const canDownload = isWorkflowComplete(skill)
 
   const cardContent = (
-    <Card className={cn("flex flex-col", isLocked && "opacity-50 pointer-events-none")}>
+    <Card className={cn("flex flex-col min-w-0 overflow-hidden", isLocked && "opacity-50 pointer-events-none")}>
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="min-w-0 truncate text-base">
-            {formatSkillName(skill.name)}
+            {skill.name}
           </CardTitle>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {isLocked && <Lock className="size-3.5 text-muted-foreground" />}
-            <Badge variant={statusVariant(skill.status)}>
-              {statusLabel(skill.status)}
-            </Badge>
-          </div>
+          {isLocked && <Lock className="size-3.5 text-muted-foreground shrink-0" />}
         </div>
         {skill.domain && (
-          <Badge variant="outline" className="w-fit text-xs">
-            {skill.domain}
+          <Badge variant="outline" className="max-w-full min-w-0 text-xs">
+            <span className="truncate">{skill.domain}</span>
           </Badge>
         )}
         {skill.skill_type && (
-          <Badge className={cn("w-fit text-xs", SKILL_TYPE_COLORS[skill.skill_type as SkillType])}>
-            {SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type}
+          <Badge className={cn("w-fit max-w-full text-xs", SKILL_TYPE_COLORS[skill.skill_type as SkillType])}>
+            <span className="truncate">{SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type}</span>
           </Badge>
         )}
         {skill.tags && skill.tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {skill.tags.map((tag) => (
-              <Badge key={tag} variant="secondary" className="text-xs">
-                {tag}
+              <Badge key={tag} variant="secondary" className="text-xs max-w-[120px]">
+                <span className="truncate">{tag}</span>
               </Badge>
             ))}
           </div>
         )}
       </CardHeader>
-      <CardContent className="mt-auto flex flex-col gap-2">
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>{skill.current_step || "Not started"}</span>
-          <span>{progress}%</span>
+      <CardFooter className="mt-auto flex flex-col gap-2">
+        <div className="flex w-full items-center gap-2">
+          <Progress value={progress} className="flex-1" />
+          <span className="shrink-0 text-xs text-muted-foreground">{progress}%</span>
         </div>
-        <Progress value={progress} />
-      </CardContent>
-      <CardFooter className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center gap-1.5">
           <Button size="sm" onClick={() => onContinue(skill)}>
             <Play className="size-3" />
             Continue
           </Button>
+          {canDownload && onRefine && (
+            <Button size="sm" variant="outline" onClick={() => onRefine(skill)}>
+              <MessageSquare className="size-3" />
+              Refine
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon-xs"
@@ -197,33 +143,6 @@ export default function SkillCard({
           >
             <Trash2 className="size-3" />
           </Button>
-        </div>
-        <div className="flex items-center gap-2">
-          {skill.author_login && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex items-center gap-1">
-                    {skill.author_avatar ? (
-                      <img
-                        src={skill.author_avatar}
-                        alt={skill.author_login}
-                        className="size-4 rounded-full"
-                      />
-                    ) : (
-                      <span className="text-xs text-muted-foreground">{skill.author_login}</span>
-                    )}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{skill.author_login}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-          {relativeTime && (
-            <span className="text-xs text-muted-foreground">{relativeTime}</span>
-          )}
         </div>
       </CardFooter>
     </Card>

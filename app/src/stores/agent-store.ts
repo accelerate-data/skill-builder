@@ -121,6 +121,7 @@ interface AgentRun {
   totalCost?: number;
   tokenUsage?: { input: number; output: number };
   sessionId?: string;
+  skillName?: string;
   contextHistory: ContextSnapshot[];
   contextWindow: number;
   compactionEvents: CompactionEvent[];
@@ -139,8 +140,9 @@ interface AgentState {
   activeAgentId: string | null;
   startRun: (agentId: string, model: string) => void;
   /** Register a run for streaming without setting activeAgentId.
-   *  Used by reasoning-review component that manages its own lifecycle. */
-  registerRun: (agentId: string, model: string) => void;
+   *  Used by refine page and reasoning-review component that manage their own lifecycle.
+   *  Pass skillName so usage data is attributed correctly (otherwise defaults to workflow store). */
+  registerRun: (agentId: string, model: string, skillName?: string) => void;
   addMessage: (agentId: string, message: AgentMessage) => void;
   completeRun: (agentId: string, success: boolean) => void;
   shutdownRun: (agentId: string) => void;
@@ -215,6 +217,9 @@ export const useAgentStore = create<AgentState>((set) => ({
   activeAgentId: null,
 
   startRun: (agentId, model) => {
+    const workflow = useWorkflowStore.getState();
+    const skillName = workflow.skillName ?? "unknown";
+
     set((state) => {
       const existing = state.runs[agentId];
       return {
@@ -222,10 +227,11 @@ export const useAgentStore = create<AgentState>((set) => ({
           ...state.runs,
           [agentId]: existing
             ? // Run was auto-created by early messages — update model, keep messages
-              { ...existing, model, status: "running" as const }
+              { ...existing, model, skillName, status: "running" as const }
             : {
                 agentId,
                 model,
+                skillName,
                 status: "running" as const,
                 messages: [],
                 startTime: Date.now(),
@@ -240,10 +246,9 @@ export const useAgentStore = create<AgentState>((set) => ({
     });
 
     // Persist initial row so in-progress and shutdown runs are tracked
-    const workflow = useWorkflowStore.getState();
     persistAgentRun({
       agentId,
-      skillName: workflow.skillName ?? "unknown",
+      skillName,
       stepId: workflow.currentStep,
       model,
       status: "running",
@@ -257,17 +262,18 @@ export const useAgentStore = create<AgentState>((set) => ({
     }).catch((err) => console.error("Failed to persist agent start:", err));
   },
 
-  registerRun: (agentId, model) =>
+  registerRun: (agentId, model, skillName?) =>
     set((state) => {
       const existing = state.runs[agentId];
       return {
         runs: {
           ...state.runs,
           [agentId]: existing
-            ? { ...existing, model, status: "running" as const }
+            ? { ...existing, model, skillName: skillName ?? existing.skillName, status: "running" as const }
             : {
                 agentId,
                 model,
+                skillName,
                 status: "running" as const,
                 messages: [],
                 startTime: Date.now(),
@@ -277,7 +283,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 thinkingEnabled: false,
               },
         },
-        // Do NOT set activeAgentId — reasoning-review manages its own lifecycle
+        // Do NOT set activeAgentId — callers manage their own lifecycle
       };
     }),
 
@@ -331,7 +337,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       persistRunRows(
         {
           agentId,
-          skillName: workflow.skillName ?? "unknown",
+          skillName: runBeforeUpdate.skillName ?? workflow.skillName ?? "unknown",
           stepId: workflow.currentStep,
           status: success ? "completed" : "error",
           durationMs: Date.now() - runBeforeUpdate.startTime,
@@ -375,7 +381,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       persistRunRows(
         {
           agentId,
-          skillName: workflow.skillName ?? "unknown",
+          skillName: runBeforeUpdate.skillName ?? workflow.skillName ?? "unknown",
           stepId: workflow.currentStep,
           status: "shutdown" as const,
           durationMs: Date.now() - runBeforeUpdate.startTime,

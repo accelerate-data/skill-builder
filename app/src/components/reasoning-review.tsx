@@ -263,7 +263,7 @@ export function ReasoningReview({
       {/* Decisions content */}
       <ScrollArea className="min-h-0 flex-1">
         {decisionsContent ? (
-          <div className="markdown-body max-w-none p-4">
+          <div className="markdown-body compact max-w-none p-4">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {decisionsContent}
             </ReactMarkdown>

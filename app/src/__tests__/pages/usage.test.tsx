@@ -109,7 +109,6 @@ describe("UsagePage", () => {
   it("renders summary cards with correct values", () => {
     render(<UsagePage />);
 
-    expect(screen.getByText("Usage")).toBeInTheDocument();
     expect(screen.getByTestId("total-cost")).toHaveTextContent("$12.57");
     expect(screen.getByTestId("total-runs")).toHaveTextContent("42");
     expect(screen.getByTestId("avg-cost")).toHaveTextContent("$0.30");

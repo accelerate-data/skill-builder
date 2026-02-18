@@ -166,7 +166,7 @@ export function WorkflowStepComplete({
                       </p>
                     ) : content ? (
                       <div className="rounded-md border">
-                        <div className="markdown-body max-w-none p-4">
+                        <div className="markdown-body compact max-w-none p-4">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
                             {content}
                           </ReactMarkdown>

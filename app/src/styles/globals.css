@@ -289,6 +289,9 @@
   --base-size-40: 0.75rem;
   font-size: 14px;
   line-height: 1.55;
+  /* Prevent long words/URLs from overflowing the container */
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 /* Strip margins on first/last child to avoid double spacing in cards */

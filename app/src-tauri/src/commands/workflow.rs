@@ -456,10 +456,12 @@ fn derive_agent_name(workspace_path: &str, _skill_type: &str, prompt_template: &
     phase.to_string()
 }
 
+/// Write `user-context.md` to the context directory so that sub-agents
 /// Format user context fields into a `## User Context` markdown block.
 ///
-/// Returns `None` if all fields are empty. Used by workflow (inline in prompt +
-/// written to disk) and refine (inline in prompt only).
+/// Shared by `write_user_context_file` (for file-based agents) and
+/// `build_prompt` / refine's `send_refine_message` (for inline embedding).
+/// Returns `None` when all fields are empty.
 pub fn format_user_context(
     industry: Option<&str>,
     function_role: Option<&str>,
@@ -500,8 +502,9 @@ pub fn format_user_context(
     }
 }
 
-/// Write `user-context.md` to the workspace directory so that sub-agents
 /// spawned by orchestrator agents can read it from disk.
+/// This file captures industry, function/role, and intake responses
+/// (audience, challenges, scope) provided by the user.
 /// Non-fatal: logs a warning on failure rather than blocking the workflow.
 fn write_user_context_file(
     workspace_path: &str,
@@ -525,9 +528,10 @@ fn write_user_context_file(
         return;
     }
     let file_path = workspace_dir.join("user-context.md");
-    // ctx already has "## User Context\n..." — promote to h1 for the standalone file
-    let content = format!("# User Context\n\n{}\n",
-        ctx.strip_prefix("## User Context\n").unwrap_or(&ctx));
+    let content = format!(
+        "# User Context\n\n{}\n",
+        ctx.strip_prefix("## User Context\n").unwrap_or(&ctx)
+    );
 
     match std::fs::write(&file_path, &content) {
         Ok(()) => {
@@ -592,6 +596,8 @@ fn build_prompt(
     }
 
     prompt.push_str(&format!(" The maximum research dimensions before scope warning is: {}.", max_dimensions));
+
+    prompt.push_str(" The workspace directory only contains user-context.md — ignore everything else (logs/, etc.).");
 
     if let Some(ctx) = format_user_context(industry, function_role, intake_json) {
         prompt.push_str("\n\n");
@@ -856,6 +862,7 @@ async fn run_workflow_step_inner(
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name),
+        conversation_history: None,
     };
 
     sidecar::spawn_sidecar(
@@ -1101,7 +1108,28 @@ pub fn save_workflow_state(
         log::error!("[save_workflow_state] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::save_workflow_run(&conn, &skill_name, &domain, current_step, &status, &skill_type)?;
+
+    // Backend-authoritative status: if all submitted steps are completed,
+    // override the run status to "completed" regardless of what the frontend sent.
+    // This prevents a race where the debounced frontend save fires before the
+    // final step status is computed.
+    let effective_status = if !step_statuses.is_empty()
+        && step_statuses.iter().all(|s| s.status == "completed")
+    {
+        if status != "completed" {
+            log::info!(
+                "[save_workflow_state] All {} steps completed for '{}', overriding status '{}' → 'completed'",
+                step_statuses.len(),
+                skill_name,
+                status
+            );
+        }
+        "completed".to_string()
+    } else {
+        status
+    };
+
+    crate::db::save_workflow_run(&conn, &skill_name, &domain, current_step, &effective_status, &skill_type)?;
     for step in &step_statuses {
         crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status)?;
     }
@@ -2248,7 +2276,6 @@ mod tests {
         let result = format_user_context(Some("Tech"), None, Some("not json"));
         let ctx = result.unwrap();
         assert!(ctx.contains("**Industry**: Tech"));
-        // Invalid JSON intake is silently ignored
         assert!(!ctx.contains("Target Audience"));
     }
 
@@ -2260,6 +2287,58 @@ mod tests {
         assert!(ctx.contains("**Target Audience**: Engineers"));
         assert!(ctx.contains("**Scope**: APIs"));
         assert!(!ctx.contains("**Key Challenges**"));
+    }
+
+    // --- build_prompt user context integration tests ---
+
+    #[test]
+    fn test_build_prompt_includes_user_context() {
+        let intake = r#"{"audience":"Data engineers","challenges":"Legacy ETL","scope":"Pipelines"}"#;
+        let prompt = build_prompt(
+            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+            None, None, 5, Some("Healthcare"), Some("Analytics Lead"), Some(intake),
+        );
+        assert!(prompt.contains("## User Context"));
+        assert!(prompt.contains("**Industry**: Healthcare"));
+        assert!(prompt.contains("**Function**: Analytics Lead"));
+        assert!(prompt.contains("**Target Audience**: Data engineers"));
+        assert!(prompt.contains("**Key Challenges**: Legacy ETL"));
+        assert!(prompt.contains("**Scope**: Pipelines"));
+    }
+
+    #[test]
+    fn test_build_prompt_without_user_context() {
+        let prompt = build_prompt(
+            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+            None, None, 5, None, None, None,
+        );
+        assert!(!prompt.contains("## User Context"));
+        assert!(prompt.contains("test-skill"));
+        assert!(prompt.contains("sales"));
+    }
+
+    #[test]
+    fn test_build_prompt_with_only_industry() {
+        let prompt = build_prompt(
+            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+            None, None, 5, Some("Fintech"), None, None,
+        );
+        assert!(prompt.contains("## User Context"));
+        assert!(prompt.contains("**Industry**: Fintech"));
+        assert!(!prompt.contains("**Function**"));
+    }
+
+    #[test]
+    fn test_build_prompt_with_only_intake() {
+        let intake = r#"{"audience":"Analysts","unique_setup":"Multi-region","claude_mistakes":"Assumes single tenant"}"#;
+        let prompt = build_prompt(
+            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+            None, None, 5, None, None, Some(intake),
+        );
+        assert!(prompt.contains("## User Context"));
+        assert!(prompt.contains("**Target Audience**: Analysts"));
+        assert!(prompt.contains("**What Makes This Setup Unique**: Multi-region"));
+        assert!(prompt.contains("**What Claude Gets Wrong**: Assumes single tenant"));
     }
 
 }

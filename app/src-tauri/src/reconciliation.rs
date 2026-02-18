@@ -151,6 +151,28 @@ pub fn reconcile_on_startup(
                         }
                     }
 
+                    // If disk evidence shows the full workflow completed (step 6 =
+                    // validate has output), mark the run as "completed". This fixes a
+                    // race where the frontend debounced save fires before the final
+                    // step status is computed, leaving status = "pending" despite all
+                    // steps being done.
+                    const LAST_WORKFLOW_STEP: i32 = 6;
+                    if disk_step >= LAST_WORKFLOW_STEP && run.status != "completed" {
+                        log::info!(
+                            "[reconcile] Disk step {} >= last step for '{}', updating run status to 'completed'",
+                            disk_step,
+                            run.skill_name
+                        );
+                        crate::db::save_workflow_run(
+                            conn,
+                            &run.skill_name,
+                            &run.domain,
+                            run.current_step,
+                            "completed",
+                            &run.skill_type,
+                        )?;
+                    }
+
                     // Defensive: clean up any files from steps beyond the reconciled point.
                     // Prevents stale future-step files from causing incorrect reconciliation.
                     cleanup_future_steps(workspace_path, &run.skill_name, disk_step, skills_path);
@@ -361,6 +383,58 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(run.current_step, 0);
+        assert_eq!(run.status, "pending");
+    }
+
+    // --- Status completion fix: all steps done but status stuck on "pending" ---
+
+    #[test]
+    fn test_reconcile_sets_completed_when_all_steps_done() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // DB says step 6 (last step), status "pending" — simulates the race where
+        // the frontend debounced save never sent "completed"
+        crate::db::save_workflow_run(&conn, "done-skill", "sales", 6, "pending", "domain")
+            .unwrap();
+        create_skill_dir(tmp.path(), "done-skill", "sales");
+        // Create output for all detectable steps (0, 4, 5, 6)
+        for step in [0, 4, 5, 6] {
+            create_step_output(tmp.path(), "done-skill", step);
+        }
+
+        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+
+        assert!(result.orphans.is_empty());
+        assert_eq!(result.auto_cleaned, 0);
+        assert!(result.notifications.is_empty());
+
+        // Status should now be "completed"
+        let run = crate::db::get_workflow_run(&conn, "done-skill")
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.status, "completed");
+    }
+
+    #[test]
+    fn test_reconcile_leaves_pending_when_not_all_steps_done() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // DB at step 4, status "pending" — not yet at the last step
+        crate::db::save_workflow_run(&conn, "mid-skill", "sales", 4, "pending", "domain")
+            .unwrap();
+        create_skill_dir(tmp.path(), "mid-skill", "sales");
+        create_step_output(tmp.path(), "mid-skill", 0);
+        create_step_output(tmp.path(), "mid-skill", 4);
+
+        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+
+        let run = crate::db::get_workflow_run(&conn, "mid-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.status, "pending");
     }
 

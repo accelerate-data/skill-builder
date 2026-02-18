@@ -2,14 +2,15 @@ import {
   createRouter,
   createRoute,
   createRootRoute,
+  redirect,
 } from "@tanstack/react-router";
 import { AppLayout } from "./components/layout/app-layout";
 import DashboardPage from "./pages/dashboard";
 import SettingsPage from "./pages/settings";
 import WorkflowPage from "./pages/workflow";
 import PromptsPage from "./pages/prompts";
-import SkillsPage from "./pages/skills";
 import UsagePage from "./pages/usage";
+import RefinePage from "./pages/refine";
 const rootRoute = createRootRoute({
   component: AppLayout,
 });
@@ -38,10 +39,12 @@ const promptsRoute = createRoute({
   component: PromptsPage,
 });
 
-const skillsRoute = createRoute({
+const skillsRedirectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/skills",
-  component: SkillsPage,
+  beforeLoad: () => {
+    throw redirect({ to: "/settings", search: { tab: "skills-library" } });
+  },
 });
 
 const usageRoute = createRoute({
@@ -50,13 +53,23 @@ const usageRoute = createRoute({
   component: UsagePage,
 });
 
+const refineRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/refine",
+  component: RefinePage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    skill: typeof search.skill === "string" ? search.skill : undefined,
+  }),
+});
+
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
   settingsRoute,
   promptsRoute,
-  skillsRoute,
+  skillsRedirectRoute,
   usageRoute,
   workflowRoute,
+  refineRoute,
 ]);
 
 export const router = createRouter({ routeTree });

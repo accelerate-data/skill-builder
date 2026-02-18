@@ -65,6 +65,71 @@ fn list_skills_inner(
     Ok(skills)
 }
 
+/// Returns skills that have completed their build (status = 'completed') and
+/// have a SKILL.md on disk. These are eligible for the refine workflow.
+#[tauri::command]
+pub fn list_refinable_skills(
+    workspace_path: String,
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<SkillSummary>, String> {
+    log::info!("[list_refinable_skills]");
+
+    // Hold the DB lock only for DB reads; release before filesystem I/O.
+    let (skills_path, completed) = {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[list_refinable_skills] Failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        let settings = crate::db::read_settings(&conn).map_err(|e| {
+            log::error!("[list_refinable_skills] Failed to read settings: {}", e);
+            e
+        })?;
+        let skills_path = settings
+            .skills_path
+            .unwrap_or_else(|| workspace_path.clone());
+        let all = list_skills_inner(&workspace_path, &conn)?;
+        let completed: Vec<SkillSummary> = all
+            .into_iter()
+            .filter(|s| s.status.as_deref() == Some("completed"))
+            .collect();
+        (skills_path, completed)
+    }; // conn lock released here
+
+    // Filesystem existence checks happen outside the DB lock.
+    Ok(filter_by_skill_md_exists(&skills_path, completed))
+}
+
+/// Filter completed skills to only those with a SKILL.md on disk.
+/// Separated from DB access so the Tauri command can release the DB lock first.
+fn filter_by_skill_md_exists(skills_path: &str, completed: Vec<SkillSummary>) -> Vec<SkillSummary> {
+    completed
+        .into_iter()
+        .filter(|s| {
+            Path::new(skills_path)
+                .join(&s.name)
+                .join("SKILL.md")
+                .exists()
+        })
+        .collect()
+}
+
+/// Testable inner function: queries the DB for completed skills, then filters
+/// by SKILL.md existence on disk. In production, the Tauri command splits these
+/// two phases across a lock boundary; this function combines them for tests.
+#[cfg(test)]
+fn list_refinable_skills_inner(
+    workspace_path: &str,
+    skills_path: &str,
+    conn: &rusqlite::Connection,
+) -> Result<Vec<SkillSummary>, String> {
+    let all = list_skills_inner(workspace_path, conn)?;
+    let completed: Vec<SkillSummary> = all
+        .into_iter()
+        .filter(|s| s.status.as_deref() == Some("completed"))
+        .collect();
+    Ok(filter_by_skill_md_exists(skills_path, completed))
+}
+
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn create_skill(
@@ -1276,6 +1341,61 @@ mod tests {
 
         let tags = crate::db::get_tags_for_skills(&conn, &["full-meta".into()]).unwrap();
         assert_eq!(tags.get("full-meta").unwrap(), &["api", "rest"]);
+    }
+
+    // ===== list_refinable_skills_inner tests =====
+
+    #[test]
+    fn test_list_refinable_skills_returns_only_completed_with_skill_md() {
+        let dir = tempdir().unwrap();
+        let skills_path = dir.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // Create a completed skill with SKILL.md on disk
+        crate::db::save_workflow_run(&conn, "ready-skill", "analytics", 7, "completed", "domain")
+            .unwrap();
+        let skill_dir = dir.path().join("ready-skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "# Ready").unwrap();
+
+        // Create an in-progress skill (should be excluded)
+        crate::db::save_workflow_run(
+            &conn,
+            "wip-skill",
+            "marketing",
+            3,
+            "in_progress",
+            "domain",
+        )
+        .unwrap();
+
+        let result = list_refinable_skills_inner("/unused", skills_path, &conn).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "ready-skill");
+    }
+
+    #[test]
+    fn test_list_refinable_skills_excludes_completed_without_skill_md() {
+        let dir = tempdir().unwrap();
+        let skills_path = dir.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // Completed in DB but no SKILL.md on disk
+        crate::db::save_workflow_run(&conn, "no-file", "domain", 7, "completed", "domain")
+            .unwrap();
+
+        let result = list_refinable_skills_inner("/unused", skills_path, &conn).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_list_refinable_skills_empty_db() {
+        let dir = tempdir().unwrap();
+        let skills_path = dir.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        let result = list_refinable_skills_inner("/unused", skills_path, &conn).unwrap();
+        assert!(result.is_empty());
     }
 
     #[test]

@@ -44,8 +44,6 @@ export default function PromptsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Agent Prompts</h1>
-
       <div className="flex gap-4">
         <select
           value={skillType}

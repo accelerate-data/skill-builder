@@ -21,6 +21,7 @@ function resolveStepTemplate(agentName: string | undefined): string | null {
   if (agentName === "generate-skill") return "step5-generate-skill";
   if (agentName === "validate-skill") return "step6-validate-skill";
   if (agentName === "refine-skill") return "refine";
+  if (agentName === "rewrite-skill") return "rewrite-skill";
 
   // All research-related agents (orchestrator, planner, dimension agents, consolidate, scope-advisor)
   if (
@@ -45,6 +46,7 @@ function getOutputDir(stepTemplate: string): string {
     "step5-generate-skill": "step5",
     "step6-validate-skill": "step6",
     "refine": "refine",
+    "rewrite-skill": "refine",
   };
   return stepMap[stepTemplate] || "";
 }
@@ -219,7 +221,10 @@ async function writeMockOutputFiles(
   // (or use the context directory's parent, which is the skill directory).
   let destRoot: string;
 
-  if (stepTemplate === "step5-generate-skill") {
+  if (stepTemplate === "refine-skill") {
+    // Refine: files go directly to cwd (the skill directory)
+    destRoot = config.cwd;
+  } else if (stepTemplate === "step5-generate-skill") {
     // Step 5: files go to skill output dir (may differ from skill dir when skills_path is set)
     destRoot = paths.skillOutputDir ?? paths.skillDir ?? config.cwd;
   } else {

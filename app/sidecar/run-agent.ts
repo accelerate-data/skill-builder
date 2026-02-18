@@ -91,12 +91,13 @@ export async function runAgentRequest(
   const options = buildQueryOptions(config, state.abortController, stderrHandler);
 
   // Build the effective prompt, prepending conversation history for refine sessions
-  const effectivePrompt = config.conversationHistory?.length
-    ? buildRefinePrompt(config.prompt, config.conversationHistory)
+  const history = config.conversationHistory ?? [];
+  const effectivePrompt = history.length > 0
+    ? buildRefinePrompt(config.prompt, history)
     : config.prompt;
 
-  if (config.conversationHistory?.length) {
-    process.stderr.write(`[sidecar] Refine mode: ${config.conversationHistory.length} history messages\n`);
+  if (history.length > 0) {
+    process.stderr.write(`[sidecar] Refine mode: ${history.length} history messages\n`);
   }
 
   // Notify the UI that we're about to initialize the SDK

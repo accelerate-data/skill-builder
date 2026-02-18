@@ -142,18 +142,9 @@ describe("DashboardPage", () => {
     render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     });
-    expect(screen.getByText("Hr Analytics")).toBeInTheDocument();
-  });
-
-  it("shows page title", async () => {
-    setupMocks();
-    render(<DashboardPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Skills")).toBeInTheDocument();
-    });
+    expect(screen.getByText("hr-analytics")).toBeInTheDocument();
   });
 
   it("shows empty state when no skills", async () => {
@@ -174,7 +165,7 @@ describe("DashboardPage", () => {
     render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     });
 
     const continueButtons = screen.getAllByRole("button", {
@@ -193,7 +184,7 @@ describe("DashboardPage", () => {
     render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     });
 
     expect(
@@ -206,7 +197,7 @@ describe("DashboardPage", () => {
     render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     });
 
     expect(screen.queryByRole("button", { name: /New Skill/i })).not.toBeInTheDocument();
@@ -221,7 +212,7 @@ describe("DashboardPage", () => {
     render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     });
 
     expect(screen.getByPlaceholderText("Search skills...")).toBeInTheDocument();
@@ -233,14 +224,14 @@ describe("DashboardPage", () => {
     render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     });
 
     const searchInput = screen.getByPlaceholderText("Search skills...");
     await user.type(searchInput, "sales");
 
-    expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
-    expect(screen.queryByText("Hr Analytics")).not.toBeInTheDocument();
+    expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
+    expect(screen.queryByText("hr-analytics")).not.toBeInTheDocument();
   });
 
   it("filters skills by domain", async () => {
@@ -249,14 +240,14 @@ describe("DashboardPage", () => {
     render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     });
 
     const searchInput = screen.getByPlaceholderText("Search skills...");
     await user.type(searchInput, "HR");
 
-    expect(screen.queryByText("Sales Pipeline")).not.toBeInTheDocument();
-    expect(screen.getByText("Hr Analytics")).toBeInTheDocument();
+    expect(screen.queryByText("sales-pipeline")).not.toBeInTheDocument();
+    expect(screen.getByText("hr-analytics")).toBeInTheDocument();
   });
 
   it("shows no matching skills state when search has no results", async () => {
@@ -265,7 +256,7 @@ describe("DashboardPage", () => {
     render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     });
 
     const searchInput = screen.getByPlaceholderText("Search skills...");
@@ -293,7 +284,7 @@ describe("DashboardPage", () => {
     render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     });
 
     expect(screen.getByRole("button", { name: /Tags/i })).toBeInTheDocument();
@@ -305,7 +296,7 @@ describe("DashboardPage", () => {
     render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     });
 
     // Open tag filter dropdown
@@ -315,8 +306,8 @@ describe("DashboardPage", () => {
     const menuItem = screen.getByRole("menuitemcheckbox", { name: /workday/i });
     await user.click(menuItem);
 
-    expect(screen.queryByText("Sales Pipeline")).not.toBeInTheDocument();
-    expect(screen.getByText("Hr Analytics")).toBeInTheDocument();
+    expect(screen.queryByText("sales-pipeline")).not.toBeInTheDocument();
+    expect(screen.getByText("hr-analytics")).toBeInTheDocument();
   });
 
   // --- Type filter tests ---
@@ -326,7 +317,7 @@ describe("DashboardPage", () => {
     render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     });
 
     expect(screen.getByRole("button", { name: /Type/i })).toBeInTheDocument();
@@ -338,7 +329,7 @@ describe("DashboardPage", () => {
     render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     });
 
     // Open type filter dropdown
@@ -348,8 +339,8 @@ describe("DashboardPage", () => {
     const menuItem = screen.getByRole("menuitemcheckbox", { name: /Platform/i });
     await user.click(menuItem);
 
-    expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
-    expect(screen.queryByText("Hr Analytics")).not.toBeInTheDocument();
+    expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
+    expect(screen.queryByText("hr-analytics")).not.toBeInTheDocument();
   });
 
   it("combines search, tag, and type filters", async () => {
@@ -374,23 +365,23 @@ describe("DashboardPage", () => {
     render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     });
 
-    // Filter by type: platform (Sales Pipeline + Marketing Data)
+    // Filter by type: platform (sales-pipeline + marketing-data)
     await user.click(screen.getByRole("button", { name: /Type/i }));
     await user.click(screen.getByRole("menuitemcheckbox", { name: /Platform/i }));
 
-    expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
-    expect(screen.getByText("Marketing Data")).toBeInTheDocument();
-    expect(screen.queryByText("Hr Analytics")).not.toBeInTheDocument();
+    expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
+    expect(screen.getByText("marketing-data")).toBeInTheDocument();
+    expect(screen.queryByText("hr-analytics")).not.toBeInTheDocument();
 
     // Further filter by search: "marketing"
     const searchInput = screen.getByPlaceholderText("Search skills...");
     await user.type(searchInput, "marketing");
 
-    expect(screen.queryByText("Sales Pipeline")).not.toBeInTheDocument();
-    expect(screen.getByText("Marketing Data")).toBeInTheDocument();
+    expect(screen.queryByText("sales-pipeline")).not.toBeInTheDocument();
+    expect(screen.getByText("marketing-data")).toBeInTheDocument();
   });
 
   // --- Download handler tests ---
@@ -401,7 +392,7 @@ describe("DashboardPage", () => {
     render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Hr Analytics")).toBeInTheDocument();
+      expect(screen.getByText("hr-analytics")).toBeInTheDocument();
     });
 
     // The hr-analytics skill is completed, so download should be enabled.

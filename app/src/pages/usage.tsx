@@ -172,7 +172,6 @@ export default function UsagePage() {
   if (error) {
     return (
       <div className="flex flex-col gap-6 p-6">
-        <h1 className="text-2xl font-semibold">Usage</h1>
         <p className="text-destructive">Failed to load usage data: {error}</p>
       </div>
     )
@@ -183,9 +182,6 @@ export default function UsagePage() {
   if (isEmpty) {
     return (
       <div className="flex flex-col gap-6 p-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Usage</h1>
-        </div>
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <DollarSign className="size-12 text-muted-foreground/40 mb-4" />
           <p className="text-muted-foreground text-lg">No usage data yet.</p>
@@ -200,10 +196,7 @@ export default function UsagePage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Usage</h1>
-        <div className="flex items-center gap-4">
+      <div className="flex items-center justify-end gap-4">
           <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
             <input
               type="checkbox"
@@ -236,7 +229,6 @@ export default function UsagePage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        </div>
       </div>
 
       {/* Summary Cards */}

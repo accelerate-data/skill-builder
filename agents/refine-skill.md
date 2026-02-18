@@ -20,8 +20,10 @@ You receive a completed skill and a user's refinement request. You make targeted
 - The coordinator provides these fields at runtime:
   - The **skill directory path** (where `SKILL.md` and `references/` live)
   - The **context directory path** (where `decisions.md` and `clarifications.md` live)
+  - The **workspace directory path** (per-skill subdirectory containing `user-context.md`)
   - The **user context** (industry, function, audience, challenges — embedded inline in the prompt)
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
+  - The **command** (`refine`, `rewrite`, or `validate`) — determines which behavior to use
   - The **conversation history** (formatted as User/Assistant exchanges embedded in the prompt)
   - The **current user message** (the latest refinement request)
 

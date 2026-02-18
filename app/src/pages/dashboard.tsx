@@ -151,6 +151,10 @@ export default function DashboardPage() {
     navigate({ to: "/skill/$skillName", params: { skillName: skill.name } })
   }
 
+  const handleRefine = useCallback((skill: SkillSummary) => {
+    navigate({ to: "/refine", search: { skill: skill.name } })
+  }, [navigate])
+
   const handleDownload = useCallback(async (skill: SkillSummary) => {
     if (!workspacePath) return
     const toastId = toast.loading("Packaging skill...")
@@ -200,23 +204,20 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Skills</h1>
-        {workspacePath && skillsPath && (
-          <div className="flex items-center gap-2">
-            <TeamRepoImportDialog
-              onImported={async () => { await Promise.all([loadSkills(), loadTags()]); }}
-              remoteConfigured={remoteConfigured}
-              isLoggedIn={isLoggedIn}
-            />
-            <NewSkillDialog
-              workspacePath={workspacePath}
-              onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
-              tagSuggestions={availableTags}
-            />
-          </div>
-        )}
-      </div>
+      {workspacePath && skillsPath && (
+        <div className="flex items-center justify-end gap-2">
+          <TeamRepoImportDialog
+            onImported={async () => { await Promise.all([loadSkills(), loadTags()]); }}
+            remoteConfigured={remoteConfigured}
+            isLoggedIn={isLoggedIn}
+          />
+          <NewSkillDialog
+            workspacePath={workspacePath}
+            onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
+            tagSuggestions={availableTags}
+          />
+        </div>
+      )}
 
       {!skillsPath && (
         <Card className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
@@ -361,6 +362,7 @@ export default function DashboardPage() {
               onDelete={setDeleteTarget}
               onDownload={handleDownload}
               onEdit={setEditTarget}
+              onRefine={handleRefine}
               onPushToRemote={handlePushToRemote}
               remoteConfigured={remoteConfigured}
               isGitHubLoggedIn={isLoggedIn}

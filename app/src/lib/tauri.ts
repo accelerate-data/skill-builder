@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo, TeamRepoSkill } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo, TeamRepoSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo, TeamRepoSkill } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo, TeamRepoSkill, SkillFileContent, RefineDiff, RefineSessionInfo } from "@/lib/types";
 
 // --- Settings ---
 
@@ -358,4 +358,30 @@ export const listTeamRepoSkills = () =>
 
 export const importTeamRepoSkill = (skillPath: string, skillName: string, force: boolean = false) =>
   invoke<string>("import_team_repo_skill", { skillPath, skillName, force })
+
+// --- Refine ---
+
+export const listRefinableSkills = (workspacePath: string) =>
+  invoke<SkillSummary[]>("list_refinable_skills", { workspacePath })
+
+export const getSkillContentForRefine = (skillName: string, workspacePath: string) =>
+  invoke<SkillFileContent[]>("get_skill_content_for_refine", { skillName, workspacePath })
+
+export const getRefineDiff = (skillName: string, workspacePath: string) =>
+  invoke<RefineDiff>("get_refine_diff", { skillName, workspacePath })
+
+export const startRefineSession = (skillName: string, workspacePath: string) =>
+  invoke<RefineSessionInfo>("start_refine_session", { skillName, workspacePath })
+
+export const closeRefineSession = (sessionId: string) =>
+  invoke<void>("close_refine_session", { sessionId })
+
+export const sendRefineMessage = (
+  sessionId: string,
+  userMessage: string,
+  conversationHistory: Array<{ role: "user" | "assistant"; content: string }>,
+  workspacePath: string,
+  targetFiles?: string[],
+  command?: string,
+) => invoke<string>("send_refine_message", { sessionId, userMessage, conversationHistory, workspacePath, targetFiles: targetFiles ?? null, command: command ?? null })
 

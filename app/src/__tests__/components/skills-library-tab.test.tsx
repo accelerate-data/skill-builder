@@ -30,7 +30,7 @@ vi.mock("remark-gfm", () => ({
   default: () => {},
 }));
 
-import SkillsPage from "@/pages/skills";
+import { SkillsLibraryTab } from "@/components/skills-library-tab";
 
 const sampleSkills: ImportedSkill[] = [
   {
@@ -55,32 +55,31 @@ const sampleSkills: ImportedSkill[] = [
   },
 ];
 
-describe("SkillsPage", () => {
+describe("SkillsLibraryTab", () => {
   beforeEach(() => {
     resetTauriMocks();
   });
 
   it("shows loading skeletons while fetching", async () => {
     mockInvoke.mockImplementation(() => new Promise(() => {}));
-    render(<SkillsPage />);
+    render(<SkillsLibraryTab />);
 
     const skeletons = document.querySelectorAll(".animate-pulse");
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
-  it("renders page title and upload button", async () => {
+  it("renders upload button", async () => {
     mockInvokeCommands({ list_imported_skills: sampleSkills });
-    render(<SkillsPage />);
+    render(<SkillsLibraryTab />);
 
     await waitFor(() => {
-      expect(screen.getByText("Skills Library")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Upload Skill/i })).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: /Upload Skill/i })).toBeInTheDocument();
   });
 
   it("renders skill cards when skills exist", async () => {
     mockInvokeCommands({ list_imported_skills: sampleSkills });
-    render(<SkillsPage />);
+    render(<SkillsLibraryTab />);
 
     await waitFor(() => {
       expect(screen.getByText("sales-analytics")).toBeInTheDocument();
@@ -90,7 +89,7 @@ describe("SkillsPage", () => {
 
   it("shows empty state when no skills", async () => {
     mockInvokeCommands({ list_imported_skills: [] });
-    render(<SkillsPage />);
+    render(<SkillsLibraryTab />);
 
     await waitFor(() => {
       expect(screen.getByText("No imported skills")).toBeInTheDocument();
@@ -102,7 +101,7 @@ describe("SkillsPage", () => {
 
   it("shows domain badge on skill card", async () => {
     mockInvokeCommands({ list_imported_skills: sampleSkills });
-    render(<SkillsPage />);
+    render(<SkillsLibraryTab />);
 
     await waitFor(() => {
       expect(screen.getByText("sales")).toBeInTheDocument();
@@ -116,7 +115,7 @@ describe("SkillsPage", () => {
       sampleSkills[1],
     ];
     mockInvokeCommands({ list_imported_skills: skillsWithTrigger });
-    render(<SkillsPage />);
+    render(<SkillsLibraryTab />);
 
     await waitFor(() => {
       expect(
@@ -127,7 +126,7 @@ describe("SkillsPage", () => {
 
   it("shows description fallback when no trigger text", async () => {
     mockInvokeCommands({ list_imported_skills: sampleSkills });
-    render(<SkillsPage />);
+    render(<SkillsLibraryTab />);
 
     await waitFor(() => {
       expect(
@@ -138,7 +137,7 @@ describe("SkillsPage", () => {
 
   it("shows 'No trigger set' for skills without trigger or description", async () => {
     mockInvokeCommands({ list_imported_skills: sampleSkills });
-    render(<SkillsPage />);
+    render(<SkillsLibraryTab />);
 
     await waitFor(() => {
       expect(screen.getByText("No trigger set")).toBeInTheDocument();
@@ -164,7 +163,7 @@ describe("SkillsPage", () => {
     });
     (mockOpen as ReturnType<typeof vi.fn>).mockResolvedValue("/path/to/file.skill");
 
-    render(<SkillsPage />);
+    render(<SkillsLibraryTab />);
 
     await waitFor(() => {
       expect(screen.getByText("No imported skills")).toBeInTheDocument();
@@ -187,7 +186,7 @@ describe("SkillsPage", () => {
     mockInvokeCommands({ list_imported_skills: [] });
     (mockOpen as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
-    render(<SkillsPage />);
+    render(<SkillsLibraryTab />);
 
     await waitFor(() => {
       expect(screen.getByText("No imported skills")).toBeInTheDocument();

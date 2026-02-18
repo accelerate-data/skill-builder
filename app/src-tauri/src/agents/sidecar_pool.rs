@@ -895,6 +895,16 @@ impl SidecarPool {
                                             request_id,
                                             error_detail,
                                         );
+                                        // Emit the error detail as an agent-message so the
+                                        // frontend can display it (instead of "Unknown error").
+                                        events::handle_sidecar_message(
+                                            &app_handle_stdout,
+                                            request_id,
+                                            &serde_json::json!({
+                                                "type": "error",
+                                                "error": error_detail,
+                                            }).to_string(),
+                                        );
                                         {
                                             let mut pending = stdout_pending.lock().await;
                                             pending.remove(request_id);

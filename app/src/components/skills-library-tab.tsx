@@ -17,7 +17,7 @@ import { useImportedSkillsStore } from "@/stores/imported-skills-store"
 import type { ImportedSkill } from "@/stores/imported-skills-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
 
-export default function SkillsPage() {
+export function SkillsLibraryTab() {
   const {
     skills,
     isLoading,
@@ -96,19 +96,16 @@ export default function SkillsPage() {
   }, [])
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Skills Library</h1>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setShowGitHubImport(true)}>
-            <Github className="size-4" />
-            Import from GitHub
-          </Button>
-          <Button onClick={handleUpload}>
-            <Upload className="size-4" />
-            Upload Skill
-          </Button>
-        </div>
+    <div className="space-y-6">
+      <div className="flex items-center gap-2">
+        <Button variant="outline" onClick={() => setShowGitHubImport(true)}>
+          <Github className="size-4" />
+          Import from GitHub
+        </Button>
+        <Button onClick={handleUpload}>
+          <Upload className="size-4" />
+          Upload Skill
+        </Button>
       </div>
 
       {isLoading ? (
