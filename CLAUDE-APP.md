@@ -45,6 +45,7 @@ Key files:
 - Zustand stores: one file per store in `app/src/stores/`
 - Rust commands: one module per concern in `app/src-tauri/src/commands/`
 - Tailwind 4 + shadcn/ui for all UI components
+- **Error colors:** Always use `text-destructive` for error text — never hardcoded `text-red-*`. The `--destructive` CSS variable is tuned for both light and dark mode readability. Use `bg-destructive` for destructive backgrounds and `text-destructive-foreground` only for text ON destructive backgrounds (e.g., inside a red button).
 - Verify before committing: `cd app && npx tsc --noEmit` (frontend) + `cargo check --manifest-path app/src-tauri/Cargo.toml` (backend)
 
 ## Testing

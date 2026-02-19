@@ -440,7 +440,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
 
   if (category === "error") {
     return (
-      <div className={`${wrapperClass} flex items-start gap-2 text-sm text-destructive-foreground`}>
+      <div className={`${wrapperClass} flex items-start gap-2 text-sm text-destructive`}>
         <XCircle className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
         <span>{message.content ?? "Unknown error"}</span>
       </div>
@@ -457,7 +457,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
     if (hasErrorSubtype) {
       const errorMessage = RESULT_ERROR_LABELS[subtype ?? ""] ?? errors?.join("; ") ?? "Agent ended with an error";
       return (
-        <div className={`${categoryStyles.error} flex items-start gap-2 text-sm text-destructive-foreground`}>
+        <div className={`${categoryStyles.error} flex items-start gap-2 text-sm text-destructive`}>
           <AlertTriangle className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
           <span>{errorMessage}</span>
         </div>
@@ -466,7 +466,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
 
     if (resultStopReason === "refusal") {
       return (
-        <div className={`${categoryStyles.error} flex items-start gap-2 text-sm text-destructive-foreground`}>
+        <div className={`${categoryStyles.error} flex items-start gap-2 text-sm text-destructive`}>
           <XCircle className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
           <span>Agent declined this request due to safety constraints. Please revise your prompt.</span>
         </div>

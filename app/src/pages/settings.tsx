@@ -693,8 +693,8 @@ export default function SettingsPage() {
                         </div>
                         {validationStatus === "error" && (
                           <div className="flex items-center gap-2 text-sm">
-                            <AlertCircle className="size-4 text-red-600" />
-                            <span className="text-red-600">{validationError}</span>
+                            <AlertCircle className="size-4 text-destructive" />
+                            <span className="text-destructive">{validationError}</span>
                           </div>
                         )}
                       </div>
@@ -781,7 +781,7 @@ export default function SettingsPage() {
                       size="sm"
                       onClick={handleClearWorkspace}
                       disabled={clearing || !workspacePath}
-                      className="text-destructive-foreground hover:text-destructive-foreground"
+                      className="text-destructive hover:text-destructive"
                     >
                       {clearing ? (
                         <Loader2 className="size-4 animate-spin" />
