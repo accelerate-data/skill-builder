@@ -68,13 +68,13 @@ Before writing any test code, read existing tests for the files you changed:
 
 **Frontend (stores, hooks, components, pages):** Use `npm run test:changed` to auto-detect and run tests affected by your changes. This uses `vitest --changed` which traces module dependencies — no manual mapping needed. For targeted runs: `npm run test:unit`, `npm run test:integration`, or specific test files.
 
-**Rust:** Run `cargo test --manifest-path app/src-tauri/Cargo.toml <module>` for the module you changed. If the command is UI-facing, also run the cross-layer E2E tag from `app/tests/TEST_MANIFEST.md`.
+**Rust:** Run `cargo test --manifest-path app/src-tauri/Cargo.toml <module>` for the module you changed. If the command is UI-facing, also run the E2E tag listed in the Rust → E2E table below.
 
-**Shared infrastructure** (`src/lib/tauri.ts`, test mocks, config files): Run `app/tests/run.sh` (all levels). See the manifest for the full list.
+**Shared infrastructure** (`src/lib/tauri.ts`, test mocks, config files): Run `app/tests/run.sh` (all levels).
 
 **App quick rules:**
 - Changed a store/hook/component/page? → `npm run test:changed`
-- Changed a Rust command? → `cargo test <module>` + E2E tag from `app/tests/TEST_MANIFEST.md`
+- Changed a Rust command? → `cargo test <module>` + E2E tag (see Rust → E2E table below)
 - Changed sidecar code? → `cd app/sidecar && npx vitest run`
 - Changed `src/lib/tauri.ts` or test mocks? → `app/tests/run.sh` (all levels)
 - Unsure? → `app/tests/run.sh` runs everything
@@ -90,15 +90,25 @@ Before writing any test code, read existing tests for the files you changed:
 - Changed `scripts/eval/eval-skill-quality.sh` or `scripts/eval/test-eval-harness.sh`? → `app/tests/run.sh eval`
 - Changed `scripts/eval/prompts/`? → no tests needed (prompts are data files)
 
-**Cross-cutting** (shared files affect both app and plugin):
+**Cross-cutting** (changes that affect both agent and app):
 - Changed `agents/`, `references/`, or `.claude-plugin/`? → `./scripts/test-plugin.sh t1`
-- Changed agent artifact format (answer fields, choices, headings)? → `./scripts/test-plugin.sh t1` + `npm run test:unit` (canonical-format catches mock/fixture drift)
-- Changed mock templates (`app/sidecar/mock-templates/outputs/`)? → `npm run test:unit` (canonical-format.test.ts validates structure)
-- Changed E2E fixtures (`app/e2e/fixtures/`)? → `npm run test:unit` (canonical-format.test.ts) + E2E tag from `app/tests/TEST_MANIFEST.md`
+- Changed agent artifact format (answer/recommendation fields, choices, headings)? → `./scripts/test-plugin.sh t1` + `npm run test:unit` (canonical-format.test.ts catches mock/fixture drift)
+- Changed mock templates (`app/sidecar/mock-templates/outputs/`)? → `npm run test:unit` (canonical-format.test.ts)
+- Changed E2E fixtures (`app/e2e/fixtures/`)? → `npm run test:unit` (canonical-format.test.ts) + `npm run test:e2e -- --grep @workflow`
+- Changed Rust parsers for agent artifacts (`autofill_answers`, `parse_decisions_guard`)? → `cargo test commands::workflow` + `npm run test:unit` (canonical-format.test.ts verifies mock templates match what the parser expects)
 
-Format contract between agents and app is documented in `docs/design/clarifications-rendering/canonical-format.md`. Cross-boundary test mappings are in `app/tests/TEST_MANIFEST.md` § Cross-Boundary.
+**Rust → E2E cross-layer tags** (run the E2E tag after `cargo test` when the Rust command is UI-facing):
 
-Plugin test tiers (T1-T5), environment variables, and tags are documented in `./scripts/test-plugin.sh --help`. E2E tags are in `app/tests/TEST_MANIFEST.md`.
+| Rust module | E2E tag |
+|---|---|
+| `commands::workflow` | `@workflow` |
+| `commands::workspace`, `commands::skill` | `@dashboard` |
+| `commands::settings` | `@settings` |
+| `commands::clarification`, `commands::files` | `@workflow` |
+| `commands::refine` | `@refine` |
+| `agents::sidecar`, `agents::sidecar_pool` | `@workflow-agent` |
+
+Full Rust → E2E mapping and E2E spec file list are in `app/tests/TEST_MANIFEST.md` (human reference for edge cases and new command registration).
 
 ### Updating the test manifest
 
