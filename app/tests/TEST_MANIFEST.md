@@ -80,18 +80,25 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 
 ## Cross-Boundary: Agent ↔ App Format Compliance
 
-Agent prompts define artifact formats (`clarifications.md`, `decisions.md`). The app parses those artifacts in Rust and TypeScript. Changes to either side can break the contract.
+Agent prompts define artifact formats (`clarifications.md`, `decisions.md`, etc.). The app parses those artifacts in Rust and TypeScript. Changes to either side can break the contract. The canonical format spec lives at `docs/design/clarifications-rendering/canonical-format.md`.
 
-| Source | Artifact | Compliance Test |
+### How to use this table
+
+1. Find the file you changed in the **Source** column
+2. Run the test in the **Compliance Test** column
+3. If your change affects an artifact format (e.g. changing `**Answer:**` to something else), check whether other sources reference the same artifact — run their tests too
+
+**Example:** You change `agents/consolidate-research.md` to use a different choices format. Look it up → run `./scripts/test-plugin.sh t1`. But the mock templates also contain choices in the same format → also run `npm run test:unit` to catch the drift.
+
+| Source | What it validates | Compliance Test |
 |---|---|---|
-| `agents/*.md` (all agent prompts) | Anti-pattern checks (colon placement, checkboxes, labels) | `./scripts/test-plugin.sh t1` (T1.11 canonical format) |
-| `app/sidecar/mock-templates/outputs/*/context/*.md` | Mock template structure + anti-patterns | `npm run test:unit` (`canonical-format.test.ts`) |
-| `app/e2e/fixtures/agent-responses/review-content.md` | E2E fixture structure + anti-patterns | `npm run test:unit` (`canonical-format.test.ts`) |
-| `app/sidecar/mock-templates/outputs/gate-answer-evaluator/context/answer-evaluation.json` | JSON schema validation | `npm run test:unit` (`canonical-format.test.ts`) |
-| `app/src-tauri/src/commands/workflow.rs` (`autofill_answers`) | Rust parser patterns | `cargo test commands::workflow` |
-| `app/src/lib/reasoning-parser.ts` (`countDecisions`) | TS parser patterns | `npm run test:unit` (`reasoning-parser.test.ts`) |
-
-Canonical format spec: `docs/design/clarifications-rendering/canonical-format.md`
+| `agents/*.md` (all agent prompts) | Anti-patterns: colon placement, checkboxes, labels | `./scripts/test-plugin.sh t1` (T1.11) |
+| `app/sidecar/mock-templates/outputs/*/context/*.md` | Structure + anti-patterns for all markdown artifacts | `npm run test:unit` (`canonical-format.test.ts`) |
+| `app/sidecar/mock-templates/outputs/gate-*/context/*.json` | JSON schema (answer-evaluation.json) | `npm run test:unit` (`canonical-format.test.ts`) |
+| `app/e2e/fixtures/agent-responses/*.md` | E2E fixture structure + anti-patterns | `npm run test:unit` (`canonical-format.test.ts`) |
+| `scripts/plugin-tests/fixtures.sh` | Plugin fixture format | `./scripts/test-plugin.sh t1` (T1.11) |
+| `app/src-tauri/src/commands/workflow.rs` (`autofill_answers`) | Rust parser: answer/recommendation matching, heading resets | `cargo test commands::workflow` |
+| `app/src/lib/reasoning-parser.ts` (`countDecisions`) | TS parser: decision heading regex, frontmatter parsing | `npm run test:unit` (`reasoning-parser.test.ts`) |
 
 ## Quick Reference
 

@@ -92,6 +92,11 @@ Before writing any test code, read existing tests for the files you changed:
 
 **Cross-cutting** (shared files affect both app and plugin):
 - Changed `agents/`, `references/`, or `.claude-plugin/`? → `./scripts/test-plugin.sh t1`
+- Changed agent artifact format (answer fields, choices, headings)? → `./scripts/test-plugin.sh t1` + `npm run test:unit` (canonical-format catches mock/fixture drift)
+- Changed mock templates (`app/sidecar/mock-templates/outputs/`)? → `npm run test:unit` (canonical-format.test.ts validates structure)
+- Changed E2E fixtures (`app/e2e/fixtures/`)? → `npm run test:unit` (canonical-format.test.ts) + E2E tag from `app/tests/TEST_MANIFEST.md`
+
+Format contract between agents and app is documented in `docs/design/clarifications-rendering/canonical-format.md`. Cross-boundary test mappings are in `app/tests/TEST_MANIFEST.md` § Cross-Boundary.
 
 Plugin test tiers (T1-T5), environment variables, and tags are documented in `./scripts/test-plugin.sh --help`. E2E tags are in `app/tests/TEST_MANIFEST.md`.
 
