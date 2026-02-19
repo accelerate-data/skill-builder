@@ -1,6 +1,9 @@
 # macOS
 .DS_Store
 
+# Dependencies
+node_modules/
+
 # Skill build artifacts
 *.skill
 
