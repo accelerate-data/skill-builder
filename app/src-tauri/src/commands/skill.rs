@@ -766,10 +766,17 @@ pub async fn generate_suggestions(
             "No text in API response".to_string()
         })?;
 
-    // Parse the JSON response
+    // Strip markdown fences if the model wrapped its response (e.g. ```json\n...\n```)
+    let cleaned = text.trim();
+    let cleaned = cleaned
+        .strip_prefix("```json")
+        .or_else(|| cleaned.strip_prefix("```"))
+        .unwrap_or(cleaned);
+    let cleaned = cleaned.strip_suffix("```").unwrap_or(cleaned).trim();
+
     let suggestions: serde_json::Value =
-        serde_json::from_str(text).map_err(|e| {
-            log::error!("[generate_suggestions] Failed to parse suggestions: {}", e);
+        serde_json::from_str(cleaned).map_err(|e| {
+            log::error!("[generate_suggestions] Failed to parse suggestions: raw text={}", text);
             format!("Failed to parse suggestions: {}", e)
         })?;
 
