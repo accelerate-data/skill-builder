@@ -3,6 +3,19 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GhostInput, GhostTextarea } from "@/components/ghost-input";
 
+/** Dispatch a native keydown Tab event on an element (tests the native capture listener). */
+function dispatchNativeTab(el: HTMLElement, shiftKey = false) {
+  const event = new KeyboardEvent("keydown", {
+    key: "Tab",
+    code: "Tab",
+    shiftKey,
+    bubbles: true,
+    cancelable: true,
+  });
+  el.dispatchEvent(event);
+  return event;
+}
+
 describe("GhostInput", () => {
   it("shows ghost suggestion text when value is empty and suggestion is provided", () => {
     render(
@@ -34,9 +47,7 @@ describe("GhostInput", () => {
         onChange={vi.fn()}
       />
     );
-    // No ghost overlay should be rendered
     const input = screen.getByRole("textbox");
-    // The parent wrapper div should only contain the input, no ghost div
     expect(input.parentElement?.children.length).toBe(1);
   });
 
@@ -52,8 +63,7 @@ describe("GhostInput", () => {
     expect(input.parentElement?.children.length).toBe(1);
   });
 
-  it("Tab key accepts the suggestion and calls onAccept", async () => {
-    const user = userEvent.setup();
+  it("Tab key accepts the suggestion via native capture listener", () => {
     const onAccept = vi.fn();
     render(
       <GhostInput
@@ -65,14 +75,13 @@ describe("GhostInput", () => {
     );
 
     const input = screen.getByRole("textbox");
-    await user.click(input);
-    await user.keyboard("{Tab}");
+    const event = dispatchNativeTab(input);
 
     expect(onAccept).toHaveBeenCalledWith("analytics-pipeline");
+    expect(event.defaultPrevented).toBe(true);
   });
 
-  it("Tab does nothing when no suggestion is present", async () => {
-    const user = userEvent.setup();
+  it("Tab does nothing when no suggestion is present", () => {
     const onAccept = vi.fn();
     render(
       <GhostInput
@@ -84,14 +93,12 @@ describe("GhostInput", () => {
     );
 
     const input = screen.getByRole("textbox");
-    await user.click(input);
-    await user.keyboard("{Tab}");
+    dispatchNativeTab(input);
 
     expect(onAccept).not.toHaveBeenCalled();
   });
 
-  it("Tab does nothing when value is non-empty (ghost hidden)", async () => {
-    const user = userEvent.setup();
+  it("Tab does nothing when value is non-empty (ghost hidden)", () => {
     const onAccept = vi.fn();
     render(
       <GhostInput
@@ -103,10 +110,42 @@ describe("GhostInput", () => {
     );
 
     const input = screen.getByRole("textbox");
-    await user.click(input);
-    await user.keyboard("{Tab}");
+    dispatchNativeTab(input);
 
     expect(onAccept).not.toHaveBeenCalled();
+  });
+
+  it("Shift+Tab does NOT accept the suggestion", () => {
+    const onAccept = vi.fn();
+    render(
+      <GhostInput
+        suggestion="analytics-pipeline"
+        value=""
+        onChange={vi.fn()}
+        onAccept={onAccept}
+      />
+    );
+
+    const input = screen.getByRole("textbox");
+    dispatchNativeTab(input, true);
+
+    expect(onAccept).not.toHaveBeenCalled();
+  });
+
+  it("Tab does nothing when onAccept is not provided", () => {
+    render(
+      <GhostInput
+        suggestion="analytics-pipeline"
+        value=""
+        onChange={vi.fn()}
+      />
+    );
+
+    const input = screen.getByRole("textbox");
+    const event = dispatchNativeTab(input);
+
+    // Tab should not be swallowed when there's no onAccept handler
+    expect(event.defaultPrevented).toBe(false);
   });
 
   it("regular typing calls onChange, not onAccept", async () => {
@@ -171,25 +210,22 @@ describe("GhostInput", () => {
     expect(input).toHaveAttribute("id", "skill-name");
   });
 
-  it("forwards custom onKeyDown alongside ghost Tab handling", async () => {
+  it("non-Tab keys still forward to custom onKeyDown", async () => {
     const user = userEvent.setup();
     const onKeyDown = vi.fn();
-    const onAccept = vi.fn();
     render(
       <GhostInput
         suggestion="analytics-pipeline"
         value=""
         onChange={vi.fn()}
-        onAccept={onAccept}
         onKeyDown={onKeyDown}
       />
     );
 
     const input = screen.getByRole("textbox");
     await user.click(input);
-    await user.keyboard("{Tab}");
+    await user.keyboard("{Enter}");
 
-    expect(onAccept).toHaveBeenCalledWith("analytics-pipeline");
     expect(onKeyDown).toHaveBeenCalled();
   });
 
@@ -255,8 +291,7 @@ describe("GhostTextarea", () => {
     expect(textarea.parentElement?.children.length).toBe(1);
   });
 
-  it("Tab key accepts the suggestion and calls onAccept", async () => {
-    const user = userEvent.setup();
+  it("Tab key accepts the suggestion via native capture listener", () => {
     const onAccept = vi.fn();
     render(
       <GhostTextarea
@@ -268,14 +303,13 @@ describe("GhostTextarea", () => {
     );
 
     const textarea = screen.getByRole("textbox");
-    await user.click(textarea);
-    await user.keyboard("{Tab}");
+    const event = dispatchNativeTab(textarea);
 
     expect(onAccept).toHaveBeenCalledWith("Enter a detailed description");
+    expect(event.defaultPrevented).toBe(true);
   });
 
-  it("Tab does nothing when no suggestion is present", async () => {
-    const user = userEvent.setup();
+  it("Tab does nothing when no suggestion is present", () => {
     const onAccept = vi.fn();
     render(
       <GhostTextarea
@@ -287,8 +321,24 @@ describe("GhostTextarea", () => {
     );
 
     const textarea = screen.getByRole("textbox");
-    await user.click(textarea);
-    await user.keyboard("{Tab}");
+    dispatchNativeTab(textarea);
+
+    expect(onAccept).not.toHaveBeenCalled();
+  });
+
+  it("Shift+Tab does NOT accept the suggestion", () => {
+    const onAccept = vi.fn();
+    render(
+      <GhostTextarea
+        suggestion="Enter a detailed description"
+        value=""
+        onChange={vi.fn()}
+        onAccept={onAccept}
+      />
+    );
+
+    const textarea = screen.getByRole("textbox");
+    dispatchNativeTab(textarea, true);
 
     expect(onAccept).not.toHaveBeenCalled();
   });
@@ -341,25 +391,22 @@ describe("GhostTextarea", () => {
     expect(textarea).toHaveAttribute("id", "description-field");
   });
 
-  it("forwards custom onKeyDown alongside ghost Tab handling", async () => {
+  it("non-Tab keys still forward to custom onKeyDown", async () => {
     const user = userEvent.setup();
     const onKeyDown = vi.fn();
-    const onAccept = vi.fn();
     render(
       <GhostTextarea
         suggestion="Describe your skill"
         value=""
         onChange={vi.fn()}
-        onAccept={onAccept}
         onKeyDown={onKeyDown}
       />
     );
 
     const textarea = screen.getByRole("textbox");
     await user.click(textarea);
-    await user.keyboard("{Tab}");
+    await user.keyboard("{Enter}");
 
-    expect(onAccept).toHaveBeenCalledWith("Describe your skill");
     expect(onKeyDown).toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react"
+import { useEffect, useRef, useCallback } from "react"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
@@ -20,26 +20,38 @@ function shouldShowGhost(value: string, suggestion: string | null): boolean {
   return value === "" && suggestion != null && suggestion !== ""
 }
 
-/** Shared Tab-to-accept key handler for ghost fields. */
-function useGhostKeyDown<E extends HTMLElement>(
+/**
+ * Attaches a native DOM capture-phase keydown listener to intercept Tab
+ * before Radix Dialog's focus trap (a native bubble-phase listener on the
+ * dialog content node) can steal focus. React's onKeyDownCapture is
+ * insufficient — it fires within React's delegation system at the root,
+ * which is reached after Radix's native listener.
+ */
+function useNativeTabCapture(
+  ref: React.RefObject<HTMLElement | null>,
   showGhost: boolean,
   suggestion: string | null,
   onAccept: ((suggestion: string) => void) | undefined,
-  forwardedOnKeyDown: ((e: React.KeyboardEvent<E>) => void) | undefined,
-): (e: React.KeyboardEvent<E>) => void {
-  const onKeyDownRef = useRef(forwardedOnKeyDown)
-  onKeyDownRef.current = forwardedOnKeyDown
+) {
+  const stateRef = useRef({ showGhost, suggestion, onAccept })
+  stateRef.current = { showGhost, suggestion, onAccept }
 
-  return useCallback(
-    (e: React.KeyboardEvent<E>) => {
-      if (e.key === "Tab" && showGhost && suggestion) {
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    const handler = (e: KeyboardEvent) => {
+      const { showGhost: sg, suggestion: s, onAccept: oa } = stateRef.current
+      if (e.key === "Tab" && !e.shiftKey && sg && s && oa) {
         e.preventDefault()
-        onAccept?.(suggestion)
+        e.stopPropagation()
+        oa(s)
       }
-      onKeyDownRef.current?.(e)
-    },
-    [showGhost, suggestion, onAccept],
-  )
+    }
+
+    el.addEventListener("keydown", handler, true) // true = capture phase
+    return () => el.removeEventListener("keydown", handler, true)
+  }, [ref])
 }
 
 export function GhostInput({
@@ -51,7 +63,15 @@ export function GhostInput({
   ...inputProps
 }: GhostInputProps) {
   const showGhost = shouldShowGhost(value, suggestion)
-  const handleKeyDown = useGhostKeyDown(showGhost, suggestion, onAccept, inputProps.onKeyDown)
+  const inputRef = useRef<HTMLInputElement>(null)
+  useNativeTabCapture(inputRef, showGhost, suggestion, onAccept)
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      inputProps.onKeyDown?.(e)
+    },
+    [inputProps.onKeyDown],
+  )
 
   return (
     <div className="relative">
@@ -62,6 +82,7 @@ export function GhostInput({
       )}
       <Input
         {...inputProps}
+        ref={inputRef}
         className={cn(showGhost && "placeholder:text-transparent", className)}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -80,7 +101,15 @@ export function GhostTextarea({
   ...textareaProps
 }: GhostTextareaProps) {
   const showGhost = shouldShowGhost(value, suggestion)
-  const handleKeyDown = useGhostKeyDown(showGhost, suggestion, onAccept, textareaProps.onKeyDown)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  useNativeTabCapture(textareaRef, showGhost, suggestion, onAccept)
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      textareaProps.onKeyDown?.(e)
+    },
+    [textareaProps.onKeyDown],
+  )
 
   return (
     <div className="relative">
@@ -91,6 +120,7 @@ export function GhostTextarea({
       )}
       <Textarea
         {...textareaProps}
+        ref={textareaRef}
         className={cn(showGhost && "placeholder:text-transparent", className)}
         value={value}
         onChange={(e) => onChange(e.target.value)}

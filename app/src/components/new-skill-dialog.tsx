@@ -56,12 +56,23 @@ export default function NewSkillDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [suggestions, setSuggestions] = useState<FieldSuggestions | null>(null)
+  const [step3Suggestions, setStep3Suggestions] = useState<FieldSuggestions | null>(null)
+  const [aiTagSuggestions, setAiTagSuggestions] = useState<string[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const tagDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fetchVersionRef = useRef(0)
+  const step3VersionRef = useRef(0)
+  const tagVersionRef = useRef(0)
 
   const placeholders = INTAKE_PLACEHOLDERS[skillType] || INTAKE_PLACEHOLDERS.domain
 
-  // Fetch AI suggestions when name + type are set
+  // Merged tag suggestions: existing workspace tags + AI-generated tags (deduped)
+  const mergedTagSuggestions = [
+    ...tagSuggestions,
+    ...aiTagSuggestions.filter((t) => !tagSuggestions.includes(t)),
+  ]
+
+  // Step 2 suggestions: triggered by name + type (domain, scope ghosts only)
   const fetchSuggestions = useCallback(
     (skillName: string, type: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -72,7 +83,9 @@ export default function NewSkillDialog({
       const version = ++fetchVersionRef.current
       debounceRef.current = setTimeout(async () => {
         try {
-          const result = await generateSuggestions(skillName, type, industry, functionRole)
+          const result = await generateSuggestions(skillName, type, {
+            industry, functionRole,
+          })
           if (version === fetchVersionRef.current) setSuggestions(result)
         } catch (err) {
           console.warn("[new-skill] Ghost suggestion fetch failed:", err)
@@ -82,7 +95,53 @@ export default function NewSkillDialog({
     [industry, functionRole],
   )
 
-  // Trigger suggestion fetch when name or type changes
+  // Tag suggestions: triggered when domain or scope change (debounced)
+  useEffect(() => {
+    if (tagDebounceRef.current) clearTimeout(tagDebounceRef.current)
+    const effectiveDomain = domain || suggestions?.domain
+    const effectiveScope = scope || suggestions?.scope
+    if (!name || !skillType || !effectiveDomain) {
+      setAiTagSuggestions([])
+      return
+    }
+    const version = ++tagVersionRef.current
+    tagDebounceRef.current = setTimeout(async () => {
+      try {
+        const result = await generateSuggestions(name, skillType, {
+          industry, functionRole, existingTags: tagSuggestions,
+          domain: effectiveDomain, scope: effectiveScope,
+        })
+        if (version === tagVersionRef.current) {
+          setAiTagSuggestions(result.tags)
+        }
+      } catch (err) {
+        console.warn("[new-skill] Tag suggestion fetch failed:", err)
+      }
+    }, 1200)
+    return () => { if (tagDebounceRef.current) clearTimeout(tagDebounceRef.current) }
+  }, [domain, scope, name, skillType, industry, functionRole, tagSuggestions, suggestions?.domain, suggestions?.scope])
+
+  // Step 3 suggestions: triggered when entering step 3, uses step 2 values
+  const fetchStep3Suggestions = useCallback(() => {
+    if (!name || !skillType) return
+    const version = ++step3VersionRef.current
+    const run = async () => {
+      try {
+        const result = await generateSuggestions(name, skillType, {
+          industry, functionRole, existingTags: tagSuggestions,
+          domain: domain || suggestions?.domain,
+          scope: scope || suggestions?.scope,
+          currentTags: tags,
+        })
+        if (version === step3VersionRef.current) setStep3Suggestions(result)
+      } catch (err) {
+        console.warn("[new-skill] Step 3 suggestion fetch failed:", err)
+      }
+    }
+    run()
+  }, [name, skillType, industry, functionRole, tagSuggestions, domain, scope, tags, suggestions])
+
+  // Trigger step 2 suggestion fetch when name or type changes
   useEffect(() => {
     if (name && skillType) {
       fetchSuggestions(name, skillType)
@@ -150,8 +209,12 @@ export default function NewSkillDialog({
     setUniqueSetup("")
     setClaudeMistakes("")
     setSuggestions(null)
+    setStep3Suggestions(null)
+    setAiTagSuggestions([])
     setError(null)
     fetchVersionRef.current++
+    step3VersionRef.current++
+    tagVersionRef.current++
   }
 
   const canAdvanceStep1 = name.trim() !== "" && isValidKebab(name.trim()) && skillType !== ""
@@ -278,7 +341,7 @@ export default function NewSkillDialog({
                   <TagInput
                     tags={tags}
                     onChange={setTags}
-                    suggestions={tagSuggestions}
+                    suggestions={mergedTagSuggestions}
                     disabled={loading}
                     placeholder="e.g., salesforce, analytics"
                   />
@@ -293,7 +356,7 @@ export default function NewSkillDialog({
               </>
             )}
 
-            {/* Step 3: Optional detail fields */}
+            {/* Step 3: Optional detail fields (suggestions use step 2 context) */}
             {step === 3 && (
               <>
                 <div className="flex flex-col gap-2">
@@ -303,7 +366,7 @@ export default function NewSkillDialog({
                     placeholder={placeholders.audience}
                     value={audience}
                     onChange={setAudience}
-                    suggestion={suggestions?.audience ?? null}
+                    suggestion={step3Suggestions?.audience ?? null}
                     onAccept={setAudience}
                     disabled={loading}
                     rows={2}
@@ -316,7 +379,7 @@ export default function NewSkillDialog({
                     placeholder={placeholders.challenges}
                     value={challenges}
                     onChange={setChallenges}
-                    suggestion={suggestions?.challenges ?? null}
+                    suggestion={step3Suggestions?.challenges ?? null}
                     onAccept={setChallenges}
                     disabled={loading}
                     rows={2}
@@ -329,7 +392,7 @@ export default function NewSkillDialog({
                     placeholder={placeholders.unique_setup}
                     value={uniqueSetup}
                     onChange={setUniqueSetup}
-                    suggestion={suggestions?.unique_setup ?? null}
+                    suggestion={step3Suggestions?.unique_setup ?? null}
                     onAccept={setUniqueSetup}
                     disabled={loading}
                     rows={2}
@@ -342,7 +405,7 @@ export default function NewSkillDialog({
                     placeholder={placeholders.claude_mistakes}
                     value={claudeMistakes}
                     onChange={setClaudeMistakes}
-                    suggestion={suggestions?.claude_mistakes ?? null}
+                    suggestion={step3Suggestions?.claude_mistakes ?? null}
                     onAccept={setClaudeMistakes}
                     disabled={loading}
                     rows={2}
@@ -390,7 +453,7 @@ export default function NewSkillDialog({
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setStep(3)}
+                  onClick={() => { setStep(3); fetchStep3Suggestions(); }}
                   disabled={loading}
                 >
                   Next

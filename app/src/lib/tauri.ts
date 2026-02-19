@@ -47,18 +47,29 @@ export interface FieldSuggestions {
   scope: string;
   unique_setup: string;
   claude_mistakes: string;
+  tags: string[];
 }
 
 export const generateSuggestions = (
   skillName: string,
   skillType: string,
-  industry?: string | null,
-  functionRole?: string | null,
+  opts?: {
+    industry?: string | null;
+    functionRole?: string | null;
+    existingTags?: string[];
+    domain?: string;
+    scope?: string;
+    currentTags?: string[];
+  },
 ) => invoke<FieldSuggestions>("generate_suggestions", {
   skillName,
   skillType,
-  industry: industry ?? null,
-  functionRole: functionRole ?? null,
+  industry: opts?.industry ?? null,
+  functionRole: opts?.functionRole ?? null,
+  existingTags: opts?.existingTags ?? null,
+  domain: opts?.domain ?? null,
+  scope: opts?.scope ?? null,
+  currentTags: opts?.currentTags ?? null,
 });
 
 // --- Agent ---
