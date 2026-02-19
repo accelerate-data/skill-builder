@@ -105,7 +105,7 @@ Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the 
 
 ## Logging
 
-Every new feature must include logging. The app uses `log` crate (Rust) and `console.*` (frontend, bridged to Rust via `attachConsole()`). Sidecar has its own JSONL log system — no changes needed there.
+Every new feature must include logging. The app uses `log` crate (Rust) and `console.*` (frontend, bridged to Rust via `attachConsole()`). All agent interactions — prompts, responses, tool use, and SDK diagnostics — are captured in per-request JSONL transcripts at `{skill}/logs/{step}-{timestamp}.jsonl`. The app log captures lifecycle events; transcripts capture the full conversation.
 
 ### Log levels
 
@@ -114,12 +114,13 @@ Every new feature must include logging. The app uses `log` crate (Rust) and `con
 | **error** | Operation failed, user impact likely | DB write failed, API call returned 5xx, file not found when expected, deserialization error |
 | **warn** | Unexpected but recoverable, or user did something questionable | Retrying after transient failure, config value missing (using default), skill already exists on import |
 | **info** | Key lifecycle events and operations a developer would want in production logs | Command invoked with key params, skill created/deleted/imported, agent started/completed, settings changed, auth login/logout |
-| **debug** | Internal details useful only when troubleshooting | Full request/response payloads, intermediate state, cache hits/misses, branch logic taken, SQL queries |
+| **debug** | Internal details useful only when troubleshooting | **Agent prompts sent to the SDK**, intermediate state, cache hits/misses, branch logic taken, SQL queries |
 
 ### Rules
 
 - **Rust commands:** Every `#[tauri::command]` function logs `info!` on entry (with key params) and `error!` on failure. Use `debug!` for intermediate steps. Never log secrets (API keys, tokens).
 - **Frontend:** Use `console.error()` for caught errors, `console.warn()` for unexpected states, `console.log()` for significant user actions (navigation, form submissions). Don't log render cycles or state reads.
+- **Agent interactions:** Every agent request produces a JSONL transcript with the full SDK conversation (prompt, assistant messages, tool_use, tool_result). The first transcript line is the config object with `apiKey` redacted but prompt included — making each transcript self-contained. Agent prompts are also logged at `debug` level in the app log (`sidecar_pool.rs`). Response payloads stay in transcripts only — don't duplicate them in the app log.
 - **Format:** Include context — `info!("import_github_skills: importing {} skills from {}", count, repo)` not just `info!("importing skills")`.
 
 ## Gotchas

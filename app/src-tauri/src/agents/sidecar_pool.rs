@@ -1095,20 +1095,37 @@ impl SidecarPool {
             .map_err(|e| format!("Failed to serialize agent request: {}", e))?;
         request_line.push('\n');
 
-        // Emit redacted config to frontend (same as spawn_sidecar does)
-        let config_event = {
+        log::debug!(
+            "[do_send_request] agent='{}' skill='{}' prompt:\n{}",
+            agent_id,
+            skill_name,
+            config.prompt,
+        );
+
+        // Emit redacted config to frontend (strip both apiKey and prompt)
+        {
             let mut config_val = serde_json::to_value(&config).unwrap_or_default();
             if let Some(obj) = config_val.as_object_mut() {
                 obj.insert("apiKey".to_string(), serde_json::json!("[REDACTED]"));
                 obj.remove("prompt");
             }
-
             let event = serde_json::json!({
                 "type": "config",
                 "config": config_val,
             });
             events::handle_sidecar_message(app_handle, agent_id, &event.to_string());
-            event
+        }
+
+        // Build transcript first line: config with prompt intact, only apiKey redacted
+        let transcript_first_line = {
+            let mut config_val = serde_json::to_value(&config).unwrap_or_default();
+            if let Some(obj) = config_val.as_object_mut() {
+                obj.insert("apiKey".to_string(), serde_json::json!("[REDACTED]"));
+            }
+            serde_json::json!({
+                "type": "config",
+                "config": config_val,
+            })
         };
 
         // Create per-request JSONL transcript file alongside chat storage:
@@ -1128,8 +1145,8 @@ impl SidecarPool {
                 .and_then(|_| std::fs::File::create(&log_path))
             {
                 Ok(mut f) => {
-                    // Write redacted config as the first line
-                    let _ = writeln!(f, "{}", config_event);
+                    // Write config with prompt as the first line (apiKey redacted)
+                    let _ = writeln!(f, "{}", transcript_first_line);
                     let log_handle: RequestLogFile = Arc::new(Mutex::new(Some(f)));
                     let mut logs = self.request_logs.lock().await;
                     logs.insert(agent_id.to_string(), log_handle);
@@ -1326,7 +1343,15 @@ impl SidecarPool {
     ) -> Result<(), String> {
         self.get_or_spawn(skill_name, app_handle).await?;
 
-        // Emit redacted config to frontend
+        log::debug!(
+            "[send_stream_start] session={} agent='{}' skill='{}' prompt:\n{}",
+            session_id,
+            agent_id,
+            skill_name,
+            config.prompt,
+        );
+
+        // Emit redacted config to frontend (strip both apiKey and prompt)
         {
             let mut config_val = serde_json::to_value(&config).unwrap_or_default();
             if let Some(obj) = config_val.as_object_mut() {
@@ -1337,6 +1362,18 @@ impl SidecarPool {
             events::handle_sidecar_message(app_handle, agent_id, &event.to_string());
         }
 
+        // Build transcript first line: config with prompt intact, only apiKey redacted
+        let transcript_first_line = {
+            let mut config_val = serde_json::to_value(&config).unwrap_or_default();
+            if let Some(obj) = config_val.as_object_mut() {
+                obj.insert("apiKey".to_string(), serde_json::json!("[REDACTED]"));
+            }
+            serde_json::json!({
+                "type": "config",
+                "config": config_val,
+            })
+        };
+
         // Create JSONL transcript
         {
             let step_label = extract_step_label(agent_id, skill_name);
@@ -1345,7 +1382,9 @@ impl SidecarPool {
             let log_dir = Path::new(&config.cwd).join(skill_name).join("logs");
             let log_path = log_dir.join(format!("{}-{}.jsonl", step_label, ts));
 
-            if let Ok(f) = std::fs::create_dir_all(&log_dir).and_then(|_| std::fs::File::create(&log_path)) {
+            if let Ok(mut f) = std::fs::create_dir_all(&log_dir).and_then(|_| std::fs::File::create(&log_path)) {
+                // Write config with prompt as the first line (apiKey redacted)
+                let _ = writeln!(f, "{}", transcript_first_line);
                 let log_handle: RequestLogFile = Arc::new(Mutex::new(Some(f)));
                 let mut logs = self.request_logs.lock().await;
                 logs.insert(agent_id.to_string(), log_handle);
@@ -1400,6 +1439,14 @@ impl SidecarPool {
             let mut pending = self.pending_requests.lock().await;
             pending.insert(agent_id.to_string());
         }
+
+        log::debug!(
+            "[send_stream_message] session={} agent='{}' skill='{}' user_message:\n{}",
+            session_id,
+            agent_id,
+            skill_name,
+            user_message,
+        );
 
         let message = serde_json::json!({
             "type": "stream_message",
