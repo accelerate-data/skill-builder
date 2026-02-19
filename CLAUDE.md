@@ -66,49 +66,24 @@ Before writing any test code, read existing tests for the files you changed:
 
 ### Choosing which tests to run
 
-**Frontend (stores, hooks, components, pages):** Use `npm run test:changed` to auto-detect and run tests affected by your changes. This uses `vitest --changed` which traces module dependencies — no manual mapping needed. For targeted runs: `npm run test:unit`, `npm run test:integration`, or specific test files.
+Determine what you changed, then pick the right runner:
 
-**Rust:** Run `cargo test --manifest-path app/src-tauri/Cargo.toml <module>` for the module you changed. If the command is UI-facing, also run the E2E tag listed in the Rust → E2E table below.
-
-**Shared infrastructure** (`src/lib/tauri.ts`, test mocks, config files): Run `app/tests/run.sh` (all levels).
-
-**App quick rules:**
-- Changed a store/hook/component/page? → `npm run test:changed`
-- Changed a Rust command? → `cargo test <module>` + E2E tag (see Rust → E2E table below)
-- Changed sidecar code? → `cd app/sidecar && npx vitest run`
-- Changed `src/lib/tauri.ts` or test mocks? → `app/tests/run.sh` (all levels)
-- Unsure? → `app/tests/run.sh` runs everything
-
-**Plugin quick rules:**
-- Changed an agent (`agents/`)? → `./scripts/test-plugin.sh t1`
-- Changed the coordinator (`skills/generate-skill/SKILL.md`)? → `./scripts/test-plugin.sh t1 t2 t3`
-- Changed `agent-sources/workspace/CLAUDE.md` (agent instructions)? → `./scripts/build-plugin-skill.sh && ./scripts/test-plugin.sh t1`
-- Changed `.claude-plugin/plugin.json`? → `./scripts/test-plugin.sh t1 t2`
-- Unsure? → `./scripts/test-plugin.sh` runs all tiers
-
-**Eval quick rules:**
-- Changed `scripts/eval/eval-skill-quality.sh` or `scripts/eval/test-eval-harness.sh`? → `app/tests/run.sh eval`
-- Changed `scripts/eval/prompts/`? → no tests needed (prompts are data files)
-
-**Cross-cutting** (changes that affect both agent and app):
-- Changed `agents/`, `references/`, or `.claude-plugin/`? → `./scripts/test-plugin.sh t1`
-- Changed agent artifact format (answer/recommendation fields, choices, headings)? → `./scripts/test-plugin.sh t1` + `npm run test:unit` (canonical-format.test.ts catches mock/fixture drift)
-- Changed mock templates (`app/sidecar/mock-templates/outputs/`)? → `npm run test:unit` (canonical-format.test.ts)
-- Changed E2E fixtures (`app/e2e/fixtures/`)? → `npm run test:unit` (canonical-format.test.ts) + `npm run test:e2e -- --grep @workflow`
-- Changed Rust parsers for agent artifacts (`autofill_answers`, `parse_decisions_guard`)? → `cargo test commands::workflow` + `npm run test:unit` (canonical-format.test.ts verifies mock templates match what the parser expects)
-
-**Rust → E2E cross-layer tags** (run the E2E tag after `cargo test` when the Rust command is UI-facing):
-
-| Rust module | E2E tag |
+| What changed | Test command |
 |---|---|
-| `commands::workflow` | `@workflow` |
-| `commands::workspace`, `commands::skill` | `@dashboard` |
-| `commands::settings` | `@settings` |
-| `commands::clarification`, `commands::files` | `@workflow` |
-| `commands::refine` | `@refine` |
-| `agents::sidecar`, `agents::sidecar_pool` | `@workflow-agent` |
+| Frontend (store/hook/component/page) | `npm run test:changed` |
+| Rust command | `cargo test <module>` + E2E tag from `app/tests/TEST_MANIFEST.md` |
+| Sidecar code | `cd app/sidecar && npx vitest run` |
+| Agent prompt (`agents/`) | `./scripts/test-plugin.sh t1` |
+| Coordinator (`skills/generate-skill/SKILL.md`) | `./scripts/test-plugin.sh t1 t2 t3` |
+| Mock templates or E2E fixtures | `npm run test:unit` |
+| Shared infrastructure (`src/lib/tauri.ts`, test mocks) | `app/tests/run.sh` (all levels) |
+| Eval scripts | `app/tests/run.sh eval` |
 
-Full Rust → E2E mapping and E2E spec file list are in `app/tests/TEST_MANIFEST.md` (human reference for edge cases and new command registration).
+**Cross-cutting:** When a change affects both agents and app (e.g. artifact format change), run both `./scripts/test-plugin.sh t1` and `npm run test:unit`. The `canonical-format.test.ts` suite catches drift between agent prompts, mock templates, and app parsers.
+
+**Unsure?** `app/tests/run.sh` runs everything. `./scripts/test-plugin.sh` runs all plugin tiers.
+
+Rust → E2E tag mappings, E2E spec files, and cross-boundary format compliance details are in `app/tests/TEST_MANIFEST.md`.
 
 ### Updating the test manifest
 
