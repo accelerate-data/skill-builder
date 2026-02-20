@@ -1,9 +1,18 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter-variable.woff2") format("woff2");
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme {
   --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-sans: "Inter Variable", Inter, system-ui, -apple-system, sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -48,42 +57,51 @@
 }
 
 :root {
-  --background: oklch(0.984 0.003 90);
-  --foreground: oklch(0.185 0.008 260);
+  --background: oklch(0.956 0 0);
+  --foreground: oklch(0.145 0.005 250);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.185 0.008 260);
+  --card-foreground: oklch(0.145 0.005 250);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.185 0.008 260);
-  --primary: oklch(0.530 0.095 195);
+  --popover-foreground: oklch(0.145 0.005 250);
+  --primary: oklch(0.680 0.120 210);
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.955 0.005 85);
   --secondary-foreground: oklch(0.395 0.030 240);
   --muted: oklch(0.955 0.005 85);
   --muted-foreground: oklch(0.530 0.006 85);
   --accent: oklch(0.955 0.005 85);
-  --accent-foreground: oklch(0.530 0.095 195);
+  --accent-foreground: oklch(0.680 0.120 210);
   --destructive: oklch(0.570 0.180 25);
   --destructive-foreground: oklch(0.570 0.180 25);
   --border: oklch(0.910 0.006 85);
   --input: oklch(0.910 0.006 85);
-  --ring: oklch(0.600 0.120 50);
+  --ring: oklch(0.870 0.065 208);
   --radius: 0.625rem;
   --sidebar-background: oklch(0.965 0.004 85);
-  --sidebar-foreground: oklch(0.185 0.008 260);
-  --sidebar-primary: oklch(0.530 0.095 195);
+  --sidebar-foreground: oklch(0.145 0.005 250);
+  --sidebar-primary: oklch(0.680 0.120 210);
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.940 0.005 85);
-  --sidebar-accent-foreground: oklch(0.185 0.008 260);
+  --sidebar-accent-foreground: oklch(0.145 0.005 250);
   --sidebar-border: oklch(0.910 0.006 85);
-  --sidebar-ring: oklch(0.600 0.120 50);
+  --sidebar-ring: oklch(0.870 0.065 208);
+
+  /* Brand palette */
+  --color-navy: oklch(0.215 0.105 265);
+  --color-seafoam: oklch(0.780 0.175 160);
+  --color-ocean: oklch(0.530 0.130 230);
+  --color-pacific: oklch(0.680 0.120 210);
+  --color-arctic: oklch(0.870 0.065 208);
+  --color-pearl: oklch(0.956 0 0);
+  --heading-foreground: oklch(0.215 0.105 265);
 
   /* Chat message type colors */
   --chat-tool-bg: oklch(0.960 0.015 195);
   --chat-tool-border: oklch(0.720 0.055 195);
   --chat-question-bg: oklch(0.965 0.020 50);
   --chat-question-border: oklch(0.600 0.120 50);
-  --chat-result-bg: oklch(0.965 0.020 145);
-  --chat-result-border: oklch(0.600 0.100 145);
+  --chat-result-bg: oklch(0.965 0.025 160);
+  --chat-result-border: oklch(0.600 0.120 160);
   --chat-error-bg: oklch(0.970 0.015 25);
   --chat-error-border: oklch(0.570 0.180 25);
   --chat-muted: oklch(0.530 0.006 85);
@@ -96,35 +114,44 @@
   --card-foreground: oklch(0.945 0.003 90);
   --popover: oklch(0.200 0.005 260);
   --popover-foreground: oklch(0.945 0.003 90);
-  --primary: oklch(0.740 0.115 180);
+  --primary: oklch(0.750 0.120 210);
   --primary-foreground: oklch(0.160 0.003 280);
   --secondary: oklch(0.230 0.005 260);
   --secondary-foreground: oklch(0.945 0.003 90);
   --muted: oklch(0.230 0.005 260);
   --muted-foreground: oklch(0.680 0.005 85);
   --accent: oklch(0.230 0.005 260);
-  --accent-foreground: oklch(0.740 0.115 180);
+  --accent-foreground: oklch(0.750 0.120 210);
   --destructive: oklch(0.650 0.200 25);
   --destructive-foreground: oklch(0.980 0 0);
   --border: oklch(0.290 0.006 260);
   --input: oklch(0.290 0.006 260);
-  --ring: oklch(0.695 0.100 55);
+  --ring: oklch(0.700 0.070 208);
   --sidebar-background: oklch(0.180 0.005 260);
   --sidebar-foreground: oklch(0.945 0.003 90);
-  --sidebar-primary: oklch(0.740 0.115 180);
+  --sidebar-primary: oklch(0.750 0.120 210);
   --sidebar-primary-foreground: oklch(0.160 0.003 280);
   --sidebar-accent: oklch(0.240 0.006 260);
   --sidebar-accent-foreground: oklch(0.945 0.003 90);
   --sidebar-border: oklch(0.290 0.006 260);
-  --sidebar-ring: oklch(0.695 0.100 55);
+  --sidebar-ring: oklch(0.700 0.070 208);
+
+  /* Brand palette (dark) */
+  --color-navy: oklch(0.500 0.090 265);
+  --color-seafoam: oklch(0.700 0.150 160);
+  --color-ocean: oklch(0.600 0.110 230);
+  --color-pacific: oklch(0.750 0.120 210);
+  --color-arctic: oklch(0.700 0.070 208);
+  --color-pearl: oklch(0.200 0 0);
+  --heading-foreground: oklch(0.870 0.065 208);
 
   /* Chat message type colors */
   --chat-tool-bg: oklch(0.250 0.020 195 / 0.35);
   --chat-tool-border: oklch(0.530 0.060 195);
   --chat-question-bg: oklch(0.250 0.050 50 / 0.35);
   --chat-question-border: oklch(0.600 0.120 50);
-  --chat-result-bg: oklch(0.250 0.030 145 / 0.35);
-  --chat-result-border: oklch(0.600 0.100 145);
+  --chat-result-bg: oklch(0.250 0.035 160 / 0.35);
+  --chat-result-border: oklch(0.600 0.120 160);
   --chat-error-bg: oklch(0.250 0.050 25 / 0.35);
   --chat-error-border: oklch(0.570 0.180 25);
   --chat-muted: oklch(0.680 0.005 85);
@@ -205,7 +232,16 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: var(--font-sans);
+  }
+  h1, h2, h3 {
+    color: var(--heading-foreground);
+  }
+  a {
+    color: var(--color-ocean);
+  }
+  a:hover {
+    color: var(--color-pacific);
   }
 }
 

@@ -99,15 +99,16 @@ export function SetupScreen({ onComplete }: SetupScreenProps = {}) {
       {/* Gradient backdrop */}
       <div className="absolute inset-0 bg-background">
         <div className="absolute inset-0 opacity-30 dark:opacity-20">
-          <div className="absolute -top-1/4 -left-1/4 h-3/4 w-3/4 rounded-full bg-[oklch(0.7_0.12_230)] blur-[120px]" />
-          <div className="absolute -right-1/4 -bottom-1/4 h-3/4 w-3/4 rounded-full bg-[oklch(0.7_0.10_300)] blur-[120px]" />
+          <div className="absolute -top-1/4 -left-1/4 h-3/4 w-3/4 rounded-full bg-[oklch(0.7_0.12_210)] blur-[120px]" />
+          <div className="absolute -right-1/4 -bottom-1/4 h-3/4 w-3/4 rounded-full bg-[oklch(0.7_0.10_208)] blur-[120px]" />
         </div>
       </div>
 
       {/* Card */}
       <div className="relative z-10 flex w-full max-w-md flex-col gap-6 rounded-xl border bg-card p-10 shadow-lg">
         <div className="flex flex-col gap-1.5 text-center">
-          <img src="/icon-256.png" alt="Skill Builder" className="mx-auto mb-2 size-14" />
+          <img src="/icon-dark-256.png" alt="Skill Builder" className="mx-auto mb-2 size-14 block dark:hidden" />
+          <img src="/icon-256.png" alt="Skill Builder" className="mx-auto mb-2 size-14 hidden dark:block" />
           <h1 className="text-2xl font-bold tracking-tight">Welcome to Skill Builder</h1>
           <p className="text-sm text-muted-foreground">
             Set up your API key and skills folder to get started.

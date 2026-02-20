@@ -41,9 +41,14 @@ export function AboutDialog({ open, onOpenChange }: AboutDialogProps) {
         <DialogHeader>
           <div className="flex flex-col items-center gap-4 pt-2">
             <img
+              src="/icon-dark-256.png"
+              alt="Skill Builder"
+              className="size-16 rounded-xl block dark:hidden"
+            />
+            <img
               src="/icon-256.png"
               alt="Skill Builder"
-              className="size-16 rounded-xl"
+              className="size-16 rounded-xl hidden dark:block"
             />
             <div className="flex flex-col items-center gap-1">
               <DialogTitle className="text-center">Skill Builder</DialogTitle>

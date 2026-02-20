@@ -59,17 +59,22 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
       {/* Gradient backdrop */}
       <div className="absolute inset-0 bg-background">
         <div className="absolute inset-0 opacity-30 dark:opacity-20">
-          <div className="absolute -top-1/4 -left-1/4 h-3/4 w-3/4 rounded-full bg-[oklch(0.7_0.12_230)] blur-[120px]" />
-          <div className="absolute -right-1/4 -bottom-1/4 h-3/4 w-3/4 rounded-full bg-[oklch(0.7_0.10_300)] blur-[120px]" />
-          <div className="absolute top-1/2 left-1/2 h-1/2 w-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(0.7_0.08_180)] blur-[100px]" />
+          <div className="absolute -top-1/4 -left-1/4 h-3/4 w-3/4 rounded-full bg-[oklch(0.7_0.12_210)] blur-[120px]" />
+          <div className="absolute -right-1/4 -bottom-1/4 h-3/4 w-3/4 rounded-full bg-[oklch(0.7_0.10_208)] blur-[120px]" />
+          <div className="absolute top-1/2 left-1/2 h-1/2 w-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(0.7_0.08_160)] blur-[100px]" />
         </div>
       </div>
       {/* Card */}
       <div className="relative z-10 flex max-w-lg flex-col items-center gap-6 rounded-xl border bg-card p-10 text-center shadow-lg">
         <img
+          src="/icon-dark-256.png"
+          alt="Skill Builder"
+          className="size-20 animate-splash-logo block dark:hidden"
+        />
+        <img
           src="/icon-256.png"
           alt="Skill Builder"
-          className="size-20 animate-splash-logo"
+          className="size-20 animate-splash-logo hidden dark:block"
         />
 
         <h1 className="text-3xl font-bold tracking-tight animate-splash-title">Skill Builder</h1>
