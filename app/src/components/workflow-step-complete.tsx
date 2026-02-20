@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { markdownComponents } from "@/components/markdown-link";
 import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -167,7 +168,7 @@ export function WorkflowStepComplete({
                     ) : content ? (
                       <div className="rounded-md border">
                         <div className="markdown-body compact max-w-none p-4">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                             {content}
                           </ReactMarkdown>
                         </div>

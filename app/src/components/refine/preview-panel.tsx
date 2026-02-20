@@ -2,6 +2,7 @@ import { memo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import { markdownComponents } from "@/components/markdown-link";
 import { ChevronDown, FileText, GitCompare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -25,7 +26,7 @@ const REHYPE_PLUGINS = [rehypeHighlight];
 const MarkdownPreview = memo(function MarkdownPreview({ content }: { content: string }) {
   return (
     <div className="markdown-body compact max-w-none overflow-hidden p-4 pb-8">
-      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={markdownComponents}>
         {content}
       </ReactMarkdown>
     </div>
