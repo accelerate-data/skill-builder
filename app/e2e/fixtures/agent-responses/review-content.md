@@ -3,11 +3,14 @@ question_count: 2
 sections: 2
 duplicates_removed: 0
 refinement_count: 0
+priority_questions: [Q1, Q2]
 ---
 
 # Clarifications
 
 ## Domain Concepts
+
+### Required
 
 ### Q1: Primary focus area
 What is the primary focus area for this skill?
@@ -21,6 +24,8 @@ C. Other (please specify)
 **Answer:** b
 
 ## Technical Stack
+
+### Required
 
 ### Q2: Primary database
 What database does your team primarily use?

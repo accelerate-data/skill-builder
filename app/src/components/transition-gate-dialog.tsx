@@ -16,6 +16,8 @@ interface TransitionGateDialogProps {
   verdict: GateVerdict | null;
   totalCount?: number;
   unansweredCount?: number;
+  /** Gate context: "clarifications" (gate 1, before research) or "refinements" (gate 2, before decisions). */
+  context?: "clarifications" | "refinements";
   /** Sufficient: skip straight to decisions. */
   onSkip: () => void;
   /** Sufficient override: run research anyway (no autofill needed). */
@@ -34,6 +36,7 @@ export function TransitionGateDialog({
   verdict,
   totalCount,
   unansweredCount,
+  context = "clarifications",
   onSkip,
   onResearch,
   onAutofillAndSkip,
@@ -43,8 +46,32 @@ export function TransitionGateDialog({
 }: TransitionGateDialogProps) {
   if (!verdict) return null;
 
-  // Sufficient: all answers are detailed — offer to skip research
+  const isRefinements = context === "refinements";
+
+  // Sufficient: all answers are detailed
   if (verdict === "sufficient") {
+    if (isRefinements) {
+      return (
+        <Dialog open={open} onOpenChange={(o) => { if (!o) onResearch(); }}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Refinement Answers Complete</DialogTitle>
+              <DialogDescription>
+                Your refinement answers look good. Continue to the decision analysis phase.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={onLetMeAnswer}>
+                Back to Review
+              </Button>
+              <Button onClick={onResearch}>Continue to Decisions</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      );
+    }
+
+    // Gate 1 (clarifications): offer to skip research
     return (
       <Dialog open={open} onOpenChange={(o) => { if (!o) onResearch(); }}>
         <DialogContent showCloseButton={false}>
@@ -72,27 +99,28 @@ export function TransitionGateDialog({
       ? `${unansweredCount} of ${totalCount}`
       : "Some";
 
-  // Mixed: some answers present, some missing — auto-fill gaps then research
+  // Mixed: some answers present, some missing
   if (verdict === "mixed") {
     return (
       <Dialog open={open} onOpenChange={(o) => { if (!o) onLetMeAnswer(); }}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Auto-fill Missing Answers?</DialogTitle>
+            <DialogTitle>
+              {isRefinements ? "Some Refinements Unanswered" : "Auto-fill Missing Answers?"}
+            </DialogTitle>
             <DialogDescription>
-              {countText} clarification questions don't have answers yet. The
-              research agent provided recommendations for each — you can apply
-              them and continue to detailed research, or go back to fill in your
-              own answers.
+              {isRefinements
+                ? `${countText} refinement answers are missing or vague. Auto-fill with recommendations, or go back to answer them yourself.`
+                : `${countText} clarification questions don't have answers yet. The research agent provided recommendations for each — you can apply them and continue to detailed research, or go back to fill in your own answers.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={onLetMeAnswer}>
               Let Me Answer
             </Button>
-            <Button onClick={onAutofillAndResearch} disabled={isAutofilling}>
+            <Button onClick={isRefinements ? onAutofillAndSkip : onAutofillAndResearch} disabled={isAutofilling}>
               {isAutofilling && <Loader2 className="mr-2 size-4 animate-spin" />}
-              Auto-fill & Research
+              {isRefinements ? "Auto-fill & Continue" : "Auto-fill & Research"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -100,16 +128,18 @@ export function TransitionGateDialog({
     );
   }
 
-  // Insufficient: no answers at all — auto-fill everything and skip research
+  // Insufficient: no answers at all
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onLetMeAnswer(); }}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
-          <DialogTitle>Use Recommended Answers?</DialogTitle>
+          <DialogTitle>
+            {isRefinements ? "Refinements Need Attention" : "Use Recommended Answers?"}
+          </DialogTitle>
           <DialogDescription>
-            You didn't answer {countText} clarification questions. The research
-            agent provided recommendations for each — you can apply them and
-            skip to confirming decisions, or go back to fill in your own answers.
+            {isRefinements
+              ? `Most refinement questions haven't been answered. Auto-fill with recommendations, or go back to answer them.`
+              : `You didn't answer ${countText} clarification questions. The research agent provided recommendations for each — you can apply them and skip to confirming decisions, or go back to fill in your own answers.`}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -118,7 +148,7 @@ export function TransitionGateDialog({
           </Button>
           <Button onClick={onAutofillAndSkip} disabled={isAutofilling}>
             {isAutofilling && <Loader2 className="mr-2 size-4 animate-spin" />}
-            Auto-fill & Skip
+            {isRefinements ? "Auto-fill & Continue" : "Auto-fill & Skip"}
           </Button>
         </DialogFooter>
       </DialogContent>

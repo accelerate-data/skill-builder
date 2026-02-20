@@ -173,12 +173,14 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
      Skill type: <skill_type>
      Domain: <domain>
      Context directory: ./<skillname>/context/
+     Workspace directory: <workspace_dir>
+     Answer evaluation: <workspace_dir>/answer-evaluation.json
 
      <agent-instructions>
      {content of references/protocols.md}
      </agent-instructions>
 
-     Read the answered clarifications.md and insert #### Refinements subsections for questions that need deeper exploration based on the user's answers.
+     Read answer-evaluation.json from the workspace directory to determine which questions are non-clear, then read the answered clarifications.md and insert #### Refinements subsections only for non-clear questions that need deeper exploration.
 
      Return a 5-10 bullet summary of the refinement questions you generated."
    )
@@ -205,11 +207,9 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
 
      Skill type: <skill_type>
      Context directory: ./<skillname>/context/
+     Workspace directory: <workspace_dir>
 
-     Analyze all answered clarifications and produce decisions.
-     Think thoroughly about contradictions, gaps, and implications across all provided answers.
-     Consider multiple interpretations where answers are ambiguous.
-     Verify your analysis is internally consistent before presenting conclusions.
+     Analyze all answered clarifications (first-round and refinements) and produce decisions.
      The agent handles conditional user interaction internally:
      - If contradictions/ambiguities/conflicts are found, it presents numbered options and waits for the user to choose
      - If no issues, it proceeds directly to writing decisions

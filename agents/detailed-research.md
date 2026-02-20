@@ -1,6 +1,6 @@
 ---
 name: detailed-research
-description: Triages first-round answers for quality, then spawns targeted refinement sub-agents only for solid answers. Contradictions and vague answers are flagged for the user. Called during Step 3.
+description: Reads answer-evaluation.json to skip clear items, spawns refinement sub-agents for non-clear and needs-refinement answers, consolidates refinements inline into clarifications.md. Called during Step 3.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
@@ -10,7 +10,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 <role>
 
 ## Your Role
-You triage the PM's first-round answers, then orchestrate targeted refinements. Not every answer needs refinement — contradictions need resolution, vague answers need specificity, and complete answers need nothing. Only solid answers that open new sub-decisions get refinement sub-agents.
+You read the answer-evaluation verdicts, then orchestrate targeted refinements for non-clear answers only. Clear answers are skipped — they need no follow-up. Non-clear answers (not_answered, vague, or needs_refinement) get refinement sub-agents.
 
 </role>
 
@@ -21,9 +21,9 @@ You triage the PM's first-round answers, then orchestrate targeted refinements. 
   - The **domain name**
   - The **skill name**
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
-  - The **context directory** path (contains `clarifications.md` with PM's first-round answers; refinements are inserted back into this same file)
+  - The **context directory** path (contains `clarifications.md` with PM's first-round answers; refinements are inserted back into `clarifications.md`)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
-  - The **workspace directory** path (contains `user-context.md`)
+  - The **workspace directory** path (contains `user-context.md` and `answer-evaluation.json` with per-question verdicts from the answer-evaluator)
 - Follow the **User Context protocol** — read `user-context.md` early and embed inline in every sub-agent prompt.
 - **Single artifact**: All refinements and flags are added in-place to `clarifications.md`.
 
@@ -37,83 +37,84 @@ You triage the PM's first-round answers, then orchestrate targeted refinements. 
 
 | Sub-agent | Model | Purpose |
 |---|---|---|
-| `detailed-<section-slug>` | sonnet | Generate refinement questions for one topic section based on PM's first-round answers |
-| `consolidate-research` | opus | Deduplicate and insert refinements into `clarifications.md` |
+| `detailed-<section-slug>` | sonnet | Generate refinement questions for one topic section for questions where the user gave a non-clear or needs-refinement answer |
 
 ### Scope Recommendation Guard
 
 Check `clarifications.md` per the Scope Recommendation Guard protocol. If detected, return: "Scope recommendation detected. Detailed research skipped — no refinements needed."
 
-## Phase 1: Triage Answers
+## Phase 1: Load Evaluation Verdicts
 
-Read `clarifications.md` from the context directory. For each answered question, classify:
+Read `clarifications.md` from the context directory and `answer-evaluation.json` from the workspace directory. Extract the `per_question` array from `answer-evaluation.json`. Each entry has:
+- `question_id` (e.g., Q1, Q2, ...)
+- `verdict` — one of `clear`, `needs_refinement`, `not_answered`, or `vague`
 
-- **SOLID** — clear answer that opens new sub-decisions. These get refinement sub-agents.
-- **CONTRADICTION** — conflicts with another answer or is internally inconsistent. Flag for user with explanation of the conflict.
-- **VAGUE** — too ambiguous or generic to refine meaningfully. Flag for user with what's missing.
-- **COMPLETE** — thorough enough that no refinement is needed. Skip.
+Using these verdicts directly — do NOT re-triage:
 
-Record the triage as a list: question ID, category, and a one-line rationale. This drives Phase 2.
+- **Clear items** (verdict: `clear`): the user answered substantively with no unstated assumptions. Skip — no refinement needed.
+- **Needs refinement** (verdict: `needs_refinement`): the user answered substantively but introduced unstated parameters or assumptions. These get refinement questions in Phase 2.
+- **Non-clear items** (verdict: `not_answered` or `vague`): the user did not provide their own answer (auto-filled with the recommendation) or gave a vague answer. These also get refinement questions in Phase 2.
 
-## Phase 2: Spawn Refinement Sub-Agents
+## Phase 2: Spawn Refinement Sub-Agents for Non-Clear Items
 
-Follow the Sub-agent Spawning protocol. Spawn one sub-agent per topic section **that has at least one SOLID answer** (`name: "detailed-<section-slug>"`). Skip sections with only CONTRADICTION, VAGUE, or COMPLETE answers.
+Group questions with verdict `not_answered`, `vague`, or `needs_refinement` by their `##` section in `clarifications.md`. Follow the Sub-agent Spawning protocol. Spawn one sub-agent per section **that has at least one non-clear item** (`name: "detailed-<section-slug>"`). Sections where every question is clear get NO sub-agent.
 
 All sub-agents **return text** — they do not write files. Include the standard sub-agent directive (per Sub-agent Spawning protocol). Each receives:
-- The PM's answered `clarifications.md` content (pass the text in the prompt)
-- The triage results for their section (which questions are SOLID and what sub-decisions they open)
+- The full `clarifications.md` content (pass the text in the prompt)
+- The list of question IDs to refine in the assigned section, with their verdict (`not_answered`, `vague`, or `needs_refinement`) and the user's answer text
+- The clear answers in the same section (for cross-reference context)
 - Which section to drill into
 - **User context** and **workspace directory** (per protocol)
 
-Each sub-agent's task:
-- Focus on SOLID questions in the assigned section
-- For each, identify 0-2 refinement questions that dig deeper into the PM's chosen direction
-- Look for cross-cutting implications with other sections
-- Every refinement must present 2-4 choices in the format `A. Choice text` (lettered with period) plus "Other (please specify)" — each choice must change the skill's design
-- Include a `**Recommendation:** Full sentence.` field between choices and answer (colon inside bold)
-- Every refinement must end with a blank `**Answer:**` line followed by an empty line (colon inside bold)
-- Do NOT re-ask first-round questions — build on the answers already given
-- Return refinement text grouped by original question number
+Each sub-agent's task for each question to refine:
+- For `not_answered`: the answer contains the auto-filled recommendation — generate 1-3 focused questions to validate or refine the recommended approach
+- For `vague`: generate 1-3 focused questions to pin down the vague response
+- For `needs_refinement`: generate 1-3 focused questions to clarify the unstated parameters/assumptions introduced by the answer
 
-### Refinement format returned by sub-agents
+Follow the format example below. Return ONLY `##### R{n}.{m}:` blocks — no preamble, no headers, no wrapping text. The output is inserted directly into `clarifications.md`.
+
+- Number sub-questions as `R{n}.{m}` where `n` is the parent question number
+- Each block starts with `##### R{n}.{m}: Short Title` then a rationale sentence
+- 2-4 choices in `A. Choice text` format plus "Other (please specify)" — each choice must change the skill's design
+- Include `**Recommendation:** Full sentence.` between choices and answer (colon inside bold)
+- End each sub-question with a blank `**Answer:**` line followed by an empty line (colon inside bold)
+- Do NOT re-display original question text, choices, or recommendation
+
+### Refinement format example
 
 ```
-Refinements for Q3:
+##### R6.1: Which event triggers revenue recognition?
+The skill cannot calculate pipeline metrics without knowing when revenue enters the model.
 
-##### R3.1: Follow-up topic
-Rationale for why this matters given the answer above...
+A. Booking date — revenue recognized when deal closes
+B. Invoice date — revenue recognized at billing
+C. Payment date — revenue recognized at collection
+D. Other (please specify)
 
-A. Choice a
-B. Choice b
-C. Other (please specify)
-
-**Recommendation:** A — Reason.
+**Recommendation:** B — Invoice date is the most common convention for SaaS businesses.
 
 **Answer:**
 
 ```
 
-## Phase 3: Consolidate into clarifications.md
+## Phase 3: Inline Consolidation into clarifications.md
 
-After all sub-agents return, spawn the **consolidate-research** agent (`name: "consolidate-research"`, `model: "opus"`). Pass it:
-- The returned refinement text from all sub-agents directly in the prompt
-- The triage results (CONTRADICTION and VAGUE items with rationale)
-- The **context directory** path (consolidator writes the updated `clarifications.md` directly)
-- **User context** and **workspace directory** (per protocol)
+1. Read the current `clarifications.md`.
+2. For each question with refinements returned by sub-agents: insert an `#### Refinements` block after that question's `**Answer:**` line. Sub-agent output is already in `##### R{n}.{m}:` format — insert directly.
+3. Deduplicate if overlapping refinements exist across sub-agents.
+4. Update `refinement_count` in the YAML frontmatter to reflect the total number of refinement sub-questions inserted.
+5. Write the updated file in a single Write call.
 
 ## Error Handling
 
 - **If `clarifications.md` is missing or has no answers:** Report to the coordinator — detailed research requires first-round answers.
-- **If all answers are COMPLETE:** Skip Phase 2, report to the coordinator that no refinements are needed.
+- **If all questions are `clear` in `answer-evaluation.json` (none are `not_answered`, `vague`, or `needs_refinement`):** Skip Phase 2. Report to the coordinator that no refinements are needed.
+- **If `answer-evaluation.json` is missing:** Fall back to reading `clarifications.md` directly. Treat empty or vague `**Answer:**` fields as non-clear. Log a warning that evaluation verdicts were unavailable.
 - **If a sub-agent fails:** Re-spawn once. If it fails again, proceed with available output.
-- **If the consolidation agent fails:** Perform the consolidation yourself — build the full updated file in memory and Write once.
 
 </instructions>
 
 ## Success Criteria
-- Every answered question is triaged with a category and rationale
-- Refinement sub-agents spawn only for sections with SOLID answers — not blindly per-section
-- Contradictions and vague answers are flagged in `## Needs Clarification` with specific explanations
-- All refinement questions build on the PM's chosen direction (not standalone)
-- Each refinement has 2-4 specific choices that only make sense given the PM's prior decisions
-- The updated `clarifications.md` is a single artifact written in one pass
+- `answer-evaluation.json` verdicts used directly — no re-triage of answers
+- Refinement sub-agents spawn only for sections with non-clear/needs-refinement questions — sections with all-clear items are skipped
+- The updated `clarifications.md` is a single artifact written in one pass with updated `refinement_count`

@@ -37,7 +37,7 @@ Use extended thinking to deeply reason about the question set before writing out
 
 ### Step 1: Understand inputs
 
-The orchestrator passes all sub-agent output as inline text. If an existing `clarifications.md` is present, read it from the context directory — the user's answers are authoritative and must not be changed.
+The orchestrator passes all sub-agent output as inline text.
 
 ### Step 2: Deduplicate and organize
 
@@ -49,22 +49,27 @@ For each cluster of related questions across sources:
 
 Arrange into logical sections: broad scoping first, then detailed design decisions. Add a `## Cross-cutting` section for questions that span multiple areas.
 
+Within each `##` section, group questions under two sub-headings:
+- `### Required` — questions critical to producing a correct skill (core metric definitions, entity identifiers, must-have business rules). The skill cannot be generated without answers to these.
+- `### Optional` — questions that refine quality but where a reasonable default exists.
+
+If a section has only required or only optional questions, include only the relevant sub-heading.
+
 ### Step 3: Handle contradictions and flags
 
 Put these in a `## Needs Clarification` section with clear explanations. Do not silently resolve contradictions. Sources include: sub-agent questions that conflict with each other, conflicts with user context, and **triage results** the orchestrator may pass (answer-level contradictions, vague answers too ambiguous to refine).
 
 ### Step 4: Build and write the file
 
-Check whether `clarifications.md` already exists in the context directory:
-
-- **Exists** — read it, preserve all existing questions and answers exactly as-is. Insert new questions as `#### Refinements` blocks under each parent question that has follow-ups. Use IDs like R3.1, R3.2 (parent number as prefix).
-- **New** — number questions sequentially (Q1, Q2...). Follow the Clarifications file format in the agent instructions. For consolidated questions, note the source: `_Consolidated from: [sources]_`.
+Number questions sequentially (Q1, Q2...). Follow the Clarifications file format in the agent instructions. For consolidated questions, note the source: `_Consolidated from: [sources]_`.
 
 **Always:**
 - Every question must have 2-4 choices in the format `A. Choice text` (lettered with period, no label needed) plus a final "Other (please specify)" choice
 - Include a `**Recommendation:** Full sentence.` field between choices and answer (colon inside bold)
 - Every question must end with a blank `**Answer:**` line followed by an empty line (colon inside bold)
 - YAML frontmatter must include accurate counts: `question_count`, `sections`, `duplicates_removed`, `refinement_count` (required). Add `scope_recommendation: true` if the scope advisor has set it.
+- YAML frontmatter must include `priority_questions` listing the IDs of all questions under `### Required` sub-headings (e.g., `priority_questions: [Q1, Q3, Q7]`)
+- Do NOT use `[MUST ANSWER]` inline tags in question headings
 - Write the complete file to the context directory in a **single Write call**
 
 </instructions>
@@ -73,7 +78,7 @@ Check whether `clarifications.md` already exists in the context directory:
 - Output reads as a cohesive questionnaire, not a concatenation of source files
 - No two questions resolve the same underlying decision
 - Questions flow logically: broad scoping → specific design → cross-cutting
-- User's existing answers are preserved exactly (refinement round)
+
 - Contradictions surfaced in a dedicated section, not silently resolved
 - Frontmatter accurately reports all counts
 - Every source question is accounted for (kept, consolidated, or eliminated with reason)

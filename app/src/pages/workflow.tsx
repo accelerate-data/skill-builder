@@ -50,6 +50,7 @@ import {
   getDisabledSteps,
   runAnswerEvaluator,
   autofillClarifications,
+  autofillRefinements,
   logGateDecision,
   type AnswerEvaluation,
 } from "@/lib/tauri";
@@ -248,6 +249,7 @@ export default function WorkflowPage() {
   const [gateUnansweredCount, setGateUnansweredCount] = useState(0);
   const [isAutofilling, setIsAutofilling] = useState(false);
   const gateAgentIdRef = useRef<string | null>(null);
+  const [gateContext, setGateContext] = useState<"clarifications" | "refinements">("clarifications");
 
   // Target step for reset confirmation dialog (when clicking a prior step)
   const [resetTarget, setResetTarget] = useState<number | null>(null);
@@ -656,8 +658,16 @@ export default function WorkflowPage() {
       }
     }
 
-    // Gate: after step 1, evaluate answers before advancing
+    // Gate 1: after step 1, evaluate answers before advancing to research
     if (currentStep === 1 && workspacePath && !disabledSteps.includes(2)) {
+      setGateContext("clarifications");
+      runGateEvaluation();
+      return;
+    }
+
+    // Gate 2: after step 3, evaluate answers (including refinements) before confirm-decisions
+    if (currentStep === 3 && workspacePath && !disabledSteps.includes(4)) {
+      setGateContext("refinements");
       runGateEvaluation();
       return;
     }
@@ -736,12 +746,20 @@ export default function WorkflowPage() {
     setGateVerdict(null);
   };
 
+  /** Skip to decisions: gate 1 skips steps 1-3, gate 2 just advances from step 3. */
   const skipToDecisions = (message: string) => {
     closeGateDialog();
-    updateStepStatus(1, "completed");
-    updateStepStatus(2, "completed");
-    updateStepStatus(3, "completed");
-    setCurrentStep(4);
+    if (gateContext === "refinements") {
+      // Gate 2: just advance from step 3 to step 4
+      updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
+      advanceToNextStep();
+    } else {
+      // Gate 1: skip steps 1-3 and jump to step 4
+      updateStepStatus(1, "completed");
+      updateStepStatus(2, "completed");
+      updateStepStatus(3, "completed");
+      setCurrentStep(4);
+    }
     toast.success(message);
   };
 
@@ -753,18 +771,24 @@ export default function WorkflowPage() {
     logGateDecision(skillName, gateVerdict ?? "unknown", decision).catch(() => {});
   };
 
-  /** Sufficient: skip straight to decisions. */
+  /** Sufficient: skip straight to decisions (gate 1) or advance (gate 2). */
   const handleGateSkip = () => {
     logGateAction("skip");
-    skipToDecisions("Skipped detailed research — answers were sufficient");
+    if (gateContext === "refinements") {
+      skipToDecisions("Refinement answers verified — continuing to decisions");
+    } else {
+      skipToDecisions("Skipped detailed research — answers were sufficient");
+    }
   };
 
-  /** Shared autofill logic: call autofillClarifications, then run onSuccess with the count. */
+  /** Shared autofill logic: call the appropriate autofill command, then run onSuccess with the count. */
   const runAutofill = async (decision: string, onSuccess: (filled: number) => void) => {
     logGateAction(decision);
     setIsAutofilling(true);
     try {
-      const filled = await autofillClarifications(skillName);
+      const filled = gateContext === "refinements"
+        ? await autofillRefinements(skillName)
+        : await autofillClarifications(skillName);
       setIsAutofilling(false);
       onSuccess(filled);
     } catch (err) {
@@ -773,10 +797,15 @@ export default function WorkflowPage() {
     }
   };
 
-  /** Insufficient: auto-fill all answers then skip to decisions. */
+  /** Insufficient: auto-fill all answers then skip to decisions (gate 1) or advance (gate 2). */
   const handleGateAutofillAndSkip = () =>
     runAutofill("autofill_and_skip", (filled) => {
-      skipToDecisions(`Auto-filled ${filled} answer${filled !== 1 ? "s" : ""} — skipped detailed research`);
+      const label = filled !== 1 ? "s" : "";
+      if (gateContext === "refinements") {
+        skipToDecisions(`Auto-filled ${filled} refinement answer${label} — continuing to decisions`);
+      } else {
+        skipToDecisions(`Auto-filled ${filled} answer${label} — skipped detailed research`);
+      }
     });
 
   /** Mixed: auto-fill empty answers then proceed to detailed research. */
@@ -788,9 +817,9 @@ export default function WorkflowPage() {
       advanceToNextStep();
     });
 
-  /** Sufficient override: run research anyway without autofill. */
+  /** Sufficient override: run research anyway (gate 1) or continue to decisions (gate 2). */
   const handleGateResearch = () => {
-    logGateAction("research_anyway");
+    logGateAction(gateContext === "refinements" ? "continue_to_decisions" : "research_anyway");
     closeGateDialog();
     updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
     advanceToNextStep();
@@ -1263,12 +1292,13 @@ export default function WorkflowPage() {
         </Dialog>
       )}
 
-      {/* Transition gate dialog — shown after step 1 review */}
+      {/* Transition gate dialog — shown after step 1 review (gate 1) or step 3 review (gate 2) */}
       <TransitionGateDialog
         open={showGateDialog}
         verdict={gateVerdict}
         totalCount={gateTotalCount}
         unansweredCount={gateUnansweredCount}
+        context={gateContext}
         onSkip={handleGateSkip}
         onResearch={handleGateResearch}
         onAutofillAndSkip={handleGateAutofillAndSkip}

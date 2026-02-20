@@ -29,17 +29,24 @@ Read `{context_directory}/clarifications.md`.
 
 ### Step 2: Evaluate each question
 
-For each question in the file (identified by `### Q{n}:` headings), locate its `**Answer:**` field and classify it:
+For each question in the file, locate its `**Answer:**` field and classify it. Questions are identified by two heading patterns:
+- Top-level questions: `### Q{n}:` headings (e.g., Q1, Q12)
+- Refinement questions: `##### R{n}.{m}:` headings (e.g., R1.1, R2.3)
+
+If no refinement questions exist (first evaluation pass), only top-level questions are evaluated.
+
+Classify each question:
 
 - **Empty** (`not_answered`): no text after the colon (or only whitespace, or the text `(accepted recommendation)`)
 - **Vague** (`vague`): contains only phrases like "not sure", "default is fine", "standard", "TBD", "N/A", or is fewer than 5 words
-- **Answered** (`clear`): has substantive, specific text
+- **Needs refinement** (`needs_refinement`): has substantive, specific text BUT introduces unstated parameters, assumptions, or named values that need pinning down (e.g., custom formulas with unexplained constants, references to undefined terms, business rules that imply unstated conditions)
+- **Answered** (`clear`): has substantive, specific text with no unstated parameters or assumptions that require follow-up
 
-Record a per-question verdict for each `Q{n}` question using its heading ID (e.g., `Q1`, `Q12`). Only evaluate top-level questions (`### Q{n}:`), not refinements (`##### R{n}.{m}:`).
+Record a per-question verdict for each question using its heading ID (e.g., `Q1`, `Q12`, `R1.1`, `R2.3`). Evaluate both top-level questions and refinement questions if present.
 
 Also count the aggregates:
-- `total_count`: total number of top-level questions found
-- `answered_count`: number classified as `clear`
+- `total_count`: total number of questions found (both Q-level and R-level)
+- `answered_count`: number classified as `clear` OR `needs_refinement` (both are substantive answers)
 - `empty_count`: number classified as `not_answered`
 - `vague_count`: number classified as `vague`
 
@@ -59,19 +66,20 @@ Write `{workspace_directory}/answer-evaluation.json`. Use this exact JSON schema
 {
   "verdict": "mixed",
   "answered_count": 6,
-  "empty_count": 1,
+  "empty_count": 2,
   "vague_count": 1,
-  "total_count": 8,
-  "reasoning": "6 of 8 questions have detailed answers; 1 is blank and 1 is vague.",
+  "total_count": 9,
+  "reasoning": "6 of 9 questions have detailed answers (including 1 refinement); 2 are blank and 1 is vague.",
   "per_question": [
-    { "question_id": "Q1", "verdict": "clear" },
+    { "question_id": "Q1", "verdict": "needs_refinement" },
     { "question_id": "Q2", "verdict": "clear" },
     { "question_id": "Q3", "verdict": "not_answered" },
     { "question_id": "Q4", "verdict": "vague" },
     { "question_id": "Q5", "verdict": "clear" },
     { "question_id": "Q6", "verdict": "clear" },
     { "question_id": "Q7", "verdict": "clear" },
-    { "question_id": "Q8", "verdict": "clear" }
+    { "question_id": "Q8", "verdict": "clear" },
+    { "question_id": "R1.1", "verdict": "not_answered" }
   ]
 }
 ```
@@ -79,13 +87,13 @@ Write `{workspace_directory}/answer-evaluation.json`. Use this exact JSON schema
 Field rules:
 - `verdict`: exactly one of `"sufficient"`, `"mixed"`, `"insufficient"`
 - `reasoning`: a single sentence explaining the verdict
-- `per_question`: array with one entry per top-level question, in document order. Each entry has `question_id` (the `Q{n}` ID from the heading) and `verdict` (`clear` / `not_answered` / `vague`)
+- `per_question`: array with one entry per question (both Q-level and R-level), in document order. Each entry has `question_id` (the ID from the heading, e.g. `Q1` or `R1.1`) and `verdict` (`clear` / `needs_refinement` / `not_answered` / `vague`)
 
 ## Success Criteria
 
 - `answer-evaluation.json` is written to the workspace directory
 - The file contains valid JSON matching the schema above
 - Aggregate counts are accurate
-- `per_question` has one entry per top-level question, with `question_id` matching heading IDs
+- `per_question` has one entry per question (Q-level and R-level if present), with `question_id` matching heading IDs
 - Per-question verdicts use the same classification rules as aggregate counting
 - `verdict` correctly reflects the answer quality

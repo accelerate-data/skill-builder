@@ -107,9 +107,12 @@ After the planner returns, parse its scored YAML output. Extract the `selected` 
 **If len(selected) > max_dimensions:**
 
 1. **Skip Phase 3 and Phase 4 entirely.** Do not launch any dimension agents or consolidation.
-2. Analyze the research plan to understand which dimensions were chosen and how they cluster into natural groupings. Recommend 2-4 narrower skill alternatives that each cover a coherent subset (ideally 3-5 dimensions), are independently useful, and together cover the full original scope.
-3. Write `{context_dir}/clarifications.md` with `scope_recommendation: true` in YAML frontmatter. After the frontmatter, explain why the scope is too broad and describe each narrower skill with its name, type, focus, covered dimensions, and when to use it.
-4. **Return immediately.** Do not proceed to Phase 3 or Phase 4.
+2. **Discard the broad-scope analysis.** It served only to determine that the scope is too broad. Do not reference it or include it in any output.
+3. Analyze how the selected dimensions cluster into natural groupings. Recommend 2-4 narrower skill alternatives that each cover a coherent subset (ideally 3-5 dimensions), are independently useful, and together cover the full original scope.
+4. Write `{context_dir}/clarifications.md` with `scope_recommendation: true` in YAML frontmatter. The body must contain **only**:
+   - One sentence explaining the scope is too broad to produce a focused skill.
+   - For each recommended narrower skill: its **name**, **type**, **focus** (one sentence), **covered dimensions** (slugs only), and **when to use it**.
+5. **Return immediately.**
 
 **If dimensions_chosen <= max_dimensions:** Proceed to Phase 3.
 

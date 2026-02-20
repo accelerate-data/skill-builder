@@ -1378,6 +1378,109 @@ pub fn log_gate_decision(skill_name: String, verdict: String, decision: String) 
     );
 }
 
+/// Copy Recommendation -> Answer for every empty Answer field in **refinement** questions only.
+/// Top-level Q-level answers are left untouched. Returns the number of fields auto-filled.
+#[tauri::command]
+pub fn autofill_refinements(
+    skill_name: String,
+    db: tauri::State<'_, Db>,
+) -> Result<u32, String> {
+    log::info!("autofill_refinements: skill={}", skill_name);
+
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured".to_string())?;
+
+    let clarifications_path = Path::new(&skills_path)
+        .join(&skill_name)
+        .join("context")
+        .join("clarifications.md");
+
+    let content = std::fs::read_to_string(&clarifications_path).map_err(|e| {
+        log::error!(
+            "autofill_refinements: failed to read {}: {}",
+            clarifications_path.display(),
+            e
+        );
+        format!("Failed to read clarifications.md: {}", e)
+    })?;
+
+    let (updated, count) = autofill_refinement_answers(&content);
+
+    if count > 0 {
+        std::fs::write(&clarifications_path, &updated).map_err(|e| {
+            log::error!(
+                "autofill_refinements: failed to write {}: {}",
+                clarifications_path.display(),
+                e
+            );
+            format!("Failed to write clarifications.md: {}", e)
+        })?;
+        log::info!(
+            "autofill_refinements: auto-filled {} refinement answers in {}",
+            count,
+            clarifications_path.display()
+        );
+    } else {
+        log::info!("autofill_refinements: no empty refinement answers found");
+    }
+
+    Ok(count)
+}
+
+/// Pure function: parse clarifications.md content and copy Recommendation -> Answer
+/// for each empty Answer field in refinement questions (`##### R{n}.{m}:`).
+/// Top-level Q-level answers are left untouched. Returns (updated_content, count_filled).
+fn autofill_refinement_answers(content: &str) -> (String, u32) {
+    let mut result = String::new();
+    let mut count: u32 = 0;
+    let mut last_recommendation = String::new();
+    let mut in_refinement = false;
+    let has_trailing_newline = content.ends_with('\n');
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        // Track refinement sections
+        if trimmed.starts_with("##### ") {
+            in_refinement = true;
+            last_recommendation = String::new();
+        } else if trimmed.starts_with("## ") || trimmed.starts_with("### ") {
+            in_refinement = false;
+            last_recommendation = String::new();
+        }
+
+        if in_refinement {
+            if let Some(rest) = trimmed.strip_prefix("**Recommendation:**") {
+                last_recommendation = rest.trim().to_string();
+            }
+
+            if trimmed.starts_with("**Answer:**") {
+                let after_prefix = trimmed.strip_prefix("**Answer:**").unwrap_or("");
+                let answer_text = after_prefix.trim();
+                let is_empty = answer_text.is_empty()
+                    || answer_text.eq_ignore_ascii_case("(accepted recommendation)");
+                if is_empty && !last_recommendation.is_empty() {
+                    let leading_ws = &line[..line.len() - line.trim_start().len()];
+                    result.push_str(leading_ws);
+                    result.push_str("**Answer:** ");
+                    result.push_str(&last_recommendation);
+                    result.push('\n');
+                    count += 1;
+                    continue;
+                }
+            }
+        }
+
+        result.push_str(line);
+        result.push('\n');
+    }
+
+    if !has_trailing_newline && result.ends_with('\n') {
+        result.pop();
+    }
+    (result, count)
+}
+
 /// Pure function: parse clarifications.md content and copy Recommendation -> Answer
 /// for each empty Answer field. Returns (updated_content, count_filled).
 fn autofill_answers(content: &str) -> (String, u32) {
@@ -2710,6 +2813,201 @@ mod tests {
         let (out, count) = super::autofill_answers(input);
         assert_eq!(count, 0, "Q2 has no recommendation and should not be filled");
         assert!(out.contains("**Answer:**\n"), "Q2's empty answer should remain empty");
+    }
+
+    // --- autofill_refinement_answers tests ---
+
+    #[test]
+    fn test_autofill_refinement_fills_empty_refinement_answer() {
+        let input = "\
+### Q1: Top-level Question\n\
+**Recommendation:** Use X\n\
+**Answer:** My answer\n\
+\n\
+#### Refinements\n\
+\n\
+##### R1.1: Refinement Question\n\
+**Recommendation:** Use Y\n\
+**Answer:**\n";
+        let (out, count) = super::autofill_refinement_answers(input);
+        assert_eq!(count, 1);
+        assert!(out.contains("**Answer:** Use Y"));
+        // Q-level answer should be unchanged
+        assert!(out.contains("**Answer:** My answer"));
+    }
+
+    #[test]
+    fn test_autofill_refinement_skips_q_level_answers() {
+        let input = "\
+### Q1: Top-level Question\n\
+**Recommendation:** Use X\n\
+**Answer:**\n\
+\n\
+#### Refinements\n\
+\n\
+##### R1.1: Refinement Question\n\
+**Recommendation:** Use Y\n\
+**Answer:**\n";
+        let (out, count) = super::autofill_refinement_answers(input);
+        assert_eq!(count, 1, "Only R-level answer should be filled");
+        // Q-level empty answer should remain empty
+        assert!(out.contains("### Q1: Top-level Question\n**Recommendation:** Use X\n**Answer:**\n"));
+        // R-level should be filled
+        assert!(out.contains("**Answer:** Use Y"));
+    }
+
+    #[test]
+    fn test_autofill_refinement_handles_multiple_refinements() {
+        let input = "\
+### Q1: Question\n\
+**Recommendation:** Q1 rec\n\
+**Answer:** Q1 answer\n\
+\n\
+#### Refinements\n\
+\n\
+##### R1.1: First Refinement\n\
+**Recommendation:** R1.1 rec\n\
+**Answer:**\n\
+\n\
+### Q2: Question\n\
+**Recommendation:** Q2 rec\n\
+**Answer:**\n\
+\n\
+#### Refinements\n\
+\n\
+##### R2.1: Second Refinement\n\
+**Recommendation:** R2.1 rec\n\
+**Answer:** Already answered\n";
+        let (out, count) = super::autofill_refinement_answers(input);
+        assert_eq!(count, 1, "Only R1.1 should be filled (R2.1 is already answered)");
+        assert!(out.contains("**Answer:** R1.1 rec"));
+        assert!(out.contains("**Answer:** Already answered"));
+        // Q2's empty answer should remain empty (not R-level)
+        assert!(out.contains("### Q2: Question\n**Recommendation:** Q2 rec\n**Answer:**\n"));
+    }
+
+    #[test]
+    fn test_autofill_refinement_replaces_sentinel() {
+        let input = "\
+##### R1.1: Refinement\n\
+**Recommendation:** Use Z\n\
+**Answer:** (accepted recommendation)\n";
+        let (out, count) = super::autofill_refinement_answers(input);
+        assert_eq!(count, 1);
+        assert!(out.contains("**Answer:** Use Z"));
+        assert!(!out.contains("(accepted recommendation)"));
+    }
+
+    #[test]
+    fn test_autofill_refinement_no_bleed_across_sections() {
+        let input = "\
+##### R1.1: First Refinement\n\
+**Recommendation:** Rec A\n\
+**Answer:** My answer\n\
+\n\
+### Q2: Different Question\n\
+**Answer:**\n";
+        let (out, count) = super::autofill_refinement_answers(input);
+        assert_eq!(count, 0, "No refinement answers should be filled");
+        // Q2's answer should still be empty (not in_refinement scope)
+        assert!(out.contains("**Answer:**\n"));
+    }
+
+    #[test]
+    fn test_autofill_refinement_preserves_trailing_newline() {
+        let input = "##### R1.1: Refinement\n**Recommendation:** A\n**Answer:**\n";
+        let (out, _) = super::autofill_refinement_answers(input);
+        assert!(out.ends_with('\n'));
+    }
+
+    #[test]
+    fn test_autofill_refinement_no_trailing_newline_when_absent() {
+        let input = "##### R1.1: Refinement\n**Recommendation:** A\n**Answer:**";
+        let (out, _) = super::autofill_refinement_answers(input);
+        assert!(!out.ends_with('\n'));
+    }
+
+    // --- autofill with ### Required / ### Optional sub-headings ---
+
+    #[test]
+    fn test_autofill_with_required_optional_subheadings() {
+        // ### Required and ### Optional are H3 sub-headings that reset
+        // recommendation state (starts_with("### ")). Verify autofill
+        // still works correctly — each question gets its own recommendation.
+        let input = "\
+## Section 1: Core Concepts\n\
+\n\
+### Required\n\
+\n\
+### Q1: Primary Use Case\n\
+**Recommendation:** Focus on common workflow patterns.\n\
+**Answer:**\n\
+\n\
+### Optional\n\
+\n\
+### Q2: Target Expertise Level\n\
+**Recommendation:** Intermediate level.\n\
+**Answer:**\n\
+\n\
+### Q3: Greenfield vs Brownfield\n\
+**Recommendation:** Both with emphasis on greenfield.\n\
+**Answer:** Greenfield only.\n";
+        let (out, count) = super::autofill_answers(input);
+        assert_eq!(count, 2, "Q1 and Q2 should be filled, Q3 already answered");
+        assert!(out.contains("**Answer:** Focus on common workflow patterns."), "Q1 should get its recommendation");
+        assert!(out.contains("**Answer:** Intermediate level."), "Q2 should get its recommendation");
+        assert!(out.contains("**Answer:** Greenfield only."), "Q3 should keep its answer");
+    }
+
+    #[test]
+    fn test_autofill_required_subheading_resets_recommendation() {
+        // ### Required resets recommendation state. A question after
+        // ### Required with no recommendation should NOT get a previous
+        // question's recommendation.
+        let input = "\
+## Section 1\n\
+\n\
+### Q1: First\n\
+**Recommendation:** Use Redis\n\
+**Answer:** Done\n\
+\n\
+### Required\n\
+\n\
+### Q2: Second\n\
+**Answer:**\n";
+        let (out, count) = super::autofill_answers(input);
+        assert_eq!(count, 0, "Q2 has no recommendation — ### Required reset prevents bleed from Q1");
+        assert!(out.contains("### Q2: Second\n**Answer:**\n"), "Q2 should remain empty");
+    }
+
+    #[test]
+    fn test_autofill_refinement_with_required_optional_subheadings() {
+        // Verify refinement autofill works within the Required/Optional structure.
+        let input = "\
+## Section 1\n\
+\n\
+### Required\n\
+\n\
+### Q1: Question\n\
+**Recommendation:** Q1 rec\n\
+**Answer:** Q1 answer\n\
+\n\
+#### Refinements\n\
+\n\
+##### R1.1: Follow-up\n\
+**Recommendation:** R1.1 rec\n\
+**Answer:**\n\
+\n\
+### Optional\n\
+\n\
+### Q2: Question\n\
+**Recommendation:** Q2 rec\n\
+**Answer:**\n";
+        let (out, count) = super::autofill_refinement_answers(input);
+        assert_eq!(count, 1, "Only R1.1 should be filled");
+        assert!(out.contains("**Answer:** R1.1 rec"), "R1.1 should get its recommendation");
+        // Q2's empty answer must not be touched by refinement autofill
+        assert!(out.contains("### Q2: Question\n**Recommendation:** Q2 rec\n**Answer:**\n"));
     }
 
 }

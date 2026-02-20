@@ -395,7 +395,7 @@ export const sendRefineMessage = (
 
 export interface PerQuestionVerdict {
   question_id: string;
-  verdict: "clear" | "not_answered" | "vague";
+  verdict: "clear" | "needs_refinement" | "not_answered" | "vague";
 }
 
 export interface AnswerEvaluation {
@@ -416,6 +416,10 @@ export const runAnswerEvaluator = (
 export const autofillClarifications = (
   skillName: string,
 ) => invoke<number>("autofill_clarifications", { skillName });
+
+export const autofillRefinements = (
+  skillName: string,
+) => invoke<number>("autofill_refinements", { skillName });
 
 export const logGateDecision = (
   skillName: string,

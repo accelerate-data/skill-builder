@@ -91,6 +91,8 @@ Agent prompts define artifact formats (`clarifications.md`, `decisions.md`, etc.
 
 **Example:** You change `agents/consolidate-research.md` to use a different choices format. Look it up → run `./scripts/test-plugin.sh t1`. But the mock templates also contain choices in the same format → also run `npm run test:unit` to catch the drift.
 
+**Canonical heading changes:** If you change the heading hierarchy in `canonical-format.md` (e.g., adding new H3 sub-headings), also update Rust parser tests (`cargo test commands::workflow`) — the `autofill_answers` and `autofill_refinement_answers` functions use `starts_with("### ")` / `starts_with("## ")` for state resets and must be tested against the new heading structure.
+
 | Source | What it validates | Compliance Test |
 |---|---|---|
 | `agents/*.md` (all agent prompts) | Anti-patterns: colon placement, checkboxes, labels | `./scripts/test-plugin.sh t1` (T1.11) |

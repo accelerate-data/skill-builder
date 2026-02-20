@@ -3,11 +3,14 @@ question_count: 9
 sections: 3
 duplicates_removed: 2
 refinement_count: 0
+priority_questions: [Q1, Q4, Q7]
 ---
 
 # Research Clarifications
 
 ## Section 1: Core Concepts
+
+### Required
 
 ### Q1: Primary Use Case
 What is the primary use case for this skill?
@@ -20,6 +23,8 @@ D. Other (please specify)
 **Recommendation:** Focus on the most common workflow patterns that engineers encounter daily.
 
 **Answer:**
+
+### Optional
 
 ### Q2: Target Expertise Level
 What level of expertise should this skill assume?
@@ -47,6 +52,8 @@ D. Other (please specify)
 
 ## Section 2: Architecture & Design
 
+### Required
+
 ### Q4: Architectural Pattern Priority
 What architectural patterns should be prioritized?
 
@@ -58,6 +65,8 @@ D. Other (please specify)
 **Recommendation:** Start with the most widely adopted patterns, then layer in alternatives for specific constraints.
 
 **Answer:**
+
+### Optional
 
 ### Q5: Technology-Specific vs Agnostic Guidance
 How should the skill handle technology-specific vs technology-agnostic guidance?
@@ -85,6 +94,8 @@ D. Other (please specify)
 
 ## Section 3: Implementation Details
 
+### Required
+
 ### Q7: Code Example Depth
 What level of code examples should be included?
 
@@ -96,6 +107,8 @@ D. Other (please specify)
 **Recommendation:** Include copy-paste-ready templates for the most common patterns.
 
 **Answer:**
+
+### Optional
 
 ### Q8: Testing Guidance Scope
 Should testing guidance be included?

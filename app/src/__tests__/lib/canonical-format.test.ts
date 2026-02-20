@@ -81,6 +81,11 @@ describe("Canonical format: anti-pattern checks (all markdown files)", () => {
       const content = readFile(file);
       expect(content).not.toMatch(/\*\*Question\*\*[:\*]/);
     });
+
+    it(`${rel}: no [MUST ANSWER] inline tags`, () => {
+      const content = readFile(file);
+      expect(content).not.toMatch(/\[MUST ANSWER\]/);
+    });
   }
 });
 
@@ -135,6 +140,10 @@ describe("Canonical format: clarifications.md structure", () => {
 
       it("has A. lettered choices", () => {
         expect(content).toMatch(/^[A-D]\. /m);
+      });
+
+      it("has ### Required or ### Optional sub-headings", () => {
+        expect(content).toMatch(/^### (Required|Optional)$/m);
       });
     });
   }
@@ -316,8 +325,8 @@ describe("Canonical format: answer-evaluation.json structure", () => {
 
     it("per_question entries have question_id and verdict", () => {
       for (const entry of data.per_question) {
-        expect(entry.question_id).toMatch(/^Q\d+$/);
-        expect(["clear", "not_answered", "vague"]).toContain(entry.verdict);
+        expect(entry.question_id).toMatch(/^(Q\d+|R\d+\.\d+[a-z]?)$/);
+        expect(["clear", "needs_refinement", "not_answered", "vague"]).toContain(entry.verdict);
       }
     });
 
@@ -325,13 +334,16 @@ describe("Canonical format: answer-evaluation.json structure", () => {
       const clear = data.per_question.filter(
         (e: { verdict: string }) => e.verdict === "clear",
       ).length;
+      const needsRefinement = data.per_question.filter(
+        (e: { verdict: string }) => e.verdict === "needs_refinement",
+      ).length;
       const notAnswered = data.per_question.filter(
         (e: { verdict: string }) => e.verdict === "not_answered",
       ).length;
       const vague = data.per_question.filter(
         (e: { verdict: string }) => e.verdict === "vague",
       ).length;
-      expect(clear).toBe(data.answered_count);
+      expect(clear + needsRefinement).toBe(data.answered_count);
       expect(notAnswered).toBe(data.empty_count);
       expect(vague).toBe(data.vague_count);
     });

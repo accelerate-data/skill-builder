@@ -1,12 +1,12 @@
 {
   "verdict": "mixed",
   "answered_count": 4,
-  "empty_count": 3,
+  "empty_count": 6,
   "vague_count": 2,
-  "total_count": 9,
-  "reasoning": "4 of 9 questions have detailed answers; 3 are blank and 2 are vague.",
+  "total_count": 12,
+  "reasoning": "4 of 12 questions have detailed answers (1 needs refinement); 6 are blank and 2 are vague.",
   "per_question": [
-    { "question_id": "Q1", "verdict": "clear" },
+    { "question_id": "Q1", "verdict": "needs_refinement" },
     { "question_id": "Q2", "verdict": "clear" },
     { "question_id": "Q3", "verdict": "clear" },
     { "question_id": "Q4", "verdict": "clear" },
@@ -14,6 +14,9 @@
     { "question_id": "Q6", "verdict": "vague" },
     { "question_id": "Q7", "verdict": "not_answered" },
     { "question_id": "Q8", "verdict": "not_answered" },
-    { "question_id": "Q9", "verdict": "not_answered" }
+    { "question_id": "Q9", "verdict": "not_answered" },
+    { "question_id": "R1.1", "verdict": "not_answered" },
+    { "question_id": "R2.1", "verdict": "not_answered" },
+    { "question_id": "R5.1", "verdict": "not_answered" }
   ]
 }
