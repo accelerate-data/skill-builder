@@ -167,16 +167,16 @@ decision_count: 12
 ---
 
 ### D1: MRR Calculation Formula
-- **Source**: Q1
-- **Section**: Core Concepts and Definitions
+- **Source:** Q1
+- **Section:** Core Concepts and Definitions
 - **Answer:** Managed services is already MRR, PS < 12mo = TCV/10, PS > 12mo = Year 1 ACV / 12
-- **Status**: draft
+- **Status:** draft
 
 ### D2: Committed Pipeline Signal
-- **Source**: Q2
-- **Section**: Core Concepts and Definitions
+- **Source:** Q2
+- **Section:** Core Concepts and Definitions
 - **Answer:** Stage governs pipeline metrics, forecast flag governs commit calls, both tracked separately
-- **Status**: draft
+- **Status:** draft
 ```
 
 Draft entries are **structured, not reasoned** — no implications, no trade-off analysis. That's confirm-decisions' (Opus) job. Each entry records:
@@ -276,11 +276,11 @@ Every ID traces back to the original question. The `Source` field in decisions t
 
 ---
 
-## Prerequisite: Canonicalize `clarifications.md` Format
+## Prerequisite: Canonicalize `clarifications.md` Format — RESOLVED
 
-Tracked in **VD-819**. Blocks VD-807 and VD-817.
+Completed in **VD-819** (PR #140). Was blocking VD-807 and VD-817.
 
-Both VD-807 (agent redesign) and VD-817 (UI parser) depend on a single, consistent `clarifications.md` format. A format audit found **8 inconsistencies** between agent prompts, mock templates, E2E fixtures, and the Rust parser.
+Resolved 8+1 format inconsistencies between agent prompts, mock templates, E2E fixtures, and the Rust parser. Canonical spec at `canonical-format.md`. Compliance tests: plugin T1.11 (50 checks), vitest canonical-format.test.ts (124 tests), cargo test workflow (96 tests), vitest reasoning-parser.test.ts (23 tests).
 
 ### Decisions
 
@@ -360,13 +360,36 @@ scope_recommendation: true        # optional — set by scope advisor, checked b
 
 ### Canonical format reference
 
-After VD-819 is implemented, the authoritative spec lives at `docs/design/clarifications-rendering/canonical-format.md`. All agent prompts, mock templates, E2E fixtures, and design docs reference it.
+Authoritative spec: `docs/design/clarifications-rendering/canonical-format.md`. All agent prompts, mock templates, E2E fixtures, and parsers are aligned and validated by compliance tests.
 
-### Implementation checklist (VD-819)
+---
 
-1. Write `canonical-format.md` with the full spec based on the decisions above
-2. Fix agent prompts — `**Answer:**`, `A. Choice text`, `##### R1.1:`, `**Recommendation:**`, short heading + body
-3. Update mock templates — step0 and step2 aligned to canonical format
-4. Update E2E fixture — aligned to canonical format
-5. Update design doc examples — this file and README.md
-6. Fix Rust `autofill_answers` — add `###` reset + unit test
+## Open Design Questions
+
+Surfaced during review. To be resolved before or during implementation of VD-807.
+
+### 1. Second-pass evaluator and R-numbers
+
+The answer-evaluator currently runs once before Step 3, when only Q-numbers exist. After Step 4 (user answers refinements), does the evaluator run again before Step 5? If so, `per_question` must handle R-numbers (`R1.1`, `R12.1a`), not just Q-numbers.
+
+**Options:**
+- **A.** Evaluator runs once (before Step 3 only). Step 5 always runs confirm-decisions regardless of refinement answer quality.
+- **B.** Evaluator runs again after Step 4, extending `per_question` to include R-numbers. This lets confirm-decisions skip fully-clear refinements.
+
+Option A is simpler and probably sufficient — confirm-decisions (Opus) can handle all refinement answers without pre-filtering.
+
+### 2. Phase 2 sub-agent threshold
+
+Currently: "spawn one sub-agent per section with at least one non-clear item." If a section has a single vague answer, the overhead of a sub-agent (prompt construction, SDK round-trip, response parsing) may exceed the benefit.
+
+**Options:**
+- **A.** No threshold — spawn a sub-agent even for 1 item. Simpler logic, consistent behavior.
+- **B.** Minimum 2 non-clear items per section to justify a sub-agent. Single items handled inline by detailed-research.
+
+Option A is recommended — the sub-agent overhead is small relative to the quality gain, and adding thresholds creates branching logic with edge cases.
+
+### 3. Confirm-decisions partial support/contradiction
+
+The merge protocol has 4 clean scenarios. A fifth case exists: a draft decision where the refinement answer _partially_ supports and _partially_ changes the draft (e.g., user confirms the main approach but changes a parameter value).
+
+**Recommendation:** Treat as "supported" — re-evaluate with full reasoning, note the parameter change in the implication. The `resolved` status covers this. Only use `conflict-resolved` when the refinement answer genuinely contradicts the draft's core premise.

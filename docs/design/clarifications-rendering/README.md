@@ -6,6 +6,36 @@ All mockups use the real `clarifications.md` from the sales-pipeline sample skil
 
 ---
 
+## Status
+
+| Item | Issue | Status |
+|---|---|---|
+| Format canonicalization | VD-819 | **Done** (PR #140). Canonical spec at `canonical-format.md` |
+| Accordion navigator (UI) | VD-817 | Todo — implements Option 2a below |
+| Agent redesign (detailed research) | VD-807 | Todo — design at `vd-807-agent-outputs.md` |
+
+### Open design questions — VD-817 (Accordion Navigator)
+
+These surfaced during review and should be resolved before or during implementation.
+
+1. **Sub-refinement rendering** — The sample data has three levels: Q-numbers, R-numbers (`R1.1`), and sub-refinements (`R12.1a`, `R12.2b`). The accordion mockup renders R-numbers inside expanded questions but doesn't show how sub-refinements nest. The parser must handle all three levels per the canonical spec.
+
+2. **Progress bar scope** — Does the progress bar count top-level questions only (26), or include refinements and sub-refinements? The mockup shows "14 / 26 answered" which suggests questions only. Confirm this — and clarify whether section chips also count questions only.
+
+3. **"Needs Clarification" section** — The sample `clarifications.md` ends with `## Needs Clarification` containing contradiction warnings and blocked-question lists. Not shown in the accordion mockup. Decide: render as a special section at the bottom of the accordion, or omit from the navigator?
+
+4. **Deferred item status** — Some refinements are deferred (e.g. R4.1: "source system expert will tell"). The mockup shows `R4.1 — deferred` with a warning icon, which is the right treatment. The parser needs a heuristic to detect natural-language deferral answers (not just empty).
+
+### Open design questions — VD-807 (Agent Redesign)
+
+1. **Second-pass evaluator** — After Step 4 (user answers refinements), does the evaluator run again? If so, `per_question` must handle R-numbers (`R1.1`, `R12.1a`), not just Q-numbers. The current design only specifies Q-numbers in the first pass.
+
+2. **Phase 2 sub-agent threshold** — If a section has a single vague answer, spawning a whole sub-agent for one item is wasteful. Consider a minimum threshold or inline handling for single-item sections.
+
+3. **Confirm-decisions partial scenarios** — The merge protocol covers 4 clean scenarios (supported, contradicted, no new info, new without draft). What about a draft decision that's _partially_ supported and _partially_ contradicted by refinement answers? Add guidance for this edge case.
+
+---
+
 ## Option 1 — Richer Markdown Styling
 
 **Preview:** open `option1.html`
