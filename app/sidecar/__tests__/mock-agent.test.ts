@@ -32,7 +32,6 @@ describe("resolveStepTemplate", () => {
       "step4-confirm-decisions",
     );
     expect(resolveStepTemplate("generate-skill")).toBe("step5-generate-skill");
-    expect(resolveStepTemplate("validate-skill")).toBe("step6-validate-skill");
   });
 
   it("returns null for unknown agents", () => {
@@ -112,6 +111,7 @@ const AGENTS_WITHOUT_MOCK = new Set([
   "companion-recommender",
   "test-skill",
   "validate-quality",
+  "validate-skill",
 ]);
 
 describe("mock-agent drift detection", () => {

@@ -20,7 +20,6 @@ export function resolveStepTemplate(agentName: string | undefined): string | nul
   if (agentName === "detailed-research") return "step2-detailed-research";
   if (agentName === "confirm-decisions") return "step4-confirm-decisions";
   if (agentName === "generate-skill") return "step5-generate-skill";
-  if (agentName === "validate-skill") return "step6-validate-skill";
   if (agentName === "refine-skill") return "refine";
   if (agentName === "rewrite-skill") return "rewrite-skill";
   if (agentName === "answer-evaluator") return "gate-answer-evaluator";
@@ -45,7 +44,6 @@ function getOutputDir(stepTemplate: string): string {
     "step2-detailed-research": "step2",
     "step4-confirm-decisions": "step4",
     "step5-generate-skill": "step5",
-    "step6-validate-skill": "step6",
     "refine": "refine",
     "rewrite-skill": "refine",
     "gate-answer-evaluator": "gate-answer-evaluator",
@@ -249,7 +247,7 @@ async function writeMockOutputFiles(
     // Step 5: files go to skill output dir (may differ from skill dir when skills_path is set)
     destRoot = paths.skillOutputDir ?? paths.skillDir ?? config.cwd;
   } else {
-    // Steps 0, 2, 4, 6: context files go under the skill directory.
+    // Steps 0, 2, 4: context files go under the skill directory.
     // The mock template has outputs/{stepN}/context/... so we strip the
     // "context/" prefix by writing to the skill dir (the parent of context/).
     if (paths.contextDir) {

@@ -58,16 +58,16 @@ This replays bundled JSONL templates with short delays, writes mock output files
 
 ## How It Works
 
-The workflow guides you through building a skill in 7 steps:
+The workflow guides you through building a skill in 6 steps:
 
-0. **Init** -- select skill type and name, detect previous progress
-1. **Research** -- opus planner selects relevant research dimensions, parallel agents research them, opus consolidation produces clarification questions. If scope is too broad, recommends narrower skills instead
-2. **Review** -- you answer clarification questions (or review scope recommendation)
-3. **Detailed Research** -- agents dive deeper per section, produce refinement questions
-4. **Review** -- you answer a second round of questions
-5. **Confirm Decisions** -- agent analyzes your answers, detects gaps and contradictions
-6. **Generate Skill** -- agent creates SKILL.md and reference files
-7. **Validate & Test** -- agent checks against best practices, generates and evaluates test prompts
+0. **Research** -- opus planner selects relevant research dimensions, parallel agents research them, opus consolidation produces clarification questions. If scope is too broad, recommends narrower skills instead
+1. **Review** -- you answer clarification questions (or review scope recommendation)
+2. **Detailed Research** -- agents dive deeper per section, produce refinement questions
+3. **Review** -- you answer a second round of questions
+4. **Confirm Decisions** -- agent analyzes your answers, detects gaps and contradictions
+5. **Generate Skill** -- agent creates SKILL.md and reference files
+
+After Generate completes, you can **Refine** the skill (iterative chat with `/validate` and `/rewrite` commands) or mark it **Done**.
 
 Skills are organized by type: **domain** (business knowledge), **platform** (tool-specific), **source** (extraction patterns), and **data-engineering** (technical patterns).
 

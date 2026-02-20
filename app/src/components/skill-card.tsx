@@ -44,8 +44,8 @@ export function parseStepProgress(currentStep: string | null, status: string | n
   const match = currentStep.match(/step\s*(\d+)/i)
   if (match) {
     const stepIndex = Number(match[1])
-    // Steps are 0-6 (7 total). Use (stepIndex + 1) / 7 so step 6 = 100%.
-    return Math.min(Math.round(((stepIndex + 1) / 7) * 100), 100)
+    // Steps are 0-5 (6 total). Use (stepIndex + 1) / 6 so step 5 = 100%.
+    return Math.min(Math.round(((stepIndex + 1) / 6) * 100), 100)
   }
   if (/completed/i.test(currentStep)) return 100
   if (/initialization/i.test(currentStep)) return 0
@@ -53,14 +53,14 @@ export function parseStepProgress(currentStep: string | null, status: string | n
 }
 
 /**
- * Returns true only when all 7 workflow steps (0-6) are complete.
+ * Returns true only when all 6 workflow steps (0-5) are complete.
  * Download should be gated on full completion -- partial progress
  * (e.g. past the Build step) is not enough.
  *
  * A skill's workflow is 100% complete when:
  * - status is "completed", OR
  * - current_step text matches "completed", OR
- * - current_step parses to step 6 (the last step, 0-indexed)
+ * - current_step parses to step 5 (the last step, 0-indexed)
  */
 export function isWorkflowComplete(skill: SkillSummary): boolean {
   if (skill.status === "completed") return true
@@ -68,7 +68,7 @@ export function isWorkflowComplete(skill: SkillSummary): boolean {
   if (/completed/i.test(skill.current_step)) return true
   const match = skill.current_step.match(/step\s*(\d+)/i)
   if (match) {
-    return Number(match[1]) >= 6
+    return Number(match[1]) >= 5
   }
   return false
 }

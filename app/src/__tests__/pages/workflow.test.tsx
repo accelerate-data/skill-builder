@@ -432,14 +432,14 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalled();
   });
 
-  it("renders completion screen on last step (step 6)", async () => {
-    // Simulate all steps complete, on step 6 (the last step)
+  it("renders completion screen on last step (step 5)", async () => {
+    // Simulate all steps complete, on step 5 (the last step)
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 6; i++) {
       useWorkflowStore.getState().updateStepStatus(i, "completed");
     }
-    useWorkflowStore.getState().setCurrentStep(6);
+    useWorkflowStore.getState().setCurrentStep(5);
 
     render(<WorkflowPage />);
 

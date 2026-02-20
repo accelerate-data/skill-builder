@@ -40,6 +40,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (10, run_composite_pk_migration),
         (11, run_bundled_skill_migration),
         (12, run_drop_trigger_description_migration),
+        (13, run_remove_validate_step_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -363,6 +364,17 @@ fn run_drop_trigger_description_migration(conn: &Connection) -> Result<(), rusql
     Ok(())
 }
 
+fn run_remove_validate_step_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Delete step 6+ records from all skills (validate step and any beyond)
+    conn.execute("DELETE FROM workflow_steps WHERE step_id >= 6", [])?;
+    // Reset any skill whose current_step is 6+ back to 5 (completed)
+    conn.execute(
+        "UPDATE workflow_runs SET current_step = 5, status = 'completed' WHERE current_step >= 6",
+        [],
+    )?;
+    Ok(())
+}
+
 fn run_author_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     let has_author = conn
         .prepare("PRAGMA table_info(workflow_runs)")
@@ -458,14 +470,12 @@ fn run_agent_stats_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
 
 fn step_name(step_id: i32) -> String {
     match step_id {
-        0 => "Init".to_string(),
-        1 => "Research".to_string(),
-        2 => "Review".to_string(),
-        3 => "Detailed Research".to_string(),
-        4 => "Review".to_string(),
-        5 => "Confirm Decisions".to_string(),
-        6 => "Generate Skill".to_string(),
-        7 => "Validate Skill".to_string(),
+        0 => "Research".to_string(),
+        1 => "Review".to_string(),
+        2 => "Detailed Research".to_string(),
+        3 => "Review".to_string(),
+        4 => "Confirm Decisions".to_string(),
+        5 => "Generate Skill".to_string(),
         _ => format!("Step {}", step_id),
     }
 }
@@ -1763,6 +1773,7 @@ mod tests {
         run_intake_migration(&conn).unwrap();
         run_composite_pk_migration(&conn).unwrap();
         run_bundled_skill_migration(&conn).unwrap();
+        run_remove_validate_step_migration(&conn).unwrap();
         conn
     }
 
@@ -2525,7 +2536,7 @@ mod tests {
         )
         .unwrap();
         persist_agent_run(
-            &conn, "agent-3", "skill-a", 6, "sonnet", "completed",
+            &conn, "agent-3", "skill-a", 5, "sonnet", "completed",
             2000, 1000, 0, 0, 0.25, 8000,
             0, None, None, 0, 0,
             None, ws,
@@ -2535,14 +2546,14 @@ mod tests {
         let by_step = get_usage_by_step(&conn, false).unwrap();
         assert_eq!(by_step.len(), 2);
 
-        // Ordered by total_cost DESC: step 6 ($0.25) then step 1 ($0.18)
-        assert_eq!(by_step[0].step_id, 6);
+        // Ordered by total_cost DESC: step 5 ($0.25) then step 1 ($0.18)
+        assert_eq!(by_step[0].step_id, 5);
         assert_eq!(by_step[0].step_name, "Generate Skill");
         assert_eq!(by_step[0].run_count, 1);
         assert!((by_step[0].total_cost - 0.25).abs() < 1e-10);
 
         assert_eq!(by_step[1].step_id, 1);
-        assert_eq!(by_step[1].step_name, "Research");
+        assert_eq!(by_step[1].step_name, "Review");
         assert_eq!(by_step[1].run_count, 2);
         assert!((by_step[1].total_cost - 0.18).abs() < 1e-10);
     }
@@ -2741,15 +2752,13 @@ mod tests {
 
     #[test]
     fn test_step_name_mapping() {
-        assert_eq!(step_name(0), "Init");
-        assert_eq!(step_name(1), "Research");
-        assert_eq!(step_name(2), "Review");
-        assert_eq!(step_name(3), "Detailed Research");
-        assert_eq!(step_name(4), "Review");
-        assert_eq!(step_name(5), "Confirm Decisions");
-        assert_eq!(step_name(6), "Generate Skill");
-        assert_eq!(step_name(7), "Validate Skill");
-        assert_eq!(step_name(8), "Step 8");
+        assert_eq!(step_name(0), "Research");
+        assert_eq!(step_name(1), "Review");
+        assert_eq!(step_name(2), "Detailed Research");
+        assert_eq!(step_name(3), "Review");
+        assert_eq!(step_name(4), "Confirm Decisions");
+        assert_eq!(step_name(5), "Generate Skill");
+        assert_eq!(step_name(6), "Step 6");
         assert_eq!(step_name(-1), "Step -1");
         assert_eq!(step_name(99), "Step 99");
     }

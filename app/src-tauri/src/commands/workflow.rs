@@ -58,14 +58,6 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 120,
         }),
-        6 => Ok(StepConfig {
-            step_id: 6,
-            name: "Validate Skill".to_string(),
-            prompt_template: "validate-skill.md".to_string(),
-            output_file: "context/agent-validation-log.md".to_string(),
-            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 120,
-        }),
         _ => Err(format!(
             "Unknown step_id {}. Steps 1 and 3 are human review steps.",
             step_id
@@ -673,7 +665,6 @@ fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
         2 => Some(8_000),   // detailed-research
         4 => Some(32_000),  // confirm-decisions — highest priority
         5 => Some(16_000),  // generate-skill — complex synthesis
-        6 => Some(8_000),   // validate-skill
         _ => None,
     }
 }
@@ -1186,7 +1177,6 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
         3 => vec![],  // Human review
         4 => vec!["context/decisions.md"],
         5 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
-        6 => vec!["context/agent-validation-log.md", "context/test-skill.md", "context/companion-skills.md"],
         _ => vec![],
     }
 }
@@ -1238,9 +1228,9 @@ pub fn get_disabled_steps(
     let decisions_path = context_dir.join("decisions.md");
 
     if parse_scope_recommendation(&clarifications_path) {
-        Ok(vec![2, 3, 4, 5, 6])
+        Ok(vec![2, 3, 4, 5])
     } else if parse_decisions_guard(&decisions_path) {
-        Ok(vec![5, 6])
+        Ok(vec![5])
     } else {
         Ok(vec![])
     }
@@ -1632,11 +1622,10 @@ pub fn preview_step_reset(
         "Review",
         "Confirm Decisions",
         "Generate Skill",
-        "Validate Skill",
     ];
 
     let mut result = Vec::new();
-    for step_id in from_step_id..=6 {
+    for step_id in from_step_id..=5 {
         // skills_path is required — single code path, no workspace fallback
         let mut existing_files: Vec<String> = Vec::new();
 
@@ -1684,7 +1673,7 @@ mod tests {
 
     #[test]
     fn test_get_step_config_valid_steps() {
-        let valid_steps = [0, 2, 4, 5, 6];
+        let valid_steps = [0, 2, 4, 5];
         for step_id in valid_steps {
             let config = get_step_config(step_id);
             assert!(config.is_ok(), "Step {} should be valid", step_id);
@@ -1698,6 +1687,7 @@ mod tests {
     fn test_get_step_config_invalid_step() {
         assert!(get_step_config(1).is_err());  // Human review
         assert!(get_step_config(3).is_err());  // Human review
+        assert!(get_step_config(6).is_err());  // Removed (was Validate Skill)
         assert!(get_step_config(7).is_err());  // Beyond last step
         assert!(get_step_config(8).is_err());  // Beyond last step
         assert!(get_step_config(9).is_err());
@@ -2018,27 +2008,23 @@ mod tests {
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Create files for step 6 (validate)
-        std::fs::write(skill_dir.join("context/agent-validation-log.md"), "step6").unwrap();
-        std::fs::write(skill_dir.join("context/test-skill.md"), "step6").unwrap();
-        std::fs::write(skill_dir.join("context/companion-skills.md"), "step6").unwrap();
+        // Create files for step 4 (decisions)
+        std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
 
-        // Reset from step 6 onwards should clean up step 6 (validate)
-        crate::cleanup::delete_step_output_files(workspace, "my-skill", 6, None);
+        // Reset from step 4 onwards should clean up step 4+5
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 4, None);
 
-        // Step 6 outputs should be deleted
-        assert!(!skill_dir.join("context/agent-validation-log.md").exists());
-        assert!(!skill_dir.join("context/test-skill.md").exists());
-        assert!(!skill_dir.join("context/companion-skills.md").exists());
+        // Step 4 outputs should be deleted
+        assert!(!skill_dir.join("context/decisions.md").exists());
     }
 
     #[test]
     fn test_delete_step_output_files_last_step() {
-        // Verify delete_step_output_files(from=6) doesn't panic
+        // Verify delete_step_output_files(from=5) doesn't panic
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         std::fs::create_dir_all(tmp.path().join("my-skill")).unwrap();
-        crate::cleanup::delete_step_output_files(workspace, "my-skill", 6, None);
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 5, None);
     }
 
     #[test]
@@ -2315,7 +2301,6 @@ mod tests {
             (2, 50),   // detailed research
             (4, 100),  // confirm decisions
             (5, 120),  // generate skill
-            (6, 120),  // validate skill
         ];
         for (step_id, expected_turns) in expected {
             let config = get_step_config(step_id).unwrap();
@@ -2342,7 +2327,6 @@ mod tests {
             (2, 50),
             (4, 100),
             (5, 120),
-            (6, 120),
         ];
         for (step_id, normal_turns) in steps_with_expected_turns {
             let config = get_step_config(step_id).unwrap();
@@ -2459,10 +2443,10 @@ mod tests {
         assert_eq!(thinking_budget_for_step(2), Some(8_000));
         assert_eq!(thinking_budget_for_step(4), Some(32_000));
         assert_eq!(thinking_budget_for_step(5), Some(16_000));
-        assert_eq!(thinking_budget_for_step(6), Some(8_000));
-        // Human review steps and beyond return None
+        // Human review steps, removed steps, and beyond return None
         assert_eq!(thinking_budget_for_step(1), None);
         assert_eq!(thinking_budget_for_step(3), None);
+        assert_eq!(thinking_budget_for_step(6), None);  // Removed (was Validate Skill)
         assert_eq!(thinking_budget_for_step(7), None);
     }
 

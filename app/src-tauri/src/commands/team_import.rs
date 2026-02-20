@@ -402,8 +402,8 @@ pub async fn import_team_repo_skill(
         crate::db::save_workflow_run(&conn, &skill_name, &domain, step, status, skill_type)?;
 
         // Mark all workflow steps up to the detected step as completed
-        // Steps: 0, 1, 2, 3, 4, 5, 6
-        for s in 0..=6 {
+        // Steps: 0, 1, 2, 3, 4, 5
+        for s in 0..=5 {
             if s <= step {
                 crate::db::save_workflow_step(&conn, &skill_name, s, "completed")?;
             }

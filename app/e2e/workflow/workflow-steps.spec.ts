@@ -49,11 +49,11 @@ const HUMAN_REVIEW_OVERRIDES: Record<string, unknown> = {
   read_file: REVIEW_CONTENT,
 };
 
-/** All steps completed, currently viewing the last step. */
+/** All steps completed, currently viewing the last step (step 5 = Generate Skill). */
 const LAST_STEP_OVERRIDES: Record<string, unknown> = {
   ...WORKFLOW_OVERRIDES,
   get_workflow_state: {
-    run: { domain: "Testing", current_step: 6, skill_type: "domain" },
+    run: { domain: "Testing", current_step: 5, skill_type: "domain" },
     steps: [
       { step_id: 0, status: "completed" },
       { step_id: 1, status: "completed" },
@@ -61,10 +61,9 @@ const LAST_STEP_OVERRIDES: Record<string, unknown> = {
       { step_id: 3, status: "completed" },
       { step_id: 4, status: "completed" },
       { step_id: 5, status: "completed" },
-      { step_id: 6, status: "completed" },
     ],
   },
-  read_file: "# Validation Report\n\nAll checks passed.",
+  read_file: "# Generation Report\n\nSkill generated successfully.",
 };
 
 /**
@@ -80,7 +79,7 @@ const ERROR_STEP_OVERRIDES: Record<string, unknown> = {
 
 /**
  * Step 0 completed, current step is human review (step 1), with steps
- * 2-6 disabled. The human review UI checks whether the next step after
+ * 2-5 disabled. The human review UI checks whether the next step after
  * review is disabled and shows "Scope Too Broad" when it is.
  */
 const DISABLED_STEPS_OVERRIDES: Record<string, unknown> = {
@@ -89,7 +88,7 @@ const DISABLED_STEPS_OVERRIDES: Record<string, unknown> = {
     run: { domain: "Testing", current_step: 1, skill_type: "domain" },
     steps: [{ step_id: 0, status: "completed" }],
   },
-  get_disabled_steps: [2, 3, 4, 5, 6],
+  get_disabled_steps: [2, 3, 4, 5],
   read_file: "# Scope Recommendation\n\nThis skill topic is too broad for a single skill.",
 };
 
@@ -376,7 +375,7 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
 
   test("completed human step shows editor without Complete button in update mode", async ({ page }) => {
     // All steps completed, current_step=3 (human Review step, completed).
-    // Navigate to update mode — the reposition effect targets step 6 (last step,
+    // Navigate to update mode — the reposition effect targets step 5 (last step,
     // all completed). After reposition settles, programmatically navigate to step 3
     // via the exposed Zustand store to test the completed-human-step UI in update mode.
     const allCompletedOnHuman: Record<string, unknown> = {
@@ -390,14 +389,13 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
           { step_id: 3, status: "completed" },
           { step_id: 4, status: "completed" },
           { step_id: 5, status: "completed" },
-          { step_id: 6, status: "completed" },
         ],
       },
       read_file: REVIEW_CONTENT,
     };
 
     await navigateToWorkflowUpdateMode(page, allCompletedOnHuman);
-    // Reposition settles on step 6 (all completed, target = last step)
+    // Reposition settles on step 5 (all completed, target = last step)
     await page.waitForTimeout(500);
 
     // Programmatically navigate to the completed human step via the store
@@ -422,23 +420,6 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
 
     // Should NOT show "Complete Step" button (step already completed)
     await expect(page.getByRole("button", { name: "Complete Step" })).not.toBeVisible();
-  });
-
-  test("completed agent step shows Re-run Step button in update mode", async ({ page }) => {
-    // All steps completed, current_step=6 (last step).
-    // In update mode, the reposition targets step 6 (all completed = last step).
-    // No reposition needed, and no agent auto-start (step is completed, not pending).
-    await navigateToWorkflowUpdateMode(page, LAST_STEP_OVERRIDES);
-
-    // Should show completion screen for the last step
-    await expect(page.getByText("Validate Skill Complete")).toBeVisible({ timeout: 5_000 });
-
-    // In update mode, completed agent step shows "Re-run Step" button
-    await expect(page.getByRole("button", { name: "Re-run Step" })).toBeVisible();
-
-    // Should also show "Done" button (last step) and NOT "Next Step"
-    await expect(page.getByRole("button", { name: "Done" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Next Step" })).not.toBeVisible();
   });
 
   test("Review to Update toggle repositions to first incomplete step", async ({ page }) => {
@@ -480,7 +461,7 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     await navigateToWorkflowUpdateMode(page, LAST_STEP_OVERRIDES);
 
     // Should show the last step completion
-    await expect(page.getByText("Validate Skill Complete")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Generate Skill Complete")).toBeVisible({ timeout: 5_000 });
 
     // Should have Done button (not Next Step)
     await expect(page.getByRole("button", { name: "Done" })).toBeVisible();

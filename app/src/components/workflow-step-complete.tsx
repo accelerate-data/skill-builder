@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/markdown-link";
-import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2 } from "lucide-react";
+import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { readFile, getStepAgentRuns } from "@/lib/tauri";
@@ -17,6 +17,7 @@ interface WorkflowStepCompleteProps {
   cost?: number;
   onNextStep?: () => void;
   onClose?: () => void;
+  onRefine?: () => void;
   isLastStep?: boolean;
   reviewMode?: boolean;
   skillName?: string;
@@ -32,6 +33,51 @@ function formatDuration(ms: number): string {
   return `${secs}s`;
 }
 
+/** Shared action bar: Refine/Done on last step, Next Step otherwise. Hidden in review mode. */
+function StepActionBar({
+  isLastStep,
+  reviewMode,
+  onRefine,
+  onClose,
+  onNextStep,
+}: {
+  isLastStep: boolean;
+  reviewMode?: boolean;
+  onRefine?: () => void;
+  onClose?: () => void;
+  onNextStep?: () => void;
+}) {
+  if (reviewMode) return null;
+
+  return (
+    <div className="flex items-center justify-end gap-2 border-t pt-4">
+      {isLastStep ? (
+        <>
+          {onRefine && (
+            <Button size="sm" variant="outline" onClick={onRefine}>
+              <MessageSquare className="size-3.5" />
+              Refine
+            </Button>
+          )}
+          {onClose && (
+            <Button size="sm" onClick={onClose}>
+              <CheckCircle2 className="size-3.5" />
+              Done
+            </Button>
+          )}
+        </>
+      ) : (
+        onNextStep && (
+          <Button size="sm" onClick={onNextStep}>
+            <ArrowRight className="size-3.5" />
+            Next Step
+          </Button>
+        )
+      )}
+    </div>
+  );
+}
+
 export function WorkflowStepComplete({
   stepName,
   stepId,
@@ -40,6 +86,7 @@ export function WorkflowStepComplete({
   cost,
   onNextStep,
   onClose,
+  onRefine,
   isLastStep = false,
   reviewMode,
   skillName,
@@ -179,25 +226,13 @@ export function WorkflowStepComplete({
               })}
           </div>
         </ScrollArea>
-        {!reviewMode && (
-          <div className="flex items-center justify-end gap-2 border-t pt-4">
-            {isLastStep ? (
-              onClose && (
-                <Button size="sm" onClick={onClose}>
-                  <CheckCircle2 className="size-3.5" />
-                  Done
-                </Button>
-              )
-            ) : (
-              onNextStep && (
-                <Button size="sm" onClick={onNextStep}>
-                  <ArrowRight className="size-3.5" />
-                  Next Step
-                </Button>
-              )
-            )}
-          </div>
-        )}
+        <StepActionBar
+          isLastStep={isLastStep}
+          reviewMode={reviewMode}
+          onRefine={onRefine}
+          onClose={onClose}
+          onNextStep={onNextStep}
+        />
       </div>
     );
   }
@@ -251,14 +286,13 @@ export function WorkflowStepComplete({
           </div>
         </div>
       </div>
-      {onNextStep && !isLastStep && !reviewMode && (
-        <div className="flex items-center justify-end border-t pt-4">
-          <Button size="sm" onClick={onNextStep}>
-            <ArrowRight className="size-3.5" />
-            Next Step
-          </Button>
-        </div>
-      )}
+      <StepActionBar
+        isLastStep={isLastStep}
+        reviewMode={reviewMode}
+        onRefine={onRefine}
+        onClose={onClose}
+        onNextStep={onNextStep}
+      />
     </div>
   );
 }

@@ -25,25 +25,21 @@ import { useUsageStore } from "@/stores/usage-store"
 import { getSessionAgentRuns } from "@/lib/tauri"
 
 const STEP_NAMES: Record<number, string> = {
-  0: "Init",
-  1: "Research",
-  2: "Review",
-  3: "Detailed Research",
-  4: "Review",
-  5: "Confirm Decisions",
-  6: "Generate Skill",
-  7: "Validate Skill",
+  0: "Research",
+  1: "Review",
+  2: "Detailed Research",
+  3: "Review",
+  4: "Confirm Decisions",
+  5: "Generate Skill",
 }
 
 const STEP_COLORS: Record<number, string> = {
-  0: "bg-gray-400",
-  1: "bg-blue-400",
-  2: "bg-blue-300",
-  3: "bg-indigo-400",
-  4: "bg-indigo-300",
-  5: "bg-purple-500",
-  6: "bg-green-500",
-  7: "bg-amber-500",
+  0: "bg-blue-400",
+  1: "bg-blue-300",
+  2: "bg-indigo-400",
+  3: "bg-indigo-300",
+  4: "bg-purple-500",
+  5: "bg-green-500",
 }
 
 const MODEL_COLORS: Record<string, string> = {

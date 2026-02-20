@@ -82,7 +82,7 @@ pub fn reconcile_on_startup(
                     // disk_step + 1 is the normal state after step N completes.
                     //
                     // Additionally, current_step can be disk_step + 2 when the step after
-                    // the last agent step is a human review (1, 3) or refinement (7) that
+                    // the last agent step is a human review (1, 3) that
                     // auto-advances without producing files.
                     //
                     // Count how many non-detectable (file-less) steps sit between disk_step
@@ -151,23 +151,26 @@ pub fn reconcile_on_startup(
                         }
                     }
 
-                    // If disk evidence shows the full workflow completed (step 6 =
-                    // validate has output), mark the run as "completed". This fixes a
+                    // If disk evidence shows the full workflow completed (step 5 =
+                    // generate has output), mark the run as "completed". This fixes a
                     // race where the frontend debounced save fires before the final
                     // step status is computed, leaving status = "pending" despite all
                     // steps being done.
-                    const LAST_WORKFLOW_STEP: i32 = 6;
+                    const LAST_WORKFLOW_STEP: i32 = 5;
                     if disk_step >= LAST_WORKFLOW_STEP && run.status != "completed" {
                         log::info!(
                             "[reconcile] Disk step {} >= last step for '{}', updating run status to 'completed'",
                             disk_step,
                             run.skill_name
                         );
+                        // Use disk_step (not run.current_step) because we may have
+                        // just advanced current_step in the disk-ahead branch above.
+                        let effective_step = std::cmp::max(disk_step, run.current_step);
                         crate::db::save_workflow_run(
                             conn,
                             &run.skill_name,
                             &run.domain,
-                            run.current_step,
+                            effective_step,
                             "completed",
                             &run.skill_type,
                         )?;
@@ -394,13 +397,13 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        // DB says step 6 (last step), status "pending" — simulates the race where
+        // DB says step 5 (last step), status "pending" — simulates the race where
         // the frontend debounced save never sent "completed"
-        crate::db::save_workflow_run(&conn, "done-skill", "sales", 6, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "done-skill", "sales", 5, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "done-skill", "sales");
-        // Create output for all detectable steps (0, 4, 5, 6)
-        for step in [0, 4, 5, 6] {
+        // Create output for all detectable steps (0, 4, 5)
+        for step in [0, 4, 5] {
             create_step_output(tmp.path(), "done-skill", step);
         }
 
@@ -630,41 +633,41 @@ mod tests {
     // --- Non-detectable step tests ---
 
     #[test]
-    fn test_step_7_not_reset_when_step_6_output_exists() {
-        // Bug: step 7 (refinement) produces no output files, so detect_furthest_step
-        // returns 6 at most. The reconciler was incorrectly resetting from 7 to 6.
+    fn test_step_6_not_reset_when_step_5_output_exists() {
+        // Step 6 (non-detectable/removed) in DB, but disk has all agent step outputs through step 5.
+        // The reconciler should not reset since step 5 output exists.
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        // DB at step 7, disk has all agent step outputs through step 6
-        crate::db::save_workflow_run(&conn, "done-skill", "analytics", 7, "pending", "domain")
+        // DB at step 6, disk has all agent step outputs through step 5
+        crate::db::save_workflow_run(&conn, "done-skill", "analytics", 6, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "done-skill", "analytics");
-        for step in [0, 2, 4, 5, 6] {
+        for step in [0, 2, 4, 5] {
             create_step_output(tmp.path(), "done-skill", step);
         }
 
         let result = reconcile_on_startup(&conn, workspace, None).unwrap();
 
-        // Should NOT reset — step 7 is non-detectable but step 6 output exists
+        // Should NOT reset — step 6 is non-detectable but step 5 output exists
         assert!(result.notifications.is_empty());
         let run = crate::db::get_workflow_run(&conn, "done-skill").unwrap().unwrap();
-        assert_eq!(run.current_step, 7);
+        assert_eq!(run.current_step, 6);
     }
 
     #[test]
-    fn test_step_7_reset_when_step_6_output_missing() {
-        // Step 7 in DB but step 6 output is missing — genuine corruption
+    fn test_step_6_reset_when_step_5_output_missing() {
+        // Step 6 in DB but step 5 output is missing — genuine corruption
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "bad-skill", "analytics", 7, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "bad-skill", "analytics", 6, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "bad-skill", "analytics");
-        // Only steps 0-5 have output, step 6 is missing
-        for step in [0, 2, 4, 5] {
+        // Only steps 0-4 have output, step 5 is missing
+        for step in [0, 2, 4] {
             create_step_output(tmp.path(), "bad-skill", step);
         }
 
@@ -672,9 +675,9 @@ mod tests {
 
         // Should reset — disk is genuinely behind
         assert_eq!(result.notifications.len(), 1);
-        assert!(result.notifications[0].contains("reset from step 7 to step 5"));
+        assert!(result.notifications[0].contains("reset from step 6 to step 4"));
         let run = crate::db::get_workflow_run(&conn, "bad-skill").unwrap().unwrap();
-        assert_eq!(run.current_step, 5);
+        assert_eq!(run.current_step, 4);
     }
 
     #[test]
@@ -727,8 +730,7 @@ mod tests {
             (1, vec![0]),             // step 0 completed -> on step 1
             (3, vec![0, 2]),          // step 2 completed -> on step 3
             (5, vec![0, 2, 4]),       // step 4 completed -> on step 5
-            (6, vec![0, 2, 4, 5]),    // step 5 completed -> on step 6
-            (7, vec![0, 2, 4, 5, 6]), // step 6 completed -> on step 7
+            (6, vec![0, 2, 4, 5]),    // step 5 completed -> on step 6 (beyond last step)
         ] {
             let tmp = tempfile::tempdir().unwrap();
             let workspace = tmp.path().to_str().unwrap();
@@ -949,33 +951,24 @@ mod tests {
 
     #[test]
     fn test_reconcile_cleans_future_step_files() {
-        // Scenario: DB at step 6, disk has step 0 + step 4 output but missing step 5.
-        // detect_furthest_step stops at step 4 (step 5 SKILL.md missing).
-        // Reconciler should reset to step 4 and clean up stale step 6 files.
+        // Scenario: DB at step 5, disk has only step 0 output (step 4 missing).
+        // detect_furthest_step stops at step 0 (step 4 decisions.md missing).
+        // Reconciler should reset to step 0 and clean up stale future files.
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         create_skill_dir(tmp.path(), "my-skill", "test");
         create_step_output(tmp.path(), "my-skill", 0);
-        create_step_output(tmp.path(), "my-skill", 4);
-        // Stale step 6 file from a previous run
-        let skill_dir = tmp.path().join("my-skill");
-        std::fs::write(skill_dir.join("context/agent-validation-log.md"), "stale").unwrap();
-        std::fs::write(skill_dir.join("context/test-skill.md"), "stale").unwrap();
 
-        // DB thinks we're at step 6
-        crate::db::save_workflow_run(&conn, "my-skill", "test", 6, "pending", "domain").unwrap();
+        // DB thinks we're at step 5
+        crate::db::save_workflow_run(&conn, "my-skill", "test", 5, "pending", "domain").unwrap();
 
         let result = reconcile_on_startup(&conn, workspace, None).unwrap();
 
-        // Should reset to step 4 (disk has steps 0, 4 complete, but step 5 missing)
+        // Should reset to step 0 (disk has only step 0 complete)
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
-        assert_eq!(run.current_step, 4, "should reconcile to step 4");
-
-        // Step 6 files should be cleaned up (future step)
-        assert!(!skill_dir.join("context/agent-validation-log.md").exists(), "step 6 files should be cleaned up");
-        assert!(!skill_dir.join("context/test-skill.md").exists(), "step 6 files should be cleaned up");
+        assert_eq!(run.current_step, 0, "should reconcile to step 0");
 
         assert!(!result.notifications.is_empty());
     }

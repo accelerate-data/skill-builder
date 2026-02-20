@@ -38,7 +38,7 @@ pub fn cleanup_step_files(
 
     // Context files — check both workspace and skills_path locations
     let context_dir = if let Some(sp) = skills_path {
-        if matches!(step_id, 0 | 2 | 4 | 6) {
+        if matches!(step_id, 0 | 2 | 4) {
             Path::new(sp).join(skill_name)
         } else {
             skill_dir.clone()
@@ -67,7 +67,7 @@ pub fn cleanup_future_steps(
     after_step: i32,
     skills_path: Option<&str>,
 ) {
-    for step_id in [0u32, 2, 4, 5, 6] {
+    for step_id in [0u32, 2, 4, 5] {
         if (step_id as i32) <= after_step {
             continue;
         }
@@ -123,9 +123,9 @@ pub fn clean_step_output_thorough(workspace_path: &str, skill_name: &str, step_i
         return;
     }
 
-    // Context files (steps 0, 2, 4, 6) may live in skills_path when configured
+    // Context files (steps 0, 2, 4) may live in skills_path when configured
     let context_dir = if let Some(sp) = skills_path {
-        if matches!(step_id, 0 | 2 | 4 | 6) {
+        if matches!(step_id, 0 | 2 | 4) {
             Path::new(sp).join(skill_name)
         } else {
             skill_dir.clone()
@@ -161,7 +161,7 @@ pub fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_ste
         "[delete_step_output_files] skill={} from_step={} workspace={} skills_path={:?}",
         skill_name, from_step_id, workspace_path, skills_path
     );
-    for step_id in from_step_id..=6 {
+    for step_id in from_step_id..=5 {
         clean_step_output_thorough(workspace_path, skill_name, step_id, skills_path);
     }
 }
@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn test_cleanup_future_steps() {
-        // If reconciled to step 2, files from steps 4/5/6 should be cleaned up
+        // If reconciled to step 2, files from steps 4/5 should be cleaned up
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         create_skill_dir(tmp.path(), "my-skill", "test");

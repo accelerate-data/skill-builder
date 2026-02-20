@@ -96,12 +96,6 @@ const defaultSteps: WorkflowStep[] = [
     description: "Generate skill files from decisions",
     status: "pending",
   },
-  {
-    id: 6,
-    name: "Validate Skill",
-    description: "Validate skill and run test prompts against it",
-    status: "pending",
-  },
 ];
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({

@@ -51,7 +51,6 @@ test.describe("Usage Page", { tag: "@usage" }, () => {
     await expect(page.getByText("Detailed Research")).toBeVisible();
     await expect(page.getByText("Confirm Decisions")).toBeVisible();
     await expect(page.getByText("Generate Skill")).toBeVisible();
-    await expect(page.getByText("Validate Skill")).toBeVisible();
   });
 
   test("shows cost by model breakdown", async ({ page }) => {

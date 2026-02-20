@@ -21,7 +21,7 @@ pub fn detect_furthest_step(
 
     // Step 2 (detailed research) edits clarifications.md in-place — no unique
     // artifact to detect, so it's treated as non-detectable (like steps 1/3).
-    for step_id in [0u32, 4, 5, 6] {
+    for step_id in [0u32, 4, 5] {
         let files = get_step_output_files(step_id);
         let (has_all, has_any) = if step_id == 5 {
             let output_dir = if let Some(sp) = skills_path {
@@ -31,7 +31,7 @@ pub fn detect_furthest_step(
             };
             let exists = output_dir.join("SKILL.md").exists();
             (exists, exists)
-        } else if skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6) {
+        } else if skills_path.is_some() && matches!(step_id, 0 | 2 | 4) {
             let target_dir = Path::new(skills_path.unwrap()).join(skill_name);
             let all = files.iter().all(|f| target_dir.join(f).exists());
             let any = files.iter().any(|f| target_dir.join(f).exists());
@@ -163,32 +163,6 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_furthest_step_6_in_skills_path() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        let skills = tmp.path().join("skills");
-
-        std::fs::create_dir_all(workspace.join("my-skill")).unwrap();
-
-        // Steps 0-5 in skills_path
-        create_step_output(&skills, "my-skill", 0);
-        create_step_output(&skills, "my-skill", 2);
-        create_step_output(&skills, "my-skill", 4);
-        std::fs::create_dir_all(skills.join("my-skill")).unwrap();
-        std::fs::write(skills.join("my-skill").join("SKILL.md"), "# Skill").unwrap();
-
-        // Step 6 context output also in skills_path
-        create_step_output(&skills, "my-skill", 6);
-
-        let step = detect_furthest_step(
-            workspace.to_str().unwrap(),
-            "my-skill",
-            Some(skills.to_str().unwrap()),
-        );
-        assert_eq!(step, Some(6));
-    }
-
-    #[test]
     fn test_detect_furthest_step_skill_md_only() {
         // SKILL.md exists but no context files (steps 0/2/4 missing).
         // Detection stops at first incomplete step, so step 5 is NOT reached.
@@ -238,66 +212,6 @@ mod tests {
         );
         // Should detect step 0 only — NOT step 5
         assert_eq!(step, Some(0));
-    }
-
-    #[test]
-    fn test_detect_partial_step6_output_cleaned_up() {
-        // If step 6 has only 1 of 2 expected files, it should not count as
-        // completed and the partial files should be cleaned up.
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
-        create_skill_dir(tmp.path(), "partial", "test");
-
-        let skill_dir = tmp.path().join("partial");
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-        // Complete steps 0, 2, 4, 5 so step 6 detection is reached
-        create_step_output(tmp.path(), "partial", 0);
-        create_step_output(tmp.path(), "partial", 2);
-        create_step_output(tmp.path(), "partial", 4);
-        std::fs::write(skill_dir.join("SKILL.md"), "# Skill").unwrap();
-        // Write only 1 of 2 step 6 files
-        std::fs::write(skill_dir.join("context/agent-validation-log.md"), "# partial").unwrap();
-
-        let step = detect_furthest_step(workspace, "partial", None);
-        // Should detect up to step 5 but not step 6
-        assert!(step.unwrap_or(0) < 6, "partial step 6 should not be detected as complete");
-    }
-
-    #[test]
-    fn test_detect_partial_step6_with_skills_path_cleaned_up() {
-        // Same as above but with skills_path configured
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        let skills = tmp.path().join("skills");
-
-        std::fs::create_dir_all(workspace.join("my-skill")).unwrap();
-        let target = skills.join("my-skill");
-        std::fs::create_dir_all(target.join("context")).unwrap();
-        // Complete steps 0, 2, 4, 5 so step 6 detection is reached
-        for file in get_step_output_files(0) {
-            let p = target.join(file);
-            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-            std::fs::write(&p, "# output").unwrap();
-        }
-        for file in get_step_output_files(2) {
-            let p = target.join(file);
-            std::fs::write(&p, "# output").unwrap();
-        }
-        for file in get_step_output_files(4) {
-            let p = target.join(file);
-            std::fs::write(&p, "# output").unwrap();
-        }
-        std::fs::write(target.join("SKILL.md"), "# Skill").unwrap();
-        // Write only 1 of 2 step 6 files in skills_path
-        std::fs::write(target.join("context/agent-validation-log.md"), "# partial").unwrap();
-
-        let step = detect_furthest_step(
-            workspace.to_str().unwrap(),
-            "my-skill",
-            Some(skills.to_str().unwrap()),
-        );
-        // Should detect up to step 5 but not step 6
-        assert!(step.unwrap_or(0) < 6, "partial step 6 in skills_path should not be detected as complete");
     }
 
     #[test]

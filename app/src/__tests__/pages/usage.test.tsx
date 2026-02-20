@@ -34,9 +34,9 @@ const mockSummary: UsageSummary = {
 };
 
 const mockByStep: UsageByStep[] = [
-  { step_id: 1, step_name: "Research", total_cost: 3.5, run_count: 10 },
-  { step_id: 5, step_name: "Confirm Decisions", total_cost: 6.0, run_count: 8 },
-  { step_id: 6, step_name: "Generate Skill", total_cost: 2.0, run_count: 5 },
+  { step_id: 0, step_name: "Research", total_cost: 3.5, run_count: 10 },
+  { step_id: 4, step_name: "Confirm Decisions", total_cost: 6.0, run_count: 8 },
+  { step_id: 5, step_name: "Generate Skill", total_cost: 2.0, run_count: 5 },
 ];
 
 const mockByModel: UsageByModel[] = [
@@ -176,7 +176,7 @@ describe("UsagePage", () => {
       {
         agent_id: "a1",
         skill_name: "my-skill",
-        step_id: 1,
+        step_id: 0,
         model: "sonnet",
         status: "completed",
         input_tokens: 10000,
@@ -197,7 +197,7 @@ describe("UsagePage", () => {
       {
         agent_id: "a2",
         skill_name: "my-skill",
-        step_id: 5,
+        step_id: 4,
         model: "opus",
         status: "completed",
         input_tokens: 5000,
@@ -321,7 +321,7 @@ describe("UsagePage", () => {
       {
         agent_id: "a1",
         skill_name: "my-skill",
-        step_id: 1,
+        step_id: 0,
         model: "sonnet",
         status: "completed",
         input_tokens: 10000,

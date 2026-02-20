@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/markdown-link";
 
 // Mock @tauri-apps/plugin-opener
-const mockOpenUrl = vi.fn(() => Promise.resolve());
+const mockOpenUrl = vi.fn((..._args: unknown[]) => Promise.resolve());
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: (...args: unknown[]) => mockOpenUrl(...args),
 }));
