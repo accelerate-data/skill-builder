@@ -12,7 +12,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * `research-entities`). Shared agents like `detailed-research` and
  * `confirm-decisions` use the same bare names.
  */
-function resolveStepTemplate(agentName: string | undefined): string | null {
+/** @internal Exported for testing only. */
+export function resolveStepTemplate(agentName: string | undefined): string | null {
   if (!agentName) return null;
 
   // Exact matches first
@@ -60,12 +61,17 @@ function getOutputDir(stepTemplate: string): string {
  *   "The skill output directory (SKILL.md and references/) is: /path/to/output."
  *   "The skill directory is: /path/to/skill."
  */
-function parsePromptPaths(prompt: string): {
+/** @internal Exported for testing only. */
+export function parsePromptPaths(prompt: string): {
+  workspaceDir: string | null;
   contextDir: string | null;
   skillOutputDir: string | null;
   skillDir: string | null;
 } {
   // Use [^\n]+ to capture paths that may contain dots (e.g., /Users/john.doe/)
+  const workspaceMatch = prompt.match(
+    /The workspace directory is: ([^\n]+?)\.\s/,
+  );
   const contextMatch = prompt.match(
     /The context directory is: ([^\n]+?)\.\s/,
   );
@@ -77,6 +83,7 @@ function parsePromptPaths(prompt: string): {
   );
 
   return {
+    workspaceDir: workspaceMatch?.[1]?.trim() ?? null,
     contextDir: contextMatch?.[1]?.trim() ?? null,
     skillOutputDir: outputMatch?.[1]?.trim() ?? null,
     skillDir: skillDirMatch?.[1]?.trim() ?? null,
@@ -222,7 +229,10 @@ async function writeMockOutputFiles(
   // (or use the context directory's parent, which is the skill directory).
   let destRoot: string;
 
-  if (stepTemplate === "refine-skill") {
+  if (stepTemplate === "gate-answer-evaluator") {
+    // Gate: answer-evaluation.json is an internal file written to the workspace directory.
+    destRoot = paths.workspaceDir ?? config.cwd;
+  } else if (stepTemplate === "refine-skill") {
     // Refine: files go directly to cwd (the skill directory)
     destRoot = config.cwd;
   } else if (stepTemplate === "step5-generate-skill") {

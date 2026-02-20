@@ -393,6 +393,11 @@ export const sendRefineMessage = (
 
 // --- Answer Evaluation (Transition Gate) ---
 
+export interface PerQuestionVerdict {
+  question_id: string;
+  verdict: "clear" | "not_answered" | "vague";
+}
+
 export interface AnswerEvaluation {
   verdict: "sufficient" | "mixed" | "insufficient";
   answered_count: number;
@@ -400,6 +405,7 @@ export interface AnswerEvaluation {
   vague_count: number;
   total_count: number;
   reasoning: string;
+  per_question?: PerQuestionVerdict[];
 }
 
 export const runAnswerEvaluator = (

@@ -259,7 +259,7 @@ describe("Canonical format: research-plan.md structure", () => {
 describe("Canonical format: answer-evaluation.json structure", () => {
   const evalFile = path.join(
     MOCK_ROOT,
-    "gate-answer-evaluator/context/answer-evaluation.json",
+    "gate-answer-evaluator/answer-evaluation.json",
   );
 
   it("answer-evaluation.json exists", () => {
@@ -304,6 +304,36 @@ describe("Canonical format: answer-evaluation.json structure", () => {
       expect(data.answered_count + data.empty_count + data.vague_count).toBe(
         data.total_count,
       );
+    });
+
+    it("has per_question array", () => {
+      expect(Array.isArray(data.per_question)).toBe(true);
+    });
+
+    it("per_question length matches total_count", () => {
+      expect(data.per_question.length).toBe(data.total_count);
+    });
+
+    it("per_question entries have question_id and verdict", () => {
+      for (const entry of data.per_question) {
+        expect(entry.question_id).toMatch(/^Q\d+$/);
+        expect(["clear", "not_answered", "vague"]).toContain(entry.verdict);
+      }
+    });
+
+    it("per_question verdict counts match aggregates", () => {
+      const clear = data.per_question.filter(
+        (e: { verdict: string }) => e.verdict === "clear",
+      ).length;
+      const notAnswered = data.per_question.filter(
+        (e: { verdict: string }) => e.verdict === "not_answered",
+      ).length;
+      const vague = data.per_question.filter(
+        (e: { verdict: string }) => e.verdict === "vague",
+      ).length;
+      expect(clear).toBe(data.answered_count);
+      expect(notAnswered).toBe(data.empty_count);
+      expect(vague).toBe(data.vague_count);
     });
   }
 });

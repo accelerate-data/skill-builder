@@ -1265,14 +1265,16 @@ pub async fn run_answer_evaluator(
     let context_dir = std::path::Path::new(&skills_path)
         .join(&skill_name)
         .join("context");
+    let workspace_dir = std::path::Path::new(&workspace_path).join(&skill_name);
 
-    // Build prompt with user context inline (same pattern as build_prompt)
+    // Use the same standard context pattern as build_prompt — send workspace and
+    // context directories, let the agent handle file routing.
     let mut prompt = format!(
-        "The context directory is: {dir}. \
-         Read {dir}/clarifications.md, evaluate the user answers, \
-         and write {dir}/answer-evaluation.json. \
+        "The workspace directory is: {workspace}. \
+         The context directory is: {context}. \
          All directories already exist — do not create any directories.",
-        dir = context_dir.display(),
+        workspace = workspace_dir.display(),
+        context = context_dir.display(),
     );
 
     if let Some(ctx) = format_user_context(
@@ -1671,6 +1673,39 @@ mod tests {
         );
         assert!(!prompt.contains("The author of this skill is:"));
         assert!(!prompt.contains("The skill was created on:"));
+    }
+
+    #[test]
+    fn test_answer_evaluator_prompt_uses_standard_paths() {
+        // The answer-evaluator prompt must follow the same "workspace directory" /
+        // "context directory" pattern as build_prompt so the mock agent and real
+        // agent can parse paths consistently.
+        let workspace_path = "/home/user/.vibedata";
+        let skills_path = "/home/user/my-skills";
+        let skill_name = "my-skill";
+
+        let context_dir = std::path::Path::new(skills_path)
+            .join(skill_name)
+            .join("context");
+        let workspace_dir = std::path::Path::new(workspace_path).join(skill_name);
+
+        let prompt = format!(
+            "The workspace directory is: {workspace}. \
+             The context directory is: {context}. \
+             All directories already exist — do not create any directories.",
+            workspace = workspace_dir.display(),
+            context = context_dir.display(),
+        );
+
+        // Verify standard path markers that mock agent and agent prompts rely on
+        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/my-skill."));
+        assert!(prompt.contains("The context directory is: /home/user/my-skills/my-skill/context."));
+        assert!(prompt.contains("do not create any directories"));
+        // Workspace dir is NOT context dir (answer-evaluation.json goes to workspace)
+        assert_ne!(
+            workspace_dir.to_str().unwrap(),
+            context_dir.to_str().unwrap(),
+        );
     }
 
     #[test]

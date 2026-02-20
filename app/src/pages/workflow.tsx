@@ -700,7 +700,7 @@ export default function WorkflowPage() {
     }
 
     try {
-      const evalPath = `${skillsPath}/${skillName}/context/answer-evaluation.json`;
+      const evalPath = `${workspacePath}/${skillName}/answer-evaluation.json`;
       const raw = await readFile(evalPath);
       const evaluation: AnswerEvaluation = JSON.parse(raw);
 

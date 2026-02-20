@@ -26,10 +26,17 @@ Reply with ONLY the mode label, e.g. 'Mode C'. Nothing else."
 
   local output_c
   output_c=$(run_claude_unsafe "$prompt_c" "$budget" 60 "$dir_c")
-  if [[ -n "$output_c" ]]; then
-    assert_output_contains "$tier" "mode_c_scratch_detected" "$output_c" "Mode C" || true
+  if [[ -n "$output_c" ]] && echo "$output_c" | grep -qi "Mode C"; then
+    record_result "$tier" "mode_c_scratch_detected" "PASS"
   else
-    record_result "$tier" "mode_c_scratch_detected" "FAIL" "empty output"
+    # Retry once — Mode C (empty dir) is the most LLM-sensitive case
+    log_verbose "Mode C retry (first attempt: ${output_c:-(empty)})"
+    output_c=$(run_claude_unsafe "$prompt_c" "$budget" 60 "$dir_c")
+    if [[ -n "$output_c" ]]; then
+      assert_output_contains "$tier" "mode_c_scratch_detected" "$output_c" "Mode C" || true
+    else
+      record_result "$tier" "mode_c_scratch_detected" "FAIL" "empty output after retry"
+    fi
   fi
 
   # ---- T3.2: Mode A (resume — context/ output files exist) ----

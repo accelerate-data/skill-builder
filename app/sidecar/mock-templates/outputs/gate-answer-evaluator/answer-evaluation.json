@@ -1,0 +1,19 @@
+{
+  "verdict": "mixed",
+  "answered_count": 4,
+  "empty_count": 3,
+  "vague_count": 2,
+  "total_count": 9,
+  "reasoning": "4 of 9 questions have detailed answers; 3 are blank and 2 are vague.",
+  "per_question": [
+    { "question_id": "Q1", "verdict": "clear" },
+    { "question_id": "Q2", "verdict": "clear" },
+    { "question_id": "Q3", "verdict": "clear" },
+    { "question_id": "Q4", "verdict": "clear" },
+    { "question_id": "Q5", "verdict": "vague" },
+    { "question_id": "Q6", "verdict": "vague" },
+    { "question_id": "Q7", "verdict": "not_answered" },
+    { "question_id": "Q8", "verdict": "not_answered" },
+    { "question_id": "Q9", "verdict": "not_answered" }
+  ]
+}
