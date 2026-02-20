@@ -11,6 +11,7 @@ describe("useSettingsStore", () => {
     const state = useSettingsStore.getState();
     expect(state.anthropicApiKey).toBeNull();
     expect(state.workspacePath).toBeNull();
+    expect(state.dashboardViewMode).toBeNull();
     expect(state.isConfigured).toBe(false);
   });
 
@@ -56,6 +57,18 @@ describe("useSettingsStore", () => {
     expect(state.workspacePath).toBe("/some/path");
     expect(state.skillsPath).toBe("/some/skills");
     expect(state.isConfigured).toBe(true);
+  });
+
+  it("setSettings stores dashboardViewMode", () => {
+    useSettingsStore.getState().setSettings({
+      dashboardViewMode: "list",
+    });
+    expect(useSettingsStore.getState().dashboardViewMode).toBe("list");
+
+    useSettingsStore.getState().setSettings({
+      dashboardViewMode: "grid",
+    });
+    expect(useSettingsStore.getState().dashboardViewMode).toBe("grid");
   });
 
   it("reset returns to initial state", () => {

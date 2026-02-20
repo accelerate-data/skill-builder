@@ -36,6 +36,9 @@ pub struct AppSettings {
     pub industry: Option<String>,
     #[serde(default)]
     pub function_role: Option<String>,
+    /// Dashboard view mode: "grid" | "list" | None (auto-select based on skill count)
+    #[serde(default)]
+    pub dashboard_view_mode: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -59,6 +62,7 @@ impl Default for AppSettings {
             max_dimensions: 5,
             industry: None,
             function_role: None,
+            dashboard_view_mode: None,
         }
     }
 }
@@ -456,6 +460,7 @@ mod tests {
         assert!(settings.remote_repo_name.is_none());
         assert!(settings.industry.is_none());
         assert!(settings.function_role.is_none());
+        assert!(settings.dashboard_view_mode.is_none());
     }
 
     #[test]
@@ -479,6 +484,7 @@ mod tests {
             max_dimensions: 5,
             industry: Some("Financial Services".to_string()),
             function_role: Some("Analytics Engineer".to_string()),
+            dashboard_view_mode: Some("grid".to_string()),
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();

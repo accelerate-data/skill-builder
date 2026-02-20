@@ -38,7 +38,7 @@ interface SkillCardProps {
   isGitHubLoggedIn?: boolean
 }
 
-function parseStepProgress(currentStep: string | null, status: string | null): number {
+export function parseStepProgress(currentStep: string | null, status: string | null): number {
   if (status === "completed") return 100
   if (!currentStep) return 0
   const match = currentStep.match(/step\s*(\d+)/i)
@@ -73,7 +73,7 @@ export function isWorkflowComplete(skill: SkillSummary): boolean {
   return false
 }
 
-interface IconActionProps {
+export interface IconActionProps {
   icon: React.ReactElement
   label: string
   tooltip: string
@@ -82,7 +82,7 @@ interface IconActionProps {
   className?: string
 }
 
-function IconAction({ icon, label, tooltip, onClick, disabled, className }: IconActionProps): React.ReactElement {
+export function IconAction({ icon, label, tooltip, onClick, disabled, className }: IconActionProps): React.ReactElement {
   const button = (
     <Button
       variant="ghost"
@@ -114,7 +114,7 @@ function IconAction({ icon, label, tooltip, onClick, disabled, className }: Icon
   )
 }
 
-function getPushDisabledReason(isGitHubLoggedIn?: boolean, remoteConfigured?: boolean): string | undefined {
+export function getPushDisabledReason(isGitHubLoggedIn?: boolean, remoteConfigured?: boolean): string | undefined {
   if (!isGitHubLoggedIn) return "Sign in with GitHub in Settings"
   if (!remoteConfigured) return "Configure remote repository in Settings"
   return undefined

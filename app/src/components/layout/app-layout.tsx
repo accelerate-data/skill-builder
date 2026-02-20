@@ -40,6 +40,7 @@ export function AppLayout() {
         githubUserEmail: s.github_user_email,
         remoteRepoOwner: s.remote_repo_owner,
         remoteRepoName: s.remote_repo_name,
+        dashboardViewMode: s.dashboard_view_mode,
       });
       setSettingsLoaded(true);
     }).catch(() => {

@@ -16,6 +16,7 @@ interface SettingsState {
   maxDimensions: number;
   industry: string | null;
   functionRole: string | null;
+  dashboardViewMode: string | null;
   isConfigured: boolean;
   setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset">>) => void;
   reset: () => void;
@@ -37,6 +38,7 @@ const initialState = {
   maxDimensions: 5,
   industry: null,
   functionRole: null,
+  dashboardViewMode: null,
   isConfigured: false,
 };
 

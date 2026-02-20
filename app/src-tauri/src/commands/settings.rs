@@ -119,6 +119,7 @@ fn diff_settings(old: &AppSettings, new: &AppSettings) -> Vec<String> {
     cmp_val!(max_dimensions, "max_dimensions");
     cmp_opt!(industry, "industry");
     cmp_opt!(function_role, "function_role");
+    cmp_opt!(dashboard_view_mode, "dashboard_view_mode");
     changes
 }
 

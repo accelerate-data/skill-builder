@@ -1703,6 +1703,7 @@ mod tests {
             max_dimensions: 5,
             industry: None,
             function_role: None,
+            dashboard_view_mode: None,
         };
         write_settings(&conn, &settings).unwrap();
 
@@ -1736,6 +1737,7 @@ mod tests {
             max_dimensions: 5,
             industry: None,
             function_role: None,
+            dashboard_view_mode: None,
         };
         write_settings(&conn, &settings).unwrap();
 
@@ -1765,6 +1767,7 @@ mod tests {
             max_dimensions: 5,
             industry: None,
             function_role: None,
+            dashboard_view_mode: None,
         };
         write_settings(&conn, &v1).unwrap();
 
@@ -1787,6 +1790,7 @@ mod tests {
             max_dimensions: 5,
             industry: None,
             function_role: None,
+            dashboard_view_mode: None,
         };
         write_settings(&conn, &v2).unwrap();
 

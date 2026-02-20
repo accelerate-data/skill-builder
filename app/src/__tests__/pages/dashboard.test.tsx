@@ -61,6 +61,7 @@ const defaultSettings: AppSettings = {
   max_dimensions: 8,
   industry: null,
   function_role: null,
+  dashboard_view_mode: null,
 };
 
 const sampleSkills: SkillSummary[] = [
@@ -107,6 +108,7 @@ function setupMocks(
     get_all_tags: ["salesforce", "crm", "workday"],
     package_skill: { file_path: "/tmp/test.skill", size_bytes: 1024 },
     copy_file: undefined,
+    save_settings: undefined,
   });
 
   // Hydrate the Zustand settings store (normally done by app-layout.tsx)
@@ -159,7 +161,7 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("navigates to skill page when Continue is clicked", async () => {
+  it("navigates to skill page when skill card is clicked", async () => {
     const user = userEvent.setup();
     setupMocks();
     render(<DashboardPage />);
@@ -168,10 +170,8 @@ describe("DashboardPage", () => {
       expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     });
 
-    const continueButtons = screen.getAllByRole("button", {
-      name: /Continue/i,
-    });
-    await user.click(continueButtons[0]);
+    // Click the skill name text to trigger navigation (card click)
+    await user.click(screen.getByText("sales-pipeline"));
 
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/skill/$skillName",
@@ -385,6 +385,97 @@ describe("DashboardPage", () => {
   });
 
   // --- Download handler tests ---
+
+  // --- View toggle tests ---
+
+  it("renders view toggle when skills exist", async () => {
+    setupMocks();
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("button", { name: "Grid view" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "List view" })).toBeInTheDocument();
+  });
+
+  it("does not show view toggle when no skills exist", async () => {
+    setupMocks({ skills: [] });
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No skills yet")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole("button", { name: "Grid view" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "List view" })).not.toBeInTheDocument();
+  });
+
+  it("switches to list view when list icon is clicked", async () => {
+    const user = userEvent.setup();
+    setupMocks();
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "List view" }));
+
+    // In list view, rows have role="button" — check that SkillListRow elements are rendered
+    const rows = screen.getAllByRole("button", { name: /Edit workflow/i });
+    expect(rows.length).toBeGreaterThan(0);
+
+    // save_settings should have been called to persist the choice
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("save_settings", expect.objectContaining({
+        settings: expect.objectContaining({ dashboard_view_mode: "list" }),
+      }));
+    });
+  });
+
+  it("defaults to list view when >= 10 skills and no saved preference", async () => {
+    const manySkills: SkillSummary[] = Array.from({ length: 12 }, (_, i) => ({
+      name: `skill-${i}`,
+      domain: "test",
+      current_step: "Step 1",
+      status: "in_progress",
+      last_modified: new Date().toISOString(),
+      tags: [],
+      skill_type: "domain",
+      author_login: null,
+      author_avatar: null,
+      intake_json: null,
+    }));
+    setupMocks({ skills: manySkills });
+
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("skill-0")).toBeInTheDocument();
+    });
+
+    // After loading, auto-select should pick list view (>= 10 skills, no saved preference)
+    await waitFor(() => {
+      const listButton = screen.getByRole("button", { name: "List view" });
+      expect(listButton).toHaveAttribute("aria-pressed", "true");
+    });
+  });
+
+  it("restores saved view mode from settings store", async () => {
+    setupMocks();
+    useSettingsStore.getState().setSettings({ dashboardViewMode: "list" });
+
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
+    });
+
+    const listButton = screen.getByRole("button", { name: "List view" });
+    expect(listButton).toHaveAttribute("aria-pressed", "true");
+  });
 
   it("calls packageSkill with correct args when downloading a completed skill", async () => {
     setupMocks();

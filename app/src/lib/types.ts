@@ -40,6 +40,7 @@ export interface AppSettings {
   max_dimensions: number
   industry: string | null
   function_role: string | null
+  dashboard_view_mode: string | null
 }
 
 export interface DeviceFlowResponse {
