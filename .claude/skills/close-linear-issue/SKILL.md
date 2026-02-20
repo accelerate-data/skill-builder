@@ -31,7 +31,17 @@ Gather the issue details, its PR, and its worktree location. Use the issue's `gi
 
 If already **Done**, skip to Close (cleanup only). If no PR exists, stop.
 
-Report to user: issue status, PR URL, worktree path.
+**Check for child issues:** Fetch children via `linear-server:list_issues` with `parentId` set to this issue's ID. Categorize each non-Done child:
+
+| Child state | Action |
+|---|---|
+| Already Done | Skip — nothing to do |
+| On the same PR (`Fixes <child-id>` found in PR body) | Close together with parent — automatic, no confirmation needed |
+| Not Done + not on the same PR | **Blocker** — parent cannot be closed. Stop and report which children are blocking. |
+
+If blockers exist, stop and tell the user: "Cannot close parent — these children are still open and not on this PR: [list]. Close them first or include them in the PR."
+
+Report to user: issue status, PR URL, worktree path, and child issue disposition.
 
 ## Verify Test Plan
 
@@ -54,7 +64,7 @@ If CI or merge fails, report to user and stop.
 
 Run in **parallel** (two `Task` calls in one turn):
 
-- Move **all issues** to **Done**: Parse the PR body for every `Fixes <issue-id>` line. Move each issue (including the primary issue) to Done via `linear-server:update_issue` and add a closing comment via `linear-server:create_comment` with the PR URL and merge commit. (model: `haiku`)
+- Move **all issues** to **Done**: The primary issue plus every `Fixes <issue-id>` from the PR body (which includes same-PR children identified earlier). Move each to Done via `linear-server:update_issue` and add a closing comment via `linear-server:create_comment` with the PR URL and merge commit. (model: `haiku`)
 - From the **main repo directory** (not the worktree): remove the worktree, delete the local branch, delete the remote branch (`git push origin --delete <branchName>` — do NOT rely on `--delete-branch` from the merge step), pull latest main. If worktree has uncommitted changes, report back — coordinator will ask user before force-removing.
 
 Report to user: issue closed, PR merged, worktree and branches removed.
@@ -80,5 +90,6 @@ These are `subagent_type` values for the `Task` tool — not MCP tools.
 | CI fails after rebase | Stop, report failing checks, let user decide |
 | Merge conflicts | Sub-agent attempts resolution; escalates to user if needed |
 | Issue already Done | Skip Linear update, proceed with cleanup only |
+| Open child not on same PR | Stop — parent cannot be closed until child is resolved |
 | Worktree has uncommitted changes | Ask user before force-removing |
 | Multiple PRs for branch | Use most recent open PR |
