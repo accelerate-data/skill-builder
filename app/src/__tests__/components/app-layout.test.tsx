@@ -100,6 +100,7 @@ const defaultSettings: AppSettings = {
   max_dimensions: 8,
   industry: null,
   function_role: null,
+  dashboard_view_mode: null,
 };
 
 const emptyReconciliation: ReconciliationResult = {

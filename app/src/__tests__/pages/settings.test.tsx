@@ -74,6 +74,7 @@ const defaultSettings: AppSettings = {
   max_dimensions: 8,
   industry: null,
   function_role: null,
+  dashboard_view_mode: null,
 };
 
 const populatedSettings: AppSettings = {
@@ -94,6 +95,7 @@ const populatedSettings: AppSettings = {
   max_dimensions: 8,
   industry: null,
   function_role: null,
+  dashboard_view_mode: null,
 };
 
 function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
