@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useBlocker, useNavigate } from "@tanstack/react-router";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { markdownComponents } from "@/components/markdown-link";
 import MDEditor from "@uiw/react-md-editor";
 import {
   Loader2,
@@ -975,7 +976,7 @@ export default function WorkflowPage() {
           </div>
           <ScrollArea className="min-h-0 flex-1 rounded-md border">
             <div className="markdown-body compact max-w-none p-4">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                 {reviewContent}
               </ReactMarkdown>
             </div>

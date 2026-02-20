@@ -1,6 +1,7 @@
 import { Fragment, memo, useEffect, useMemo, useRef, useCallback, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { markdownComponents } from "@/components/markdown-link";
 import {
   FileText,
   Pencil,
@@ -496,7 +497,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
         </div>
         <ErrorBoundary fallback={<pre className="whitespace-pre-wrap text-sm">{message.content}</pre>}>
           <div className="markdown-body compact">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
               {message.content ?? ""}
             </ReactMarkdown>
           </div>
@@ -509,7 +510,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
     return (
       <ErrorBoundary fallback={<pre className="whitespace-pre-wrap text-sm">{message.content}</pre>}>
         <div className={`${wrapperClass} markdown-body compact`}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
             {message.content}
           </ReactMarkdown>
         </div>
