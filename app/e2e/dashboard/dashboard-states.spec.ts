@@ -70,7 +70,8 @@ test.describe("Dashboard States", { tag: "@dashboard" }, () => {
     await page.goto("/");
     await waitForAppReady(page);
 
-    await page.getByText("My Skill").click();
+    // Skill card shows the raw kebab-case name
+    await page.getByText("my-skill").click();
     await expect(page).toHaveURL(/\/skill\/my-skill/);
   });
 

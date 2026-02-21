@@ -203,16 +203,16 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     await input.press("@");
     await page.waitForTimeout(100);
 
-    // File picker should show available files
-    await expect(page.getByText("SKILL.md").last()).toBeVisible();
-    await expect(page.getByText("references/glossary.md")).toBeVisible();
+    // File picker should show available files — use role="option" to target picker items
+    await expect(page.getByRole("option", { name: "SKILL.md" })).toBeVisible();
+    await expect(page.getByRole("option", { name: "references/glossary.md" })).toBeVisible();
 
-    // Select SKILL.md
-    await page.getByText("SKILL.md").last().click();
+    // Select SKILL.md via the picker option (role="option")
+    await page.getByRole("option", { name: "SKILL.md" }).click();
 
-    // @SKILL.md badge should appear — use locator scoped to badges area
-    // (avoids matching the textarea which also contains @SKILL.md text)
-    const badgeArea = page.locator("[data-variant='secondary']", { hasText: "@SKILL.md" });
+    // @SKILL.md badge should appear — scoped to the input bar badges area
+    // The Badge component renders with data-slot="badge" and data-variant="secondary"
+    const badgeArea = page.locator("[data-slot='badge'][data-variant='secondary']", { hasText: "@SKILL.md" });
     await expect(badgeArea.first()).toBeVisible();
 
     // Type a message and send

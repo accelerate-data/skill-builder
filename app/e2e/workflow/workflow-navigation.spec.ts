@@ -54,8 +54,9 @@ test.describe("Workflow Navigation Guards", { tag: "@workflow" }, () => {
     });
     await page.waitForTimeout(100);
 
-    // Try to navigate away by clicking Skills in the app sidebar
-    const skillsLink = page.locator("aside nav").getByText("Skills");
+    // Try to navigate away by clicking Skill Library in the app sidebar
+    // (sidebar nav was renamed from "Skills" / "Dashboard" to "Skill Library")
+    const skillsLink = page.locator("aside nav").getByText("Skill Library");
     await skillsLink.click();
     await page.waitForTimeout(300);
 
@@ -102,8 +103,9 @@ test.describe("Workflow Navigation Guards", { tag: "@workflow" }, () => {
     await textarea.type(" unsaved edit");
     await page.waitForTimeout(200);
 
-    // Try to navigate away by clicking Skills
-    const skillsLink = page.locator("aside nav").getByText("Skills");
+    // Try to navigate away by clicking Skill Library in the app sidebar
+    // (sidebar nav was renamed from "Skills" to "Skill Library")
+    const skillsLink = page.locator("aside nav").getByText("Skill Library");
     await skillsLink.click();
     await page.waitForTimeout(300);
 

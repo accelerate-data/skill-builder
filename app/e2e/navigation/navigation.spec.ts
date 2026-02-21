@@ -5,9 +5,10 @@ test.describe("Navigation", { tag: "@navigation" }, () => {
   test("loads the dashboard by default", async ({ page }) => {
     await page.goto("/");
     await waitForAppReady(page);
-    // Dashboard should be visible (sidebar has Dashboard link)
-    await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Settings/i })).toBeVisible();
+    // Sidebar has "Skill Library" nav link (dashboard was renamed)
+    await expect(page.getByRole("link", { name: "Skill Library" })).toBeVisible();
+    // Settings is an icon button in the header (no text label, use title attribute)
+    await expect(page.locator("header button[title*='Settings']")).toBeVisible();
   });
 
   test("theme toggle switches between system, light, and dark", async ({ page }) => {

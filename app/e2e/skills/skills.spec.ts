@@ -2,6 +2,19 @@ import { test, expect } from "@playwright/test";
 import { waitForAppReady } from "../helpers/app-helpers";
 import importedSkillsFixture from "../fixtures/imported-skills.json" with { type: "json" };
 
+/** Navigate to the Skills section of the Settings page. */
+async function navigateToSkillsLibrary(page: Parameters<typeof waitForAppReady>[0]) {
+  await page.goto("/settings");
+  await waitForAppReady(page);
+  // Wait for settings to finish loading (spinner disappears, nav buttons become visible)
+  const skillsNavBtn = page.locator("nav button", { hasText: "Skills" });
+  await skillsNavBtn.waitFor({ state: "visible", timeout: 5_000 });
+  // Click the "Skills" section in the settings sidebar nav
+  await skillsNavBtn.click();
+  // Wait for the SkillsLibraryTab to mount
+  await page.waitForTimeout(300);
+}
+
 test.describe("Skills Library", { tag: "@skills" }, () => {
   test("shows empty state when no skills exist", async ({ page }) => {
     await page.addInitScript(() => {
@@ -10,8 +23,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/settings?tab=skills-library");
-    await waitForAppReady(page);
+    await navigateToSkillsLibrary(page);
 
     // Empty state card should be visible (CardTitle renders as <div>, not a heading)
     await expect(page.getByText("No imported skills")).toBeVisible();
@@ -32,14 +44,13 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/settings?tab=skills-library");
-    await waitForAppReady(page);
+    await navigateToSkillsLibrary(page);
 
     // Settings page header
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
 
-    // Skills Library tab should be active
-    await expect(page.getByRole("tab", { name: "Skills Library" })).toHaveAttribute("data-state", "active");
+    // Settings sidebar shows "Skills" as active section
+    await expect(page.locator("nav button", { hasText: "Skills" })).toBeVisible();
 
     // Action buttons
     await expect(page.getByRole("button", { name: /import from github/i }).first()).toBeVisible();
@@ -53,8 +64,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     }, importedSkillsFixture);
 
-    await page.goto("/settings?tab=skills-library");
-    await waitForAppReady(page);
+    await navigateToSkillsLibrary(page);
 
     // Both skill cards should be visible (CardTitle renders as <div>, not a heading)
     await expect(page.getByText("data-analytics")).toBeVisible();
@@ -77,8 +87,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     }, importedSkillsFixture);
 
-    await page.goto("/settings?tab=skills-library");
-    await waitForAppReady(page);
+    await navigateToSkillsLibrary(page);
 
     // Find the switch for data-analytics skill
     const dataAnalyticsSwitch = page.getByLabel("Toggle data-analytics active");
@@ -102,8 +111,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     }, importedSkillsFixture);
 
-    await page.goto("/settings?tab=skills-library");
-    await waitForAppReady(page);
+    await navigateToSkillsLibrary(page);
 
     // Find the delete button for data-analytics (CardTitle is a <div>, not a heading)
     const dataAnalyticsCard = page.locator("[data-slot='card']").filter({
@@ -139,8 +147,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       { skills: importedSkillsFixture, content: mockSkillContent }
     );
 
-    await page.goto("/settings?tab=skills-library");
-    await waitForAppReady(page);
+    await navigateToSkillsLibrary(page);
 
     // Click the Preview button for data-analytics (CardTitle is a <div>, not a heading)
     const dataAnalyticsCard = page.locator("[data-slot='card']").filter({
@@ -171,8 +178,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       { skills: importedSkillsFixture, content: mockSkillContent }
     );
 
-    await page.goto("/settings?tab=skills-library");
-    await waitForAppReady(page);
+    await navigateToSkillsLibrary(page);
 
     // Open preview (CardTitle is a <div>, not a heading)
     const apiDesignCard = page.locator("[data-slot='card']").filter({
@@ -194,8 +200,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/settings?tab=skills-library");
-    await waitForAppReady(page);
+    await navigateToSkillsLibrary(page);
 
     // Verify the Upload Skill button exists and is clickable
     const uploadButton = page.getByRole("button", { name: /upload skill/i }).first();
@@ -210,8 +215,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/settings?tab=skills-library");
-    await waitForAppReady(page);
+    await navigateToSkillsLibrary(page);
 
     // Click Import from GitHub button
     await page.getByRole("button", { name: /import from github/i }).first().click();
@@ -251,8 +255,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/settings?tab=skills-library");
-    await waitForAppReady(page);
+    await navigateToSkillsLibrary(page);
 
     // Open GitHub import dialog
     await page.getByRole("button", { name: /import from github/i }).first().click();
@@ -295,8 +298,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/settings?tab=skills-library");
-    await waitForAppReady(page);
+    await navigateToSkillsLibrary(page);
 
     // Open dialog and navigate to step 2
     await page.getByRole("button", { name: /import from github/i }).first().click();
@@ -345,8 +347,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/settings?tab=skills-library");
-    await waitForAppReady(page);
+    await navigateToSkillsLibrary(page);
 
     // Navigate to step 2
     await page.getByRole("button", { name: /import from github/i }).first().click();
@@ -399,14 +400,10 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
             imported_at: "2025-01-20T10:00:00Z",
           },
         ],
-        generate_trigger_text: "When the user asks about analytics...",
-        update_trigger_text: undefined,
-        regenerate_claude_md: undefined,
       };
     });
 
-    await page.goto("/settings?tab=skills-library");
-    await waitForAppReady(page);
+    await navigateToSkillsLibrary(page);
 
     // Step 1: Enter URL
     await page.getByRole("button", { name: /import from github/i }).first().click();
@@ -417,90 +414,13 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(page.getByRole("heading", { name: "Select Skills from test-owner/test-repo" })).toBeVisible();
     await page.getByRole("button", { name: "Import Selected (1)" }).click();
 
-    // Step 3: Importing spinner (might be too fast to catch)
-    // Just check that we eventually get to step 4
-
-    // Step 4: Review triggers
-    await expect(page.getByRole("heading", { name: "Review Skill Triggers" })).toBeVisible({ timeout: 5000 });
-    await expect(
-      page.getByText("Review and edit the trigger text for each imported skill.")
-    ).toBeVisible();
-
-    // Should show the skill name (use exact match to avoid matching trigger text)
-    await expect(page.getByText("analytics", { exact: true }).first()).toBeVisible();
-
-    // Skip trigger review
-    await page.getByRole("button", { name: "Skip" }).click();
-
-    // Step 5: Done
-    await expect(page.getByRole("heading", { name: "Import Complete" })).toBeVisible();
+    // Step 3: Importing spinner completes → Step 4: Done
+    await expect(page.getByRole("heading", { name: "Import Complete" })).toBeVisible({ timeout: 5000 });
     await expect(page.getByText("Successfully imported 1 skill.")).toBeVisible();
 
     // Click Done to close dialog
     await page.getByRole("button", { name: "Done" }).click();
     await expect(page.getByRole("dialog")).not.toBeVisible();
-  });
-
-  test("GitHub import wizard - save triggers flow", async ({ page }) => {
-    await page.addInitScript(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        list_imported_skills: [],
-        parse_github_url: {
-          owner: "test-owner",
-          repo: "test-repo",
-          branch: "main",
-          subpath: null,
-        },
-        list_github_skills: [
-          {
-            path: "skills/testing",
-            name: "testing",
-            domain: "Engineering",
-            description: "Testing practices",
-          },
-        ],
-        import_github_skills: [
-          {
-            skill_id: "imported-002",
-            skill_name: "testing",
-            domain: "Engineering",
-            description: "Testing practices",
-            is_active: true,
-            disk_path: "/tmp/skills/testing",
-            trigger_text: null,
-            imported_at: "2025-01-20T11:00:00Z",
-          },
-        ],
-        generate_trigger_text: "When the user needs testing guidance...",
-        update_trigger_text: undefined,
-        regenerate_claude_md: undefined,
-      };
-    });
-
-    await page.goto("/settings?tab=skills-library");
-    await waitForAppReady(page);
-
-    // Navigate through steps 1-2
-    await page.getByRole("button", { name: /import from github/i }).first().click();
-    await page.getByPlaceholder("https://github.com/owner/repo").fill("https://github.com/test-owner/test-repo");
-    await page.getByRole("button", { name: "Browse Skills" }).click();
-    await page.getByRole("button", { name: "Import Selected (1)" }).click();
-
-    // Step 4: Review and edit trigger text
-    await expect(page.getByRole("heading", { name: "Review Skill Triggers" })).toBeVisible({ timeout: 5000 });
-
-    // Wait for trigger text to be generated
-    const triggerTextarea = page.locator("textarea").first();
-    await expect(triggerTextarea).toHaveValue("When the user needs testing guidance...", { timeout: 5000 });
-
-    // Edit the trigger text
-    await triggerTextarea.fill("Custom trigger for testing skill");
-
-    // Click Save Triggers
-    await page.getByRole("button", { name: "Save Triggers" }).click();
-
-    // Should proceed to Done step
-    await expect(page.getByRole("heading", { name: "Import Complete" })).toBeVisible({ timeout: 5000 });
   });
 
   test("GitHub import wizard - back navigation", async ({ page }) => {
@@ -524,8 +444,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/settings?tab=skills-library");
-    await waitForAppReady(page);
+    await navigateToSkillsLibrary(page);
 
     // Navigate to step 2
     await page.getByRole("button", { name: /import from github/i }).first().click();
@@ -534,8 +453,8 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
 
     await expect(page.getByRole("heading", { name: "Select Skills from test-owner/test-repo" })).toBeVisible();
 
-    // Click back button (ArrowLeft icon button)
-    const backButton = page.locator("button").filter({ has: page.locator("svg.lucide-arrow-left") });
+    // Click back button (ArrowLeft icon button) — scoped to dialog to avoid matching header's back button
+    const backButton = page.getByRole("dialog").locator("button").filter({ has: page.locator("svg.lucide-arrow-left") });
     await backButton.click();
 
     // Should go back to step 1

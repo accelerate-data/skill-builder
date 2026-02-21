@@ -13,14 +13,14 @@ test.describe("Dashboard", { tag: "@dashboard" }, () => {
     await page.goto("/");
     await waitForAppReady(page);
     // With mock returning null workspace_path, it might show a setup prompt instead
-    // Just verify the page loaded without errors
-    await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
+    // Just verify the page loaded without errors by checking the sidebar nav link
+    await expect(page.getByRole("link", { name: "Skill Library" })).toBeVisible();
   });
 
   test("header shows app title", async ({ page }) => {
     await page.goto("/");
     await waitForAppReady(page);
-    // Target the header heading specifically (splash is dismissed at this point)
-    await expect(page.getByRole("banner").getByRole("heading", { name: "Skill Builder" })).toBeVisible();
+    // Header shows page title ("Skill Library" when on the dashboard route)
+    await expect(page.getByRole("banner").getByRole("heading", { name: "Skill Library" })).toBeVisible();
   });
 });
