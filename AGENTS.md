@@ -8,7 +8,7 @@ Multi-agent workflow for creating domain-specific skills. Two frontends share th
 - Claude Code plugin (CLI)
 - Tauri desktop app (GUI)
 
-See `CLAUDE.md` for the 7-step workflow, model tiers, dev commands, testing strategy, shared components, and gotchas.
+See `CLAUDE.md` for model tiers, dev commands, testing strategy, shared components, and gotchas. For the full workflow definition, see `skills/generate-skill/SKILL.md`.
 
 ## Quick Start
 
