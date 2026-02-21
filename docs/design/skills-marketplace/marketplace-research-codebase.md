@@ -1,6 +1,7 @@
 # Marketplace Research: Existing Codebase Infrastructure Inventory
 
 Research conducted 2026-02-19 by codebase-explorer agent.
+**VD-696 implementation completed 2026-02-21.** See [skills-marketplace-design.md](./skills-marketplace-design.md) for the as-built design. Sections below are annotated with ✅ (built), 🔜 (planned), or unchanged (still pending).
 
 ---
 
@@ -36,8 +37,8 @@ Research conducted 2026-02-19 by codebase-explorer agent.
 
 ### What's Missing for Marketplace
 
-- **No link to marketplace catalog**: companions reference slugs but don't resolve to actual skills in any registry
-- **No install action**: "Build this skill" and "Import template" UI actions are planned (app.md Section 3) but not built
+- 🔜 **No link to marketplace catalog**: companions reference slugs but don't resolve to actual skills in any registry (Phase 2)
+- 🔜 **No install action**: "Build this skill" and "Import template" UI actions are planned (Phase 2)
 - **No version or author info** in companion frontmatter
 - **No community rating/popularity data** — recommendations are purely algorithmic (dimension scoring)
 
@@ -136,16 +137,16 @@ importTeamRepoSkill(skillPath, skillName, force?) → string
 
 ### What's Partial
 
-- No search/filter when listing GitHub skills — returns all SKILL.md files in repo
+- ✅ **typeFilter** — `GitHubImportDialog` accepts a `typeFilter` prop that filters skills by `skill_type` frontmatter field
 - No preview of skill content before import (must import first, then view)
 - No update/sync mechanism — importing is one-way, no pull for updates
 
 ### What's Missing for Marketplace
 
-- **No multi-repo browsing** — each import is to one specific repo
-- **No central registry/index** — skills are discovered by scanning repo trees
-- **No ratings, downloads, popularity metrics**
-- **No semantic search** across multiple repos (haiku matching is designed but not built)
+- 🔜 **Multi-repo browsing** — single `marketplace_url` setting; multi-registry is Phase 4
+- ✅ **Central registry** — `marketplace_url` setting points to a GitHub repo; `list_github_skills` scans it (no static catalog file needed for Phase 1)
+- **No ratings, downloads, popularity metrics** (Phase 3)
+- **No semantic search** (Phase 2)
 - **No dependency resolution** — companion skills are recommendations, not enforced
 
 ### Marketplace Relevance
@@ -328,10 +329,10 @@ conventions:
 
 ### What's Missing for Marketplace
 
-- **No publish state** — skills are local (pending/in_progress/completed) or imported, no "published" status
+- 🔜 **No publish state** — skills can be pushed to a team repo but not to a marketplace specifically (Phase 3)
 - **No version history** — DB tracks current state only, no versioned snapshots
-- **No download/install tracking** — imported_skills tracks what's imported but not from where or when updated
-- **No source URL tracking** — once imported, no link back to the original repo/source
+- ✅ **Download/install tracking** — `import_marketplace_to_library` writes both `imported_skills` and `workflow_runs` rows with `source='marketplace'`; `get_all_installed_skill_names` enables "already installed" detection
+- 🔜 **Source URL tracking** — `imported_skills.disk_path` stores local path but not the upstream GitHub URL (needed for update detection in Phase 3)
 
 ---
 
@@ -425,29 +426,45 @@ GitHub OAuth is already the identity system. The `github_user_login` is the auth
 | Skill CRUD + rename + lock | Full lifecycle management |
 | Ghost suggestions (haiku) | AI-powered field completion at skill creation |
 
-### Designed but Not Built
+### Built in VD-696
 
-| Component | Design Location | Key Decision |
-|-----------|----------------|-------------|
-| Template matching | `shared.md` Section 6, `app.md` Section 5 | Haiku-based semantic search against template repo |
-| Companion UI | `app.md` Section 3 | "Build this" / "Import template" actions |
-| Convention skills | `shared.md` Section 8 | Standalone publishable tool-best-practices skills |
-| Template repo structure | `shared.md` Section 6 | Public GitHub repo with SKILL.md per template |
+| Component | What Was Built |
+|-----------|---------------|
+| `marketplace_url` setting | Single GitHub repo URL as registry |
+| `import_marketplace_to_library` | Download + `imported_skills` + `workflow_runs` rows |
+| `get_installed_skill_names` | UNION query; pre-marks installed skills in browse UI |
+| `GitHubImportDialog` redesign | Required `url`, auto-browse, `mode` prop, `typeFilter` prop, pre-marking |
+| Skills Library tab | Dashboard tab for imported skills with marketplace browse button |
+| `workflow_runs.source` column | Distinguishes 'created' vs 'marketplace' skills |
+| Extended `imported_skills` columns | skill_type, version, model, argument_hint, user_invocable, disable_model_invocation |
+| Refinement for marketplace skills | Marketplace skills in `list_refinable_skills`; auto-select fix; workspace dir creation |
+| 4-step intake wizard | Extended frontmatter on skill creation |
 
-### Missing for Full Marketplace
+### Still Designed but Not Built
 
-| Gap | Impact | Suggested Approach |
-|-----|--------|-------------------|
-| Central registry/index | Can't browse without knowing repo URL | Template repo with index.json or GitHub API-based discovery |
-| Semantic search | Can't find skills by need | Haiku matching (designed in VD-696) against skill descriptions |
-| Version management | Can't update imported skills | Add source_url + source_version to imported_skills DB |
-| Ratings/downloads | No popularity signals | New DB table or external service |
-| Multi-repo browsing | Limited to one team repo | Registry of skill repos, or single curated marketplace repo |
-| Preview before install | Must import to see content | Fetch and render SKILL.md in a modal before import |
-| Update detection | No "new version available" | Compare local manifest version with remote |
-| License field | No sharing rights clarity | Add to `.skill-builder` manifest and SKILL.md frontmatter |
-| Category hierarchy | Only flat type (4 types) + tags | Add category taxonomy or leverage tags more |
-| Author profiles | Only github login + avatar | Link to GitHub profile, show published skill count |
+| Component | Phase | Notes |
+|-----------|-------|-------|
+| Template/marketplace semantic matching | Phase 2 | Haiku-based matching against marketplace skills |
+| Companion UI | Phase 2 | "Build this" / "Import from marketplace" actions |
+| Convention skills | Phase 2+ | Standalone best-practices skills; `conventions` frontmatter |
+| Publishing flow | Phase 3 | "Publish to Marketplace" → PR to marketplace repo |
+| `marketplace.json` catalog | Phase 3 | Static catalog for richer metadata + install counts |
+| Version tracking / update detection | Phase 3 | `source_url` + `source_version` fields in imported_skills |
+| Multi-registry support | Phase 4 | Multiple marketplace URLs |
+
+### Remaining Gaps
+
+| Gap | Impact | Phase |
+|-----|--------|-------|
+| Semantic search | Can't find skills by need (text search only) | 2 |
+| Companion-to-marketplace matching | Can't auto-suggest installs from companion report | 2 |
+| Version management | Can't detect/apply upstream updates | 3 |
+| Source URL tracking | No link back to upstream GitHub source | 3 |
+| Publishing | Can't contribute skills to marketplace | 3 |
+| Ratings/downloads/popularity | No quality signals in browse | 3 |
+| Preview before install | Must import to see SKILL.md content | 3 |
+| Multi-repo browsing | Limited to one configured marketplace URL | 4 |
+| Skill-name conflict detection | Marketplace import silently overwrites built skill | Unscheduled |
 
 ### Architecture Notes
 

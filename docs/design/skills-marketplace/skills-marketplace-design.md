@@ -1,7 +1,6 @@
 # Skills Marketplace — Feature Design
 
-> A skills marketplace for the skill-builder project: discover, install, and publish domain-specific Claude skills.
-> Builds on existing GitHub import/push infrastructure, companion recommender, and template matching designs.
+> Documents the skills marketplace as built in VD-696 (browse, install, manage) and the remaining roadmap (publish, companion matching, community signals).
 
 ---
 
@@ -11,768 +10,424 @@
 
 The skills marketplace is a **discovery and distribution layer** for domain-specific Claude skills built with skill-builder. It connects skill authors (who build skills using the multi-agent workflow) with skill consumers (who want pre-built domain knowledge for their Claude Code projects).
 
-A skill in this context is **not** a code extension or plugin — it is a structured knowledge package (SKILL.md + references/) that teaches Claude domain-specific patterns, rules, and conventions. The marketplace catalogs, indexes, and distributes these knowledge packages.
+A skill is a structured knowledge package (SKILL.md + references/) that teaches Claude domain-specific patterns, rules, and conventions. The marketplace catalogs and distributes these packages via a configured GitHub repository.
 
-### How It Differs from Claude Code's Plugin Marketplace
+### Two Populations of Skills
 
-| Aspect | Claude Code Plugins | Skills Marketplace |
+The app manages two types of skills that differ in lifecycle and storage:
+
+| | **Built skills** | **Marketplace skills** |
 |---|---|---|
-| **Content** | Code extensions (skills, agents, hooks, MCP servers, LSP servers) | Domain knowledge packages (SKILL.md + references) |
-| **Granularity** | Plugin = bundle of many components | Skill = single focused knowledge package |
-| **Value source** | Developer tooling (formatters, linters, integrations) | Domain expertise (business rules, data patterns, platform conventions) |
-| **Author profile** | Software developers | Data/analytics engineers, domain experts |
-| **Install result** | New commands, agents, hooks in Claude Code | New domain context loaded into Claude's working memory |
-| **Composability** | Independent plugins | Skills compose via companion recommendations and convention dependencies |
+| **Origin** | Created locally using the workflow | Imported from a marketplace GitHub repo |
+| **DB table** | `workflow_runs` (source='created') | `workflow_runs` (source='marketplace') **and** `imported_skills` |
+| **Status** | pending → in_progress → completed | Always 'completed', current_step=5 |
+| **Location** | `skills_path/{name}/` | `skills_path/{name}/` (same path) |
+| **Refinable?** | Yes, after workflow completes | Yes, immediately after import |
+| **CLAUDE.md wired** | Yes, by workflow | Yes, by import pipeline |
 
-### Three Populations of Skills
-
-1. **Built skills** — Skills you created using the skill-builder workflow. Tracked in `workflow_runs` DB table with full lifecycle (scoping → research → generation → validation). These are candidates for publishing.
-
-2. **Marketplace skills** — Skills published by others, discoverable through the marketplace. Tracked in `imported_skills` DB table after installation. Source link maintained for update detection.
-
-3. **Convention skills** — Standalone tool best-practices skills (e.g., `dbt-conventions`, `fabric-conventions`). Independently versioned, universally useful, and auto-suggested based on a skill's `conventions` frontmatter. These are the most "marketplace-ready" category — tool-agnostic, low personalization needed.
+Both types live at `skills_path/{skill_name}/` and are fully interchangeable for refinement and use. Marketplace skills are "already completed" — they skip the generation workflow entirely.
 
 ---
 
-## 2. Registry Architecture
+## 2. Architecture: GitHub-Repo-as-Registry (Built)
 
-### Options Considered
+### The Registry Model
 
-| Option | How It Works | Pros | Cons |
-|---|---|---|---|
-| **A. Single central GitHub repo** | One `skill-builder-marketplace` repo with a `marketplace.json` catalog and skill directories | Simple, familiar, leverages existing `github_import.rs` | Single point of control, PR bottleneck for submissions, repo size grows |
-| **B. Multi-repo federation** | Each author publishes to their own repo; a central index repo aggregates `marketplace.json` entries | Distributed authorship, no size limits per repo | Complex discovery, index staleness, harder to curate |
-| **C. Centralized API** | Dedicated backend service with REST API, database, search index | Rich features (search, ratings, analytics), real-time | Infrastructure cost, operational burden, over-engineering for current scale |
-| **D. Hybrid: Central index + distributed skills** | Central `marketplace.json` in an index repo points to skills hosted in author repos | Best of A and B — curated index, distributed hosting | Two-hop fetch (index then skill), author repo must stay available |
+The marketplace is a **GitHub repository** — any repo with skill directories (each containing SKILL.md) and a configured URL. No separate catalog file, no dedicated backend, no central index.
 
-### Recommendation: Option A (Single Central Repo) → graduating to Option D
+**Configuration**: A single `marketplace_url` setting in Settings → GitHub stores the repo URL (supports GitHub shorthand `owner/repo`, full GitHub URL, and subpath `owner/repo/tree/branch/path`).
 
-**Phase 1**: Start with a single `skill-builder-marketplace` GitHub repo. This directly extends the existing `skill-builder-templates` repo design (shared.md Section 6) — same structure, same `github_import.rs` download pipeline, same haiku matching. The repo contains:
+**Discovery**: `list_github_skills()` fetches the repo's recursive git tree from the GitHub API, finds all `SKILL.md` files, parses frontmatter, and returns an `AvailableSkill[]` list. This is the "browse" operation — no pre-downloaded catalog needed.
+
+**Authentication**: Uses the configured GitHub OAuth token (or none for public repos). The default branch is auto-detected via the GitHub repos API before fetching the tree, avoiding 404s on repos where the default branch isn't `main`.
+
+### Why This Works
+
+The existing `list_github_skills` / `import_github_skills` infrastructure already did exactly this — it's marketplace discovery without the "marketplace" label. Adding `marketplace_url` as a dedicated setting and routing imports through `import_marketplace_to_library` (which creates `workflow_runs` rows) is the only new infrastructure needed.
+
+### What a Marketplace Repo Looks Like
+
+Any GitHub repo where each subdirectory (or subdirectory within a subpath) contains a `SKILL.md`:
 
 ```
 skill-builder-marketplace/
-├── marketplace.json              # Catalog index (inspired by Claude Code's format)
-├── skills/
-│   ├── dbt-incremental-silver/
-│   │   ├── SKILL.md
-│   │   ├── references/
-│   │   └── .skill-builder        # Manifest with version, author, metadata
-│   ├── salesforce-extraction/
-│   ├── dbt-conventions/          # Convention skills
-│   ├── elementary-conventions/
-│   └── revenue-domain/
-└── .claude-plugin/
-    └── marketplace.json          # Optional: also register as a Claude Code marketplace
+├── dbt-incremental-silver/
+│   ├── SKILL.md               ← required; frontmatter drives discovery
+│   └── references/
+│       └── ...
+├── management-accounting/
+│   ├── SKILL.md
+│   └── references/
+└── salesforce-extraction/
+    ├── SKILL.md
+    └── references/
 ```
 
-**Phase 3+**: Graduate to Option D when the number of skills exceeds what a single repo handles well (~100+ skills). The `marketplace.json` index stays in the central repo but `source` fields point to author repos.
+No `marketplace.json` catalog is needed for Phase 1. Skills are discovered by scanning the tree. A future `marketplace.json` catalog (for richer metadata: descriptions, featured status, install counts) is a Phase 3 consideration.
 
-### Why This Builds on Existing Infrastructure
+### Filtering by Type
 
-- `list_github_skills()` already scans a repo tree for `SKILL.md` files and parses frontmatter → this is marketplace browse
-- `import_github_skills()` already downloads skill directories to local `.claude/skills/` → this is marketplace install
-- `push_skill_to_remote()` already pushes skills to a GitHub repo with PR + changelog → this is marketplace publish
-- The team repo pattern (`list_team_repo_skills()` / `import_team_repo_skill()`) already handles a configured remote repo → extend for marketplace repo
-- `.skill-builder` manifest already tracks version, creator, timestamps → extend for marketplace metadata
-
-### `marketplace.json` Schema
-
-```json
-{
-  "name": "skill-builder-marketplace",
-  "version": "1.0.0",
-  "description": "Official skill-builder marketplace",
-  "owner": {
-    "name": "Skill Builder Team",
-    "url": "https://github.com/skill-builder"
-  },
-  "skills": [
-    {
-      "name": "dbt-incremental-silver",
-      "path": "./skills/dbt-incremental-silver",
-      "version": "1.2.0",
-      "description": "Build incremental silver layer models in dbt...",
-      "author": {
-        "login": "github-user",
-        "name": "Author Name"
-      },
-      "skill_type": "data-engineering",
-      "category": "dbt",
-      "tags": ["dbt", "incremental", "silver-layer", "data-modeling"],
-      "dimensions_covered": ["load-merge-patterns", "layer-design"],
-      "conventions": ["dbt-conventions"],
-      "license": "MIT",
-      "stats": {
-        "installs": 0,
-        "featured": false
-      },
-      "published_at": "2026-02-15T10:00:00Z",
-      "updated_at": "2026-02-19T14:00:00Z"
-    }
-  ]
-}
-```
-
-Key design choices in this schema:
-- **`dimensions_covered`** enables companion-to-marketplace matching (Section 7)
-- **`conventions`** declares tool dependencies, enabling auto-suggestion of convention skills
-- **`skill_type`** and **`category`** enable browse filtering (type is the top-level taxonomy, category is domain-specific)
-- **`stats.installs`** and **`stats.featured`** support popularity signals (Phase 3)
-- **`path`** is relative to the repo root, compatible with `list_github_skills()` path resolution
+The `GitHubImportDialog` accepts a `typeFilter?: string[]` prop that filters the skill list to only skills whose `skill_type` frontmatter field is in the list. Dashboard uses this to show only domain-type skills (`['platform', 'domain', 'source', 'data-engineering']`) in the marketplace dialog, keeping convention skills separate.
 
 ---
 
-## 3. Skill Metadata Schema
+## 3. Data Model (Built)
 
-### Extended SKILL.md Frontmatter
+### DB Migrations
 
-The existing SKILL.md frontmatter (`name`, `description`, `tools`) is extended for marketplace discovery:
+Three migrations were added (14–16):
 
-```yaml
----
-name: building-dbt-incremental-silver
-description: >
-  Build incremental silver layer models in dbt with merge strategies and
-  late-arriving data handling. Use when designing incremental materializations,
-  merge predicates, or unique_key strategies. Also use when the user mentions
-  "incremental model", "merge strategy", or "late-arriving facts".
-tools: Read, Write, Edit, Glob, Grep, Bash
-# Marketplace extensions (optional — only needed for published skills)
-version: 1.2.0
-author: github-login
-skill_type: data-engineering
-category: dbt
-tags:
-  - dbt
-  - incremental
-  - silver-layer
-  - data-modeling
-dimensions_covered:
-  - load-merge-patterns
-  - layer-design
-conventions:
-  - dbt-conventions
-license: MIT
----
+**Migration 14**: Adds `source TEXT DEFAULT 'created'` to `workflow_runs`.
+- Existing rows get `source='created'` (user-built skills)
+- Marketplace imports use `source='marketplace'`
+
+**Migration 15**: Extends `imported_skills` with: `skill_type`, `version`, `model`, `argument_hint`, `user_invocable`, `disable_model_invocation` — matching the extended frontmatter parsed from SKILL.md.
+
+**Migration 16**: Adds the same 6 columns to `workflow_runs` so built skills can also store these frontmatter fields.
+
+### `workflow_runs` (extended)
+
+```
+skill_name       TEXT PRIMARY KEY
+domain           TEXT
+current_step     INTEGER
+status           TEXT              -- 'pending' | 'in_progress' | 'completed'
+skill_type       TEXT              -- 'domain' | 'platform' | 'source' | 'data-engineering' | 'skill-builder'
+source           TEXT              -- 'created' | 'marketplace'
+description      TEXT
+version          TEXT
+model            TEXT
+argument_hint    TEXT
+user_invocable   INTEGER           -- 0 or 1
+disable_model_invocation INTEGER  -- 0 or 1
+author_login     TEXT
+author_avatar    TEXT
+display_name     TEXT
+intake_json      TEXT
+created_at       TEXT
+updated_at       TEXT
 ```
 
-### Extended `.skill-builder` Manifest
+**Marketplace rows**: `source='marketplace'`, `status='completed'`, `current_step=5`. Written by `save_marketplace_skill_run()`.
 
-The existing manifest (`version`, `creator`, `created_at`, `app_version`) is extended:
+### `imported_skills` (extended)
 
-```json
-{
-  "version": "1.2.0",
-  "creator": "github-login",
-  "created_at": "2026-02-15T10:00:00Z",
-  "app_version": "0.2.0",
-  "license": "MIT",
-  "source_url": "https://github.com/skill-builder/marketplace/tree/main/skills/dbt-incremental-silver",
-  "source_version": "1.2.0",
-  "installed_at": "2026-02-19T14:00:00Z"
-}
+```
+skill_id         TEXT PRIMARY KEY    -- 'imp-{name}-{timestamp}'
+skill_name       TEXT UNIQUE
+domain           TEXT
+is_active        INTEGER             -- 0 or 1
+disk_path        TEXT                -- absolute path to skill dir
+imported_at      TEXT
+is_bundled       INTEGER
+skill_type       TEXT
+version          TEXT
+model            TEXT
+argument_hint    TEXT
+user_invocable   INTEGER
+disable_model_invocation INTEGER
 ```
 
-New fields:
-- **`license`** — required for sharing rights clarity
-- **`source_url`** — link back to marketplace source (set on import, enables update detection)
-- **`source_version`** — version at time of install (compare with marketplace for updates)
-- **`installed_at`** — when this skill was imported from the marketplace
+**Both tables** are written for every marketplace import. `imported_skills` handles the "skills library" view (toggle active/inactive, delete). `workflow_runs` makes marketplace skills eligible for `list_refinable_skills` and shows them in the main dashboard skill list.
 
-### Companion Skills Slug Mapping
+### Key DB Functions
 
-The companion recommender already outputs structured slugs:
-
-```yaml
-companions:
-  - slug: salesforce-extraction
-    type: source
-    dimension: field-semantics
-    dimension_score: 3
-    priority: High
-```
-
-The marketplace maps these slugs to catalog entries via a **two-stage match**:
-
-1. **Exact slug match**: `marketplace.json` skill name matches companion slug directly
-2. **Semantic fallback**: If no exact match, use haiku to match the companion's `trigger_description` + `dimension` + `type` against marketplace skill descriptions and `dimensions_covered` fields
-
-This mapping is what powers "Recommended for you" (Section 7).
-
----
-
-## 4. Discovery & Matching
-
-### Browse
-
-Category grid in the app's marketplace page, organized by:
-
-| Filter | Source | Values |
+| Function | SQL Pattern | Purpose |
 |---|---|---|
-| **Skill type** | `skill_type` field | domain, platform, source, data-engineering |
-| **Category** | `category` field | dbt, salesforce, fabric, elementary, revenue, pipeline, etc. |
-| **Tags** | `tags` array | Free-form, searchable |
-| **Convention** | `conventions` field | dbt-conventions, fabric-conventions, etc. |
-
-Sort options: Featured, Most installed, Recently updated, Alphabetical.
-
-### Search
-
-**Haiku-powered semantic search** — the same engine designed for template matching (VD-696):
-
-1. User types a search query (e.g., "incremental loading patterns for dbt")
-2. System sends the query + marketplace skill descriptions to haiku
-3. Haiku returns ranked matches with relevance scores and reasoning
-4. Results displayed with match reasoning visible ("Matches because: covers load-merge-patterns dimension for dbt data-engineering skills")
-
-Cost: ~$0.01 per search (same as template matching). Cached for repeat queries.
-
-For simple text queries, a **client-side filter** on name/description/tags runs first (instant, free). Haiku semantic search is a "deeper search" option for when text filtering returns too many or too few results.
-
-### Recommendations
-
-Three recommendation surfaces:
-
-1. **Companion-driven**: After building a skill, the companion report recommends 2-4 complementary skills. Each recommendation shows "Install from marketplace" if a match exists, or "Build this skill" otherwise (see Section 7).
-
-2. **Convention-driven**: When a skill declares `conventions: [dbt-conventions]` in frontmatter, the marketplace suggests installing `dbt-conventions` if not already installed. Auto-prompted during skill deployment.
-
-3. **Context-driven**: Based on the user's `industry` + `function_role` settings (already stored), the marketplace highlights skills relevant to their domain. E.g., a user with `industry: financial_services` sees revenue and compliance skills featured.
-
-### Preview
-
-Before installing, users see a **read-only preview** of the skill:
-
-- Full SKILL.md rendered as markdown
-- List of reference files (names and sizes, not full content)
-- Companion graph: what skills this one composes with
-- Author info (GitHub login, avatar, published skill count)
-- Metadata: version, last updated, install count, license
-- Convention dependencies: which convention skills are required
-
-Implementation: Fetch `SKILL.md` content via GitHub API (`GET /repos/:owner/:repo/contents/skills/:name/SKILL.md`) and render in a modal. No local download needed for preview.
+| `save_marketplace_skill_run` | `INSERT … ON CONFLICT DO UPDATE` on `skill_name` | Create/update `workflow_runs` row for marketplace skill |
+| `upsert_imported_skill` | `INSERT … ON CONFLICT DO UPDATE` on `skill_name` | Idempotent insert into `imported_skills` |
+| `get_all_installed_skill_names` | `SELECT skill_name FROM workflow_runs UNION SELECT skill_name FROM imported_skills` | Pre-mark already-installed skills in browse UI |
 
 ---
 
-## 5. Import/Install Flow
+## 4. Skill Metadata (Built)
 
-### One-Click Install from Browse UI
+### What's Parsed from SKILL.md Frontmatter
 
-```
-User clicks "Install" on a marketplace skill card
-  ↓
-Confirm dialog: "Install [skill name] to your workspace?"
-  Shows: version, author, license, convention dependencies
-  ↓
-Backend: import_marketplace_skill(skill_path, marketplace_repo)
-  ↓
-1. Download skill directory via github_import.rs
-   (SKILL.md + references/ + .skill-builder manifest)
-  ↓
-2. Write to .claude/skills/{skill-name}/
-  ↓
-3. Insert into imported_skills DB table
-   (with source_url, source_version for update tracking)
-  ↓
-4. Regenerate CLAUDE.md with new skill's trigger text
-   (existing regenerate_claude_md() function)
-  ↓
-5. If skill declares conventions: prompt to install convention skills
-  ↓
-Skill is immediately available in the workspace
+`import_single_skill` calls `parse_frontmatter_full` which extracts:
+
+```yaml
+---
+name: building-dbt-incremental-silver    # → skill_name (or dir name if absent)
+description: >                            # → imported_skills.description + workflow_runs description
+  ...
+domain: dbt                              # → stored in both tables
+skill_type: data-engineering             # → stored in both tables; drives typeFilter
+version: 1.2.0                           # → stored in both tables
+model: sonnet                            # → optional; preferred model for this skill
+argument_hint: "dbt model name"          # → shown to user when invoking the skill
+user_invocable: true                     # → whether skill can be directly invoked
+disable_model_invocation: false          # → disables model selection UI for this skill
+tools: Read, Write, Edit, Glob, Grep, Bash
+---
 ```
 
-### Scope
+Fields not in frontmatter use defaults (empty string or 0). `author_login` / `author_avatar` / `display_name` are set separately via `set_skill_author` / `set_skill_display_name` (called after import if OAuth profile is available).
 
-**Workspace-level only.** Skills are workspace-specific by nature — a Salesforce extraction skill is meaningless outside a project that ingests Salesforce data. This matches the existing `imported_skills` behavior where skills are installed to `.claude/skills/` within the workspace.
+### What's NOT Yet Parsed
 
-Global/user-level installation is a future consideration for convention skills only (they're tool-generic, not domain-specific).
-
-### Conflict Resolution
-
-When a skill with the same name already exists locally:
-
-| Scenario | Behavior |
-|---|---|
-| **Same skill, older version** | Prompt: "Update [name] from v1.0 to v1.2?" — overwrites files, updates DB |
-| **Same skill, same version** | Prompt: "Already installed (v1.2). Reinstall?" — force-overwrite option |
-| **Same name, different skill** | Prompt: "A skill named [name] already exists. Rename the import?" — append suffix or let user choose name |
-| **Built skill with same name** | Block: "You have a skill named [name] in progress. Import would overwrite your work. Rename first." |
-
-### Version Tracking
-
-The `.skill-builder` manifest's new `source_url` and `source_version` fields enable update detection:
-
-1. At app startup (or manual refresh), fetch `marketplace.json` from the marketplace repo
-2. For each installed skill with a `source_url`, compare `source_version` with the marketplace catalog version
-3. If newer version available, show "Update available" badge on the skill card
-4. User clicks "Update" → re-import the skill, preserving any local customizations in a backup
+- `tags` — not in `parse_frontmatter_full`, not stored per-skill (only via `skill_tags` table for built skills)
+- `license` — not parsed
+- `conventions` — not parsed or acted upon
+- `dimensions_covered` — not parsed (future companion matching)
 
 ---
 
-## 6. Publishing Flow
+## 5. Browse & Discovery (Built)
 
-### Author Journey
+### UI Entry Points
 
-```
-Author builds skill using skill-builder workflow
-  ↓
-Skill passes validation (validate-quality + test-skill + companion-recommender)
-  ↓
-Author clicks "Publish to Marketplace" in the app
-  ↓
-1. Pre-flight check:
-   - SKILL.md exists and passes validation
-   - .skill-builder manifest exists with version
-   - All marketplace metadata present (or auto-generate)
-  ↓
-2. Auto-generate missing metadata via haiku:
-   - category (inferred from skill_type + domain + tags)
-   - tags (extracted from SKILL.md content + reference filenames)
-   - description (already exists from trigger text, but can be enhanced)
-  ↓
-3. Version bump:
-   - If first publish: set to 1.0.0
-   - If update: prompt for semver bump (patch/minor/major)
-   - Generate changelog via haiku (existing push pipeline does this)
-  ↓
-4. Submit to marketplace repo:
-   - Push skill directory to skill-builder-marketplace repo
-   - Create PR with skill files + updated marketplace.json entry
-   - PR body includes: skill preview, metadata, changelog, validation results
-  ↓
-5. Review & merge:
-   - Phase 1: Manual review (maintainer merges PR)
-   - Phase 3: Automated checks + expedited review for trusted authors
-  ↓
-Skill appears in marketplace catalog after merge
-```
+**Skills Library tab** (`skills-library-tab.tsx`):
+- Shows `ImportedSkill[]` from `imported_skills` table (filtered to `skill_type='skill-builder'`)
+- "Marketplace" button — disabled when `marketplaceUrl` is not configured (shows tooltip directing to Settings → GitHub)
+- Opens `GitHubImportDialog` in `mode='settings-skills'`
 
-### Extending the Existing Push Pipeline
+**Dashboard marketplace dialog** (`dashboard.tsx`):
+- "Browse Marketplace" button — same disabled logic
+- Opens `GitHubImportDialog` in `mode='skill-library'` with `typeFilter=['platform', 'domain', 'source', 'data-engineering']`
+- This is the main path for importing marketplace skills that appear in the skill list and become refinable
 
-The current `push_skill_to_remote()` pushes to a configured team repo. For marketplace publishing:
+**SkillDialog marketplace prompt**:
+- When creating a new skill and a marketplace match is found, shows "Import and refine" option
+- Opens `GitHubImportDialog` in `mode='skill-library'`
 
-1. **New target**: Add a `marketplace_repo` setting alongside `remote_repo_owner`/`remote_repo_name`
-2. **Branch naming**: `skill/{login}/{skill_name}` (existing convention works)
-3. **PR content**: Extend to include marketplace metadata and validation results
-4. **marketplace.json update**: The PR includes an updated `marketplace.json` entry for the skill (generated by the app, validated in CI)
+### GitHubImportDialog Behaviour
 
-The push pipeline already handles: authentication (GitHub OAuth), versioning (git tags), changelog generation (haiku), PR creation (`gh pr create`), and manifest writing (`.skill-builder`). Marketplace publish is a **second target** for the same pipeline, not a new pipeline.
+1. Opens → immediately fetches the marketplace repo (browse mode, not URL entry)
+2. Calls `list_github_skills(owner, repo, branch, subpath?)` — scans repo tree, parses frontmatter
+3. If `typeFilter` is set, filters results by `skill_type`
+4. Calls `get_installed_skill_names()` — marks already-installed skills as "exists" (greyed out, "In library" shown)
+5. Shows skill list: name, domain badge, description; each with Install button (or "In library" / "Imported" state)
+6. User clicks Install → `handleImport(skill)`
+
+### Import vs. Browse Modes
+
+| `mode` | Install command | Creates `workflow_runs`? | Shows in dashboard? | Refinable? |
+|---|---|---|---|---|
+| `'skill-library'` | `importMarketplaceToLibrary` | **Yes** (`source='marketplace'`) | Yes | Yes |
+| `'settings-skills'` | `importGitHubSkills` | No | No | No (only in skills-library tab) |
+
+Use `'skill-library'` mode when you want the skill to behave like a first-class skill (dashboard + refinement). Use `'settings-skills'` when you just want to add a skill to the workspace `.claude/skills/` directory (old behaviour).
 
 ---
 
-## 7. Companion-to-Marketplace Bridge
+## 6. Import/Install Flow (Built)
 
-This is the key innovation that differentiates the skills marketplace from a generic catalog.
-
-### The Connection
-
-The companion recommender already produces structured recommendations with:
-- **`slug`**: A kebab-case identifier (e.g., `salesforce-extraction`)
-- **`dimension`**: Which research dimension this fills (e.g., `field-semantics`)
-- **`type`**: The skill type (e.g., `source`)
-- **`priority`**: How important this companion is (High/Medium/Low)
-- **`trigger_description`**: What the companion skill would do
-
-The marketplace indexes skills by the same taxonomy:
-- **`name`**: Maps to companion slug
-- **`dimensions_covered`**: Maps to companion dimension
-- **`skill_type`**: Maps to companion type
-- **`description`**: Maps to companion trigger_description
-
-### Matching Algorithm
-
-When a companion recommendation is generated:
+### Full Flow for `mode='skill-library'`
 
 ```
-For each companion in companion-skills.md:
-  1. Exact match: Find marketplace skill where name == companion.slug
-     → If found: "Install [name] from marketplace"
-
-  2. Dimension match: Find marketplace skills where
-     dimensions_covered CONTAINS companion.dimension
-     AND skill_type == companion.type
-     → If found: "These marketplace skills cover [dimension]"
-
-  3. Semantic match (haiku): Send companion.trigger_description
-     to haiku with all marketplace skill descriptions
-     → Returns ranked matches with reasoning
-     → "These skills may help: [ranked list]"
-
-  If no matches at any stage:
-     → "Build this skill" (pre-fill create wizard with companion metadata)
+User clicks Install on a skill card
+  ↓
+setSkillStates: skill.path → "importing"
+  ↓
+importMarketplaceToLibrary([skill.path])
+  ↓
+  1. Read settings: marketplace_url, workspace_path, skills_path
+  2. Parse marketplace URL → owner/repo/branch
+  3. Get default branch via GitHub repos API
+  4. Fetch recursive tree: GET /repos/{owner}/{repo}/git/trees/{branch}?recursive=1
+  5. For each skill_path:
+     a. import_single_skill(overwrite=true):
+        - Download all files under {skill_path}/ to {skills_path}/{skill_name}/
+        - Validate SKILL.md exists; parse full frontmatter
+        - 10 MB per-file limit; path traversal protection
+        - If dir exists + overwrite=true: remove first, then recreate
+     b. upsert_imported_skill() → INSERT/UPDATE imported_skills row
+     c. save_marketplace_skill_run() → INSERT/UPDATE workflow_runs row
+        (status='completed', source='marketplace', current_step=5)
+  6. regenerate_claude_md() → rebuild .claude/CLAUDE.md with all active skills
+  ↓
+Returns MarketplaceImportResult[] with success/error per skill
+  ↓
+Frontend: setSkillStates → "imported" (or "exists" / "idle" + toast on error)
+Toast: "Imported {skill_name}"
+onImported() → reload skills in parent
 ```
 
-### UI Integration
+### Idempotency
 
-On the companion skills panel (VD-697 app component):
+Re-importing a skill that was previously installed always succeeds:
+- `import_single_skill(overwrite=true)` removes the existing directory before downloading
+- `upsert_imported_skill` / `save_marketplace_skill_run` use `ON CONFLICT DO UPDATE` — updating metadata if changed
+- Frontend distinguishes "already exists" errors (from the old non-idempotent path) from real errors and shows "In library" state
 
-```
-┌─────────────────────────────────────────────────┐
-│ Companion Skills for "sales-pipeline"            │
-├─────────────────────────────────────────────────┤
-│                                                  │
-│ ● salesforce-extraction (source) — High priority │
-│   Covers: field-semantics (score: 3)            │
-│   "Source skill for Salesforce ingestion layer"  │
-│   [Install from Marketplace ↓]  [Build Instead]  │
-│                                                  │
-│ ● dbt-on-fabric (platform) — Medium priority    │
-│   Covers: platform-behavioral-overrides          │
-│   "Platform conventions for dbt on Fabric"       │
-│   [Not in Marketplace]  [Build This Skill →]     │
-│                                                  │
-│ ● elementary-conventions (convention) — Medium   │
-│   "Data quality testing patterns for Elementary" │
-│   [Install Convention Skill ↓]                   │
-│                                                  │
-└─────────────────────────────────────────────────┘
-```
+### Conflict with Built Skills
 
-### "Recommended for You" Dashboard
-
-Aggregate companion reports across all user-built skills:
-
-1. Collect all companion recommendations from all `companion-skills.md` files
-2. Deduplicate by slug, keeping highest priority
-3. Match against marketplace catalog
-4. Display as "Recommended for You" section on the marketplace page
-
-This creates a personalized marketplace experience driven by the user's actual knowledge gaps, not generic popularity metrics.
+If a built skill (`source='created'`) and a marketplace import have the same `skill_name`, `save_marketplace_skill_run` will overwrite the `workflow_runs` row (source → 'marketplace', current_step → 5). This is intentional: import wins. **No automatic conflict detection is currently implemented** — this is a gap to address in a future ticket.
 
 ---
 
-## 8. App UI Design
+## 7. Refinement Integration (Built)
 
-### Navigation
+Marketplace skills are fully integrated into the refine workflow:
 
-Add a **"Marketplace"** entry to the app's sidebar navigation (alongside existing Skills, Refine, Settings). This is a new top-level page, not a subsection of the skills library, because marketplace browsing is a distinct activity from skill management.
+1. `list_refinable_skills` queries `workflow_runs` for `status='completed'` — marketplace skills match
+2. `filter_by_skill_md_exists` checks `{skills_path}/{skill_name}/SKILL.md` — exists after import
+3. Marketplace skills appear in the refine page's skill picker
+4. `handleRefine(skill)` in dashboard navigates to `/refine?skill={skill.name}` for marketplace skills (same route as built skills)
+5. `start_refine_session` verifies SKILL.md exists and creates a session
+6. `send_refine_message` (first message): creates `{workspace_path}/{skill_name}/` directory if missing (marketplace skills don't have a scratch workspace dir), ensuring transcript log files can be written
 
-### Marketplace Page Layout
+### Auto-select Fix
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Marketplace                                    [🔍 Search]  │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│ [All] [Installed] [Updates Available (2)]                   │
-│                                                             │
-│ ┌─── Recommended for You ──────────────────────────────┐    │
-│ │ Based on your companion reports                       │    │
-│ │ ┌─────────┐ ┌─────────┐ ┌─────────┐                 │    │
-│ │ │salesforce│ │dbt-seman│ │revenue- │                 │    │
-│ │ │-extract  │ │tic-layer│ │domain   │                 │    │
-│ │ │ SOURCE   │ │ DATA-ENG│ │ DOMAIN  │                 │    │
-│ │ │ ★ 45     │ │ ★ 120   │ │ ★ 32    │                 │    │
-│ │ │[Install] │ │[Install]│ │[Install]│                 │    │
-│ │ └─────────┘ └─────────┘ └─────────┘                 │    │
-│ └──────────────────────────────────────────────────────┘    │
-│                                                             │
-│ ┌─── Browse by Category ───────────────────────────────┐    │
-│ │                                                       │    │
-│ │ Filter: [Type ▾] [Category ▾] [Tags ▾]  Sort: [▾]   │    │
-│ │                                                       │    │
-│ │ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐    │    │
-│ │ │ skill   │ │ skill   │ │ skill   │ │ skill   │    │    │
-│ │ │ card    │ │ card    │ │ card    │ │ card    │    │    │
-│ │ └─────────┘ └─────────┘ └─────────┘ └─────────┘    │    │
-│ │ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐    │    │
-│ │ │ skill   │ │ skill   │ │ skill   │ │ skill   │    │    │
-│ │ │ card    │ │ card    │ │ card    │ │ card    │    │    │
-│ │ └─────────┘ └─────────┘ └─────────┘ └─────────┘    │    │
-│ └──────────────────────────────────────────────────────┘    │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Skill Card
-
-Each card in the browse grid shows:
-
-```
-┌──────────────────────────┐
-│ dbt-incremental-silver   │
-│ DATA-ENGINEERING         │  ← skill_type badge (colored)
-│                          │
-│ Build incremental silver │
-│ layer models in dbt...   │  ← truncated description
-│                          │
-│ dbt · incremental · ...  │  ← tags (first 3)
-│                          │
-│ @author-login  v1.2.0    │  ← author + version
-│ ↓ 45 installs            │  ← popularity signal
-│                          │
-│ [Install]  [Preview]     │
-└──────────────────────────┘
-```
-
-### Skill Detail View
-
-Clicking "Preview" or the card title opens a detail panel (slide-over or modal):
-
-- **Header**: Name, type badge, author (with avatar), version, install count
-- **Description**: Full trigger description from SKILL.md
-- **References**: List of reference files with names (not content)
-- **Conventions**: Required convention skills (with install links)
-- **Companions**: What skills compose well with this one
-- **Changelog**: Version history with haiku-generated summaries
-- **Actions**: `[Install]` `[View on GitHub]`
-- **SKILL.md preview**: Rendered markdown of the full SKILL.md
-
-### "Installed" Tab
-
-Shows all marketplace-installed skills with:
-- Current version vs available version
-- "Update" button when newer version exists
-- "Uninstall" button
-- Toggle active/inactive (existing `toggle_skill_active()`)
-- Link to source on GitHub
-
-### "Updates Available" Indicator
-
-Badge count on the Marketplace nav item and Installed tab showing how many installed skills have newer versions in the marketplace.
+The refine page's auto-select tracks which skill was last auto-selected by name (not a boolean), so navigating from the skill library to `/refine?skill=X` correctly auto-selects `X` even if the user was previously refining a different skill.
 
 ---
 
-## 9. Plugin Integration
+## 8. Skills Intake Wizard (Built)
 
-### CLI Plugin Marketplace Interaction
+The skill creation wizard was expanded from 2 steps to 4 steps (VD-845):
 
-The state-aware router (VD-677) can suggest marketplace skills in two scenarios:
+1. **Basic info**: name, domain
+2. **Skill type**: skill_type field (domain / platform / source / data-engineering / skill-builder)
+3. **Behaviour**: argument_hint, user_invocable, disable_model_invocation
+4. **Options**: model preference, other settings
 
-1. **During scoping**: When the router detects a domain that has templates/skills in the marketplace:
-   ```
-   Router: "I found a marketplace skill 'salesforce-extraction' that covers
-   Salesforce ingestion patterns. Would you like to:
-     a) Install it and build on top of it
-     b) Build from scratch (I'll use it as a reference)
-     c) Ignore it"
-   ```
+This extended frontmatter (`skill_type`, `version`, `model`, `argument_hint`, etc.) unifies the metadata schema between built skills and marketplace skills — both can now carry the same set of fields.
 
-2. **After validation**: When the companion report recommends skills that exist in the marketplace:
-   ```
-   Router: "Your skill would pair well with 'dbt-conventions' (available in
-   the marketplace). Install it to your workspace?"
-   ```
-
-### Template Matching → Marketplace Matching
-
-The template matching flow (VD-696) is essentially marketplace search scoped to the create-time context. When templates evolve into the marketplace:
-
-- Template repo becomes the marketplace repo (or a subset of it)
-- Template index becomes `marketplace.json`
-- Haiku matching works identically — same inputs (name, type, domain, intake), same ranking output
-- "Import as starting point" becomes "Install from marketplace"
-
-The only difference: templates are starter skills (imported before building), while marketplace skills are finished skills (imported for use as-is). Both use the same `github_import.rs` pipeline.
+Some fields are **locked** for marketplace-imported skills (cannot be edited in the UI) since they're authored externally.
 
 ---
 
-## 10. Phased Rollout
+## 9. Publishing Flow (Not Built — Phase 3)
 
-### Phase 1: Central GitHub Repo as Registry, Browse in App, One-Click Import
+The publish path (Skill Builder app → marketplace GitHub repo via PR) is not yet implemented. Current state:
+- Built skills can be pushed to a **team repo** via `push_skill_to_remote()` (existing feature)
+- No dedicated "publish to marketplace" action exists
+- The existing push pipeline (auth, versioning via git tags, haiku changelog, PR creation) provides the foundation
 
-**Goal**: Get skills discoverable and installable with minimal new infrastructure.
+**Planned work**:
+- "Publish to Marketplace" button targeting the `marketplace_url` repo instead of `remote_repo`
+- Auto-generate `category`/`tags` metadata via haiku
+- PR body includes validation results from `validate-quality` + `test-skill`
+- Human review + merge workflow (Phase 3 uses manual review; Phase 4 adds trusted-author fast-path)
 
-**Builds on**:
-- `github_import.rs` (download pipeline) — ready
-- `.skill-builder` manifest (versioning, author) — ready
-- `imported_skills` DB table (tracking) — ready
-- `regenerate_claude_md()` (auto-wiring) — ready
-- Template repo structure design (shared.md Section 6) — needs creation
+---
 
-**New work**:
-- Create `skill-builder-marketplace` GitHub repo with `marketplace.json` + initial skills
-- Add `marketplace_repo` setting to app settings
-- Add Marketplace page with browse grid and detail view
-- Add `import_marketplace_skill()` Rust command (thin wrapper over `import_github_skills()`)
-- Extend `.skill-builder` manifest with `source_url` and `source_version`
-- Add update detection (compare local vs remote versions at startup)
-- Seed with convention skills (`dbt-conventions`, `elementary-conventions`, etc.)
+## 10. Companion-to-Marketplace Bridge (Not Built — Phase 2)
 
-**Not included**: Publishing flow, companion matching, ratings, semantic search.
+The companion recommender already produces structured YAML with `slug`, `dimension`, `type`, `priority`, and `trigger_description`. A marketplace match would let each companion recommendation resolve to "Install from marketplace" vs "Build this skill."
 
-### Phase 2: Companion-to-Marketplace Matching, "Recommended for You"
+**Matching algorithm** (planned):
+1. **Exact slug match**: `skill_name` in marketplace == companion `slug`
+2. **Dimension match**: marketplace `dimensions_covered` contains companion `dimension` AND `skill_type` matches
+3. **Semantic fallback** (haiku): match `trigger_description` against marketplace skill descriptions
 
-**Goal**: Connect the companion recommender to the marketplace for personalized discovery.
+**Requires**:
+- Companion UI component (VD-697, not yet built)
+- `dimensions_covered` and `conventions` fields parsed from SKILL.md frontmatter
 
-**Builds on**:
-- Companion recommender agent — ready
-- `companion-skills.md` artifact with structured YAML — ready
-- Companion UI (VD-697 app component) — needs building
+---
 
-**New work**:
-- Add `dimensions_covered` field to `marketplace.json` skill entries
-- Implement companion-to-marketplace matching algorithm (exact → dimension → semantic)
-- Build "Recommended for You" section on marketplace page
-- Build companion skills panel with "Install from Marketplace" / "Build This Skill" actions
+## 11. Roadmap
+
+### Phase 1 (Built — VD-696)
+- `marketplace_url` setting (single GitHub repo as registry)
+- Browse: `list_github_skills` scans repo for SKILL.md files
+- Install: `import_marketplace_to_library` → `imported_skills` + `workflow_runs` rows
+- Skills library tab with marketplace browse button
+- Pre-marking of installed skills in browse dialog
+- typeFilter support in browse dialog
+- Refinement for marketplace skills (full integration)
+- Extended skill frontmatter + 4-step intake wizard
+
+### Phase 2: Companion Matching & Recommendations
+- Companion UI panel (VD-697)
+- Companion-to-marketplace slug/dimension/semantic matching
+- "Recommended for You" section on marketplace browse page
 - Convention skills auto-suggestion based on `conventions` frontmatter
 
-### Phase 3: Publishing Flow, Community Signals
+### Phase 3: Publishing, Version Tracking, Community Signals
+- "Publish to Marketplace" from skill builder → PR to marketplace repo
+- Version comparison: detect when imported skill has a newer upstream version
+- `marketplace.json` catalog for richer metadata (featured, install counts)
+- Author profiles
 
-**Goal**: Let users publish their skills to the marketplace.
-
-**Builds on**:
-- `push_skill_to_remote()` pipeline (authentication, versioning, changelog, PR) — ready
-- `validate-quality` + `test-skill` validation agents — ready
-
-**New work**:
-- "Publish to Marketplace" button in app (targets marketplace repo instead of team repo)
-- Auto-generate marketplace metadata via haiku (category, tags)
-- Marketplace PR template with validation results
-- Install count tracking (GitHub API or marketplace.json stats field)
-- "Featured" curation (manual selection by maintainers)
-- Author profiles (published skill count, link to GitHub)
-
-### Phase 4: Multi-Registry Support, Team/Private Marketplaces
-
-**Goal**: Support enterprise teams with private skill registries.
-
-**New work**:
+### Phase 4: Multi-Registry, Private Marketplaces
 - Multiple marketplace repos (public + team + private)
-- `extraKnownMarketplaces` setting (like Claude Code's team marketplace feature)
+- `extraKnownMarketplaces` pattern (mirroring Claude Code's team marketplace)
 - Private repo support via existing GitHub OAuth
-- Team marketplace management (admin controls who can publish)
-- Rating/review system (optional, if community signals from Phase 3 prove insufficient)
 
 ---
 
-## 11. Key Design Decisions
+## 12. Key Design Decisions
 
-### Decision 1: Single Central Repo vs Multi-Repo Federation
+### Decision 1: No Catalog File in Phase 1
 
-| Option | Trade-offs |
-|---|---|
-| **Single central repo** | Simple to implement, easy to curate, single source of truth. Risk: repo size, PR bottleneck |
-| **Multi-repo federation** | Distributed authorship, unlimited scale. Risk: index staleness, discovery complexity, quality variance |
+**Considered**: `marketplace.json` static catalog (as originally designed) vs. live GitHub API scanning.
 
-**Recommendation: Single central repo** for Phases 1-3, with a migration path to federated (Option D from Section 2) if scale demands it. The existing `github_import.rs` already handles single-repo operations well. Multi-repo adds complexity that isn't justified until we have 100+ skills and multiple publishing teams.
+**Implemented**: Live scanning via `list_github_skills`. The existing infrastructure already fetches the repo tree and parses frontmatter — adding a catalog file would require keeping it in sync with actual skill directories. For Phase 1, scan-on-open is simpler and always current. Performance (API call per dialog open) is acceptable for the current scale.
 
-### Decision 2: Catalog Format
+**Phase 3**: A `marketplace.json` catalog makes sense once we need richer metadata (install counts, featured status, author info) that can't come from SKILL.md alone.
 
-| Option | Trade-offs |
-|---|---|
-| **`marketplace.json` catalog** | Static file, cacheable, works offline, git-versioned. Risk: manual updates, can drift from actual skill files |
-| **GitHub API scanning** | Always current, no manual catalog. Risk: rate limits, slow for large repos, no custom metadata beyond what's in files |
-| **Dedicated backend** | Rich query capabilities, real-time stats. Risk: infrastructure cost, operational burden, over-engineering |
+### Decision 2: Dual DB Write
 
-**Recommendation: `marketplace.json` catalog** — directly inspired by Claude Code's proven format. It's a static file in the repo, updated via PR when skills are added/updated. CI validation ensures it stays in sync with actual skill directories. GitHub API scanning is used as a **fallback** for repos that don't have a `marketplace.json` (backwards compatibility with plain skill repos).
+**Implemented**: Every marketplace import creates rows in BOTH `imported_skills` AND `workflow_runs`. This was a deliberate design choice:
+- `imported_skills` drives the skills library tab (toggle active/inactive, delete, settings-skills view)
+- `workflow_runs` makes marketplace skills first-class citizens: they appear in the dashboard, are refinable, have domain/type, and share the same lifecycle model as built skills
 
-### Decision 3: Skill-Level vs Repo-Level Versioning
+**Trade-off**: Two rows per marketplace skill, with the risk of drift. The `upsert` pattern ensures both stay in sync on re-import.
 
-| Option | Trade-offs |
-|---|---|
-| **Skill-level versioning** | Each skill has its own semver in `.skill-builder` manifest. Granular updates, independent release cycles. Risk: version coordination across related skills |
-| **Repo-level versioning** | One version for the whole marketplace repo. Simple, atomic. Risk: can't update one skill without bumping everything |
+### Decision 3: `overwrite=true` for Marketplace Import
 
-**Recommendation: Skill-level versioning.** Skills are independent knowledge packages with independent lifecycles. A `dbt-conventions` update shouldn't force a version bump on `salesforce-extraction`. The existing push pipeline already does skill-level versioning via git tags (`pushed/{name}/v{N}`). Semver in the `.skill-builder` manifest is the version of record.
+**Implemented**: Marketplace imports always remove the existing directory before downloading. This ensures re-imports are always idempotent and clean. Old files (removed from the upstream repo) are cleaned up.
 
-### Decision 4: Curation Model
+**Contrast**: `import_github_skills` (settings-skills mode) uses `overwrite=false` — it fails if the skill already exists on disk, because settings-skills imports are expected to be deliberate one-time operations.
 
-| Option | Trade-offs |
-|---|---|
-| **Open submission** | Anyone can publish, maximum content. Risk: quality variance, spam, abandoned skills |
-| **Curated** | Maintainers review all submissions. High quality. Risk: bottleneck, slow turnaround, discourages contributions |
-| **Hybrid** | Open submission with automated quality gates + manual review for "featured" status. Balances quality and openness |
+### Decision 4: Single Marketplace URL
 
-**Recommendation: Hybrid.** The existing validation pipeline (`validate-quality` + `test-skill`) provides automated quality gates. Every submission PR includes validation results. Automated checks (SKILL.md structure, frontmatter completeness, reference file existence) gate merge eligibility. Manual review curates the "Featured" section and resolves edge cases. Trusted authors (3+ published skills with good validation scores) get expedited review.
+**Implemented**: One `marketplace_url` setting. This is the simplest path: the app has one "official" marketplace the user configures.
 
-### Decision 5: Matching Algorithm
+**Phase 4**: Multiple marketplace URLs (team + private + public) require a registry of marketplaces, a UI for managing them, and disambiguation when the same skill name exists in multiple registries. Not needed for Phase 1-2.
 
-| Option | Trade-offs |
-|---|---|
-| **Exact slug match** | Fast, deterministic, zero cost. Risk: misses near-matches, requires exact naming conventions |
-| **Semantic (haiku) match** | Finds conceptual matches regardless of naming. Risk: ~$0.01 per query, latency, occasional false positives |
-| **Both (cascading)** | Exact match first (free, fast), semantic fallback (smart, costs per query). Best of both worlds |
+### Decision 5: skill_type as the Taxonomy
 
-**Recommendation: Cascading (exact → semantic).** Exact slug match handles the common case (companion slug matches marketplace skill name) at zero cost. Semantic haiku match handles the long tail (companion describes a need that doesn't map to any specific slug). This is the same pattern designed for template matching (VD-696) — one haiku call with the query + all marketplace descriptions.
+**Implemented**: `skill_type` (domain / platform / source / data-engineering / skill-builder) is the primary browse taxonomy. The `typeFilter` prop lets each call site decide which types to show.
+
+**Note**: `category` field (a more granular sub-taxonomy) was designed but not implemented. `skill_type` + free-form tags provide sufficient filtering for Phase 1.
 
 ---
 
-## 12. DB Schema Extensions
+## 13. Rust Commands Reference
 
-### New: `marketplace_sources` Table
+### New Commands (VD-696)
 
-Tracks configured marketplace repositories:
-
-```sql
-CREATE TABLE marketplace_sources (
-  source_id TEXT PRIMARY KEY,       -- e.g., "official", "team-acme"
-  repo_owner TEXT NOT NULL,
-  repo_name TEXT NOT NULL,
-  display_name TEXT,
-  last_synced_at TEXT,
-  catalog_version TEXT               -- marketplace.json version
-);
-```
-
-### Extended: `imported_skills` Table
-
-Add columns for marketplace tracking:
-
-```sql
-ALTER TABLE imported_skills ADD COLUMN source_url TEXT;       -- marketplace repo URL
-ALTER TABLE imported_skills ADD COLUMN source_version TEXT;   -- version at install time
-ALTER TABLE imported_skills ADD COLUMN marketplace_id TEXT;   -- FK to marketplace_sources
-ALTER TABLE imported_skills ADD COLUMN installed_at TEXT;     -- when imported from marketplace
-ALTER TABLE imported_skills ADD COLUMN update_available TEXT; -- newer version if detected
-```
-
-### New: `marketplace_cache` Table
-
-Local cache of `marketplace.json` for offline browse and fast rendering:
-
-```sql
-CREATE TABLE marketplace_cache (
-  source_id TEXT NOT NULL,
-  skill_name TEXT NOT NULL,
-  metadata_json TEXT NOT NULL,       -- full marketplace.json skill entry
-  cached_at TEXT NOT NULL,
-  PRIMARY KEY (source_id, skill_name)
-);
-```
-
----
-
-## 13. New Rust Commands
-
-| Command | Purpose | Phase |
+| Command | Module | Purpose |
 |---|---|---|
-| `add_marketplace_source(owner, repo)` | Register a marketplace repo | 1 |
-| `sync_marketplace(source_id?)` | Fetch/update `marketplace.json` from remote | 1 |
-| `list_marketplace_skills(source_id?, filters?)` | Browse cached marketplace catalog with filters | 1 |
-| `preview_marketplace_skill(source_id, skill_name)` | Fetch SKILL.md content for preview | 1 |
-| `install_marketplace_skill(source_id, skill_name)` | Download + install + DB entry + CLAUDE.md | 1 |
-| `check_skill_updates()` | Compare installed versions with marketplace | 1 |
-| `update_marketplace_skill(skill_id)` | Re-import newer version | 1 |
-| `match_companions_to_marketplace(skill_name)` | Run companion-to-marketplace matching | 2 |
-| `get_marketplace_recommendations(industry?, role?)` | Context-driven recommendations | 2 |
-| `publish_to_marketplace(skill_name)` | Push to marketplace repo with PR | 3 |
-| `generate_marketplace_metadata(skill_name)` | Haiku-generate category, tags | 3 |
+| `import_marketplace_to_library(skill_paths)` | `github_import.rs` | Download + dual DB write; main marketplace install |
+| `get_installed_skill_names()` | `skill.rs` | UNION query; used for pre-marking in browse UI |
+| `check_marketplace_url(url)` | `github_import.rs` (or settings) | Validate URL + resolve default branch |
 
----
+### Extended Commands
 
-## 14. Relationship to Existing Design Docs
+| Command | Change | Module |
+|---|---|---|
+| `list_github_skills` | Frontend adds `typeFilter` filtering | `github_import.rs` |
+| `list_refinable_skills` | Now includes `source='marketplace'` skills | `skill.rs` |
+| `filter_by_skill_md_exists` | Added debug logging per-skill | `skill.rs` |
+| `send_refine_message` | Creates workspace dir for marketplace skills | `refine.rs` |
 
-| Design Doc | Relationship to Marketplace |
+### DB Functions (not Tauri commands)
+
+| Function | Purpose |
 |---|---|
-| `shared.md` Section 6 (Skill Templates) | Template repo becomes the marketplace repo (or its seed content). Template matching becomes marketplace search. Same haiku-based matching engine. |
-| `shared.md` Section 7 (Companion Report) | Companion recommendations drive personalized marketplace discovery. The `template_match` field (currently `null`) resolves to marketplace entries. |
-| `shared.md` Section 8 (Convention Skills) | Convention skills are the first category of marketplace content. Auto-suggested based on `conventions` frontmatter. |
-| `app.md` Section 3 (Companion UI) | Companion panel shows "Install from Marketplace" when a match exists. This is the primary conversion surface for marketplace installs. |
-| `app.md` Section 5 (Template Matching) | Template matching UI becomes marketplace search UI. Same flow: haiku match → present options → import. |
-| `plugin.md` Section 2 (State-Aware Router) | Router suggests marketplace skills during scoping and after validation. |
+| `save_marketplace_skill_run` | INSERT/UPDATE `workflow_runs` for marketplace skill |
+| `upsert_imported_skill` | INSERT/UPDATE `imported_skills` for marketplace skill |
+| `get_all_installed_skill_names` | UNION query for pre-marking UI |
+| `set_skill_author` | Set author_login/avatar after import |
 
 ---
 
-## 15. Open Questions
+## 14. Open Questions
 
-1. **Marketplace repo hosting**: Should the marketplace repo live under the skill-builder org, or a dedicated org? (Affects URL branding and governance.)
+1. **Conflict with built skills**: If a built skill and a marketplace import share the same `skill_name`, `save_marketplace_skill_run` silently overwrites the `workflow_runs` row. Should we detect this and prompt the user before proceeding?
 
-2. **Offline mode**: Should the app bundle a snapshot of `marketplace.json` for offline browsing? (Increases app size but improves cold-start experience.)
+2. **Version tracking**: Marketplace skills have no update detection. When is the right time to implement "version available" checks, and where should they show in the UI?
 
-3. **Skill packs**: Should we support curated bundles of related skills (e.g., "dbt Data Platform Pack" = dbt-conventions + dbt-incremental-silver + elementary-conventions)? (Inspired by Continue.dev's assistant bundles.)
+3. **Offline mode**: The browse dialog requires a network call. Should we cache the last fetched skill list locally for offline/slow-network resilience?
 
-4. **Cross-client compatibility**: Should marketplace skills be installable in both the desktop app and the CLI plugin? (The file format is identical, but install paths differ.)
+4. **`skill_type='skill-builder'` filter**: The skills library tab shows only `skill_type='skill-builder'` imported skills. Is this the right filter, or should it show all imported skills regardless of type?
 
-5. **Deprecation policy**: How do we handle marketplace skills that are abandoned or superseded? (Version freeze + "deprecated" badge + redirect to successor?)
+5. **Convention skills**: Skills with `conventions` frontmatter declare tool dependencies. When should we auto-suggest installing them, and how do we link convention installs to the importing skill?
+
+6. **Multi-org marketplaces**: Should `marketplace_url` support a list of URLs (team + official), or should Phase 4 introduce a formal multi-registry model?
