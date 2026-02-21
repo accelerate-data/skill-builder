@@ -3,11 +3,27 @@
 Domain decomposition methodology for translating business domains into data engineering artifacts. Used by generate and validate agents when building domain and source skills.
 
 ## Contents
+- [Silver/Gold Boundary per Skill Type](#silvergold-boundary-per-skill-type)
 - [Domain-to-Data-Engineering Mapping](#domain-to-data-engineering-mapping)
 - [Source and Platform Skills](#source-and-platform-skills)
 - [Domain Decomposition Methodology](#domain-decomposition-methodology)
 - [Completeness Validation](#completeness-validation)
 - [Common Decomposition Mistakes](#common-decomposition-mistakes)
+
+## Silver/Gold Boundary per Skill Type
+
+Where the silver layer ends and the gold layer begins varies by skill type. Use this table when deciding which content belongs at which layer:
+
+| Skill Type | Silver Layer | Gold Layer |
+|---|---|---|
+| **Domain** | Cleaned, typed, deduplicated entities | Business metrics, aggregations, denormalized for BI |
+| **Platform** | Platform-specific extraction handling | Platform-agnostic business layer |
+| **Source** | Source-specific field mapping, type coercion, relationship resolution | Source-agnostic entity models |
+| **Data Engineering** | Pattern implementation (SCD, CDC) | Pattern consumption (query patterns, materialization) |
+
+Skills should make this boundary explicit — state which models live in silver vs. gold and why, rather than leaving the layer assignment implicit.
+
+---
 
 ## Domain-to-Data-Engineering Mapping
 

@@ -30,6 +30,7 @@ Guidance for building effective data engineering skills. Agents reference this d
 - Description follows the trigger pattern: `[What it does]. Use when [triggers]. [How it works]. Also use when [more triggers].` Max 1024 chars.
 - Description is third person — injected into the system prompt.
 - Trigger conditions live exclusively in the description frontmatter. Do NOT create a "When to Use This Skill" body section — it duplicates the description and wastes context budget.
+- For dbt skills, include layer-specific triggers so the skill activates when users ask about silver/gold work: `Use when building dbt silver or gold layer models for [domain]. Also use when the user mentions "[domain] models", "silver layer", "gold layer", "marts", "staging", or "[domain]-specific dbt".`
 
 ### SKILL.md Anatomy
 
