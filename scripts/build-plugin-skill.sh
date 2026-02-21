@@ -2,13 +2,13 @@
 # Package workspace agent instructions into plugin skill references.
 #
 # Sources:
-#   - agent-sources/workspace/CLAUDE.md (protocols section)
+#   - agent-sources/workspace/CLAUDE.md (full copy → workspace-context.md)
 #   - agent-sources/workspace/skills/skill-builder-practices/ (content guidelines + best practices)
 # Target: skills/generate-skill/references/
 #
 # The app auto-loads workspace/CLAUDE.md into every agent's system prompt.
-# The plugin packages the same content as reference files so the coordinator
-# can pass them inline to sub-agents, making the skill self-contained.
+# The plugin packages it as workspace-context.md so the coordinator can inject
+# it inline into every agent Task call via <agent-instructions> tags.
 #
 # Usage:
 #   ./scripts/build-plugin-skill.sh           # Generate reference files
@@ -36,29 +36,6 @@ if [[ ! -d "$BUNDLED_PRACTICES" ]]; then
     echo "ERROR: Bundled practices directory not found: $BUNDLED_PRACTICES"
     exit 1
 fi
-
-# Extract a range of sections from workspace/CLAUDE.md.
-# Uses awk to extract content between start/end section headers.
-extract_sections() {
-    local start_pattern="$1"
-    local end_pattern="$2"
-    awk "
-        /^${start_pattern}/ { capture=1 }
-        capture && /^${end_pattern}/ { exit }
-        capture { print }
-    " "$SOURCE"
-}
-
-# Trim trailing blank lines and --- separators (macOS-compatible)
-trim_trailing() {
-    awk '
-        { lines[NR] = $0; last = NR }
-        END {
-            while (last > 0 && (lines[last] ~ /^[[:space:]]*$/ || lines[last] == "---")) last--
-            for (i = 1; i <= last; i++) print lines[i]
-        }
-    '
-}
 
 generate_file() {
     local target="$1"
@@ -98,10 +75,6 @@ check_directory() {
     fi
 }
 
-# --- Extract protocols from workspace/CLAUDE.md ---
-
-protocols=$(extract_sections "## Protocols" "## Output Paths" | trim_trailing)
-
 # --- Write or check ---
 
 if ! $CHECK_MODE; then
@@ -110,7 +83,7 @@ if ! $CHECK_MODE; then
 fi
 
 stale=0
-generate_file "$REFS_DIR/protocols.md" "$protocols" || stale=$((stale + 1))
+generate_file "$REFS_DIR/workspace-context.md" "$(cat "$SOURCE")" || stale=$((stale + 1))
 check_directory "$BUNDLED_PRACTICES" "$REFS_DIR/skill-builder-practices" "skill-builder-practices" || stale=$((stale + 1))
 
 if $CHECK_MODE; then
@@ -122,5 +95,5 @@ if $CHECK_MODE; then
         exit 0
     fi
 else
-    echo "Done — protocols.md + skill-builder-practices/ in skills/generate-skill/references/"
+    echo "Done — workspace-context.md + skill-builder-practices/ in skills/generate-skill/references/"
 fi

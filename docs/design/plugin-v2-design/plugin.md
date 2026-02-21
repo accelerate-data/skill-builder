@@ -1,387 +1,153 @@
-# Plugin v2: Plugin-Specific Changes
+# Plugin Design
 
-Plugin coordinator rewrite — replacing the rigid 7-step sequential script with
-a state-aware router that dynamically selects agents based on conversation
-context and filesystem state.
+## Plugin Packages
 
-> Status: **All plugin-specific work is pending.** Shared agent changes
-> (dimension scoring, validation consolidation, refine-skill agent) are done
-> and will be used by the plugin once the router is built.
+Four installable plugins:
+
+| Plugin | Contents | Customizable |
+|---|---|---|
+| `skill-builder` | Coordinator skill + 7 agents + workspace-context.md | No |
+| `skill-builder-research` | Research skill (dimension scoring, parallel research, consolidation) | Yes — fork to customize dimensions |
+| `skill-builder-validate` | Validate skill (quality check, test evaluation, companion recommendations) | Yes — fork to customize quality rules |
+| `skill-builder-practices` | Content guidelines (skill structure, patterns, anti-patterns) | Yes — fork to customize for non-dbt stacks |
 
 ---
 
-## 1. Skill Rename
+## Package Contents
 
-> Status: **Pending** (VD-672)
+### skill-builder
 
-| Current | New |
-|---------|-----|
-| Skill directory | `skills/building-skills/` |
-| Skill name (frontmatter) | `building-skills` |
-| Plugin trigger | `/skill-builder:building-skills` |
-| Description | "Build domain-specific Claude skills for dbt silver and gold layer modeling. Use when the user asks to create, build, or generate a new skill for data/analytics engineers. Handles domain, platform, source, and data-engineering skill types. Also use when the user says 'new skill', 'skill builder', 'I need a skill for [domain]', or 'help me build a skill'." |
+```
+.claude-plugin/
+  plugin.json
+skills/
+  generate-skill/
+    SKILL.md              ← coordinator (state router + workflow)
+agents/
+  research-orchestrator.md
+  answer-evaluator.md
+  detailed-research.md
+  confirm-decisions.md
+  generate-skill.md
+  validate-skill.md
+  refine-skill.md
+references/
+  workspace-context.md   ← injected inline into every agent Task call
+```
 
-Agent filenames (`agents/*.md`) stay as-is — agents are not skills and don't
-need gerund naming.
+### skill-builder-research
 
-### Plugin manifest
+```
+.claude-plugin/
+  plugin.json
+skills/
+  research/
+    SKILL.md
+    references/
+      dimension-sets.md
+      scoring-rubric.md
+      consolidation-handoff.md
+      dimensions/
+        *.md              ← 18 dimension spec files
+```
 
+### skill-builder-validate
+
+```
+.claude-plugin/
+  plugin.json
+skills/
+  validate-skill/
+    SKILL.md
+    references/
+      validate-quality-spec.md
+      test-skill-spec.md
+      companion-recommender-spec.md
+```
+
+### skill-builder-practices
+
+```
+.claude-plugin/
+  plugin.json
+skills/
+  skill-builder-practices/
+    SKILL.md
+    references/
+      ba-patterns.md
+      de-patterns.md
+```
+
+---
+
+## Marketplace Distribution
+
+Hosted as a GitHub repo with a `.claude-plugin/marketplace.json` at root.
+
+```
+acceleratedata-plugins/
+├── .claude-plugin/
+│   └── marketplace.json
+└── plugins/
+    ├── skill-builder/
+    ├── skill-builder-research/
+    ├── skill-builder-validate/
+    └── skill-builder-practices/
+```
+
+**marketplace.json:**
 ```json
 {
-  "name": "skill-builder",
-  "version": "0.2.0",
-  "description": "Multi-agent workflow for creating domain-specific Claude skills. Targets data/analytics engineers who need functional context for silver and gold table modeling.",
-  "skills": "./skills/"
+  "name": "acceleratedata-plugins",
+  "owner": { "name": "AccelerateData" },
+  "metadata": { "pluginRoot": "./plugins" },
+  "plugins": [
+    { "name": "skill-builder",            "source": "./plugins/skill-builder" },
+    { "name": "skill-builder-research",   "source": "./plugins/skill-builder-research" },
+    { "name": "skill-builder-validate",   "source": "./plugins/skill-builder-validate" },
+    { "name": "skill-builder-practices",  "source": "./plugins/skill-builder-practices" }
+  ]
 }
 ```
 
----
-
-## 2. State-Aware Router
-
-> Status: **Pending** (VD-677 — critical path)
-
-The router replaces the current step-counter coordinator. It reads filesystem
-state, classifies user intent, and dispatches agents via the `Task` tool.
-
-### State x Intent dispatch matrix
-
-| Filesystem State              | User Intent           | Action                              |
-|-------------------------------|-----------------------|-------------------------------------|
-| Empty                         | "Build me a skill"    | Scoping phase                       |
-| Empty                         | Specific domain named | Scoping with pre-filled domain      |
-| clarifications.md exists      | "I answered them"     | Check answers → decisions or refine |
-| clarifications.md, unanswered | Continues session     | Show clarification status, prompt   |
-| decisions.md exists           | Continues             | Generate skill                      |
-| SKILL.md exists               | "Validate"            | Run validation only                 |
-| SKILL.md exists               | "Improve X section"   | Targeted refinement via refine-skill agent |
-| Any                           | Process question       | Answer about the process            |
-| Any                           | "Skip ahead"          | Jump forward, auto-fill defaults    |
-| Any                           | "Start fresh"         | Delete artifacts, begin scoping     |
-
-### Phase backbone
-
-Phases exist conceptually but the router navigates them adaptively:
-
-```
-Scoping → Research → Clarification → [Refinement] → Decisions → Generation → Validation
-   │          │           │                │             │            │           │
-   │          │           │                │             │            │           └─ Loop to Generation
-   │          │           │                │             │            └─ Targeted regen via refine-skill
-   │          │           │                │             └─ Auto-proceed if answers are unambiguous
-   │          │           │                └─ OPTIONAL (skip if answers are detailed)
-   │          │           └─ ASYNC (user can leave for days)
-   │          └─ Skippable (user provides spec → jump to Decisions)
-   └─ Can pre-fill from user's first message
-```
-
-### Agent dispatch
-
-The router dispatches agents via direct `Task` tool calls. No team lifecycle
-management needed:
-
-| Current | Router Replacement |
-|---------|-------------------|
-| `TeamCreate` / `TeamDelete` | Not needed |
-| `TaskCreate` | State tracked via `session.json` + filesystem artifacts |
-| `SendMessage` | Spawn a new `Task` with feedback context |
-
-**Note:** For the "Improve X section" intent (when SKILL.md exists), the
-router dispatches the `refine-skill` agent (shared, now implemented) which
-handles both targeted edits and full rewrites with `/rewrite` and `/validate`
-commands. See shared.md Section 9.
-
----
-
-## 3. Directory Structure
-
-> Status: **Pending** (VD-676)
-
-### Two directories, clearly separated
-
-| Concept | Purpose | Contents |
-|---------|---------|----------|
-| **Plugin workspace** (`.vibedata/`) | Plugin internals — state, logs, config | Session manifests, logs, plugin config. Local only, never committed. |
-| **Skill context** (`<skill-dir>/context/`) | User-facing working files | `clarifications.md`, `decisions.md`, `agent-validation-log.md`, `test-skill.md`, `companion-skills.md` |
-| **Skill output** (`<skill-dir>/`) | Deployable skill | `SKILL.md` + `references/` |
-
-### Layout
-
-```
-.vibedata/                                  # Plugin workspace (local only)
-├── plugin/                                 # Cross-skill plugin data
-│   ├── config.json                         # Plugin settings, preferences
-│   └── dimension-cache.json                # Cached planner selections (optional)
-│
-├── sales-pipeline/                         # Per-skill internal state
-│   ├── session.json                        # Session state (phase, progress, skill-dir path)
-│   └── logs/                               # Agent execution logs (optional)
-│
-└── revenue-recognition/                    # Another skill's internal state
-    ├── session.json
-    └── ...
-
-~/skill-builder/sales-pipeline/             # Skill dir (default: ~/skill-builder/<skill-name>/)
-├── SKILL.md                                # Deployable skill
-├── references/                             # Deployable reference files
-│   ├── entity-model.md
-│   └── metrics.md
-└── context/                                # User-facing working files
-    ├── clarifications.md
-    ├── decisions.md
-    ├── agent-validation-log.md
-    ├── test-skill.md
-    └── companion-skills.md
-```
-
-### Key principles
-
-1. **Plugin workspace is internal** — `.vibedata/` is local only. Users never
-   look inside it.
-2. **Context is user-facing** — `<skill-dir>/context/` contains files the user
-   reads and edits.
-3. **Skill output is the deliverable** — `SKILL.md` + `references/` at the
-   skill dir root. Clean enough to deploy directly.
-4. **Skill dir location is configurable** — `session.json` tracks `skill_dir`.
-   Default `~/skill-builder/<skill-name>/`, movable anywhere.
-5. **Moving the skill dir is first-class** — "Move my skill to
-   `./skills/sales-pipeline/`" updates `session.json.skill_dir`, moves files.
-6. **Cross-skill data persists** — `.vibedata/plugin/` survives across skills.
-
-### Path resolution
-
-**Coordinator-internal** (not passed to agents):
-
-| Path | Purpose |
-|------|---------|
-| `.vibedata/<skill-name>/` | Session state, logs |
-| `.vibedata/plugin/` | Cross-skill config, dimension cache |
-
-**Agent-facing** (passed to every agent):
-
-| Parameter | Example | Purpose |
-|-----------|---------|---------|
-| `context_dir` | `~/skill-builder/sales-pipeline/context/` | Working files |
-| `skill_dir` | `~/skill-builder/sales-pipeline/` | Deployable output |
-
-### Session manifest (`session.json`)
-
-```json
-{
-  "skill_name": "sales-pipeline",
-  "skill_type": "domain",
-  "domain": "sales pipeline analytics",
-  "skill_dir": "~/skill-builder/sales-pipeline/",
-  "created_at": "2026-02-15T10:30:00Z",
-  "last_activity": "2026-02-18T14:20:00Z",
-  "current_phase": "clarification",
-  "phases_completed": ["scoping", "research"],
-  "mode": "guided",
-  "research_dimensions_used": ["entities", "metrics", "business-rules"],
-  "clarification_status": {
-    "total_questions": 15,
-    "answered": 8
-  },
-  "auto_filled": false
-}
-```
-
-### Artifact-to-phase mapping
-
-| Artifact | Phase Completed |
-|----------|-----------------|
-| `session.json` with `phases_completed: ["scoping"]` | Scoping |
-| `clarifications.md` (no Refinements) | Research |
-| `clarifications.md` (answered, no Refinements) | Clarification |
-| `clarifications.md` (with `#### Refinements`) | Refinement |
-| `clarifications.md` (refinements answered) | Refinement review |
-| `decisions.md` | Decisions |
-| `SKILL.md` in skill dir | Generation |
-| `agent-validation-log.md` + `test-skill.md` + `companion-skills.md` | Validation |
-
----
-
-## 4. State Management
-
-> Status: **Pending** (VD-689)
-
-### Offline clarification flow
-
-1. Research completes → coordinator writes `clarifications.md` to context dir + updates `session.json`
-2. User told: "Questions are in `~/skill-builder/sales-pipeline/context/clarifications.md`. Answer them whenever you're ready."
-3. User closes terminal, answers over days
-4. User returns, triggers `/skill-builder:building-skills`
-5. Router scans `.vibedata/` for skill workspaces, reads `session.json`, locates context dir
-6. Counts answered vs unanswered questions in `clarifications.md`
-7. Presents status: "Welcome back. 8 of 15 questions answered. 7 remaining."
-8. User can: answer more, proceed with defaults for unanswered, or ask for help
-
-### Auto-fill rule
-
-Empty `**Answer:**` fields use the `**Recommendation:**` as the answer:
-
-> "You have 7 unanswered questions. I can proceed using recommended defaults,
-> or you can answer them first. Which do you prefer?"
-
----
-
-## 5. Workflow Modes
-
-> Status: **Pending** (VD-678, VD-679)
-
-### Guided mode (default)
-
-Full workflow with all phases.
-
-```
-Scoping → Research → Clarification → Refinement → Decisions → Generation → Validation
-```
-
-### Express mode
-
-Skips research and/or clarification. Triggered by:
-- User provides a detailed spec or existing documentation
-- User says "proceed with defaults" at any clarification gate
-- User says "skip research" or "I know what I want"
-
-```
-Scoping → Decisions (from user spec) → Generation → Validation
-```
-
-### Iterative mode
-
-User has an existing skill and wants to improve it. Triggered by:
-- SKILL.md exists in the target directory
-- User says "improve", "modify", "update", or "fix"
-
-```
-[Read existing skill] → refine-skill agent (targeted edits or full rewrite)
-```
-
-**Note:** The refine-skill agent (shared, now implemented) supports this mode
-directly with its `/rewrite` and `/validate` commands. See shared.md Section 9.
-
-### Mode detection
-
-The router infers the mode from the user's first message + filesystem state.
-
-### Explicit mode override
-
-Users can force a mode by naming it directly ("build in express mode", "guided
-mode for this one"). Explicit override always wins over inference.
-
----
-
-## 6. Progressive Scoping (Plugin)
-
-> Status: **Pending** (VD-684)
-
-The router asks 2-3 scoping questions conversationally before spawning the
-research planner:
-
-```
-Router: "Before I generate the full question set, let me ask the most
-important ones. How do you define pipeline coverage?
-  a) Open pipeline / Annual quota
-  b) Open pipeline / Quarterly target
-  c) Weighted pipeline / Adjusted target"
-
-[user answers 3-4 questions]
-
-Router: "Great. I've generated 12 more detailed questions in
-~/skill-builder/sales-pipeline/context/clarifications.md. Answer
-them whenever you're ready -- I'll proceed with recommended
-defaults if you want to skip ahead."
+**User setup:**
+```bash
+claude plugin marketplace add acceleratedata/acceleratedata-plugins
+claude plugin install skill-builder
 ```
 
 ---
 
-## 7. Targeted Regeneration (Plugin)
+## Customization Model
 
-> Status: **Pending** (VD-698). Agent support ready (refine-skill ✅).
+Teams fork any of the three inner plugins, publish to a private GitHub marketplace, and install at project scope:
 
-Instead of regenerating the entire skill, the router accepts natural language
-requests for partial updates:
-
-```
-User: "The metrics section is missing win rate calculation"
-Router: Dispatches refine-skill agent with targeted prompt for that section
-        Agent uses Edit tool to update in-place rather than full rewrite
+```bash
+# Override research skill for a specific project
+claude plugin install skill-builder-research --scope project
 ```
 
-The router detects targeted edit intent (vs full regeneration) when SKILL.md
-already exists. The refine-skill agent handles both cases — free-form edits
-for targeted changes, `/rewrite` for full regeneration, `/validate` for
-re-validation.
+The coordinator calls inner plugins by fixed names (`skill-builder-research:research`, `skill-builder-validate:validate-skill`, `skill-builder-practices:skill-builder-practices`). Same plugin name = drop-in replacement. No coordinator changes needed.
 
 ---
 
-## 8. Dimension Caching
+## Source of Truth
 
-> Status: **Pending**
+All plugin content is built from `agent-sources/workspace/`:
 
-If a user builds multiple skills in the same domain family, cache the planner's
-dimension selections in `.vibedata/plugin/dimension-cache.json`:
+| Source | Plugin |
+|---|---|
+| `agent-sources/workspace/CLAUDE.md` | `skill-builder/references/workspace-context.md` |
+| `agent-sources/workspace/skills/research/` | `skill-builder-research` |
+| `agent-sources/workspace/skills/validate-skill/` | `skill-builder-validate` |
+| `agent-sources/workspace/skills/skill-builder-practices/` | `skill-builder-practices` |
 
-```json
-{
-  "domain": {
-    "common": ["entities", "metrics", "business-rules", "segmentation-and-periods"],
-    "occasional": ["modeling-patterns", "layer-design"],
-    "rare": ["extraction", "config-patterns"]
-  }
-}
-```
+`scripts/build-plugin-skill.sh` copies all outputs from source.
 
 ---
 
-## 9. Plugin Packaging
+## Workspace Context Delivery
 
-> Status: **Pending**
+Agents in the plugin context do not get a `.claude/CLAUDE.md` auto-loaded. The coordinator injects `references/workspace-context.md` (= `agent-sources/workspace/CLAUDE.md`) inline into every agent `Task` call via `<agent-instructions>` tags.
 
-The build script packages convention skills into the plugin's reference
-structure. The plugin coordinator deploys the relevant convention skills to
-`.vibedata/skills/` based on tool ecosystem selection during init.
-
-`scripts/build-plugin-skill.sh` update: add `.session.json` format to
-reference docs, add convention skills to build output.
-
----
-
-## Related Linear Issues
-
-| Issue | Title | Size | Status |
-|-------|-------|------|--------|
-| [VD-672](https://linear.app/acceleratedata/issue/VD-672) | Rename skill from `generate-skill` to `building-skills` | S | Pending |
-| [VD-673](https://linear.app/acceleratedata/issue/VD-673) | Simplify coordinator to direct Task dispatch | M | Pending |
-| [VD-675](https://linear.app/acceleratedata/issue/VD-675) | Update plugin manifest and documentation for v2 | S | Pending |
-| [VD-676](https://linear.app/acceleratedata/issue/VD-676) | Formalize workspace/skill dir structure and session tracking | M | Pending |
-| [VD-677](https://linear.app/acceleratedata/issue/VD-677) | Replace step counter with state x intent router | L | Pending (critical path) |
-| [VD-678](https://linear.app/acceleratedata/issue/VD-678) | Add workflow modes: guided, express, iterative | M | Pending |
-| [VD-679](https://linear.app/acceleratedata/issue/VD-679) | Add auto-fill express flow for clarifications | S | Pending |
-| [VD-684](https://linear.app/acceleratedata/issue/VD-684) | Add progressive scoping questions before research | S | Pending |
-| [VD-689](https://linear.app/acceleratedata/issue/VD-689) | Add interactive + offline hybrid clarification flow | M | Pending |
-| [VD-698](https://linear.app/acceleratedata/issue/VD-698) | Add targeted section regeneration to plugin workflow | M | Pending (agent ready ✅) |
-
-### Dependency order
-
-```
-VD-672 (rename) ──┬──→ VD-675 (manifest/docs)
-                   │
-VD-673 (simplify) ┘
-                   │
-                   └──→ VD-676 (session.json)
-                              │
-                              └──→ VD-677 (ROUTER) ←── critical path
-                                        │
-                              ┌─────────┼─────────┐
-                              │         │         │
-                              ▼         ▼         ▼
-                         VD-678    VD-679    VD-684
-                         (modes)   (auto-   (scoping)
-                                   fill)
-                                              │
-                              VD-689          VD-698
-                              (hybrid         (targeted
-                              clarify)        regen; agent ✅)
-```
+Inner plugin skills (`skill-builder-research:research`, etc.) are invoked by plugin agents using their namespaced names. No inline content injection needed for skills — they are self-contained packages with their own reference files.

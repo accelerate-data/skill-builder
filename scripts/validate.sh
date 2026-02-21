@@ -135,16 +135,16 @@ echo "=== Skill Reference Files ==="
 REFS_DIR="skills/generate-skill/references"
 if [ -d "$REFS_DIR" ]; then
   pass "references/ directory exists"
-  # protocols.md (extracted from workspace/CLAUDE.md)
-  if [ -f "$REFS_DIR/protocols.md" ]; then
-    size=$(wc -c < "$REFS_DIR/protocols.md" | tr -d ' ')
+  # workspace-context.md (full copy of agent-sources/workspace/CLAUDE.md)
+  if [ -f "$REFS_DIR/workspace-context.md" ]; then
+    size=$(wc -c < "$REFS_DIR/workspace-context.md" | tr -d ' ')
     if [ "$size" -gt 100 ]; then
-      pass "protocols.md exists ($size bytes)"
+      pass "workspace-context.md exists ($size bytes)"
     else
-      fail "protocols.md is too small ($size bytes)"
+      fail "workspace-context.md is too small ($size bytes)"
     fi
   else
-    fail "protocols.md missing"
+    fail "workspace-context.md missing"
   fi
   # skill-builder-practices/ (copied from bundled-skills/)
   for ref in skill-builder-practices/SKILL.md skill-builder-practices/references/ba-patterns.md skill-builder-practices/references/de-patterns.md; do
@@ -202,19 +202,19 @@ fi
 echo "=== Coordinator Content ==="
 if [ -f "skills/generate-skill/SKILL.md" ]; then
   content=$(cat "skills/generate-skill/SKILL.md")
-  for keyword in "TeamCreate" "TeamDelete" "CLAUDE_PLUGIN_ROOT" "skill-builder:" "references/protocols.md"; do
+  for keyword in "CLAUDE_PLUGIN_ROOT" "skill-builder:" "references/workspace-context.md" "session.json"; do
     if echo "$content" | grep -q "$keyword"; then
       pass "coordinator references $keyword"
     else
       fail "coordinator missing reference to $keyword"
     fi
   done
-  # Start modes
-  for mode in "Mode A" "Mode B" "Mode C"; do
+  # Workflow modes
+  for mode in "guided" "express" "iterative"; do
     if echo "$content" | grep -q "$mode"; then
-      pass "coordinator has $mode"
+      pass "coordinator has $mode mode"
     else
-      fail "coordinator missing $mode (start modes)"
+      fail "coordinator missing $mode mode"
     fi
   done
 fi

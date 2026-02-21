@@ -1,349 +1,266 @@
 ---
 name: generate-skill
-description: Generate domain-specific Claude skills through a guided multi-agent workflow. Use when user asks to create, build, or generate a new skill for data/analytics engineers. Orchestrates research, clarification review, decision-making, skill generation, and validation phases with human review gates. Also use when the user mentions "new skill", "skill builder", or "create a domain skill".
+description: Generate domain-specific Claude skills through a guided multi-agent workflow. Use when user asks to create, build, or generate a new skill for data/analytics engineers. Orchestrates research, clarification, decision-making, skill generation, and validation phases with human review gates. Also use when the user mentions "new skill", "skill builder", or "create a domain skill".
 ---
 
 # Skill Builder — Coordinator
 
-You are the coordinator for the Skill Builder workflow. You orchestrate a 7-step process to create skills for data/analytics engineers. Skills can be platform, domain, source, or data-engineering focused.
+You are the coordinator for the Skill Builder workflow. On every invocation: detect state → classify intent → dispatch.
 
 ## Contents
 - [Path Resolution]
-- [Context Conservation Rules]
-- [Single-Skill Mode]
-- [Workflow]
-  - [Step 0: Initialization]
-  - [Agent Names]
-  - [Step 1: Research]
-  - [Step 2: Human Gate — Review]
-  - [Step 3: Detailed Research]
-  - [Step 4: Human Gate — Detailed Review]
-  - [Step 5: Confirm Decisions]
-  - [Step 6: Generate Skill]
-  - [Step 7: Validate Skill]
-- [Error Recovery]
-- [Progress Display]
-- [Reference Files]
-- [Passing Agent Instructions]
+- [State Detection]
+- [Intent Classification]
+- [State × Intent Dispatch]
+- [Phases]
+- [Workflow Modes]
+- [Agent Call Format]
+
+---
 
 ## Path Resolution
 
-Set the plugin root at the start of the session:
-
-PLUGIN_ROOT=$(echo $CLAUDE_PLUGIN_ROOT)
-
-Output layout in the user's CWD:
-- `./<skillname>/context/` — working files (clarifications, decisions, logs)
-- `./<skillname>/` — the deployable skill (SKILL.md + references/)
-
-## Context Conservation Rules
-
-Never read agent output files into your context — relay the summary each agent returns.
-Prefer subagents over inline work. Dispatch independent steps as parallel Task calls.
-
-## Single-Skill Mode
-
-Only one skill is active at a time. The coordinator works on the skill the user names and does not switch between skills mid-session.
-
-## Workflow
-
-### Step 0: Initialization
-
-1. Ask the user: "What type of skill is this?
-     1. Platform — Tool/platform-specific (dbt, Fabric, Databricks)
-     2. Domain — Business domain knowledge (Finance, Marketing, Supply Chain)
-     3. Source — Source system extraction patterns (Salesforce, SAP, Workday)
-     4. Data Engineering — Technical patterns (SCD Type 2, Incremental Loads)"
-
-   Store the selection as kebab-case: `platform`, `domain`, `source`, `data-engineering`. Default to `domain` if the user's response is unclear.
-
-2. Ask a type-appropriate follow-up question:
-   - Platform: "Which platform or tool?" (e.g., dbt, Fabric, Databricks)
-   - Domain: "What functional domain?" (e.g., sales pipeline, HR analytics)
-   - Source: "Which source system?" (e.g., Salesforce, SAP, Workday)
-   - Data Engineering: "Which pipeline pattern?" (e.g., SCD Type 2, CDC, Incremental)
-
-   Store the answer as `<domain>`.
-
-3. Derive the skill name from the answer (lowercase, kebab-case, e.g., "sales-pipeline")
-4. Confirm with the user: "I'll create the skill as `<skillname>`. Does this name work?"
-
-5. **Detect start mode** by scanning the filesystem for output artifacts:
-
-   Check for these files in order to determine the highest completed step:
-
-   | Step | Output File | Meaning |
-   |------|------------|---------|
-   | 1 | `./<skillname>/context/clarifications.md` (without Refinements) | Research complete |
-   | 2 | (inferred — if step 3 output exists, step 2 was completed) | Human Review complete |
-   | 3 | `./<skillname>/context/clarifications.md` (with `#### Refinements` subsections) | Detailed Research complete |
-   | 4 | (inferred — if step 5 output exists, step 4 was completed) | Human Review — Detailed complete |
-   | 5 | `./<skillname>/context/decisions.md` | Confirm Decisions complete |
-   | 6 | `./<skillname>/SKILL.md` | Generate Skill complete |
-   | 7 | `./<skillname>/context/agent-validation-log.md` AND `./<skillname>/context/test-skill.md` | Validate Skill complete |
-
-   **Mode A — Resume** (any output files from the table above exist):
-   The user is continuing a previous session.
-   - Scan the output files above from step 7 down to step 1. The highest step whose output file exists and has content is the last completed step.
-   - Show the user which step was last completed.
-   - If the `skill_type` is not known from the conversation, ask the user for the skill type using the prompt in item 1 above.
-   - Ask: "Continue from step N+1, or start fresh (this deletes all progress)?"
-   - If continue: skip to the next step after the highest completed step.
-   - If start fresh: delete `./<skillname>/` then fall through to Mode C.
-
-   **Mode B — Modify existing skill** (`./<skillname>/SKILL.md` exists but NO context/ output files exist):
-   The user has a finished skill and wants to improve it.
-   - Tell the user: "Found an existing skill at `./<skillname>/`. I'll start from the confirm decisions step so you can refine it."
-   - Determine `skill_type`: inspect the existing `./<skillname>/SKILL.md` for a skill type indicator. If none is found, ask the user for the skill type using the prompt in item 1 above.
-   - Create `./<skillname>/context/` if it doesn't exist.
-   - Skip to Step 5 (Confirm Decisions). The confirm-decisions agent will read the existing skill files + any context/ files to identify gaps and produce updated decisions, then the generate-skill agent will revise the skill.
-
-   **Mode C — Scratch** (no `./<skillname>/` directory and no output files):
-   Fresh start — full workflow.
-   - Create the directory structure:
-     ```
-     ./<skillname>/
-     ├── context/
-     └── references/
-     ```
-
-6. Create the agent team:
-   ```
-   TeamCreate(team_name: "skill-builder-<skillname>", description: "Building <domain> skill")
-   ```
-
-### Agent Names
-
-All agents use bare names (no type prefix). Reference agents as `skill-builder:<agent-name>`:
-- `skill-builder:research-orchestrator` — research orchestrator
-- `skill-builder:detailed-research` — detailed research
-- `skill-builder:confirm-decisions` — confirm decisions
-- `skill-builder:generate-skill` — generate skill
-- `skill-builder:validate-skill` — validate skill
-
-### Step 1: Research
-
-1. Create a task in the team task list:
-   ```
-   TaskCreate(subject: "Research <domain>", description: "Research relevant dimensions for this domain. Write consolidated output to ./<skillname>/context/clarifications.md")
-   ```
-2. Spawn the research orchestrator agent as a teammate. This agent uses an opus planner to select relevant dimensions from 18 available research agents, launches them in parallel, and consolidates results into `clarifications.md`. If the planner selects more dimensions than the configured threshold or finds the topic irrelevant, the orchestrator writes a scope recommendation to `clarifications.md` directly (with `scope_recommendation: true` in frontmatter). When this happens, downstream steps (detailed research, confirm decisions, generate skill, validate skill) detect the flag and gracefully no-op.
-   ```
-   Task(
-     subagent_type: "skill-builder:research-orchestrator",
-     team_name: "skill-builder-<skillname>",
-     name: "research",
-     prompt: "You are on the skill-builder-<skillname> team. Claim the 'Research' task.
-
-     Skill type: <skill_type>
-     Domain: <domain>
-     Context directory: ./<skillname>/context/
-
-     <agent-instructions>
-     {content of references/protocols.md}
-     </agent-instructions>
-
-     Return a 5-10 bullet summary of the key questions you generated."
-   )
-   ```
-3. Relay the agent's summary to the user.
-
-### Step 2: Human Gate — Review
-
-1. Tell the user:
-   "Please review and answer the questions in `./<skillname>/context/clarifications.md`.
-
-   Open the file, fill in the **Answer:** field for each question, then tell me when you're done."
-2. Wait for the user to confirm they've answered the questions.
-
-### Step 3: Detailed Research
-
-1. Create a task in the team task list:
-   ```
-   TaskCreate(subject: "Detailed research for <domain>", description: "Deep-dive research based on answered clarifications. Read answered clarifications.md and insert #### Refinements subsections in-place")
-   ```
-2. Spawn the detailed-research shared agent as a teammate. It reads the answered `clarifications.md` (containing user's answers from step 2) and inserts `#### Refinements` subsections under each question that warrants follow-up:
-   ```
-   Task(
-     subagent_type: "skill-builder:detailed-research",
-     team_name: "skill-builder-<skillname>",
-     name: "detailed-research",
-     prompt: "You are on the skill-builder-<skillname> team. Claim the 'Detailed research' task.
-
-     Skill type: <skill_type>
-     Domain: <domain>
-     Context directory: ./<skillname>/context/
-     Workspace directory: <workspace_dir>
-     Answer evaluation: <workspace_dir>/answer-evaluation.json
-
-     <agent-instructions>
-     {content of references/protocols.md}
-     </agent-instructions>
-
-     Read answer-evaluation.json from the workspace directory to determine which questions are non-clear, then read the answered clarifications.md and insert #### Refinements subsections only for non-clear questions that need deeper exploration.
-
-     Return a 5-10 bullet summary of the refinement questions you generated."
-   )
-   ```
-3. Relay the agent's summary to the user.
-
-### Step 4: Human Gate — Detailed Review
-
-1. Tell the user:
-   "Please review and answer the refinement questions in `./<skillname>/context/clarifications.md`.
-
-   Look for the `#### Refinements` subsections under answered questions, fill in the **Answer:** field for each refinement, then tell me when you're done."
-2. Wait for the user to confirm.
-
-### Step 5: Confirm Decisions
-
-1. Spawn the confirm-decisions shared agent:
-   ```
-   Task(
-     subagent_type: "skill-builder:confirm-decisions",
-     team_name: "skill-builder-<skillname>",
-     name: "confirm-decisions",
-     prompt: "You are on the skill-builder-<skillname> team.
-
-     Skill type: <skill_type>
-     Context directory: ./<skillname>/context/
-     Workspace directory: <workspace_dir>
-
-     Analyze all answered clarifications (first-round and refinements) and produce decisions.
-     The agent handles conditional user interaction internally:
-     - If contradictions/ambiguities/conflicts are found, it presents numbered options and waits for the user to choose
-     - If no issues, it proceeds directly to writing decisions
-     Write: ./<skillname>/context/decisions.md
-
-     Return your reasoning summary (key conclusions, assumptions, conflicts, follow-ups)."
-   )
-   ```
-2. Relay the reasoning summary to the user.
-3. **Validate** that `./<skillname>/context/decisions.md` exists. If missing, run the confirm-decisions agent again.
-4. **Human Gate**: "Do you agree with these decisions? Any corrections?"
-5. If the user has corrections, send them to the confirm-decisions agent via SendMessage and let it re-analyze.
-6. Once confirmed, proceed.
-
-### Step 6: Generate Skill
-
-1. Spawn the generate-skill agent:
-   ```
-   Task(
-     subagent_type: "skill-builder:generate-skill",
-     team_name: "skill-builder-<skillname>",
-     name: "generate-skill",
-     prompt: "You are on the skill-builder-<skillname> team.
-
-     Skill type: <skill_type>
-     Domain: <domain>
-     Context directory: ./<skillname>/context/
-     Skill directory: ./<skillname>/
-
-     <agent-instructions>
-     {content of references/protocols.md}
-     {content of references/skill-builder-practices/SKILL.md}
-     {content of references/skill-builder-practices/references/ba-patterns.md}
-     {content of references/skill-builder-practices/references/de-patterns.md}
-     </agent-instructions>
-
-     Plan the skill structure before writing. Verify all decisions are reflected in the output.
-     Read decisions.md and create the skill files.
-     Return the proposed folder structure and a summary of what was created."
-   )
-   ```
-2. Relay the structure and summary to the user.
-3. **Human Gate**: "Does this structure look right? Any changes needed?"
-
-### Step 7: Validate Skill
-
-1. Spawn the validate-skill shared agent:
-   ```
-   Task(
-     subagent_type: "skill-builder:validate-skill",
-     team_name: "skill-builder-<skillname>",
-     name: "validate-skill",
-     prompt: "You are on the skill-builder-<skillname> team.
-
-     Skill type: <skill_type>
-     Domain: <domain>
-     Skill directory: ./<skillname>/
-     Context directory: ./<skillname>/context/
-
-     <agent-instructions>
-     {content of references/protocols.md}
-     {content of references/skill-builder-practices/SKILL.md}
-     {content of references/skill-builder-practices/references/ba-patterns.md}
-     {content of references/skill-builder-practices/references/de-patterns.md}
-     </agent-instructions>
-
-     Validate the skill against best practices and generate test prompts to evaluate coverage.
-     Auto-fix straightforward issues found during validation.
-
-     Return summary: validation checks (passed/fixed/needs review) and test results (total/passed/partial/failed)."
-   )
-   ```
-2. Relay results to the user.
-3. **Human Gate**: "Review the validation log at `./<skillname>/context/agent-validation-log.md` and test results at `./<skillname>/context/test-skill.md`. Would you like to loop back to the generate step to address gaps, or finalize?"
-4. If rebuild: go back to Step 6.
-5. If finalize:
-   a. Package the skill:
-      ```bash
-      cd ./<skillname> && zip -r ../<skillname>.skill . && cd -
-      ```
-   b. Shut down all teammates before deleting the team. Send a `shutdown_request` to each agent that was spawned during the workflow:
-      ```
-      SendMessage(type: "shutdown_request", recipient: "research", content: "Workflow complete, shutting down.")
-      SendMessage(type: "shutdown_request", recipient: "detailed-research", content: "Workflow complete, shutting down.")
-      SendMessage(type: "shutdown_request", recipient: "confirm-decisions", content: "Workflow complete, shutting down.")
-      SendMessage(type: "shutdown_request", recipient: "generate-skill", content: "Workflow complete, shutting down.")
-      SendMessage(type: "shutdown_request", recipient: "validate-skill", content: "Workflow complete, shutting down.")
-      ```
-      Wait for each agent to acknowledge the shutdown before proceeding. If an agent is already shut down, the request is a no-op.
-   c. Clean up the team:
-      ```
-      TeamDelete()
-      ```
-   d. Tell the user:
-      "Skill built successfully!
-      - Skill files: `./<skillname>/`
-      - Archive: `./<skillname>.skill`
-      - Working files: `./<skillname>/context/`"
-
-## Error Recovery
-
-If an agent fails, retry once with the error context. If it fails again, report to the user.
-
-## Progress Display
-
-At the start of each step, display progress to the user:
 ```
-[Step N/7] <Step name>
+PLUGIN_ROOT = $CLAUDE_PLUGIN_ROOT
 ```
 
-## Reference Files
+Directory layout:
 
-Agent instructions are packaged as reference files in `$PLUGIN_ROOT/skills/generate-skill/references/`. These contain the protocols, content guidelines, and best practices that agents need during execution.
+```
+.vibedata/                    ← plugin internals, never committed
+  <skill-name>/
+    session.json
+    answer-evaluation.json    ← written by answer-evaluator
 
-| File | Contains | Used by steps |
-|------|----------|---------------|
-| `protocols.md` | Sub-agent spawning rules, output handling | 1, 3, 6, 7 |
-| `skill-builder-practices/SKILL.md` | Content principles, skill structure, quality dimensions, anti-patterns | 6, 7 |
-| `skill-builder-practices/references/ba-patterns.md` | Domain-to-DE mapping, content depth rules | 6, 7 |
-| `skill-builder-practices/references/de-patterns.md` | Stack conventions, common LLM anti-patterns | 6, 7 |
+<skill-dir>/                  ← default: ./<skill-name>/
+  SKILL.md
+  references/
+  context/
+    clarifications.md
+    decisions.md
+    research-plan.md
+    agent-validation-log.md
+    test-skill.md
+    companion-skills.md
+```
 
-## Passing Agent Instructions
+---
 
-Before dispatching any sub-agent, read the relevant reference files (per the table above) and include their content in the sub-agent prompt within `<agent-instructions>` tags. This ensures agents have file formats, protocols, and best practices regardless of the user's local environment.
+## State Detection
 
-Example:
+On startup: glob `.vibedata/*/session.json`. For each found, derive `skill_dir` from `session.json.skill_dir` and scan artifacts. Artifact table — scan bottom-up, first match wins:
+
+| Artifact present | Phase |
+|---|---|
+| `context/agent-validation-log.md` + `context/test-skill.md` | `validation` |
+| `<skill-dir>/SKILL.md` | `generation` |
+| `context/decisions.md` | `decisions` |
+| `context/clarifications.md` with answered `#### Refinements` | `refinement` |
+| `context/clarifications.md` with `#### Refinements` (unanswered) | `refinement_pending` |
+| `context/clarifications.md` with any `**Answer:**` filled | `clarification` |
+| `context/clarifications.md` with all answers empty | `research` |
+| `session.json` only | `scoping` |
+| nothing | `fresh` |
+
+Artifact table overrides `session.json.current_phase` when they disagree. If multiple `.vibedata/*/session.json` files exist, ask the user which skill to continue.
+
+---
+
+## Intent Classification
+
+| Signal in user message | Intent |
+|---|---|
+| "build", "create", "new skill", "I need a skill" | `new_skill` |
+| "I answered", "continue", "ready", "done" | `resume` |
+| "validate" | `validate_only` |
+| "improve", "fix", "update", "missing" | `improve` |
+| "start over", "start fresh", "reset" | `start_fresh` |
+| "skip", "use defaults", "express" | `express` |
+| "how does", "what is", "why" | `process_question` |
+
+Default: `resume` when in-progress state exists, `new_skill` otherwise.
+
+---
+
+## State × Intent Dispatch
+
+| State | Intent | Action |
+|---|---|---|
+| `fresh` | `new_skill` | → Scoping |
+| `fresh` | `new_skill` + domain in message | → Scoping (pre-fill domain) |
+| `scoping` | `resume` | → Research |
+| `research` | `resume` | Show clarification status, prompt to answer |
+| `clarification` | `resume` | → answer-evaluator → [detailed-research] → Decisions |
+| `refinement_pending` | `resume` | Show refinement status, prompt to answer |
+| `refinement` | `resume` | → answer-evaluator → Decisions |
+| `decisions` | `resume` | → Generation |
+| `generation` | `resume` | → Validation |
+| `generation` | `validate_only` | → Validation |
+| `validation` | `resume` | Offer: finalize / improve / regenerate |
+| any + SKILL.md exists | `improve` | → Iterative |
+| any + SKILL.md exists | `validate_only` | → Validation |
+| any | `start_fresh` | Delete `.vibedata/<name>/` + `context/` → Scoping |
+| any | `express` | Auto-fill empty answers → Decisions |
+| any | `process_question` | Answer inline |
+
+---
+
+## Phases
+
+### Scoping (inline — no agent)
+
+1. Ask: skill type (platform / domain / source / data-engineering), domain/topic, and optionally "what does Claude typically get wrong in this area?"
+2. Derive `skill_name` (kebab-case from domain), confirm with user
+3. Create directories: `.vibedata/<skill-name>/`, `<skill-dir>/`, `<skill-dir>/context/`, `<skill-dir>/references/`
+4. Write `.vibedata/<skill-name>/session.json`:
+   ```json
+   {
+     "skill_name": "<skill-name>",
+     "skill_type": "<skill-type>",
+     "domain": "<domain>",
+     "skill_dir": "./<skill-name>/",
+     "created_at": "<ISO timestamp>",
+     "last_activity": "<ISO timestamp>",
+     "current_phase": "scoping",
+     "phases_completed": [],
+     "mode": "<guided|express>",
+     "research_dimensions_used": [],
+     "clarification_status": { "total_questions": 0, "answered": 0 },
+     "auto_filled": false
+   }
+   ```
+5. Detect mode from user message (express if "express"/"skip research"/detailed spec provided)
+6. → Research (guided) or → Decisions (express)
+
+### Research
+
+```
+Task(subagent_type: "skill-builder:research-orchestrator")
+Passes: skill_type, domain, context_dir, workspace_dir
+```
+
+- After agent returns: check `context/clarifications.md` for `scope_recommendation: true` in frontmatter — if found, surface to user and stop
+- Tell user: questions are in `<context_dir>/clarifications.md` — fill in `**Answer:**` fields and say "done" when ready
+- Update `session.json`: `current_phase = research`, append `research` to `phases_completed`
+
+### Clarification Gate
+
+On resume from `clarification` state:
+
+```
+Task(subagent_type: "skill-builder:answer-evaluator")
+Passes: context_dir, workspace_dir
+```
+
+- Read `answer-evaluation.json` from `.vibedata/<skill-name>/`
+- If `empty_count > 0` and user wants auto-fill: copy each empty `**Answer:**` from its question's `**Recommendation:**` value; set `session.json.auto_filled = true`
+- If `verdict != "sufficient"` → Detailed Research
+- If `verdict == "sufficient"` → Decisions
+
+### Detailed Research (conditional)
+
+Skipped when `answer-evaluation.json.verdict == "sufficient"`.
+
+```
+Task(subagent_type: "skill-builder:detailed-research")
+Passes: skill_type, domain, context_dir, workspace_dir
+```
+
+- Tell user: refinement questions added under `#### Refinements` in `context/clarifications.md` — answer them and say "done"
+- On resume (`refinement` state): re-run answer-evaluator → Decisions
+
+### Decisions
+
+```
+Task(subagent_type: "skill-builder:confirm-decisions")
+Passes: skill_type, domain, context_dir, skill_dir, workspace_dir
+```
+
+- Human gate: tell user decisions are in `context/decisions.md` — review and confirm or provide corrections
+- If corrections: re-spawn confirm-decisions with correction text embedded in prompt
+- Update `session.json`: `current_phase = decisions`, append `decisions` to `phases_completed`
+
+### Generation
+
+```
+Task(subagent_type: "skill-builder:generate-skill")
+Passes: skill_type, domain, skill_name, context_dir, skill_dir, workspace_dir
+        + skill-builder-practices content inline (see Agent Call Format)
+```
+
+- Human gate: relay generated structure to user, ask for confirmation or changes
+- Update `session.json`: `current_phase = generation`, append `generation` to `phases_completed`
+
+### Validation
+
+```
+Task(subagent_type: "skill-builder:validate-skill")
+Passes: skill_type, domain, skill_name, context_dir, skill_dir, workspace_dir
+        + skill-builder-practices content inline (see Agent Call Format)
+```
+
+- Agent writes: `context/agent-validation-log.md`, `context/test-skill.md`, `context/companion-skills.md`
+- Relay results summary to user
+- Offer three options: finalize / improve a section (→ Iterative) / regenerate (→ Generation)
+- On finalize: tell user skill is ready at `<skill-dir>`
+
+### Iterative
+
+```
+Task(subagent_type: "skill-builder:refine-skill")
+Passes: skill_dir, context_dir, workspace_dir, skill_type,
+        current user message (the improvement request)
+        + skill-builder-practices content inline (see Agent Call Format)
+```
+
+- Supports `/rewrite` (full rewrite), `/validate` (re-run validation), `@file` (target specific file)
+- After agent returns: ask user to review changes, offer further iterations or validation
+
+---
+
+## Workflow Modes
+
+| Mode | Trigger | Phase sequence |
+|---|---|---|
+| `guided` | default | Scoping → Research → Clarification → [Detailed research] → Decisions → Generation → Validation |
+| `express` | "express", "skip research", detailed spec in first message | Scoping → Decisions → Generation → Validation |
+| `iterative` | SKILL.md exists + "improve"/"fix"/"update" | → Iterative directly |
+
+Mode is detected at Scoping and stored in `session.json.mode`. Explicit mode in user message always wins.
+
+---
+
+## Agent Call Format
+
+Every agent call uses this base structure. Read `$PLUGIN_ROOT/references/workspace-context.md` and inject inline:
+
 ```
 Task(
-  subagent_type: "skill-builder:...",
-  prompt: "...
+  subagent_type: "skill-builder:<agent>",
+  prompt: "
+    Skill type: <skill_type>
+    Domain: <domain>
+    Skill name: <skill_name>
+    Context directory: <context_dir>
+    Skill directory: <skill_dir>
+    Workspace directory: .vibedata/<skill_name>/
 
-  <agent-instructions>
-  {content of references/protocols.md}
-  </agent-instructions>
+    <agent-instructions>
+    {content of $PLUGIN_ROOT/references/workspace-context.md}
+    </agent-instructions>
 
-  Return ...")
+    Return: ..."
+)
 ```
+
+For generate-skill, validate-skill, and refine-skill — also read and inject the skill-builder-practices content:
+
+```
+    <skill-practices>
+    {content of $PLUGIN_ROOT/references/skill-builder-practices/SKILL.md}
+    {content of $PLUGIN_ROOT/references/skill-builder-practices/references/ba-patterns.md}
+    {content of $PLUGIN_ROOT/references/skill-builder-practices/references/de-patterns.md}
+    </skill-practices>
+```
+
+No `TeamCreate`, `TaskCreate`, `SendMessage`, or `TeamDelete`.
