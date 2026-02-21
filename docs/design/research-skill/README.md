@@ -12,10 +12,10 @@ The skill generation workflow's research phase is implemented as 21 separate age
 This creates three problems:
 
 1. **Not distributable.** Teams cannot swap out the research phase. All research logic is baked into the app bundle — if a team wants different dimensions or a different research strategy, they have to fork the app.
-2. **Not updatable.** The orchestrator and all 19 research agents ship together and can only be updated via an app release.
+2. **Not updatable.** All 21 files ship together and can only be changed via an app release.
 3. **Spread logic.** Research behavior is defined across 21 files with no single document describing what the research phase does or how to customize it.
 
-The research phase has a stable contract: given `skill_type` and `domain`, produce `clarifications.md`. It's a natural candidate to be packaged as a distributable skill.
+The research phase has a stable contract: given `skill_type` and `domain`, produce `clarifications.md`. It is a natural candidate to be packaged as a distributable skill.
 
 ---
 
@@ -25,12 +25,23 @@ Split the research phase into two layers:
 
 | Layer | What | Owned by |
 |---|---|---|
-| **App-bundled** | `research-orchestrator.md`, `consolidate-research.md` | App release |
-| **Research skill** | `research-planner.md` + 18 dimension agents | Skill package (marketplace-updatable) |
+| **App-bundled** | `research-orchestrator.md` | App release |
+| **Research skill** | Coordinator + dimension specs + scoring + consolidation logic | Skill package (marketplace-updatable) |
 
-The orchestrator and consolidator are the structural glue of the research phase — they define how it integrates with the workflow. They stay app-bundled. The planner and dimension agents contain the research *content* (what questions to ask, how to score dimensions) — these move into a distributable skill package.
+The orchestrator is the app's entry point for step 0 — it stays app-bundled and unchanged from the app's perspective.
 
-The orchestrator's interface is unchanged: it still spawns `skill-builder:research-planner`, `skill-builder:research-entities`, etc. Those agent names are resolved from `.claude/agents/` as today. The only difference is *how* they get there — via skill deployment instead of the app's flat agent bundle.
+Everything between them — dimension selection, scoring, parallel research, and consolidation — moves into the research skill. The skill is a **proper coordinator** (`SKILL.md` with full instructions) backed by reference files. It has no spawnable agent files of its own: dimension specs live in `references/dimensions/` and are passed inline to `general-purpose` Tasks when research runs.
+
+The result: 20 agent files (planner + 18 dimensions + consolidator) are replaced by one skill with reference files.
+
+### How the orchestrator uses the skill
+
+The orchestrator reads `.claude/skills/research/SKILL.md` and follows its instructions — the skill coordinator runs within the orchestrator's execution context. The orchestrator's external interface is unchanged:
+
+- **Input** (from app): `skill_type`, `domain`, context directory
+- **Output** (to app): `context/clarifications.md` written to disk
+
+The app's Rust workflow pipeline (`workflow.rs` step 0) is **zero-change**.
 
 ---
 
@@ -38,158 +49,142 @@ The orchestrator's interface is unchanged: it still spawns `skill-builder:resear
 
 ```
 agent-sources/workspace/skills/research/
-  SKILL.md                   ← metadata: name=research, type=skill-builder
-  agents/
-    research-planner.md      ← moved from agents/
-    research-entities.md     ← moved from agents/
-    research-metrics.md
-    research-data-quality.md
-    research-business-rules.md
-    research-segmentation-and-periods.md
-    research-modeling-patterns.md
-    research-pattern-interactions.md
-    research-load-merge-patterns.md
-    research-historization.md
-    research-layer-design.md
-    research-platform-behavioral-overrides.md
-    research-config-patterns.md
-    research-integration-orchestration.md
-    research-operational-failure-modes.md
-    research-extraction.md
-    research-field-semantics.md
-    research-lifecycle-and-state.md
-    research-reconciliation.md
+  SKILL.md                        ← coordinator with full instructions
+  references/
+    dimension-sets.md             ← type-scoped dimension tables (domain/de/platform/source)
+    scoring-rubric.md             ← scoring criteria + research-plan.md format spec
+    consolidation-handoff.md      ← canonical clarifications.md format spec (extracted from docs/design/clarifications-rendering/canonical-format.md)
+    dimensions/
+      entities.md                 ← dimension research spec (focus, approach, success criteria)
+      metrics.md
+      data-quality.md
+      business-rules.md
+      segmentation-and-periods.md
+      modeling-patterns.md
+      pattern-interactions.md
+      load-merge-patterns.md
+      historization.md
+      layer-design.md
+      platform-behavioral-overrides.md
+      config-patterns.md
+      integration-orchestration.md
+      operational-failure-modes.md
+      extraction.md
+      field-semantics.md
+      lifecycle-and-state.md
+      reconciliation.md
 ```
 
-`SKILL.md` is a minimal metadata file:
+### SKILL.md instructions (summary)
 
-```yaml
+The research skill is a **pure computation unit** — it takes inputs, returns inline text, and writes nothing to disk. It has no knowledge of context directories or file paths.
+
+The coordinator does four things in sequence:
+
+**1. Select dimension set**
+Read `references/dimension-sets.md`, select the 5–6 dimensions for the given `skill_type`.
+
+**2. Score and select**
+Score each dimension against the domain inline (using `references/scoring-rubric.md`). No Opus planner sub-agent — the skill's own extended thinking handles this. Select top 3–5.
+
+**3. Parallel dimension research**
+For each selected dimension, spawn a `Task(subagent_type: "general-purpose")` with the dimension spec from `references/dimensions/{slug}.md` plus the domain and tailored focus line embedded inline. Launch all in the same turn for parallelism. Wait for all to return their research text.
+
+**4. Consolidate**
+Deduplicate and synthesize all dimension findings into `clarifications.md` format, following `references/consolidation-handoff.md` exactly. That reference contains the full canonical format spec (YAML frontmatter fields, heading hierarchy, question template, choice/recommendation/answer field rules, ID scheme). Produce the complete `clarifications.md` content as inline text — including the YAML frontmatter with `question_count`, `sections`, `duplicates_removed`, and `refinement_count`.
+
+**Return to orchestrator** — inline text containing:
+- Scored dimension table (scores, reasons, companion notes, tailored focus lines)
+- Complete `clarifications.md` content, formatted per the canonical spec
+
+The skill never calls Write. It has no knowledge of context directories.
+
+### What the orchestrator does with the returned text
+
+The orchestrator receives the skill's inline response and handles all file I/O:
+
+1. Write `context/research-plan.md` from the scored dimension table in the response
+2. Write `context/clarifications.md` from the formatted clarifications content in the response
+
 ---
-name: research
-type: skill-builder
-description: >
-  Research phase skill for Skill Builder. Provides the planner and 18 dimension
-  agents used by the research orchestrator to generate clarifications.md.
+
+## Outputs preserved
+
+| Output | Written by | Format |
+|---|---|---|
+| `context/research-plan.md` | Orchestrator (from skill's inline response) | Scores table + selected dimensions (same as today) |
+| `context/clarifications.md` | Orchestrator (from skill's inline response) | Canonical format — identical to today's output |
+
+Both files are identical in format to the current implementation. No downstream agents (`detailed-research`, `confirm-decisions`, `generate-skill`, `validate-skill`) require any changes.
+
+The skill produces correctly-formatted `clarifications.md` content because `references/consolidation-handoff.md` contains the full canonical spec: YAML frontmatter fields, heading hierarchy (`# Research Clarifications` → `## Section` → `### Q{n}:` → `#### Refinements` → `##### R{n}.{m}:`), question template (body, choices, `**Recommendation:**`, `**Answer:**`), and all formatting rules. This is the same spec the app's Rust parser and UI renderer depend on.
+
 ---
+
+## App impact: zero
+
+The Rust workflow pipeline is unchanged end-to-end:
+
+```
+workflow.rs step 0
+  prompt_template: "research-orchestrator.md"   ← unchanged
+  output_file: "context/clarifications.md"      ← unchanged
+  max_turns: 50                                  ← unchanged
 ```
 
-No instructions. No trigger. The skill's entire effect is agent deployment — when active, its `agents/` are available at `.claude/agents/`. When a team imports a custom research skill from the marketplace, their agents replace the defaults.
+The orchestrator's **content** changes (it now loads and follows the research skill rather than spawning 19 sub-agents directly), but this is a prompt change not a code change. No DB migrations. No new Rust functions. No changes to `skill.rs`, `types.rs`, or `workflow.rs`.
 
----
-
-## App changes
-
-### Agent deployment pipeline — new layer
-
-Today:
-```
-agents/*.md  →  copy_agents_to_claude_dir  →  .claude/agents/
-```
-
-After this change:
-```
-agents/*.md  →  copy_agents_to_claude_dir  →  .claude/agents/   (base: orchestrator, consolidator, etc.)
-skills/research/agents/*.md  →  deploy_skill_agents  →  .claude/agents/   (overlay: planner + 18 dims)
-```
-
-Skill agents deploy on top of base agents. For the research skill, there are no name conflicts because the orchestrator and consolidator have distinct names.
-
-### New functions in `skill.rs`
-
-```rust
-fn deploy_skill_agents(skill_dir: &Path, workspace_path: &str) -> Result<(), String>
-```
-Copies `{skill_dir}/agents/*.md` → `.claude/agents/`. Called when a skill-builder skill is activated.
-
-```rust
-fn remove_skill_agents(skill_dir: &Path, workspace_path: &str) -> Result<(), String>
-```
-Deletes matching agent filenames from `.claude/agents/`. Called when a skill-builder skill is deactivated or deleted.
-
-### Wiring in `skill.rs`
-
-| Function | Change |
-|---|---|
-| `upload_skill_inner` | After extraction: if `skill_type == "skill-builder"` and `agents/` exists → `deploy_skill_agents` |
-| `seed_bundled_skills` | After copy: if skill-builder and active → `deploy_skill_agents` |
-| `toggle_skill_active_inner` | Activate → `deploy_skill_agents`; deactivate → `remove_skill_agents` |
-| `delete_imported_skill_inner` | Before dir deletion → `remove_skill_agents` |
-
-### CLAUDE.md generation — `workflow.rs`
-
-`generate_skills_section` must skip `type: skill-builder` skills. They have no user-facing trigger — adding them to CLAUDE.md would register them as conversation skills, which is incorrect. Skill-builder skills are agent bundles, not Claude Code skills.
-
-### DB migration (migration 14) — `db.rs`
-
-Add `skill_type TEXT` column to `imported_skills` table so `generate_skills_section` and toggle/delete don't need to read SKILL.md from disk on every operation.
-
-```sql
-ALTER TABLE imported_skills ADD COLUMN skill_type TEXT;
-```
-
-Backfill existing rows to `NULL` (treated as non-skill-builder). Add `skill_type` to `ImportedSkill` struct in `types.rs`.
-
-### `ensure_workspace_prompts` ordering
-
-No change needed. The existing flow already works:
-1. `copy_agents_to_claude_dir` deploys base agents (orchestrator, consolidator, etc.)
-2. `seed_bundled_skills` deploys bundled skills, including `deploy_skill_agents` for the research skill
-
-Base agents deploy first; skill agents overlay second. On conflict, skill agents win — this is intentional (marketplace update overrides default).
+The research skill does not need the `deploy_skill_agents` mechanism from the earlier design because it has no `agents/` directory to deploy. It is a pure `SKILL.md` + `references/` skill — the same shape as `skill-builder-practices`.
 
 ---
 
 ## Plugin / T1-T4 compatibility
 
-The Claude Code CLI plugin resolves `skill-builder:research-planner` from `agents/research-planner.md` in the plugin root. If the planner and dimension agents move out of `agents/`, T1-T4 tests break.
+The dimension agent files (`research-entities.md`, `research-planner.md`, etc.) currently live in `agents/` and are resolved by the Claude Code CLI via `skill-builder:{name}`. After this change, those files no longer exist — the research skill uses `general-purpose` Tasks with inline prompts instead.
 
-**Resolution: build-time sync via `scripts/build-research-skill.sh`**
+The plugin's coordinator (`skills/generate-skill/SKILL.md`) calls `skill-builder:research-orchestrator`. The orchestrator now reads the research skill from `.claude/skills/research/SKILL.md`. For the plugin, this path resolves relative to `CLAUDE_PLUGIN_ROOT`.
 
-The research skill (`skills/research/agents/`) is the source of truth for dimension agent content. A new script mirrors these files into `agents/` for plugin use:
+**No build-sync script needed** — there are no agent files to mirror. The skill's reference files (`references/dimensions/*.md`) are read by the skill coordinator at runtime, not by the plugin CLI's agent resolution.
 
-```bash
-scripts/build-research-skill.sh        # sync skills/research/agents/ → agents/
-scripts/build-research-skill.sh --check # CI: verify agents/ matches skills/research/agents/
-```
-
-Same pattern as `scripts/build-plugin-skill.sh` which syncs `agent-sources/workspace/CLAUDE.md` into `skills/generate-skill/references/`.
-
-Plugin tests (T1-T4) run after the build step. `agents/` entries for the planner and dimension agents become generated artifacts, not sources. Edits to dimension agents happen in `skills/research/agents/`.
+T1–T4 test impact: the orchestrator's prompt changes, so T1 (single-agent smoke test) will reflect the new behaviour. T2–T4 run through the full workflow and validate `clarifications.md` format — these pass as long as the output contract is unchanged.
 
 ---
 
 ## What stays in `agents/`
 
-After the migration, `agents/` contains only app-owned agents:
-
 ```
 agents/
-  research-orchestrator.md   ← step 0 entry point
-  consolidate-research.md    ← post-research consolidation
-  detailed-research.md       ← step 3
-  confirm-decisions.md       ← step 5
-  generate-skill.md          ← step 6
-  validate-skill.md          ← step 7
+  research-orchestrator.md   ← step 0 entry point (content simplified, interface unchanged)
+  detailed-research.md       ← step 3 (unchanged)
+  confirm-decisions.md       ← step 5 (unchanged)
+  generate-skill.md          ← step 6 (unchanged)
+  validate-skill.md          ← step 7 (unchanged)
   answer-evaluator.md
   companion-recommender.md
   refine-skill.md
   test-skill.md
 ```
 
-`research-planner.md` and the 18 dimension agents are removed.
+`research-planner.md`, `consolidate-research.md`, and the 18 dimension agents are deleted — their logic moves into the research skill.
 
 ---
 
 ## Customization model
 
-When a team imports a replacement research skill from the marketplace:
+When a team imports a replacement research skill from the marketplace (VD-696):
 
 1. `upload_skill_inner` extracts the zip to `.claude/skills/research/`
-2. `deploy_skill_agents` copies the skill's `agents/*.md` to `.claude/agents/`, overwriting the defaults
-3. The orchestrator spawns the same agent names — but now they execute the custom prompts
+2. The orchestrator reads `.claude/skills/research/SKILL.md` — it now follows the custom skill's coordinator instructions
+3. The custom skill's `references/dimensions/` specs drive what questions get asked
 4. The team can deactivate to revert to the bundled defaults
 
-The orchestrator and consolidator are never in the skill package — they cannot be overridden this way. Teams that need to change the orchestration structure would need a different mechanism (out of scope for VD-851).
+Teams can customise:
+- Which dimensions are included per skill type
+- The scoring rubric and selection threshold
+- The research approach and focus for each dimension
+- The format of the research text returned to the consolidator
+
+Teams cannot override the orchestrator or consolidator this way — those remain app-controlled.
 
 ---
 
@@ -197,22 +192,24 @@ The orchestrator and consolidator are never in the skill package — they cannot
 
 | File | Change |
 |---|---|
-| `agents/research-planner.md` | Delete (moved to skill) |
-| `agents/research-{dim}.md` × 18 | Delete (moved to skill) |
-| `agent-sources/workspace/skills/research/SKILL.md` | Create |
-| `agent-sources/workspace/skills/research/agents/*.md` | Create (19 files moved) |
-| `scripts/build-research-skill.sh` | Create (sync skill agents → agents/ for plugin) |
-| `app/src-tauri/src/db.rs` | Migration 14: skill_type on imported_skills |
-| `app/src-tauri/src/types.rs` | skill_type field on ImportedSkill |
-| `app/src-tauri/src/commands/skill.rs` | deploy/remove skill agents; wiring |
-| `app/src-tauri/src/commands/workflow.rs` | Filter skill-builder from CLAUDE.md |
-| `app/tests/TEST_MANIFEST.md` | Update notes on research agent source |
+| `agents/research-planner.md` | **Delete** |
+| `agents/research-{dim}.md` × 18 | **Delete** (18 files) |
+| `agents/consolidate-research.md` | **Delete** — consolidation absorbed into research skill |
+| `agents/research-orchestrator.md` | **Rewrite** — loads research skill, writes both output files from returned text |
+| `agent-sources/workspace/skills/research/SKILL.md` | **Create** |
+| `agent-sources/workspace/skills/research/references/**` | **Create** (dimension-sets, scoring-rubric, consolidation-handoff with canonical clarifications.md spec, 18 dimension specs) |
+| `skills/generate-skill/SKILL.md` | **No change** |
+| `app/src-tauri/src/commands/workflow.rs` | **No change** |
+| `app/src-tauri/src/commands/skill.rs` | **No change** |
+| `app/src-tauri/src/db.rs` | **No change** |
+| `app/tests/TEST_MANIFEST.md` | **Update** — note removed agent files, updated T1 scope |
 
 ---
 
 ## Out of scope
 
-- Changing the orchestrator's behavior or interface
-- UI for browsing/previewing skill agents
+- Changing the consolidator's behaviour or interface
+- Changing how `clarifications.md` is consumed downstream
+- UI for browsing or editing research skill reference files
 - Multiple simultaneous research skill overrides
-- Orchestrator or consolidator as marketplace-updatable (separate concern)
+- Making the orchestrator or consolidator marketplace-updatable (separate concern)
