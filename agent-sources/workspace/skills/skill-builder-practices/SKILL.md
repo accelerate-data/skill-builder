@@ -5,6 +5,10 @@ description: >
   for generating data engineering skills. Use when generating, validating, refining,
   or rewriting a skill. Also use when reviewing skill quality or planning skill content.
   This skill ships with Skill Builder — do not modify name, description, or triggers.
+type: skill-builder
+domain: Skill Builder
+version: 1.0.0
+tools: Read, Write, Edit, Glob, Grep, Bash
 trigger: >
   When working on any skill generation, validation, or refinement task,
   read and follow the skill at `.claude/skills/skill-builder-practices/SKILL.md`.
