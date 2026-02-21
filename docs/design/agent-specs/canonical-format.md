@@ -1,16 +1,12 @@
 # Canonical Workflow Artifact Formats
 
-Authoritative spec for all artifacts produced and consumed during the skill-builder workflow. Covers the agent ↔ app contract: what agents write, what the app parses, and the format both sides must agree on.
-
-Tracked in VD-819. Referenced by VD-807 (agent redesign) and VD-817 (UI parser).
-
-**Compliance tests:** Agent prompts validated by `./scripts/test-plugin.sh t1` (T1 canonical format checks). Mock templates and fixtures validated by `npm run test:unit` (`canonical-format.test.ts`). Rust parsers validated by `cargo test commands::workflow`. TS parsers validated by `npm run test:unit` (`reasoning-parser.test.ts`).
+Authoritative format spec for all artifacts produced and consumed during the skill-builder workflow. This is the agent ↔ app contract: what agents write and what the app expects to parse.
 
 ---
 
 # Canonical `clarifications.md` Format
 
-Written by `consolidate-research` (Step 1). Updated in-place by `detailed-research` (Step 3, inline consolidation). Read by `answer-evaluator` (both gates), `detailed-research`, `confirm-decisions`, and the Rust `autofill_answers` / `autofill_refinement_answers` / `parse_scope_recommendation` parsers.
+Written by the research skill (via `research-orchestrator`, Step 0). Updated in-place by `detailed-research` (Step 3). Read by `answer-evaluator`, `detailed-research`, and `confirm-decisions`.
 
 ---
 
@@ -141,13 +137,13 @@ C. Other (please specify)
 
 | Level | Format | Example | Who creates it |
 |---|---|---|---|
-| Top-level question | `Q{n}` | `Q1`, `Q12` | consolidate-research (Step 1) |
-| Refinement | `R{n}.{m}` | `R1.1`, `R12.2` | detailed-research sub-agents (Step 3) |
-| Sub-refinement | `R{n}.{m}{a}` | `R12.1a`, `R12.2b` | detailed-research consolidation (Step 3) |
+| Top-level question | `Q{n}` | `Q1`, `Q12` | research skill (Step 0) |
+| Refinement | `R{n}.{m}` | `R1.1`, `R12.2` | detailed-research (Step 3) |
+| Sub-refinement | `R{n}.{m}{a}` | `R12.1a`, `R12.2b` | detailed-research (Step 3) |
 
 The parent is always embedded in the ID:
-- `R1.1` -> refinement 1 of **Q1**
-- `R12.2b` -> sub-refinement (b) of **R12.2**, which itself refines **Q12**
+- `R1.1` → refinement 1 of **Q1**
+- `R12.2b` → sub-refinement (b) of **R12.2**, which itself refines **Q12**
 
 ---
 
@@ -199,29 +195,9 @@ Q17 is a required question (listed in priority_questions) but has no answer. Thi
 
 ---
 
-## Parser Notes — clarifications.md
-
-Regex patterns for key fields (used by the Rust autofill parser and the UI renderer):
-
-| Field | Regex | Notes |
-|---|---|---|
-| Section heading | `^## (.+)` | Resets recommendation state |
-| Question heading | `^### (Q\d+): (.+)$` | Groups: ID, title |
-| Required group | `^### Required$` | Marks start of required questions within a section. Also resets recommendation state in Rust `autofill_answers` (matches `starts_with("### ")`) |
-| Optional group | `^### Optional$` | Marks start of optional questions within a section. Also resets recommendation state |
-| Refinement heading | `^##### (R\d+\.\d+[a-z]?): (.+)$` | Groups: ID, title |
-| Refinement container | `^#### Refinements$` | Marks start of refinement block |
-| Choice | `^([A-Z])\. (.+)$` | Groups: letter, text |
-| Consolidated from | `^_Consolidated from: (.+)_$` | Group: source list |
-| Recommendation | `^\*\*Recommendation:\*\*\s*(.+)$` | Group: recommendation text |
-| Answer | `^\*\*Answer:\*\*\s*(.*)$` | Group: answer text (may be empty) |
-| Frontmatter | `^---$` delimited YAML block | Standard YAML frontmatter |
-
----
-
 # Canonical `decisions.md` Format
 
-Written by `confirm-decisions` (Step 5). Read by `generate-skill`, `validate-skill`, `validate-quality`, `test-skill`, `companion-recommender`, and the app's Rust/TypeScript parsers.
+Written by `confirm-decisions` (Step 5). Read by `generate-skill` and `validate-skill`.
 
 ---
 
@@ -307,22 +283,9 @@ The research planner determined the skill scope is too broad. See `clarification
 
 ---
 
-## Parser Notes — decisions.md
-
-| Field | Regex | Notes |
-|---|---|---|
-| Decision heading | `^### (D\d+): (.+)$` | Groups: ID, title. Used by `countDecisions()` |
-| Decision count (frontmatter) | `^decision_count:\s*(\d+)` | Primary source for count |
-| Contradictory inputs | `^contradictory_inputs:\s*true` | Triggers `parse_decisions_guard` in Rust |
-| Scope recommendation | `^scope_recommendation:\s*true` | Stub file indicator |
-| Status field | `^\- \*\*Status:\*\*\s*(.+)$` | Group: status value |
-| Frontmatter | `^---$` delimited YAML block | Standard YAML frontmatter |
-
----
-
 # Canonical `research-plan.md` Format
 
-Written by `research-planner` (Step 1, via `research-orchestrator`). Read by `companion-recommender` (Step 7). Not parsed by app code — rendered as markdown in the UI.
+Written by the research skill (via `research-orchestrator`, Step 0). Read by `companion-recommender` (Step 7). Rendered as markdown in the UI.
 
 ## YAML Frontmatter
 
@@ -360,7 +323,7 @@ dimensions_selected: 4                # required — dimensions chosen for resea
 
 # Canonical `test-skill.md` Format
 
-Written by `validate-skill` orchestrator (Step 7). Read by UI (rendered as markdown). Frontmatter is structured for potential programmatic use.
+Written by `validate-skill` orchestrator (Step 7). Rendered as markdown in the UI.
 
 ## YAML Frontmatter
 
@@ -402,7 +365,7 @@ scope_recommendation: true    # optional — stub indicator
 
 # Canonical `agent-validation-log.md` Format
 
-Written by `validate-skill` orchestrator (Step 7). Read by UI (rendered as markdown). No YAML frontmatter (unless scope recommendation stub).
+Written by `validate-skill` orchestrator (Step 7). Rendered as markdown in the UI. No YAML frontmatter (unless scope recommendation stub).
 
 ## Structure
 
@@ -435,7 +398,7 @@ Written by `validate-skill` orchestrator (Step 7). Read by UI (rendered as markd
 
 # Canonical `companion-skills.md` Format
 
-Written by `validate-skill` orchestrator (Step 7, via `companion-recommender`). Read by UI (YAML frontmatter is structured for programmatic parsing).
+Written by `validate-skill` orchestrator (Step 7). YAML frontmatter parsed programmatically by the app; markdown body rendered in the UI.
 
 ## YAML Frontmatter
 
@@ -490,7 +453,7 @@ companions:
 
 # Canonical `user-context.md` Format
 
-Generated at runtime by Rust `format_user_context()` in `workflow.rs`. Written to the workspace directory so agents can read it. Not a mock template artifact — generated from user settings (industry, function/role, intake form responses).
+Generated at runtime by Rust and written to the workspace directory (`~/.vibedata/{skill-name}/`) so agents can read it. Source data: user settings (industry, function/role) and intake form responses (stored as JSON in the DB).
 
 ## Structure
 
@@ -511,13 +474,12 @@ Generated at runtime by Rust `format_user_context()` in `workflow.rs`. Written t
 - Fields are only included if the user provided a non-empty value
 - The heading is always `## User Context` (H2)
 - If no fields have values, the file is not written
-- Validated by Rust unit tests (`cargo test commands::workflow`)
 
 ---
 
 # Canonical `answer-evaluation.json` Format
 
-Written by `answer-evaluator` (Haiku). Runs at two gates: between Step 2 and Step 3 (evaluates Q-level answers), and between Step 4 and Step 5 (evaluates both Q-level and R-level answers — fresh evaluation each time). Read by Rust `evaluate_answers` command, frontend `TransitionGateDialog`, and `detailed-research` agent.
+Written by `answer-evaluator`. Runs at two gates: after Step 2 (Q-level answers) and after Step 4 (Q-level and R-level answers). Read by the app and by `detailed-research`.
 
 ## JSON Schema
 
@@ -553,23 +515,3 @@ Written by `answer-evaluator` (Haiku). Runs at two gates: between Step 2 and Ste
 - `answered_count + empty_count + vague_count == total_count` (where `answered_count` includes both `clear` and `needs_refinement`)
 - `verdict` logic: `sufficient` when all answered, `insufficient` when none answered, `mixed` otherwise
 - Output must be valid JSON with no markdown fences or extra text
-- Validated by `npm run test:unit` (`canonical-format.test.ts`)
-
----
-
-# Artifact I/O Map
-
-Every agent's inputs and outputs, with the canonical format each expects.
-
-| Agent | Reads (input) | Writes (output) | Format reference |
-|---|---|---|---|
-| `research-planner` | `user-context.md`, dimension catalog (inline) | `context/research-plan.md` | research-plan.md spec above |
-| `research-orchestrator` | research-plan.md (via planner return) | `context/clarifications.md` (via consolidate-research) | clarifications.md spec above |
-| `consolidate-research` | sub-agent text (inline) | `context/clarifications.md` | clarifications.md spec above |
-| `answer-evaluator` | `context/clarifications.md` | `workspace/answer-evaluation.json` | answer-evaluation.json spec above |
-| `detailed-research` | `context/clarifications.md`, `workspace/answer-evaluation.json` | Updates `context/clarifications.md` (adds refinements) | clarifications.md spec above |
-| `confirm-decisions` | `context/clarifications.md` | `context/decisions.md` | decisions.md spec above. Does NOT read `answer-evaluation.json` — gate 2 enforces answer quality before this agent runs |
-| `generate-skill` | `context/decisions.md` | `SKILL.md`, `references/*.md` | Skill format (see best-practices.md) |
-| `validate-skill` | `context/decisions.md`, `SKILL.md`, `references/*.md` | `context/agent-validation-log.md`, `context/test-skill.md`, `context/companion-skills.md` | Specs above |
-
-All agents also read `user-context.md` from the workspace directory (input provided by the Rust runtime, not by other agents).
