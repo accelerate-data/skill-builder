@@ -6,14 +6,15 @@ For artifact file formats, see [canonical-format.md](canonical-format.md).
 
 ---
 
-## Two-Path System
+## Three Storage Locations
 
-| Path | Default | Purpose | Lifecycle |
+| Location | Path | Purpose | Lifecycle |
 |---|---|---|---|
-| **Workspace** `{home}/.vibedata/` | Fixed name, home dir resolved at runtime | Transient working directory: agent infrastructure, per-skill scratch dirs, logs | Recreated on startup if missing |
-| **Skills path** `~/skill-builder/` | User-configured (Settings screen) | Permanent skill output: context files, SKILL.md, references | Persists across app restarts; git-tracked |
+| **Database** | Tauri app data dir (`app_data_dir()`), e.g. `~/Library/Application Support/skill-builder/skill-builder.db` on macOS | All workflow state, settings, agent runs — single source of truth after reconciliation | Persists permanently; never in the workspace |
+| **Workspace** | `{home}/.vibedata/` | Transient working directory: agent infrastructure, per-skill scratch dirs, logs | Recreated on startup if missing |
+| **Skills path** | User-configured, default `~/skill-builder/` | Permanent skill output: context files, SKILL.md, references | Persists across app restarts; git-tracked |
 
-The folder name `.vibedata` is hardcoded (`WORKSPACE_DIR_NAME`). The parent is `dirs::home_dir()` — it follows the user's home directory, not a fixed absolute path.
+The workspace folder name `.vibedata` is hardcoded (`WORKSPACE_DIR_NAME`). The parent is `dirs::home_dir()` — it follows the user's home directory, not a fixed absolute path.
 
 The skills path defaults to `~/skill-builder/` but is set by the user on first launch. It can be changed in Settings; the app moves the directory and preserves git history.
 
@@ -25,7 +26,6 @@ The skills path defaults to `~/skill-builder/` but is set by the user on first l
 
 ```
 ~/.vibedata/
-├── skill-builder.db              # SQLite — all workflow state, settings, agent runs
 ├── .claude/
 │   ├── CLAUDE.md                 # Rebuilt on startup: base + active skills + user customization
 │   ├── agents/                   # Bundled agent prompts, copied from agents/ on startup
@@ -71,7 +71,7 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
 
 | File | Written by | When | Path |
 |---|---|---|---|
-| `skill-builder.db` | Rust | Continuous | `{workspace}/` |
+| `skill-builder.db` | Rust | Continuous | Tauri app data dir |
 | `.claude/CLAUDE.md` | Rust | Startup + skill import/remove | `{workspace}/.claude/` |
 | `.claude/agents/*.md` | Rust | Startup (copied from bundle) | `{workspace}/.claude/agents/` |
 | `.claude/skills/` | Rust | Startup (seeded from bundle) | `{workspace}/.claude/skills/` |
