@@ -37,8 +37,19 @@ Two agents delegate to skills:
 
 Canonical format for every artifact: [canonical-format.md](canonical-format.md).
 
+Storage layout (workspace, skills path, database, file ownership, startup sequence): [storage.md](storage.md).
+
 ---
 
 ## Infrastructure Files
 
-**`{workspace}/{skill}/user-context.md`** — written before each agent step by Rust (desktop app) or by the plugin coordinator at the end of Scoping (Turn 2). Agents read it directly from disk. This dual-source design keeps the same agent files working in both contexts without modification.
+Files that span multiple steps or are written by infrastructure rather than agents.
+
+**`{workspace}/{skill}/user-context.md`**
+Written by Rust before each agent step (desktop app) or by the plugin coordinator at the end of Scoping Turn 2 (plugin). Contains skill name, domain, type, and the user's answers to clarification questions. Agents read it from disk at the start of each step. This dual-source design keeps agent prompts identical across both frontends.
+
+**`{workspace}/{skill}/logs/{step}-{timestamp}.jsonl`**
+One file per agent run. Written by the Rust sidecar as the agent executes — each line is a JSON object capturing the full SDK conversation: prompt, assistant messages, tool use, and tool results. The first line is a config object (API key redacted). Used for debugging; inspect with `tail -f` or any JSONL viewer.
+
+**`{skills_path}/{skill}/context/answer-evaluation.json`**
+Written by `answer-evaluator` at steps 2 and 4. Contains structured evaluation of the user's answers to clarification questions — gap analysis, contradiction detection, and readiness signal. Read by `detailed-research` (step 3) and `confirm-decisions` (step 5) to guide their work. Format: [canonical-format.md](canonical-format.md#canonical-answer-evaluationjson-format).

@@ -34,9 +34,14 @@ Key files:
 
 ## Key Directories
 
+Full path reference (layout diagrams, file ownership, agent prompt variables): [`docs/design/agent-specs/storage.md`](../docs/design/agent-specs/storage.md)
+
+Summary:
 - **Workspace** (`~/.vibedata/` default, configurable): agent prompts, skill context, logs
-- **Skill output** (`skills_path` in Settings, falls back to workspace): SKILL.md, references, git-managed
-- **App database:** `~/.local/share/com.skillbuilder.app/skill-builder.db` — source of truth for skill metadata
+- **Skill output** (`skills_path` in Settings, default `~/skill-builder/`): SKILL.md, references, git-managed
+- **App database:** Tauri `app_data_dir()` + `skill-builder.db` — **not in `~/.vibedata/`**
+  - macOS: `~/Library/Application Support/com.skillbuilder.app/skill-builder.db`
+  - Linux: `~/.local/share/com.skillbuilder.app/skill-builder.db`
 - **GitHub integration:** `commands/github_auth.rs` (OAuth device flow), `commands/github_import.rs` (marketplace skill discovery + import), `commands/team_import.rs` (team-scoped imports), `git.rs` (local git operations)
 
 ## Code Style

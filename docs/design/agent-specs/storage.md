@@ -10,7 +10,7 @@ For artifact file formats, see [canonical-format.md](canonical-format.md).
 
 | Location | Path | Purpose | Lifecycle |
 |---|---|---|---|
-| **Database** | Tauri app data dir (`app_data_dir()`), e.g. `~/Library/Application Support/skill-builder/skill-builder.db` on macOS | All workflow state, settings, agent runs — single source of truth after reconciliation | Persists permanently; never in the workspace |
+| **Database** | Tauri app data dir (`app_data_dir()`) + `skill-builder.db` — macOS: `~/Library/Application Support/com.skillbuilder.app/skill-builder.db`, Linux: `~/.local/share/com.skillbuilder.app/skill-builder.db` | All workflow state, settings, agent runs — single source of truth after reconciliation | Persists permanently; never in the workspace |
 | **Workspace** | `{home}/.vibedata/` | Transient working directory: agent infrastructure, per-skill scratch dirs, logs | Recreated on startup if missing |
 | **Skills path** | User-configured, default `~/skill-builder/` | Permanent skill output: context files, SKILL.md, references | Persists across app restarts; git-tracked |
 
