@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout source repo
         uses: actions/checkout@v4
+        with:
+          ref: feature/plugin-v2-coordinator
 
       - name: Build plugin references
         run: ./scripts/build-plugin-skill.sh
