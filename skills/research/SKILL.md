@@ -59,6 +59,26 @@ For each of the 5–6 candidate dimensions, apply the rubric and follow the step
 
 Select the top 3–5 dimensions by score. Prefer quality of coverage over meeting an exact count.
 
+### Emit selection summary
+
+After selecting, emit the following markdown block **before** spawning any Tasks:
+
+```
+**Research dimensions selected:**
+- {slug} ({score}) — {one-line rationale}
+[one line per selected dimension]
+
+**Dropped:**
+- {slug} ({score}) — {drop reason}
+[one line per dropped dimension]
+```
+
+Drop reason rules:
+- Score 3: `moderate delta; flagged as companion skill candidate`
+- Score ≤ 2: `skipped (low delta)`
+
+Omit the `**Dropped:**` section if no dimensions were dropped.
+
 ---
 
 ## Step 3 — Parallel Dimension Research
