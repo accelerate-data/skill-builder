@@ -113,6 +113,8 @@ disable-model-invocation: false
 
 ## Skill Creation Wizard
 
+> **Implemented wizard UX**: The create wizard UI (step flow, ghost suggestions, field layout) is documented in [`plugin-v2-design/app.md`](../plugin-v2-design/app.md). This section covers the frontmatter metadata fields captured by the wizard and how they relate to the SKILL.md schema.
+
 Skills built via the workflow go through a 4-step intake wizard:
 
 1. **Basic info** — name (required) + description (required)

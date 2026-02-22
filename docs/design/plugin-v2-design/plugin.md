@@ -1,5 +1,11 @@
 # Plugin Design
 
+**Related docs in this folder:**
+- [app.md](app.md) — desktop app UI changes (create wizard, refine page, companion menu)
+- [coordinator.md](coordinator.md) — plugin coordinator: state detection, intent classification, phase dispatch
+
+---
+
 ## Plugin Packages
 
 Four installable plugins:

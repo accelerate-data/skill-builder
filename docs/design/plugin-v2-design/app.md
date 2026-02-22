@@ -4,6 +4,10 @@ Desktop app changes — new UI features that complement the shared agent
 improvements. The app has its own orchestration in the sidecar and does not
 use the plugin coordinator.
 
+**Related docs in this folder:**
+- [coordinator.md](coordinator.md) — plugin coordinator: state detection, intent classification, phase dispatch
+- [plugin.md](plugin.md) — plugin packages, marketplace distribution, customization model
+
 ---
 
 ## 1. Create Wizard with Ghost Suggestions ⚠️

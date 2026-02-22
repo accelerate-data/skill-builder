@@ -2,6 +2,10 @@
 
 The coordinator (`skills/generate-skill/SKILL.md`) is a state-aware router. On every invocation: detect state → classify intent → dispatch.
 
+**Related docs in this folder:**
+- [app.md](app.md) — desktop app UI changes (create wizard, refine page, companion menu)
+- [plugin.md](plugin.md) — plugin packages, marketplace distribution, customization model
+
 ---
 
 ## Directory Layout
