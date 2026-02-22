@@ -270,6 +270,7 @@ export default function WorkflowPage() {
   const [gatePerQuestion, setGatePerQuestion] = useState<PerQuestionVerdict[]>([]);
   const [isAutofilling, setIsAutofilling] = useState(false);
   const gateAgentIdRef = useRef<string | null>(null);
+  const lastCompletedCostRef = useRef<number | undefined>(undefined);
   const [gateContext, setGateContext] = useState<"clarifications" | "refinements">("clarifications");
 
   // Target step for reset confirmation dialog (when clicking a prior step)
@@ -564,6 +565,11 @@ export default function WorkflowPage() {
     if (currentSteps[step]?.status !== "in_progress") return;
 
     if (activeRunStatus === "completed") {
+      // Capture cost before clearing activeAgent — after setActiveAgent(null),
+      // activeRun becomes null so activeRun?.totalCost would be undefined.
+      lastCompletedCostRef.current = activeAgentId
+        ? useAgentStore.getState().runs[activeAgentId]?.totalCost
+        : undefined;
       setActiveAgent(null);
 
       const finish = async () => {
@@ -932,6 +938,7 @@ export default function WorkflowPage() {
         stepName={currentStepDef.name}
         stepId={currentStep}
         outputFiles={stepConfig?.outputFiles ?? []}
+        cost={lastCompletedCostRef.current}
         onNextStep={advanceToNextStep}
         onClose={handleClose}
         onRefine={handleRefine}

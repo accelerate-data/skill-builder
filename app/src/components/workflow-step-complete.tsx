@@ -98,7 +98,7 @@ export function WorkflowStepComplete({
   const [agentRuns, setAgentRuns] = useState<AgentRunRecord[]>([]);
 
   useEffect(() => {
-    if (!reviewMode || !skillName || stepId == null) {
+    if (!skillName || stepId == null) {
       setAgentRuns([]);
       return;
     }
@@ -106,7 +106,7 @@ export function WorkflowStepComplete({
     getStepAgentRuns(skillName, stepId)
       .then((runs) => setAgentRuns(runs))
       .catch((err) => console.error("Failed to load agent stats:", err));
-  }, [reviewMode, skillName, stepId]);
+  }, [skillName, stepId]);
 
   // Always load file contents when skillName is available (both review and non-review mode)
   useEffect(() => {
@@ -157,6 +157,14 @@ export function WorkflowStepComplete({
 
   const hasFileContents = fileContents.size > 0;
 
+  // In review mode (history): derive cost from DB-loaded agentRuns — DB is source of truth.
+  // In live mode (just completed): use the cost prop from Zustand — the DB write is still
+  // in-flight and may return stale data (e.g. a previous session's run with total_cost=0).
+  const dbCost = agentRuns.length > 0
+    ? agentRuns.reduce((sum, r) => sum + r.total_cost, 0)
+    : undefined;
+  const displayCost = reviewMode ? dbCost : cost;
+
   // Show file contents when available (both review and non-review mode)
   if (hasFileContents && outputFiles.length > 0) {
     if (loadingFiles) {
@@ -169,7 +177,7 @@ export function WorkflowStepComplete({
 
     return (
       <div className="flex h-full flex-col gap-4 overflow-hidden">
-        {agentRuns.length > 0 && (
+        {reviewMode && agentRuns.length > 0 && (
           <div className="shrink-0">
             <AgentStatsBar runs={agentRuns} />
           </div>
@@ -185,10 +193,10 @@ export function WorkflowStepComplete({
                   {formatDuration(duration)}
                 </span>
               )}
-              {cost !== undefined && (
+              {displayCost !== undefined && (
                 <span className="flex items-center gap-1">
                   <DollarSign className="size-3" />
-                  ${cost.toFixed(4)}
+                  ${displayCost.toFixed(4)}
                 </span>
               )}
             </div>
@@ -208,11 +216,12 @@ export function WorkflowStepComplete({
                       <FileText className="size-3.5 shrink-0" />
                       {file}
                     </p>
-                    {notFound ? (
+                    {notFound && (
                       <p className="text-sm text-muted-foreground italic">
                         File not found
                       </p>
-                    ) : content ? (
+                    )}
+                    {!notFound && content && (
                       <div className="rounded-md border">
                         <div className="markdown-body compact max-w-none p-4">
                           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
@@ -220,7 +229,7 @@ export function WorkflowStepComplete({
                           </ReactMarkdown>
                         </div>
                       </div>
-                    ) : null}
+                    )}
                   </div>
                 );
               })}
@@ -277,10 +286,10 @@ export function WorkflowStepComplete({
                 {formatDuration(duration)}
               </span>
             )}
-            {cost !== undefined && (
+            {displayCost !== undefined && (
               <span className="flex items-center gap-1">
                 <DollarSign className="size-3" />
-                ${cost.toFixed(4)}
+                ${displayCost.toFixed(4)}
               </span>
             )}
           </div>
