@@ -1,0 +1,107 @@
+name: Test Plugin Publish
+
+# One-shot workflow to verify MARKETPLACE_GITHUB_TOKEN can write to hbanerjee74/skills.
+# Opens a test PR using a throwaway branch — merge or close it after confirming.
+# Delete this workflow once the release pipeline has been verified end-to-end.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Test version label (e.g. 0.0.0-test)"
+        required: true
+        default: "0.0.0-test"
+
+jobs:
+  test-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+
+      - name: Build plugin references
+        run: ./scripts/build-plugin-skill.sh
+
+      - name: Checkout skills marketplace repo
+        uses: actions/checkout@v4
+        with:
+          repository: hbanerjee74/skills
+          token: ${{ secrets.MARKETPLACE_GITHUB_TOKEN }}
+          path: skills-repo
+
+      - name: Assemble plugin packages
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          MP="skills-repo/plugins"
+
+          # --- skill-builder ---
+          rm -rf "$MP/skill-builder"
+          mkdir -p "$MP/skill-builder/.claude-plugin" "$MP/skill-builder/skills" "$MP/skill-builder/agents"
+          printf '{"name":"skill-builder","version":"%s","description":"Multi-agent workflow for creating domain-specific Claude skills","skills":"./skills/"}' "$VERSION" \
+            > "$MP/skill-builder/.claude-plugin/plugin.json"
+          cp -R skills/building-skills "$MP/skill-builder/skills/"
+          cp agents/*.md "$MP/skill-builder/agents/"
+
+          # --- skill-builder-research ---
+          rm -rf "$MP/skill-builder-research"
+          mkdir -p "$MP/skill-builder-research/.claude-plugin" "$MP/skill-builder-research/skills"
+          printf '{"name":"skill-builder-research","version":"%s","description":"Research skill for dimension scoring and parallel research","skills":"./skills/"}' "$VERSION" \
+            > "$MP/skill-builder-research/.claude-plugin/plugin.json"
+          cp -R skills/research "$MP/skill-builder-research/skills/"
+
+          # --- skill-builder-validate ---
+          rm -rf "$MP/skill-builder-validate"
+          mkdir -p "$MP/skill-builder-validate/.claude-plugin" "$MP/skill-builder-validate/skills"
+          printf '{"name":"skill-builder-validate","version":"%s","description":"Validate skill for quality checking and companion recommendations","skills":"./skills/"}' "$VERSION" \
+            > "$MP/skill-builder-validate/.claude-plugin/plugin.json"
+          cp -R skills/validate-skill "$MP/skill-builder-validate/skills/"
+
+          # --- skill-builder-practices ---
+          rm -rf "$MP/skill-builder-practices"
+          mkdir -p "$MP/skill-builder-practices/.claude-plugin" "$MP/skill-builder-practices/skills"
+          printf '{"name":"skill-builder-practices","version":"%s","description":"Content guidelines and patterns for skill structure","skills":"./skills/"}' "$VERSION" \
+            > "$MP/skill-builder-practices/.claude-plugin/plugin.json"
+          cp -R skills/skill-builder-practices "$MP/skill-builder-practices/skills/"
+
+          # --- marketplace.json ---
+          mkdir -p skills-repo/.claude-plugin
+          cat > skills-repo/.claude-plugin/marketplace.json << 'JSON'
+          {
+            "name": "skills",
+            "owner": { "name": "hbanerjee74" },
+            "metadata": { "pluginRoot": "./plugins" },
+            "plugins": [
+              { "name": "skill-builder",           "source": "./plugins/skill-builder" },
+              { "name": "skill-builder-research",  "source": "./plugins/skill-builder-research" },
+              { "name": "skill-builder-validate",  "source": "./plugins/skill-builder-validate" },
+              { "name": "skill-builder-practices", "source": "./plugins/skill-builder-practices" }
+            ]
+          }
+          JSON
+
+      - name: Open test PR on skills marketplace repo
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ secrets.MARKETPLACE_GITHUB_TOKEN }}
+        working-directory: skills-repo
+        run: |
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
+          git diff --quiet && git diff --cached --quiet && echo "No changes detected" && exit 0
+          BRANCH="test/plugin-publish-v${VERSION}"
+          git checkout -b "$BRANCH"
+          git add .
+          git commit -m "Test publish v${VERSION}: skill-builder plugins"
+          git push origin "$BRANCH"
+          gh pr create \
+            --repo hbanerjee74/skills \
+            --title "[TEST] Plugin publish v${VERSION}" \
+            --body "Test PR from skill-builder publish pipeline. Close or merge to verify token works end-to-end." \
+            --base master \
+            --head "$BRANCH"
