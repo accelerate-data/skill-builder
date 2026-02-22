@@ -276,6 +276,11 @@ fn upload_skill_inner(
     .map(|(f, _)| *f)
     .collect();
     if !missing_fields.is_empty() {
+        log::error!(
+            "[upload_skill_inner] '{}' missing required frontmatter fields: {}",
+            file_path,
+            missing_fields.join(", ")
+        );
         return Err(format!(
             "missing_mandatory_fields:{}",
             missing_fields.join(",")
@@ -715,6 +720,20 @@ pub(crate) fn seed_bundled_skills(
 
         let skill_name = fm.name.unwrap_or_else(|| dir_name.clone());
 
+        // Validate required frontmatter fields; skip and error-log if any are missing
+        let mut missing_required: Vec<&str> = Vec::new();
+        if fm.domain.is_none() { missing_required.push("domain"); }
+        if fm.description.is_none() { missing_required.push("description"); }
+        if fm.skill_type.is_none() { missing_required.push("skill_type"); }
+        if !missing_required.is_empty() {
+            log::error!(
+                "seed_bundled_skills: skipping '{}' — missing required frontmatter fields: {}",
+                skill_name,
+                missing_required.join(", ")
+            );
+            continue;
+        }
+
         // Check if the skill already exists to preserve is_active
         let existing = crate::db::get_imported_skill(conn, &skill_name)?;
         let is_active = existing.as_ref().is_none_or(|s| s.is_active);
@@ -767,9 +786,13 @@ pub(crate) fn seed_bundled_skills(
 
         crate::db::upsert_bundled_skill(conn, &skill)?;
         log::info!(
-            "seed_bundled_skills: seeded '{}' (is_active={})",
+            "seed_bundled_skills: seeded '{}' (is_active={} version={} model={} user_invocable={} disable_model_invocation={})",
             skill_name,
-            is_active
+            is_active,
+            skill.version.as_deref().unwrap_or("-"),
+            skill.model.as_deref().unwrap_or("-"),
+            skill.user_invocable.map_or("-".to_string(), |v| v.to_string()),
+            skill.disable_model_invocation.map_or("-".to_string(), |v| v.to_string()),
         );
     }
 
@@ -1750,7 +1773,7 @@ type: platform
         fs::create_dir_all(skill_src.join("references")).unwrap();
         fs::write(
             skill_src.join("SKILL.md"),
-            "---\nname: test-bundled\ndescription: A test bundled skill\ndomain: testing\n---\n# Test",
+            "---\nname: test-bundled\ndescription: A test bundled skill\ndomain: testing\ntype: skill-builder\n---\n# Test",
         ).unwrap();
         fs::write(skill_src.join("references").join("ref.md"), "# Ref").unwrap();
 
@@ -1770,6 +1793,70 @@ type: platform
         // Description is hydrated from SKILL.md frontmatter on disk
         assert_eq!(skill.description.as_deref(), Some("A test bundled skill"));
         // trigger_text field has been removed
+    }
+
+    #[test]
+    fn test_seed_bundled_skills_stores_skill_type() {
+        // Regression test for VD-858: skill_type was omitted from upsert_bundled_skill INSERT,
+        // causing bundled skills to land with skill_type = NULL and never appear in Settings → Skills.
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        let bundled_dir = tempdir().unwrap();
+        let skill_src = bundled_dir.path().join("research");
+        fs::create_dir_all(&skill_src).unwrap();
+        fs::write(
+            skill_src.join("SKILL.md"),
+            "---\nname: research\ndescription: Research skill\ndomain: Skill Builder\ntype: skill-builder\n---\n# Research",
+        ).unwrap();
+
+        seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
+
+        let skill = crate::db::get_imported_skill(&conn, "research").unwrap().unwrap();
+        assert_eq!(
+            skill.skill_type.as_deref(),
+            Some("skill-builder"),
+            "skill_type must be stored so Settings → Skills can find bundled skills"
+        );
+    }
+
+    #[test]
+    fn test_seed_bundled_skills_skips_missing_required_fields() {
+        // Skills missing domain, description, or skill_type must be skipped (not inserted).
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        let bundled_dir = tempdir().unwrap();
+
+        // Missing domain
+        let no_domain = bundled_dir.path().join("no-domain");
+        fs::create_dir_all(&no_domain).unwrap();
+        fs::write(no_domain.join("SKILL.md"),
+            "---\nname: no-domain\ndescription: A skill\ntype: skill-builder\n---\n# No Domain",
+        ).unwrap();
+
+        // Missing description
+        let no_desc = bundled_dir.path().join("no-description");
+        fs::create_dir_all(&no_desc).unwrap();
+        fs::write(no_desc.join("SKILL.md"),
+            "---\nname: no-description\ndomain: testing\ntype: skill-builder\n---\n# No Desc",
+        ).unwrap();
+
+        // Missing skill_type
+        let no_type = bundled_dir.path().join("no-skill-type");
+        fs::create_dir_all(&no_type).unwrap();
+        fs::write(no_type.join("SKILL.md"),
+            "---\nname: no-skill-type\ndescription: A skill\ndomain: testing\n---\n# No Type",
+        ).unwrap();
+
+        seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
+
+        // All three skills should be absent from the DB
+        assert!(crate::db::get_imported_skill(&conn, "no-domain").unwrap().is_none());
+        assert!(crate::db::get_imported_skill(&conn, "no-description").unwrap().is_none());
+        assert!(crate::db::get_imported_skill(&conn, "no-skill-type").unwrap().is_none());
     }
 
     #[test]
@@ -1803,7 +1890,7 @@ type: platform
         fs::create_dir_all(&skill_src).unwrap();
         fs::write(
             skill_src.join("SKILL.md"),
-            "---\nname: test-bundled\ndescription: Updated\n---\n# Test",
+            "---\nname: test-bundled\ndescription: Updated\ndomain: testing\ntype: skill-builder\n---\n# Test",
         ).unwrap();
 
         // Re-seed
@@ -1834,11 +1921,11 @@ type: platform
 
         let skill_a = bundled_dir.path().join("skill-a");
         fs::create_dir_all(&skill_a).unwrap();
-        fs::write(skill_a.join("SKILL.md"), "---\nname: skill-a\ndescription: Skill A\n---\n# A").unwrap();
+        fs::write(skill_a.join("SKILL.md"), "---\nname: skill-a\ndescription: Skill A\ndomain: testing\ntype: skill-builder\n---\n# A").unwrap();
 
         let skill_b = bundled_dir.path().join("skill-b");
         fs::create_dir_all(&skill_b).unwrap();
-        fs::write(skill_b.join("SKILL.md"), "---\nname: skill-b\ndescription: Skill B\n---\n# B").unwrap();
+        fs::write(skill_b.join("SKILL.md"), "---\nname: skill-b\ndescription: Skill B\ndomain: testing\ntype: skill-builder\n---\n# B").unwrap();
 
         seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
 
@@ -1869,7 +1956,7 @@ type: platform
         fs::create_dir_all(skill_src.join("references").join("dimensions")).unwrap();
         fs::write(
             skill_src.join("SKILL.md"),
-            "---\nname: research\ndescription: Research skill\n---\n# Research",
+            "---\nname: research\ndescription: Research skill\ndomain: Skill Builder\ntype: skill-builder\n---\n# Research",
         ).unwrap();
         fs::write(skill_src.join("references").join("dimension-sets.md"), "# Dimension Sets").unwrap();
         fs::write(skill_src.join("references").join("dimensions").join("entities.md"), "# Entities").unwrap();
@@ -1940,7 +2027,7 @@ type: platform
         fs::create_dir_all(skill_src.join("references")).unwrap();
         fs::write(
             skill_src.join("SKILL.md"),
-            "---\nname: validate-skill\ndescription: Validates a completed skill\n---\n# Validate Skill",
+            "---\nname: validate-skill\ndescription: Validates a completed skill\ndomain: Skill Builder\ntype: skill-builder\n---\n# Validate Skill",
         ).unwrap();
         fs::write(skill_src.join("references").join("validate-quality-spec.md"), "# Quality Checker").unwrap();
         fs::write(skill_src.join("references").join("test-skill-spec.md"), "# Test Evaluator").unwrap();
