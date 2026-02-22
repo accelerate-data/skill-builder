@@ -9,3 +9,4 @@
 | [skills-marketplace/](skills-marketplace/README.md) | Skills marketplace design |
 | [branding/](branding/ad-brand.md) | Brand and visual identity |
 | [plugin-v2-design/](plugin-v2-design/app.md) | Plugin v2: app UI changes (app.md), coordinator state machine (coordinator.md), plugin packages (plugin.md) |
+| [release/](release/README.md) | Release pipeline: CI/CD workflows, desktop app build, plugin marketplace publish, credentials |

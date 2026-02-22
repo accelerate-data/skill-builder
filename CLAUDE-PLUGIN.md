@@ -12,6 +12,19 @@ Three layers:
 
 3. **Agent instructions** — see Shared Components in CLAUDE.md. The coordinator reads references and passes them inline to sub-agents via `<agent-instructions>` tags.
 
+## Plugin Packages
+
+Four plugins are published to `hbanerjee74/skills` on every release:
+
+| Plugin | Entry point | Source |
+|---|---|---|
+| `skill-builder` | `/skill-builder:building-skills` | `skills/building-skills/` + `agents/` |
+| `skill-builder-research` | `/skill-builder-research:research` | `agent-sources/workspace/skills/research/` |
+| `skill-builder-validate` | `/skill-builder-validate:validate-skill` | `agent-sources/workspace/skills/validate-skill/` |
+| `skill-builder-practices` | `/skill-builder-practices:skill-builder-practices` | `agent-sources/workspace/skills/skill-builder-practices/` |
+
+`scripts/build-plugin-skill.sh` copies each `agent-sources/workspace/skills/<name>/` into `skills/<name>/`. Run it after modifying any bundled skill. The `--check` flag is used in CI to verify the built directories are fresh.
+
 ## Development Guide
 
 ### Adding/modifying an agent

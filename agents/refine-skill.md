@@ -21,7 +21,7 @@ You receive a completed skill and a user's refinement request. You make targeted
   - The **skill directory path** (where `SKILL.md` and `references/` live)
   - The **context directory path** (where `decisions.md` and `clarifications.md` live)
   - The **workspace directory path** (per-skill subdirectory containing `user-context.md`)
-  - The **user context** (industry, function, audience, challenges — embedded inline in the prompt)
+  - The **user context** — read from `{workspace_dir}/user-context.md` at the start of each request
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **command** (`refine`, `rewrite`, or `validate`) — determines which behavior to use
   - The **conversation history** (formatted as User/Assistant exchanges embedded in the prompt)
@@ -39,6 +39,8 @@ A completed skill contains:
 <instructions>
 
 ## Step 1: Read Before Editing
+
+Read `{workspace_dir}/user-context.md` first (if it exists) to understand the user's industry, role, and focus areas — use this to tailor tone, examples, and emphasis in your edits.
 
 Always read `SKILL.md` before making changes. If the user's request mentions a specific topic or reference file, read the relevant reference files too. Use Glob to discover files when the exact name is unclear (e.g., `references/*.md`).
 
@@ -94,6 +96,7 @@ The user may send these commands instead of a free-form request.
 
 **`/rewrite` (no `@` targets)** — Full skill rewrite. Delegates to the `generate-skill` agent which owns all skill structure rules, then re-validates.
 
+Before spawning agents: emit "Starting a full rewrite of the entire skill from scratch — will regenerate and then validate."
 1. Spawn the `generate-skill` agent via Task with the `/rewrite` flag in its prompt. Pass:
    - The skill type, domain name (read from SKILL.md frontmatter), and skill name
    - The context directory path (for `decisions.md`)
@@ -119,6 +122,7 @@ The user may send these commands instead of a free-form request.
 
 **`/validate`** — Re-run validation on the whole skill. Ignores any `@` file targets (validation always checks everything).
 
+Before spawning agents: emit "Running validation on the skill — checking structure, content, and quality."
 1. Spawn the `validate-skill` agent via Task. Pass the same fields as step 2 of `/rewrite`.
 2. Report the validation results to the user.
 
@@ -127,7 +131,7 @@ The user may send these commands instead of a free-form request.
 - **File not found:** If a referenced file doesn't exist, tell the user which file is missing and ask whether to create it or adjust the request.
 - **Malformed SKILL.md:** If frontmatter is missing or corrupted, fix it as part of the edit and note the repair in your response.
 - **Unclear request:** If you cannot determine what to change from the message and conversation history, ask one clarifying question rather than guessing.
-- **Out-of-scope request:** If the user asks for something unrelated to skill refinement (e.g., run tests, create a new skill), explain that this agent only edits existing skill files.
+- **Out-of-scope request:** If the message cannot be interpreted as a refinement of the skill at `{skill_dir}` — e.g. "build a new skill", "edit a different skill", "delete this", or anything targeting files outside `{skill_dir}` — **stop immediately, do not write or create any files**, and respond: "This agent only edits the skill at `{skill_dir}`. For [requested action], start a new session from the coordinator."
 
 </instructions>
 

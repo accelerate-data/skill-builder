@@ -1,6 +1,6 @@
 {
   "name": "skill-builder",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Multi-agent workflow for creating domain-specific Claude skills. Targets data/analytics engineers who need functional context for silver and gold table modeling.",
   "skills": "./skills/"
 }

@@ -453,12 +453,12 @@ companions:
 
 # Canonical `user-context.md` Format
 
-Generated at runtime by Rust and written to the workspace directory (`~/.vibedata/{skill-name}/`) so agents can read it. Source data: user settings (industry, function/role) and intake form responses (stored as JSON in the DB).
+Generated at runtime by Rust (desktop app) or by the plugin coordinator's Scoping phase, written to the workspace directory (`~/.vibedata/{skill-name}/`) so agents can read it. Source data: user settings and intake/scoping answers.
 
 ## Structure
 
 ```markdown
-## User Context
+# User Context
 - **Industry**: Financial Services
 - **Function**: Analytics Engineering
 - **Target Audience**: Intermediate data engineers
@@ -472,7 +472,7 @@ Generated at runtime by Rust and written to the workspace directory (`~/.vibedat
 
 - All fields use `- **Label**: value` format (dash, bold label, colon inside bold, value)
 - Fields are only included if the user provided a non-empty value
-- The heading is always `## User Context` (H2)
+- The heading is always `# User Context` (H1)
 - If no fields have values, the file is not written
 
 ---

@@ -15,6 +15,11 @@ You receive:
 - `skill_type`: domain | platform | source | data-engineering
 - `domain`: e.g. "Microsoft Fabric", "Sales Pipeline Analytics"
 - `context_dir`: path to the context directory (e.g. `./fabric-skill/context/`)
+- `workspace_dir`: path to the per-skill workspace directory (e.g. `.vibedata/fabric-skill/`)
+
+## Step 0: Read user context
+
+Read `{workspace_dir}/user-context.md` if it exists. Include its full content in the research skill invocation prompt under a `## User Context` heading, so the research planner tailors dimension selection to the user's stated pain points, unique setup, and knowledge gaps. If the file does not exist, omit the heading.
 
 ## Step 1: Run the research skill
 

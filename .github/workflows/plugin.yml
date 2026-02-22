@@ -11,6 +11,8 @@ on:
       - 'scripts/validate.sh'
       - 'skills/**'
       - '.claude-plugin/**'
+      - 'app/plugin-tests/**'
+      - 'app/vitest.config.plugin.ts'
   pull_request:
     branches:
       - main
@@ -21,6 +23,8 @@ on:
       - 'scripts/validate.sh'
       - 'skills/**'
       - '.claude-plugin/**'
+      - 'app/plugin-tests/**'
+      - 'app/vitest.config.plugin.ts'
 
 jobs:
   validate:
@@ -29,5 +33,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Structural validation
+      - name: Structural validation (shell)
         run: ./scripts/validate.sh
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        run: cd app && npm ci
+
+      - name: Plugin tests (structural only)
+        run: cd app && npm run test:plugin:structural

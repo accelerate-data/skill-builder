@@ -76,7 +76,7 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
 | `.claude/agents/*.md` | Rust | Startup (copied from bundle) | `{workspace}/.claude/agents/` |
 | `.claude/skills/` | Rust | Startup (seeded from bundle) | `{workspace}/.claude/skills/` |
 | `{skill}/` (marker dir) | Rust | `create_skill` | `{workspace}/` |
-| `{skill}/user-context.md` | Rust | Before each agent step | `{workspace}/{skill}/` |
+| `{skill}/user-context.md` | Rust **or plugin coordinator** | Before each agent step (Rust) / end of Scoping Turn 2 (plugin) | `{workspace}/{skill}/` |
 | `{skill}/logs/*.jsonl` | Rust (sidecar) | Each agent run | `{workspace}/{skill}/logs/` |
 | `{skill}/context/` (empty) | Rust | `create_skill` | `{skills_path}/{skill}/` |
 | `{skill}/references/` (empty) | Rust | `create_skill` | `{skills_path}/{skill}/` |

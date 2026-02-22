@@ -18,7 +18,7 @@ pass() { echo "  PASS: $1"; }
 fail() { echo "  FAIL: $1"; ERRORS=$((ERRORS + 1)); }
 warn() { echo "  WARN: $1"; WARNINGS=$((WARNINGS + 1)); }
 
-# ---------- T1.1: Manifest ----------
+# ---------- Manifest ----------
 echo "=== Manifest ==="
 if [ -f ".claude-plugin/plugin.json" ]; then
   if python3 -m json.tool .claude-plugin/plugin.json > /dev/null 2>&1; then
@@ -38,7 +38,7 @@ else
   fail ".claude-plugin/plugin.json not found"
 fi
 
-# ---------- T1.2 + T1.3: Agent files + frontmatter ----------
+# ---------- Agent files + frontmatter ----------
 echo "=== Agents ==="
 
 # All 7 agents — flat in agents/ (name:expected_model)
@@ -110,19 +110,19 @@ else
   fail "duplicate agent names found: $dupes"
 fi
 
-# ---------- T1.4: Skill file ----------
+# ---------- Skill file ----------
 echo "=== Coordinator Skill ==="
-if [ -f "skills/generate-skill/SKILL.md" ]; then
-  if head -1 "skills/generate-skill/SKILL.md" | grep -q "^---"; then
-    pass "skills/generate-skill/SKILL.md exists with frontmatter"
+if [ -f "skills/building-skills/SKILL.md" ]; then
+  if head -1 "skills/building-skills/SKILL.md" | grep -q "^---"; then
+    pass "skills/building-skills/SKILL.md exists with frontmatter"
   else
-    fail "skills/generate-skill/SKILL.md has no YAML frontmatter"
+    fail "skills/building-skills/SKILL.md has no YAML frontmatter"
   fi
 else
-  fail "skills/generate-skill/SKILL.md not found"
+  fail "skills/building-skills/SKILL.md not found"
 fi
 
-# ---------- T1.5: Workspace CLAUDE.md ----------
+# ---------- Workspace CLAUDE.md ----------
 echo "=== Workspace CLAUDE.md ==="
 if [ -f "agent-sources/workspace/CLAUDE.md" ]; then
   pass "agent-sources/workspace/CLAUDE.md exists"
@@ -130,9 +130,9 @@ else
   fail "agent-sources/workspace/CLAUDE.md not found"
 fi
 
-# ---------- T1.5b: Skill reference files ----------
+# ---------- Skill reference files ----------
 echo "=== Skill Reference Files ==="
-REFS_DIR="skills/generate-skill/references"
+REFS_DIR="skills/building-skills/references"
 if [ -d "$REFS_DIR" ]; then
   pass "references/ directory exists"
   # workspace-context.md (full copy of agent-sources/workspace/CLAUDE.md)
@@ -163,7 +163,7 @@ else
   fail "references/ directory missing"
 fi
 
-# ---------- T1.6: Old files removed ----------
+# ---------- Old files removed ----------
 echo "=== Cleanup ==="
 if [ -d "prompts" ]; then
   fail "prompts/ directory still exists (should be removed)"
@@ -176,7 +176,7 @@ else
   pass "cowork/ removed"
 fi
 
-# ---------- T1.7: .gitignore ----------
+# ---------- .gitignore ----------
 echo "=== .gitignore ==="
 if [ -f ".gitignore" ]; then
   if grep -q "^skills/" .gitignore; then
@@ -198,10 +198,10 @@ else
   warn ".gitignore not found"
 fi
 
-# ---------- T1.8: Coordinator content checks ----------
+# ---------- Coordinator content checks ----------
 echo "=== Coordinator Content ==="
-if [ -f "skills/generate-skill/SKILL.md" ]; then
-  content=$(cat "skills/generate-skill/SKILL.md")
+if [ -f "skills/building-skills/SKILL.md" ]; then
+  content=$(cat "skills/building-skills/SKILL.md")
   for keyword in "CLAUDE_PLUGIN_ROOT" "skill-builder:" "references/workspace-context.md" "session.json"; do
     if echo "$content" | grep -q "$keyword"; then
       pass "coordinator references $keyword"
@@ -291,6 +291,23 @@ if [ -f "$BUNDLED_SKILLS_DIR/validate-skill/SKILL.md" ]; then
   done
 else
   fail "agent-sources/workspace/skills/validate-skill/SKILL.md not found"
+fi
+
+# ---------- Built plugin skill dirs ----------
+echo ""
+echo "=== Built Plugin Skills ==="
+BUNDLED_SKILLS_SRC="$PLUGIN_DIR/agent-sources/workspace/skills"
+if [ -d "$BUNDLED_SKILLS_SRC" ]; then
+  for skill_src in "$BUNDLED_SKILLS_SRC"/*/; do
+    skill_name=$(basename "$skill_src")
+    if [ -d "$PLUGIN_DIR/skills/$skill_name" ] && [ -f "$PLUGIN_DIR/skills/$skill_name/SKILL.md" ]; then
+      pass "skills/$skill_name/ exists (built from agent-sources)"
+    else
+      fail "skills/$skill_name/ missing — run: scripts/build-plugin-skill.sh"
+    fi
+  done
+else
+  warn "agent-sources/workspace/skills/ not found — skipping built skills check"
 fi
 
 # ---------- Summary ----------

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Self-tests for the unified test harness (run.sh) and plugin test harness (test-plugin.sh).
-# Validates argument parsing, help/list output, and error handling.
+# Self-tests for the unified test harness (run.sh).
+# Validates argument parsing, help output, and error handling.
 # Does NOT execute actual test suites — only tests early-exit paths.
 #
 # Usage: ./tests/harness-test.sh
@@ -9,9 +9,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPO_DIR="$(cd "$APP_DIR/.." && pwd)"
 RUN_SH="$SCRIPT_DIR/run.sh"
-PLUGIN_SH="$REPO_DIR/scripts/test-plugin.sh"
 
 # ---------------------------------------------------------------------------
 # Colors
@@ -77,31 +75,12 @@ assert_contains "--help lists e2e level"      "e2e"         "$RUN_SH" --help
 assert_contains "--help lists plugin level"   "plugin"      "$RUN_SH" --help
 assert_contains "--help lists all level"      "all"         "$RUN_SH" --help
 assert_contains "--help shows E2E tags"       "@dashboard"  "$RUN_SH" --help
-assert_contains "--help shows plugin tags"    "@agents"     "$RUN_SH" --help
 
 echo ""
 echo -e "${CYAN}${BOLD}━━━ run.sh: Error Handling ━━━${RESET}"
 assert_exit "invalid level exits non-zero"    1 "$RUN_SH" bogus
 assert_exit "unknown flag exits non-zero"     1 "$RUN_SH" --foo
 assert_exit "--tag without value exits 1"     1 "$RUN_SH" --tag
-
-# ===== test-plugin.sh tests =====
-
-echo ""
-echo -e "${CYAN}${BOLD}━━━ test-plugin.sh: List Output ━━━${RESET}"
-assert_exit   "--list exits 0"                0 "$PLUGIN_SH" --list
-assert_contains "--list shows t1"             "t1"           "$PLUGIN_SH" --list
-assert_contains "--list shows t5"             "t5"           "$PLUGIN_SH" --list
-assert_contains "--list shows @structure"     "@structure"   "$PLUGIN_SH" --list
-assert_contains "--list shows @agents"        "@agents"      "$PLUGIN_SH" --list
-assert_contains "--list shows @coordinator"   "@coordinator" "$PLUGIN_SH" --list
-assert_contains "--list shows @workflow"      "@workflow"    "$PLUGIN_SH" --list
-
-echo ""
-echo -e "${CYAN}${BOLD}━━━ test-plugin.sh: Error Handling ━━━${RESET}"
-assert_exit "invalid tier exits non-zero"     1 "$PLUGIN_SH" t99
-assert_exit "invalid tag exits non-zero"      1 "$PLUGIN_SH" --tag @bogus
-assert_exit "--tag without value exits 1"     1 "$PLUGIN_SH" --tag
 
 # ===== Summary =====
 

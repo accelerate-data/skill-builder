@@ -64,6 +64,12 @@ companions: []
 Scope recommendation is active. No skill was generated, so no companion recommendations were produced.
 ```
 
+## Parameter Guard
+
+Before running the validate-skill skill or writing any files, verify that `{skill_output_dir}/SKILL.md` exists. If it does not:
+- **Stop immediately. Do not write any files.**
+- Respond: "Cannot validate: no SKILL.md found at `{skill_output_dir}`. Ensure the skill has been generated before running validation."
+
 ## Step 1: Run the validate-skill skill
 
 Use the validate-skill skill to validate a completed skill for:

@@ -1,4 +1,8 @@
 {
+  "env": {
+    "FORCE_PLUGIN_TESTS": "1",
+    "MAX_BUDGET_WORKFLOW": "5.00"
+  },
   "hooks": {
     "PostToolUse": [
       {

@@ -10,6 +10,7 @@ node_modules/
 # Skill working directories (user-generated output, not plugin source)
 context/
 workflow-state.md
+.vibedata/
 
 # Allow mock-template context/ dirs (bundled test fixtures, not user output)
 !app/sidecar/mock-templates/**/context/

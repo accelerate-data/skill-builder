@@ -1,6 +1,6 @@
 # Skill Builder Test Guide
 
-Unified test documentation for the Skill Builder desktop app. Tests span four runtimes (Vitest, Playwright, cargo, sidecar Vitest) organized into four logical levels plus a self-test suite.
+Unified test documentation for the Skill Builder desktop app. Tests span four runtimes (Vitest, Playwright, cargo, sidecar Vitest) organized into five logical levels plus a self-test suite.
 
 ## Quick Start
 
@@ -14,10 +14,25 @@ cd app
 ./tests/run.sh unit            # Pure logic: stores, utils, hooks, Rust, sidecar
 ./tests/run.sh integration     # Component rendering with mocked APIs
 ./tests/run.sh e2e             # Full browser tests (Playwright)
-./tests/run.sh plugin          # CLI plugin tests (structural + smoke)
+./tests/run.sh plugin          # Plugin tests (Vitest — structural + LLM)
+./tests/run.sh plugin workflow # Full E2E workflow (opt-in, ~$5 / 45min)
 ./tests/run.sh eval            # Eval harness tests
 
-# Run E2E tests by feature area
+# Plugin: run individual suites via npm (from app/)
+npm run test:plugin              # All plugin tests
+npm run test:plugin:structural   # Structural only (free, no API key needed)
+npm run test:plugin:loading      # Plugin loading tests (~$0.30)
+npm run test:plugin:modes        # State detection + intent dispatch (~$0.40)
+npm run test:plugin:agents       # Agent smoke tests (~$0.50)
+
+# Plugin: run a single test case
+npx vitest run --config vitest.config.plugin.ts -t "agent exists: answer-evaluator"
+npx vitest run --config vitest.config.plugin.ts -t "detects: clarification"
+
+# Plugin: full E2E
+FOREGROUND=1 ./tests/run.sh plugin workflow   # Workflow test with live Claude output
+
+# E2E: run by feature area
 ./tests/run.sh e2e --tag @dashboard
 ./tests/run.sh e2e --tag @settings
 ./tests/run.sh e2e --tag @workflow
@@ -25,11 +40,6 @@ cd app
 ./tests/run.sh e2e --tag @navigation
 ./tests/run.sh e2e --tag @skills
 ./tests/run.sh e2e --tag @usage
-
-# Run plugin tests by tag
-./tests/run.sh plugin --tag @agents
-./tests/run.sh plugin --tag @coordinator
-./tests/run.sh plugin --tag @structure
 
 # Validate the harness and manifest themselves
 ./tests/harness-test.sh        # Harness arg parsing + error handling (21 tests)
@@ -77,11 +87,28 @@ Full browser tests via Playwright. The app runs with `TAURI_E2E=true`, which swa
 
 ### Level 4: Plugin Tests
 
-CLI plugin structural validation and agent smoke tests. Uses the 5-tier harness at `scripts/test-plugin.sh`.
+CLI plugin tests in Vitest. Each `it()` can be run independently. LLM tests are skipped automatically when `ANTHROPIC_API_KEY` is not set. The full E2E workflow (`workflow`) is opt-in via shell script.
 
-| Runtime | Command | Location |
-|---|---|---|
-| Bash + Claude | `./tests/run.sh plugin` | `scripts/plugin-tests/t1-*.sh` through `t5-*.sh` |
+| Suite | What | Cost | npm script |
+|---|---|---|---|
+| structural | plugin.json, agent files, coordinator content, anti-patterns | Free | `test:plugin:structural` |
+| loading | Claude loads plugin, responds to queries | ~$0.30 | `test:plugin:loading` |
+| modes | Coordinator identifies all phases, dispatches intents | ~$0.40 | `test:plugin:modes` |
+| agents | Individual agents produce expected output | ~$0.50 | `test:plugin:agents` |
+| workflow | Scoping through validation, asserts all artifacts | ~$5.00 | `test:plugin:workflow` |
+
+```bash
+./tests/run.sh plugin              # All Vitest plugin tests
+./tests/run.sh plugin workflow     # Full E2E (explicit opt-in, ~$5)
+FOREGROUND=1 ./tests/run.sh plugin workflow   # Workflow test with live Claude output
+
+# From app/ directly:
+npm run test:plugin:structural     # Free structural checks only
+npm run test:plugin                # All suites (LLM tests skip if no API key)
+
+# Run a single test case:
+npx vitest run --config vitest.config.plugin.ts -t "agent exists: answer-evaluator"
+```
 
 ### Level 5: Eval Harness Tests
 
@@ -97,7 +124,7 @@ Validate the test infrastructure itself — argument parsing, tag routing, and c
 
 | Script | Tests | What it validates |
 |---|---|---|
-| `./tests/harness-test.sh` | 21 | run.sh and test-plugin.sh accept valid args, reject invalid ones, show help |
+| `./tests/harness-test.sh` | — | run.sh accepts valid args, rejects invalid ones, shows help |
 | `./tests/manifest-scenarios.sh` | 45 | Cross-layer mappings: Rust → E2E tags, shared infra, plugin sources |
 
 ## Running by Area
@@ -150,16 +177,25 @@ Available tags: `@dashboard`, `@navigation`, `@settings`, `@skills`, `@usage`, `
 ## Directory Structure
 
 ```
-app/tests/
-  README.md              # This file
-  TEST_MANIFEST.md       # Cross-layer map (Rust → E2E tags, shared infra, plugin)
-  run.sh                 # Unified test runner (unit, integration, e2e, plugin)
-  harness-test.sh        # Self-tests for run.sh and test-plugin.sh (21 tests)
-  manifest-scenarios.sh  # Cross-layer manifest validation (45 scenarios)
-  unit/
-    frontend/            -> ../../src/__tests__/       (symlink)
-    sidecar/             -> ../../sidecar/__tests__/   (symlink)
-  e2e/                   -> ../e2e/                    (symlink)
+app/
+  vitest.config.plugin.ts  # Vitest config for plugin tests (node env)
+  plugin-tests/
+    helpers.ts             # Shared helpers (PLUGIN_DIR, runClaude, makeTempDir)
+    fixtures.ts            # Fixture factories for each workflow phase
+    structural.test.ts     # Plugin manifest, agent files, coordinator content (free)
+    plugin-loading.test.ts # Claude loads plugin, responds to queries (~$0.30)
+    mode-detection.test.ts # State detection + intent dispatch (~$0.40)
+    agent-smoke.test.ts    # Individual agent output (~$0.50)
+  tests/
+    README.md              # This file
+    TEST_MANIFEST.md       # Cross-layer map (Rust → E2E tags, shared infra, plugin)
+    run.sh                 # Unified test runner (unit, integration, e2e, plugin)
+    harness-test.sh        # Self-tests for run.sh
+    manifest-scenarios.sh  # Cross-layer manifest validation
+    unit/
+      frontend/            -> ../../src/__tests__/       (symlink)
+      sidecar/             -> ../../sidecar/__tests__/   (symlink)
+    e2e/                   -> ../e2e/                    (symlink)
 ```
 
 Symlinks provide a single entry point for browsing tests without moving files from their framework-idiomatic locations.

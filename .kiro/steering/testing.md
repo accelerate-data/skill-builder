@@ -19,7 +19,8 @@ cd src-tauri && cargo test        # Rust tests
 
 # Plugin tests
 ./scripts/validate.sh             # Structural validation (free)
-./scripts/test-plugin.sh          # Full test harness (T1-T5)
+cd app && npm run test:plugin     # All plugin tests (structural + LLM)
+cd app && npm run test:plugin:workflow  # Full E2E workflow (~$5)
 ```
 
 ## When to Write Tests
