@@ -435,6 +435,7 @@ export const logGateDecision = (
 export interface PrepareTestResult {
   test_id: string;
   baseline_cwd: string;
+  with_skill_cwd: string;
   transcript_log_dir: string;
 }
 

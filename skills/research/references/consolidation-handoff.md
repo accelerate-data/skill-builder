@@ -114,11 +114,11 @@ scope_recommendation: true        # optional — set by scope advisor, checked b
 
 ```markdown
 ### Q1: MRR Definition by Service Type
-How is MRR calculated across service categories?
+How is MRR calculated across your three service categories?
 
-A. Recurring fee (MS); TCV spread over engagement months (PS)
-B. Recurring fee (MS); PS short-term treated as one-time
-C. MRR for Managed Services only; PS as TCV
+A. Managed Services MRR = recurring monthly fee. PS <12mo = TCV / engagement months.
+B. Managed Services MRR = monthly fee. PS <12mo treated as one-time (excluded).
+C. MRR applies only to Managed Services. All PS deals tracked as TCV.
 D. Other (please specify)
 
 _Consolidated from: Metrics Research, Segmentation Research_
@@ -133,10 +133,10 @@ _Consolidated from: Metrics Research, Segmentation Research_
 | Field | Format | Required | Notes |
 |---|---|---|---|
 | Heading | `### Q{n}: Short Title` | yes | Sequential Q numbering. No inline tags. Required vs optional indicated by preceding `### Required` / `### Optional` sub-heading |
-| Body text | Plain text on next line(s) | yes | One crisp sentence or short phrase. Avoid multi-clause sentences with subclauses ("given that", "in scenarios where", "because"). The heading is just a short title |
-| Choices | `A. Choice text` | yes | 2–4 choices + final "Other (please specify)". Each choice is a short label — a few words, not a full sentence. Reasoning belongs in `**Recommendation:**` |
+| Body text | Plain text on next line(s) | yes | The full question. The heading is just a short title |
+| Choices | `A. Choice text` | yes | 2–4 choices + final "Other (please specify)". Lettered with period, no label |
 | Consolidated from | `_Consolidated from: ..._` | optional | Italicized, only when question draws from multiple dimension sources |
-| Recommendation | `**Recommendation:** Full sentence.` | yes | Between choices and answer. Colon inside bold. Keep the reasoning explanation at full length here |
+| Recommendation | `**Recommendation:** Full sentence.` | yes | Between choices and answer. Colon inside bold |
 | Answer | `**Answer:**` | yes | Colon inside bold. Empty until user fills in. Followed by a blank line |
 
 #### Rules
@@ -146,8 +146,6 @@ _Consolidated from: Metrics Research, Segmentation Research_
 - No `**(recommended)**` inline markers on choices. Recommendations go in the `**Recommendation:**` field
 - No `**Question:**` label. The question body is plain text after the heading
 - Every question ends with `**Answer:**` followed by a blank line (even if unanswered)
-- **Question body is one concise sentence or short phrase** — not a multi-clause explanation. "Cross-area cost center hierarchies?" is better than "How should the skill handle scenarios where cost center hierarchies span multiple controlling areas, given that this affects how allocation chains are modeled?"
-- **Choice labels are short (a few words each)** — do not write full sentences or embed rationale in the label. "Independent per controlling area" is better than "Model each controlling area independently with no cross-area allocation support". The reasoning belongs in `**Recommendation:**`
 
 ---
 
@@ -161,12 +159,12 @@ Refinements are added by `detailed-research` in Step 3. They appear under a `###
 ##### R1.1: Why TCV/10 for PS Projects Under 12 Months
 Rationale for why this matters given the answer above...
 
-A. Fixed company-wide assumption
-B. Approximates billable months after ramp/close
-C. Varies — negotiated or set at deal level
+A. 10 is a fixed company-wide assumption for average PS engagement length
+B. 10 approximates billable months after excluding ramp/close
+C. It varies — divisor is negotiated or set at deal level
 D. Other (please specify)
 
-**Recommendation:** A — Fixed assumption simplifies the formula and avoids per-deal configuration.
+**Recommendation:** A — Fixed assumption simplifies the formula.
 
 **Answer:**
 ```
@@ -218,11 +216,11 @@ priority_questions: [Q1, Q3, Q5]
 ### Required
 
 ### Q1: Customer Hierarchy Depth
-How many hierarchy levels do you support?
+How many levels does your customer hierarchy support?
 
 A. Single level — all accounts are peers
-B. Two levels — parent and subsidiaries
-C. Three or more levels — full corporate tree
+B. Two levels — parent company and subsidiaries
+C. Three or more levels — full corporate hierarchy tree
 D. Other (please specify)
 
 **Recommendation:** B — Two levels covers most enterprise use cases without excessive complexity.
@@ -234,9 +232,9 @@ D. Other (please specify)
 ### Q2: Account Type Classification
 How are accounts classified by type?
 
-A. Industry vertical only
-B. Account tier (Enterprise, Mid-Market, SMB)
-C. Both industry and tier
+A. By industry vertical only
+B. By account tier (Enterprise, Mid-Market, SMB)
+C. By both industry and tier
 D. Other (please specify)
 
 **Recommendation:** C — Dual classification enables richer segmentation.
@@ -251,8 +249,8 @@ D. Other (please specify)
 How is win rate calculated?
 
 A. Closed-won / all closed opportunities
-B. Closed-won / all opportunities in period
-C. Closed-won / qualified-stage opportunities
+B. Closed-won / all opportunities created in period
+C. Closed-won / opportunities that reached a minimum qualification stage
 D. Other (please specify)
 
 **Recommendation:** C — Qualification-stage denominator removes noise from unqualified leads.
