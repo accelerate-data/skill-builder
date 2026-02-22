@@ -985,6 +985,100 @@ type: platform
         assert_eq!(skill_type.as_deref(), Some("platform"));
     }
 
+    // --- Optional field parsing tests ---
+
+    #[test]
+    fn test_parse_frontmatter_optional_fields_present() {
+        let content = r#"---
+name: my-skill
+description: A skill
+domain: analytics
+version: 1.2.3
+model: claude-opus-4-5
+argument-hint: <topic>
+user-invocable: true
+disable-model-invocation: false
+---
+# My Skill
+"#;
+        let fm = parse_frontmatter_full(content);
+        assert_eq!(fm.version.as_deref(), Some("1.2.3"));
+        assert_eq!(fm.model.as_deref(), Some("claude-opus-4-5"));
+        assert_eq!(fm.argument_hint.as_deref(), Some("<topic>"));
+        assert_eq!(fm.user_invocable, Some(true));
+        assert_eq!(fm.disable_model_invocation, Some(false));
+    }
+
+    #[test]
+    fn test_parse_frontmatter_optional_fields_absent() {
+        let content = r#"---
+name: my-skill
+description: A skill
+domain: analytics
+---
+# My Skill
+"#;
+        let fm = parse_frontmatter_full(content);
+        assert!(fm.version.is_none());
+        assert!(fm.model.is_none());
+        assert!(fm.argument_hint.is_none());
+        assert!(fm.user_invocable.is_none());
+        assert!(fm.disable_model_invocation.is_none());
+    }
+
+    #[test]
+    fn test_parse_frontmatter_boolean_coercion_true_values() {
+        // "true", "yes", "1" all coerce to true
+        let content_true = "---\nname: s\ndescription: d\ndomain: d\nuser-invocable: true\ndisable-model-invocation: true\n---\n";
+        let fm = parse_frontmatter_full(content_true);
+        assert_eq!(fm.user_invocable, Some(true));
+        assert_eq!(fm.disable_model_invocation, Some(true));
+
+        let content_yes = "---\nname: s\ndescription: d\ndomain: d\nuser-invocable: yes\ndisable-model-invocation: yes\n---\n";
+        let fm = parse_frontmatter_full(content_yes);
+        assert_eq!(fm.user_invocable, Some(true));
+        assert_eq!(fm.disable_model_invocation, Some(true));
+
+        let content_one = "---\nname: s\ndescription: d\ndomain: d\nuser-invocable: 1\ndisable-model-invocation: 1\n---\n";
+        let fm = parse_frontmatter_full(content_one);
+        assert_eq!(fm.user_invocable, Some(true));
+        assert_eq!(fm.disable_model_invocation, Some(true));
+    }
+
+    #[test]
+    fn test_parse_frontmatter_boolean_coercion_false_values() {
+        // "false", "no", "0", and any other value coerce to false
+        let content_false = "---\nname: s\ndescription: d\ndomain: d\nuser-invocable: false\ndisable-model-invocation: false\n---\n";
+        let fm = parse_frontmatter_full(content_false);
+        assert_eq!(fm.user_invocable, Some(false));
+        assert_eq!(fm.disable_model_invocation, Some(false));
+
+        let content_no = "---\nname: s\ndescription: d\ndomain: d\nuser-invocable: no\ndisable-model-invocation: no\n---\n";
+        let fm = parse_frontmatter_full(content_no);
+        assert_eq!(fm.user_invocable, Some(false));
+        assert_eq!(fm.disable_model_invocation, Some(false));
+
+        let content_zero = "---\nname: s\ndescription: d\ndomain: d\nuser-invocable: 0\ndisable-model-invocation: 0\n---\n";
+        let fm = parse_frontmatter_full(content_zero);
+        assert_eq!(fm.user_invocable, Some(false));
+        assert_eq!(fm.disable_model_invocation, Some(false));
+    }
+
+    #[test]
+    fn test_parse_frontmatter_argument_hint_with_angle_brackets() {
+        // argument-hint often contains angle-bracket placeholders like "<topic>"
+        let content = "---\nname: s\ndescription: d\ndomain: d\nargument-hint: <keyword>\n---\n";
+        let fm = parse_frontmatter_full(content);
+        assert_eq!(fm.argument_hint.as_deref(), Some("<keyword>"));
+    }
+
+    #[test]
+    fn test_parse_frontmatter_argument_hint_quoted() {
+        let content = "---\nname: s\ndescription: d\ndomain: d\nargument-hint: \"my hint\"\n---\n";
+        let fm = parse_frontmatter_full(content);
+        assert_eq!(fm.argument_hint.as_deref(), Some("my hint"));
+    }
+
     // --- Filename derivation tests ---
 
     #[test]

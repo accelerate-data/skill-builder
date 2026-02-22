@@ -291,6 +291,7 @@ pub(crate) async fn list_github_skills_inner(
 
     // Fetch each SKILL.md and parse frontmatter
     let mut skills = Vec::new();
+    let has_value = |opt: &Option<String>| opt.as_deref().is_some_and(|s| !s.is_empty());
 
     for skill_md_path in &skill_md_paths {
         let raw_url = format!(
@@ -324,6 +325,27 @@ pub(crate) async fn list_github_skills_inner(
             skill_md_path, fm_name, fm_domain, fm_type
         );
 
+        // Filter out skills missing required front matter fields — they must not appear in the UI
+        if !has_value(&fm_name) || !has_value(&fm_description) || !has_value(&fm_domain) {
+            log::warn!(
+                "list_github_skills: skipping '{}' — missing required front matter (name={} description={} domain={})",
+                skill_md_path, has_value(&fm_name), has_value(&fm_description), has_value(&fm_domain)
+            );
+            continue;
+        }
+
+        // Only skills with a valid Skill Library skill_type are shown in the UI.
+        // skill-builder skills go to Settings→Skills; unknown values are excluded.
+        const VALID_SKILL_LIBRARY_TYPES: &[&str] = &["domain", "platform", "source", "data-engineering"];
+        let type_value = fm_type.as_deref().unwrap_or("");
+        if !VALID_SKILL_LIBRARY_TYPES.contains(&type_value) {
+            log::warn!(
+                "list_github_skills: skipping '{}' — skill_type {:?} is not a valid Skill Library type (expected one of: domain, platform, source, data-engineering)",
+                skill_md_path, fm_type.as_deref().unwrap_or("<absent>")
+            );
+            continue;
+        }
+
         // Derive skill directory path (parent of SKILL.md)
         let skill_dir = skill_md_path
             .strip_suffix("/SKILL.md")
@@ -331,13 +353,8 @@ pub(crate) async fn list_github_skills_inner(
             .unwrap_or(skill_md_path)
             .trim_end_matches('/');
 
-        // Derive a display name: frontmatter name > directory name > "unknown"
-        let dir_name = skill_dir
-            .rsplit('/')
-            .next()
-            .unwrap_or(skill_dir);
-
-        let name = fm_name.unwrap_or_else(|| dir_name.to_string());
+        // Safety: the `continue` above guarantees fm_name.is_some() at this point.
+        let name = fm_name.unwrap();
 
         skills.push(AvailableSkill {
             path: skill_dir.to_string(),
@@ -747,7 +764,24 @@ pub(crate) async fn import_single_skill(
 
     let fm = super::imported_skills::parse_frontmatter_full(&skill_md_content);
 
-    let skill_name = fm.name.unwrap_or_else(|| dir_name.to_string());
+    let skill_name = fm.name.clone().unwrap_or_else(|| dir_name.to_string());
+
+    // Log absent optional fields at debug level — this is internal detail, not a lifecycle event
+    for (field, absent) in [
+        ("version", fm.version.is_none()),
+        ("model", fm.model.is_none()),
+        ("argument-hint", fm.argument_hint.is_none()),
+        ("user-invocable", fm.user_invocable.is_none()),
+        ("disable-model-invocation", fm.disable_model_invocation.is_none()),
+    ] {
+        if absent {
+            log::debug!(
+                "import_single_skill: optional field '{}' absent for skill '{}'",
+                field,
+                skill_name
+            );
+        }
+    }
 
     if skill_name.is_empty() {
         return Err("Could not determine skill name".to_string());
@@ -1127,6 +1161,110 @@ mod tests {
         assert_eq!(filtered.len(), 2);
         assert!(filtered.contains(&&"analytics/SKILL.md"));
         assert!(filtered.contains(&&"skill-builder-practices/SKILL.md"));
+    }
+
+    #[test]
+    fn test_required_frontmatter_filtering_logic() {
+        // Exercise the real parse_frontmatter_full path so that regressions in
+        // the production parsing or predicate are caught here.
+        let parse = super::super::imported_skills::parse_frontmatter_full;
+
+        // Complete, valid frontmatter — all four required fields present.
+        // Note: the YAML key for skill_type is "type:" per the parser.
+        let complete = parse(
+            "---\nname: analytics\ndescription: Does analytics stuff\ndomain: data\ntype: domain\n---\n# Body",
+        );
+        assert_eq!(complete.name.as_deref(), Some("analytics"));
+        assert_eq!(complete.description.as_deref(), Some("Does analytics stuff"));
+        assert_eq!(complete.domain.as_deref(), Some("data"));
+        assert_eq!(complete.skill_type.as_deref(), Some("domain"));
+
+        // Missing skill_type (no "type:" key) — must be treated as a missing required field.
+        let missing_skill_type = parse(
+            "---\nname: analytics\ndescription: Does analytics stuff\ndomain: data\n---\n# Body",
+        );
+        assert!(missing_skill_type.skill_type.is_none(), "absent skill_type must be None");
+
+        // Whitespace-only type — trim_opt must convert to None.
+        let whitespace_skill_type = parse(
+            "---\nname: analytics\ndescription: Desc\ndomain: data\ntype:   \n---\n",
+        );
+        assert!(whitespace_skill_type.skill_type.is_none(), "whitespace-only skill_type must be None");
+
+        // Whitespace-only values: trim_opt converts these to None, so the skill
+        // should be treated as missing the field.
+        let whitespace_name = parse(
+            "---\nname:    \ndescription: Desc\ndomain: data\n---\n",
+        );
+        assert!(whitespace_name.name.is_none(), "whitespace-only name must be None");
+
+        let whitespace_desc = parse(
+            "---\nname: reporting\ndescription:   \ndomain: data\n---\n",
+        );
+        assert!(whitespace_desc.description.is_none(), "whitespace-only description must be None");
+
+        let whitespace_domain = parse(
+            "---\nname: research\ndescription: Desc\ndomain:  \n---\n",
+        );
+        assert!(whitespace_domain.domain.is_none(), "whitespace-only domain must be None");
+
+        // No frontmatter at all — all fields None.
+        let empty = parse("# Just a heading\nNo frontmatter here.");
+        assert!(empty.name.is_none());
+        assert!(empty.description.is_none());
+        assert!(empty.domain.is_none());
+    }
+
+    #[test]
+    fn test_skill_type_library_filter() {
+        // Verify the allowlist predicate used in list_github_skills_inner.
+        const VALID_SKILL_LIBRARY_TYPES: &[&str] =
+            &["domain", "platform", "source", "data-engineering"];
+
+        let parse = super::super::imported_skills::parse_frontmatter_full;
+
+        // skill_type: domain — must be included
+        let fm_domain = parse(
+            "---\nname: my-skill\ndescription: Desc\ndomain: data\ntype: domain\n---\n",
+        );
+        assert_eq!(fm_domain.skill_type.as_deref(), Some("domain"));
+        assert!(
+            VALID_SKILL_LIBRARY_TYPES.contains(&fm_domain.skill_type.as_deref().unwrap_or("")),
+            "domain should be a valid Skill Library type"
+        );
+
+        // skill_type: skill-builder — must be excluded (wrong routing, goes to Settings)
+        let fm_skill_builder = parse(
+            "---\nname: my-skill\ndescription: Desc\ndomain: data\ntype: skill-builder\n---\n",
+        );
+        assert_eq!(fm_skill_builder.skill_type.as_deref(), Some("skill-builder"));
+        assert!(
+            !VALID_SKILL_LIBRARY_TYPES
+                .contains(&fm_skill_builder.skill_type.as_deref().unwrap_or("")),
+            "skill-builder should NOT be a valid Skill Library type"
+        );
+
+        // skill_type: unknown-type — must be excluded (unrecognised value)
+        let fm_unknown = parse(
+            "---\nname: my-skill\ndescription: Desc\ndomain: data\ntype: unknown-type\n---\n",
+        );
+        assert_eq!(fm_unknown.skill_type.as_deref(), Some("unknown-type"));
+        assert!(
+            !VALID_SKILL_LIBRARY_TYPES
+                .contains(&fm_unknown.skill_type.as_deref().unwrap_or("")),
+            "unknown-type should NOT be a valid Skill Library type"
+        );
+
+        // missing skill_type — must be excluded
+        let fm_missing = parse(
+            "---\nname: my-skill\ndescription: Desc\ndomain: data\n---\n",
+        );
+        assert!(fm_missing.skill_type.is_none(), "absent skill_type must be None");
+        assert!(
+            !VALID_SKILL_LIBRARY_TYPES
+                .contains(&fm_missing.skill_type.as_deref().unwrap_or("")),
+            "absent skill_type should NOT pass the Skill Library filter"
+        );
     }
 
     #[test]
