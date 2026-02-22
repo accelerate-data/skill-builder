@@ -90,7 +90,7 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ inputs.version }}
-          GH_TOKEN: ${{ secrets.MARKETPLACE_GITHUB_TOKEN }}
+          MARKETPLACE_GITHUB_TOKEN: ${{ secrets.MARKETPLACE_GITHUB_TOKEN }}
         working-directory: skills-repo
         run: |
           git config user.email "github-actions@github.com"
@@ -101,9 +101,10 @@ jobs:
           git add .
           git commit -m "Test publish v${VERSION}: skill-builder plugins"
           git push origin "$BRANCH"
-          gh pr create \
-            --repo hbanerjee74/skills \
-            --title "[TEST] Plugin publish v${VERSION}" \
-            --body "Test PR from skill-builder publish pipeline. Close or merge to verify token works end-to-end." \
-            --base master \
-            --head "$BRANCH"
+          curl -s -X POST \
+            -H "Authorization: token ${MARKETPLACE_GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/hbanerjee74/skills/pulls" \
+            -d "{\"title\":\"[TEST] Plugin publish v${VERSION}\",\"head\":\"${BRANCH}\",\"base\":\"master\",\"body\":\"Test PR from skill-builder publish pipeline. Close or merge to verify token works end-to-end.\"}" \
+            | tee /tmp/pr-response.json \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print('PR created:', r.get('html_url', r.get('message', 'unknown')))"
