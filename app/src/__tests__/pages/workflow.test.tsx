@@ -80,7 +80,7 @@ vi.mock("@/components/workflow-step-complete", () => ({
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
-import { getWorkflowState, saveWorkflowState, writeFile, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar, endWorkflowSession, previewStepReset } from "@/lib/tauri";
+import { getWorkflowState, saveWorkflowState, writeFile, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar, endWorkflowSession, previewStepReset, runAnswerEvaluator } from "@/lib/tauri";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 
 describe("WorkflowPage — agent completion lifecycle", () => {
@@ -1053,6 +1053,7 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
     vi.mocked(getWorkflowState).mockClear();
     vi.mocked(readFile).mockClear();
     vi.mocked(writeFile).mockClear();
+    vi.mocked(runAnswerEvaluator).mockClear();
   });
 
   afterEach(() => {
@@ -1241,7 +1242,7 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
       screen.getByText("Save & Continue").click();
     });
 
-    // writeFile should be called exactly once (from handleSave only — handleAdvanceStep skips write)
+    // writeFile should be called exactly once (from handleSave — before the gate runs)
     await waitFor(() => {
       expect(vi.mocked(writeFile)).toHaveBeenCalledTimes(1);
     });
@@ -1251,7 +1252,10 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
     expect(saveCall[0]).toBe("/test/skills/test-skill/context/clarifications.md");
     expect(saveCall[1]).toBe("# Save and continue");
 
-    // Step should be completed and advanced
+    // Gate evaluator should be invoked (runAnswerEvaluator rejects → fail-open → advances)
+    expect(vi.mocked(runAnswerEvaluator)).toHaveBeenCalled();
+
+    // Step should be completed and advanced (via fail-open gate path)
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
       expect(useWorkflowStore.getState().currentStep).toBe(2);
@@ -1294,10 +1298,13 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
       screen.getByText("Discard & Continue").click();
     });
 
-    // Discard path uses handleAdvanceStep — no writeFile call
+    // Discard path does not write — in-flight edits are dropped, file on disk is unchanged
     expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
 
-    // Step should be completed and advanced
+    // Gate evaluator should be invoked (runAnswerEvaluator rejects → fail-open → advances)
+    expect(vi.mocked(runAnswerEvaluator)).toHaveBeenCalled();
+
+    // Step should be completed and advanced (via fail-open gate path)
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
       expect(useWorkflowStore.getState().currentStep).toBe(2);
