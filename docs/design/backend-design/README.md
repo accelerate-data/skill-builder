@@ -96,7 +96,7 @@ Single `Mutex<Connection>` — all access is serialized. WAL mode enables concur
 
 **Two separate skill registries.** The `skills` table is the master catalog for the Skills Library (`list_skills`). The `workspace_skills` table is a separate registry for the Settings→Skills tab (`list_workspace_skills`). Skills in `workspace_skills` — those imported from GitHub or uploaded via ZIP — do not appear in the Skills Library and have no row in `skills`. Marketplace bulk imports (`import_marketplace_to_library`) are the only import path that writes to both: `imported_skills` (disk metadata) and `skills` (library entry).
 
-**`skill_source` discriminator in `skills`.** Three values: `'skill-builder'` for workflow-built skills (always have a `workflow_runs` row), `'marketplace'` for marketplace imports (no `workflow_runs`), and `'imported'` for skills discovered on disk during reconciliation pass 2 with a SKILL.md but incomplete context artifacts (no `workflow_runs`). Note: the [startup-recon design doc](../startup-recon/README.md) uses `'upload'` for this third value — the code currently uses `'imported'`.
+**`skill_source` discriminator in `skills`.** Three values: `'skill-builder'` for workflow-built skills (always have a `workflow_runs` row), `'marketplace'` for marketplace imports (no `workflow_runs`), and `'imported'` for skills discovered on disk during reconciliation pass 2 with a SKILL.md but incomplete context artifacts (no `workflow_runs`).
 
 **Soft-delete for usage data.** `agent_runs` and `workflow_sessions` use a `reset_marker` column rather than hard deletes. The UI can hide cancelled/reset entries without losing historical cost data.
 
@@ -175,7 +175,7 @@ This tolerates workspace moves, manual edits, and multi-instance scenarios.
 
 **Marketplace bulk import** (Skills Library): `import_marketplace_to_library` walks the marketplace repo, downloads all skills, and writes to both `imported_skills` (disk metadata) and `skills` master (`skill_source='marketplace'`). These skills appear in the Skills Library, not Settings→Skills.
 
-**Note:** `{workspace_path}/.claude/skills` (plugin skills bundled with the workspace) is **not** scanned during reconciliation. Only `skills_path` (the user-configured output directory) is reconciled.
+**Plugin skills are intentionally excluded.** `{workspace_path}/.claude/skills` (skills bundled with the workspace for the Claude Code plugin) is not scanned during reconciliation. Only `skills_path` (the user-configured output directory) is reconciled.
 
 ### Refine session lifecycle
 
