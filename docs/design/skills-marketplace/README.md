@@ -154,7 +154,7 @@ Skills in this layer are domain knowledge packages that live in the dashboard al
 
 1. **Built** — created via the full workflow (Research → Decisions → Generation → Validation).
 
-2. **Marketplace import** (dashboard browse dialog or skill creation prompt) — scans the configured marketplace repo and filters to domain-type skills (`skill_type` values: `domain`, `platform`, `source`, `data-engineering`). The skill appears in the dashboard immediately as a completed skill.
+2. **Marketplace import** (dashboard browse dialog or skill creation prompt) — scans the configured marketplace repo and filters to domain-type skills (`skill_type` values: `domain`, `platform`, `source`, `data-engineering`). The skill appears in the dashboard immediately as a completed skill. When a marketplace URL is configured and the user starts creating a new skill, the wizard checks for matching skills in the marketplace and offers "Import and refine" as an alternative to starting the research workflow from scratch.
 
 A marketplace-imported skill is "already completed" — it skips the generation workflow entirely but is otherwise identical to a built skill for refinement and testing purposes.
 
@@ -167,19 +167,3 @@ A marketplace-imported skill is "already completed" — it skips the generation 
 - Edit frontmatter metadata after import.
 - Assign a purpose — purpose is a Settings→Skills-only concept.
 
----
-
-## Skill Creation Wizard
-
-> **Implemented wizard UX**: The create wizard UI (step flow, ghost suggestions, field layout) is documented in [`plugin-v2-design/app.md`](../plugin-v2-design/app.md). This section covers the frontmatter metadata fields captured by the wizard and how they relate to the SKILL.md schema.
-
-Skills built via the workflow go through a 4-step intake wizard:
-
-1. **Basic info** — name (required) + description (required)
-2. **Skill type** — `skill_type` field
-3. **Behaviour** — `argument_hint`, `user_invocable`, `disable_model_invocation`
-4. **Options** — model preference (skippable)
-
-The frontmatter fields from the wizard are written into the generated SKILL.md, giving built skills the same metadata schema as marketplace-imported skills.
-
-**Marketplace check**: when a marketplace URL is configured and the user starts creating a new skill, the wizard checks for matching skills in the marketplace and offers "Import and refine" before starting the research workflow.
