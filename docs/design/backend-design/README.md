@@ -73,16 +73,17 @@ The schema has two independent skill registries that serve different parts of th
 ```
 Skills Library (list_skills)             Settings→Skills (list_workspace_skills)
 ─────────────────────────────            ──────────────────────────────────────
-skills  ← master                         workspace_skills  ← standalone
- ├─ workflow_runs   (skill-builder)
- │   ├─ workflow_steps
- │   └─ workflow_artifacts
- └─ imported_skills (marketplace)
+skills  ← master (skill_name)            workspace_skills  ← standalone
+ ├─ workflow_runs   (skill-builder, FK)
+ │   ├─ workflow_steps     (skill_name)
+ │   └─ workflow_artifacts (skill_name)
+ ├─ imported_skills  (marketplace, skill_name)
+ ├─ workflow_sessions (skill_name)
+ ├─ agent_runs        (skill_name)
+ └─ skill_tags        (skill_name)
 ```
 
-`skills` is the parent table for the Skills Library. Each `skill_source` value has a corresponding child table that stores source-specific data — `workflow_runs` for `'skill-builder'` skills (build state and step history), `imported_skills` for `'marketplace'` skills (disk path, active state, metadata). `'imported'` skills have no child table.
-
-`workspace_skills` is entirely separate — it has no relationship to `skills` and is never reconciled against it.
+`skills` is the parent for the Skills Library. `workflow_runs` has an enforced FK (`skill_id → skills.id`). All other child tables link by `skill_name` convention (no enforced FK). `workspace_skills` is entirely separate — no relationship to `skills`.
 
 ### Skills Library tables
 
@@ -106,15 +107,13 @@ skills  ← master                         workspace_skills  ← standalone
 
 **`workspace_skills`** — Standalone registry for the Settings→Skills tab. Populated by `import_github_skills` (GitHub) and `upload_skill` (disk ZIP). Manages per-skill active/inactive toggle. These skills do **not** appear in the `skills` master and are not part of the Skills Library.
 
-### Session and telemetry tables
+**`workflow_sessions`** — Tracks refine and workflow session lifetimes (start, end, PID). Linked to `skills` by `skill_name`. Includes `reset_marker` to soft-delete cancelled sessions.
 
-**`workflow_sessions`** — Tracks refine and workflow session lifetimes (start, end, PID). Includes `reset_marker` to soft-delete cancelled sessions.
-
-**`agent_runs`** — One row per agent invocation. Stores model, token counts, cost, duration, turn count, stop reason, compaction count. Linked to `(skill_name, step_id, session_id)` by convention.
-
-### Supporting tables
+**`agent_runs`** — One row per agent invocation. Stores model, token counts, cost, duration, turn count, stop reason, compaction count. Linked to `skills` by `skill_name`; also references `step_id` and `session_id` by convention.
 
 **`skill_tags`** — Many-to-many skill→tag, normalized to lowercase. Keyed by `(skill_name, tag)`.
+
+### Supporting tables
 
 **`skill_locks`** — Concurrency control. Prevents two app instances from editing the same skill simultaneously. Keyed by `skill_name`; stores `instance_id` and `pid`.
 
