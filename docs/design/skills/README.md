@@ -153,5 +153,3 @@ skills/skill-test/
 **Evaluation Rubric** — loaded by the evaluator agent. Defines six scoring dimensions (silver vs gold, dbt project structure, dbt tests, unit test cases, dbt contracts, semantic model), scoring rules (comparative A vs B only, skip irrelevant dimensions, no surface observations), and output format (↑/↓ prefixed bullet points only).
 
 Both plan agents see the full SKILL.md in their workspace context but are only instructed to respond to the user prompt. The evaluator is explicitly asked to use the rubric via its prompt.
-
-See [skill-tester/PROMPTS.md](../skill-tester/PROMPTS.md) for how this content is assembled into workspace CLAUDE.md files and the evaluator prompt.
