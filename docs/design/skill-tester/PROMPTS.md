@@ -8,9 +8,9 @@ Two plan agents run in parallel with the same prompt, then one evaluator compare
 
 The user types a task description. That text is sent unchanged to both agents as the prompt — no wrapping, no prefix added.
 
-What makes the two runs different is not the prompt but the workspace context each agent loads. Before receiving the prompt, each agent loads a `.claude/CLAUDE.md` from its working directory.
+What makes the two runs different is not the prompt but the workspace each agent runs in. Before each run, the app writes a `.claude/CLAUDE.md` to a temp directory and starts the Claude Code SDK with that directory as its working directory. The SDK auto-loads the CLAUDE.md from the workspace on startup.
 
-### Without-skill: what the agent loads
+### Without-skill workspace
 
 ```
 # Test Workspace
@@ -65,9 +65,9 @@ Score each dimension **comparatively (A vs B)** only if it is **relevant to the 
 - Output ONLY bullet points, one per line, no other text
 ```
 
-### With-skill: what the agent loads
+### With-skill workspace
 
-Same as above, with the user's skill appended at the end:
+Same CLAUDE.md, with the user's skill body appended. The skill is embedded here directly — it is not deployed as a separate `.claude/skills/` entry.
 
 ```
 [everything above]
@@ -85,7 +85,7 @@ Same as above, with the user's skill appended at the end:
 {whatever the user typed}
 ```
 
-The Evaluation Rubric is present in both agents' context but neither is asked to use it — it's there so the evaluator (which runs in the without-skill workspace) has it available.
+The Evaluation Rubric is present in both workspaces' CLAUDE.md but neither plan agent is asked to use it — it's there so the evaluator (which runs in the without-skill workspace) has it available.
 
 ---
 
