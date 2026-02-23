@@ -32,18 +32,18 @@ The schema has two independent skill registries that serve different parts of th
 ```
 Skills Library (list_skills)             Settings→Skills (list_workspace_skills)
 ─────────────────────────────            ──────────────────────────────────────
-skills  ← master (skill_name)            workspace_skills  ← standalone
- ├─ workflow_runs   (skill-builder, FK)
+skills  ← master                         workspace_skills  ← standalone
+ ├─ workflow_runs        (skill_id FK → skills.id)
  │   ├─ workflow_steps     (skill_name)
  │   └─ workflow_artifacts (skill_name)
- ├─ imported_skills  (marketplace, skill_name)
- ├─ workflow_sessions (skill_name)
- ├─ agent_runs        (skill_name)
- ├─ skill_tags        (skill_name)
- └─ skill_locks       (skill_name)
+ ├─ imported_skills      (skill_name)
+ ├─ workflow_sessions    (skill_name)
+ │   └─ agent_runs       (workflow_session_id → workflow_sessions.session_id)
+ ├─ skill_tags           (skill_name)
+ └─ skill_locks          (skill_name)
 ```
 
-`skills` is the parent for the Skills Library. `workflow_runs` has an enforced FK (`skill_id → skills.id`). All other child tables link by `skill_name` convention (no enforced FK). `workspace_skills` is entirely separate — no relationship to `skills`.
+`workflow_runs` is the only table with an enforced FK (`skill_id → skills.id`). All other tables link by `skill_name` convention. `agent_runs` is a child of `workflow_sessions` (joined via `workflow_session_id`); it also carries `skill_name` and `step_id` to identify which workflow run step it belongs to. `workspace_skills` is entirely separate — no relationship to `skills`.
 
 ### Skills Library tables
 
@@ -63,9 +63,9 @@ skills  ← master (skill_name)            workspace_skills  ← standalone
 
 **`imported_skills`** — Child of `skills` for `marketplace` skills. Stores import-specific metadata: disk path, active/inactive state, skill type, version, model, argument hint. Linked to `skills` by `skill_name` (convention, not enforced FK).
 
-**`workflow_sessions`** — Tracks refine and workflow session lifetimes (start, end, PID). Linked to `skills` by `skill_name`. Includes `reset_marker` to soft-delete cancelled sessions.
+**`workflow_sessions`** — Child of `skills` (by `skill_name`). Tracks refine and workflow session lifetimes: start, end, PID. Includes `reset_marker` to soft-delete cancelled sessions.
 
-**`agent_runs`** — One row per agent invocation. Stores model, token counts, cost, duration, turn count, stop reason, compaction count. Linked to `skills` by `skill_name`; also references `step_id` and `session_id` by convention.
+**`agent_runs`** — Child of `workflow_sessions` (via `workflow_session_id`). One row per agent invocation. Also carries `skill_name` and `step_id` to identify the workflow run step. Stores model, token counts, cost, duration, turn count, stop reason, compaction count.
 
 **`skill_tags`** — Many-to-many skill→tag, normalized to lowercase. Keyed by `(skill_name, tag)`.
 
