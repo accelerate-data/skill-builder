@@ -1,74 +1,40 @@
-# Skill Tester — Exact Prompts & Process
+# Skill Tester — Prompts
 
-This document captures the exact prompt content sent to each agent in a skill test run.
-Source files are listed next to each component — read those when this diverges.
-
----
-
-## Overview: Three Agents Per Run
-
-| Agent | Label | Prompt source |
-|---|---|---|
-| Plan agent A | "with skill" | User's textarea text (`s.prompt`) |
-| Plan agent B | "without skill" | Same user textarea text (`s.prompt`) |
-| Evaluator | "eval" | `buildEvalPrompt()` in `test.tsx` |
-
-The **user prompt is identical** for both plan agents. What differs is the working directory
-each agent is given — which controls what `.claude/CLAUDE.md` it loads automatically via the SDK.
+Three agents run per test: two plan agents in parallel, then one evaluator after both complete.
 
 ---
 
-## Step 1: Workspace Preparation (Rust)
+## Plan agents
 
-Source: `app/src-tauri/src/commands/skill_test.rs:69–142`
+Both agents receive the same user-supplied prompt verbatim. What differs is the context each agent loads from its workspace.
 
-Two temp dirs are created under `$TMPDIR/skill-builder-test-{uuid}/`:
-
-```
-skill-builder-test-{uuid}/
-  baseline/
-    .claude/CLAUDE.md    ← skill-test context only
-  with-skill/
-    .claude/CLAUDE.md    ← skill-test context + user's skill
-```
-
-### Baseline `.claude/CLAUDE.md`
+### Without-skill workspace context
 
 ```
 # Test Workspace
 
 ## Skill Context
 
-{skill_test_body}
+{skill-test body — see below}
 ```
 
-### With-Skill `.claude/CLAUDE.md`
+### With-skill workspace context
 
 ```
 # Test Workspace
 
 ## Skill Context
 
-{skill_test_body}
+{skill-test body — see below}
 
 ---
 
 ## Active Skill: {skill_name}
 
-{user_skill_body}
+{user's skill body}
 ```
 
-`{skill_test_body}` = body of `skills/skill-test/SKILL.md` with frontmatter stripped.
-`{user_skill_body}` = body of the user's `{skill_name}/SKILL.md` with frontmatter stripped.
-
----
-
-## Step 2: `skills/skill-test/SKILL.md` Body (injected into both workspaces)
-
-Source: `skills/skill-test/SKILL.md`
-
-This is injected verbatim (frontmatter stripped) as the `## Skill Context` block in both
-workspace CLAUDE.md files. Both plan agents see it.
+### Skill-test context (injected into both workspaces)
 
 ```
 ## Test Context
@@ -119,48 +85,36 @@ Score each dimension **comparatively (A vs B)** only if it is **relevant to the 
 - Output ONLY bullet points, one per line, no other text
 ```
 
-Note: the Evaluation Rubric block is only meaningful to the **evaluator** agent. The plan agents
-see it in their context but are not asked to use it.
+Note: both plan agents see the Evaluation Rubric in their workspace context but are not asked to use it — it exists for the evaluator.
+
+### Plan agent prompt
+
+```
+{user input}
+```
 
 ---
 
-## Step 3: Plan Agent Prompts (with-skill and without-skill)
+## Evaluator
 
-Source: `app/src/pages/test.tsx:671–698`
+Starts after both plan agents complete. Runs with the without-skill workspace context — sees the skill-test context only, not the user's skill body.
 
-Both agents receive the **exact same prompt**: the raw text the user typed into the textarea.
-There is no wrapping, prefix, or system text added to it in the frontend.
-
-```
-{user's textarea text}
-```
-
-The agents are invoked with `startAgent(..., s.prompt, ...)`. The skill context difference
-comes entirely from their respective working directories (Step 1).
-
----
-
-## Step 4: Evaluator Prompt
-
-Source: `app/src/pages/test.tsx:103–133` (`buildEvalPrompt`)
-
-After both plan agents complete, the evaluator is started with this prompt (verbatim, with
-values substituted at runtime):
+### Evaluator prompt
 
 ```
 Task prompt:
 """
-{userPrompt}
+{user input}
 """
 
-Plan A (with skill "{skillName}" loaded):
+Plan A (with skill "{skill_name}" loaded):
 """
-{withPlanText}
+{with-skill plan output}
 """
 
 Plan B (no skill loaded):
 """
-{withoutPlanText}
+{without-skill plan output}
 """
 
 Use the Evaluation Rubric from your context to compare the two plans.
@@ -173,16 +127,12 @@ First, output bullet points (one per line) using:
 Then output a "## Recommendations" section with 2-4 specific, actionable suggestions for how to improve the skill based on the evaluation. Focus on gaps where Plan A underperformed or where the skill could have provided more guidance.
 ```
 
-The evaluator runs in the **baseline working directory** (not with-skill), so it only has the
-skill-test context — it does not see the user's skill. This is intentional: it judges output,
-not intent (see README.md).
-
 ---
 
-## Summary: What Each Agent Sees
+## What each agent sees
 
-| | CLAUDE.md context | Prompt |
+| Agent | Context | Prompt |
 |---|---|---|
-| Plan agent (with skill) | skill-test body + user's skill body | user textarea text |
-| Plan agent (without skill) | skill-test body only | user textarea text (identical) |
-| Evaluator | skill-test body only | `buildEvalPrompt()` with both plans embedded |
+| Plan agent (with skill) | skill-test context + user's skill body | user input |
+| Plan agent (without skill) | skill-test context only | user input (identical) |
+| Evaluator | skill-test context only | both plans + user input embedded |

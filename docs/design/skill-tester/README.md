@@ -144,4 +144,4 @@ The SDK loads the workspace CLAUDE.md automatically, so each agent receives diff
 
 After both plans complete, the evaluator receives a constructed prompt containing the original user prompt, Plan A (with-skill output), and Plan B (without-skill output), and is asked to score differences using the Evaluation Rubric from the skill-test context.
 
-See `PROMPTS.md` in this folder for the exact prompt strings sent to each agent.
+See [PROMPTS.md](PROMPTS.md) in this folder for the exact prompt strings sent to each agent.
