@@ -346,6 +346,8 @@ pub struct WorkspaceSkill {
     pub argument_hint: Option<String>,
     pub user_invocable: Option<bool>,
     pub disable_model_invocation: Option<bool>,
+    #[serde(default)]
+    pub purpose: Option<String>,
 }
 
 impl From<ImportedSkill> for WorkspaceSkill {
@@ -365,6 +367,7 @@ impl From<ImportedSkill> for WorkspaceSkill {
             argument_hint: s.argument_hint,
             user_invocable: s.user_invocable,
             disable_model_invocation: s.disable_model_invocation,
+            purpose: None,
         }
     }
 }

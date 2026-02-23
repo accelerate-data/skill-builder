@@ -118,6 +118,7 @@ pub fn create_test_db() -> rusqlite::Connection {
             argument_hint TEXT,
             user_invocable INTEGER,
             disable_model_invocation INTEGER,
+            purpose      TEXT,
             skill_master_id INTEGER REFERENCES skills(id)
         );
         CREATE TABLE IF NOT EXISTS skill_locks (

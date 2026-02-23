@@ -96,14 +96,78 @@ pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
 
     match dev_path {
         Some(ref p) if p.is_dir() => p.clone(),
-        _ => {
-            let resource = app_handle
-                .path()
-                .resource_dir()
-                .map(|r| r.join("workspace").join("skills"))
-                .unwrap_or_default();
-            resource
+        _ => app_handle
+            .path()
+            .resource_dir()
+            .map(|r| r.join("workspace").join("skills"))
+            .unwrap_or_default(),
+    }
+}
+
+/// Deploy a single skill into the workspace `.claude/skills/` directory.
+///
+/// Resolution order:
+/// 1. If `purpose` is non-empty and an active workspace skill with that purpose exists in DB:
+///    use `workspace_skill.disk_path` (copy from there).
+/// 2. Otherwise: copy from `bundled_skills_dir / skill_name`.
+///
+/// This is called before running workflow steps so that purpose-overridden skills
+/// (research, validate, skill-building) replace their bundled counterparts.
+fn deploy_skill_for_workflow(
+    conn: &rusqlite::Connection,
+    workspace_path: &str,
+    bundled_skills_dir: &std::path::Path,
+    skill_name: &str,
+    purpose: &str,
+) {
+    let dest_skills_dir = std::path::Path::new(workspace_path)
+        .join(".claude")
+        .join("skills");
+
+    // Try purpose-based resolution first
+    let source_dir: std::path::PathBuf = match crate::db::get_workspace_skill_by_purpose(conn, purpose) {
+        Ok(Some(ws)) => {
+            log::debug!(
+                "[deploy_skill_for_workflow] purpose='{}' → using workspace skill '{}' from {}",
+                purpose, ws.skill_name, ws.disk_path
+            );
+            std::path::PathBuf::from(&ws.disk_path)
         }
+        Ok(None) => {
+            log::debug!(
+                "[deploy_skill_for_workflow] purpose='{}' → no workspace skill found, using bundled '{}'",
+                purpose, skill_name
+            );
+            bundled_skills_dir.join(skill_name)
+        }
+        Err(e) => {
+            log::warn!(
+                "[deploy_skill_for_workflow] DB error looking up purpose '{}': {}; falling back to bundled",
+                purpose, e
+            );
+            bundled_skills_dir.join(skill_name)
+        }
+    };
+
+    if !source_dir.is_dir() {
+        log::debug!(
+            "[deploy_skill_for_workflow] source dir not found for '{}' ({}), skipping",
+            skill_name, source_dir.display()
+        );
+        return;
+    }
+
+    let dest = dest_skills_dir.join(skill_name);
+    // Remove existing copy so we always get a fresh deployment
+    if dest.exists() {
+        let _ = std::fs::remove_dir_all(&dest);
+    }
+    if let Err(e) = std::fs::create_dir_all(&dest) {
+        log::warn!("[deploy_skill_for_workflow] failed to create dest dir for '{}': {}", skill_name, e);
+        return;
+    }
+    if let Err(e) = super::imported_skills::copy_dir_recursive(&source_dir, &dest) {
+        log::warn!("[deploy_skill_for_workflow] failed to copy '{}': {}", skill_name, e);
     }
 }
 
@@ -919,6 +983,16 @@ pub async fn run_workflow_step(
     log::info!("[run_workflow_step] skill={} step={} domain={}", skill_name, step_id, domain);
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path).await?;
+
+    // Deploy purpose-resolved skills for research, validate, and skill-building.
+    // This overwrites the bundled copies if a workspace skill with a matching purpose is active.
+    {
+        let bundled_skills_dir = resolve_bundled_skills_dir(&app);
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        deploy_skill_for_workflow(&conn, &workspace_path, &bundled_skills_dir, "research", "research");
+        deploy_skill_for_workflow(&conn, &workspace_path, &bundled_skills_dir, "validate-skill", "validate");
+        deploy_skill_for_workflow(&conn, &workspace_path, &bundled_skills_dir, "skill-builder-practices", "skill-building");
+    }
 
     let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
     log::info!(
@@ -3168,6 +3242,7 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -3199,6 +3274,7 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -3238,6 +3314,7 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         let imported = crate::types::WorkspaceSkill {
             skill_id: "imp-data-analytics-123".to_string(),
@@ -3254,6 +3331,7 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &bundled).unwrap();
         crate::db::insert_workspace_skill(&conn, &imported).unwrap();
@@ -3305,6 +3383,7 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 

@@ -11,17 +11,6 @@ pub struct PrepareResult {
     pub transcript_log_dir: String,
 }
 
-/// Strip YAML frontmatter from skill content.
-/// Removes everything between the first and second `---` markers (inclusive).
-fn strip_frontmatter(content: &str) -> String {
-    let mut lines = content.lines();
-    if lines.next().map(|l| l.trim()) != Some("---") {
-        return content.to_string();
-    }
-    let body: Vec<&str> = lines.skip_while(|l| l.trim() != "---").skip(1).collect();
-    body.join("\n").trim_start_matches('\n').to_string()
-}
-
 /// Create a `.claude/CLAUDE.md` file inside `parent_dir` with the given content.
 fn write_workspace_claude_md(parent_dir: &Path, content: &str, label: &str) -> Result<(), String> {
     let claude_dir = parent_dir.join(".claude");
@@ -43,18 +32,20 @@ fn write_workspace_claude_md(parent_dir: &Path, content: &str, label: &str) -> R
     })
 }
 
-/// Read a SKILL.md file and return its body with frontmatter stripped.
-fn read_skill_body(path: &Path, label: &str) -> Result<String, String> {
-    let raw = std::fs::read_to_string(path).map_err(|e| {
-        log::error!(
-            "[prepare_skill_test] Failed to read {} SKILL.md at {:?}: {}",
-            label,
-            path,
-            e
-        );
-        format!("Failed to read {} content: {}", label, e)
+/// Recursively copy a skill directory into `dest_skills_dir/{skill_name}/`.
+/// Creates `dest_skills_dir` and the destination subdirectory if they don't exist.
+fn copy_skill_dir(src_skills_dir: &Path, dest_skills_dir: &Path, skill_name: &str) -> Result<(), String> {
+    let src = src_skills_dir.join(skill_name);
+    let dest = dest_skills_dir.join(skill_name);
+    std::fs::create_dir_all(&dest).map_err(|e| {
+        let msg = format!("Failed to create skills dir {:?}: {}", dest, e);
+        log::error!("[copy_skill_dir] {}", msg);
+        msg
     })?;
-    Ok(strip_frontmatter(&raw))
+    super::imported_skills::copy_dir_recursive(&src, &dest).map_err(|e| {
+        log::error!("[copy_skill_dir] Failed to copy skill '{}': {}", skill_name, e);
+        e
+    })
 }
 
 /// Prepare isolated temp workspaces for a skill test run.
@@ -63,8 +54,8 @@ fn read_skill_body(path: &Path, label: &str) -> Result<String, String> {
 /// - `baseline_cwd`: skill-test context only (no user skill)
 /// - `with_skill_cwd`: skill-test context + user skill
 ///
-/// Both contain a `.claude/CLAUDE.md` pre-populated with the appropriate context
-/// so agents pick it up automatically via the SDK's workspace CLAUDE.md loading.
+/// Both contain a `.claude/CLAUDE.md` and `.claude/skills/skill-test/` so agents
+/// pick up skill context automatically via the SDK's workspace loading.
 #[tauri::command]
 pub fn prepare_skill_test(
     app: tauri::AppHandle,
@@ -81,40 +72,72 @@ pub fn prepare_skill_test(
     validate_skill_name(&skill_name)?;
 
     // Resolve skills_path from DB (falls back to workspace_path if not configured)
-    let skills_path = {
+    // Also look up the purpose-based "test-context" skill if one is configured.
+    let (skills_path, test_context_skill) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = db::read_settings(&conn)?;
-        settings.skills_path.unwrap_or_else(|| workspace_path.clone())
+        let sp = settings.skills_path.unwrap_or_else(|| workspace_path.clone());
+        let tc = crate::db::get_workspace_skill_by_purpose(&conn, "test-context")
+            .map_err(|e| {
+                log::error!("[prepare_skill_test] failed to query test-context skill: {}", e);
+                e.to_string()
+            })?;
+        (sp, tc)
     };
 
     let test_id = uuid::Uuid::new_v4().to_string();
     let tmp_parent = std::env::temp_dir().join(format!("skill-builder-test-{}", test_id));
 
-    // Read skill bodies (frontmatter stripped)
-    let bundled_skills_dir = super::workflow::resolve_bundled_skills_dir(&app);
-    let skill_test_body =
-        read_skill_body(&bundled_skills_dir.join("skill-test").join("SKILL.md"), "skill-test")?;
-    let user_skill_body = read_skill_body(
-        &Path::new(&skills_path).join(&skill_name).join("SKILL.md"),
-        &format!("skill '{}'", skill_name),
-    )?;
-
-    // Write workspace CLAUDE.md files
     let baseline_dir = tmp_parent.join("baseline");
     let with_skill_dir = tmp_parent.join("with-skill");
 
-    write_workspace_claude_md(
-        &baseline_dir,
-        &format!("# Test Workspace\n\n## Skill Context\n\n{}", skill_test_body),
-        "baseline",
-    )?;
-    write_workspace_claude_md(
-        &with_skill_dir,
-        &format!(
-            "# Test Workspace\n\n## Skill Context\n\n{}\n\n---\n\n## Active Skill: {}\n\n{}",
-            skill_test_body, skill_name, user_skill_body
-        ),
-        "with-skill",
+    // Write minimal CLAUDE.md to both workspaces
+    write_workspace_claude_md(&baseline_dir, "# Test Workspace", "baseline")?;
+    write_workspace_claude_md(&with_skill_dir, "# Test Workspace", "with-skill")?;
+
+    let baseline_skills_dir = baseline_dir.join(".claude").join("skills");
+    let with_skill_skills_dir = with_skill_dir.join(".claude").join("skills");
+
+    // Resolve skill-test source: prefer purpose-based workspace skill, fall back to bundled
+    if let Some(ref tc_skill) = test_context_skill {
+        let tc_path = std::path::Path::new(&tc_skill.disk_path);
+        log::debug!(
+            "[prepare_skill_test] using test-context workspace skill from {}",
+            tc_skill.disk_path
+        );
+        // Copy the test-context skill into both workspaces as "skill-test"
+        for (label, dest_dir) in [("baseline", &baseline_skills_dir), ("with-skill", &with_skill_skills_dir)] {
+            let dest = dest_dir.join("skill-test");
+            std::fs::create_dir_all(&dest).map_err(|e| {
+                format!("Failed to create {} skill-test dir: {}", label, e)
+            })?;
+            super::imported_skills::copy_dir_recursive(tc_path, &dest).map_err(|e| {
+                log::error!("[prepare_skill_test] failed to copy test-context to {}: {}", label, e);
+                e
+            })?;
+        }
+        log::info!("[prepare_skill_test] copied skill-test from test-context workspace skill");
+    } else {
+        // Fallback: copy from bundled resources
+        let bundled_skills_dir = super::workflow::resolve_bundled_skills_dir(&app);
+        log::debug!(
+            "[prepare_skill_test] using bundled skill-test from {}",
+            bundled_skills_dir.display()
+        );
+        log::info!("[prepare_skill_test] copying skill-test into baseline workspace");
+        copy_skill_dir(&bundled_skills_dir, &baseline_skills_dir, "skill-test")?;
+
+        log::info!("[prepare_skill_test] copying skill-test into with-skill workspace");
+        copy_skill_dir(&bundled_skills_dir, &with_skill_skills_dir, "skill-test")?;
+    }
+
+    // User skill is in skills_path (may differ from workspace_path when custom skills dir is configured)
+    // User skills live in skills_path; bundled skills (like skill-test) live in workspace_path/.claude/skills/
+    log::info!("[prepare_skill_test] copying skill '{}' into with-skill workspace", skill_name);
+    copy_skill_dir(
+        Path::new(&skills_path),
+        &with_skill_skills_dir,
+        &skill_name,
     )?;
 
     let transcript_log_dir = Path::new(&workspace_path)
@@ -161,24 +184,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_strip_frontmatter_with_frontmatter() {
-        let content = "---\nname: test\ndescription: foo\n---\n\n## Body\n\nHello world";
-        let result = strip_frontmatter(content);
-        assert!(!result.contains("name: test"));
-        assert!(result.contains("## Body"));
-        assert!(result.contains("Hello world"));
-    }
-
-    #[test]
-    fn test_strip_frontmatter_no_frontmatter() {
-        let content = "## Body\n\nHello world";
-        let result = strip_frontmatter(content);
-        assert_eq!(result, content);
-    }
-
-    #[test]
     fn test_cleanup_nonexistent_is_ok() {
         // Cleaning up a non-existent test should succeed silently
         cleanup_skill_test("nonexistent-id".to_string()).unwrap();
+    }
+
+    #[test]
+    fn test_copy_skill_dir_copies_files() {
+        let tmp = std::env::temp_dir().join(format!("skill-test-copy-{}", uuid::Uuid::new_v4()));
+        let src_skills = tmp.join("src");
+        let skill_dir = src_skills.join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# My Skill").unwrap();
+
+        let dest_skills = tmp.join("dest");
+        copy_skill_dir(&src_skills, &dest_skills, "my-skill").unwrap();
+
+        assert!(dest_skills.join("my-skill").join("SKILL.md").exists());
+        let content = std::fs::read_to_string(dest_skills.join("my-skill").join("SKILL.md")).unwrap();
+        assert_eq!(content, "# My Skill");
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_copy_skill_dir_missing_source() {
+        let tmp = std::env::temp_dir().join(format!("skill-test-missing-{}", uuid::Uuid::new_v4()));
+        let result = copy_skill_dir(&tmp.join("nonexistent"), &tmp.join("dest"), "my-skill");
+        assert!(result.is_err());
     }
 }

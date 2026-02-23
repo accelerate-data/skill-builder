@@ -52,6 +52,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (22, run_workflow_runs_id_migration),
         (23, run_fk_columns_migration),
         (24, run_frontmatter_to_skills_migration),
+        (25, run_workspace_skills_purpose_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -902,6 +903,20 @@ fn repair_skills_table_schema(conn: &Connection) -> Result<(), rusqlite::Error> 
         log::info!("repair_skills_table_schema: backfilled frontmatter fields from workflow_runs and imported_skills");
     }
 
+    Ok(())
+}
+
+fn run_workspace_skills_purpose_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let has_column = conn.prepare("PRAGMA table_info(workspace_skills)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |r| r.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).any(|n| n == "purpose"))
+        })
+        .unwrap_or(false);
+    if !has_column {
+        conn.execute_batch("ALTER TABLE workspace_skills ADD COLUMN purpose TEXT;")?;
+    }
+    log::info!("migration 25: added purpose column to workspace_skills");
     Ok(())
 }
 
@@ -2351,9 +2366,9 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
 
 // --- Workspace Skills (Settings → Skills tab) ---
 
-const WS_COLUMNS: &str = "skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation";
+const WS_COLUMNS: &str = "skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation, purpose";
 
-fn ws_params(skill: &WorkspaceSkill) -> [rusqlite::types::Value; 14] {
+fn ws_params(skill: &WorkspaceSkill) -> [rusqlite::types::Value; 15] {
     use rusqlite::types::Value;
     [
         Value::Text(skill.skill_id.clone()),
@@ -2370,12 +2385,13 @@ fn ws_params(skill: &WorkspaceSkill) -> [rusqlite::types::Value; 14] {
         skill.argument_hint.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
         skill.user_invocable.map_or(Value::Null, |b| Value::Integer(b as i64)),
         skill.disable_model_invocation.map_or(Value::Null, |b| Value::Integer(b as i64)),
+        skill.purpose.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
     ]
 }
 
 pub fn insert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
     conn.execute(
-        &format!("INSERT INTO workspace_skills ({WS_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)"),
+        &format!("INSERT INTO workspace_skills ({WS_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)"),
         rusqlite::params_from_iter(ws_params(skill)),
     ).map_err(|e| {
         if e.to_string().contains("UNIQUE") {
@@ -2387,39 +2403,26 @@ pub fn insert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Resu
     Ok(())
 }
 
-/// Update an existing workspace_skills row in-place (for version upgrades).
-/// Preserves skill_id and imported_at from the existing row.
 pub fn upsert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
     conn.execute(
-        "UPDATE workspace_skills SET
-            domain = ?2,
-            description = ?3,
-            is_active = ?4,
-            disk_path = ?5,
-            skill_type = ?6,
-            version = ?7,
-            model = ?8,
-            argument_hint = ?9,
-            user_invocable = ?10,
-            disable_model_invocation = ?11
-         WHERE skill_name = ?1",
-        rusqlite::params![
-            skill.skill_name,
-            skill.domain,
-            skill.description,
-            skill.is_active as i32,
-            skill.disk_path,
-            skill.skill_type,
-            skill.version,
-            skill.model,
-            skill.argument_hint,
-            skill.user_invocable.map(|v| if v { 1i32 } else { 0i32 }),
-            skill.disable_model_invocation.map(|v| if v { 1i32 } else { 0i32 }),
-        ],
-    ).map_err(|e| {
-        log::error!("upsert_workspace_skill: failed for '{}': {}", skill.skill_name, e);
-        e.to_string()
-    })?;
+        &format!(
+            "INSERT INTO workspace_skills ({WS_COLUMNS})
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+             ON CONFLICT(skill_name) DO UPDATE SET
+                 domain = excluded.domain,
+                 description = excluded.description,
+                 is_bundled = excluded.is_bundled,
+                 disk_path = excluded.disk_path,
+                 skill_type = excluded.skill_type,
+                 version = excluded.version,
+                 model = excluded.model,
+                 argument_hint = excluded.argument_hint,
+                 user_invocable = excluded.user_invocable,
+                 disable_model_invocation = excluded.disable_model_invocation,
+                 purpose = excluded.purpose"
+        ),
+        rusqlite::params_from_iter(ws_params(skill)),
+    ).map_err(|e| format!("upsert_workspace_skill: {}", e))?;
     Ok(())
 }
 
@@ -2428,7 +2431,7 @@ pub fn upsert_bundled_workspace_skill(conn: &Connection, skill: &WorkspaceSkill)
     conn.execute(
         &format!(
             "INSERT INTO workspace_skills ({WS_COLUMNS})
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
              ON CONFLICT(skill_name) DO UPDATE SET
                  domain = excluded.domain,
                  description = excluded.description,
@@ -2439,7 +2442,8 @@ pub fn upsert_bundled_workspace_skill(conn: &Connection, skill: &WorkspaceSkill)
                  model = excluded.model,
                  argument_hint = excluded.argument_hint,
                  user_invocable = excluded.user_invocable,
-                 disable_model_invocation = excluded.disable_model_invocation
+                 disable_model_invocation = excluded.disable_model_invocation,
+                 purpose = excluded.purpose
                  -- is_active intentionally NOT updated: preserves user's deactivation"
         ),
         rusqlite::params_from_iter(ws_params(skill)),
@@ -2467,6 +2471,7 @@ fn row_to_workspace_skill(row: &rusqlite::Row) -> rusqlite::Result<WorkspaceSkil
         argument_hint: row.get(11)?,
         user_invocable: user_invocable.map(|v| v != 0),
         disable_model_invocation: disable_model_invocation.map(|v| v != 0),
+        purpose: row.get(14)?,
     })
 }
 
@@ -2532,6 +2537,22 @@ pub fn get_workspace_skill_by_name(conn: &Connection, skill_name: &str) -> Resul
         .map_err(|e| format!("get_workspace_skill_by_name query: {}", e))?;
     match rows.next() {
         Some(row) => Ok(Some(row.map_err(|e| format!("get_workspace_skill_by_name row: {}", e))?)),
+        None => Ok(None),
+    }
+}
+
+/// Look up an active workspace skill by its purpose tag.
+/// Returns the first active skill with the given purpose, or None if not found.
+pub fn get_workspace_skill_by_purpose(
+    conn: &Connection,
+    purpose: &str,
+) -> rusqlite::Result<Option<WorkspaceSkill>> {
+    let mut stmt = conn.prepare(
+        &format!("SELECT {WS_COLUMNS} FROM workspace_skills WHERE purpose = ?1 AND is_active = 1 LIMIT 1")
+    )?;
+    let mut rows = stmt.query_map(rusqlite::params![purpose], row_to_workspace_skill)?;
+    match rows.next() {
+        Some(row) => Ok(Some(row?)),
         None => Ok(None),
     }
 }
@@ -2911,6 +2932,7 @@ mod tests {
         run_workflow_runs_id_migration(&conn).unwrap();
         run_fk_columns_migration(&conn).unwrap();
         run_frontmatter_to_skills_migration(&conn).unwrap();
+        run_workspace_skills_purpose_migration(&conn).unwrap();
         conn
     }
 
@@ -4984,6 +5006,7 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+            purpose: None,
         };
 
         // Insert the workspace skill.
@@ -5010,5 +5033,55 @@ mod tests {
         let skills_final = list_workspace_skills(&conn).unwrap();
         let gone = skills_final.iter().find(|s| s.skill_id == "ws-uuid-abc-123");
         assert!(gone.is_none(), "skill should not appear in list after deletion");
+    }
+
+    fn make_ws_skill(skill_id: &str, skill_name: &str, purpose: Option<&str>, is_active: bool) -> WorkspaceSkill {
+        WorkspaceSkill {
+            skill_id: skill_id.to_string(),
+            skill_name: skill_name.to_string(),
+            domain: None,
+            description: None,
+            is_active,
+            is_bundled: false,
+            disk_path: format!("/tmp/{}", skill_name),
+            imported_at: "2025-01-01T00:00:00Z".to_string(),
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: purpose.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn test_get_workspace_skill_by_purpose_happy_path() {
+        let conn = create_test_db();
+        let skill = make_ws_skill("id-research", "research-skill", Some("research"), true);
+        insert_workspace_skill(&conn, &skill).unwrap();
+
+        let found = get_workspace_skill_by_purpose(&conn, "research").unwrap();
+        assert!(found.is_some(), "should find an active skill with purpose='research'");
+        assert_eq!(found.unwrap().skill_name, "research-skill");
+    }
+
+    #[test]
+    fn test_get_workspace_skill_by_purpose_no_match() {
+        let conn = create_test_db();
+
+        let found = get_workspace_skill_by_purpose(&conn, "nonexistent-purpose").unwrap();
+        assert!(found.is_none(), "should return None for a purpose that has no matching skill");
+    }
+
+    #[test]
+    fn test_get_workspace_skill_by_purpose_inactive_ignored() {
+        let conn = create_test_db();
+        // Insert an inactive skill with purpose "validate"
+        let skill = make_ws_skill("id-validate", "validate-skill", Some("validate"), false);
+        insert_workspace_skill(&conn, &skill).unwrap();
+
+        let found = get_workspace_skill_by_purpose(&conn, "validate").unwrap();
+        assert!(found.is_none(), "should return None when the only matching skill is inactive");
     }
 }

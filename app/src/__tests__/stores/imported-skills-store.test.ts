@@ -19,6 +19,7 @@ const sampleSkills: WorkspaceSkill[] = [
     argument_hint: null,
     user_invocable: null,
     disable_model_invocation: null,
+    purpose: null,
   },
   {
     skill_id: "id-2",
@@ -35,6 +36,7 @@ const sampleSkills: WorkspaceSkill[] = [
     argument_hint: null,
     user_invocable: null,
     disable_model_invocation: null,
+    purpose: null,
   },
 ];
 
@@ -116,6 +118,7 @@ describe("useImportedSkillsStore", () => {
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
+        purpose: null,
       };
       mockInvokeCommands({ upload_skill: newSkill });
 

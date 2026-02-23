@@ -38,6 +38,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `src-tauri/src/commands/agent.rs` | -- | `@workflow-agent` |
 | `src-tauri/src/commands/sidecar_lifecycle.rs` | -- | `@workflow-agent` |
 | `src-tauri/src/commands/refine.rs` | `commands::refine` | `@refine` |
+| `src-tauri/src/commands/skill_test.rs` | `commands::skill_test` | `@skill-tester` |
 | `src-tauri/src/commands/git.rs` | -- | `@dashboard` |
 | `src-tauri/src/commands/lifecycle.rs` | -- | -- |
 | `src-tauri/src/commands/feedback.rs` | -- | -- |
@@ -79,6 +80,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `e2e/workflow/workflow-gate.spec.ts` | `@workflow` |
 | `e2e/workflow/workflow-navigation.spec.ts` | `@workflow` |
 | `e2e/refine/refine.spec.ts` | `@refine` |
+| `e2e/skill-tester/skill-tester.spec.ts` | `@skill-tester` |
 
 ## Cross-Boundary: Agent ↔ App Format Compliance
 

@@ -272,6 +272,7 @@ export interface WorkspaceSkill {
   argument_hint: string | null
   user_invocable: boolean | null
   disable_model_invocation: boolean | null
+  purpose: string | null
 }
 
 export interface GitHubRepoInfo {
@@ -304,7 +305,15 @@ export interface SkillMetadataOverride {
   argument_hint?: string | null
   user_invocable?: boolean | null
   disable_model_invocation?: boolean | null
+  purpose?: string | null
 }
+
+export const PURPOSE_OPTIONS = [
+  { value: "test-context", label: "test-context" },
+  { value: "research", label: "research" },
+  { value: "validate", label: "validate" },
+  { value: "skill-building", label: "skill-building" },
+] as const
 
 export interface MarketplaceImportResult {
   skill_name: string

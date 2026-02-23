@@ -4,6 +4,12 @@ import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowRespon
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
 export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult, SkillMetadataOverride } from "@/lib/types";
 
+export interface WorkspaceSkillImportRequest {
+  path: string;
+  purpose: string | null;
+  metadata_override: SkillMetadataOverride | null;
+}
+
 // --- Settings ---
 
 export const getSettings = () => invoke<AppSettings>("get_settings");
@@ -375,8 +381,11 @@ export const checkMarketplaceUrl = (url: string) =>
 export const listGitHubSkills = (owner: string, repo: string, branch: string, subpath?: string) =>
   invoke<AvailableSkill[]>("list_github_skills", { owner, repo, branch, subpath: subpath ?? null });
 
-export const importGitHubSkills = (owner: string, repo: string, branch: string, skillPaths: string[]) =>
-  invoke<ImportedSkill[]>("import_github_skills", { owner, repo, branch, skillPaths });
+export const importGitHubSkills = (owner: string, repo: string, branch: string, skillRequests: WorkspaceSkillImportRequest[]) =>
+  invoke<ImportedSkill[]>("import_github_skills", { owner, repo, branch, skillRequests });
+
+export const setWorkspaceSkillPurpose = (skillId: string, purpose: string | null) =>
+  invoke<void>("set_workspace_skill_purpose", { skillId, purpose });
 
 // --- Marketplace Import ---
 

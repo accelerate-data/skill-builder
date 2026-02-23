@@ -158,9 +158,6 @@ function parseEvalLine(line: string): EvalLine {
   if (stripped.startsWith("\u2191")) return { direction: "up", text: stripped.slice(1).trim() };
   if (stripped.startsWith("\u2193")) return { direction: "down", text: stripped.slice(1).trim() };
   if (stripped.startsWith("\u2192")) return { direction: "neutral", text: stripped.slice(1).trim() };
-  if (trimmed.startsWith("\u2191")) return { direction: "up", text: trimmed.slice(1).trim() };
-  if (trimmed.startsWith("\u2193")) return { direction: "down", text: trimmed.slice(1).trim() };
-  if (trimmed.startsWith("\u2192")) return { direction: "neutral", text: trimmed.slice(1).trim() };
   return { direction: null, text: trimmed };
 }
 
@@ -208,6 +205,14 @@ function evalRowBg(direction: EvalDirection): string {
     case "down": return "bg-destructive/5";
     default: return "";
   }
+}
+
+
+/** Derive a human-readable label from a model ID string. */
+function deriveModelLabel(modelId: string): string {
+  if (modelId.includes("haiku")) return "Haiku";
+  if (modelId.includes("opus")) return "Opus";
+  return "Sonnet";
 }
 
 /** Return the evaluator placeholder message based on phase. */
@@ -690,11 +695,14 @@ export default function TestPage() {
       useAgentStore.getState().registerRun(withId, testModel, skillName);
       useAgentStore.getState().registerRun(withoutId, testModel, "__test_baseline__");
 
+      // Wrap the prompt so plan agents know the domain context
+      const wrappedPrompt = `You are a data engineer and the user is trying to do the following task:\n\n${s.prompt}`;
+
       // Start both agents in parallel
       await Promise.all([
         startAgent(
           withId,
-          s.prompt,
+          wrappedPrompt,
           testModel,
           prepared.with_skill_cwd,
           [],
@@ -707,7 +715,7 @@ export default function TestPage() {
         ),
         startAgent(
           withoutId,
-          s.prompt,
+          wrappedPrompt,
           testModel,
           prepared.baseline_cwd,
           [],
@@ -764,10 +772,7 @@ export default function TestPage() {
 
   const elapsedStr = `${(elapsed / 1000).toFixed(1)}s`;
   const activeModel = useSettingsStore((s) => s.preferredModel ?? "sonnet");
-  const availableModels = useSettingsStore((s) => s.availableModels);
-  // Use API display name if available, otherwise derive from model string
-  const modelLabel = availableModels.find((m) => m.id === activeModel)?.displayName
-    ?? (activeModel.includes("haiku") ? "Haiku" : activeModel.includes("opus") ? "Opus" : "Sonnet");
+  const modelLabel = deriveModelLabel(activeModel);
 
   const { lines: evalLines, recommendations: evalRecommendations } = parseEvalOutput(state.evalText);
 

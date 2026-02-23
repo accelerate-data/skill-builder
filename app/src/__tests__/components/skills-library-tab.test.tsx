@@ -75,6 +75,7 @@ const sampleSkills: WorkspaceSkill[] = [
     argument_hint: null,
     user_invocable: null,
     disable_model_invocation: null,
+    purpose: null,
   },
   {
     skill_id: "id-2",
@@ -91,6 +92,7 @@ const sampleSkills: WorkspaceSkill[] = [
     argument_hint: null,
     user_invocable: null,
     disable_model_invocation: null,
+    purpose: null,
   },
 ];
 
@@ -254,6 +256,7 @@ describe("SkillsLibraryTab", () => {
       argument_hint: null,
       user_invocable: null,
       disable_model_invocation: null,
+      purpose: null,
     };
 
     mockInvoke.mockImplementation((cmd: string) => {
@@ -300,5 +303,109 @@ describe("SkillsLibraryTab", () => {
     // upload_skill should never be called
     await new Promise((r) => setTimeout(r, 50));
     expect(mockInvoke).not.toHaveBeenCalledWith("upload_skill", expect.anything());
+  });
+
+  // Test A — Built-in badge renders for bundled skills (VD-876)
+  it("shows Built-in badge for bundled skill and not for non-bundled skill", async () => {
+    const bundledSkill: WorkspaceSkill = {
+      ...sampleSkills[0],
+      skill_id: "id-bundled",
+      skill_name: "bundled-skill",
+      is_bundled: true,
+    };
+    const nonBundledSkill: WorkspaceSkill = {
+      ...sampleSkills[1],
+      skill_id: "id-regular",
+      skill_name: "regular-skill",
+      is_bundled: false,
+    };
+    setupMocks([bundledSkill, nonBundledSkill]);
+    render(<SkillsLibraryTab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("bundled-skill")).toBeInTheDocument();
+    });
+    expect(screen.getByText("regular-skill")).toBeInTheDocument();
+
+    // Built-in badge should appear for the bundled skill
+    expect(screen.getByText("Built-in")).toBeInTheDocument();
+
+    // Only one Built-in badge — regular-skill should not have one
+    const builtInBadges = screen.getAllByText("Built-in");
+    expect(builtInBadges).toHaveLength(1);
+  });
+
+  // Test B — Purpose badge renders for skills with a purpose (VD-883)
+  it("shows purpose badge for skill with purpose and not for skill with null purpose", async () => {
+    const skillWithPurpose: WorkspaceSkill = {
+      ...sampleSkills[0],
+      skill_id: "id-purpose",
+      skill_name: "research-skill",
+      purpose: "research",
+    };
+    const skillNoPurpose: WorkspaceSkill = {
+      ...sampleSkills[1],
+      skill_id: "id-no-purpose",
+      skill_name: "plain-skill",
+      purpose: null,
+    };
+    setupMocks([skillWithPurpose, skillNoPurpose]);
+    render(<SkillsLibraryTab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("research-skill")).toBeInTheDocument();
+    });
+    expect(screen.getByText("plain-skill")).toBeInTheDocument();
+
+    // Purpose badge should show for the skill with purpose
+    expect(screen.getByText("research")).toBeInTheDocument();
+
+    // Only one "research" badge — plain-skill has no purpose badge
+    const purposeBadges = screen.getAllByText("research");
+    expect(purposeBadges).toHaveLength(1);
+  });
+
+  // Test C — Set purpose calls set_workspace_skill_purpose (VD-883)
+  it("calls set_workspace_skill_purpose when a purpose is selected from the popover", async () => {
+    const user = userEvent.setup();
+
+    const skill: WorkspaceSkill = {
+      ...sampleSkills[0],
+      skill_id: "id-purpose-test",
+      skill_name: "my-skill",
+      purpose: null,
+    };
+
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "list_workspace_skills") return Promise.resolve([skill]);
+      if (cmd === "set_workspace_skill_purpose") return Promise.resolve();
+      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
+    });
+
+    render(<SkillsLibraryTab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("my-skill")).toBeInTheDocument();
+    });
+
+    // Open the purpose popover via the Tag icon button
+    const purposeTrigger = screen.getByRole("button", { name: /Set purpose for my-skill/i });
+    await user.click(purposeTrigger);
+
+    // Wait for the popover to open and select "research"
+    await waitFor(() => {
+      expect(screen.getByText("Set purpose")).toBeInTheDocument();
+    });
+
+    const researchOption = screen.getByRole("button", { name: "research" });
+    await user.click(researchOption);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("set_workspace_skill_purpose", {
+        skillId: "id-purpose-test",
+        purpose: "research",
+      });
+    });
   });
 });

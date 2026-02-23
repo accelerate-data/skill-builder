@@ -200,6 +200,7 @@ pub fn run() {
             commands::imported_skills::upload_skill,
             commands::imported_skills::list_workspace_skills,
             commands::imported_skills::toggle_skill_active,
+            commands::imported_skills::set_workspace_skill_purpose,
             commands::imported_skills::delete_imported_skill,
             commands::imported_skills::get_skill_content,
             commands::imported_skills::export_skill,
