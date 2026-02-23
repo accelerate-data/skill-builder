@@ -73,7 +73,7 @@ skills  ← master                         workspace_skills  ← standalone
 
 ### Settings→Skills table
 
-**`workspace_skills`** — Standalone registry for the Settings→Skills tab. Populated by `import_github_skills` (GitHub) and `upload_skill` (disk ZIP). Manages per-skill active/inactive toggle. These skills do **not** appear in the `skills` master and are not part of the Skills Library.
+**`workspace_skills`** — Registry of skills deployed to `.claude/skills/` in the agent workspace. Populated via `import_github_skills` (GitHub marketplace) and `upload_skill` (ZIP upload) from the Settings→Skills tab. Each row tracks active/inactive state, disk path, and metadata parsed from SKILL.md frontmatter. Active rows are copied into agent workspace directories at runtime so the Claude Code SDK can load them automatically.
 
 | Column | Type | Notes |
 |---|---|---|
