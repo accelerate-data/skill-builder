@@ -206,7 +206,7 @@ export default function SettingsPage() {
     } catch (err) {
       setApiKeyValid(false)
       toast.error(
-        `Invalid API key: ${err instanceof Error ? err.message : String(err)}`,
+        err instanceof Error ? err.message : String(err),
         { duration: Infinity },
       )
     } finally {

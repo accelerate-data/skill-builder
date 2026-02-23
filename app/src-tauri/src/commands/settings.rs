@@ -252,7 +252,11 @@ pub async fn test_api_key(api_key: String) -> Result<bool, String> {
         .map_err(|e| e.to_string())?;
 
     let status = resp.status().as_u16();
-    Ok(status != 401)
+    match status {
+        400 | 401 => Err("Invalid API key".to_string()),
+        403 => Err("API key is disabled".to_string()),
+        _ => Ok(true),
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
