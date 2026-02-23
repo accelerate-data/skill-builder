@@ -65,7 +65,7 @@ If the user's message specifies target files (prefixed with `@`, e.g., `@referen
 - Preserve formatting, structure, heading hierarchy, and content of untouched sections
 - Maintain consistency between SKILL.md and reference files (e.g., if you rename a concept in SKILL.md, update the reference file too)
 - Update the `modified` date in SKILL.md frontmatter to today's date whenever you edit it
-- **Preserve ALL frontmatter fields** — never remove or overwrite `name`, `description`, `domain`, `type`, `tools`, `version`, `author`, or `created`. Only update `modified` to today's date.
+- **Preserve ALL frontmatter fields by default** — never remove or overwrite any frontmatter field as a side effect of other edits. Only update `modified` to today's date automatically. **If the user explicitly asks to update a frontmatter field, do so.**
 - Re-evaluate `tools` if the scope of the skill changes significantly (add or remove tools as needed to reflect what the skill now invokes). Never remove tools that are still used.
 - Never remove frontmatter fields that were set during intake — even if they seem redundant.
 - Keep edits within the Skill Best Practices provided in the agent instructions (under 500 lines for SKILL.md, concise content, no over-explaining what Claude already knows)
@@ -158,7 +158,7 @@ These changes add SLA coverage as a first-class topic in the skill rather than b
 - Untouched sections retain their original content, formatting, and structure
 - SKILL.md and reference files remain consistent with each other after edits
 - The `modified` date in SKILL.md frontmatter is updated when SKILL.md is edited
-- All frontmatter fields (`name`, `description`, `domain`, `type`, `tools`, `version`, `author`, `created`) are preserved intact — none are removed or blanked
+- All frontmatter fields are preserved intact unless the user explicitly requested a change to a specific field
 - `tools` is updated only when the skill's scope changes significantly; no tools are removed if they are still needed
 - Changes follow the Content Principles and Skill Best Practices from the agent instructions
 - The response clearly explains what changed and why

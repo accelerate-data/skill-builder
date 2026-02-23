@@ -6,6 +6,7 @@ import {
   createFixtureScoping,
   createFixtureClarification,
   createFixtureT4Workspace,
+  createFixtureRefinableSkill,
 } from "./fixtures";
 
 const SKILL_NAME = "pet-store-analytics";
@@ -19,6 +20,10 @@ const WORKSPACE_CONTEXT = fs.readFileSync(
   path.join(PLUGIN_DIR, "skills", "building-skills", "references", "workspace-context.md"),
   "utf8"
 );
+const REFINE_SKILL_INSTRUCTIONS = fs.readFileSync(
+  path.join(PLUGIN_DIR, "agents", "refine-skill.md"),
+  "utf8"
+).replace(/^---[\s\S]*?---\n/, ""); // strip YAML frontmatter
 
 // ── research-orchestrator ────────────────────────────────────────────────────
 
@@ -214,3 +219,63 @@ Return: path to decisions.md and a one-line summary of key decisions.`;
     expect(count).toBeGreaterThanOrEqual(3);
   });
 });
+
+// ── refine-skill ─────────────────────────────────────────────────────────────
+
+describe.skipIf(!HAS_API_KEY)("refine-skill: frontmatter description edits", () => {
+  let refineDir: string;
+  let skillMdPath: string;
+
+  beforeAll(() => {
+    refineDir = makeTempDir("agents-refine");
+    createFixtureRefinableSkill(refineDir, SKILL_NAME);
+    skillMdPath = path.join(refineDir, SKILL_NAME, "SKILL.md");
+
+    const skillDir = path.join(refineDir, SKILL_NAME);
+    const contextDir = path.join(refineDir, SKILL_NAME, "context");
+    const workspaceDir = path.join(refineDir, ".vibedata", SKILL_NAME);
+
+    const prompt = `You are the refine-skill agent for the skill-builder plugin.
+
+Skill directory: ${skillDir}
+Context directory: ${contextDir}
+Workspace directory: ${workspaceDir}
+Skill type: domain
+Command: refine
+
+<agent-instructions>
+${REFINE_SKILL_INSTRUCTIONS}
+${WORKSPACE_CONTEXT}
+</agent-instructions>
+
+Current user message: Add to the description that this skill works well with dbt-testing when running test suites`;
+
+    runClaude(prompt, BUDGET, 120_000, refineDir);
+  }, 135_000);
+
+  it("description field is updated with companion trigger", { timeout: 135_000 }, () => {
+    if (!fs.existsSync(skillMdPath)) return;
+    const frontmatter = extractFrontmatter(skillMdPath);
+    expect(frontmatter).toMatch(/dbt.testing/i);
+  });
+
+  it("original description content is preserved", { timeout: 135_000 }, () => {
+    if (!fs.existsSync(skillMdPath)) return;
+    const frontmatter = extractFrontmatter(skillMdPath);
+    expect(frontmatter).toContain("Guides data engineers");
+  });
+
+  it("modified date is updated after description edit", { timeout: 135_000 }, () => {
+    if (!fs.existsSync(skillMdPath)) return;
+    const frontmatter = extractFrontmatter(skillMdPath);
+    const modifiedMatch = frontmatter.match(/^modified:\s*(.+)$/m);
+    expect(modifiedMatch).not.toBeNull();
+    expect(modifiedMatch![1].trim()).not.toBe("2026-01-15");
+  });
+});
+
+function extractFrontmatter(filePath: string): string {
+  const content = fs.readFileSync(filePath, "utf8");
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  return match ? match[1] : "";
+}

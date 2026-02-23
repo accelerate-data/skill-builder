@@ -274,6 +274,47 @@ export function createFixtureDecisions(dir: string, skillName: string) {
   );
 }
 
+// refinable-skill: session.json + user-context.md + completed SKILL.md with full frontmatter — for refine-skill agent tests
+export function createFixtureRefinableSkill(dir: string, skillName: string) {
+  writeSessionJson(dir, skillName, "refinement");
+  writeUserContextMd(dir, skillName);
+  makeSkillDirs(dir, skillName);
+  fs.writeFileSync(
+    path.join(dir, skillName, "SKILL.md"),
+    `---
+name: ${skillName}
+description: Guides data engineers to build silver and gold layer dbt models for pet store analytics. Use when modeling sales transactions, inventory levels, or customer behavior from a pet store POS system.
+domain: Pet Store Analytics
+type: domain
+tools: Read, Edit, Write, Glob, Grep, Task
+version: 1.0.0
+author: testuser
+created: 2026-01-15
+modified: 2026-01-15
+---
+
+# Pet Store Analytics
+
+This skill guides data engineers in building dbt models for pet store analytics domains.
+
+## Core Entities
+- dim_products — product hierarchy (department, category, SKU)
+- dim_customers — customer profiles with segmentation
+- fct_sales — transaction grain with line items
+- fct_inventory — daily inventory snapshots
+
+## Quick Reference
+
+| Entity | Key Metrics | Notes |
+|--------|-------------|-------|
+| Products | revenue, units_sold | SKU-level |
+| Customers | ltv, frequency_tier | Segmented |
+| Sales | gmv, aov | Transaction grain |
+| Inventory | days_on_hand, fill_rate | Daily snapshot |
+`
+  );
+}
+
 // generation: session.json + user-context.md + SKILL.md (no decisions.md — keeps state signal unambiguous)
 export function createFixtureGeneration(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "generation");
