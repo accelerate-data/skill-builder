@@ -91,8 +91,8 @@ The two modes differ in when overrides are applied:
 
 Before showing the browse dialog, skills already present in the app are marked so the user can see what's installed:
 
-- **Skill Library path**: should query `workflow_runs UNION imported_skills` (the Skill Library tables) by skill name. The current implementation calls `get_all_installed_skill_names` which also unions `workspace_skills` — that is incorrect; a skill installed in Settings→Skills should not show as "In library" in the Skill Library browse. This is a known code defect: the query should be replaced with `SELECT skill_name FROM skills` (the master table added in VD-859).
-- **Settings→Skills path**: queries `workspace_skills` by name and version. Skills matching name + version are shown as "Already installed"; skills matching name but at an older version are shown as "Upgrade available".
+- **Skill Library path**: calls `get_dashboard_skill_names` → `SELECT name FROM skills`. Only Skills Library entries are checked — `workspace_skills` (Settings→Skills) is explicitly excluded. Also fetches full skill summaries via `list_skills` for version comparison and edit form pre-population.
+- **Settings→Skills path**: calls `list_workspace_skills` → `workspace_skills` table directly. Only workspace skills are checked — `skills` (Skill Library) is not included.
 
 ---
 
@@ -120,9 +120,11 @@ When the browse dialog loads, each candidate is compared against existing `works
 
 | Condition | State | Behaviour |
 |---|---|---|
-| Same name, same or older version in `workspace_skills` | `exists` | Row greyed out, checkbox disabled — "Already installed" |
-| Same name, newer version available | `upgrade` | Selectable — "Upgrade available"; overwrites disk dir and updates the DB row, preserving `is_active` and `is_bundled` |
+| Same name, same version | `same-version` | Row dimmed — "Up to date" badge; action button disabled |
+| Same name, different version | `upgrade` | Selectable — "Update available" badge; overwrites disk dir and updates the DB row, preserving `is_active` and `is_bundled` |
 | No name match | available | Selectable, proceeds normally |
+
+Both modes (Skill Library and Settings→Skills) use the same `same-version` / `upgrade` states. The distinction is which table is queried: `skills` for Skill Library, `workspace_skills` for Settings→Skills.
 
 **Step 2 — Purpose conflict (confirm time)**
 
