@@ -11,6 +11,8 @@ jobs:
   claude-review:
     # Non-blocking: review runs but never fails the PR status
     continue-on-error: true
+    # Skip bot-authored PRs (e.g. Dependabot) — claude-code-action blocks non-human actors
+    if: github.actor != 'dependabot[bot]'
 
     runs-on: ubuntu-latest
     permissions:
