@@ -120,6 +120,16 @@ This tolerates workspace moves, manual edits, and multi-instance scenarios.
 
 **Plugin skills are intentionally excluded.** `{workspace_path}/.claude/skills` (skills bundled with the workspace for the Claude Code plugin) is not scanned during reconciliation. Only `skills_path` (the user-configured output directory) is reconciled.
 
+### Skill test lifecycle
+
+1. Frontend calls `prepare_skill_test` with a `skill_name`.
+2. Backend creates two isolated temp workspaces under a shared `skill-builder-test-{uuid}/` parent:
+   - `baseline/` — contains only the bundled `skill-test` SKILL.md (frontmatter stripped) written to `.claude/CLAUDE.md`. No user skill.
+   - `with-skill/` — contains the same `skill-test` body plus the user's skill SKILL.md written to `.claude/CLAUDE.md`.
+3. Returns `test_id`, both `cwd` paths, and a `transcript_log_dir` pointing to `{workspace}/{skill_name}/logs/`.
+4. Frontend spawns agents against both workspaces in parallel and compares behaviour.
+5. Frontend calls `cleanup_skill_test` with the `test_id` → backend removes the shared temp parent directory.
+
 ### Refine session lifecycle
 
 1. `get_skill_content_for_refine` loads current skill files into the editor.
