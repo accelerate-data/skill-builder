@@ -71,30 +71,32 @@ Single `Mutex<Connection>` — all access is serialized. WAL mode enables concur
 | Table | Purpose |
 |---|---|
 | `settings` | KV store; one row per key. Used for `AppSettings` (API key, paths, model, auth tokens, flags). |
-| `skills` | Master catalog of all skills regardless of source. Single source of truth for skill identity. |
+| `skills` | Master catalog for the **Skills Library**. Three `skill_source` values: `'skill-builder'` (built via workflow), `'marketplace'` (bulk imported), `'imported'` (disk-discovered via reconciliation pass 2 — SKILL.md present but incomplete context artifacts). |
 | `workflow_runs` | Build progress for skill-builder skills: current step, status, intake data, display metadata. One row per skill. |
 | `workflow_steps` | Per-step status and timing for each workflow run. |
 | `workflow_sessions` | Session tracking for refine and workflow invocations. Includes `reset_marker` for cancelled sessions. |
 | `agent_runs` | Metrics for every agent invocation: model, token counts, cost, duration, turn count, stop reason. |
 | `workflow_artifacts` | File content produced by workflow steps, stored inline with path and size. |
 | `skill_tags` | Many-to-many skill→tag, normalized to lowercase. |
-| `imported_skills` | Skills imported in bulk via the marketplace (`import_marketplace_to_library`). |
-| `workspace_skills` | Skills imported to the Skills Library by the user — via GitHub (`import_github_skills`) or disk ZIP upload (`upload_skill`). This is what the Skills Library UI reads from. |
+| `imported_skills` | Disk-path and metadata store for marketplace bulk imports. Created alongside a `skills` master row by `import_marketplace_to_library`. |
+| `workspace_skills` | Skills shown in the **Settings→Skills tab** — populated via GitHub import (`import_github_skills`) and disk ZIP upload (`upload_skill`). Manages per-skill active/inactive state. These skills do **not** appear in the `skills` master table. |
 | `skill_locks` | Concurrency control — prevents concurrent edits across app instances. |
 | `schema_migrations` | Migration version tracker. |
 
 ### Key relationships
 
 - `workflow_runs.skill_id` → `skills.id` (FK; skill-builder skills only)
-- `imported_skills.skill_name` → `skills.name` (by convention; `skills` is the master)
-- `workspace_skills.skill_name` → `skills.name` (by convention; `skills` is the master)
+- `imported_skills.skill_name` → `skills.name` (by convention — marketplace imports have a row in both)
+- `workspace_skills` is completely separate from `skills` — Settings→Skills and the Skills Library are backed by different tables with no FK between them
 - `agent_runs` references `(skill_name, step_id, session_id)` — not enforced as FK, joined by convention
 - `workflow_artifacts` keyed by `(skill_name, step_id, relative_path)`
 - `skill_tags` keyed by `(skill_name, tag)`
 
 ### Design decisions
 
-**Skills master as unified catalog.** The `skills` table holds all skills (skill-builder, marketplace, imported) with a `skill_source` discriminator. This enables a single `list_skills` query regardless of origin, and keeps identity in one place.
+**Two separate skill registries.** The `skills` table is the master catalog for the Skills Library (`list_skills`). The `workspace_skills` table is a separate registry for the Settings→Skills tab (`list_workspace_skills`). Skills in `workspace_skills` — those imported from GitHub or uploaded via ZIP — do not appear in the Skills Library and have no row in `skills`. Marketplace bulk imports (`import_marketplace_to_library`) are the only import path that writes to both: `imported_skills` (disk metadata) and `skills` (library entry).
+
+**`skill_source` discriminator in `skills`.** Three values: `'skill-builder'` for workflow-built skills (always have a `workflow_runs` row), `'marketplace'` for marketplace imports (no `workflow_runs`), and `'imported'` for skills discovered on disk during reconciliation pass 2 with a SKILL.md but incomplete context artifacts (no `workflow_runs`). Note: the [startup-recon design doc](../startup-recon/README.md) uses `'upload'` for this third value — the code currently uses `'imported'`.
 
 **Soft-delete for usage data.** `agent_runs` and `workflow_sessions` use a `reset_marker` column rather than hard deletes. The UI can hide cancelled/reset entries without losing historical cost data.
 
@@ -165,13 +167,15 @@ On each app launch, `reconcile_startup` scans the workspace directory and compar
 
 This tolerates workspace moves, manual edits, and multi-instance scenarios.
 
-### Imported and marketplace skill ingestion
+### Skill ingestion paths
 
-**ZIP upload**: `upload_skill` extracts the archive, parses SKILL.md frontmatter for metadata, and inserts into `workspace_skills`.
+**ZIP upload** (Settings→Skills): `upload_skill` extracts the archive, parses SKILL.md frontmatter, and inserts into `workspace_skills`. No `skills` master row is created.
 
-**GitHub import**: `import_github_skills` fetches the repo tree, downloads each selected skill directory, parses SKILL.md, and inserts into `workspace_skills`. OAuth token (if present) is used for private repos.
+**GitHub import** (Settings→Skills): `import_github_skills` fetches the repo tree, downloads selected skill directories, parses SKILL.md, and inserts into `workspace_skills`. No `skills` master row is created.
 
-**Marketplace bulk import**: `import_marketplace_to_library` walks the configured marketplace repo URL, downloads all skills, and upserts into `imported_skills`.
+**Marketplace bulk import** (Skills Library): `import_marketplace_to_library` walks the marketplace repo, downloads all skills, and writes to both `imported_skills` (disk metadata) and `skills` master (`skill_source='marketplace'`). These skills appear in the Skills Library, not Settings→Skills.
+
+**Note:** `{workspace_path}/.claude/skills` (plugin skills bundled with the workspace) is **not** scanned during reconciliation. Only `skills_path` (the user-configured output directory) is reconciled.
 
 ### Refine session lifecycle
 
