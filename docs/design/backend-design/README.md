@@ -28,6 +28,8 @@ A skill can exist in the library without being in the workspace, and vice versa.
 
 Single `Mutex<Connection>` serializes all access. WAL mode enables concurrent reads when the mutex is free. Sequential migrations run at startup and are tracked in `schema_migrations`.
 
+See [database.md](database.md) for the full schema — table definitions, column descriptions, and relationships.
+
 ---
 
 ## Key data flows
