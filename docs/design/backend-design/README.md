@@ -80,7 +80,8 @@ skills  ← master (skill_name)            workspace_skills  ← standalone
  ├─ imported_skills  (marketplace, skill_name)
  ├─ workflow_sessions (skill_name)
  ├─ agent_runs        (skill_name)
- └─ skill_tags        (skill_name)
+ ├─ skill_tags        (skill_name)
+ └─ skill_locks       (skill_name)
 ```
 
 `skills` is the parent for the Skills Library. `workflow_runs` has an enforced FK (`skill_id → skills.id`). All other child tables link by `skill_name` convention (no enforced FK). `workspace_skills` is entirely separate — no relationship to `skills`.
@@ -109,13 +110,13 @@ skills  ← master (skill_name)            workspace_skills  ← standalone
 
 **`skill_tags`** — Many-to-many skill→tag, normalized to lowercase. Keyed by `(skill_name, tag)`.
 
+**`skill_locks`** — Prevents two app instances from editing the same skill simultaneously. Linked to `skills` by `skill_name`. Stores `instance_id` and `pid`; stale locks (dead PID) are reclaimed automatically.
+
 ### Settings→Skills table
 
 **`workspace_skills`** — Standalone registry for the Settings→Skills tab. Populated by `import_github_skills` (GitHub) and `upload_skill` (disk ZIP). Manages per-skill active/inactive toggle. These skills do **not** appear in the `skills` master and are not part of the Skills Library.
 
 ### Supporting tables
-
-**`skill_locks`** — Concurrency control. Prevents two app instances from editing the same skill simultaneously. Keyed by `skill_name`; stores `instance_id` and `pid`.
 
 **`settings`** — KV store. One JSON blob per key. Used for `AppSettings`: API key, paths, model, auth tokens, feature flags.
 
