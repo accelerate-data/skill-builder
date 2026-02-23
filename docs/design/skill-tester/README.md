@@ -1,39 +1,27 @@
-# Skill Tester — Design Note
+# Skill Tester
 
 **Issue:** VD-603
-**Status:** Design finalized, pending implementation
 
 ---
 
-## Problem
+## Purpose
 
-Skills are written to guide dbt coding agents — but there's no in-app way to see what a coding agent would actually *do* with a skill loaded vs without one. The existing Refine page is interactive and stateful (session accumulates context). What's needed is a clean, isolated test surface: enter a prompt, see how a coding agent plans differently with the skill, evaluate the delta.
+The Skill Tester lets you run a single prompt against a coding agent twice — once with your skill loaded, once without — and see a side-by-side plan comparison with an automated evaluation of the delta.
+
+Each run is stateless: fresh agent processes, no prior conversation, no accumulated context. This makes the skill's influence on agent behaviour visible in isolation.
 
 ---
 
-## Approach
+## How it works
 
-A dedicated **Test Skill** page (`/test`) — separate from Refine, read-only, stateless.
+Two plan agents run in parallel, then an evaluator runs after both complete.
 
-### Key constraints
-
-| Constraint | Rationale |
+| Run | What the agent sees |
 |---|---|
-| **Fresh process per run** | No session history, no context buildup — each run is a clean `claude -p` invocation |
-| **Empty CLAUDE.md** | No workspace context injected — tests the skill in isolation |
-| **Plan mode execution** | Shows what a dbt coding agent would *plan to do*, not just narrative advice — steps and files make the delta concrete |
-| **Read-only** | No skill editing on this page — that's Refine's job |
+| **With skill** | skill-test context + your skill body |
+| **Without skill** | skill-test context only |
 
-### Execution model
-
-Two parallel `claude -p` calls per run:
-
-```
-With skill:    claude -p --plugin-dir <temp_dir> --output-format stream-json
-Without skill: claude -p --output-format stream-json
-```
-
-Both use a temp workspace with an empty `.claude/CLAUDE.md`. Neither carries prior conversation. The evaluator runs as a third call after both responses complete, receiving both plans and writing a narrative delta assessment.
+Both agents receive the same user prompt. The difference is entirely in the workspace context loaded by each agent. After both plans complete, a third evaluator agent compares them and scores the delta across the six rubric dimensions.
 
 ---
 
@@ -76,34 +64,15 @@ Three-zone layout: **prompt input → split plan panels → evaluator**.
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Panel details
+**Plan panels** stream simultaneously. The vertical divider is draggable.
 
-**Agent Plan (with skill / no skill)**
-- Displays plan mode output: summary sentence, numbered steps, files to create/modify
-- Monospace font, step numbers in blue, file icons (`✎` modify, `+` create)
-- Both panels stream simultaneously; vertical divider is draggable (22–78% bounds)
-
-**Evaluator**
-- Single scrollable list; one sentence per bullet
-- `↑` green = improvement the skill produced
-- `↓` red = gap present in both or regression
-- Starts after both plan responses complete
+**Evaluator** starts after both plan agents complete. `↑` = improvement the skill produced. `↓` = gap in both plans or regression. Followed by a Recommendations section with actionable suggestions for improving the skill.
 
 ---
 
 ## What the evaluator sees
 
-The evaluator call receives:
-- The original test prompt
-- The full with-skill plan response
-- The full no-skill plan response
-
-It does **not** receive the skill content itself — it judges the output, not the intent. This keeps it honest: if the skill didn't guide the agent toward better plans, the evaluator will say so.
-
-Evaluator prompt focus:
-1. Where did the skill produce concretely different steps or files?
-2. What domain-specific guidance appeared only in the with-skill plan?
-3. What gaps remain in both plans (skill didn't help here)?
+The evaluator receives the original prompt, the full with-skill plan, and the full without-skill plan. It does **not** receive the skill content itself — it judges the output, not the intent. If the skill didn't guide the agent toward better plans, the evaluator will say so.
 
 ---
 
@@ -115,33 +84,10 @@ Evaluator prompt focus:
 
 ---
 
+## Prompts
+
+See [PROMPTS.md](PROMPTS.md) for the exact prompt strings sent to each agent — workspace context formats, plan agent prompt, and evaluator prompt.
+
 ## Visual reference
 
 See `mockup.html` in this folder — open in any browser.
-
----
-
-## Implementation notes
-
-- Route: `/test`, sidebar nav entry alongside Refine
-- State: local component state only, clears on new run (no Zustand store needed)
-- Transport: new Rust command `run_skill_test(skill_name, prompt)` → spawns two parallel `tokio::process::Command` children, emits Tauri events for streaming
-- Evaluator: third `claude -p` call after both streams complete, no plugin dir
-- Temp workspace: create per-run dir in `$TMPDIR` with empty `.claude/CLAUDE.md`, clean up after run
-
----
-
-## How the prompt is used
-
-The user enters a single prompt in the textarea. That **same text is sent verbatim** to both the with-skill and without-skill plan agents — no wrapping or prefix is added.
-
-The difference between the two runs is the **working directory**, not the prompt. Each agent's working directory contains a pre-populated `.claude/CLAUDE.md`:
-
-- **Without skill**: skill-test context only (`skills/skill-test/SKILL.md` body)
-- **With skill**: skill-test context + the user's skill body under `## Active Skill: {name}`
-
-The SDK loads the workspace CLAUDE.md automatically, so each agent receives different ambient context while processing the same user prompt.
-
-After both plans complete, the evaluator receives a constructed prompt containing the original user prompt, Plan A (with-skill output), and Plan B (without-skill output), and is asked to score differences using the Evaluation Rubric from the skill-test context.
-
-See [PROMPTS.md](PROMPTS.md) in this folder for the exact prompt strings sent to each agent.
