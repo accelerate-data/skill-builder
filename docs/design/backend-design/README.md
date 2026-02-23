@@ -78,14 +78,16 @@ Single `Mutex<Connection>` — all access is serialized. WAL mode enables concur
 | `agent_runs` | Metrics for every agent invocation: model, token counts, cost, duration, turn count, stop reason. |
 | `workflow_artifacts` | File content produced by workflow steps, stored inline with path and size. |
 | `skill_tags` | Many-to-many skill→tag, normalized to lowercase. |
-| `imported_skills` | Non-bundled skills imported from ZIP or GitHub. |
-| `workspace_skills` | Workspace-bundled skills (split from `imported_skills` in migration 20). |
+| `imported_skills` | Skills imported in bulk via the marketplace (`import_marketplace_to_library`). |
+| `workspace_skills` | Skills imported to the Skills Library by the user — via GitHub (`import_github_skills`) or disk ZIP upload (`upload_skill`). This is what the Skills Library UI reads from. |
 | `skill_locks` | Concurrency control — prevents concurrent edits across app instances. |
 | `schema_migrations` | Migration version tracker. |
 
 ### Key relationships
 
 - `workflow_runs.skill_id` → `skills.id` (FK; skill-builder skills only)
+- `imported_skills.skill_name` → `skills.name` (by convention; `skills` is the master)
+- `workspace_skills.skill_name` → `skills.name` (by convention; `skills` is the master)
 - `agent_runs` references `(skill_name, step_id, session_id)` — not enforced as FK, joined by convention
 - `workflow_artifacts` keyed by `(skill_name, step_id, relative_path)`
 - `skill_tags` keyed by `(skill_name, tag)`
@@ -97,8 +99,6 @@ Single `Mutex<Connection>` — all access is serialized. WAL mode enables concur
 **Soft-delete for usage data.** `agent_runs` and `workflow_sessions` use a `reset_marker` column rather than hard deletes. The UI can hide cancelled/reset entries without losing historical cost data.
 
 **Split workspace vs. app data.** Skills content lives in the user-configured workspace path (`~/.vibedata/` by default). The database lives in Tauri's `app_data_dir`. These are intentionally separate: the workspace is user-owned and portable; the DB is app-owned and not hand-edited.
-
-**Workspace skills split (migration 20).** Skills that are both imported and bundled with the workspace were originally stored in `imported_skills`. Migration 20 moved them to a dedicated `workspace_skills` table for clarity.
 
 ---
 
@@ -167,11 +167,11 @@ This tolerates workspace moves, manual edits, and multi-instance scenarios.
 
 ### Imported and marketplace skill ingestion
 
-**ZIP upload**: `upload_skill` extracts the archive, parses SKILL.md frontmatter for metadata, and inserts into `imported_skills`.
+**ZIP upload**: `upload_skill` extracts the archive, parses SKILL.md frontmatter for metadata, and inserts into `workspace_skills`.
 
-**GitHub import**: `import_github_skills` clones or fetches the repo, walks the directory structure for skill folders, parses each SKILL.md, and upserts into `workspace_skills`. OAuth token (if present) is used for private repos.
+**GitHub import**: `import_github_skills` fetches the repo tree, downloads each selected skill directory, parses SKILL.md, and inserts into `workspace_skills`. OAuth token (if present) is used for private repos.
 
-**Marketplace**: `import_marketplace_to_library` calls the GitHub import flow against the configured marketplace repo URL.
+**Marketplace bulk import**: `import_marketplace_to_library` walks the configured marketplace repo URL, downloads all skills, and upserts into `imported_skills`.
 
 ### Refine session lifecycle
 
