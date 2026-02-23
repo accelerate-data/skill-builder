@@ -173,7 +173,11 @@ The agent runtime is a Node.js process using `@anthropic-ai/claude-agent-sdk`, m
 
 ### Settings persistence
 
-`AppSettings` is stored as a single JSON blob in the `settings` KV table. Sensitive fields (API key, GitHub OAuth token) are stored in the DB — not encrypted, but access requires local file system access. Changing `skills_path` triggers directory initialization and optional migration of existing skill directories.
+`AppSettings` is stored as a single JSON blob in the `settings` KV table. The blob is always read and written as a whole unit, so a proper relational table would add migration overhead with no query benefit.
+
+The API key and GitHub OAuth token are currently stored in the blob unencrypted. The standard for desktop apps (including Anthropic's own Claude Desktop, which uses "Claude Safe Storage" in the macOS Keychain) is to store sensitive credentials in the OS keychain. Migration of these two fields to `tauri-plugin-keychain` is tracked in VD-882.
+
+Changing `skills_path` triggers directory initialization and optional migration of existing skill directories.
 
 ### Git integration
 
