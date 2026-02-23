@@ -25,7 +25,7 @@ Skills in this layer are loaded into the agent workspace and wired into CLAUDE.m
 
 1. **Bundled** — shipped with the app, seeded by `seed_bundled_skills` on startup. Always overwrite on seed; `is_active` state is preserved across re-seeds. Cannot be deleted — only deactivated.
 
-2. **Marketplace import** (Settings→Skills browse dialog) — scans the configured marketplace repo. Any skill with a `SKILL.md` containing at least a `name` field is shown — no `skill_type` filter is applied here. Downloads to `workspace_path/.claude/skills/`, inserts into `workspace_skills`. No dashboard entry.
+2. **Marketplace import** (Settings→Skills browse dialog) — reads `.claude-plugin/marketplace.json` from the configured repo. Each entry with a path-string `source` is listed; object sources (npm, pip, url) are skipped. `skill_type` is not present in the manifest listing and is not filtered here — it is resolved from `SKILL.md` frontmatter at import time. Downloads to `workspace_path/.claude/skills/`, inserts into `workspace_skills`. No dashboard entry.
 
 3. **Zip upload** — extracts to `workspace_path/.claude/skills/`. Mandatory frontmatter: `name`, `domain`, `description`. Always forces `skill_type='skill-builder'` regardless of frontmatter.
 
@@ -96,7 +96,9 @@ The marketplace is a GitHub repository — any repo where each subdirectory cont
 
 **Default branch resolution**: `parse_github_url` defaults to `"main"` for URLs without an explicit branch. All three import functions (`list_github_skills`, `import_github_skills`, `import_marketplace_to_library`) call `get_default_branch` via the repos API after parsing to resolve the actual default — avoiding 404s on repos where the default branch is `"master"` or a custom name.
 
-**Discovery**: `list_github_skills` fetches the full recursive git tree, finds all `SKILL.md` blob entries, downloads each one, parses frontmatter, and returns `AvailableSkill` records. If a `subpath` is configured, only entries under that path are included.
+**Discovery**: `list_github_skills` fetches `.claude-plugin/marketplace.json` at the root of the configured branch. The manifest is a JSON object with a `plugins` array; each entry carries `name`, `source` (a relative path string or an object source type), and optional `description`, `version`, `author`, `category`, `tags`. Only path-string sources are processed — object sources (e.g. npm, pip, url) are skipped with a warning. Each resolved path is then verified to have a `SKILL.md` present; entries without one are filtered out. If a `subpath` is configured, only paths under that prefix are included.
+
+`import_marketplace_to_library` (Skills Library import) uses the full recursive git tree + per-SKILL.md fetches — the marketplace.json optimization applies only to the Settings→Skills browse listing.
 
 **Pre-marking**: Before showing the browse dialog, skills already present in the app are marked so the user can see what's installed.
 
@@ -134,7 +136,7 @@ disable-model-invocation: false
 
 | Field | Required | Description |
 |---|---|---|
-| `name` | Yes | Kebab-case identifier. Falls back to directory name if absent, but should always be set explicitly. Used as the primary key — two skills with the same name will conflict. |
+| `name` | Yes | Kebab-case identifier. Skills without a `name` in frontmatter are skipped during marketplace listing — there is no directory-name fallback. Used as the primary key — two skills with the same name will conflict. |
 | `description` | No (Settings→Skills); Yes (Skill Library) | Shown in the browse dialog, Skill Library, and wired into the workspace CLAUDE.md so Claude Code knows when to invoke the skill. Should follow the trigger-pattern format: what it does, when to use it. |
 | `domain` | No (Settings→Skills); Yes (Skill Library) | The business or technical domain (e.g. `sales`, `dbt`, `fabric`). Shown as a badge in the skill list. |
 | `skill_type` | No | Categorises the skill (`domain`, `platform`, `source`, `data-engineering`, `skill-builder`). The Skill Library browse dialog filters to domain-type values. Settings→Skills browse shows all skills with a `SKILL.md` regardless of `skill_type`. |

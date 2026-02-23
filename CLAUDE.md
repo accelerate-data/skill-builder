@@ -192,6 +192,8 @@ track a feature idea, break down a large issue, or decompose an issue into small
 (e.g. "break down VD-123", "decompose VD-123", "split VD-123"),
 read and follow the skill at `.claude/skills/create-linear-issue/SKILL.md`.
 
+Default project: **Skill Builder** — use this project unless the user specifies otherwise.
+
 ### /implement-linear-issue
 When the user runs /implement-linear-issue, or mentions a Linear issue identifier (e.g. "VD-123", "implement VD-123",
 "work on VD-452", "working on VD-100", "build VD-100", "fix VD-99"), or asks to implement, build, fix, or work on a Linear issue,

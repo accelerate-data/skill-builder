@@ -76,10 +76,11 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 |---|---|
 | `upload_skill` | Extract ZIP and register in `workspace_skills` |
 | `list_imported_skills` | All `workspace_skills` entries hydrated with SKILL.md |
-| `toggle_skill_active` | Set active/inactive flag |
+| `toggle_skill_active` | Set active/inactive flag; auto-deactivates other active skills sharing the same purpose |
 | `delete_imported_skill` | Remove from `workspace_skills` |
 | `get_skill_content` | Read SKILL.md content |
 | `export_skill` | Package a skill as a ZIP for download |
+| `set_workspace_skill_purpose` | Set or clear the `purpose` tag on a workspace skill |
 
 ## GitHub Integration
 
@@ -87,7 +88,7 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 |---|---|
 | `parse_github_url` | Parse a GitHub URL into owner/repo/branch/subpath |
 | `check_marketplace_url` | Verify a marketplace repo is valid |
-| `list_github_skills` | List available skills in a GitHub repo |
+| `list_github_skills` | List available skills from `.claude-plugin/marketplace.json` in a GitHub repo |
 | `import_github_skills` | Download selected skills into `workspace_skills` |
 | `import_marketplace_to_library` | Bulk import all marketplace skills into Skills Library |
 | `github_start_device_flow` | Start GitHub OAuth device flow |
