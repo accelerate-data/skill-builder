@@ -98,6 +98,10 @@ The reconciler infers step completion from files in `{skills_path}/{name}/`:
 | 11 | SKILL.md exists | `skills`: `skill_source` = 'marketplace' | `{skills_path}/{name}/SKILL.md` present | No action. No notification. |
 | 12 | SKILL.md missing | `skills`: `skill_source` = 'marketplace' | `{skills_path}/{name}/SKILL.md` absent | Delete row from `skills` master. Notify: "'{name}' marketplace skill removed — SKILL.md not found on disk". |
 
+#### Reconciliation scope
+
+Reconciliation operates only on `skills_path` (the user-configured output directory, e.g. `~/Skills`). `{workspace_path}/.claude/skills` (plugin skills bundled with the workspace for the Claude Code plugin) is intentionally excluded — those are managed separately and never reconciled.
+
 #### Pass 2: discovery
 
 | # | Scenario | Tables to check | Artifacts to check | Decision |
