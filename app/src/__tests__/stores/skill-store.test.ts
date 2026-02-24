@@ -33,14 +33,14 @@ describe("useSkillStore", () => {
 
     const skills = [
       makeSkillSummary({ name: "skill-a" }),
-      makeSkillSummary({ name: "skill-b", domain: "finance" }),
+      makeSkillSummary({ name: "skill-b", purpose: "domain" }),
     ];
     useSkillStore.getState().setSkills(skills);
 
     let state = useSkillStore.getState();
     expect(state.skills).toHaveLength(2);
     expect(state.skills[0].name).toBe("skill-a");
-    expect(state.skills[1].domain).toBe("finance");
+    expect(state.skills[1].purpose).toBe("domain");
     expect(state.isLoading).toBe(false);
 
     // Replaces previous skills entirely

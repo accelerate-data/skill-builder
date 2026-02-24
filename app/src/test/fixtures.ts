@@ -32,12 +32,11 @@ export function makeAppSettings(overrides?: Partial<AppSettings>): AppSettings {
 export function makeSkillSummary(overrides?: Partial<SkillSummary>): SkillSummary {
   return {
     name: "test-skill",
-    domain: "testing",
     current_step: "Step 1: Research",
     status: "in_progress",
     last_modified: "2026-01-15T10:00:00Z",
     tags: [],
-    skill_type: null,
+    purpose: null,
     author_login: null,
     author_avatar: null,
     intake_json: null,

@@ -11,8 +11,7 @@ export interface WorkflowStep {
 
 interface WorkflowState {
   skillName: string | null;
-  domain: string | null;
-  skillType: string | null;
+  purpose: string | null;
   currentStep: number;
   steps: WorkflowStep[];
   isRunning: boolean;
@@ -37,8 +36,8 @@ interface WorkflowState {
   /** Transient: signals the workflow page to start in update mode. Set before navigation, consumed once by the init effect. */
   pendingUpdateMode: boolean;
 
-  initWorkflow: (skillName: string, domain: string, skillType?: string) => void;
-  setSkillType: (skillType: string | null) => void;
+  initWorkflow: (skillName: string, purpose?: string) => void;
+  setPurpose: (purpose: string | null) => void;
   setReviewMode: (mode: boolean) => void;
   setCurrentStep: (step: number) => void;
   updateStepStatus: (stepId: number, status: WorkflowStep["status"]) => void;
@@ -100,8 +99,7 @@ const defaultSteps: WorkflowStep[] = [
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   skillName: null,
-  domain: null,
-  skillType: null,
+  purpose: null,
   currentStep: 0,
   steps: defaultSteps.map((s) => ({ ...s })),
   isRunning: false,
@@ -116,11 +114,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   hydrated: false,
   disabledSteps: [],
 
-  initWorkflow: (skillName, domain, skillType) =>
+  initWorkflow: (skillName, purpose) =>
     set({
       skillName,
-      domain,
-      skillType: skillType ?? null,
+      purpose: purpose ?? null,
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
@@ -135,7 +132,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       disabledSteps: [],
     }),
 
-  setSkillType: (skillType) => set({ skillType }),
+  setPurpose: (purpose) => set({ purpose }),
 
   setReviewMode: (mode) => set({ reviewMode: mode }),
 
@@ -193,8 +190,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       steps: state.steps.map((s) =>
         s.id >= stepId ? { ...s, status: "pending" as const } : s
       ),
-      // Clear disabled steps when resetting to the beginning (scope may change)
-      ...(stepId === 0 ? { disabledSteps: [] } : {}),
+      // Always clear disabled steps — guards are re-evaluated from disk after each step completes.
+      // Stale guards from a previous run (e.g. contradictory_inputs from old decisions.md) must not
+      // persist across resets.
+      disabledSteps: [],
     })),
 
   loadWorkflowState: (completedStepIds, savedCurrentStep) =>
@@ -230,8 +229,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   reset: () =>
     set({
       skillName: null,
-      domain: null,
-      skillType: null,
+      purpose: null,
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,

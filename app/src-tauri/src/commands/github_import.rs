@@ -16,7 +16,7 @@ fn semver_gt(marketplace: &str, installed: &str) -> bool {
 /// Merge existing field values into a new `ImportedSkill`: each field on `skill`
 /// is left unchanged if already `Some`, otherwise falls back to the `existing` value.
 fn merge_imported_fields(skill: &mut ImportedSkill, existing: &ImportedSkill) {
-    if skill.domain.is_none() { skill.domain = existing.domain.clone(); }
+    if skill.purpose.is_none() { skill.purpose = existing.purpose.clone(); }
     if skill.description.is_none() { skill.description = existing.description.clone(); }
     if skill.model.is_none() { skill.model = existing.model.clone(); }
     if skill.argument_hint.is_none() { skill.argument_hint = existing.argument_hint.clone(); }
@@ -438,8 +438,7 @@ pub(crate) async fn list_github_skills_inner(
                     path,
                     name: plugin.name.clone(),
                     description: plugin.description.clone(),
-                    domain: plugin.category.clone(),
-                    skill_type: None,
+                                        purpose: None,
                     version: plugin.version.clone(),
                     model: None,
                     argument_hint: None,
@@ -509,7 +508,7 @@ pub(crate) async fn list_github_skills_inner(
         if let Some(content) = content_opt {
             let fm = super::imported_skills::parse_frontmatter_full(&content);
             skill.version = fm.version;
-            skill.skill_type = fm.skill_type;
+            skill.purpose = fm.purpose;
         }
     }
 
@@ -645,7 +644,7 @@ pub async fn import_github_skills(
                         continue;
                     }
                     // Different version — merge: new frontmatter wins if Some, else fall back to existing WorkspaceSkill
-                    if skill.domain.is_none() { skill.domain = existing_skill.domain.clone(); }
+                    if skill.purpose.is_none() { skill.purpose = existing_skill.purpose.clone(); }
                     if skill.description.is_none() { skill.description = existing_skill.description.clone(); }
                     if skill.model.is_none() { skill.model = existing_skill.model.clone(); }
                     if skill.argument_hint.is_none() { skill.argument_hint = existing_skill.argument_hint.clone(); }
@@ -827,13 +826,8 @@ pub async fn import_marketplace_to_library(
 
                 // Insert into skills master first so that skills.id is available as a FK
                 // when inserting into imported_skills below.
-                let domain_for_master = skill.domain.as_deref().unwrap_or(&skill.skill_name).to_string();
-                let skill_type_for_master = skill.skill_type.as_deref().unwrap_or("domain");
-                if let Err(e) = crate::db::save_marketplace_skill(
-                    &conn,
-                    &skill.skill_name,
-                    &domain_for_master,
-                    skill_type_for_master,
+                let purpose_for_master = skill.purpose.as_deref().unwrap_or("domain");
+                if let Err(e) = crate::db::save_marketplace_skill(&conn, &skill.skill_name, purpose_for_master,
                 ) {
                     log::warn!(
                         "[import_marketplace_to_library] failed to save marketplace skill for '{}': {}",
@@ -969,8 +963,8 @@ fn rewrite_skill_md(dest_dir: &Path, fm: &super::imported_skills::Frontmatter) -
     };
     add_field("name", &fm.name);
     add_field("description", &fm.description);
-    add_field("domain", &fm.domain);
-    add_field("type", &fm.skill_type);
+    // domain: no longer written — dropped in migration 28
+    add_field("type", &fm.purpose);
     add_field("version", &fm.version);
     add_field("model", &fm.model);
     add_field("argument-hint", &fm.argument_hint);
@@ -1086,8 +1080,7 @@ pub(crate) async fn import_single_skill(
     if let Some(ov) = metadata_override {
         fm.name = ov.name.clone().or(fm.name);
         fm.description = ov.description.clone().or(fm.description);
-        fm.domain = ov.domain.clone().or(fm.domain);
-        fm.skill_type = ov.skill_type.clone().or(fm.skill_type);
+        fm.purpose = ov.purpose.clone().or(fm.purpose);
         fm.version = ov.version.clone().or(fm.version);
         // Empty string means "App default" — explicitly clear any model from frontmatter.
         fm.model = match ov.model.as_deref() {
@@ -1099,8 +1092,8 @@ pub(crate) async fn import_single_skill(
         fm.user_invocable = ov.user_invocable.or(fm.user_invocable);
         fm.disable_model_invocation = ov.disable_model_invocation.or(fm.disable_model_invocation);
         log::debug!(
-            "[import_single_skill] applied metadata override for '{}': name={:?} domain={:?} type={:?}",
-            dir_name, fm.name, fm.domain, fm.skill_type
+            "[import_single_skill] applied metadata override for '{}': name={:?} purpose={:?}",
+            dir_name, fm.name, fm.purpose
         );
     }
 
@@ -1115,8 +1108,6 @@ pub(crate) async fn import_single_skill(
     // Validate required frontmatter fields
     let missing_required: Vec<&str> = [
         ("description", fm.description.is_none()),
-        ("domain", fm.domain.is_none()),
-        ("skill_type", fm.skill_type.is_none()),
     ]
     .iter()
     .filter(|(_, missing)| *missing)
@@ -1253,14 +1244,13 @@ pub(crate) async fn import_single_skill(
     Ok(ImportedSkill {
         skill_id,
         skill_name,
-        domain: fm.domain,
-        is_active: true,
+                is_active: true,
         disk_path: dest_dir.to_string_lossy().to_string(),
         imported_at,
         is_bundled: false,
         // Populated from frontmatter for the response, not stored in DB
         description: fm.description,
-        skill_type: fm.skill_type,
+        purpose: fm.purpose,
         version: fm.version,
         model: fm.model,
         argument_hint: fm.argument_hint,
@@ -1600,13 +1590,13 @@ mod tests {
     #[test]
     fn test_parse_frontmatter_accessible() {
         // Verify that the pub(crate) parse_frontmatter is callable from here
-        let (name, desc, domain, skill_type) = super::super::imported_skills::parse_frontmatter(
+        let (name, desc, purpose) = super::super::imported_skills::parse_frontmatter(
             "---\nname: test\ndescription: a test\ndomain: analytics\n---\n# Content",
         );
         assert_eq!(name.as_deref(), Some("test"));
         assert_eq!(desc.as_deref(), Some("a test"));
-        assert_eq!(domain.as_deref(), Some("analytics"));
-        assert!(skill_type.is_none());
+        // domain dropped
+        assert!(purpose.is_none());
     }
 
     // --- validate_skill_name reuse test ---
@@ -1765,20 +1755,20 @@ mod tests {
         );
         assert_eq!(complete.name.as_deref(), Some("analytics"));
         assert_eq!(complete.description.as_deref(), Some("Does analytics stuff"));
-        assert_eq!(complete.domain.as_deref(), Some("data"));
-        assert_eq!(complete.skill_type.as_deref(), Some("domain"));
+        // domain: is ignored; purpose comes from type: key
+        assert_eq!(complete.purpose.as_deref(), Some("domain"));
 
         // Missing skill_type (no "type:" key) — must be treated as a missing required field.
         let missing_skill_type = parse(
             "---\nname: analytics\ndescription: Does analytics stuff\ndomain: data\n---\n# Body",
         );
-        assert!(missing_skill_type.skill_type.is_none(), "absent skill_type must be None");
+        assert!(missing_skill_type.purpose.is_none(), "absent skill_type must be None");
 
         // Whitespace-only type — trim_opt must convert to None.
         let whitespace_skill_type = parse(
             "---\nname: analytics\ndescription: Desc\ndomain: data\ntype:   \n---\n",
         );
-        assert!(whitespace_skill_type.skill_type.is_none(), "whitespace-only skill_type must be None");
+        assert!(whitespace_skill_type.purpose.is_none(), "whitespace-only skill_type must be None");
 
         // Whitespace-only values: trim_opt converts these to None, so the skill
         // should be treated as missing the field.
@@ -1795,13 +1785,13 @@ mod tests {
         let whitespace_domain = parse(
             "---\nname: research\ndescription: Desc\ndomain:  \n---\n",
         );
-        assert!(whitespace_domain.domain.is_none(), "whitespace-only domain must be None");
+        assert!(whitespace_domain.purpose.is_none(), "whitespace-only domain must be None");
 
         // No frontmatter at all — all fields None.
         let empty = parse("# Just a heading\nNo frontmatter here.");
         assert!(empty.name.is_none());
         assert!(empty.description.is_none());
-        assert!(empty.domain.is_none());
+        assert!(empty.purpose.is_none());
     }
 
     #[test]
@@ -1963,8 +1953,7 @@ mod tests {
         let fm = super::super::imported_skills::Frontmatter {
             name: Some("new-name".to_string()),
             description: Some("new-desc".to_string()),
-            domain: Some("new-domain".to_string()),
-            skill_type: Some("domain".to_string()),
+            purpose: Some("domain".to_string()),
             version: None,
             model: None,
             argument_hint: None,
@@ -1978,7 +1967,7 @@ mod tests {
 
         // Frontmatter values must be updated and quoted
         assert!(result.contains("name: \"new-name\""), "name not rewritten: {}", result);
-        assert!(result.contains("domain: \"new-domain\""), "domain not rewritten: {}", result);
+        // domain no longer written to frontmatter
 
         // The body content AFTER the markdown HR must be preserved
         assert!(
@@ -2003,8 +1992,7 @@ mod tests {
         let fm = super::super::imported_skills::Frontmatter {
             name: Some("my-skill".to_string()),
             description: Some("desc".to_string()),
-            domain: Some("analytics".to_string()),
-            skill_type: Some("domain".to_string()),
+            purpose: Some("domain".to_string()),
             version: None,
             model: None,
             argument_hint: None,
@@ -2036,8 +2024,7 @@ mod tests {
         let fm = super::super::imported_skills::Frontmatter {
             name: Some("legit\nmalicious-key: injected".to_string()),
             description: Some("desc".to_string()),
-            domain: Some("data".to_string()),
-            skill_type: Some("domain".to_string()),
+            purpose: Some("domain".to_string()),
             version: None,
             model: None,
             argument_hint: None,
@@ -2088,14 +2075,13 @@ mod tests {
 
         let fm = super::super::imported_skills::Frontmatter {
             name: Some("new-name".to_string()),
-            domain: Some("NewDomain".to_string()),
             ..Default::default()
         };
         rewrite_skill_md(tmp.path(), &fm).unwrap();
 
         let result = fs::read_to_string(tmp.path().join("SKILL.md")).unwrap();
         assert!(result.contains("name: \"new-name\""), "name should be updated: {}", result);
-        assert!(result.contains("domain: \"NewDomain\""), "domain should be updated: {}", result);
+        // domain no longer written to frontmatter
         assert!(result.contains("# Skill Body"), "body should be preserved: {}", result);
         assert!(result.contains("Some content here."), "body content should be preserved: {}", result);
     }
@@ -2147,8 +2133,7 @@ mod tests {
             let fm = super::super::imported_skills::Frontmatter {
                 name: Some("my-skill".to_string()),
                 description: Some("overridden desc".to_string()),
-                domain: Some("analytics".to_string()),
-                skill_type: Some("domain".to_string()),
+                purpose: Some("domain".to_string()),
                 version: None,
                 model: None,
                 argument_hint: None,

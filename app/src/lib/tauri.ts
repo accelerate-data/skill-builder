@@ -35,8 +35,7 @@ export const updateSkillTags = (skillName: string, tags: string[]) =>
 
 export const updateSkillMetadata = (
   skillName: string,
-  domain: string | null,
-  skillType: string | null,
+  purpose: string | null,
   tags: string[] | null,
   intakeJson: string | null,
   description?: string | null,
@@ -47,8 +46,7 @@ export const updateSkillMetadata = (
   disableModelInvocation?: boolean | null,
 ) => invoke("update_skill_metadata", {
   skillName,
-  domain,
-  skillType,
+  purpose,
   tags,
   intakeJson,
   description: description ?? null,
@@ -66,17 +64,19 @@ export const renameSkill = (
 ) => invoke("rename_skill", { oldName, newName, workspacePath });
 
 export interface FieldSuggestions {
+  description: string;
   domain: string;
   audience: string;
   challenges: string;
   scope: string;
   unique_setup: string;
   claude_mistakes: string;
+  context_questions: string;
 }
 
 export const generateSuggestions = (
   skillName: string,
-  skillType: string,
+  purpose: string,
   opts?: {
     industry?: string | null;
     functionRole?: string | null;
@@ -88,7 +88,7 @@ export const generateSuggestions = (
   },
 ) => invoke<FieldSuggestions>("generate_suggestions", {
   skillName,
-  skillType,
+  purpose,
   industry: opts?.industry ?? null,
   functionRole: opts?.functionRole ?? null,
   domain: opts?.domain ?? null,
@@ -119,9 +119,8 @@ export const startAgent = (
 export const runWorkflowStep = (
   skillName: string,
   stepId: number,
-  domain: string,
   workspacePath: string,
-) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath });
+) => invoke<string>("run_workflow_step", { skillName, stepId, workspacePath });
 
 export const packageSkill = (
   skillName: string,
@@ -159,10 +158,9 @@ export const getDisabledSteps = (skillName: string) =>
 
 interface WorkflowRunRow {
   skill_name: string;
-  domain: string;
   current_step: number;
   status: string;
-  skill_type: string;
+  purpose: string;
   created_at: string;
   updated_at: string;
 }
@@ -190,12 +188,11 @@ export const getWorkflowState = (skillName: string) =>
 
 export const saveWorkflowState = (
   skillName: string,
-  domain: string,
   currentStep: number,
   status: string,
   stepStatuses: StepStatusUpdate[],
-  skillType?: string,
-) => invoke("save_workflow_state", { skillName, domain, currentStep, status, stepStatuses, skillType: skillType ?? "domain" });
+  purpose?: string,
+) => invoke("save_workflow_state", { skillName, currentStep, status, stepStatuses, purpose: purpose ?? "domain" });
 
 // --- Files ---
 

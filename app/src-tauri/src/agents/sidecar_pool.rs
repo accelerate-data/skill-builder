@@ -957,6 +957,12 @@ impl SidecarPool {
                                             let mut pending = stdout_pending.lock().await;
                                             pending.remove(request_id);
                                         }
+                                        {
+                                            let pool = stdout_pool.lock().await;
+                                            if let Some(s) = pool.get(&skill_name_stdout) {
+                                                *s.last_activity.lock().await = tokio::time::Instant::now();
+                                            }
+                                        }
                                         events::handle_sidecar_exit(
                                             &app_handle_stdout,
                                             request_id,
@@ -985,6 +991,12 @@ impl SidecarPool {
                                         {
                                             let mut pending = stdout_pending.lock().await;
                                             pending.remove(request_id);
+                                        }
+                                        {
+                                            let pool = stdout_pool.lock().await;
+                                            if let Some(s) = pool.get(&skill_name_stdout) {
+                                                *s.last_activity.lock().await = tokio::time::Instant::now();
+                                            }
                                         }
                                         events::handle_sidecar_exit(
                                             &app_handle_stdout,

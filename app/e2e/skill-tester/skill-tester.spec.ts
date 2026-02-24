@@ -10,7 +10,7 @@ const BASE_OVERRIDES = {
   list_models: [],
   get_workspace_path: "/tmp/test-workspace",
   list_refinable_skills: [
-    { name: "my-skill", domain: "Test Domain", skill_type: "domain" },
+    { name: "my-skill", purpose: "domain" },
   ],
   has_running_agents: false,
 };

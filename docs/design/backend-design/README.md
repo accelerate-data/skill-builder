@@ -80,12 +80,11 @@ skills  ← master                         workspace_skills  ← standalone
 |---|---|---|
 | `skill_id` | TEXT PK | UUID |
 | `skill_name` | TEXT UNIQUE NOT NULL | Directory name; enforces no duplicates |
-| `domain` | TEXT | From SKILL.md frontmatter |
 | `is_active` | INTEGER | 1 = active (default), 0 = inactive |
 | `disk_path` | TEXT NOT NULL | Absolute path to skill directory on disk |
 | `imported_at` | TEXT | ISO timestamp, auto-set on insert |
 | `is_bundled` | INTEGER | 1 = seeded by app on startup (skill-test, research, etc.), 0 = user-imported |
-| `skill_type` | TEXT | From frontmatter (domain, source, platform, etc.) |
+| `purpose` | TEXT | From frontmatter (domain, source, platform, etc.) |
 | `version` | TEXT | From frontmatter |
 | `model` | TEXT | From frontmatter |
 | `argument_hint` | TEXT | From frontmatter |
@@ -135,7 +134,7 @@ This tolerates workspace moves, manual edits, and multi-instance scenarios.
 
 ### Skill ingestion — Skills Library
 
-**Marketplace bulk import**: `import_marketplace_to_library` walks the marketplace repo, downloads all skills, and writes to both `imported_skills` (disk metadata) and `skills` master (`skill_source='marketplace'`). Accepts an optional `metadata_overrides` map (`skill_path → SkillMetadataOverride`) that lets callers override any frontmatter field (name, description, domain, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation) before the DB insert. Used by the marketplace browse UI to let users adjust metadata before importing.
+**Marketplace bulk import**: `import_marketplace_to_library` walks the marketplace repo, downloads all skills, and writes to both `imported_skills` (disk metadata) and `skills` master (`skill_source='marketplace'`). Accepts an optional `metadata_overrides` map (`skill_path → SkillMetadataOverride`) that lets callers override any frontmatter field (name, description, purpose, version, model, argument_hint, user_invocable, disable_model_invocation) before the DB insert. Used by the marketplace browse UI to let users adjust metadata before importing.
 
 **Plugin skills are intentionally excluded.** `{workspace_path}/.claude/skills` (skills bundled with the workspace for the Claude Code plugin) is not scanned during reconciliation. Only `skills_path` (the user-configured output directory) is reconciled.
 

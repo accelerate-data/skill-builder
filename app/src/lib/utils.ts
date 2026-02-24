@@ -29,3 +29,10 @@ export function buildIntakeJson(fields: Record<string, string>): string | null {
   }
   return Object.keys(data).length > 0 ? JSON.stringify(data) : null;
 }
+
+/** Derive a human-readable label from a model ID string. */
+export function deriveModelLabel(modelId: string): string {
+  if (modelId.includes("haiku")) return "Haiku";
+  if (modelId.includes("opus")) return "Opus";
+  return "Sonnet";
+}

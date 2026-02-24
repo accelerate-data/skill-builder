@@ -7,19 +7,17 @@ import type { WorkspaceSkill } from "@/stores/imported-skills-store";
 const baseSkill: WorkspaceSkill = {
   skill_id: "id-1",
   skill_name: "sales-analytics",
-  domain: "sales",
   description: "Analytics skill for sales data pipelines",
   is_active: true,
   disk_path: "/skills/sales-analytics",
   imported_at: new Date().toISOString(),
   is_bundled: false,
-  skill_type: null,
+  purpose: null,
   version: null,
   model: null,
   argument_hint: null,
   user_invocable: null,
   disable_model_invocation: null,
-  purpose: null,
 };
 
 describe("WorkspaceSkillCard", () => {
@@ -35,7 +33,7 @@ describe("WorkspaceSkillCard", () => {
     expect(screen.getByText("sales-analytics")).toBeInTheDocument();
   });
 
-  it("renders domain badge when domain is present", () => {
+  it("renders skill name", () => {
     render(
       <WorkspaceSkillCard
         skill={baseSkill}
@@ -44,20 +42,7 @@ describe("WorkspaceSkillCard", () => {
         onPreview={vi.fn()}
       />
     );
-    expect(screen.getByText("sales")).toBeInTheDocument();
-  });
-
-  it("does not render domain badge when domain is null", () => {
-    const skill = { ...baseSkill, domain: null };
-    render(
-      <WorkspaceSkillCard
-        skill={skill}
-        onToggleActive={vi.fn()}
-        onDelete={vi.fn()}
-        onPreview={vi.fn()}
-      />
-    );
-    expect(screen.queryByText("sales")).not.toBeInTheDocument();
+    expect(screen.getByText("sales-analytics")).toBeInTheDocument();
   });
 
   it("renders description fallback when no trigger text", () => {

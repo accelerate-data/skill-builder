@@ -20,7 +20,7 @@ import {
 const HUMAN_REVIEW_OVERRIDES: Record<string, unknown> = {
   ...WORKFLOW_OVERRIDES,
   get_workflow_state: {
-    run: { domain: "Testing", current_step: 1, skill_type: "domain" },
+    run: { current_step: 1, purpose: "domain" },
     steps: [{ step_id: 0, status: "completed" }],
   },
   read_file: "# Clarifications\n\n## Q1\n\nSample content for editing.",
@@ -30,7 +30,7 @@ const HUMAN_REVIEW_OVERRIDES: Record<string, unknown> = {
 const COMPLETED_STEPS_OVERRIDES: Record<string, unknown> = {
   ...WORKFLOW_OVERRIDES,
   get_workflow_state: {
-    run: { domain: "Testing", current_step: 2, skill_type: "domain" },
+    run: { current_step: 2, purpose: "domain" },
     steps: [
       { step_id: 0, status: "completed" },
       { step_id: 1, status: "completed" },

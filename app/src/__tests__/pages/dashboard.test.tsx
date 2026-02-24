@@ -67,12 +67,11 @@ const defaultSettings: AppSettings = {
 const sampleSkills: SkillSummary[] = [
   {
     name: "sales-pipeline",
-    domain: "sales",
     current_step: "Step 3",
     status: "in_progress",
     last_modified: new Date().toISOString(),
     tags: ["salesforce", "crm"],
-    skill_type: "platform",
+    purpose: "platform",
     skill_source: "skill-builder",
     author_login: null,
     author_avatar: null,
@@ -80,12 +79,11 @@ const sampleSkills: SkillSummary[] = [
   },
   {
     name: "hr-analytics",
-    domain: "HR",
     current_step: "completed",
     status: "completed",
     last_modified: new Date().toISOString(),
     tags: ["workday"],
-    skill_type: "domain",
+    purpose: "domain",
     skill_source: "skill-builder",
     author_login: null,
     author_avatar: null,
@@ -337,8 +335,8 @@ describe("DashboardPage", () => {
     // Open type filter dropdown
     await user.click(screen.getByRole("button", { name: /Type/i }));
 
-    // Select "Platform" type
-    const menuItem = screen.getByRole("menuitemcheckbox", { name: /Platform/i });
+    // Select "platform" type (now labeled "Organization specific Azure or Fabric standards")
+    const menuItem = screen.getByRole("menuitemcheckbox", { name: /Azure or Fabric/i });
     await user.click(menuItem);
 
     expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
@@ -352,12 +350,11 @@ describe("DashboardPage", () => {
         ...sampleSkills,
         {
           name: "marketing-data",
-          domain: "marketing",
           current_step: "Step 1",
           status: "in_progress",
           last_modified: new Date().toISOString(),
           tags: ["salesforce"],
-          skill_type: "platform",
+          purpose: "platform",
           author_login: null,
           author_avatar: null,
           intake_json: null,
@@ -372,7 +369,7 @@ describe("DashboardPage", () => {
 
     // Filter by type: platform (sales-pipeline + marketing-data)
     await user.click(screen.getByRole("button", { name: /Type/i }));
-    await user.click(screen.getByRole("menuitemcheckbox", { name: /Platform/i }));
+    await user.click(screen.getByRole("menuitemcheckbox", { name: /Azure or Fabric/i }));
 
     expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     expect(screen.getByText("marketing-data")).toBeInTheDocument();
@@ -440,12 +437,11 @@ describe("DashboardPage", () => {
   it("defaults to list view when >= 10 skills and no saved preference", async () => {
     const manySkills: SkillSummary[] = Array.from({ length: 12 }, (_, i) => ({
       name: `skill-${i}`,
-      domain: "test",
       current_step: "Step 1",
       status: "in_progress",
       last_modified: new Date().toISOString(),
       tags: [],
-      skill_type: "domain",
+      purpose: "domain",
       author_login: null,
       author_avatar: null,
       intake_json: null,

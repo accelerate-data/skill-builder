@@ -13,12 +13,11 @@ import type { SkillSummary } from "@/lib/types";
 
 const createdComplete: SkillSummary = {
   name: "my-skill",
-  domain: "Engineering",
   current_step: null,
   status: "completed",
   last_modified: null,
   tags: [],
-  skill_type: "skill-builder",
+  purpose: "skill-builder",
   skill_source: "skill-builder",
   author_login: null,
   author_avatar: null,

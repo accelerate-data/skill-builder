@@ -12,7 +12,7 @@ The marketplace is a one-way import layer — skills flow in from a GitHub repo,
 | **Examples** | `research`, `validate-skill`, `skill-builder-practices` | Sales Pipeline Analytics, dbt Incremental Silver |
 | **After import** | Wired into the agent workspace — active skills are available to Claude Code on every agent run | Appears in the dashboard as a completed skill, ready to refine |
 
-The `skill_type` frontmatter field drives routing: `skill-builder` type skills belong in Settings → Skills; `domain`, `platform`, `source`, and `data-engineering` skills belong in the Skill Library.
+The `purpose` frontmatter field drives routing: `skill-builder` purpose skills belong in Settings → Skills; `domain`, `platform`, `source`, and `data-engineering` skills belong in the Skill Library.
 
 ---
 
@@ -20,7 +20,7 @@ The `skill_type` frontmatter field drives routing: `skill-builder` type skills b
 
 A marketplace is a GitHub repository with a catalog file (`.claude-plugin/marketplace.json`) that lists the skills it publishes. There is no folder-scan fallback — a missing or malformed catalog is an error, not a silent empty result.
 
-The catalog lists each skill with its name, description, category, version, and a path to its directory in the repo. The app also reads each skill's `SKILL.md` to pick up fields not in the catalog (`skill_type` and extended frontmatter). Skills in the catalog without a `SKILL.md` are excluded.
+The catalog lists each skill with its name, description, category, version, and a path to its directory in the repo. The app also reads each skill's `SKILL.md` to pick up fields not in the catalog (`purpose` and extended frontmatter). Skills in the catalog without a `SKILL.md` are excluded.
 
 **Configuration** — a single marketplace URL in Settings → GitHub. A "Test" button validates the URL at configuration time so bad URLs are caught before any import attempt.
 
@@ -80,8 +80,7 @@ name: dbt-fabric-patterns
 description: >
   Teaches Claude how to write dbt models for Microsoft Fabric.
   Use when building incremental or snapshot models on Fabric.
-domain: dbt
-skill_type: domain
+purpose: domain
 version: 1.2.0
 model: sonnet
 argument-hint: "dbt model name or pattern"
@@ -94,8 +93,7 @@ disable-model-invocation: false
 |---|---|---|
 | `name` | Yes | Kebab-case identifier. Two skills with the same name conflict. |
 | `description` | Yes | Shown in the browse dialog and wired into CLAUDE.md so agents know when to invoke the skill. |
-| `domain` | Yes | Business or technical domain (e.g. `dbt`, `sales`, `fabric`). |
-| `skill_type` | Yes | Routes to the right layer. `domain`, `platform`, `source`, `data-engineering` → Skill Library. `skill-builder` → Settings → Skills. |
+| `purpose` | Yes | Routes to the right layer. `domain`, `platform`, `source`, `data-engineering` → Skill Library. `skill-builder` → Settings → Skills. |
 | `version` | Yes | Semver string. Required for update detection. Defaults to `"1.0.0"` if absent at import time. |
 | `model` | No | Preferred Claude model. Overrides the app default when the skill is invoked. |
 | `argument-hint` | No | Short hint shown when invoking the skill as a slash command. |

@@ -152,13 +152,12 @@ pub struct StartupDeps {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillSummary {
     pub name: String,
-    pub domain: Option<String>,
     pub current_step: Option<String>,
     pub status: Option<String>,
     pub last_modified: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
-    pub skill_type: Option<String>,
+    pub purpose: Option<String>,
     #[serde(default)]
     pub author_login: Option<String>,
     #[serde(default)]
@@ -220,18 +219,17 @@ fn default_max_dimensions() -> u32 {
     5
 }
 
-fn default_skill_type() -> String {
+fn default_purpose() -> String {
     "domain".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowRunRow {
     pub skill_name: String,
-    pub domain: String,
     pub current_step: i32,
     pub status: String,
-    #[serde(default = "default_skill_type")]
-    pub skill_type: String,
+    #[serde(default = "default_purpose")]
+    pub purpose: String,
     pub created_at: String,
     pub updated_at: String,
     #[serde(default)]
@@ -267,8 +265,7 @@ pub struct SkillMasterRow {
     pub id: i64,
     pub name: String,
     pub skill_source: String,
-    pub domain: Option<String>,
-    pub skill_type: Option<String>,
+    pub purpose: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     // SKILL.md frontmatter fields — canonical store for all skill sources
@@ -311,7 +308,6 @@ pub struct StepStatusUpdate {
 pub struct ImportedSkill {
     pub skill_id: String,
     pub skill_name: String,
-    pub domain: Option<String>,
     pub is_active: bool,
     pub disk_path: String,
     pub imported_at: String,
@@ -321,7 +317,7 @@ pub struct ImportedSkill {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(default)]
-    pub skill_type: Option<String>,
+    pub purpose: Option<String>,
     #[serde(default)]
     pub version: Option<String>,
     #[serde(default)]
@@ -338,20 +334,17 @@ pub struct ImportedSkill {
 pub struct WorkspaceSkill {
     pub skill_id: String,
     pub skill_name: String,
-    pub domain: Option<String>,
     pub description: Option<String>,
     pub is_active: bool,
     pub is_bundled: bool,
     pub disk_path: String,
     pub imported_at: String,
-    pub skill_type: Option<String>,
+    pub purpose: Option<String>,
     pub version: Option<String>,
     pub model: Option<String>,
     pub argument_hint: Option<String>,
     pub user_invocable: Option<bool>,
     pub disable_model_invocation: Option<bool>,
-    #[serde(default)]
-    pub purpose: Option<String>,
 }
 
 impl From<ImportedSkill> for WorkspaceSkill {
@@ -359,19 +352,17 @@ impl From<ImportedSkill> for WorkspaceSkill {
         Self {
             skill_id: s.skill_id,
             skill_name: s.skill_name,
-            domain: s.domain,
             description: s.description,
             is_active: s.is_active,
             is_bundled: s.is_bundled,
             disk_path: s.disk_path,
             imported_at: s.imported_at,
-            skill_type: s.skill_type,
+            purpose: s.purpose,
             version: s.version,
             model: s.model,
             argument_hint: s.argument_hint,
             user_invocable: s.user_invocable,
             disable_model_invocation: s.disable_model_invocation,
-            purpose: None,
         }
     }
 }
@@ -379,8 +370,7 @@ impl From<ImportedSkill> for WorkspaceSkill {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrphanSkill {
     pub skill_name: String,
-    pub domain: String,
-    pub skill_type: String,
+    pub purpose: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -516,10 +506,9 @@ pub struct GitHubRepoInfo {
 pub struct AvailableSkill {
     pub path: String,
     pub name: String,
-    pub domain: Option<String>,
     pub description: Option<String>,
     #[serde(default)]
-    pub skill_type: Option<String>,
+    pub purpose: Option<String>,
     #[serde(default)]
     pub version: Option<String>,
     #[serde(default)]
@@ -536,8 +525,7 @@ pub struct AvailableSkill {
 pub struct SkillMetadataOverride {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub domain: Option<String>,
-    pub skill_type: Option<String>,
+    pub purpose: Option<String>,
     pub version: Option<String>,
     pub model: Option<String>,
     pub argument_hint: Option<String>,

@@ -264,8 +264,7 @@ describe("AppLayout", () => {
         orphans: [
           {
             skill_name: "old-skill",
-            domain: "test",
-            skill_type: "domain",
+            purpose: "domain",
           },
         ],
         notifications: [],
@@ -502,7 +501,7 @@ describe("AppLayout", () => {
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith(
           "Marketplace update check failed: marketplace.json not found",
-          expect.objectContaining({ duration: Infinity })
+          expect.objectContaining({ duration: 8000 })
         );
       });
     });

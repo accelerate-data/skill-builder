@@ -164,7 +164,7 @@ A step is only counted if **all** expected files exist. Partial output is cleane
 
 | Scenario | Condition | Resolution |
 |---|---|---|
-| **Disk-only** | Directory exists on disk, no DB record | Create DB record; detect furthest step from disk; set domain = "unknown" |
+| **Disk-only** | Directory exists on disk, no DB record | Create DB record; detect furthest step from disk |
 | **DB ahead of disk** | DB records a step higher than what's on disk | Reset DB step to highest detectable step; clean future-step files |
 | **Disk ahead of DB** | Files exist beyond what DB records | Advance DB step to match disk |
 | **Missing workspace dir** | DB record exists, workspace marker dir missing | Recreate marker directory |

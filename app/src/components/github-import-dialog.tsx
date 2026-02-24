@@ -30,7 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, listWorkspaceSkills, getDashboardSkillNames, listSkills, checkSkillCustomized } from "@/lib/tauri"
 import type { WorkspaceSkillImportRequest } from "@/lib/tauri"
 import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, SkillSummary, WorkspaceSkill } from "@/lib/types"
-import { SKILL_TYPES, PURPOSE_OPTIONS } from "@/lib/types"
+import { PURPOSES, PURPOSE_LABELS, PURPOSE_OPTIONS } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
 
 /**
@@ -71,7 +71,7 @@ interface GitHubImportDialogProps {
   /** The marketplace repository URL (from settings). Required — dialog auto-browses on open. */
   url: string
   /**
-   * When set, only skills whose skill_type is in this list are shown (skill-library mode only).
+   * When set, only skills whose purpose is in this list are shown (skill-library mode only).
    * In settings-skills mode this filter is ignored — all skills with a name are shown.
    */
   typeFilter?: string[]
@@ -93,15 +93,14 @@ const APP_DEFAULT_MODEL = "__app_default__"
 interface EditFormState {
   name: string
   description: string
-  domain: string
-  skill_type: string
+  purpose: string
   version: string
   model: string
   argument_hint: string
   user_invocable: boolean
   disable_model_invocation: boolean
   /** settings-skills only — purpose to assign on import */
-  purpose: string | null
+  settings_purpose: string | null
 }
 
 /** Renders a version upgrade banner when upgrading a settings-skills skill. */
@@ -207,7 +206,7 @@ export default function GitHubImportDialog({
       // Apply typeFilter only for skill-library mode
       if (mode === 'skill-library' && typeFilter && typeFilter.length > 0) {
         available = available.filter(
-          (s) => s.skill_type != null && typeFilter.includes(s.skill_type)
+          (s) => s.purpose != null && typeFilter.includes(s.purpose)
         )
       }
       // For settings-skills mode: show all skills that have a name
@@ -284,14 +283,13 @@ export default function GitHubImportDialog({
     setEditForm({
       name: skill.name ?? ws?.skill_name ?? '',
       description: skill.description ?? lib?.description ?? ws?.description ?? '',
-      domain: skill.domain ?? lib?.domain ?? ws?.domain ?? '',
-      skill_type: isSettingsMode ? 'skill-builder' : (skill.skill_type ?? ws?.skill_type ?? ''),
+      purpose: isSettingsMode ? 'skill-builder' : (skill.purpose ?? ws?.purpose ?? ''),
       version: skill.version ?? ws?.version ?? '1.0.0',
       model: skill.model ?? ws?.model ?? '',
       argument_hint: skill.argument_hint ?? ws?.argument_hint ?? '',
       user_invocable: (skill.user_invocable ?? ws?.user_invocable) ?? false,
       disable_model_invocation: (skill.disable_model_invocation ?? ws?.disable_model_invocation) ?? false,
-      purpose: ws?.purpose ?? null,
+      settings_purpose: ws?.purpose ?? null,
     })
   }, [mode, skillStates, workspaceSkills, installedLibrarySkills])
 
@@ -322,10 +320,9 @@ export default function GitHubImportDialog({
       const metadataOverride: SkillMetadataOverride = {
         name: form.name,
         description: form.description,
-        domain: form.domain,
-        skill_type: form.skill_type,
+        purpose: form.purpose,
         version: form.version || null,
-        model: form.model === APP_DEFAULT_MODEL ? "" : form.model,  // "" signals "App default" → clear model from frontmatter
+        model: form.model === APP_DEFAULT_MODEL ? "" : form.model,  // "" signals "App default" -> clear model from frontmatter
         argument_hint: form.argument_hint || null,
         user_invocable: form.user_invocable,
         disable_model_invocation: form.disable_model_invocation,
@@ -349,19 +346,18 @@ export default function GitHubImportDialog({
     if (!editingSkill || !editForm || !repoInfo) return
     const skillPath = editingSkill.path
     const skillName = editForm.name || editingSkill.name
-    console.log(`[github-import] importing "${skillName}" from ${repoInfo.owner}/${repoInfo.repo} (path=${skillPath}, purpose=${editForm.purpose ?? 'none'})`)
+    console.log(`[github-import] importing "${skillName}" from ${repoInfo.owner}/${repoInfo.repo} (path=${skillPath}, purpose=${editForm.settings_purpose ?? 'none'})`)
     setSkillState(skillPath, "importing")
     closeEditForm()
     try {
       const requests: WorkspaceSkillImportRequest[] = [{
         path: skillPath,
-        purpose: editForm.purpose ?? null,
+        purpose: editForm.settings_purpose ?? null,
         version: editingSkill.version ?? null,
         metadata_override: {
           name: editForm.name,
           description: editForm.description,
-          domain: editForm.domain,
-          skill_type: editForm.skill_type,
+          purpose: editForm.purpose,
           version: editForm.version || null,
           model: editForm.model || null,
           argument_hint: editForm.argument_hint || null,
@@ -391,12 +387,12 @@ export default function GitHubImportDialog({
   }
 
   const isMandatoryMissing = editForm
-    ? !editForm.name.trim() || !editForm.description.trim() || !editForm.domain.trim() || !editForm.version.trim() || (mode !== 'settings-skills' && !editForm.skill_type.trim())
+    ? !editForm.name.trim() || !editForm.description.trim() || !editForm.version.trim() || (mode !== 'settings-skills' && !editForm.purpose.trim())
     : false
 
   // settings-skills: purpose conflict blocks import
   const purposeConflict = editForm && mode === 'settings-skills' && editingSkill
-    ? getPurposeConflict(editForm.purpose, editingSkill.name)
+    ? getPurposeConflict(editForm.settings_purpose, editingSkill.name)
     : null
 
   return (
@@ -450,14 +446,14 @@ export default function GitHubImportDialog({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="truncate text-sm font-medium">{skill.name}</span>
-                            {mode === 'skill-library' && !skill.skill_type && !isDisabled && (
+                            {mode === 'skill-library' && !skill.purpose && !isDisabled && (
                               <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-300">
-                                Missing type
+                                Missing purpose
                               </Badge>
                             )}
                           </div>
-                          {skill.domain ? (
-                            <div className="text-xs text-muted-foreground">{skill.domain}</div>
+                          {skill.description ? (
+                            <div className="text-xs text-muted-foreground">{skill.description}</div>
                           ) : mode === 'skill-library' && !skill.description && !isDisabled ? (
                             <div className="text-xs text-amber-600">No description</div>
                           ) : null}
@@ -581,45 +577,29 @@ export default function GitHubImportDialog({
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="edit-domain">
-                    Domain <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="edit-domain"
-                    value={editForm.domain}
-                    onChange={(e) => updateField("domain", e.target.value)}
-                    className={!editForm.domain.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
-                    placeholder="e.g. finance, analytics"
-                  />
-                  {!editForm.domain.trim() && (
-                    <p className="text-xs text-destructive">Domain is required</p>
-                  )}
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="edit-skill-type">
-                    Skill Type <span className="text-destructive">*</span>
+                  <Label htmlFor="edit-purpose">
+                    Purpose <span className="text-destructive">*</span>
                   </Label>
                   <Select
-                    value={editForm.skill_type}
-                    onValueChange={(v) => updateField("skill_type", v)}
+                    value={editForm.purpose}
+                    onValueChange={(v) => updateField("purpose", v)}
                   >
                     <SelectTrigger
-                      id="edit-skill-type"
-                      className={!editForm.skill_type.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
+                      id="edit-purpose"
+                      className={!editForm.purpose.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
                     >
-                      <SelectValue placeholder="Select skill type" />
+                      <SelectValue placeholder="Select purpose" />
                     </SelectTrigger>
                     <SelectContent>
-                      {SKILL_TYPES.map((t) => (
+                      {PURPOSES.map((t) => (
                         <SelectItem key={t} value={t}>
-                          {t.charAt(0).toUpperCase() + t.slice(1).replace(/-/g, ' ')}
+                          {PURPOSE_LABELS[t]}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {!editForm.skill_type.trim() && (
-                    <p className="text-xs text-destructive">Skill type is required</p>
+                  {!editForm.purpose.trim() && (
+                    <p className="text-xs text-destructive">Purpose is required</p>
                   )}
                 </div>
 
@@ -763,23 +743,7 @@ export default function GitHubImportDialog({
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="si-domain">
-                    Domain <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="si-domain"
-                    value={editForm.domain}
-                    onChange={(e) => updateField("domain", e.target.value)}
-                    className={!editForm.domain.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
-                    placeholder="e.g. finance, analytics"
-                  />
-                  {!editForm.domain.trim() && (
-                    <p className="text-xs text-destructive">Domain is required</p>
-                  )}
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <Label>Skill Type</Label>
+                  <Label>Purpose</Label>
                   <div className="flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground">
                     skill-builder
                   </div>
@@ -788,8 +752,8 @@ export default function GitHubImportDialog({
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="si-purpose">Purpose <span className="text-muted-foreground text-xs">(optional)</span></Label>
                   <Select
-                    value={editForm.purpose ?? "__none__"}
-                    onValueChange={(v) => updateField("purpose", v === "__none__" ? null : v)}
+                    value={editForm.settings_purpose ?? "__none__"}
+                    onValueChange={(v) => updateField("settings_purpose", v === "__none__" ? null : v)}
                   >
                     <SelectTrigger id="si-purpose">
                       <SelectValue placeholder="No purpose" />

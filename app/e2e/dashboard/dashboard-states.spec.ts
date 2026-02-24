@@ -59,7 +59,7 @@ test.describe("Dashboard States", { tag: "@dashboard" }, () => {
         list_skills: [
           {
             name: "my-skill",
-            domain: "Test",
+            purpose: "domain",
             current_step: null,
             status: null,
             last_modified: null,

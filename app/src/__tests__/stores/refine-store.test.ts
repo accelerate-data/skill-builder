@@ -42,14 +42,14 @@ describe("useRefineStore", () => {
   it("setRefinableSkills sets the skills list", () => {
     const skills = [
       makeSkillSummary({ name: "skill-a" }),
-      makeSkillSummary({ name: "skill-b", domain: "finance" }),
+      makeSkillSummary({ name: "skill-b", purpose: "domain" }),
     ];
     useRefineStore.getState().setRefinableSkills(skills);
 
     const state = useRefineStore.getState();
     expect(state.refinableSkills).toHaveLength(2);
     expect(state.refinableSkills[0].name).toBe("skill-a");
-    expect(state.refinableSkills[1].domain).toBe("finance");
+    expect(state.refinableSkills[1].purpose).toBe("domain");
   });
 
   it("selectSkill sets selectedSkill and clears session state", () => {

@@ -122,6 +122,7 @@ export default function UsagePage() {
       setSessionAgents({})
       toast.success("Usage data reset")
     } catch (err) {
+      console.error("usage: reset failed", err)
       toast.error(`Failed to reset usage: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setResetting(false)
@@ -233,7 +234,7 @@ export default function UsagePage() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <DollarSign className="size-4" />
-              Total Spent
+              Total Spent (USD)
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -340,7 +341,10 @@ export default function UsagePage() {
         </CardHeader>
         <CardContent>
           {recentSessions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No recent runs.</p>
+            <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-8 text-center">
+              <p className="text-sm font-medium text-muted-foreground">No usage data yet</p>
+              <p className="text-xs text-muted-foreground/60">Run a skill to populate usage history.</p>
+            </div>
           ) : (
             <div className="flex flex-col divide-y">
               {recentSessions.map((session) => {

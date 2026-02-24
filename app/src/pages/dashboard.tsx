@@ -35,9 +35,8 @@ import { useSkillStore } from "@/stores/skill-store"
 import { useWorkflowStore } from "@/stores/workflow-store"
 import { packageSkill, getLockedSkills } from "@/lib/tauri"
 import type { SkillSummary, AppSettings } from "@/lib/types"
-import { SKILL_TYPES, SKILL_TYPE_LABELS } from "@/lib/types"
+import { PURPOSES, PURPOSE_LABELS } from "@/lib/types"
 import { SOURCE_DISPLAY_LABELS } from "@/components/skill-source-badge"
-
 
 function SortHeader({ label, column, sortBy, sortDir, onSort }: {
   label: string
@@ -193,8 +192,8 @@ export default function DashboardPage() {
       result = result.filter(
         (s) =>
           s.name.toLowerCase().includes(q) ||
-          (s.domain && s.domain.toLowerCase().includes(q)) ||
-          (s.skill_type && (SKILL_TYPE_LABELS[s.skill_type as keyof typeof SKILL_TYPE_LABELS] || s.skill_type).toLowerCase().includes(q))
+          (s.description && s.description.toLowerCase().includes(q)) ||
+          (s.purpose && (PURPOSE_LABELS[s.purpose as keyof typeof PURPOSE_LABELS] || s.purpose).toLowerCase().includes(q))
       )
     }
     if (selectedTags.length > 0) {
@@ -204,7 +203,7 @@ export default function DashboardPage() {
     }
     if (selectedTypes.length > 0) {
       result = result.filter((s) =>
-        s.skill_type != null && selectedTypes.includes(s.skill_type)
+        s.purpose != null && selectedTypes.includes(s.purpose)
       )
     }
     if (selectedSources.length > 0) {
@@ -239,8 +238,7 @@ export default function DashboardPage() {
       switch (sortBy) {
         case 'name': cmp = a.name.localeCompare(b.name); break
         case 'source': cmp = (a.skill_source || '').localeCompare(b.skill_source || ''); break
-        case 'domain': cmp = (a.domain || '').localeCompare(b.domain || ''); break
-        case 'type': cmp = (a.skill_type || '').localeCompare(b.skill_type || ''); break
+        case 'type': cmp = (a.purpose || '').localeCompare(b.purpose || ''); break
         case 'status': {
           const aComplete = a.skill_source !== 'skill-builder' || a.status === 'completed'
           const bComplete = b.skill_source !== 'skill-builder' || b.status === 'completed'
@@ -383,7 +381,7 @@ export default function DashboardPage() {
             </div>
             <CardTitle>No skills yet</CardTitle>
             <CardDescription>
-              Create your first skill to get started.
+              Skills are knowledge packages that teach Claude your team's specific processes, systems, and standards. Create your first skill to get started.
             </CardDescription>
           </CardHeader>
           {workspacePath && skillsPath && (
@@ -520,7 +518,7 @@ export default function DashboardPage() {
             <DropdownMenuContent align="start" className="w-48">
               <DropdownMenuLabel>Filter by type</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {SKILL_TYPES.map((type) => (
+              {PURPOSES.map((type) => (
                 <DropdownMenuCheckboxItem
                   key={type}
                   checked={selectedTypes.includes(type)}
@@ -532,7 +530,7 @@ export default function DashboardPage() {
                     )
                   }}
                 >
-                  {SKILL_TYPE_LABELS[type]}
+                  {PURPOSE_LABELS[type]}
                 </DropdownMenuCheckboxItem>
               ))}
               {selectedTypes.length > 0 && (
@@ -643,10 +641,6 @@ export default function DashboardPage() {
           onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
           tagSuggestions={availableTags}
           existingNames={existingSkillNames}
-          onOpenMarketplace={() => {
-            setSkillLibraryMarketplaceOpen(true)
-            setCreateOpen(false)
-          }}
         />
       )}
 

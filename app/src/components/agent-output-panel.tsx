@@ -330,7 +330,7 @@ export function computeToolCallGroups(
 export function TurnMarker({ turn }: { turn: number }) {
   return (
     <div className="flex items-center gap-2 mt-2">
-      <Badge variant="secondary" className="text-[11px] font-medium px-1.5 py-0 h-5 shrink-0">
+      <Badge variant="secondary" className="text-xs font-medium px-1.5 py-0 h-5 shrink-0">
         Turn {turn}
       </Badge>
       <div className="h-px flex-1 bg-border" />
@@ -491,7 +491,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
       <div className={wrapperClass}>
         <div className="mb-0.5 flex items-center gap-2">
           <MessageCircleQuestion className="size-4 shrink-0 text-[var(--chat-question-border)]" aria-hidden="true" />
-          <Badge className="bg-[var(--chat-question-border)] text-white text-[10px] px-1.5 py-0">
+          <Badge className="bg-[var(--chat-question-border)] text-white text-xs px-1.5 py-0">
             Needs Response
           </Badge>
         </div>

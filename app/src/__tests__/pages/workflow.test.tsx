@@ -222,10 +222,9 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     vi.mocked(getWorkflowState).mockResolvedValueOnce({
       run: {
         skill_name: "test-skill",
-        domain: "test domain",
         current_step: 1,
         status: "pending",
-        skill_type: "domain",
+        purpose: "domain",
         created_at: "",
         updated_at: "",
       },
@@ -249,7 +248,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // It should only be called after hydration with the correct state
     const saveCalls = vi.mocked(saveWorkflowState).mock.calls;
     for (const call of saveCalls) {
-      const stepStatuses = call[4] as Array<{ step_id: number; status: string }>;
+      const stepStatuses = call[3] as Array<{ step_id: number; status: string }>;
       const step0 = stepStatuses.find((s) => s.step_id === 0);
       expect(step0?.status).toBe("completed");
     }
@@ -1426,7 +1425,8 @@ describe("WorkflowPage — VD-863 autosave on human review steps", () => {
       );
     }, { timeout: 3000 });
 
-    expect(mockToast.success).toHaveBeenCalledWith("Saved");
+    // Autosave calls handleSave(true) — silent mode, so no toast is shown
+    expect(mockToast.success).not.toHaveBeenCalledWith("Saved");
   }, 10000);
 
   it("autosave does NOT fire on non-human-review steps", async () => {
@@ -1574,10 +1574,9 @@ describe("WorkflowPage — review mode default state", () => {
     vi.mocked(getWorkflowState).mockResolvedValueOnce({
       run: {
         skill_name: "test-skill",
-        domain: "test domain",
         current_step: 0,
         status: "pending",
-        skill_type: "domain",
+        purpose: "domain",
         created_at: "2026-01-01T00:00:00Z",
         updated_at: "2026-01-01T00:00:00Z",
       },

@@ -31,7 +31,7 @@ const REVIEW_CONTENT = readFileSync(
 const GATE_OVERRIDES: Record<string, unknown> = {
   ...WORKFLOW_OVERRIDES,
   get_workflow_state: {
-    run: { domain: "Testing", current_step: 1, skill_type: "domain" },
+    run: { current_step: 1, purpose: "domain" },
     steps: [{ step_id: 0, status: "completed" }],
   },
   read_file: REVIEW_CONTENT,

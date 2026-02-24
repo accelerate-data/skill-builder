@@ -17,7 +17,7 @@ Each bundled skill has a **purpose** — a slot identifier that controls which s
 | `skill-test` | `test-context` |
 | `validate-skill` | `validate` |
 
-**Settings→Skills import**: the marketplace listing shows all skills with a `SKILL.md` regardless of `skill_type` — `skill_type` is not filtered here. After selecting a skill to import, the user is prompted to optionally assign a purpose.
+**Settings→Skills import**: the marketplace listing shows all skills with a `SKILL.md` regardless of `purpose` — `purpose` is not filtered here. After selecting a skill to import, the user is prompted to optionally assign a purpose.
 
 ---
 
@@ -59,7 +59,7 @@ agent-sources/workspace/skills/research/
 
 ### How It Works
 
-**Step 1 — Select dimension set.** Read `dimension-sets.md`, identify the 5–6 candidate dimensions for the given `skill_type`.
+**Step 1 — Select dimension set.** Read `dimension-sets.md`, identify the 5–6 candidate dimensions for the given `purpose`.
 
 **Step 2 — Score and select.** Score each candidate against the domain using `scoring-rubric.md`. Select top 3–5 by score. Extended thinking is used here.
 

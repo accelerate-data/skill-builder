@@ -55,6 +55,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (25, run_workspace_skills_purpose_migration),
         (26, run_content_hash_migration),
         (27, run_backfill_null_versions_migration),
+        (28, run_rename_purpose_drop_domain_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -1552,16 +1553,15 @@ pub fn upsert_skill(
     conn: &Connection,
     name: &str,
     skill_source: &str,
-    domain: &str,
-    skill_type: &str,
+    purpose: &str,
 ) -> Result<i64, String> {
     log::debug!("upsert_skill: name={} skill_source={}", name, skill_source);
     conn.execute(
-        "INSERT INTO skills (name, skill_source, domain, skill_type, updated_at)
-         VALUES (?1, ?2, ?3, ?4, datetime('now'))
+        "INSERT INTO skills (name, skill_source, purpose, updated_at)
+         VALUES (?1, ?2, ?3, datetime('now'))
          ON CONFLICT(name) DO UPDATE SET
-             domain = ?3, skill_type = ?4, updated_at = datetime('now')",
-        rusqlite::params![name, skill_source, domain, skill_type],
+             purpose = ?3, updated_at = datetime('now')",
+        rusqlite::params![name, skill_source, purpose],
     )
     .map_err(|e| {
         log::error!("upsert_skill: failed to upsert '{}': {}", name, e);
@@ -1588,16 +1588,15 @@ pub fn upsert_skill_with_source(
     conn: &Connection,
     name: &str,
     skill_source: &str,
-    domain: &str,
-    skill_type: &str,
+    purpose: &str,
 ) -> Result<i64, String> {
     log::debug!("upsert_skill_with_source: name={} skill_source={}", name, skill_source);
     conn.execute(
-        "INSERT INTO skills (name, skill_source, domain, skill_type, updated_at)
-         VALUES (?1, ?2, ?3, ?4, datetime('now'))
+        "INSERT INTO skills (name, skill_source, purpose, updated_at)
+         VALUES (?1, ?2, ?3, datetime('now'))
          ON CONFLICT(name) DO UPDATE SET
-             skill_source = ?2, domain = ?3, skill_type = ?4, updated_at = datetime('now')",
-        rusqlite::params![name, skill_source, domain, skill_type],
+             skill_source = ?2, purpose = ?3, updated_at = datetime('now')",
+        rusqlite::params![name, skill_source, purpose],
     )
     .map_err(|e| {
         log::error!("upsert_skill_with_source: failed to upsert '{}': {}", name, e);
@@ -1620,7 +1619,7 @@ pub fn upsert_skill_with_source(
 pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, skill_source, domain, skill_type, created_at, updated_at,
+            "SELECT id, name, skill_source, purpose, created_at, updated_at,
                     description, version, model, argument_hint, user_invocable, disable_model_invocation
              FROM skills ORDER BY name",
         )
@@ -1635,16 +1634,15 @@ pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String>
                 id: row.get(0)?,
                 name: row.get(1)?,
                 skill_source: row.get(2)?,
-                domain: row.get(3)?,
-                skill_type: row.get(4)?,
-                created_at: row.get(5)?,
-                updated_at: row.get(6)?,
-                description: row.get(7)?,
-                version: row.get(8)?,
-                model: row.get(9)?,
-                argument_hint: row.get(10)?,
-                user_invocable: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-                disable_model_invocation: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
+                purpose: row.get(3)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+                description: row.get(6)?,
+                version: row.get(7)?,
+                model: row.get(8)?,
+                argument_hint: row.get(9)?,
+                user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
+                disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
             })
         })
         .map_err(|e| {
@@ -1700,19 +1698,18 @@ pub fn get_skill_master_id(conn: &Connection, skill_name: &str) -> Result<Option
 pub fn save_workflow_run(
     conn: &Connection,
     skill_name: &str,
-    domain: &str,
     current_step: i32,
     status: &str,
-    skill_type: &str,
+    purpose: &str,
 ) -> Result<(), String> {
     // Ensure the skills master row exists (skill-builder source)
-    let skill_id = upsert_skill(conn, skill_name, "skill-builder", domain, skill_type)?;
+    let skill_id = upsert_skill(conn, skill_name, "skill-builder", purpose)?;
     conn.execute(
-        "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, skill_id, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now') || 'Z')
+        "INSERT INTO workflow_runs (skill_name, current_step, status, purpose, skill_id, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now') || 'Z')
          ON CONFLICT(skill_name) DO UPDATE SET
-             domain = ?2, current_step = ?3, status = ?4, skill_type = ?5, skill_id = ?6, updated_at = datetime('now') || 'Z'",
-        rusqlite::params![skill_name, domain, current_step, status, skill_type, skill_id],
+             current_step = ?2, status = ?3, purpose = ?4, skill_id = ?5, updated_at = datetime('now') || 'Z'",
+        rusqlite::params![skill_name, current_step, status, purpose, skill_id],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -1723,11 +1720,10 @@ pub fn save_workflow_run(
 pub fn save_marketplace_skill(
     conn: &Connection,
     skill_name: &str,
-    domain: &str,
-    skill_type: &str,
+    purpose: &str,
 ) -> Result<(), String> {
     log::info!("save_marketplace_skill: name={}", skill_name);
-    upsert_skill(conn, skill_name, "marketplace", domain, skill_type).map_err(|e| {
+    upsert_skill(conn, skill_name, "marketplace", purpose).map_err(|e| {
         log::error!("save_marketplace_skill: failed for '{}': {}", skill_name, e);
         e
     })?;
@@ -1845,7 +1841,7 @@ pub fn get_workflow_run(
 ) -> Result<Option<WorkflowRunRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created'), description, version, model, argument_hint, user_invocable, disable_model_invocation
+            "SELECT skill_name, current_step, status, purpose, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created'), description, version, model, argument_hint, user_invocable, disable_model_invocation
              FROM workflow_runs WHERE skill_name = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -1853,23 +1849,22 @@ pub fn get_workflow_run(
     let result = stmt.query_row(rusqlite::params![skill_name], |row| {
         Ok(WorkflowRunRow {
             skill_name: row.get(0)?,
-            domain: row.get(1)?,
-            current_step: row.get(2)?,
-            status: row.get(3)?,
-            skill_type: row.get(4)?,
-            created_at: row.get(5)?,
-            updated_at: row.get(6)?,
-            author_login: row.get(7)?,
-            author_avatar: row.get(8)?,
-            display_name: row.get(9)?,
-            intake_json: row.get(10)?,
-            source: row.get(11)?,
-            description: row.get(12)?,
-            version: row.get(13)?,
-            model: row.get(14)?,
-            argument_hint: row.get(15)?,
-            user_invocable: row.get::<_, Option<i32>>(16)?.map(|v| v != 0),
-            disable_model_invocation: row.get::<_, Option<i32>>(17)?.map(|v| v != 0),
+            current_step: row.get(1)?,
+            status: row.get(2)?,
+            purpose: row.get(3)?,
+            created_at: row.get(4)?,
+            updated_at: row.get(5)?,
+            author_login: row.get(6)?,
+            author_avatar: row.get(7)?,
+            display_name: row.get(8)?,
+            intake_json: row.get(9)?,
+            source: row.get(10)?,
+            description: row.get(11)?,
+            version: row.get(12)?,
+            model: row.get(13)?,
+            argument_hint: row.get(14)?,
+            user_invocable: row.get::<_, Option<i32>>(15)?.map(|v| v != 0),
+            disable_model_invocation: row.get::<_, Option<i32>>(16)?.map(|v| v != 0),
         })
     });
 
@@ -1880,9 +1875,9 @@ pub fn get_workflow_run(
     }
 }
 
-pub fn get_skill_type(conn: &Connection, skill_name: &str) -> Result<String, String> {
+pub fn get_purpose(conn: &Connection, skill_name: &str) -> Result<String, String> {
     get_workflow_run(conn, skill_name).map(|opt| {
-        opt.map(|run| run.skill_type)
+        opt.map(|run| run.purpose)
             .unwrap_or_else(|| "domain".to_string())
     })
 }
@@ -1890,7 +1885,7 @@ pub fn get_skill_type(conn: &Connection, skill_name: &str) -> Result<String, Str
 pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created'), description, version, model, argument_hint, user_invocable, disable_model_invocation
+            "SELECT skill_name, current_step, status, purpose, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created'), description, version, model, argument_hint, user_invocable, disable_model_invocation
              FROM workflow_runs ORDER BY skill_name",
         )
         .map_err(|e| e.to_string())?;
@@ -1899,23 +1894,22 @@ pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, 
         .query_map([], |row| {
             Ok(WorkflowRunRow {
                 skill_name: row.get(0)?,
-                domain: row.get(1)?,
-                current_step: row.get(2)?,
-                status: row.get(3)?,
-                skill_type: row.get(4)?,
-                created_at: row.get(5)?,
-                updated_at: row.get(6)?,
-                author_login: row.get(7)?,
-                author_avatar: row.get(8)?,
-                display_name: row.get(9)?,
-                intake_json: row.get(10)?,
-                source: row.get(11)?,
-                description: row.get(12)?,
-                version: row.get(13)?,
-                model: row.get(14)?,
-                argument_hint: row.get(15)?,
-                user_invocable: row.get::<_, Option<i32>>(16)?.map(|v| v != 0),
-                disable_model_invocation: row.get::<_, Option<i32>>(17)?.map(|v| v != 0),
+                current_step: row.get(1)?,
+                status: row.get(2)?,
+                purpose: row.get(3)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+                author_login: row.get(6)?,
+                author_avatar: row.get(7)?,
+                display_name: row.get(8)?,
+                intake_json: row.get(9)?,
+                source: row.get(10)?,
+                description: row.get(11)?,
+                version: row.get(12)?,
+                model: row.get(13)?,
+                argument_hint: row.get(14)?,
+                user_invocable: row.get::<_, Option<i32>>(15)?.map(|v| v != 0),
+                disable_model_invocation: row.get::<_, Option<i32>>(16)?.map(|v| v != 0),
             })
         })
         .map_err(|e| e.to_string())?;
@@ -2176,18 +2170,17 @@ pub fn insert_imported_skill(
 ) -> Result<(), String> {
     let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
     conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
-             skill_type, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+             purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
-            skill.domain,
             skill.is_active as i32,
             skill.disk_path,
             skill.imported_at,
             skill.is_bundled as i32,
-            skill.skill_type,
+            skill.purpose,
             skill.version,
             skill.model,
             skill.argument_hint,
@@ -2216,15 +2209,14 @@ pub fn upsert_imported_skill(
 ) -> Result<(), String> {
     let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
     conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
-             skill_type, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+        "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+             purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
          ON CONFLICT(skill_name) DO UPDATE SET
              skill_id = excluded.skill_id,
-             domain = excluded.domain,
              disk_path = excluded.disk_path,
              imported_at = excluded.imported_at,
-             skill_type = excluded.skill_type,
+             purpose = excluded.purpose,
              version = excluded.version,
              model = excluded.model,
              argument_hint = excluded.argument_hint,
@@ -2234,12 +2226,11 @@ pub fn upsert_imported_skill(
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
-            skill.domain,
             skill.is_active as i32,
             skill.disk_path,
             skill.imported_at,
             skill.is_bundled as i32,
-            skill.skill_type,
+            skill.purpose,
             skill.version,
             skill.model,
             skill.argument_hint,
@@ -2337,8 +2328,8 @@ pub fn get_imported_skill(
 
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
-                    skill_type, version, model, argument_hint, user_invocable, disable_model_invocation
+            "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+                    purpose, version, model, argument_hint, user_invocable, disable_model_invocation
              FROM imported_skills WHERE skill_master_id = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -2347,18 +2338,17 @@ pub fn get_imported_skill(
         Ok(ImportedSkill {
             skill_id: row.get(0)?,
             skill_name: row.get(1)?,
-            domain: row.get(2)?,
-            is_active: row.get::<_, i32>(3)? != 0,
-            disk_path: row.get(4)?,
-            imported_at: row.get(5)?,
-            is_bundled: row.get::<_, i32>(6)? != 0,
+            is_active: row.get::<_, i32>(2)? != 0,
+            disk_path: row.get(3)?,
+            imported_at: row.get(4)?,
+            is_bundled: row.get::<_, i32>(5)? != 0,
             description: None,
-            skill_type: row.get(7)?,
-            version: row.get(8)?,
-            model: row.get(9)?,
-            argument_hint: row.get(10)?,
-            user_invocable: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-            disable_model_invocation: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
+            purpose: row.get(6)?,
+            version: row.get(7)?,
+            model: row.get(8)?,
+            argument_hint: row.get(9)?,
+            user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
+            disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
         })
     });
 
@@ -2376,8 +2366,8 @@ pub fn get_imported_skill(
 pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
-                    skill_type, version, model, argument_hint, user_invocable, disable_model_invocation
+            "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+                    purpose, version, model, argument_hint, user_invocable, disable_model_invocation
              FROM imported_skills
              WHERE is_active = 1
              ORDER BY skill_name",
@@ -2389,18 +2379,17 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
             Ok(ImportedSkill {
                 skill_id: row.get(0)?,
                 skill_name: row.get(1)?,
-                domain: row.get(2)?,
-                is_active: row.get::<_, i32>(3)? != 0,
-                disk_path: row.get(4)?,
-                imported_at: row.get(5)?,
-                is_bundled: row.get::<_, i32>(6)? != 0,
+                is_active: row.get::<_, i32>(2)? != 0,
+                disk_path: row.get(3)?,
+                imported_at: row.get(4)?,
+                is_bundled: row.get::<_, i32>(5)? != 0,
                 description: None,
-                skill_type: row.get(7)?,
-                version: row.get(8)?,
-                model: row.get(9)?,
-                argument_hint: row.get(10)?,
-                user_invocable: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-                disable_model_invocation: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
+                purpose: row.get(6)?,
+                version: row.get(7)?,
+                model: row.get(8)?,
+                argument_hint: row.get(9)?,
+                user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
+                disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
             })
         })
         .map_err(|e| e.to_string())?;
@@ -2417,32 +2406,30 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
 
 // --- Workspace Skills (Settings → Skills tab) ---
 
-const WS_COLUMNS: &str = "skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation, purpose";
+const WS_COLUMNS: &str = "skill_id, skill_name, description, is_active, is_bundled, disk_path, imported_at, purpose, version, model, argument_hint, user_invocable, disable_model_invocation";
 
-fn ws_params(skill: &WorkspaceSkill) -> [rusqlite::types::Value; 15] {
+fn ws_params(skill: &WorkspaceSkill) -> [rusqlite::types::Value; 13] {
     use rusqlite::types::Value;
     [
         Value::Text(skill.skill_id.clone()),
         Value::Text(skill.skill_name.clone()),
-        skill.domain.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
         skill.description.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
         Value::Integer(skill.is_active as i64),
         Value::Integer(skill.is_bundled as i64),
         Value::Text(skill.disk_path.clone()),
         Value::Text(skill.imported_at.clone()),
-        skill.skill_type.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill.purpose.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
         skill.version.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
         skill.model.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
         skill.argument_hint.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
         skill.user_invocable.map_or(Value::Null, |b| Value::Integer(b as i64)),
         skill.disable_model_invocation.map_or(Value::Null, |b| Value::Integer(b as i64)),
-        skill.purpose.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
     ]
 }
 
 pub fn insert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
     conn.execute(
-        &format!("INSERT INTO workspace_skills ({WS_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)"),
+        &format!("INSERT INTO workspace_skills ({WS_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"),
         rusqlite::params_from_iter(ws_params(skill)),
     ).map_err(|e| {
         if e.to_string().contains("UNIQUE") {
@@ -2458,19 +2445,17 @@ pub fn upsert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Resu
     conn.execute(
         &format!(
             "INSERT INTO workspace_skills ({WS_COLUMNS})
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(skill_name) DO UPDATE SET
-                 domain = excluded.domain,
                  description = excluded.description,
                  is_bundled = excluded.is_bundled,
                  disk_path = excluded.disk_path,
-                 skill_type = excluded.skill_type,
+                 purpose = excluded.purpose,
                  version = excluded.version,
                  model = excluded.model,
                  argument_hint = excluded.argument_hint,
                  user_invocable = excluded.user_invocable,
-                 disable_model_invocation = excluded.disable_model_invocation,
-                 purpose = excluded.purpose"
+                 disable_model_invocation = excluded.disable_model_invocation"
         ),
         rusqlite::params_from_iter(ws_params(skill)),
     ).map_err(|e| format!("upsert_workspace_skill: {}", e))?;
@@ -2482,19 +2467,17 @@ pub fn upsert_bundled_workspace_skill(conn: &Connection, skill: &WorkspaceSkill)
     conn.execute(
         &format!(
             "INSERT INTO workspace_skills ({WS_COLUMNS})
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(skill_name) DO UPDATE SET
-                 domain = excluded.domain,
                  description = excluded.description,
                  is_bundled = 1,
                  disk_path = excluded.disk_path,
-                 skill_type = excluded.skill_type,
+                 purpose = excluded.purpose,
                  version = excluded.version,
                  model = excluded.model,
                  argument_hint = excluded.argument_hint,
                  user_invocable = excluded.user_invocable,
-                 disable_model_invocation = excluded.disable_model_invocation,
-                 purpose = excluded.purpose
+                 disable_model_invocation = excluded.disable_model_invocation
                  -- is_active intentionally NOT updated: preserves user's deactivation"
         ),
         rusqlite::params_from_iter(ws_params(skill)),
@@ -2503,26 +2486,24 @@ pub fn upsert_bundled_workspace_skill(conn: &Connection, skill: &WorkspaceSkill)
 }
 
 fn row_to_workspace_skill(row: &rusqlite::Row) -> rusqlite::Result<WorkspaceSkill> {
-    let is_active: i64 = row.get(4)?;
-    let is_bundled: i64 = row.get(5)?;
-    let user_invocable: Option<i64> = row.get(12)?;
-    let disable_model_invocation: Option<i64> = row.get(13)?;
+    let is_active: i64 = row.get(3)?;
+    let is_bundled: i64 = row.get(4)?;
+    let user_invocable: Option<i64> = row.get(11)?;
+    let disable_model_invocation: Option<i64> = row.get(12)?;
     Ok(WorkspaceSkill {
         skill_id: row.get(0)?,
         skill_name: row.get(1)?,
-        domain: row.get(2)?,
-        description: row.get(3)?,
+        description: row.get(2)?,
         is_active: is_active != 0,
         is_bundled: is_bundled != 0,
-        disk_path: row.get(6)?,
-        imported_at: row.get(7)?,
-        skill_type: row.get(8)?,
-        version: row.get(9)?,
-        model: row.get(10)?,
-        argument_hint: row.get(11)?,
+        disk_path: row.get(5)?,
+        imported_at: row.get(6)?,
+        purpose: row.get(7)?,
+        version: row.get(8)?,
+        model: row.get(9)?,
+        argument_hint: row.get(10)?,
         user_invocable: user_invocable.map(|v| v != 0),
         disable_model_invocation: disable_model_invocation.map(|v| v != 0),
-        purpose: row.get(14)?,
     })
 }
 
@@ -3000,6 +2981,158 @@ pub fn reconcile_orphaned_sessions(conn: &Connection) -> Result<u32, String> {
     Ok(reconciled)
 }
 
+/// Migration 28: Rename `skill_type` -> `purpose` and drop `domain` column from all 4 tables:
+/// skills, workflow_runs, imported_skills, workspace_skills.
+fn run_rename_purpose_drop_domain_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Wrap in a transaction so partial failure rolls back, preventing irrecoverable state.
+    // FK checks disabled during table rebuilds, re-enabled after commit.
+    conn.execute_batch("PRAGMA foreign_keys = OFF; BEGIN;")?;
+
+    // --- skills ---
+    conn.execute_batch("
+        CREATE TABLE skills_new (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL UNIQUE,
+            skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'imported')),
+            purpose      TEXT,
+            created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            description  TEXT,
+            version      TEXT,
+            model        TEXT,
+            argument_hint TEXT,
+            user_invocable INTEGER,
+            disable_model_invocation INTEGER
+        );
+        INSERT INTO skills_new (id, name, skill_source, purpose, created_at, updated_at,
+                                description, version, model, argument_hint, user_invocable, disable_model_invocation)
+            SELECT id, name, skill_source, skill_type, created_at, updated_at,
+                   description, version, model, argument_hint, user_invocable, disable_model_invocation
+            FROM skills;
+        DROP TABLE skills;
+        ALTER TABLE skills_new RENAME TO skills;
+    ")?;
+
+    // --- workflow_runs ---
+    conn.execute_batch("
+        CREATE TABLE workflow_runs_new (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            skill_name  TEXT UNIQUE NOT NULL,
+            current_step INTEGER NOT NULL DEFAULT 0,
+            status      TEXT NOT NULL DEFAULT 'pending',
+            purpose     TEXT DEFAULT 'domain',
+            created_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            source      TEXT NOT NULL DEFAULT 'created',
+            description TEXT,
+            version     TEXT DEFAULT '1.0.0',
+            model       TEXT,
+            argument_hint TEXT,
+            user_invocable INTEGER DEFAULT 1,
+            disable_model_invocation INTEGER DEFAULT 0,
+            author_login TEXT,
+            author_avatar TEXT,
+            display_name TEXT,
+            intake_json TEXT,
+            skill_id    INTEGER REFERENCES skills(id)
+        );
+        INSERT INTO workflow_runs_new (id, skill_name, current_step, status, purpose,
+                                       created_at, updated_at, source, description, version, model,
+                                       argument_hint, user_invocable, disable_model_invocation,
+                                       author_login, author_avatar, display_name, intake_json, skill_id)
+            SELECT id, skill_name, current_step, status, skill_type,
+                   created_at, updated_at, COALESCE(source, 'created'), description, version, model,
+                   argument_hint, user_invocable, disable_model_invocation,
+                   author_login, author_avatar, display_name, intake_json, skill_id
+            FROM workflow_runs;
+        DROP TABLE workflow_runs;
+        ALTER TABLE workflow_runs_new RENAME TO workflow_runs;
+    ")?;
+
+    // --- imported_skills ---
+    conn.execute_batch("
+        CREATE TABLE imported_skills_new (
+            skill_id TEXT PRIMARY KEY,
+            skill_name TEXT NOT NULL UNIQUE,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            disk_path TEXT NOT NULL,
+            imported_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            is_bundled INTEGER NOT NULL DEFAULT 0,
+            purpose TEXT,
+            version TEXT,
+            model TEXT,
+            argument_hint TEXT,
+            user_invocable INTEGER,
+            disable_model_invocation INTEGER,
+            skill_master_id INTEGER REFERENCES skills(id),
+            content_hash TEXT
+        );
+        INSERT INTO imported_skills_new (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+                                         purpose, version, model, argument_hint, user_invocable,
+                                         disable_model_invocation, skill_master_id, content_hash)
+            SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+                   skill_type, version, model, argument_hint, user_invocable,
+                   disable_model_invocation, skill_master_id, content_hash
+            FROM imported_skills;
+        DROP TABLE imported_skills;
+        ALTER TABLE imported_skills_new RENAME TO imported_skills;
+    ")?;
+
+    // --- workspace_skills ---
+    // Detect optional columns that may or may not exist (content_hash from m26, skill_master_id from test fixtures)
+    let ws_cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(workspace_skills)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+    let has_content_hash = ws_cols.iter().any(|c| c == "content_hash");
+    let has_skill_master_id = ws_cols.iter().any(|c| c == "skill_master_id");
+
+    let extra_cols_def = [
+        if has_skill_master_id { ",\n            skill_master_id INTEGER REFERENCES skills(id)" } else { "" },
+        if has_content_hash { ",\n            content_hash TEXT" } else { "" },
+    ].concat();
+
+    let extra_cols_list = [
+        if has_skill_master_id { ", skill_master_id" } else { "" },
+        if has_content_hash { ", content_hash" } else { "" },
+    ].concat();
+
+    let sql = format!("
+        CREATE TABLE workspace_skills_new (
+            skill_id     TEXT PRIMARY KEY,
+            skill_name   TEXT UNIQUE NOT NULL,
+            description  TEXT,
+            is_active    INTEGER NOT NULL DEFAULT 1,
+            is_bundled   INTEGER NOT NULL DEFAULT 0,
+            disk_path    TEXT NOT NULL,
+            imported_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            purpose      TEXT,
+            version      TEXT,
+            model        TEXT,
+            argument_hint TEXT,
+            user_invocable INTEGER,
+            disable_model_invocation INTEGER{extra_cols_def}
+        );
+        INSERT INTO workspace_skills_new (skill_id, skill_name, description, is_active, is_bundled,
+                                          disk_path, imported_at, purpose, version, model,
+                                          argument_hint, user_invocable, disable_model_invocation{extra_cols_list})
+            SELECT skill_id, skill_name, description, is_active, is_bundled,
+                   disk_path, imported_at, COALESCE(purpose, skill_type), version, model,
+                   argument_hint, user_invocable, disable_model_invocation{extra_cols_list}
+            FROM workspace_skills;
+        DROP TABLE workspace_skills;
+        ALTER TABLE workspace_skills_new RENAME TO workspace_skills;
+    ");
+    conn.execute_batch(&sql)?;
+
+    // Commit transaction and re-enable FK checks
+    conn.execute_batch("COMMIT; PRAGMA foreign_keys = ON;")?;
+
+    log::info!("migration 28: renamed skill_type -> purpose, dropped domain from all 4 tables");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3030,6 +3163,9 @@ mod tests {
         run_fk_columns_migration(&conn).unwrap();
         run_frontmatter_to_skills_migration(&conn).unwrap();
         run_workspace_skills_purpose_migration(&conn).unwrap();
+        run_content_hash_migration(&conn).unwrap();
+        run_backfill_null_versions_migration(&conn).unwrap();
+        run_rename_purpose_drop_domain_migration(&conn).unwrap();
         conn
     }
 
@@ -3172,10 +3308,9 @@ mod tests {
     #[test]
     fn test_workflow_run_crud() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "test-skill", "test domain", 3, "in_progress", "domain").unwrap();
+        save_workflow_run(&conn, "test-skill", 3, "in_progress", "domain").unwrap();
         let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
         assert_eq!(run.skill_name, "test-skill");
-        assert_eq!(run.domain, "test domain");
         assert_eq!(run.current_step, 3);
         assert_eq!(run.status, "in_progress");
         let none = get_workflow_run(&conn, "nonexistent").unwrap();
@@ -3185,8 +3320,8 @@ mod tests {
     #[test]
     fn test_workflow_run_upsert() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "test-skill", "domain1", 0, "pending", "domain").unwrap();
-        save_workflow_run(&conn, "test-skill", "domain1", 5, "in_progress", "domain").unwrap();
+        save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "test-skill", 5, "in_progress", "domain").unwrap();
         let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 5);
         assert_eq!(run.status, "in_progress");
@@ -3195,7 +3330,7 @@ mod tests {
     #[test]
     fn test_set_skill_author() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
 
         // Set author with avatar
         set_skill_author(&conn, "test-skill", "testuser", Some("https://avatars.example.com/u/123")).unwrap();
@@ -3207,7 +3342,7 @@ mod tests {
     #[test]
     fn test_set_skill_author_without_avatar() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
 
         // Set author without avatar
         set_skill_author(&conn, "test-skill", "testuser", None).unwrap();
@@ -3219,7 +3354,7 @@ mod tests {
     #[test]
     fn test_workflow_run_default_no_author() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
         let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
         assert!(run.author_login.is_none());
         assert!(run.author_avatar.is_none());
@@ -3240,7 +3375,7 @@ mod tests {
     fn test_workflow_steps_crud() {
         let conn = create_test_db();
         // Workflow run must exist so get_workflow_steps can resolve the FK
-        save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
         save_workflow_step(&conn, "test-skill", 0, "completed").unwrap();
         save_workflow_step(&conn, "test-skill", 1, "in_progress").unwrap();
         save_workflow_step(&conn, "test-skill", 2, "pending").unwrap();
@@ -3255,7 +3390,7 @@ mod tests {
     fn test_workflow_steps_reset() {
         let conn = create_test_db();
         // Workflow run must exist so reset_workflow_steps_from can resolve the FK
-        save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
         save_workflow_step(&conn, "test-skill", 0, "completed").unwrap();
         save_workflow_step(&conn, "test-skill", 1, "completed").unwrap();
         save_workflow_step(&conn, "test-skill", 2, "completed").unwrap();
@@ -3273,7 +3408,7 @@ mod tests {
     #[test]
     fn test_delete_workflow_run() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
         save_workflow_step(&conn, "test-skill", 0, "completed").unwrap();
         delete_workflow_run(&conn, "test-skill").unwrap();
         assert!(get_workflow_run(&conn, "test-skill").unwrap().is_none());
@@ -3285,7 +3420,7 @@ mod tests {
     #[test]
     fn test_upsert_skill_insert_and_return_id() {
         let conn = create_test_db();
-        let id = upsert_skill(&conn, "my-skill", "skill-builder", "sales", "domain").unwrap();
+        let id = upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
         assert!(id > 0);
 
         // Verify the row exists
@@ -3293,22 +3428,18 @@ mod tests {
         let skill = skills.into_iter().find(|s| s.name == "my-skill").unwrap();
         assert_eq!(skill.name, "my-skill");
         assert_eq!(skill.skill_source, "skill-builder");
-        assert_eq!(skill.domain.as_deref(), Some("sales"));
-        assert_eq!(skill.skill_type.as_deref(), Some("domain"));
     }
 
     #[test]
     fn test_upsert_skill_update_on_conflict() {
         let conn = create_test_db();
-        let id1 = upsert_skill(&conn, "my-skill", "skill-builder", "sales", "domain").unwrap();
+        let id1 = upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
         // Upsert same name — should update domain/skill_type, keep same id
-        let id2 = upsert_skill(&conn, "my-skill", "skill-builder", "analytics", "platform").unwrap();
+        let id2 = upsert_skill(&conn, "my-skill", "skill-builder", "platform").unwrap();
         assert_eq!(id1, id2);
 
         let skills = list_all_skills(&conn).unwrap();
         let skill = skills.into_iter().find(|s| s.name == "my-skill").unwrap();
-        assert_eq!(skill.domain.as_deref(), Some("analytics"));
-        assert_eq!(skill.skill_type.as_deref(), Some("platform"));
     }
 
     #[test]
@@ -3321,9 +3452,9 @@ mod tests {
     #[test]
     fn test_list_all_skills_returns_ordered_by_name() {
         let conn = create_test_db();
-        upsert_skill(&conn, "gamma", "marketplace", "domain-c", "source").unwrap();
-        upsert_skill(&conn, "alpha", "skill-builder", "domain-a", "domain").unwrap();
-        upsert_skill(&conn, "beta", "imported", "domain-b", "platform").unwrap();
+        upsert_skill(&conn, "gamma", "marketplace", "source").unwrap();
+        upsert_skill(&conn, "alpha", "skill-builder", "domain").unwrap();
+        upsert_skill(&conn, "beta", "imported", "platform").unwrap();
 
         let skills = list_all_skills(&conn).unwrap();
         assert_eq!(skills.len(), 3);
@@ -3338,7 +3469,7 @@ mod tests {
     #[test]
     fn test_delete_skill_removes_from_master() {
         let conn = create_test_db();
-        upsert_skill(&conn, "to-delete", "marketplace", "sales", "domain").unwrap();
+        upsert_skill(&conn, "to-delete", "marketplace", "domain").unwrap();
         assert!(get_skill_master_id(&conn, "to-delete").unwrap().is_some());
 
         delete_skill(&conn, "to-delete").unwrap();
@@ -3355,13 +3486,13 @@ mod tests {
     #[test]
     fn test_save_marketplace_skill_creates_master_row_only() {
         let conn = create_test_db();
-        save_marketplace_skill(&conn, "mkt-skill", "sales", "platform").unwrap();
+        save_marketplace_skill(&conn, "mkt-skill", "platform").unwrap();
 
         // Skills master row should exist with source=marketplace
         let skills = list_all_skills(&conn).unwrap();
         let skill = skills.into_iter().find(|s| s.name == "mkt-skill").unwrap();
         assert_eq!(skill.skill_source, "marketplace");
-        assert_eq!(skill.domain.as_deref(), Some("sales"));
+        
 
         // No workflow_runs row should be created
         let run = get_workflow_run(&conn, "mkt-skill").unwrap();
@@ -3371,19 +3502,19 @@ mod tests {
     #[test]
     fn test_save_workflow_run_creates_skills_master_row() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "my-skill", "analytics", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
 
         // save_workflow_run calls upsert_skill internally
         let skills = list_all_skills(&conn).unwrap();
         let skill = skills.into_iter().find(|s| s.name == "my-skill").unwrap();
         assert_eq!(skill.skill_source, "skill-builder");
-        assert_eq!(skill.domain.as_deref(), Some("analytics"));
+        
     }
 
     #[test]
     fn test_delete_workflow_run_also_deletes_from_skills_master() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "my-skill", "analytics", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
         assert!(get_skill_master_id(&conn, "my-skill").unwrap().is_some());
 
         delete_workflow_run(&conn, "my-skill").unwrap();
@@ -3437,6 +3568,11 @@ mod tests {
         run_fk_columns_migration(&conn).unwrap();
         run_frontmatter_to_skills_migration(&conn).unwrap();
 
+        run_workspace_skills_purpose_migration(&conn).unwrap();
+        run_content_hash_migration(&conn).unwrap();
+        run_backfill_null_versions_migration(&conn).unwrap();
+        run_rename_purpose_drop_domain_migration(&conn).unwrap();
+
         // Verify skills master was populated
         let skills = list_all_skills(&conn).unwrap();
         assert_eq!(skills.len(), 2);
@@ -3470,7 +3606,7 @@ mod tests {
     #[test]
     fn test_set_and_get_tags() {
         let conn = create_test_db();
-        upsert_skill(&conn, "my-skill", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
         set_skill_tags(&conn, "my-skill", &["analytics".into(), "salesforce".into()]).unwrap();
         let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()]).unwrap().remove("my-skill").unwrap_or_default();
         assert_eq!(tags, vec!["analytics", "salesforce"]);
@@ -3479,7 +3615,7 @@ mod tests {
     #[test]
     fn test_tags_normalize_lowercase_trim() {
         let conn = create_test_db();
-        upsert_skill(&conn, "my-skill", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
         set_skill_tags(
             &conn,
             "my-skill",
@@ -3493,7 +3629,7 @@ mod tests {
     #[test]
     fn test_tags_deduplicate() {
         let conn = create_test_db();
-        upsert_skill(&conn, "my-skill", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
         set_skill_tags(
             &conn,
             "my-skill",
@@ -3507,7 +3643,7 @@ mod tests {
     #[test]
     fn test_set_tags_replaces() {
         let conn = create_test_db();
-        upsert_skill(&conn, "my-skill", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
         set_skill_tags(&conn, "my-skill", &["old-tag".into()]).unwrap();
         set_skill_tags(&conn, "my-skill", &["new-tag".into()]).unwrap();
         let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()]).unwrap().remove("my-skill").unwrap_or_default();
@@ -3517,9 +3653,9 @@ mod tests {
     #[test]
     fn test_get_tags_for_skills_batch() {
         let conn = create_test_db();
-        upsert_skill(&conn, "skill-a", "skill-builder", "domain", "domain").unwrap();
-        upsert_skill(&conn, "skill-b", "skill-builder", "domain", "domain").unwrap();
-        upsert_skill(&conn, "skill-c", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+        upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
+        upsert_skill(&conn, "skill-c", "skill-builder", "domain").unwrap();
         set_skill_tags(&conn, "skill-a", &["tag1".into(), "tag2".into()]).unwrap();
         set_skill_tags(&conn, "skill-b", &["tag2".into(), "tag3".into()]).unwrap();
         set_skill_tags(&conn, "skill-c", &["tag1".into()]).unwrap();
@@ -3534,8 +3670,8 @@ mod tests {
     #[test]
     fn test_get_all_tags() {
         let conn = create_test_db();
-        upsert_skill(&conn, "skill-a", "skill-builder", "domain", "domain").unwrap();
-        upsert_skill(&conn, "skill-b", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+        upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
         set_skill_tags(&conn, "skill-a", &["beta".into(), "alpha".into()]).unwrap();
         set_skill_tags(&conn, "skill-b", &["beta".into(), "gamma".into()]).unwrap();
 
@@ -3546,7 +3682,7 @@ mod tests {
     #[test]
     fn test_delete_workflow_run_cascades_tags() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "my-skill", "domain", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
         set_skill_tags(&conn, "my-skill", &["tag1".into(), "tag2".into()]).unwrap();
 
         delete_workflow_run(&conn, "my-skill").unwrap();
@@ -3557,20 +3693,13 @@ mod tests {
 
     #[test]
     fn test_skill_type_migration() {
-        let conn = Connection::open_in_memory().unwrap();
-        run_migrations(&conn).unwrap();
-        run_add_skill_type_migration(&conn).unwrap();
-        run_author_migration(&conn).unwrap();
-        run_intake_migration(&conn).unwrap();
-        run_source_migration(&conn).unwrap();
-        run_workflow_runs_extended_migration(&conn).unwrap();
-        run_skills_table_migration(&conn).unwrap();
-        run_skills_backfill_migration(&conn).unwrap();
+        // Use full test DB - migration 28 renames skill_type -> purpose
+        let conn = create_test_db();
 
-        // Verify skill_type column exists by inserting a row with it
-        save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "platform").unwrap();
+        // Verify purpose column exists by inserting a row with it
+        save_workflow_run(&conn, "test-skill", 0, "pending", "platform").unwrap();
         let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
-        assert_eq!(run.skill_type, "platform");
+        assert_eq!(run.purpose, "platform");
     }
 
     #[test]
@@ -3583,18 +3712,18 @@ mod tests {
     }
 
     #[test]
-    fn test_get_skill_type_default() {
+    fn test_get_purpose_default() {
         let conn = create_test_db();
         // No workflow run exists — should return "domain" default
-        let skill_type = get_skill_type(&conn, "nonexistent-skill").unwrap();
+        let skill_type = get_purpose(&conn, "nonexistent-skill").unwrap();
         assert_eq!(skill_type, "domain");
     }
 
     #[test]
-    fn test_get_skill_type_explicit() {
+    fn test_get_purpose_explicit() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "my-skill", "test", 0, "pending", "source").unwrap();
-        let skill_type = get_skill_type(&conn, "my-skill").unwrap();
+        save_workflow_run(&conn, "my-skill", 0, "pending", "source").unwrap();
+        let skill_type = get_purpose(&conn, "my-skill").unwrap();
         assert_eq!(skill_type, "source");
     }
 
@@ -3608,9 +3737,9 @@ mod tests {
     #[test]
     fn test_list_all_workflow_runs_multiple() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "alpha-skill", "domain-a", 3, "in_progress", "domain").unwrap();
-        save_workflow_run(&conn, "beta-skill", "domain-b", 0, "pending", "platform").unwrap();
-        save_workflow_run(&conn, "gamma-skill", "domain-c", 7, "completed", "source").unwrap();
+        save_workflow_run(&conn, "alpha-skill", 3, "in_progress", "domain").unwrap();
+        save_workflow_run(&conn, "beta-skill", 0, "pending", "platform").unwrap();
+        save_workflow_run(&conn, "gamma-skill", 7, "completed", "source").unwrap();
 
         let runs = list_all_workflow_runs(&conn).unwrap();
         assert_eq!(runs.len(), 3);
@@ -3618,7 +3747,7 @@ mod tests {
         assert_eq!(runs[0].skill_name, "alpha-skill");
         assert_eq!(runs[0].current_step, 3);
         assert_eq!(runs[1].skill_name, "beta-skill");
-        assert_eq!(runs[1].skill_type, "platform");
+        assert_eq!(runs[1].purpose, "platform");
         assert_eq!(runs[2].skill_name, "gamma-skill");
         assert_eq!(runs[2].status, "completed");
     }
@@ -3626,8 +3755,8 @@ mod tests {
     #[test]
     fn test_list_all_workflow_runs_after_delete() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "skill-a", "domain", 0, "pending", "domain").unwrap();
-        save_workflow_run(&conn, "skill-b", "domain", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "skill-a", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "skill-b", 0, "pending", "domain").unwrap();
 
         delete_workflow_run(&conn, "skill-a").unwrap();
 
@@ -3639,14 +3768,14 @@ mod tests {
     #[test]
     fn test_workflow_run_preserves_skill_type() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "my-skill", "test", 0, "pending", "data-engineering").unwrap();
+        save_workflow_run(&conn, "my-skill", 0, "pending", "data-engineering").unwrap();
         let run = get_workflow_run(&conn, "my-skill").unwrap().unwrap();
-        assert_eq!(run.skill_type, "data-engineering");
+        assert_eq!(run.purpose, "data-engineering");
 
         // Update step/status — skill_type should be preserved
-        save_workflow_run(&conn, "my-skill", "test", 3, "in_progress", "data-engineering").unwrap();
+        save_workflow_run(&conn, "my-skill", 3, "in_progress", "data-engineering").unwrap();
         let run = get_workflow_run(&conn, "my-skill").unwrap().unwrap();
-        assert_eq!(run.skill_type, "data-engineering");
+        assert_eq!(run.purpose, "data-engineering");
         assert_eq!(run.current_step, 3);
     }
 
@@ -3678,7 +3807,7 @@ mod tests {
         let conn = create_test_db();
         run_lock_table_migration(&conn).unwrap();
         // Skill must exist in master for FK-based locking
-        upsert_skill(&conn, "test-skill", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
         acquire_skill_lock(&conn, "test-skill", "inst-1", 12345).unwrap();
         let lock = get_skill_lock(&conn, "test-skill").unwrap().unwrap();
         assert_eq!(lock.skill_name, "test-skill");
@@ -3693,7 +3822,7 @@ mod tests {
     fn test_acquire_lock_conflict() {
         let conn = create_test_db();
         run_lock_table_migration(&conn).unwrap();
-        upsert_skill(&conn, "test-skill", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
         // Use the current PID so the lock appears "live"
         let pid = std::process::id();
         acquire_skill_lock(&conn, "test-skill", "inst-1", pid).unwrap();
@@ -3706,7 +3835,7 @@ mod tests {
     fn test_acquire_lock_idempotent_same_instance() {
         let conn = create_test_db();
         run_lock_table_migration(&conn).unwrap();
-        upsert_skill(&conn, "test-skill", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
         acquire_skill_lock(&conn, "test-skill", "inst-1", 12345).unwrap();
         // Acquiring again from the same instance should succeed
         acquire_skill_lock(&conn, "test-skill", "inst-1", 12345).unwrap();
@@ -3716,9 +3845,9 @@ mod tests {
     fn test_release_all_instance_locks() {
         let conn = create_test_db();
         run_lock_table_migration(&conn).unwrap();
-        upsert_skill(&conn, "skill-a", "skill-builder", "domain", "domain").unwrap();
-        upsert_skill(&conn, "skill-b", "skill-builder", "domain", "domain").unwrap();
-        upsert_skill(&conn, "skill-c", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+        upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
+        upsert_skill(&conn, "skill-c", "skill-builder", "domain").unwrap();
         acquire_skill_lock(&conn, "skill-a", "inst-1", 12345).unwrap();
         acquire_skill_lock(&conn, "skill-b", "inst-1", 12345).unwrap();
         acquire_skill_lock(&conn, "skill-c", "inst-2", 67890).unwrap();
@@ -3735,8 +3864,8 @@ mod tests {
     fn test_get_all_skill_locks() {
         let conn = create_test_db();
         run_lock_table_migration(&conn).unwrap();
-        upsert_skill(&conn, "skill-a", "skill-builder", "domain", "domain").unwrap();
-        upsert_skill(&conn, "skill-b", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+        upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
         acquire_skill_lock(&conn, "skill-a", "inst-1", 12345).unwrap();
         acquire_skill_lock(&conn, "skill-b", "inst-2", 67890).unwrap();
 
@@ -4371,7 +4500,7 @@ mod tests {
     #[test]
     fn test_delete_workflow_run_cascades_sessions() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "my-skill", "domain", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
         create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
 
         delete_workflow_run(&conn, "my-skill").unwrap();
@@ -4663,57 +4792,48 @@ mod tests {
         // Skill 1: active (trigger comes from disk, not DB)
         let skill1 = ImportedSkill {
             skill_id: "imp-1".to_string(),
-            skill_name: "active-with-trigger".to_string(),
-            domain: None,
-            is_active: true,
+            skill_name: "active-with-trigger".to_string(),            is_active: true,
             disk_path: "/tmp/s1".to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+            purpose: None,
         };
         insert_imported_skill(&conn, &skill1).unwrap();
 
         // Skill 2: active
         let skill2 = ImportedSkill {
             skill_id: "imp-2".to_string(),
-            skill_name: "active-no-trigger".to_string(),
-            domain: None,
-            is_active: true,
+            skill_name: "active-no-trigger".to_string(),            is_active: true,
             disk_path: "/tmp/s2".to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+            purpose: None,
         };
         insert_imported_skill(&conn, &skill2).unwrap();
 
         // Skill 3: inactive
         let skill3 = ImportedSkill {
             skill_id: "imp-3".to_string(),
-            skill_name: "inactive-with-trigger".to_string(),
-            domain: None,
-            is_active: false,
+            skill_name: "inactive-with-trigger".to_string(),            is_active: false,
             disk_path: "/tmp/s3".to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+            purpose: None,
         };
         insert_imported_skill(&conn, &skill3).unwrap();
 
@@ -4729,17 +4849,17 @@ mod tests {
     fn test_delete_imported_skill_by_name() {
         let conn = create_test_db();
         // Skills master row required for FK-based lookup
-        upsert_skill(&conn, "delete-me", "imported", "test", "domain").unwrap();
+        upsert_skill(&conn, "delete-me", "imported", "domain").unwrap();
         let skill = ImportedSkill {
             skill_id: "id-del".to_string(),
             skill_name: "delete-me".to_string(),
-            domain: Some("test".to_string()),
+            
             is_active: true,
             disk_path: "/tmp/delete-me".to_string(),
             imported_at: "2024-01-01".to_string(),
             is_bundled: false,
             description: None,
-            skill_type: Some("domain".to_string()),
+            purpose: Some("domain".to_string()),
             version: None,
             model: None,
             argument_hint: None,
@@ -4772,7 +4892,7 @@ mod tests {
 
         // Insert a skills master row that has a corresponding imported_skills row
         conn.execute(
-            "INSERT INTO skills (name, skill_source, domain, skill_type) VALUES ('kept-skill', 'imported', 'test', 'domain')",
+            "INSERT INTO skills (name, skill_source, purpose) VALUES ('kept-skill', 'imported', 'domain')",
             [],
         ).unwrap();
         conn.execute(
@@ -4883,7 +5003,7 @@ mod tests {
         let conn = create_test_db();
 
         // Create a skill row (also creates skills master via save_workflow_run).
-        save_workflow_run(&conn, "fk-idempotent-skill", "test-domain", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "fk-idempotent-skill", 0, "pending", "domain").unwrap();
 
         // Run migration 22 again — must not error.
         run_fk_columns_migration(&conn).unwrap();
@@ -5008,7 +5128,7 @@ mod tests {
         let conn = create_test_db();
 
         // Create skill via save_workflow_run (also creates skills master row).
-        save_workflow_run(&conn, "step-test-skill", "test-domain", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "step-test-skill", 0, "pending", "domain").unwrap();
 
         // Create a workflow session.
         create_workflow_session(&conn, "session-1", "step-test-skill", std::process::id()).unwrap();
@@ -5054,7 +5174,7 @@ mod tests {
         let conn = create_test_db();
 
         // Create skill via save_workflow_run (also creates skills master row).
-        save_workflow_run(&conn, "session-skill", "test-domain", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "session-skill", 0, "pending", "domain").unwrap();
 
         // No session yet — must return false.
         assert!(
@@ -5094,15 +5214,11 @@ mod tests {
 
         let skill = WorkspaceSkill {
             skill_id: "ws-uuid-abc-123".to_string(),
-            skill_name: "my-ws-skill".to_string(),
-            domain: None,
-            description: None,
+            skill_name: "my-ws-skill".to_string(),            description: None,
             is_active: true,
             is_bundled: false,
             disk_path: "/tmp/ws-skill".to_string(),
-            imported_at: "2024-01-01T00:00:00Z".to_string(),
-            skill_type: None,
-            version: None,
+            imported_at: "2024-01-01T00:00:00Z".to_string(),            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -5139,15 +5255,11 @@ mod tests {
     fn make_ws_skill(skill_id: &str, skill_name: &str, purpose: Option<&str>, is_active: bool) -> WorkspaceSkill {
         WorkspaceSkill {
             skill_id: skill_id.to_string(),
-            skill_name: skill_name.to_string(),
-            domain: None,
-            description: None,
+            skill_name: skill_name.to_string(),            description: None,
             is_active,
             is_bundled: false,
             disk_path: format!("/tmp/{}", skill_name),
-            imported_at: "2025-01-01T00:00:00Z".to_string(),
-            skill_type: None,
-            version: None,
+            imported_at: "2025-01-01T00:00:00Z".to_string(),            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,

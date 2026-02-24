@@ -505,7 +505,7 @@ mod tests {
         // Workflow runs are keyed by skill_name (not path), so changing
         // skills_path should leave DB records intact and resolvable.
         let conn = crate::commands::test_utils::create_test_db();
-        crate::db::save_workflow_run(&conn, "my-skill", "data-engineering", 3, "in_progress", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 3, "in_progress", "domain").unwrap();
 
         let dir = tempfile::tempdir().unwrap();
         let old_path = dir.path().join("old-skills");

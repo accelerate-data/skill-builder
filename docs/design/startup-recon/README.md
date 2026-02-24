@@ -15,8 +15,7 @@ CREATE TABLE skills (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   name         TEXT NOT NULL UNIQUE,
   skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'imported')),
-  domain       TEXT,
-  skill_type   TEXT,
+  purpose      TEXT,
   created_at   TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -135,7 +134,7 @@ Today, notifications are returned to the frontend and shown as 5-second toasts t
 
 ## Library UI: Skill Source Indicator
 
-Every skill in the library shows an icon indicating its `skill_source`. Displayed on skill cards and skill list rows alongside the existing `SkillTypeBadge` (domain/source/platform).
+Every skill in the library shows an icon indicating its `skill_source`. Displayed on skill cards and skill list rows alongside the existing purpose badge.
 
 | `skill_source` | Icon | Label | Color |
 |----------------|------|-------|-------|
@@ -143,6 +142,6 @@ Every skill in the library shows an icon indicating its `skill_source`. Displaye
 | `marketplace` | `Store` | Marketplace | blue |
 | `imported` | `Upload` | Imported | amber |
 
-Icons from `lucide-react`. Rendered as a small badge or icon+label chip — same size as the existing `SkillTypeBadge` pattern in `skill-picker.tsx`.
+Icons from `lucide-react`. Rendered as a small badge or icon+label chip — same size as the existing purpose badge pattern in `skill-picker.tsx`.
 
 Placement: next to the skill name or in the metadata row on cards and list rows. Visible in the skills library tab, dashboard skill cards, and the test tab skill picker.

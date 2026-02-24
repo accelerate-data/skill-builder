@@ -2,7 +2,6 @@
   {
     "skill_id": "skill-001",
     "skill_name": "data-analytics",
-    "domain": "Data",
     "description": "Analytics skill for data teams",
     "is_active": true,
     "disk_path": "/tmp/skills/data-analytics",
@@ -13,7 +12,6 @@
   {
     "skill_id": "skill-002",
     "skill_name": "api-design",
-    "domain": "Engineering",
     "description": "REST API design patterns",
     "is_active": true,
     "disk_path": "/tmp/skills/api-design",
@@ -24,7 +22,6 @@
   {
     "skill_id": "bundled-skill-builder-practices",
     "skill_name": "skill-builder-practices",
-    "domain": "skill-builder",
     "description": "Skill structure rules, content principles, quality dimensions...",
     "is_active": true,
     "disk_path": "/tmp/skills/skill-builder-practices",

@@ -30,7 +30,7 @@ const REVIEW_CONTENT = readFileSync(
 const COMPLETED_STEP_OVERRIDES: Record<string, unknown> = {
   ...WORKFLOW_OVERRIDES,
   get_workflow_state: {
-    run: { domain: "Testing", current_step: 2, skill_type: "domain" },
+    run: { current_step: 2, purpose: "domain" },
     steps: [
       { step_id: 0, status: "completed" },
       { step_id: 1, status: "completed" },
@@ -43,7 +43,7 @@ const COMPLETED_STEP_OVERRIDES: Record<string, unknown> = {
 const HUMAN_REVIEW_OVERRIDES: Record<string, unknown> = {
   ...WORKFLOW_OVERRIDES,
   get_workflow_state: {
-    run: { domain: "Testing", current_step: 1, skill_type: "domain" },
+    run: { current_step: 1, purpose: "domain" },
     steps: [{ step_id: 0, status: "completed" }],
   },
   read_file: REVIEW_CONTENT,
@@ -53,7 +53,7 @@ const HUMAN_REVIEW_OVERRIDES: Record<string, unknown> = {
 const LAST_STEP_OVERRIDES: Record<string, unknown> = {
   ...WORKFLOW_OVERRIDES,
   get_workflow_state: {
-    run: { domain: "Testing", current_step: 5, skill_type: "domain" },
+    run: { current_step: 5, purpose: "domain" },
     steps: [
       { step_id: 0, status: "completed" },
       { step_id: 1, status: "completed" },
@@ -85,7 +85,7 @@ const ERROR_STEP_OVERRIDES: Record<string, unknown> = {
 const DISABLED_STEPS_OVERRIDES: Record<string, unknown> = {
   ...WORKFLOW_OVERRIDES,
   get_workflow_state: {
-    run: { domain: "Testing", current_step: 1, skill_type: "domain" },
+    run: { current_step: 1, purpose: "domain" },
     steps: [{ step_id: 0, status: "completed" }],
   },
   get_disabled_steps: [2, 3, 4, 5],
@@ -248,7 +248,7 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     await navigateToWorkflowUpdateMode(page, {
       ...WORKFLOW_OVERRIDES,
       get_workflow_state: {
-        run: { domain: "Testing", current_step: 3, skill_type: "domain" },
+        run: { current_step: 3, purpose: "domain" },
         steps: [
           { step_id: 0, status: "completed" },
           { step_id: 1, status: "completed" },
@@ -381,7 +381,7 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     const allCompletedOnHuman: Record<string, unknown> = {
       ...WORKFLOW_OVERRIDES,
       get_workflow_state: {
-        run: { domain: "Testing", current_step: 3, skill_type: "domain" },
+        run: { current_step: 3, purpose: "domain" },
         steps: [
           { step_id: 0, status: "completed" },
           { step_id: 1, status: "completed" },
@@ -429,7 +429,7 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     const threeCompletedOverrides: Record<string, unknown> = {
       ...WORKFLOW_OVERRIDES,
       get_workflow_state: {
-        run: { domain: "Testing", current_step: 3, skill_type: "domain" },
+        run: { current_step: 3, purpose: "domain" },
         steps: [
           { step_id: 0, status: "completed" },
           { step_id: 1, status: "completed" },

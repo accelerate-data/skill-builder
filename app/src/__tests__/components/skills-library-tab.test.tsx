@@ -64,36 +64,32 @@ const sampleSkills: WorkspaceSkill[] = [
   {
     skill_id: "id-1",
     skill_name: "sales-analytics",
-    domain: "sales",
     description: "Analytics skill for sales data",
     is_active: true,
     disk_path: "/skills/sales-analytics",
     imported_at: "2026-01-15T10:00:00Z",
     is_bundled: false,
-    skill_type: null,
+    purpose: null,
     version: null,
     model: null,
     argument_hint: null,
     user_invocable: null,
     disable_model_invocation: null,
-    purpose: null,
   },
   {
     skill_id: "id-2",
     skill_name: "hr-metrics",
-    domain: "HR",
     description: null,
     is_active: false,
     disk_path: "/skills/hr-metrics",
     imported_at: "2026-01-10T08:00:00Z",
     is_bundled: false,
-    skill_type: null,
+    purpose: null,
     version: null,
     model: null,
     argument_hint: null,
     user_invocable: null,
     disable_model_invocation: null,
-    purpose: null,
   },
 ];
 
@@ -193,14 +189,13 @@ describe("SkillsLibraryTab", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows domain text on skill row", async () => {
+  it("shows description text on skill row", async () => {
     setupMocks();
     render(<SkillsLibraryTab />);
 
     await waitFor(() => {
-      expect(screen.getByText("sales")).toBeInTheDocument();
+      expect(screen.getByText("Analytics skill for sales data")).toBeInTheDocument();
     });
-    expect(screen.getByText("HR")).toBeInTheDocument();
   });
 
   it("renders active toggle switch for each skill", async () => {
@@ -245,19 +240,17 @@ describe("SkillsLibraryTab", () => {
     const newSkill: WorkspaceSkill = {
       skill_id: "id-3",
       skill_name: "new-skill",
-      domain: null,
       description: "A new skill",
       is_active: true,
       disk_path: "/skills/new-skill",
       imported_at: new Date().toISOString(),
       is_bundled: false,
-      skill_type: null,
+      purpose: null,
       version: null,
       model: null,
       argument_hint: null,
       user_invocable: null,
       disable_model_invocation: null,
-      purpose: null,
     };
 
     mockInvoke.mockImplementation((cmd: string) => {

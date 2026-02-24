@@ -1,42 +1,41 @@
 # Companion Recommender Specification
 
 ## Your Role
-You analyze a completed skill's content alongside the research planner's dimension scores to identify companion skill candidates. Dimensions scored 2-3 that were skipped during research represent knowledge gaps that companion skills could fill.
+Identify companion skill candidates from dimensions scored 2-3 that were skipped during research.
 
 ## Inputs
 
-You are given:
 - Paths to `SKILL.md`, all `references/` files, `decisions.md`, and `research-plan.md`
-- The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
+- The **purpose** (`Business process knowledge`, `Organization specific data engineering standards`, `Organization specific Azure or Fabric standards`, or `Source system customizations`)
 - The **workspace directory** path (contains `user-context.md`)
 
 Read all provided files and `user-context.md` from the workspace directory.
 
 ## Analysis
 
-Use the research planner's dimension scores to identify companion skill candidates. Dimensions scored 2-3 that were skipped represent knowledge gaps where Claude's parametric knowledge falls short. Analyze the skill's content to find where these gaps affect quality, then recommend complementary skills that compose well with the current skill.
+Find dimensions scored 2-3 that were skipped, analyze where those gaps affect quality, and recommend complementary skills.
 
-Recommendations span **all skill types** (domain, source, platform, data-engineering) — not limited to the current skill's type.
+Recommendations span **all purposes** — not limited to the current skill's purpose.
 
 ## Recommendation Format
 
-Target 2-4 recommendations. At least one recommendation needs to be contextually specific to the user's domain and stack (not generic like "you should also build a source skill").
+Target 2-4 recommendations. At least one must be contextually specific to the user's domain and stack.
 
-**For each recommendation**, provide:
-- **Skill name and type** — e.g., "Salesforce extraction (source skill)"
-- **Slug** — kebab-case identifier for the companion (e.g., "salesforce-extraction")
-- **Why it pairs well** — how this skill's content composes with the current skill, referencing the skipped dimension and its score
-- **Composability** — which sections/decisions in the current skill would benefit from the companion skill's knowledge
+**For each recommendation:**
+- **Skill name and purpose** — e.g., "Salesforce extraction (source skill)"
+- **Slug** — kebab-case identifier (e.g., "salesforce-extraction")
+- **Why it pairs well** — how it composes with the current skill, referencing the skipped dimension and score
+- **Composability** — which sections/decisions benefit from the companion's knowledge
 - **Priority** — High (strong dependency), Medium (improves quality), Low (nice to have)
-- **Suggested trigger description** — a draft `description` field for the companion's SKILL.md (following the trigger pattern: "[What it does]. Use when [triggers]. [How it works].")
-- **Dimension and score** — the skipped dimension this companion covers and its planner score
-- **Template match** — `null` (reserved for future template matching via VD-696)
+- **Suggested trigger description** — draft `description` following: "[What it does]. Use when [triggers]. [How it works]."
+- **Dimension and score** — the skipped dimension and its planner score
+- **Template match** — `null`
 
 ## Output
 
 Return findings as text using this format:
 ```
-### Recommendation 1: [skill name] ([type] skill)
+### Recommendation 1: [skill name] ([purpose] skill)
 - **Slug**: [kebab-case]
 - **Priority**: High | Medium | Low
 - **Dimension**: [dimension slug] (score: [N])

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Play, Square } from "lucide-react";
+import { AlertTriangle, Play, Square } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate, useSearch, useBlocker } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import { useSettingsStore } from "@/stores/settings-store";
 import {
   listRefinableSkills,
   getWorkspacePath,
+  getDisabledSteps,
   startAgent,
   cleanupSkillSidecar,
   prepareSkillTest,
@@ -28,7 +29,7 @@ import {
   hasRunningAgents,
 } from "@/lib/tauri";
 import type { SkillSummary } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, deriveModelLabel } from "@/lib/utils";
 
 // Ensure agent-stream listeners are registered
 import "@/hooks/use-agent-stream";
@@ -207,14 +208,6 @@ function evalRowBg(direction: EvalDirection): string {
   }
 }
 
-
-/** Derive a human-readable label from a model ID string. */
-function deriveModelLabel(modelId: string): string {
-  if (modelId.includes("haiku")) return "Haiku";
-  if (modelId.includes("opus")) return "Opus";
-  return "Sonnet";
-}
-
 /** Return the evaluator placeholder message based on phase. */
 function evalPlaceholder(phase: Phase, errorMessage: string | null): string {
   switch (phase) {
@@ -251,10 +244,10 @@ function PlanPanel({ scrollRef, text, phase, label, badgeText, badgeClass, idleP
   return (
     <>
       <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
-        <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
         </span>
-        <Badge className={cn("text-[10px] px-1.5 py-0", badgeClass)}>
+        <Badge className={cn("text-xs px-1.5 py-0", badgeClass)}>
           {badgeText}
         </Badge>
       </div>
@@ -287,6 +280,9 @@ export default function TestPage() {
 
   // --- Test state ---
   const [state, setState] = useState<TestState>(INITIAL_STATE);
+
+  // --- Scope recommendation guard ---
+  const [scopeBlocked, setScopeBlocked] = useState(false);
 
   // --- Elapsed timer ---
   const [elapsed, setElapsed] = useState(0);
@@ -346,6 +342,24 @@ export default function TestPage() {
       setState((prev) => ({ ...prev, selectedSkill: match }));
     }
   }, [skillParam, skills]);
+
+  // ---------------------------------------------------------------------------
+  // Scope recommendation guard
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!state.selectedSkill) {
+      setScopeBlocked(false);
+      return;
+    }
+    getDisabledSteps(state.selectedSkill.name)
+      .then((disabled) => {
+        const blocked = disabled.length > 0;
+        setScopeBlocked(blocked);
+        if (blocked) console.warn("[test] Scope recommendation active for skill '%s' — testing blocked", state.selectedSkill!.name);
+      })
+      .catch(() => setScopeBlocked(false));
+  }, [state.selectedSkill]);
 
   // ---------------------------------------------------------------------------
   // Draggable dividers
@@ -776,8 +790,6 @@ export default function TestPage() {
 
   const { lines: evalLines, recommendations: evalRecommendations } = parseEvalOutput(state.evalText);
 
-  const needsRefinement = state.phase === "done" && (evalRecommendations.length > 0 || evalLines.some((l) => l.direction === "down"));
-
   const handleRefine = useCallback(() => {
     if (!state.selectedSkill) return;
     const message = evalRecommendations
@@ -818,6 +830,18 @@ export default function TestPage() {
             onSelect={handleSelectSkill}
           />
         </div>
+        {scopeBlocked && state.selectedSkill && (
+          <div className="flex items-center gap-2 rounded-md bg-yellow-500/10 px-3 py-2 text-sm text-yellow-600 dark:text-yellow-400">
+            <AlertTriangle className="size-4 shrink-0" />
+            <span>Scope recommendation active — the skill scope is too broad.</span>
+            <button
+              className="ml-auto shrink-0 underline underline-offset-2"
+              onClick={() => navigate({ to: "/skill/$skillName", params: { skillName: state.selectedSkill!.name } })}
+            >
+              Go to Workflow →
+            </button>
+          </div>
+        )}
         <div className="flex gap-2">
           <Textarea
             rows={3}
@@ -826,12 +850,12 @@ export default function TestPage() {
             onChange={(e) =>
               setState((prev) => ({ ...prev, prompt: e.target.value }))
             }
-            disabled={isRunning}
+            disabled={isRunning || scopeBlocked}
             className="min-h-[unset] resize-none font-sans text-sm"
           />
           <Button
             onClick={handleRunTest}
-            disabled={isRunning || !state.selectedSkill || !state.prompt.trim()}
+            disabled={isRunning || scopeBlocked || !state.selectedSkill || !state.prompt.trim()}
             className="h-auto shrink-0 self-start px-4"
           >
             {isRunning ? (
@@ -912,7 +936,7 @@ export default function TestPage() {
         {/* Evaluator panel (bottom zone) */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
-            <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Evaluator
             </span>
           </div>
@@ -946,10 +970,10 @@ export default function TestPage() {
                 {evalRecommendations && (
                   <div className="rounded-md border border-[var(--color-pacific)]/20 bg-[var(--color-pacific)]/5 p-3">
                     <div className="mb-2 flex items-center justify-between">
-                      <p className="text-[10.5px] font-semibold uppercase tracking-wider text-[var(--color-pacific)]">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-pacific)]">
                         Recommendations
                       </p>
-                      {needsRefinement && (
+                      {state.phase === "done" && state.selectedSkill && (
                         <Button size="sm" variant="outline" className="h-6 text-xs" onClick={handleRefine}>
                           Refine skill
                         </Button>
@@ -960,6 +984,11 @@ export default function TestPage() {
                     </pre>
                   </div>
                 )}
+              </div>
+            ) : state.phase === "idle" && !state.selectedSkill ? (
+              <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">
+                <p className="text-sm font-medium text-muted-foreground">Test your skill</p>
+                <p className="text-xs text-muted-foreground/60">Select a skill and describe a task to see how it performs with and without the skill loaded.</p>
               </div>
             ) : (
               <p className="text-xs text-muted-foreground/40 italic">
@@ -996,32 +1025,32 @@ export default function TestPage() {
       <div className="flex h-6 shrink-0 items-center gap-2.5 border-t border-border bg-background/80 px-4">
         <div className="flex items-center gap-1.5">
           <div className={cn("size-[5px] rounded-full", dotClass)} />
-          <span className="text-[10.5px] text-muted-foreground/60">
+          <span className="text-xs text-muted-foreground/60">
             {statusLabel}
           </span>
         </div>
         {state.selectedSkill && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-[10.5px] text-muted-foreground/60">
+            <span className="text-xs text-muted-foreground/60">
               {state.selectedSkill.name}
             </span>
           </>
         )}
         <span className="text-muted-foreground/20">&middot;</span>
-        <span className="text-[10.5px] text-muted-foreground/60">plan mode</span>
+        <span className="text-xs text-muted-foreground/60">plan mode</span>
         <span className="text-muted-foreground/20">&middot;</span>
-        <span className="text-[10.5px] text-muted-foreground/60">{modelLabel}</span>
+        <span className="text-xs text-muted-foreground/60">{modelLabel}</span>
         {state.startTime && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-[10.5px] text-muted-foreground/60">
+            <span className="text-xs text-muted-foreground/60">
               {elapsedStr}
             </span>
           </>
         )}
         <div className="flex-1" />
-        <span className="text-[10.5px] text-muted-foreground/20">
+        <span className="text-xs text-muted-foreground/20">
           no context &middot; fresh run
         </span>
       </div>

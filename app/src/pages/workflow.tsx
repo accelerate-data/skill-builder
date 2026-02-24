@@ -90,8 +90,7 @@ export default function WorkflowPage() {
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const skillsPath = useSettingsStore((s) => s.skillsPath);
   const {
-    domain,
-    skillType,
+    purpose,
     currentStep,
     steps,
     isRunning,
@@ -306,7 +305,7 @@ export default function WorkflowPage() {
     clearRuns();
 
     // Reset immediately so stale state from another skill doesn't linger
-    initWorkflow(skillName, skillName.replace(/-/g, " "));
+    initWorkflow(skillName);
 
     // Read workflow state from SQLite
     getWorkflowState(skillName)
@@ -317,8 +316,7 @@ export default function WorkflowPage() {
           return;
         }
 
-        const domainName = state.run.domain || skillName.replace(/-/g, " ");
-        initWorkflow(skillName, domainName, state.run.skill_type);
+        initWorkflow(skillName, state.run.purpose);
 
         const completedIds = state.steps
           .filter((s) => s.status === "completed")
@@ -404,7 +402,7 @@ export default function WorkflowPage() {
   // Debounced SQLite persistence — saves workflow state at most once per 300ms
   // instead of firing synchronously on every step/status change.
   useEffect(() => {
-    if (!domain || !hydrated) return;
+    if (!hydrated) return;
     const store = useWorkflowStore.getState();
     if (store.skillName !== skillName) return;
 
@@ -426,13 +424,13 @@ export default function WorkflowPage() {
         status = "pending";
       }
 
-      saveWorkflowState(skillName, domain, latestStore.currentStep, status, stepStatuses, skillType ?? undefined).catch(
+      saveWorkflowState(skillName, latestStore.currentStep, status, stepStatuses, purpose ?? undefined).catch(
         (err) => console.error("Failed to persist workflow state:", err)
       );
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [steps, currentStep, skillName, domain, skillType, hydrated]);
+  }, [steps, currentStep, skillName, purpose, hydrated]);
 
   // Load file content when entering a human review step.
   // skills_path is required — no workspace fallback.
@@ -627,8 +625,8 @@ export default function WorkflowPage() {
   // --- Step handlers ---
 
   const handleStartAgentStep = async () => {
-    if (!domain || !workspacePath) {
-      toast.error("Missing domain or workspace path", { duration: Infinity });
+    if (!workspacePath) {
+      toast.error("Missing workspace path", { duration: Infinity });
       return;
     }
 
@@ -643,7 +641,6 @@ export default function WorkflowPage() {
       const agentId = await runWorkflowStep(
         skillName,
         currentStep,
-        domain,
         workspacePath,
       );
       agentStartRun(
@@ -960,7 +957,7 @@ export default function WorkflowPage() {
         cost={lastCompletedCostRef.current}
         onNextStep={advanceToNextStep}
         onClose={handleClose}
-        onRefine={handleRefine}
+        onRefine={disabledSteps.length > 0 ? undefined : handleRefine}
         isLastStep={isLastStep}
         reviewMode={reviewMode}
         skillName={skillName}

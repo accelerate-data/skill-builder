@@ -21,20 +21,18 @@ export const REFINE_OVERRIDES: Record<string, unknown> = {
     {
       name: "test-skill",
       display_name: "Test Skill",
-      domain: "Testing",
       current_step: null,
       status: "completed",
       last_modified: null,
-      skill_type: "domain",
+      purpose: "domain",
     },
     {
       name: "analytics-skill",
       display_name: "Analytics",
-      domain: "Data",
       current_step: null,
       status: "completed",
       last_modified: null,
-      skill_type: "source",
+      purpose: "source",
     },
   ],
   get_skill_content_for_refine: [

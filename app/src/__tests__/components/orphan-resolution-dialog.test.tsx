@@ -14,8 +14,8 @@ vi.mock("sonner", () => ({
 import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 
 const sampleOrphans: OrphanSkill[] = [
-  { skill_name: "sales-pipeline", domain: "sales", skill_type: "platform" },
-  { skill_name: "hr-analytics", domain: "HR", skill_type: "domain" },
+  { skill_name: "sales-pipeline", purpose: "platform" },
+  { skill_name: "hr-analytics", purpose: "domain" },
 ];
 
 describe("OrphanResolutionDialog", () => {
@@ -39,7 +39,7 @@ describe("OrphanResolutionDialog", () => {
     expect(screen.getByText("hr-analytics")).toBeInTheDocument();
   });
 
-  it("displays orphan metadata (domain and type)", () => {
+  it("displays orphan metadata (purpose label)", () => {
     render(
       <OrphanResolutionDialog
         orphans={[sampleOrphans[0]]}
@@ -48,8 +48,8 @@ describe("OrphanResolutionDialog", () => {
       />
     );
 
-    // domain and type label are rendered together in a single metadata span
-    expect(screen.getByText(/sales.*Platform/)).toBeInTheDocument();
+    // Purpose label is rendered in the metadata span
+    expect(screen.getByText(/Organization specific Azure or Fabric standards/)).toBeInTheDocument();
   });
 
   it("shows Delete and Keep buttons for each orphan", () => {

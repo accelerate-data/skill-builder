@@ -46,7 +46,7 @@ Storage layout (workspace, skills path, database, file ownership, startup sequen
 Files that span multiple steps or are written by infrastructure rather than agents.
 
 **`{workspace}/{skill}/user-context.md`**
-Written by Rust before each agent step (desktop app) or by the plugin coordinator at the end of Scoping Turn 2 (plugin). Contains skill name, domain, type, and the user's answers to clarification questions. Agents read it from disk at the start of each step. This dual-source design keeps agent prompts identical across both frontends.
+Written by Rust before each agent step (desktop app) or by the plugin coordinator at the end of Scoping Turn 2 (plugin). Contains skill name, purpose, description, tags, industry, function, and free-form context (what Claude needs to know). Agents read it from disk at the start of each step. This dual-source design keeps agent prompts identical across both frontends.
 
 **`{workspace}/{skill}/logs/{step}-{timestamp}.jsonl`**
 One file per agent run. Written by the Rust sidecar as the agent executes — each line is a JSON object capturing the full SDK conversation: prompt, assistant messages, tool use, and tool results. The first line is a config object (API key redacted). Used for debugging; inspect with `tail -f` or any JSONL viewer.

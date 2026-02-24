@@ -1,6 +1,5 @@
 ---
-skill_type: data-engineering
-domain: Dimensional Data Pipelines
+purpose: data-engineering
 dimensions_evaluated: 6
 dimensions_selected: 4
 ---

@@ -291,7 +291,7 @@ Written by the research skill (via `research-orchestrator`, Step 0). Read by `co
 
 ```yaml
 ---
-skill_type: domain                    # required — skill type
+purpose: domain                       # required — purpose token
 domain: Sales Pipeline                # required — domain name
 topic_relevance: relevant             # required — "relevant" or "not_relevant"
 dimensions_evaluated: 6               # required — total dimensions scored
@@ -304,7 +304,7 @@ dimensions_selected: 4                # required — dimensions chosen for resea
 ```markdown
 # Research Plan
 
-## Skill: [domain name] ([skill_type])
+## Skill: [domain name] ([purpose])
 
 ## Dimension Scores
 
@@ -405,7 +405,7 @@ Written by `validate-skill` orchestrator (Step 7). YAML frontmatter parsed progr
 ```yaml
 ---
 skill_name: sales-pipeline
-skill_type: domain
+purpose: domain
 companions:
   - name: Salesforce Extraction
     slug: salesforce-extraction
@@ -459,21 +459,32 @@ Generated at runtime by Rust (desktop app) or by the plugin coordinator's Scopin
 
 ```markdown
 # User Context
-- **Industry**: Financial Services
-- **Function**: Analytics Engineering
-- **Target Audience**: Intermediate data engineers
-- **Key Challenges**: Complex SCD patterns, late-arriving dimensions
-- **Scope**: Silver and gold layer modeling
-- **What Makes This Setup Unique**: Multi-region Snowflake deployment
-- **What Claude Gets Wrong**: Assumes single-tenant architecture
+
+### Skill
+**Name**: dbt-fabric-patterns
+**Purpose**: Organization specific data engineering standards
+**Description**: Standards for dbt model layering and testing
+**Tags**: dbt, silver-layer
+
+### About You
+**Industry**: Financial Services
+**Function**: Analytics Engineering
+
+### What Claude Needs to Know
+Multi-region Snowflake deployment with strict SCD Type 2 requirements
+
+### Configuration
+**Version**: 1.0.0
+**Model**: sonnet
 ```
 
 ### Rules
 
-- All fields use `- **Label**: value` format (dash, bold label, colon inside bold, value)
-- Fields are only included if the user provided a non-empty value
-- The heading is always `# User Context` (H1)
-- If no fields have values, the file is not written
+- Top-level heading is always `## User Context` (H2)
+- Sections use `### SubHeading` format (H3)
+- Fields within sections use `**Label**: value` (bold label, no dash prefix)
+- Sections are only written if at least one field in that section has a non-empty value
+- If the skill name is present but no optional fields have values, only the `### Skill` section with `**Name**` is written
 
 ---
 

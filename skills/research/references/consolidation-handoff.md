@@ -1,47 +1,45 @@
 # Consolidation Handoff — Canonical `clarifications.md` Format
 
-This file contains the full specification for the `clarifications.md` output format and the consolidation logic the skill coordinator follows in Step 4. It is the authoritative reference for producing correctly-formatted clarifications that the downstream app parsers and UI renderer can consume.
-
 ---
 
 ## Your Role in Consolidation
 
-Synthesize raw research text from multiple parallel dimension Tasks into a single, cohesive `clarifications.md` as inline text. This is not mechanical deduplication -- reason about the full findings to consolidate overlapping concerns, rephrase for clarity, and organize into a logical flow a PM can answer efficiently.
+Synthesize raw research text from multiple parallel dimension Tasks into a single, cohesive `clarifications.md` as inline text. Reason about the full findings — consolidate overlapping concerns, rephrase for clarity, organize into a logical flow a PM can answer efficiently.
 
-Use extended thinking to reason about the question set before writing. Consider how questions from different Tasks interact, identify hidden dependencies, and minimize cognitive load for the PM.
+Use extended thinking before writing. Consider cross-Task question interactions, hidden dependencies, and cognitive load.
 
 ---
 
 ## Step-by-Step Consolidation Instructions
 
-### Step 1: Understand all inputs
+### Step 1: Read all inputs
 
-Each dimension Task returns 500–800 words of raw research text. Read all of it before organizing.
+Read all dimension Task outputs (500–800 words each) before organizing.
 
 ### Step 2: Deduplicate and organize
 
-For each cluster of related questions or decision points across dimension findings:
+For each cluster of related questions across dimension findings:
 
-- **Identify the underlying decision** — two questions that look different may resolve the same design choice
-- **Pick the strongest framing** — the version with the most specific choices and clearest implications
-- **Fold in unique value** from weaker versions — additional choices, better rationale, broader context
-- **Rephrase if needed** — the consolidated question should read naturally, not like a patchwork
+- **Identify the underlying decision** — different-looking questions may resolve the same design choice
+- **Pick the strongest framing** — most specific choices, clearest implications
+- **Fold in unique value** from weaker versions
+- **Rephrase if needed** for natural reading
 
-Arrange into logical sections: broad scoping first, then detailed design decisions. Add a `## Cross-cutting` section for questions that span multiple research dimensions.
+Arrange into logical sections: broad scoping first, then detailed design decisions. Add a `## Cross-cutting` section for questions spanning multiple dimensions.
 
-Within each `##` section, group questions under two sub-headings:
-- `### Required` — questions critical to producing a correct skill (core metric definitions, entity identifiers, must-have business rules). The skill cannot be generated without answers to these.
-- `### Optional` — questions that refine quality but where a reasonable default exists.
+Within each `##` section, group under:
+- `### Required` — questions critical to producing a correct skill
+- `### Optional` — questions where a reasonable default exists
 
-If a section has only required or only optional questions, include only the relevant sub-heading.
+Include only the relevant sub-heading(s) per section.
 
-### Step 3: Handle contradictions and flags
+### Step 3: Handle contradictions
 
-Put contradictions in a `## Needs Clarification` section with clear explanations. Do not silently resolve contradictions.
+Put contradictions in a `## Needs Clarification` section. Do not silently resolve contradictions.
 
 ### Step 4: Build the complete file
 
-Number questions sequentially (Q1, Q2, ...). Follow the format spec below exactly. For consolidated questions that draw from multiple dimensions, note the sources: `_Consolidated from: [dimension names]_`.
+Number questions sequentially (Q1, Q2, ...). Follow the format spec below exactly. For consolidated questions from multiple dimensions: `_Consolidated from: [dimension names]_`.
 
 **Always:**
 - Every question must have 2–4 lettered choices plus a final "Other (please specify)" choice
@@ -74,18 +72,18 @@ scope_recommendation: true        # optional — set by scope advisor, checked b
 
 | Field | Type | Description |
 |---|---|---|
-| `question_count` | integer | Total number of top-level Q-questions (count every `### Q{n}:` heading) |
-| `sections` | integer | Number of `## ` section headings in the document |
-| `duplicates_removed` | integer | Number of duplicate questions eliminated during consolidation. Count each collapsed group as (n-1) duplicates removed |
-| `refinement_count` | integer | Total R-level refinement items. Always 0 at Step 0 — refinements are added by `detailed-research` in Step 3 |
+| `question_count` | integer | Total `### Q{n}:` headings |
+| `sections` | integer | Number of `## ` section headings |
+| `duplicates_removed` | integer | Duplicates eliminated during consolidation. Count each collapsed group as (n-1) |
+| `refinement_count` | integer | Total R-level items. Always 0 at Step 0 |
 
 #### Optional frontmatter fields
 
 | Field | Type | Description |
 |---|---|---|
 | `status` | string | Workflow status (e.g. `pending`, `answered`) |
-| `priority_questions` | list | IDs of all questions that appear under `### Required` sub-headings. Omit only when there are no Required questions — otherwise it must be populated so downstream agents can enforce required-answer gating. |
-| `scope_recommendation` | boolean | Set by scope advisor when scope is too broad; checked by downstream agents |
+| `priority_questions` | list | IDs of all questions under `### Required` sub-headings. Omit only when there are no Required questions |
+| `scope_recommendation` | boolean | Set by scope advisor when scope is too broad |
 
 ---
 
@@ -103,10 +101,10 @@ scope_recommendation: true        # optional — set by scope advisor, checked b
 ##### R3.1a: Sub-refinement Title  ← sub-refinement (H5, letter suffix, added in Step 3)
 ```
 
-- Each section may have only `### Required`, only `### Optional`, or both sub-headings — conditional on content
+- Each section may have `### Required`, `### Optional`, or both
 - Each level nests under the previous
-- The `#### Refinements` heading and `##### R{n}.{m}:` headings are added by `detailed-research` in Step 3. Do not create them in Step 0
-- The document title is always exactly `# Research Clarifications`
+- `#### Refinements` and `##### R{n}.{m}:` headings are added in Step 3. Do not create them in Step 0
+- Document title is always exactly `# Research Clarifications`
 
 ---
 
@@ -132,26 +130,26 @@ _Consolidated from: Metrics Research, Segmentation Research_
 
 | Field | Format | Required | Notes |
 |---|---|---|---|
-| Heading | `### Q{n}: Short Title` | yes | Sequential Q numbering. No inline tags. Required vs optional indicated by preceding `### Required` / `### Optional` sub-heading |
-| Body text | Plain text on next line(s) | yes | The full question. The heading is just a short title |
+| Heading | `### Q{n}: Short Title` | yes | Sequential numbering, no inline tags |
+| Body text | Plain text on next line(s) | yes | Full question (heading is just short title) |
 | Choices | `A. Choice text` | yes | 2–4 choices + final "Other (please specify)". Lettered with period, no label |
-| Consolidated from | `_Consolidated from: ..._` | optional | Italicized, only when question draws from multiple dimension sources |
-| Recommendation | `**Recommendation:** Full sentence.` | yes | Between choices and answer. Colon inside bold |
-| Answer | `**Answer:**` | yes | Colon inside bold. Empty until user fills in. Followed by a blank line |
+| Consolidated from | `_Consolidated from: ..._` | optional | Only when question draws from multiple dimensions |
+| Recommendation | `**Recommendation:** Full sentence.` | yes | Between choices and answer |
+| Answer | `**Answer:**` | yes | Empty until user fills in. Followed by a blank line |
 
 #### Rules
 
-- No `**Choices**:` label. The `A.` / `B.` / `C.` pattern is self-evident
-- No checkbox syntax (`- [ ]`, `- [x]`). Just `A. text`
-- No `**(recommended)**` inline markers on choices. Recommendations go in the `**Recommendation:**` field
-- No `**Question:**` label. The question body is plain text after the heading
-- Every question ends with `**Answer:**` followed by a blank line (even if unanswered)
+- No `**Choices**:` label
+- No checkbox syntax (`- [ ]`, `- [x]`)
+- No `**(recommended)**` inline markers on choices
+- No `**Question:**` label
+- Every question ends with `**Answer:**` followed by a blank line
 
 ---
 
-### Refinement Template (Step 3 reference — do not create in Step 0)
+### Refinement Template (Step 3 — do not create in Step 0)
 
-Refinements are added by `detailed-research` in Step 3. They appear under a `#### Refinements` heading within their parent question block. Shown here for reference so the Step 0 output is compatible.
+Shown for format compatibility reference only.
 
 ```markdown
 #### Refinements
@@ -174,18 +172,16 @@ D. Other (please specify)
 | Level | Format | Example | Who creates it |
 |---|---|---|---|
 | Top-level question | `Q{n}` | `Q1`, `Q12` | Step 0 consolidation (this step) |
-| Refinement | `R{n}.{m}` | `R1.1`, `R12.2` | `detailed-research` in Step 3 |
-| Sub-refinement | `R{n}.{m}{a}` | `R12.1a`, `R12.2b` | `detailed-research` consolidation in Step 3 |
+| Refinement | `R{n}.{m}` | `R1.1`, `R12.2` | Step 3 |
+| Sub-refinement | `R{n}.{m}{a}` | `R12.1a`, `R12.2b` | Step 3 |
 
-The parent is always embedded in the ID:
-- `R1.1` → refinement 1 of **Q1**
-- `R12.2b` → sub-refinement (b) of **R12.2**, which itself refines **Q12**
+Parent is embedded in the ID: `R1.1` refines **Q1**, `R12.2b` is sub-refinement of **R12.2** under **Q12**.
 
 ---
 
 ### `## Needs Clarification` Section
 
-Appears at the end of the file when contradictions or critical gaps are found.
+At end of file when contradictions or critical gaps are found.
 
 ```markdown
 ## Needs Clarification
@@ -262,7 +258,7 @@ D. Other (please specify)
 
 ## Parser Compatibility
 
-The Rust autofill parser and UI renderer depend on these exact patterns. Do not deviate.
+These exact patterns are required. Do not deviate.
 
 | Field | Regex | Notes |
 |---|---|---|

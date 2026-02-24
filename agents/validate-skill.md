@@ -9,27 +9,21 @@ tools: Read, Write, Glob, Grep, Task
 
 ## Out of Scope
 
-Do NOT evaluate:
-- **Skill viability** — whether this skill is a good idea or whether the domain warrants a skill
-- **Alternative approaches** — whether a different skill structure would be better
-- **Domain correctness** — whether the PM's business decisions are sound
-- **User's business context** — whether the chosen entities, metrics, or patterns are right for their organization
+Do NOT evaluate skill viability, alternative approaches, domain correctness, or user business context.
 
 Only evaluate: conformance to Skill Best Practices, completeness against `decisions.md`, and content quality.
 
 ## Inputs
 
-The coordinator provides:
-- The **domain name**
-- The **skill name**
-- The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
-- The **context directory** path (containing `decisions.md`, `clarifications.md`, and where to write output files)
-- The **skill output directory** path (containing `SKILL.md` and reference files)
-- **User context** and **workspace directory** — per the User Context protocol
+The coordinator provides: **skill name**, **context directory** (containing `decisions.md`, `clarifications.md`; also where output files go), **skill output directory** (containing `SKILL.md` and references), **workspace directory**.
 
-## Scope Recommendation Guard
+Read `{workspace_directory}/user-context.md` (per User Context protocol).
 
-Per the Scope Recommendation Guard protocol in workspace CLAUDE.md: check `{context_dir}/decisions.md` and `{context_dir}/clarifications.md` for `scope_recommendation: true` before doing any work. If detected, write these stub files and return immediately:
+## Guards
+
+Block if `scope_recommendation: true` or `contradictory_inputs: true` in `{context_dir}/decisions.md`.
+
+If blocked, write these stub files and return (use the matching reason in the text):
 
 **`{context_dir}/agent-validation-log.md`:**
 ```
@@ -56,7 +50,7 @@ Scope recommendation is active. No skill was generated, so no tests were run.
 ---
 scope_recommendation: true
 skill_name: {skill_name}
-skill_type: {skill_type}
+purpose: {purpose}
 companions: []
 ---
 ## Companion Recommendations Skipped
@@ -66,23 +60,17 @@ Scope recommendation is active. No skill was generated, so no companion recommen
 
 ## Parameter Guard
 
-Before running the validate-skill skill or writing any files, verify that `{skill_output_dir}/SKILL.md` exists. If it does not:
-- **Stop immediately. Do not write any files.**
-- Respond: "Cannot validate: no SKILL.md found at `{skill_output_dir}`. Ensure the skill has been generated before running validation."
+If `{skill_output_dir}/SKILL.md` does not exist, stop. Do not write any files. Respond: "Cannot validate: no SKILL.md found at `{skill_output_dir}`."
 
 ## Step 1: Run the validate-skill skill
 
-Use the validate-skill skill to validate a completed skill for:
-- domain: {domain}
-- skill_name: {skill_name}
-- skill_type: {skill_type}
-- context_dir: {context_dir}
-- skill_output_dir: {skill_output_dir}
-- workspace_dir: {workspace_dir}
+Invoke with: skill_name, purpose, context_dir, skill_output_dir, workspace_dir.
+
+Include the full `user-context.md` content under a `## User Context` heading in the Task prompt.
 
 ## Step 2: Write output files
 
-The skill returns inline text with three clearly delimited sections:
+The skill returns three delimited sections:
 
 ```
 === VALIDATION LOG ===
@@ -93,9 +81,7 @@ The skill returns inline text with three clearly delimited sections:
 {full companion-skills.md content including YAML frontmatter}
 ```
 
-Extract each section and write to disk:
-1. Write the `=== VALIDATION LOG ===` section to `{context_dir}/agent-validation-log.md`
-2. Write the `=== TEST RESULTS ===` section to `{context_dir}/test-skill.md`
-3. Write the `=== COMPANION SKILLS ===` section to `{context_dir}/companion-skills.md`
-
-Write exactly what the skill returned — do not modify the content.
+Extract each section and write verbatim to:
+1. `=== VALIDATION LOG ===` → `{context_dir}/agent-validation-log.md`
+2. `=== TEST RESULTS ===` → `{context_dir}/test-skill.md`
+3. `=== COMPANION SKILLS ===` → `{context_dir}/companion-skills.md`

@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { resolveOrphan } from "@/lib/tauri"
 import type { OrphanSkill } from "@/lib/types"
-import { SKILL_TYPE_LABELS, type SkillType } from "@/lib/types"
+import { PURPOSE_LABELS, type Purpose } from "@/lib/types"
 
 interface OrphanResolutionDialogProps {
   orphans: OrphanSkill[]
@@ -50,9 +50,9 @@ export default function OrphanResolutionDialog({
     }
   }
 
-  const displayType = (skillType: string): string => {
+  const displayPurpose = (p: string): string => {
     return (
-      SKILL_TYPE_LABELS[skillType as SkillType] ?? skillType
+      PURPOSE_LABELS[p as Purpose] ?? p
     )
   }
 
@@ -79,7 +79,7 @@ export default function OrphanResolutionDialog({
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-medium">{orphan.skill_name}</span>
                 <span className="text-xs text-muted-foreground">
-                  {orphan.domain ?? orphan.skill_name} &middot; {displayType(orphan.skill_type)}
+                  {displayPurpose(orphan.purpose)}
                 </span>
               </div>
               <div className="flex gap-2">

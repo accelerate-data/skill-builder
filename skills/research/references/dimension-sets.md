@@ -1,12 +1,8 @@
-# Dimension Sets by Skill Type
-
-This file maps each skill type to its candidate research dimensions. The skill coordinator reads this file in Step 1 to select the 5–6 dimensions applicable to the given `skill_type`, then scores those dimensions against the domain in Step 2.
+# Dimension Sets by Purpose
 
 ---
 
 ## Dimension Slug Reference
-
-All 18 dimension slugs and their full names:
 
 | Slug | Full Name |
 |------|-----------|
@@ -31,9 +27,7 @@ All 18 dimension slugs and their full names:
 
 ---
 
-## Domain Dimensions
-
-Use when `skill_type: domain`. These 6 dimensions cover the conceptual and analytical knowledge needed to model a business domain correctly.
+## Domain Dimensions (Business process knowledge)
 
 | # | Dimension Name | Slug | Dimension Spec |
 |---|----------------|------|----------------|
@@ -46,9 +40,7 @@ Use when `skill_type: domain`. These 6 dimensions cover the conceptual and analy
 
 ---
 
-## Data-Engineering Dimensions
-
-Use when `skill_type: data-engineering`. These 6 dimensions cover the pipeline architecture and data engineering patterns needed to build robust ELT/ETL infrastructure.
+## Data-Engineering Dimensions (Organization specific data engineering standards)
 
 | # | Dimension Name | Slug | Dimension Spec |
 |---|----------------|------|----------------|
@@ -61,9 +53,7 @@ Use when `skill_type: data-engineering`. These 6 dimensions cover the pipeline a
 
 ---
 
-## Platform Dimensions
-
-Use when `skill_type: platform`. These 5 dimensions cover the behavioral quirks, configuration requirements, and operational characteristics of a specific data platform (e.g., Snowflake, Microsoft Fabric, BigQuery).
+## Platform Dimensions (Organization specific Azure or Fabric standards)
 
 | # | Dimension Name | Slug | Dimension Spec |
 |---|----------------|------|----------------|
@@ -75,9 +65,7 @@ Use when `skill_type: platform`. These 5 dimensions cover the behavioral quirks,
 
 ---
 
-## Source Dimensions
-
-Use when `skill_type: source`. These 6 dimensions cover the extraction, field semantics, and data reliability characteristics of a specific source system (e.g., Salesforce, HubSpot, SAP).
+## Source Dimensions (Source system customizations)
 
 | # | Dimension Name | Slug | Dimension Spec |
 |---|----------------|------|----------------|
@@ -91,8 +79,6 @@ Use when `skill_type: source`. These 6 dimensions cover the extraction, field se
 ---
 
 ## Applicability Matrix
-
-Quick reference showing which dimensions apply to each skill type (`Y` = included in type set, `-` = not included):
 
 | Slug | domain | data-engineering | platform | source |
 |------|--------|-----------------|----------|--------|

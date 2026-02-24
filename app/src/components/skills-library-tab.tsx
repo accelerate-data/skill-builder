@@ -260,8 +260,8 @@ export function SkillsLibraryTab() {
                     </PopoverContent>
                   </Popover>
                 </div>
-                {skill.domain && (
-                  <div className="text-xs text-muted-foreground">{skill.domain}</div>
+                {skill.description && (
+                  <div className="text-xs text-muted-foreground">{skill.description}</div>
                 )}
               </div>
               <div className="w-24 shrink-0">

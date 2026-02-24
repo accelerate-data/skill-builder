@@ -27,8 +27,8 @@ import {
   isWorkflowComplete,
 } from "@/components/skill-card"
 import { SkillSourceBadge } from "@/components/skill-source-badge"
-import type { SkillSummary, SkillType } from "@/lib/types"
-import { SKILL_TYPE_LABELS } from "@/lib/types"
+import type { SkillSummary, Purpose } from "@/lib/types"
+import { PURPOSE_LABELS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 function getStatusLabel(skill: SkillSummary): string {
@@ -96,7 +96,7 @@ export default function SkillListRow({
           {isLocked && <Lock className="size-3.5 shrink-0 text-muted-foreground" />}
           <div className="truncate text-sm font-medium">{skill.name}</div>
           <div className="hidden sm:block truncate text-xs text-muted-foreground">
-            {skill.skill_type ? (SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type) : ""}
+            {skill.purpose ? (PURPOSE_LABELS[skill.purpose as Purpose] || skill.purpose) : ""}
           </div>
         </div>
       </td>

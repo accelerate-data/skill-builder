@@ -15,12 +15,11 @@ import type { SkillSummary } from "@/lib/types";
 
 const sampleSkill: SkillSummary = {
   name: "sales-pipeline",
-  domain: "sales",
   current_step: "Step 3",
   status: "in_progress",
   last_modified: new Date().toISOString(),
   tags: [],
-  skill_type: null,
+  purpose: null,
   author_login: null,
   author_avatar: null,
   intake_json: null,

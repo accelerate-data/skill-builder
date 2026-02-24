@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Command,
@@ -19,21 +18,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  SKILL_TYPE_LABELS,
-  SKILL_TYPE_COLORS,
   type SkillSummary,
-  type SkillType,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-function SkillTypeBadge({ skillType, className }: { skillType: string; className?: string }) {
-  const type = skillType as SkillType;
-  return (
-    <Badge className={cn("px-1.5 py-0 text-[10px]", SKILL_TYPE_COLORS[type], className)}>
-      {SKILL_TYPE_LABELS[type] ?? skillType}
-    </Badge>
-  );
-}
 
 interface SkillPickerProps {
   skills: SkillSummary[];
@@ -56,10 +43,7 @@ export function SkillPicker({ skills, selected, isLoading, disabled, lockedSkill
       <PopoverTrigger asChild>
         <Button variant="outline" className="w-64 justify-between" disabled={disabled}>
           {selected ? (
-            <span className="flex items-center gap-2 truncate">
-              <span className="truncate">{selected.name}</span>
-              {selected.skill_type && <SkillTypeBadge skillType={selected.skill_type} />}
-            </span>
+            <span className="truncate">{selected.name}</span>
           ) : (
             <span className="text-muted-foreground">Select a skill...</span>
           )}
@@ -88,7 +72,6 @@ export function SkillPicker({ skills, selected, isLoading, disabled, lockedSkill
                   >
                     <span className="truncate">{skill.name}</span>
                     {isLocked && <Lock className="ml-auto size-3 shrink-0 text-muted-foreground" />}
-                    {!isLocked && skill.skill_type && <SkillTypeBadge skillType={skill.skill_type} className="ml-auto" />}
                   </CommandItem>
                 );
 

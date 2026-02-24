@@ -49,7 +49,7 @@ function ContextMeter({ agentId }: { agentId: string }) {
           style={{ width: `${Math.max(1, utilization)}%` }}
         />
       </div>
-      <span className="text-[10px] tabular-nums text-muted-foreground">
+      <span className="text-xs tabular-nums text-muted-foreground">
         {formatTokenCount(tokens)} / {formatTokenCount(run.contextWindow)}
       </span>
     </div>

@@ -96,11 +96,10 @@ const mockResponses: Record<string, unknown> = {
     {
       name: "test-skill",
       display_name: "Test Skill",
-      domain: "Testing",
       current_step: null,
       status: "completed",
       last_modified: null,
-      skill_type: "domain",
+      purpose: "domain",
     },
   ],
   get_skill_content_for_refine: [

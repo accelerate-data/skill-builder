@@ -107,8 +107,7 @@ The coordinator (`skills/generate-skill/SKILL.md`) is a state-aware router. On e
 ```json
 {
   "skill_name": "sales-pipeline",
-  "skill_type": "domain",
-  "domain": "Sales Pipeline Analytics",
+  "purpose": "domain",
   "skill_dir": "./sales-pipeline/",
   "created_at": "2026-02-22T10:30:00Z",
   "last_activity": "2026-02-22T14:20:00Z",
@@ -158,7 +157,7 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
 | State | Intent | Action |
 |---|---|---|
 | `fresh` | `new_skill` | → Scoping |
-| `fresh` | `new_skill` + domain in message | → Scoping (pre-fill domain) |
+| `fresh` | `new_skill` + purpose in message | → Scoping (pre-fill purpose) |
 | `scoping` | `resume` | → Research |
 | `research` | `resume` | Show clarification status, prompt to answer |
 | `clarification` | `resume` | → answer-evaluator → [detailed-research] → Decisions |
@@ -190,8 +189,7 @@ Every agent call:
 Task(
   subagent_type: "skill-builder:<agent>",
   prompt: "
-    Skill type: <skill_type>
-    Domain: <domain>
+    Purpose: <purpose>
     Skill name: <skill_name>
     Context directory: <context_dir>
     Skill directory: <skill_dir>

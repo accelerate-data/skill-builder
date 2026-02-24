@@ -112,7 +112,7 @@ export function GhostTextarea({
         rows={2}
         {...textareaProps}
         ref={textareaRef}
-        className={cn("resize-y [field-sizing:fixed]", showGhost && "placeholder:text-transparent", className)}
+        className={cn("resize-y [field-sizing:content] min-h-[4.5rem]", showGhost && "placeholder:text-transparent", className)}
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />

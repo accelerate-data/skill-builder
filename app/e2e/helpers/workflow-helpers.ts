@@ -22,7 +22,7 @@ export const WORKFLOW_OVERRIDES: Record<string, unknown> = {
   list_skills: [
     {
       name: "test-skill",
-      domain: "Testing",
+      purpose: "domain",
       current_step: null,
       status: null,
       last_modified: null,

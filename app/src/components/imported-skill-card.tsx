@@ -99,11 +99,6 @@ export default function ImportedSkillCard({
           />
         </div>
         <div className="flex items-center gap-1.5">
-          {skill.domain && (
-            <Badge variant="outline" className="w-fit text-xs">
-              {skill.domain}
-            </Badge>
-          )}
           {skill.is_bundled && (
             <Badge variant="secondary" className="w-fit text-xs">
               Built-in

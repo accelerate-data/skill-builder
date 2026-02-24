@@ -14,7 +14,7 @@ describe("useWorkflowStore", () => {
   it("has correct initial state with 6 steps, all pending, currentStep=0", () => {
     const state = useWorkflowStore.getState();
     expect(state.skillName).toBeNull();
-    expect(state.domain).toBeNull();
+    expect(state.purpose).toBeNull();
     expect(state.currentStep).toBe(0);
     expect(state.isRunning).toBe(false);
     expect(state.steps).toHaveLength(6);
@@ -25,18 +25,18 @@ describe("useWorkflowStore", () => {
     expect(state.steps.map((s) => s.id)).toEqual([0, 1, 2, 3, 4, 5]);
   });
 
-  it("initWorkflow sets skillName, domain, and resets steps", () => {
+  it("initWorkflow sets skillName, purpose, and resets steps", () => {
     // First change some state
     useWorkflowStore.getState().setCurrentStep(5);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setRunning(true);
 
     // Now init a new workflow
-    useWorkflowStore.getState().initWorkflow("my-skill", "sales pipeline");
+    useWorkflowStore.getState().initWorkflow("my-skill", "domain");
 
     const state = useWorkflowStore.getState();
     expect(state.skillName).toBe("my-skill");
-    expect(state.domain).toBe("sales pipeline");
+    expect(state.purpose).toBe("domain");
     expect(state.currentStep).toBe(0);
     expect(state.isRunning).toBe(false);
     // All steps should be reset to pending
@@ -125,7 +125,7 @@ describe("useWorkflowStore", () => {
 
     const state = useWorkflowStore.getState();
     expect(state.skillName).toBeNull();
-    expect(state.domain).toBeNull();
+    expect(state.purpose).toBeNull();
     expect(state.currentStep).toBe(0);
     expect(state.isRunning).toBe(false);
     expect(state.steps).toHaveLength(6);
@@ -352,6 +352,47 @@ describe("useWorkflowStore", () => {
       }
       // First incomplete step is 4
       expect(state.currentStep).toBe(4);
+    });
+  });
+
+  describe("disabledSteps", () => {
+    it("starts with empty disabledSteps", () => {
+      expect(useWorkflowStore.getState().disabledSteps).toEqual([]);
+    });
+
+    it("setDisabledSteps updates the list", () => {
+      useWorkflowStore.getState().setDisabledSteps([2, 3, 4, 5]);
+      expect(useWorkflowStore.getState().disabledSteps).toEqual([2, 3, 4, 5]);
+    });
+
+    it("reset() clears disabledSteps", () => {
+      useWorkflowStore.getState().setDisabledSteps([2, 3, 4, 5]);
+      expect(useWorkflowStore.getState().disabledSteps).toEqual([2, 3, 4, 5]);
+
+      useWorkflowStore.getState().reset();
+      expect(useWorkflowStore.getState().disabledSteps).toEqual([]);
+    });
+
+    it("initWorkflow clears disabledSteps", () => {
+      useWorkflowStore.getState().setDisabledSteps([5]);
+      expect(useWorkflowStore.getState().disabledSteps).toEqual([5]);
+
+      useWorkflowStore.getState().initWorkflow("new-skill", "domain");
+      expect(useWorkflowStore.getState().disabledSteps).toEqual([]);
+    });
+
+    it("resetToStep(0) clears disabledSteps", () => {
+      useWorkflowStore.getState().setDisabledSteps([2, 3, 4, 5]);
+      useWorkflowStore.getState().resetToStep(0);
+      expect(useWorkflowStore.getState().disabledSteps).toEqual([]);
+    });
+
+    it("resetToStep(n > 0) also clears disabledSteps", () => {
+      useWorkflowStore.getState().setDisabledSteps([5]);
+      useWorkflowStore.getState().resetToStep(3);
+      // Guards are re-evaluated from disk after each step completes — stale guards
+      // (e.g. contradictory_inputs from old decisions.md) must not persist across resets
+      expect(useWorkflowStore.getState().disabledSteps).toEqual([]);
     });
   });
 });

@@ -70,9 +70,9 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(page.getByText("data-analytics")).toBeVisible();
     await expect(page.getByText("api-design")).toBeVisible();
 
-    // Domain subtext
-    await expect(page.getByText("Data", { exact: true })).toBeVisible();
-    await expect(page.getByText("Engineering", { exact: true })).toBeVisible();
+    // Purpose subtext
+    await expect(page.getByText("domain", { exact: true })).toBeVisible();
+    await expect(page.getByText("platform", { exact: true })).toBeVisible();
 
     // data-analytics has version "1.0.0", api-design has no version (shows "—")
     await expect(page.getByText("1.0.0")).toBeVisible();
@@ -189,12 +189,11 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
   const DASHBOARD_SKILLS = [
     {
       name: "data-analytics",
-      domain: "Data",
       current_step: null,
       status: "completed",
       last_modified: "2025-01-15T10:00:00Z",
       tags: [],
-      skill_type: "domain",
+      purpose: "domain",
       skill_source: "marketplace",
       author_login: null,
       author_avatar: null,
@@ -202,12 +201,11 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     },
     {
       name: "api-design",
-      domain: "Engineering",
       current_step: null,
       status: "completed",
       last_modified: "2025-01-14T09:00:00Z",
       tags: [],
-      skill_type: "platform",
+      purpose: "platform",
       skill_source: "imported",
       author_login: null,
       author_avatar: null,
@@ -302,9 +300,9 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await navigateToDashboard(page);
     await page.getByRole("button", { name: "List view" }).click();
 
-    // data-analytics has skill_type "domain" → "Domain" label
+    // data-analytics has purpose "domain" → "Domain" label
     await expect(page.getByText("Domain", { exact: true })).toBeVisible();
-    // api-design has skill_type "platform" → "Platform" label
+    // api-design has purpose "platform" → "Platform" label
     await expect(page.getByText("Platform", { exact: true })).toBeVisible();
   });
 
@@ -350,12 +348,11 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     ...DASHBOARD_SKILLS,
     {
       name: "my-skill",
-      domain: "Engineering",
       current_step: "Step 2/5",
       status: "in_progress",
       last_modified: "2025-01-13T08:00:00Z",
       tags: [],
-      skill_type: "domain",
+      purpose: "domain",
       skill_source: "skill-builder",
       author_login: null,
       author_avatar: null,
@@ -481,8 +478,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
           name: "data-analytics",
           version: "1.0.0",
           description: "Analytics skill",
-          domain: "Data",
-          skill_type: null,
+          purpose: null,
           model: null,
           argument_hint: null,
           user_invocable: null,
@@ -494,13 +490,12 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
           skill_id: "id-1",
           skill_name: "data-analytics",
           version: "1.0.0",
-          domain: "Data",
           description: null,
           is_active: true,
           is_bundled: false,
           disk_path: "/tmp/skills/data-analytics",
           imported_at: "2025-01-01",
-          skill_type: null,
+          purpose: null,
           model: null,
           argument_hint: null,
           user_invocable: null,
@@ -537,8 +532,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
           name: "data-analytics",
           version: "2.0.0",
           description: "Analytics skill",
-          domain: "Data",
-          skill_type: null,
+          purpose: null,
           model: null,
           argument_hint: null,
           user_invocable: null,
@@ -550,13 +544,12 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
           skill_id: "id-1",
           skill_name: "data-analytics",
           version: "1.0.0",
-          domain: "Data",
           description: null,
           is_active: true,
           is_bundled: false,
           disk_path: "/tmp/skills/data-analytics",
           imported_at: "2025-01-01",
-          skill_type: null,
+          purpose: null,
           model: null,
           argument_hint: null,
           user_invocable: null,
@@ -592,8 +585,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
           name: "new-skill",
           version: "1.0.0",
           description: "A brand new skill",
-          domain: "General",
-          skill_type: null,
+          purpose: null,
           model: null,
           argument_hint: null,
           user_invocable: null,
@@ -630,8 +622,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
           name: "no-version-skill",
           version: null,
           description: "Skill without version",
-          domain: "General",
-          skill_type: null,
+          purpose: null,
           model: null,
           argument_hint: null,
           user_invocable: null,
@@ -643,13 +634,12 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
           skill_id: "id-2",
           skill_name: "no-version-skill",
           version: null,
-          domain: "General",
           description: null,
           is_active: true,
           is_bundled: false,
           disk_path: "/tmp/skills/no-version-skill",
           imported_at: "2025-01-01",
-          skill_type: null,
+          purpose: null,
           model: null,
           argument_hint: null,
           user_invocable: null,
@@ -694,7 +684,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     check_workspace_path: true,
   };
 
-  test("T5 — edit form pre-populates installed description and domain when new version lacks them (skill-library mode)", async ({ page }) => {
+  test("T5 — edit form pre-populates installed description when new version lacks it (skill-library mode)", async ({ page }) => {
     await page.addInitScript((mocks) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
     }, {
@@ -705,8 +695,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
           name: "data-analytics",
           version: "2.0.0",
           description: null,
-          domain: null,
-          skill_type: "domain",
+          purpose: "domain",
           model: "claude-opus-4-6",
           argument_hint: null,
           user_invocable: null,
@@ -717,12 +706,11 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       list_skills: [
         {
           name: "data-analytics",
-          domain: "Analytics",
           current_step: null,
           status: "completed",
           last_modified: "2025-01-01T00:00:00Z",
           tags: [],
-          skill_type: "domain",
+          purpose: "domain",
           skill_source: "marketplace",
           author_login: null,
           author_avatar: null,
@@ -757,16 +745,12 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     const descriptionField = page.getByLabel("Description");
     await expect(descriptionField).toHaveValue("My custom description");
 
-    // Domain falls back to installed value since new version has null
-    const domainField = page.getByLabel("Domain");
-    await expect(domainField).toHaveValue("Analytics");
-
     // Version is always the new version
     const versionField = page.getByLabel(/Version/);
     await expect(versionField).toHaveValue("2.0.0");
   });
 
-  test("T6 — edit form shows new values when marketplace skill provides non-null description and domain (skill-library mode)", async ({ page }) => {
+  test("T6 — edit form shows new values when marketplace skill provides non-null description (skill-library mode)", async ({ page }) => {
     await page.addInitScript((mocks) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
     }, {
@@ -777,8 +761,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
           name: "data-analytics",
           version: "2.0.0",
           description: "New description from marketplace",
-          domain: "New Domain",
-          skill_type: "domain",
+          purpose: "domain",
           model: null,
           argument_hint: null,
           user_invocable: null,
@@ -789,12 +772,11 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       list_skills: [
         {
           name: "data-analytics",
-          domain: "Old Domain",
           current_step: null,
           status: "completed",
           last_modified: "2025-01-01T00:00:00Z",
           tags: [],
-          skill_type: "domain",
+          purpose: "domain",
           skill_source: "marketplace",
           author_login: null,
           author_avatar: null,
@@ -826,8 +808,5 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     // New value wins over installed when new is non-null/non-empty
     const descriptionField = page.getByLabel("Description");
     await expect(descriptionField).toHaveValue("New description from marketplace");
-
-    const domainField = page.getByLabel("Domain");
-    await expect(domainField).toHaveValue("New Domain");
   });
 });

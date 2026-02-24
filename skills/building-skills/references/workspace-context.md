@@ -28,16 +28,21 @@ This workspace generates skills for **dbt on Microsoft Fabric**. Every agent ope
 
 ### User Context
 
-The user's `user-context.md` file (in the workspace directory) contains their industry, role, audience, challenges, scope, unique setup, and what Claude gets wrong. Every agent must use this context to tailor output.
+The user's `user-context.md` file (in the workspace directory) is the single source of truth for all user-provided context. It contains:
+- **Purpose** — what the user is trying to capture (e.g. "Business process knowledge")
+- **Description** — the skill's trigger pattern for Claude Code activation
+- **Industry** and **Function** — the user's profile
+- **What Claude Needs to Know** — the user's specific environment context
+- **Behaviour settings** — version, model, argument hint, invocation flags
 
-**Resolution order:**
-1. **Inline** — orchestrators embed the full `user-context.md` content in sub-agent prompts under a `## User Context` heading. Use this first.
-2. **File fallback** — if inline content is missing, read `user-context.md` from the workspace directory.
-3. **Report missing** — if both fail, prefix your response with `[USER_CONTEXT_MISSING]` and continue with best effort. Parent orchestrators detect this marker and warn in their output.
+Every agent must read `user-context.md` from the workspace directory and use it to tailor output.
 
-**Orchestrator responsibility:** Read `user-context.md` early (Phase 0) and embed inline in every sub-agent prompt. Pass the workspace directory path as fallback.
+**Rules:**
+1. **Read early** — read `user-context.md` in your first step, before any other work.
+2. **Pass to sub-agents** — orchestrators embed the full `user-context.md` content in sub-agent prompts under a `## User Context` heading, so sub-agents have it without reading the file again.
+3. **Error if missing** — if the file does not exist, return an error. Do not proceed without user context.
 
-**Workspace directory contents:** The workspace directory only contains `user-context.md`. Do not read or list any other files or subdirectories (e.g. `logs/`).
+**Workspace directory contents:** Only read the `user-context.md` from the workspace directory.
 
 ### Scope Recommendation Guard
 

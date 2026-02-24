@@ -126,7 +126,7 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
 
 ### Scoping (inline — no agent)
 
-1. Ask: skill type (platform / domain / source / data-engineering), domain/topic, and optionally "what does Claude typically get wrong in this area?"
+1. Ask: purpose (platform / domain / source / data-engineering), skill topic, and optionally "what does Claude typically get wrong in this area?"
 2. Derive `skill_name` (kebab-case from domain), confirm with user
 3. Create directories: `.vibedata/<skill-name>/`, `<skill-dir>/`, `<skill-dir>/context/`, `<skill-dir>/references/`
    - Default `skill_dir`: `~/skill-builder/<skill-name>/`. Ask user only if they mention a different location.
@@ -134,8 +134,7 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
    ```json
    {
      "skill_name": "<skill-name>",
-     "skill_type": "<skill-type>",
-     "domain": "<domain>",
+     "purpose": "<purpose>",
      "skill_dir": "~/skill-builder/<skill-name>/",
      "created_at": "<ISO timestamp>",
      "last_activity": "<ISO timestamp>",
@@ -184,7 +183,7 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
 
 ```
 Task(subagent_type: "skill-builder:research-orchestrator")
-Passes: skill_type, domain, context_dir, workspace_dir
+Passes: purpose, context_dir, workspace_dir
 ```
 
 - After agent returns: check `context/clarifications.md` for `scope_recommendation: true` in frontmatter — if found, surface to user and stop
@@ -256,7 +255,7 @@ Skipped when `answer-evaluation.json.verdict == "sufficient"`.
 
 ```
 Task(subagent_type: "skill-builder:detailed-research")
-Passes: skill_type, domain, context_dir, workspace_dir
+Passes: purpose, context_dir, workspace_dir
 ```
 
 - Tell user: refinement questions added under `#### Refinements` in `context/clarifications.md` — answer them and say "done"
@@ -266,7 +265,7 @@ Passes: skill_type, domain, context_dir, workspace_dir
 
 ```
 Task(subagent_type: "skill-builder:confirm-decisions")
-Passes: skill_type, domain, context_dir, skill_dir, workspace_dir
+Passes: purpose, context_dir, skill_dir, workspace_dir
 ```
 
 - Human gate: tell user decisions are in `context/decisions.md` — review and confirm or provide corrections
@@ -277,7 +276,7 @@ Passes: skill_type, domain, context_dir, skill_dir, workspace_dir
 
 ```
 Task(subagent_type: "skill-builder:generate-skill")
-Passes: skill_type, domain, skill_name, context_dir, skill_dir, workspace_dir
+Passes: purpose, skill_name, context_dir, skill_dir, workspace_dir
         + skill-builder-practices content inline (see Agent Call Format)
 ```
 
@@ -288,7 +287,7 @@ Passes: skill_type, domain, skill_name, context_dir, skill_dir, workspace_dir
 
 ```
 Task(subagent_type: "skill-builder:validate-skill")
-Passes: skill_type, domain, skill_name, context_dir, skill_dir, workspace_dir
+Passes: purpose, skill_name, context_dir, skill_dir, workspace_dir
         + skill-builder-practices content inline (see Agent Call Format)
 ```
 
@@ -302,7 +301,7 @@ Passes: skill_type, domain, skill_name, context_dir, skill_dir, workspace_dir
 
 ```
 Task(subagent_type: "skill-builder:refine-skill")
-Passes: skill_dir, context_dir, workspace_dir, skill_type,
+Passes: skill_dir, context_dir, workspace_dir, purpose,
         current user message (the improvement request)
         + skill-builder-practices content inline (see Agent Call Format)
 ```
@@ -358,8 +357,7 @@ Every agent call uses this base structure. Read `$PLUGIN_ROOT/references/workspa
 Task(
   subagent_type: "skill-builder:<agent>",
   prompt: "
-    Skill type: <skill_type>
-    Domain: <domain>
+    Purpose: <purpose>
     Skill name: <skill_name>
     Context directory: <context_dir>
     Skill directory: <skill_dir>

@@ -10,14 +10,13 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
 });
 
-const makeSkill = (name: string, skill_type: SkillSummary["skill_type"] = null): SkillSummary => ({
+const makeSkill = (name: string, purpose: SkillSummary["purpose"] = null): SkillSummary => ({
   name,
-  domain: name,
   current_step: "Step 1",
   status: "in_progress",
   last_modified: new Date().toISOString(),
   tags: [],
-  skill_type,
+  purpose,
   author_login: null,
   author_avatar: null,
   intake_json: null,

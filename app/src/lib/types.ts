@@ -1,21 +1,21 @@
-export const SKILL_TYPES = ["platform", "domain", "source", "data-engineering"] as const;
-export type SkillType = typeof SKILL_TYPES[number];
+export const PURPOSES = ["platform", "domain", "source", "data-engineering"] as const;
+export type Purpose = typeof PURPOSES[number];
 
-export const SKILL_TYPE_LABELS: Record<SkillType, string> = {
-  platform: "Platform",
-  domain: "Domain",
-  source: "Source",
+export const PURPOSE_LABELS: Record<Purpose, string> = {
+  domain: "Business process knowledge",
+  source: "Source system customizations",
+  "data-engineering": "Organization specific data engineering standards",
+  platform: "Organization specific Azure or Fabric standards",
+};
+
+export const PURPOSE_SHORT_LABELS: Record<Purpose, string> = {
+  domain: "Business Process",
+  source: "Source Systems",
   "data-engineering": "Data Engineering",
+  platform: "Azure / Fabric",
 };
 
-export const SKILL_TYPE_DESCRIPTIONS: Record<string, string> = {
-  platform: "Tools and platform-specific skills (dbt, Fabric, Databricks)",
-  domain: "Business domain knowledge (Finance, Marketing, HR)",
-  source: "Source system extraction patterns (Salesforce, SAP, Workday)",
-  "data-engineering": "Technical patterns and practices (SCD, Incremental Loads)",
-};
-
-export const SKILL_TYPE_COLORS: Record<SkillType, string> = {
+export const PURPOSE_COLORS: Record<Purpose, string> = {
   platform: "bg-[#E8F4F5] text-[#0E7C86] dark:bg-[#0E7C86]/15 dark:text-[#2EC4B6]",
   domain: "bg-[#EBF3EC] text-[#2D7A35] dark:bg-[#2D7A35]/15 dark:text-[#5D9B62]",
   source: "bg-[#FDF0EB] text-[#A85A33] dark:bg-[#A85A33]/15 dark:text-[#D4916E]",
@@ -70,12 +70,11 @@ export type GitHubAuthResult =
 
 export interface SkillSummary {
   name: string
-  domain: string | null
   current_step: string | null
   status: string | null
   last_modified: string | null
   tags: string[]
-  skill_type: string | null
+  purpose: string | null
   skill_source?: string | null
   author_login: string | null
   author_avatar: string | null
@@ -111,39 +110,6 @@ export interface RefineSessionInfo {
   created_at: string
 }
 
-export const INTAKE_PLACEHOLDERS: Record<string, {
-  audience: string; challenges: string; scope: string;
-  unique_setup: string; claude_mistakes: string;
-}> = {
-  platform: {
-    audience: "e.g., Data engineers building ELT pipelines, platform admins managing environments",
-    challenges: "e.g., Complex dependency management, environment promotion, cost optimization",
-    scope: "e.g., Focus on development workflow and CI/CD, exclude administration and security",
-    unique_setup: "e.g., Multi-tenant Fabric workspace with custom capacity management",
-    claude_mistakes: "e.g., Generates generic dbt configs instead of platform-specific overrides",
-  },
-  domain: {
-    audience: "e.g., Business analysts in finance, data scientists building forecasting models",
-    challenges: "e.g., Data quality issues in revenue recognition, reconciliation across systems",
-    scope: "e.g., Focus on revenue analytics and reporting, exclude operational finance",
-    unique_setup: "e.g., Multi-currency with daily FX snapshots and retroactive adjustments",
-    claude_mistakes: "e.g., Misses industry-specific compliance requirements like ASC 606",
-  },
-  source: {
-    audience: "e.g., Integration engineers connecting Salesforce to data warehouse",
-    challenges: "e.g., API rate limits, incremental extraction, schema drift handling",
-    scope: "e.g., Focus on Sales Cloud objects and custom objects, exclude Marketing Cloud",
-    unique_setup: "e.g., Custom Salesforce objects with complex record type hierarchies",
-    claude_mistakes: "e.g., Uses bulk API for real-time objects, misses soft-delete patterns",
-  },
-  "data-engineering": {
-    audience: "e.g., Analytics engineers implementing SCD patterns, data platform teams",
-    challenges: "e.g., Late-arriving dimensions, retroactive corrections, audit trail requirements",
-    scope: "e.g., Focus on Type 2 SCD with effectivity dates, exclude Type 6 hybrid patterns",
-    unique_setup: "e.g., Bi-temporal design with both transaction time and valid time tracking",
-    claude_mistakes: "e.g., Generates Type 1 overwrites when Type 2 history tracking is needed",
-  },
-}
 
 export interface NodeStatus {
   available: boolean
@@ -171,8 +137,7 @@ export interface PackageResult {
 
 export interface OrphanSkill {
   skill_name: string
-  domain?: string
-  skill_type: string
+  purpose: string
 }
 
 export interface DiscoveredSkill {
@@ -249,13 +214,12 @@ export interface UsageByModel {
 export interface ImportedSkill {
   skill_id: string
   skill_name: string
-  domain: string | null
   description: string | null
   is_active: boolean
   disk_path: string
   imported_at: string
   is_bundled: boolean
-  skill_type: string | null
+  purpose: string | null
   version: string | null
   model: string | null
   argument_hint: string | null
@@ -267,19 +231,17 @@ export interface ImportedSkill {
 export interface WorkspaceSkill {
   skill_id: string
   skill_name: string
-  domain: string | null
   description: string | null
   is_active: boolean
   is_bundled: boolean
   disk_path: string
   imported_at: string
-  skill_type: string | null
+  purpose: string | null
   version: string | null
   model: string | null
   argument_hint: string | null
   user_invocable: boolean | null
   disable_model_invocation: boolean | null
-  purpose: string | null
 }
 
 export interface GitHubRepoInfo {
@@ -292,9 +254,8 @@ export interface GitHubRepoInfo {
 export interface AvailableSkill {
   path: string
   name: string
-  domain: string | null
   description: string | null
-  skill_type: string | null
+  purpose: string | null
   version: string | null
   model: string | null
   argument_hint: string | null
@@ -305,14 +266,12 @@ export interface AvailableSkill {
 export interface SkillMetadataOverride {
   name: string
   description: string
-  domain: string
-  skill_type: string
+  purpose: string
   version?: string | null
   model?: string | null
   argument_hint?: string | null
   user_invocable?: boolean | null
   disable_model_invocation?: boolean | null
-  purpose?: string | null
 }
 
 export const PURPOSE_OPTIONS = [

@@ -275,7 +275,6 @@ fn reconcile_skill_builder(
         crate::db::save_workflow_run(
             conn,
             name,
-            "unknown", // domain unknown — workflow_runs row was missing
             disk_step,
             status,
             "domain", // conservative default
@@ -348,13 +347,9 @@ fn reconcile_skill_builder(
                     "[reconcile] '{}': skill_source=skill-builder, action=reset (step {} to {}, disk does not confirm {:?})",
                     name, run.current_step, disk_step, last_expected_detectable
                 );
-                crate::db::save_workflow_run(
-                    conn,
-                    name,
-                    &run.domain,
-                    disk_step,
+                crate::db::save_workflow_run(conn, name, disk_step,
                     "pending",
-                    &run.skill_type,
+                    &run.purpose,
                 )?;
                 crate::db::reset_workflow_steps_from(conn, name, disk_step)?;
                 did_reset = true;
@@ -369,13 +364,9 @@ fn reconcile_skill_builder(
                 "[reconcile] '{}': skill_source=skill-builder, action=advance (step {} to {})",
                 name, run.current_step, disk_step
             );
-            crate::db::save_workflow_run(
-                conn,
-                name,
-                &run.domain,
-                disk_step,
+            crate::db::save_workflow_run(conn, name, disk_step,
                 "pending",
-                &run.skill_type,
+                &run.purpose,
             )?;
             notifications.push(format!(
                 "'{}' was advanced from step {} to step {} (disk state ahead of DB)",
@@ -412,13 +403,9 @@ fn reconcile_skill_builder(
                 name, disk_step
             );
             let effective_step = std::cmp::max(disk_step, run.current_step);
-            crate::db::save_workflow_run(
-                conn,
-                name,
-                &run.domain,
-                effective_step,
+            crate::db::save_workflow_run(conn, name, effective_step,
                 "completed",
-                &run.skill_type,
+                &run.purpose,
             )?;
         }
 
@@ -430,13 +417,9 @@ fn reconcile_skill_builder(
             "[reconcile] '{}': skill_source=skill-builder, action=reset_to_zero (step {} to 0, no output files)",
             name, run.current_step
         );
-        crate::db::save_workflow_run(
-            conn,
-            name,
-            &run.domain,
-            0,
+        crate::db::save_workflow_run(conn, name, 0,
             "pending",
-            &run.skill_type,
+            &run.purpose,
         )?;
         crate::db::reset_workflow_steps_from(conn, name, 0)?;
         cleanup_future_steps(workspace_path, name, -1, skills_path);
@@ -523,13 +506,9 @@ pub fn resolve_orphan(
         "keep" => {
             // Reset workflow to step 0, pending — preserve skill output files
             if let Some(run) = crate::db::get_workflow_run(conn, skill_name)? {
-                crate::db::save_workflow_run(
-                    conn,
-                    skill_name,
-                    &run.domain,
-                    0,
+                crate::db::save_workflow_run(conn, skill_name, 0,
                     "pending",
-                    &run.skill_type,
+                    &run.purpose,
                 )?;
                 crate::db::reset_workflow_steps_from(conn, skill_name, 0)?;
             }
@@ -576,7 +555,7 @@ mod tests {
         let conn = create_test_db();
 
         // Insert into skills master directly (skill-builder, but no workflow_runs row)
-        crate::db::upsert_skill(&conn, "orphan-skill", "skill-builder", "e-commerce", "domain")
+        crate::db::upsert_skill(&conn, "orphan-skill", "skill-builder", "domain")
             .unwrap();
         // Create step 0 output on disk so detect_furthest_step finds it
         create_step_output(skills_tmp.path(), "orphan-skill", 0);
@@ -609,7 +588,7 @@ mod tests {
 
         // DB says step 5, but disk only has step 0 output
         // (Step 2 is non-detectable — it edits clarifications.md in-place)
-        crate::db::save_workflow_run(&conn, "my-skill", "sales", 5, "in_progress", "domain")
+        crate::db::save_workflow_run(&conn, "my-skill", 5, "in_progress", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
         create_step_output(skills_tmp.path(), "my-skill", 0);
@@ -641,7 +620,7 @@ mod tests {
 
         // DB says step 5 (last step), status "pending" — simulates the race where
         // the frontend debounced save never sent "completed"
-        crate::db::save_workflow_run(&conn, "done-skill", "sales", 5, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "done-skill", 5, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "done-skill", "sales");
         // Create output for all detectable steps (0, 4, 5) in skills_path
@@ -671,7 +650,7 @@ mod tests {
         let conn = create_test_db();
 
         // DB at step 4, status "pending" — not yet at the last step
-        crate::db::save_workflow_run(&conn, "mid-skill", "sales", 4, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "mid-skill", 4, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "mid-skill", "sales");
         create_step_output(skills_tmp.path(), "mid-skill", 0);
@@ -696,7 +675,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_marketplace_skill(&conn, "my-skill", "sales", "platform").unwrap();
+        crate::db::save_marketplace_skill(&conn, "my-skill", "platform").unwrap();
 
         // Create SKILL.md in skills_path (simulates installed marketplace skill)
         let skill_dir = skills_tmp.path().join("my-skill");
@@ -727,7 +706,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_marketplace_skill(&conn, "gone-skill", "sales", "platform").unwrap();
+        crate::db::save_marketplace_skill(&conn, "gone-skill", "platform").unwrap();
 
         // No SKILL.md on disk — simulates deleted marketplace skill
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -752,7 +731,7 @@ mod tests {
         let conn = create_test_db();
 
         // DB record exists at step 0 but workspace dir was deleted
-        crate::db::save_workflow_run(&conn, "my-skill", "sales", 0, "pending", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
         // No workspace dir on disk
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -780,14 +759,7 @@ mod tests {
         let conn = create_test_db();
 
         // DB at step 2, disk has step 0 and 2 output
-        crate::db::save_workflow_run(
-            &conn,
-            "healthy-skill",
-            "analytics",
-            2,
-            "in_progress",
-            "domain",
-        )
+        crate::db::save_workflow_run(&conn, "healthy-skill", 2, "in_progress", "domain")
         .unwrap();
         create_skill_dir(tmp.path(), "healthy-skill", "analytics");
         create_step_output(skills_tmp.path(), "healthy-skill", 0);
@@ -816,7 +788,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "fresh-skill", "sales", 0, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "fresh-skill", 0, "pending", "domain")
             .unwrap();
         // Only create the working directory — no output files
         std::fs::create_dir_all(tmp.path().join("fresh-skill")).unwrap();
@@ -843,7 +815,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "lost-skill", "sales", 4, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "lost-skill", 4, "pending", "domain")
             .unwrap();
         std::fs::create_dir_all(tmp.path().join("lost-skill")).unwrap();
 
@@ -874,7 +846,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", "sales", 5, "pending", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 5, "pending", "domain").unwrap();
         // Mark steps 0-4 as completed in DB (pre-existing state)
         for s in 0..=4 {
             crate::db::save_workflow_step(&conn, "my-skill", s, "completed").unwrap();
@@ -914,7 +886,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "done-skill", "analytics", 6, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "done-skill", 6, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "done-skill", "analytics");
         for step in [0, 2, 4, 5] {
@@ -937,7 +909,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "bad-skill", "analytics", 6, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "bad-skill", 6, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "bad-skill", "analytics");
         // Only steps 0-4 have output, step 5 is missing
@@ -962,7 +934,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "review-skill", "sales", 1, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "review-skill", 1, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "review-skill", "sales");
         create_step_output(skills_tmp.path(), "review-skill", 0);
@@ -982,7 +954,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "review-skill", "sales", 3, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "review-skill", 3, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "review-skill", "sales");
         create_step_output(skills_tmp.path(), "review-skill", 0);
@@ -1010,7 +982,7 @@ mod tests {
             let skills_path = skills_tmp.path().to_str().unwrap();
             let conn = create_test_db();
 
-            crate::db::save_workflow_run(&conn, "my-skill", "sales", db_step, "pending", "domain")
+            crate::db::save_workflow_run(&conn, "my-skill", db_step, "pending", "domain")
                 .unwrap();
             create_skill_dir(tmp.path(), "my-skill", "sales");
             for step in &disk_steps {
@@ -1037,7 +1009,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", "sales", 2, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "my-skill", 2, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
         create_step_output(skills_tmp.path(), "my-skill", 0);
@@ -1060,7 +1032,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", "sales", 4, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "my-skill", 4, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
         create_step_output(skills_tmp.path(), "my-skill", 0);
@@ -1084,7 +1056,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", "sales", 0, "pending", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
         for step in [0, 2, 4, 5] {
             create_step_output(skills_tmp.path(), "my-skill", step);
@@ -1124,16 +1096,16 @@ mod tests {
         let conn = create_test_db();
 
         // Skill-builder skill with workspace dir missing — should recreate it
-        crate::db::save_workflow_run(&conn, "db-only", "domain-b", 0, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "db-only", 0, "pending", "domain")
             .unwrap();
 
         // Normal — skill in skills_path with matching DB record
-        crate::db::save_workflow_run(&conn, "normal", "domain-c", 0, "pending", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "normal", 0, "pending", "domain").unwrap();
         create_skill_dir(tmp.path(), "normal", "domain-c");
         create_step_output(skills_tmp.path(), "normal", 0);
 
         // Marketplace skill with SKILL.md
-        crate::db::save_marketplace_skill(&conn, "mkt-skill", "domain-d", "platform").unwrap();
+        crate::db::save_marketplace_skill(&conn, "mkt-skill", "platform").unwrap();
         let mkt_dir = skills_tmp.path().join("mkt-skill");
         std::fs::create_dir_all(&mkt_dir).unwrap();
         std::fs::write(mkt_dir.join("SKILL.md"), "# Marketplace").unwrap();
@@ -1184,7 +1156,7 @@ mod tests {
         let conn = create_test_db();
 
         create_skill_dir(tmp.path(), "active-skill", "test");
-        crate::db::save_workflow_run(&conn, "active-skill", "test", 5, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "active-skill", 5, "pending", "domain")
             .unwrap();
         create_step_output(skills_tmp.path(), "active-skill", 0);
 
@@ -1212,7 +1184,7 @@ mod tests {
         let conn = create_test_db();
 
         create_skill_dir(tmp.path(), "crashed-skill", "test");
-        crate::db::save_workflow_run(&conn, "crashed-skill", "test", 5, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "crashed-skill", 5, "pending", "domain")
             .unwrap();
         create_step_output(skills_tmp.path(), "crashed-skill", 0);
 
@@ -1239,7 +1211,7 @@ mod tests {
 
         create_skill_dir(tmp.path(), "my-skill", "test");
         create_step_output(skills_tmp.path(), "my-skill", 0);
-        crate::db::save_workflow_run(&conn, "my-skill", "test", 5, "pending", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 5, "pending", "domain").unwrap();
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
@@ -1261,7 +1233,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", "sales", 3, "pending", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 3, "pending", "domain").unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
         for step in [0u32, 4, 5] {
             create_step_output(skills_tmp.path(), "my-skill", step);
@@ -1288,7 +1260,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", "sales", 0, "pending", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
         for step in [0u32, 4] {
             create_step_output(skills_tmp.path(), "my-skill", step);
@@ -1324,7 +1296,7 @@ mod tests {
         let conn = create_test_db();
 
         // Insert DB record at step 3 with a workspace_path pointing to a nonexistent dir
-        crate::db::save_workflow_run(&conn, "my-skill", "sales", 3, "pending", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 3, "pending", "domain").unwrap();
         // DO NOT create the workspace dir — it is missing
         // Create step 0 output in skills_path (detectable)
         create_step_output(skills_tmp.path(), "my-skill", 0);
@@ -1365,7 +1337,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", "sales", 5, "pending", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 5, "pending", "domain").unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
         // Steps 0 and 4 exist but NOT step 5
         create_step_output(skills_tmp.path(), "my-skill", 0);
@@ -1407,7 +1379,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", "sales", 3, "pending", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 3, "pending", "domain").unwrap();
         // Steps 1 and 2 are explicitly NOT pre-marked
         create_skill_dir(tmp.path(), "my-skill", "sales");
         create_step_output(skills_tmp.path(), "my-skill", 0);
@@ -1461,7 +1433,7 @@ mod tests {
         let skills_path = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "orphan", "test", 7, "completed", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "orphan", 7, "completed", "domain").unwrap();
         let output_dir = tmp.path().join("orphan");
         std::fs::create_dir_all(output_dir.join("references")).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
@@ -1480,7 +1452,7 @@ mod tests {
         let skills_path = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "orphan", "test", 7, "completed", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "orphan", 7, "completed", "domain").unwrap();
         let output_dir = tmp.path().join("orphan");
         std::fs::create_dir_all(&output_dir).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
@@ -1499,7 +1471,7 @@ mod tests {
     fn test_resolve_orphan_delete_already_gone() {
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "orphan", "test", 5, "completed", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "orphan", 5, "completed", "domain").unwrap();
 
         resolve_orphan(&conn, "orphan", "delete", "/nonexistent/path").unwrap();
         assert!(crate::db::get_workflow_run(&conn, "orphan")
@@ -1512,7 +1484,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let skills_path = tmp.path().to_str().unwrap();
         let conn = create_test_db();
-        crate::db::save_workflow_run(&conn, "orphan", "test", 5, "completed", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "orphan", 5, "completed", "domain").unwrap();
 
         let result = resolve_orphan(&conn, "orphan", "invalid", skills_path);
         assert!(result.is_err());
@@ -1533,7 +1505,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::upsert_skill(&conn, "real-skill", "skill-builder", "analytics", "domain")
+        crate::db::upsert_skill(&conn, "real-skill", "skill-builder", "domain")
             .unwrap();
         // detect_furthest_step requires workspace dir to exist
         create_skill_dir(tmp.path(), "real-skill", "analytics");
@@ -1562,7 +1534,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::upsert_skill(&conn, "done-skill", "skill-builder", "analytics", "domain")
+        crate::db::upsert_skill(&conn, "done-skill", "skill-builder", "domain")
             .unwrap();
         // detect_furthest_step requires workspace dir to exist
         create_skill_dir(tmp.path(), "done-skill", "analytics");
@@ -1591,7 +1563,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::upsert_skill(&conn, "bare-skill", "skill-builder", "analytics", "domain")
+        crate::db::upsert_skill(&conn, "bare-skill", "skill-builder", "domain")
             .unwrap();
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -1617,7 +1589,7 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", "sales", 0, "pending", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
         crate::db::save_workflow_step(&conn, "my-skill", 0, "completed").unwrap();
 
         create_skill_dir(tmp.path(), "my-skill", "sales");
@@ -1645,7 +1617,7 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", "test", 5, "in_progress", "domain")
+        crate::db::save_workflow_run(&conn, "my-skill", 5, "in_progress", "domain")
             .unwrap();
 
         create_skill_dir(tmp.path(), "my-skill", "test");
@@ -1675,7 +1647,7 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", "test", 3, "in_progress", "domain")
+        crate::db::save_workflow_run(&conn, "my-skill", 3, "in_progress", "domain")
             .unwrap();
 
         create_skill_dir(tmp.path(), "my-skill", "test");
@@ -1702,7 +1674,7 @@ mod tests {
         let path = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", "test", 5, "completed", "domain")
+        crate::db::save_workflow_run(&conn, "my-skill", 5, "completed", "domain")
             .unwrap();
 
         create_skill_dir(tmp.path(), "my-skill", "test");
@@ -1759,7 +1731,7 @@ mod tests {
         let conn = create_test_db();
 
         // DB record + workspace folder, but nothing in skills_path
-        crate::db::save_workflow_run(&conn, "old-skill", "test", 0, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "old-skill", 0, "pending", "domain")
             .unwrap();
         create_skill_dir(&workspace, "old-skill", "test");
 
@@ -1794,7 +1766,7 @@ mod tests {
         let conn = create_test_db();
 
         for name in &["skill-a", "skill-b", "skill-c"] {
-            crate::db::save_workflow_run(&conn, name, "test", 5, "completed", "domain")
+            crate::db::save_workflow_run(&conn, name, 5, "completed", "domain")
                 .unwrap();
             let output_dir = skills.join(name);
             std::fs::create_dir_all(output_dir.join("references")).unwrap();
@@ -1822,7 +1794,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::upsert_skill(&conn, "new-skill", "skill-builder", "anything", "domain")
+        crate::db::upsert_skill(&conn, "new-skill", "skill-builder", "domain")
             .unwrap();
         // No step output — just a master row
 
@@ -1832,8 +1804,8 @@ mod tests {
         assert!(result.notifications[0].contains("new-skill"));
 
         let run = crate::db::get_workflow_run(&conn, "new-skill").unwrap().unwrap();
-        assert_eq!(run.domain, "unknown"); // domain defaults to "unknown" when workflow_runs row is recreated
-        assert_eq!(run.skill_type, "domain"); // conservative default
+        // domain column dropped - no longer checking "unknown" // domain defaults to "unknown" when workflow_runs row is recreated
+        assert_eq!(run.purpose, "domain"); // conservative default
         assert_eq!(run.current_step, 0);
         assert_eq!(run.status, "pending");
     }
@@ -1847,7 +1819,7 @@ mod tests {
         let conn = create_test_db();
 
         // Skill A: active session with current PID
-        crate::db::save_workflow_run(&conn, "protected", "test", 3, "in_progress", "domain")
+        crate::db::save_workflow_run(&conn, "protected", 3, "in_progress", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "protected", "test");
         let pid = std::process::id();
@@ -1855,7 +1827,7 @@ mod tests {
         crate::db::create_workflow_session(&conn, &session_id, "protected", pid).unwrap();
 
         // Skill B: DB at step 5, disk at step 0 → needs reset
-        crate::db::save_workflow_run(&conn, "reset-me", "test", 5, "in_progress", "domain")
+        crate::db::save_workflow_run(&conn, "reset-me", 5, "in_progress", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "reset-me", "test");
         create_step_output(tmp.path(), "reset-me", 0);
@@ -1885,23 +1857,23 @@ mod tests {
         let conn = create_test_db();
 
         // Case 1: DB ahead of disk → reset notification
-        crate::db::save_workflow_run(&conn, "ahead-skill", "test", 5, "in_progress", "domain")
+        crate::db::save_workflow_run(&conn, "ahead-skill", 5, "in_progress", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "ahead-skill", "test");
         create_step_output(skills_tmp.path(), "ahead-skill", 0);
 
         // Case 2: No output but DB past step 0 → reset to step 0
-        crate::db::save_workflow_run(&conn, "empty-skill", "test", 3, "in_progress", "domain")
+        crate::db::save_workflow_run(&conn, "empty-skill", 3, "in_progress", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "empty-skill", "test");
 
         // Case 3: Scenario 10 — master row, no workflow_runs
-        crate::db::upsert_skill(&conn, "found-skill", "skill-builder", "test", "domain")
+        crate::db::upsert_skill(&conn, "found-skill", "skill-builder", "domain")
             .unwrap();
         create_step_output(skills_tmp.path(), "found-skill", 0);
 
         // Case 4: Scenario 12 — marketplace SKILL.md missing
-        crate::db::save_marketplace_skill(&conn, "gone-mkt", "test", "platform").unwrap();
+        crate::db::save_marketplace_skill(&conn, "gone-mkt", "platform").unwrap();
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
@@ -2009,7 +1981,7 @@ mod tests {
         let conn = create_test_db();
 
         // Add skill to master and create it on disk
-        crate::db::save_workflow_run(&conn, "known-skill", "test", 5, "completed", "domain")
+        crate::db::save_workflow_run(&conn, "known-skill", 5, "completed", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "known-skill", "test");
         create_step_output(skills_tmp.path(), "known-skill", 0);

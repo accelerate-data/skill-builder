@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::commands::imported_skills::validate_skill_name;
+use crate::commands::workflow::resolve_model_id;
 use crate::db::{self, Db};
 use crate::types::{RefineFileDiff, RefineDiff, RefineSessionInfo, SkillFileContent};
 
@@ -95,7 +96,7 @@ fn build_refine_config(
 
 /// Build a follow-up prompt for subsequent refine messages.
 /// Simpler than the first message — the SDK already has full context from the
-/// first turn (paths, skill type, domain, user context). Only includes command,
+/// first turn (paths, user-context.md pointer). Only includes command,
 /// file targeting, and the user's new message.
 fn build_followup_prompt(
     user_message: &str,
@@ -128,18 +129,16 @@ fn build_followup_prompt(
 
 /// Build the refine agent prompt with all runtime fields.
 /// Matches the workflow pattern in `workflow.rs::build_prompt` — provides skill directory,
-/// context directory, workspace directory, skill type, command, and user context.
-#[allow(clippy::too_many_arguments)]
+/// context directory, workspace directory, command, and a pointer to user-context.md.
+/// User context (purpose, industry, intake fields) is NOT inlined — the agent reads
+/// user-context.md from the workspace directory at runtime.
 fn build_refine_prompt(
     skill_name: &str,
-    domain: &str,
-    skill_type: &str,
     workspace_path: &str,
     skills_path: &str,
     user_message: &str,
     target_files: Option<&[String]>,
     command: Option<&str>,
-    user_context: Option<&str>,
 ) -> String {
     let skill_dir = Path::new(skills_path).join(skill_name);
     let context_dir = Path::new(skills_path).join(skill_name).join("context");
@@ -148,17 +147,17 @@ fn build_refine_prompt(
     let effective_command = command.unwrap_or("refine");
 
     let mut prompt = format!(
-        "The skill name is: {}. The domain is: {}. The skill type is: {}. The command is: {}. \
+        "The skill name is: {}. The command is: {}. \
          The skill directory is: {}. The context directory is: {}. The workspace directory is: {}. \
          All directories already exist — never create directories with mkdir or any other method.",
         skill_name,
-        domain,
-        skill_type,
         effective_command,
         skill_dir.display(),
         context_dir.display(),
         workspace_dir.display(),
     );
+
+    prompt.push_str(" Read user-context.md from the workspace directory for purpose, description, and all user context.");
 
     // File constraint: restrict edits to specific files if @file targets were specified
     if let Some(files) = target_files {
@@ -175,11 +174,6 @@ fn build_refine_prompt(
     }
 
     prompt.push_str(&format!("\n\nCurrent request: {}", user_message));
-
-    if let Some(ctx) = user_context {
-        prompt.push_str("\n\n");
-        prompt.push_str(ctx);
-    }
 
     prompt
 }
@@ -459,9 +453,10 @@ pub async fn start_refine_session(
 
 /// Send a user message to the refine agent and stream responses back.
 ///
-/// On the first call, starts a streaming session (stream_start) with the full
-/// agent prompt including all 3 directory paths, skill type, domain, command,
-/// and user context. On subsequent calls, pushes a follow-up message
+/// On the first call, writes user-context.md to the workspace directory and
+/// starts a streaming session (stream_start) with the agent prompt including
+/// all 3 directory paths, command, and a pointer to user-context.md.
+/// On subsequent calls, pushes a follow-up message
 /// (stream_message) — the SDK maintains full conversation state.
 ///
 /// Returns the `agent_id` so the frontend can listen for `agent-message` and
@@ -515,8 +510,8 @@ pub async fn send_refine_message(
 
     if !stream_started {
         // ─── First message: start streaming session ───────────────────────
-        // 2. Read settings, workflow run data, and user context from DB
-        let (api_key, extended_thinking, model, skills_path, domain, skill_type, user_context) = {
+        // 2. Read settings, workflow run data, and write user-context.md
+        let (api_key, extended_thinking, model, skills_path) = {
             let conn = db.0.lock().map_err(|e| {
                 log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
                 e.to_string()
@@ -529,32 +524,34 @@ pub async fn send_refine_message(
                 log::error!("[send_refine_message] Anthropic API key not configured");
                 "Anthropic API key not configured".to_string()
             })?;
-            let model = settings
-                .preferred_model
-                .unwrap_or_else(|| "claude-sonnet-4-6".to_string());
+            let model = resolve_model_id(
+                settings.preferred_model.as_deref().unwrap_or("sonnet")
+            );
 
             let skills_path = settings
                 .skills_path
                 .unwrap_or_else(|| workspace_path.clone());
 
             let run_row = db::get_workflow_run(&conn, &skill_name).ok().flatten();
-            let domain = run_row
+            let purpose = run_row
                 .as_ref()
-                .map(|r| r.domain.clone())
-                .unwrap_or_else(|| skill_name.clone());
-            let skill_type = run_row
-                .as_ref()
-                .map(|r| r.skill_type.clone())
+                .map(|r| r.purpose.clone())
                 .unwrap_or_else(|| "domain".to_string());
 
             let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
-            let ctx = crate::commands::workflow::format_user_context(
+
+            // Write user-context.md so the agent can read it (same as workflow steps)
+            crate::commands::workflow::write_user_context_file(
+                &workspace_path,
+                &skill_name,
+                &[], // tags not fetched in refine path — lightweight call
                 settings.industry.as_deref(),
                 settings.function_role.as_deref(),
                 intake_json.as_deref(),
+                None, Some(purpose.as_str()), None, None, None, None, None,
             );
 
-            (key, settings.extended_thinking, model, skills_path, domain, skill_type, ctx)
+            (key, settings.extended_thinking, model, skills_path)
         };
 
         // 3. Ensure the skill's workspace dir exists before building the prompt.
@@ -577,23 +574,19 @@ pub async fn send_refine_message(
             }
         }
 
-        // 4. Build full prompt with all paths, metadata, and user context
+        // 4. Build prompt with paths and pointer to user-context.md (no inline context)
         let prompt = build_refine_prompt(
             &skill_name,
-            &domain,
-            &skill_type,
             &workspace_path,
             &skills_path,
             &user_message,
             target_files.as_deref(),
             command.as_deref(),
-            user_context.as_deref(),
         );
         log::debug!(
-            "[send_refine_message] first message prompt ({} chars) for skill '{}' type={} command={:?}:\n{}",
+            "[send_refine_message] first message prompt ({} chars) for skill '{}' command={:?}:\n{}",
             prompt.len(),
             skill_name,
-            skill_type,
             command,
             prompt
         );
@@ -1136,10 +1129,8 @@ mod tests {
 
     #[test]
     fn test_refine_prompt_includes_all_three_paths() {
-        let prompt = build_refine_prompt(
-            "my-skill", "Data Engineering", "data-engineering",
-            "/home/user/.vibedata", "/home/user/skills",
-            "Add metrics section", None, None, None,
+        let prompt = build_refine_prompt("my-skill", "/home/user/.vibedata", "/home/user/skills",
+            "Add metrics section", None, None,
         );
         assert!(prompt.contains("The skill directory is: /home/user/skills/my-skill"));
         assert!(prompt.contains("The context directory is: /home/user/skills/my-skill/context"));
@@ -1148,39 +1139,35 @@ mod tests {
 
     #[test]
     fn test_refine_prompt_includes_metadata() {
-        let prompt = build_refine_prompt(
-            "my-skill", "Data Engineering", "data-engineering",
-            "/ws", "/skills",
-            "Fix overview", None, None, None,
+        let prompt = build_refine_prompt("my-skill", "/ws", "/skills",
+            "Fix overview", None, None,
         );
         assert!(prompt.contains("The skill name is: my-skill"));
-        assert!(prompt.contains("The domain is: Data Engineering"));
-        assert!(prompt.contains("The skill type is: data-engineering"));
+        // Purpose/skill type no longer in prompt — agent reads user-context.md
+        assert!(!prompt.contains("The skill type is:"));
+        assert!(prompt.contains("user-context.md"));
     }
 
     #[test]
     fn test_refine_prompt_default_command_is_refine() {
-        let prompt = build_refine_prompt(
-            "s", "d", "domain", "/ws", "/sk",
-            "edit something", None, None, None,
+        let prompt = build_refine_prompt("s", "/ws", "/sk",
+            "edit something", None, None,
         );
         assert!(prompt.contains("The command is: refine"));
     }
 
     #[test]
     fn test_refine_prompt_rewrite_command() {
-        let prompt = build_refine_prompt(
-            "s", "d", "domain", "/ws", "/sk",
-            "improve clarity", None, Some("rewrite"), None,
+        let prompt = build_refine_prompt("s", "/ws", "/sk",
+            "improve clarity", None, Some("rewrite"),
         );
         assert!(prompt.contains("The command is: rewrite"));
     }
 
     #[test]
     fn test_refine_prompt_validate_command() {
-        let prompt = build_refine_prompt(
-            "s", "d", "domain", "/ws", "/sk",
-            "", None, Some("validate"), None,
+        let prompt = build_refine_prompt("s", "/ws", "/sk",
+            "", None, Some("validate"),
         );
         assert!(prompt.contains("The command is: validate"));
     }
@@ -1188,9 +1175,8 @@ mod tests {
     #[test]
     fn test_refine_prompt_file_targeting() {
         let files = vec!["SKILL.md".to_string(), "references/metrics.md".to_string()];
-        let prompt = build_refine_prompt(
-            "my-skill", "d", "domain", "/ws", "/skills",
-            "update these", Some(&files), None, None,
+        let prompt = build_refine_prompt("my-skill", "/ws", "/skills",
+            "update these", Some(&files), None,
         );
         assert!(prompt.contains("IMPORTANT: Only edit these files:"));
         assert!(prompt.contains("/skills/my-skill/SKILL.md"));
@@ -1199,40 +1185,40 @@ mod tests {
 
     #[test]
     fn test_refine_prompt_no_file_constraint_when_empty() {
-        let prompt = build_refine_prompt(
-            "s", "d", "domain", "/ws", "/sk",
-            "edit freely", None, None, None,
+        let prompt = build_refine_prompt("s", "/ws", "/sk",
+            "edit freely", None, None,
         );
         assert!(!prompt.contains("Only edit these files"));
     }
 
     #[test]
     fn test_refine_prompt_includes_user_message() {
-        let prompt = build_refine_prompt(
-            "s", "d", "domain", "/ws", "/sk",
-            "Add SLA metrics to the overview", None, None, None,
+        let prompt = build_refine_prompt("s", "/ws", "/sk",
+            "Add SLA metrics to the overview", None, None,
         );
         assert!(prompt.contains("Current request: Add SLA metrics to the overview"));
     }
 
     #[test]
-    fn test_refine_prompt_appends_user_context() {
-        let ctx = "## User Context\n**Industry**: Healthcare";
-        let prompt = build_refine_prompt(
-            "s", "d", "domain", "/ws", "/sk",
-            "edit", None, None, Some(ctx),
+    fn test_refine_prompt_reads_user_context_from_file() {
+        // User context is NOT inlined — the prompt tells the agent to read user-context.md
+        let prompt = build_refine_prompt("s", "/ws", "/sk",
+            "edit", None, None,
         );
-        assert!(prompt.contains("## User Context"));
-        assert!(prompt.contains("**Industry**: Healthcare"));
+        assert!(prompt.contains("user-context.md"));
+        assert!(!prompt.contains("## User Context"));
+        assert!(!prompt.contains("**Industry**"));
     }
 
     #[test]
-    fn test_refine_prompt_no_user_context_when_none() {
-        let prompt = build_refine_prompt(
-            "s", "d", "domain", "/ws", "/sk",
-            "edit", None, None, None,
+    fn test_refine_prompt_no_inline_user_context() {
+        // Verify the prompt never contains inline user context fields
+        let prompt = build_refine_prompt("s", "/ws", "/sk",
+            "edit", None, None,
         );
-        assert!(!prompt.contains("User Context"));
+        assert!(!prompt.contains("**Industry**:"));
+        assert!(!prompt.contains("**Target Audience**:"));
+        assert!(!prompt.contains("**Function**:"));
     }
 
     #[test]
@@ -1405,40 +1391,36 @@ mod tests {
         assert!(validate_skill_name("").is_err());
     }
 
-    // ===== user context embedding tests =====
-    // Tests the prompt assembly pattern used in send_refine_message
+    // ===== user context file tests =====
+    // User context is written to user-context.md, not inlined in the prompt
 
     #[test]
-    fn test_user_context_appended_to_prompt() {
-        // Simulates the prompt assembly in send_refine_message
-        let message = "Add SLA metrics to the skill".to_string();
-        let user_context = crate::commands::workflow::format_user_context(
+    fn test_user_context_written_to_file() {
+        // send_refine_message calls write_user_context_file, which writes
+        // user-context.md to the workspace directory. format_user_context
+        // produces the content; the prompt just points agents at the file.
+        let ctx = crate::commands::workflow::format_user_context(
+            None,
+            &[],
             Some("Healthcare"),
             Some("Analytics Lead"),
             Some(r#"{"audience":"Data engineers","challenges":"Legacy ETL"}"#),
+            None, None, None, None, None, None, None,
         );
-        let prompt = if let Some(ctx) = user_context {
-            format!("{}\n\n{}", message, ctx)
-        } else {
-            message
-        };
-        assert!(prompt.starts_with("Add SLA metrics to the skill"));
-        assert!(prompt.contains("## User Context"));
-        assert!(prompt.contains("**Industry**: Healthcare"));
-        assert!(prompt.contains("**Target Audience**: Data engineers"));
+        assert!(ctx.is_some());
+        let ctx = ctx.unwrap();
+        assert!(ctx.contains("## User Context"));
+        assert!(ctx.contains("**Industry**: Healthcare"));
+        assert!(ctx.contains("### Target Audience"));
+        assert!(ctx.contains("Data engineers"));
     }
 
     #[test]
-    fn test_prompt_unchanged_without_user_context() {
-        // When no user context fields exist, prompt passes through unchanged
-        let message = "Fix the overview".to_string();
-        let user_context = crate::commands::workflow::format_user_context(None, None, None);
-        let prompt = if let Some(ctx) = user_context {
-            format!("{}\n\n{}", message, ctx)
-        } else {
-            message.clone()
-        };
-        assert_eq!(prompt, "Fix the overview");
+    fn test_no_user_context_when_fields_empty() {
+        // When no user context fields exist, format_user_context returns None
+        // and write_user_context_file is a no-op.
+        let ctx = crate::commands::workflow::format_user_context(None, &[], None, None, None, None, None, None, None, None, None, None);
+        assert!(ctx.is_none());
     }
 
 }

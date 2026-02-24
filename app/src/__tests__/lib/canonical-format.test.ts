@@ -235,12 +235,8 @@ describe("Canonical format: research-plan.md structure", () => {
   if (fs.existsSync(researchPlan)) {
     const content = readFile(researchPlan);
 
-    it("has frontmatter with skill_type", () => {
-      expect(content).toMatch(/^---\n[\s\S]*?skill_type:/m);
-    });
-
-    it("has frontmatter with domain", () => {
-      expect(content).toMatch(/^---\n[\s\S]*?domain:/m);
+    it("has frontmatter with purpose", () => {
+      expect(content).toMatch(/^---\n[\s\S]*?purpose:/m);
     });
 
     it("has frontmatter with dimensions_evaluated", () => {

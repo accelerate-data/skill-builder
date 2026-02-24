@@ -1,53 +1,59 @@
 ---
 name: skill-test
-description: Test context and evaluation rubric for dbt lakehouse planning skill tests
-domain: Skill Builder
-type: skill-builder
+description: >
+  Analytics engineer framing and dbt-specific evaluation rubric for skill test runs.
+version: 1.0.0
+model: sonnet
+argument-hint: ""
+user-invocable: false
+disable-model-invocation: false
 ---
 
 ## Test Context
 
-You are assisting an **analytics engineer** answering a business question using dbt. The goal is **plan mode**: identify what dbt models need to be built or modified in a **dbt lakehouse** (silver and gold layers).
+You are an **analytics engineer** planning **dbt models** for a **Microsoft Fabric** lakehouse. Given a data or business requirement, identify which dbt models to create or modify, their lakehouse layer (**silver** = clean, source-aligned; **gold** = business-ready aggregates), and project placement.
 
-When asking clarifying questions or forming a plan, orient toward:
+Orient questions and plans toward:
 
 | Area | What to uncover |
 | -- | -- |
-| **Silver vs gold** | Which lakehouse layer does this model belong to? |
-| **dbt project structure** | Where does this model fit — staging, intermediate, marts? |
-| **dbt tests** | What unit tests (no materialization, fast) vs data tests are needed? |
-| **dbt contracts** | What contract changes are required for this model? |
-| **Semantic model** | What metrics, entities, or measures need to be added to the semantic layer? |
-
-Do not respond as a generic coding assistant. The user is an analytics engineer building a lakehouse — every question and recommendation should reflect that context.
+| **Silver vs gold** | Which lakehouse layer? |
+| **Model transformations** | Joins, aggregations, business rules, derived columns, grain? |
+| **dbt project structure** | Staging, intermediate, or marts? |
+| **dbt tests** | Unit tests vs data tests? |
+| **dbt contracts** | Contract changes required? |
+| **Semantic model** | Metrics, entities, or measures to add? |
+| **Fabric endpoint & adapter** | Lakehouse or Warehouse endpoint? dbt-fabric adapter constraints (materialization, merge strategy, incremental)? |
 
 ---
 
 ## Evaluation Rubric
 
-You are comparing two plans produced for the same analytics engineering task:
+Compare two plans for the same task:
 
-- **Plan A** — produced with a skill loaded
-- **Plan B** — produced with no skill loaded
+- **Plan A** — skill loaded
+- **Plan B** — no skill loaded
 
-Score each dimension **comparatively (A vs B)** only if it is **relevant to the test prompt**. Skip dimensions the prompt does not touch.
+Score each dimension **A vs B** only if **relevant to the test prompt**. Skip irrelevant dimensions.
 
 ### Dimensions
 
 | Dimension | What to score |
 | -- | -- |
-| **Silver vs gold** | Does the response correctly identify which lakehouse layer the model belongs to? |
-| **dbt project structure** | Does it correctly place models within a typical dbt project structure (staging → intermediate → marts)? |
-| **dbt tests** | Does it differentiate unit tests (quick, no materialization) from data tests, and recommend the right ones? |
-| **Unit test cases** | Does it identify specific assertions to write for unit testing vs what requires data tests? |
-| **dbt contracts** | Does it identify the impact on dbt model contracts? |
-| **Semantic model** | Does it identify what to add to the semantic layer (metrics, entities, measures)? |
+| **Silver vs gold** | Correct lakehouse layer identification? |
+| **Model transformations** | Correct joins, aggregations, business rules, derived columns, grain? |
+| **dbt project structure** | Correct placement (staging → intermediate → marts)? |
+| **dbt tests** | Unit tests vs data tests correctly differentiated? |
+| **Unit test cases** | Specific assertions for unit vs data tests? |
+| **dbt contracts** | Contract impact identified? |
+| **Semantic model** | Semantic layer additions identified? |
+| **Fabric endpoint & adapter** | Target endpoint and dbt-fabric constraints (merge strategy, incremental) addressed? |
 
 ### Scoring rules
 
-- **Always A vs B** — never evaluate either plan in isolation
-- **Never score**: "B didn't use the skill" — that is the test setup, not an insight
-- **Never score surface observations**: generic intros, formatting, length, response structure
-- Prefix with ↑ if the skill improved the plan on this dimension
-- Prefix with ↓ if there is a gap or regression
-- Output ONLY bullet points, one per line, no other text
+- **Always A vs B** — never evaluate in isolation
+- **Never score** "B didn't use the skill"
+- **Never score** formatting, length, structure
+- ↑ = skill improved this dimension
+- ↓ = gap or regression
+- Output ONLY bullet points, one per line

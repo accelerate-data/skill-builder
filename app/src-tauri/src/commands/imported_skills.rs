@@ -24,8 +24,7 @@ pub(crate) fn validate_skill_name(name: &str) -> Result<(), String> {
 pub(crate) struct Frontmatter {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub domain: Option<String>,
-    pub skill_type: Option<String>,
+    pub purpose: Option<String>,
     pub version: Option<String>,
     pub model: Option<String>,
     pub argument_hint: Option<String>,
@@ -39,9 +38,9 @@ pub(crate) struct Frontmatter {
 #[allow(dead_code)]
 pub(crate) fn parse_frontmatter(
     content: &str,
-) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+) -> (Option<String>, Option<String>, Option<String>) {
     let fm = parse_frontmatter_full(content);
-    (fm.name, fm.description, fm.domain, fm.skill_type)
+    (fm.name, fm.description, fm.purpose)
 }
 
 /// Parse YAML frontmatter returning all fields.
@@ -62,7 +61,6 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
 
     let mut name = None;
     let mut description = None;
-    let mut domain = None;
     let mut skill_type = None;
     let mut version = None;
     let mut model = None;
@@ -105,8 +103,8 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
             } else {
                 description = Some(val.trim_matches('"').trim_matches('\'').to_string());
             }
-        } else if let Some(val) = trimmed_line.strip_prefix("domain:") {
-            domain = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
+        } else if trimmed_line.starts_with("domain:") {
+            // domain: is read from YAML but no longer stored — ignored for backward compat
         } else if let Some(val) = trimmed_line.strip_prefix("type:") {
             skill_type = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
         } else if let Some(val) = trimmed_line.strip_prefix("version:") {
@@ -140,8 +138,7 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
     Frontmatter {
         name: trim_opt(name),
         description: trim_opt(description),
-        domain: trim_opt(domain),
-        skill_type: trim_opt(skill_type),
+        purpose: trim_opt(skill_type),
         version: trim_opt(version),
         model: trim_opt(model),
         argument_hint: trim_opt(argument_hint),
@@ -266,10 +263,9 @@ fn upload_skill_inner(
     // Parse frontmatter for metadata
     let fm = parse_frontmatter_full(&skill_md_content);
 
-    // Validate mandatory fields: name, domain, description must all be present
+    // Validate mandatory fields: name and description must both be present
     let missing_fields: Vec<&str> = [
         ("name", fm.name.is_none()),
-        ("domain", fm.domain.is_none()),
         ("description", fm.description.is_none()),
     ]
     .iter()
@@ -321,21 +317,19 @@ fn upload_skill_inner(
     let skill = WorkspaceSkill {
         skill_id,
         skill_name: skill_name.clone(),
-        domain: fm.domain.clone(),
-        is_active: true,
+                is_active: true,
         disk_path: dest_dir.to_string_lossy().to_string(),
         imported_at,
         is_bundled: false,
         // Store description from frontmatter in DB
         description: fm.description,
-        // Always force skill_type to 'skill-builder' for uploaded zips
-        skill_type: Some("skill-builder".to_string()),
+        // Always force purpose to 'skill-builder' for uploaded zips
+        purpose: Some("skill-builder".to_string()),
         version: fm.version,
         model: fm.model,
         argument_hint: fm.argument_hint,
         user_invocable: fm.user_invocable,
         disable_model_invocation: fm.disable_model_invocation,
-        purpose: None,
     };
 
     // Insert into workspace_skills DB
@@ -827,9 +821,9 @@ pub(crate) fn seed_bundled_skills(
 
         // Validate required frontmatter fields; skip and error-log if any are missing
         let mut missing_required: Vec<&str> = Vec::new();
-        if fm.domain.is_none() { missing_required.push("domain"); }
+        if fm.purpose.is_none() { missing_required.push("domain"); }
         if fm.description.is_none() { missing_required.push("description"); }
-        if fm.skill_type.is_none() { missing_required.push("skill_type"); }
+        if fm.purpose.is_none() { missing_required.push("skill_type"); }
         if !missing_required.is_empty() {
             log::error!(
                 "seed_bundled_skills: skipping '{}' — missing required frontmatter fields: {}",
@@ -874,20 +868,18 @@ pub(crate) fn seed_bundled_skills(
         let skill = crate::types::WorkspaceSkill {
             skill_id: format!("bundled-{}", skill_name),
             skill_name: skill_name.clone(),
-            domain: fm.domain,
-            is_active,
+                        is_active,
             disk_path: dest_dir.to_string_lossy().to_string(),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             // Store description from frontmatter in DB
             description: fm.description,
-            skill_type: fm.skill_type,
-            version: fm.version,
+                        version: fm.version,
             model: fm.model,
             argument_hint: fm.argument_hint,
             user_invocable: fm.user_invocable,
             disable_model_invocation: fm.disable_model_invocation,
-            purpose: None,
+            purpose: fm.purpose,
         };
 
         crate::db::upsert_bundled_workspace_skill(conn, &skill)?;
@@ -934,18 +926,16 @@ mod tests {
         ImportedSkill {
             skill_id: "test-id-123".to_string(),
             skill_name: "my-test-skill".to_string(),
-            domain: Some("analytics".to_string()),
             is_active: true,
             disk_path: "/tmp/test-skill".to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+            purpose: None,
         }
     }
 
@@ -960,7 +950,7 @@ mod tests {
         let skills = crate::db::list_workspace_skills(&conn).unwrap();
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].skill_name, "my-test-skill");
-        assert_eq!(skills[0].domain.as_deref(), Some("analytics"));
+        assert_eq!(skills[0].purpose, None);
         assert!(skills[0].is_active);
     }
 
@@ -981,7 +971,7 @@ mod tests {
     fn test_update_imported_skill_active() {
         let conn = create_test_db();
         // Skills master row required for FK-based update
-        crate::db::upsert_skill(&conn, "my-test-skill", "imported", "analytics", "domain").unwrap();
+        crate::db::upsert_skill(&conn, "my-test-skill", "imported", "domain").unwrap();
         let skill = make_test_skill();
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1034,11 +1024,11 @@ domain: e-commerce
 
 # My Skill
 "#;
-        let (name, desc, domain, skill_type) = parse_frontmatter(content);
+        let (name, desc, purpose) = parse_frontmatter(content);
         assert_eq!(name.as_deref(), Some("my-skill"));
         assert_eq!(desc.as_deref(), Some("A great skill for analytics"));
-        assert_eq!(domain.as_deref(), Some("e-commerce"));
-        assert!(skill_type.is_none());
+        // domain dropped
+        assert!(purpose.is_none());
     }
 
     #[test]
@@ -1048,7 +1038,7 @@ name: "quoted-name"
 description: 'single quoted'
 ---
 "#;
-        let (name, desc, _, _) = parse_frontmatter(content);
+        let (name, desc, _) = parse_frontmatter(content);
         assert_eq!(name.as_deref(), Some("quoted-name"));
         assert_eq!(desc.as_deref(), Some("single quoted"));
     }
@@ -1056,11 +1046,11 @@ description: 'single quoted'
     #[test]
     fn test_parse_frontmatter_no_frontmatter() {
         let content = "# Just a heading\nSome content";
-        let (name, desc, domain, skill_type) = parse_frontmatter(content);
+        let (name, desc, purpose) = parse_frontmatter(content);
         assert!(name.is_none());
         assert!(desc.is_none());
-        assert!(domain.is_none());
-        assert!(skill_type.is_none());
+        assert!(purpose.is_none());
+        assert!(purpose.is_none());
     }
 
     #[test]
@@ -1070,11 +1060,11 @@ name: only-name
 ---
 # Content
 "#;
-        let (name, desc, domain, skill_type) = parse_frontmatter(content);
+        let (name, desc, purpose) = parse_frontmatter(content);
         assert_eq!(name.as_deref(), Some("only-name"));
         assert!(desc.is_none());
-        assert!(domain.is_none());
-        assert!(skill_type.is_none());
+        assert!(purpose.is_none());
+        assert!(purpose.is_none());
     }
 
     #[test]
@@ -1087,11 +1077,11 @@ type: platform
 ---
 # My Skill
 "#;
-        let (name, desc, domain, skill_type) = parse_frontmatter(content);
+        let (name, desc, purpose) = parse_frontmatter(content);
         assert_eq!(name.as_deref(), Some("my-platform-skill"));
         assert_eq!(desc.as_deref(), Some("A platform skill"));
-        assert_eq!(domain.as_deref(), Some("aws"));
-        assert_eq!(skill_type.as_deref(), Some("platform"));
+        // domain dropped
+        assert_eq!(purpose.as_deref(), Some("platform"));
     }
 
     // --- Optional field parsing tests ---
@@ -1285,11 +1275,10 @@ domain: analytics
 
         let skill = result.unwrap();
         assert_eq!(skill.skill_name, "analytics-skill");
-        assert_eq!(skill.domain.as_deref(), Some("e-commerce"));
         assert_eq!(skill.description.as_deref(), Some("Analytics domain skill"));
         assert!(skill.is_active);
-        // skill_type is always forced to 'skill-builder' on zip upload
-        assert_eq!(skill.skill_type.as_deref(), Some("skill-builder"));
+        // purpose is always forced to 'skill-builder' on zip upload
+        assert_eq!(skill.purpose.as_deref(), Some("skill-builder"));
 
         // Verify files were extracted
         let skill_dir = workspace.path().join(".claude").join("skills").join("analytics-skill");
@@ -1344,7 +1333,7 @@ domain: analytics
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.starts_with("missing_mandatory_fields:"), "got: {}", err);
-        assert!(err.contains("domain"), "should report domain missing");
+        // domain no longer mandatory
         assert!(err.contains("description"), "should report description missing");
     }
 
@@ -1413,15 +1402,11 @@ domain: analytics
         // Insert DB record
         let skill = WorkspaceSkill {
             skill_id: "id1".to_string(),
-            skill_name: "my-skill".to_string(),
-            domain: None,
-            is_active: true,
+            skill_name: "my-skill".to_string(),            is_active: true,
             disk_path: skill_dir.to_string_lossy().to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -1459,15 +1444,11 @@ domain: analytics
         // Insert DB record as inactive
         let skill = WorkspaceSkill {
             skill_id: "id1".to_string(),
-            skill_name: "my-skill".to_string(),
-            domain: None,
-            is_active: false,
+            skill_name: "my-skill".to_string(),            is_active: false,
             disk_path: inactive_path.to_string_lossy().to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -1506,15 +1487,11 @@ domain: analytics
 
         let skill = WorkspaceSkill {
             skill_id: "id1".to_string(),
-            skill_name: "del-skill".to_string(),
-            domain: None,
-            is_active: true,
+            skill_name: "del-skill".to_string(),            is_active: true,
             disk_path: skill_dir.to_string_lossy().to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -1545,15 +1522,11 @@ domain: analytics
 
         let skill = WorkspaceSkill {
             skill_id: "id1".to_string(),
-            skill_name: "del-skill".to_string(),
-            domain: None,
-            is_active: false,
+            skill_name: "del-skill".to_string(),            is_active: false,
             disk_path: inactive_path.to_string_lossy().to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -1642,14 +1615,11 @@ domain: analytics
         let skill = WorkspaceSkill {
             skill_id: "imp-1".to_string(),
             skill_name: "my-analytics".to_string(),
-            domain: Some("analytics".to_string()),
             is_active: true,
             disk_path,
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: Some("Analytics skill for data queries.".to_string()),
-            skill_type: None,
-            version: None,
+            description: Some("Analytics skill for data queries.".to_string()),            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -1714,15 +1684,11 @@ domain: analytics
         // Insert a new active skill (description stored in DB)
         let skill = WorkspaceSkill {
             skill_id: "imp-new".to_string(),
-            skill_name: "new-skill".to_string(),
-            domain: None,
-            is_active: true,
+            skill_name: "new-skill".to_string(),            is_active: true,
             disk_path,
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: Some("New skill description.".to_string()),
-            skill_type: None,
-            version: None,
+            description: Some("New skill description.".to_string()),            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -1766,15 +1732,11 @@ domain: analytics
         // Insert a new active skill (description stored in DB)
         let skill = WorkspaceSkill {
             skill_id: "imp-new".to_string(),
-            skill_name: "new-skill".to_string(),
-            domain: None,
-            is_active: true,
+            skill_name: "new-skill".to_string(),            is_active: true,
             disk_path,
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: Some("New skill description.".to_string()),
-            skill_type: None,
-            version: None,
+            description: Some("New skill description.".to_string()),            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -1825,15 +1787,11 @@ domain: analytics
         // Insert an active skill (description stored in DB, not read from disk at list time)
         let skill = WorkspaceSkill {
             skill_id: "imp-1".to_string(),
-            skill_name: "analytics".to_string(),
-            domain: None,
-            is_active: true,
+            skill_name: "analytics".to_string(),            is_active: true,
             disk_path,
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: Some("Analytics skill description.".to_string()),
-            skill_type: None,
-            version: None,
+            description: Some("Analytics skill description.".to_string()),            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -1879,15 +1837,11 @@ domain: analytics
 
         let skill = WorkspaceSkill {
             skill_id: "bundled-test-id".to_string(),
-            skill_name: "bundled-skill".to_string(),
-            domain: None,
-            is_active: true,
+            skill_name: "bundled-skill".to_string(),            is_active: true,
             disk_path: skill_dir.to_string_lossy().to_string(),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -1921,15 +1875,11 @@ domain: analytics
 
         let skill = WorkspaceSkill {
             skill_id: "regular-test-id".to_string(),
-            skill_name: "regular-skill".to_string(),
-            domain: None,
-            is_active: true,
+            skill_name: "regular-skill".to_string(),            is_active: true,
             disk_path: skill_dir.to_string_lossy().to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -1998,7 +1948,7 @@ domain: analytics
 
         let skill = crate::db::get_workspace_skill_by_name(&conn, "research").unwrap().unwrap();
         assert_eq!(
-            skill.skill_type.as_deref(),
+            skill.purpose.as_deref(),
             Some("skill-builder"),
             "skill_type must be stored so Settings → Skills can find bundled skills"
         );
@@ -2037,7 +1987,8 @@ domain: analytics
         seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
 
         // All three skills should be absent from the DB
-        assert!(crate::db::get_workspace_skill_by_name(&conn, "no-domain").unwrap().is_none());
+        // domain no longer required — skill should be accepted
+        assert!(crate::db::get_workspace_skill_by_name(&conn, "no-domain").unwrap().is_some());
         assert!(crate::db::get_workspace_skill_by_name(&conn, "no-description").unwrap().is_none());
         assert!(crate::db::get_workspace_skill_by_name(&conn, "no-skill-type").unwrap().is_none());
     }
@@ -2051,15 +2002,11 @@ domain: analytics
         // Pre-insert the skill as deactivated (in workspace_skills, since seed reads from there)
         let skill = WorkspaceSkill {
             skill_id: "bundled-test-bundled".to_string(),
-            skill_name: "test-bundled".to_string(),
-            domain: None,
-            is_active: false,
+            skill_name: "test-bundled".to_string(),            is_active: false,
             disk_path: "/old/path".to_string(),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -2173,15 +2120,11 @@ domain: analytics
 
         let skill = WorkspaceSkill {
             skill_id: "bundled-research".to_string(),
-            skill_name: "research".to_string(),
-            domain: None,
-            is_active: true,
+            skill_name: "research".to_string(),            is_active: true,
             disk_path: skills_dir.to_string_lossy().to_string(),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -2244,15 +2187,11 @@ domain: analytics
 
         let skill = WorkspaceSkill {
             skill_id: "bundled-validate-skill".to_string(),
-            skill_name: "validate-skill".to_string(),
-            domain: None,
-            is_active: true,
+            skill_name: "validate-skill".to_string(),            is_active: true,
             disk_path: skills_dir.to_string_lossy().to_string(),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -2329,7 +2268,7 @@ domain: analytics
         let conn = create_test_db();
 
         // Skills master row required for FK-based get/update operations
-        crate::db::upsert_skill(&conn, "upsert-test", "imported", "test", "domain").unwrap();
+        crate::db::upsert_skill(&conn, "upsert-test", "imported", "domain").unwrap();
 
         // Create skill dirs on disk so hydration works
         let skill_tmp = tempdir().unwrap();
@@ -2340,18 +2279,16 @@ domain: analytics
         let skill = ImportedSkill {
             skill_id: "bundled-1".to_string(),
             skill_name: "upsert-test".to_string(),
-            domain: Some("test".to_string()),
             is_active: true,
             disk_path: disk1,
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+            purpose: None,
         };
         crate::db::upsert_imported_skill(&conn, &skill).unwrap();
 
@@ -2365,18 +2302,16 @@ domain: analytics
         let skill2 = ImportedSkill {
             skill_id: "bundled-1".to_string(),
             skill_name: "upsert-test".to_string(),
-            domain: Some("test".to_string()),
             is_active: true,
             disk_path: disk2,
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+            purpose: None,
         };
         crate::db::upsert_imported_skill(&conn, &skill2).unwrap();
 
@@ -2398,15 +2333,11 @@ domain: analytics
         // Insert a workspace skill with no purpose
         let skill = WorkspaceSkill {
             skill_id: "id-purpose-test".to_string(),
-            skill_name: "purpose-skill".to_string(),
-            domain: None,
-            description: None,
+            skill_name: "purpose-skill".to_string(),            description: None,
             is_active: true,
             is_bundled: false,
             disk_path: "/tmp/purpose-skill".to_string(),
-            imported_at: "2025-01-01 00:00:00".to_string(),
-            skill_type: None,
-            version: None,
+            imported_at: "2025-01-01 00:00:00".to_string(),            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -2450,15 +2381,11 @@ domain: analytics
         fs::write(skill_a_dir.join("SKILL.md"), "# Skill A").unwrap();
         let skill_a = WorkspaceSkill {
             skill_id: "id-a".to_string(),
-            skill_name: "skill-a".to_string(),
-            domain: None,
-            description: None,
+            skill_name: "skill-a".to_string(),            description: None,
             is_active: true,
             is_bundled: false,
             disk_path: skill_a_dir.to_string_lossy().to_string(),
-            imported_at: "2025-01-01 00:00:00".to_string(),
-            skill_type: None,
-            version: None,
+            imported_at: "2025-01-01 00:00:00".to_string(),            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -2474,15 +2401,11 @@ domain: analytics
         fs::write(skill_b_inactive.join("SKILL.md"), "# Skill B").unwrap();
         let skill_b = WorkspaceSkill {
             skill_id: "id-b".to_string(),
-            skill_name: "skill-b".to_string(),
-            domain: None,
-            description: None,
+            skill_name: "skill-b".to_string(),            description: None,
             is_active: false,
             is_bundled: false,
             disk_path: skill_b_inactive.to_string_lossy().to_string(),
-            imported_at: "2025-01-01 00:00:00".to_string(),
-            skill_type: None,
-            version: None,
+            imported_at: "2025-01-01 00:00:00".to_string(),            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
