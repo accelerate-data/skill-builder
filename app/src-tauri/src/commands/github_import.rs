@@ -191,14 +191,34 @@ fn parse_github_url_inner(url: &str) -> Result<GitHubRepoInfo, String> {
 }
 
 // ---------------------------------------------------------------------------
+// marketplace_manifest_path
+// ---------------------------------------------------------------------------
+
+/// Returns the repo-relative path to the marketplace manifest for a given subpath.
+///
+/// With subpath:    `plugins/.claude-plugin/marketplace.json`
+/// Without subpath: `.claude-plugin/marketplace.json`
+fn marketplace_manifest_path(subpath: Option<&str>) -> String {
+    match subpath {
+        Some(sp) => format!("{}/.claude-plugin/marketplace.json", sp),
+        None => ".claude-plugin/marketplace.json".to_string(),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // check_marketplace_url
 // ---------------------------------------------------------------------------
 
-/// Verify that a URL points to an accessible GitHub repository.
+/// Verify that a URL points to an accessible GitHub repository that contains
+/// a valid `.claude-plugin/marketplace.json` file.
 ///
 /// Unlike `list_github_skills`, this uses the repos API (`GET /repos/{owner}/{repo}`)
 /// which succeeds regardless of the default branch name. This avoids the 404
 /// that occurs when the repo's default branch is not "main".
+///
+/// After confirming the repo is accessible it fetches
+/// `.claude-plugin/marketplace.json` via `raw.githubusercontent.com` and
+/// returns a clear error if the file is missing or not valid JSON.
 #[tauri::command]
 pub async fn check_marketplace_url(
     db: tauri::State<'_, Db>,
@@ -215,7 +235,55 @@ pub async fn check_marketplace_url(
         settings.github_oauth_token.clone()
     };
     let client = build_github_client(token.as_deref());
-    get_default_branch(&client, &repo_info.owner, &repo_info.repo).await?;
+    let owner = &repo_info.owner;
+    let repo = &repo_info.repo;
+    let resolved_branch = get_default_branch(&client, owner, repo).await?;
+
+    // Verify that .claude-plugin/marketplace.json exists and is valid JSON.
+    // Respect any subpath in the URL (e.g. /tree/main/plugins → plugins/.claude-plugin/marketplace.json).
+    let manifest_path = marketplace_manifest_path(repo_info.subpath.as_deref());
+    let raw_url = format!(
+        "https://raw.githubusercontent.com/{}/{}/{}/{}",
+        owner, repo, resolved_branch, manifest_path
+    );
+    log::info!(
+        "[check_marketplace_url] fetching marketplace.json from {}/{} branch={}",
+        owner, repo, resolved_branch
+    );
+
+    let not_found_msg = format!(
+        "marketplace.json not found at {} in {}/{}. Ensure the repository has this file.",
+        manifest_path, owner, repo
+    );
+
+    let response = client
+        .get(&raw_url)
+        .send()
+        .await
+        .map_err(|e| {
+            log::error!("[check_marketplace_url] failed to fetch marketplace.json for {}/{}: {}", owner, repo, e);
+            format!("Failed to reach {}/{}: {}", owner, repo, e)
+        })?;
+
+    if !response.status().is_success() {
+        log::error!(
+            "[check_marketplace_url] marketplace.json not found for {}/{}: HTTP {}",
+            owner, repo, response.status()
+        );
+        return Err(not_found_msg);
+    }
+
+    let body = response.text().await.map_err(|e| {
+        log::error!("[check_marketplace_url] failed to read marketplace.json body for {}/{}: {}", owner, repo, e);
+        format!("Failed to read marketplace.json: {}", e)
+    })?;
+
+    serde_json::from_str::<MarketplaceJson>(&body).map_err(|e| {
+        log::error!("[check_marketplace_url] marketplace.json is not valid JSON for {}/{}: {}", owner, repo, e);
+        format!("marketplace.json at {} in {}/{} is not valid JSON.", manifest_path, owner, repo)
+    })?;
+
+    log::info!("[check_marketplace_url] marketplace.json validated for {}/{}", owner, repo);
     Ok(())
 }
 
@@ -251,7 +319,7 @@ pub(crate) async fn list_github_skills_inner(
     owner: &str,
     repo: &str,
     branch: &str,
-    _subpath: Option<&str>,
+    subpath: Option<&str>,
     token: Option<&str>,
 ) -> Result<Vec<AvailableSkill>, String> {
     let client = build_github_client(token);
@@ -267,10 +335,12 @@ pub(crate) async fn list_github_skills_inner(
             .unwrap_or_else(|_| branch.to_string())
     };
 
-    // Fetch .claude-plugin/marketplace.json via raw.githubusercontent.com
+    // Fetch .claude-plugin/marketplace.json via raw.githubusercontent.com.
+    // Respect any subpath in the URL (e.g. /tree/main/plugins → plugins/.claude-plugin/marketplace.json).
+    let manifest_path = marketplace_manifest_path(subpath);
     let raw_url = format!(
-        "https://raw.githubusercontent.com/{}/{}/{}/.claude-plugin/marketplace.json",
-        owner, repo, resolved_branch
+        "https://raw.githubusercontent.com/{}/{}/{}/{}",
+        owner, repo, resolved_branch, manifest_path
     );
 
     log::info!(
@@ -288,8 +358,8 @@ pub(crate) async fn list_github_skills_inner(
                 owner, repo, e
             );
             format!(
-                "marketplace.json not found at .claude-plugin/marketplace.json in {}/{}. Ensure the repository has this file.",
-                owner, repo
+                "marketplace.json not found at {} in {}/{}. Ensure the repository has this file.",
+                manifest_path, owner, repo
             )
         })?;
 
@@ -300,8 +370,8 @@ pub(crate) async fn list_github_skills_inner(
             owner, repo, status
         );
         return Err(format!(
-            "marketplace.json not found at .claude-plugin/marketplace.json in {}/{}. Ensure the repository has this file.",
-            owner, repo
+            "marketplace.json not found at {} in {}/{}. Ensure the repository has this file.",
+            manifest_path, owner, repo
         ));
     }
 
@@ -1502,6 +1572,49 @@ mod tests {
         assert_eq!(relative[0], "SKILL.md");
         assert_eq!(relative[1], "references/concepts.md");
         assert_eq!(relative[2], "references/patterns.md");
+    }
+
+    // --- check_marketplace_url JSON validation test ---
+
+    #[test]
+    fn test_check_marketplace_url_json_validation_logic() {
+        use crate::types::MarketplaceJson;
+        // Exercise the serde_json parse step used in check_marketplace_url.
+        // Valid MarketplaceJson (with "plugins" array) must succeed; anything missing
+        // the required schema or non-JSON must produce an error.
+        assert!(serde_json::from_str::<MarketplaceJson>(r#"{"plugins": []}"#).is_ok());
+        // Arbitrary valid JSON missing the "plugins" array must be rejected.
+        assert!(serde_json::from_str::<MarketplaceJson>(r#"{"anything": 123}"#).is_err());
+        assert!(serde_json::from_str::<MarketplaceJson>("Not found").is_err());
+        assert!(serde_json::from_str::<MarketplaceJson>("").is_err());
+    }
+
+    // --- marketplace_manifest_path tests ---
+
+    #[test]
+    fn test_marketplace_manifest_path_no_subpath() {
+        assert_eq!(
+            marketplace_manifest_path(None),
+            ".claude-plugin/marketplace.json"
+        );
+    }
+
+    #[test]
+    fn test_marketplace_manifest_path_single_segment_subpath() {
+        // URL like https://github.com/owner/repo/tree/main/plugins
+        assert_eq!(
+            marketplace_manifest_path(Some("plugins")),
+            "plugins/.claude-plugin/marketplace.json"
+        );
+    }
+
+    #[test]
+    fn test_marketplace_manifest_path_deep_subpath() {
+        // URL like https://github.com/owner/repo/tree/main/packages/analytics
+        assert_eq!(
+            marketplace_manifest_path(Some("packages/analytics")),
+            "packages/analytics/.claude-plugin/marketplace.json"
+        );
     }
 
     // --- Branch resolution tests ---

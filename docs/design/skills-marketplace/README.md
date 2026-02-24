@@ -51,7 +51,9 @@ A marketplace-imported skill is "already completed" — it skips the generation 
 
 ## Registry Model
 
-The marketplace is a GitHub repository — any repo where each subdirectory contains a `SKILL.md`. No catalog file is needed.
+The marketplace is a GitHub repository with a required `.claude-plugin/marketplace.json` catalog file at the repo root. The file must deserialize into the `MarketplaceJson` struct — a JSON object with a `plugins` array. There is no folder-scan fallback: if the file is absent or fails schema validation, the operation returns a clear error.
+
+`check_marketplace_url` (invoked by the "Test" button in Settings) validates both file existence and schema at URL-save time, so bad URLs are caught before any import attempt.
 
 **Configuration**: A single `marketplace_url` setting in Settings → GitHub. Accepts:
 - `owner/repo`
