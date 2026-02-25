@@ -4,12 +4,21 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 pub struct MarketplaceJson {
+    pub name: Option<String>,
+    pub metadata: Option<MarketplaceMetadata>,
     pub plugins: Vec<MarketplacePlugin>,
+}
+
+/// Optional top-level metadata block in `marketplace.json`.
+#[derive(Debug, Deserialize)]
+pub struct MarketplaceMetadata {
+    /// Base path prepended to bare (non-`./`) source values.
+    pub plugin_root: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct MarketplacePlugin {
-    pub name: String,
+    pub name: Option<String>,
     pub source: MarketplacePluginSource,
     pub description: Option<String>,
     pub version: Option<String>,
@@ -40,6 +49,13 @@ pub enum MarketplacePluginSource {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketplaceRegistry {
+    pub name: String,
+    pub source_url: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub anthropic_api_key: Option<String>,
     pub workspace_path: Option<String>,
@@ -67,6 +83,11 @@ pub struct AppSettings {
     pub github_user_email: Option<String>,
     #[serde(default)]
     pub marketplace_url: Option<String>,
+    #[serde(default)]
+    pub marketplace_registries: Vec<MarketplaceRegistry>,
+    /// Set to true after the one-time marketplace registry migration has run.
+    #[serde(default)]
+    pub marketplace_initialized: bool,
     #[serde(default = "default_max_dimensions")]
     pub max_dimensions: u32,
     #[serde(default)]
@@ -98,6 +119,8 @@ impl Default for AppSettings {
             github_user_avatar: None,
             github_user_email: None,
             marketplace_url: None,
+            marketplace_registries: vec![],
+            marketplace_initialized: false,
             max_dimensions: 5,
             industry: None,
             function_role: None,
@@ -328,6 +351,9 @@ pub struct ImportedSkill {
     pub user_invocable: Option<bool>,
     #[serde(default)]
     pub disable_model_invocation: Option<bool>,
+    /// Source registry URL this skill was imported from. NULL for bundled/manually uploaded skills.
+    #[serde(default)]
+    pub marketplace_source_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -345,6 +371,9 @@ pub struct WorkspaceSkill {
     pub argument_hint: Option<String>,
     pub user_invocable: Option<bool>,
     pub disable_model_invocation: Option<bool>,
+    /// Source registry URL this skill was imported from. NULL for bundled/manually uploaded skills.
+    #[serde(default)]
+    pub marketplace_source_url: Option<String>,
 }
 
 impl From<ImportedSkill> for WorkspaceSkill {
@@ -363,6 +392,7 @@ impl From<ImportedSkill> for WorkspaceSkill {
             argument_hint: s.argument_hint,
             user_invocable: s.user_invocable,
             disable_model_invocation: s.disable_model_invocation,
+            marketplace_source_url: s.marketplace_source_url,
         }
     }
 }
@@ -506,6 +536,12 @@ pub struct GitHubRepoInfo {
 pub struct AvailableSkill {
     pub path: String,
     pub name: String,
+    /// Name of the plugin that contains this skill, from `{plugin_path}/.claude-plugin/plugin.json`.
+    /// Present when listing marketplace skills so the UI can display `{plugin_name}:{name}`.
+    /// `None` for root-level plugins whose `plugin.json` is absent or has no `name` field.
+    /// Not stored locally — the skill is always saved under its plain `name`.
+    #[serde(default)]
+    pub plugin_name: Option<String>,
     pub description: Option<String>,
     #[serde(default)]
     pub purpose: Option<String>,
@@ -616,6 +652,8 @@ mod tests {
         assert!(settings.github_user_avatar.is_none());
         assert!(settings.github_user_email.is_none());
         assert!(settings.marketplace_url.is_none());
+        assert!(settings.marketplace_registries.is_empty());
+        assert!(!settings.marketplace_initialized);
         assert!(settings.industry.is_none());
         assert!(settings.function_role.is_none());
         assert!(settings.dashboard_view_mode.is_none());
@@ -638,6 +676,12 @@ mod tests {
             github_user_avatar: Some("https://avatars.githubusercontent.com/u/12345".to_string()),
             github_user_email: Some("test@example.com".to_string()),
             marketplace_url: Some("https://github.com/my-org/skills".to_string()),
+            marketplace_registries: vec![MarketplaceRegistry {
+                name: "Test".to_string(),
+                source_url: "https://github.com/owner/repo".to_string(),
+                enabled: true,
+            }],
+            marketplace_initialized: false,
             max_dimensions: 5,
             industry: Some("Financial Services".to_string()),
             function_role: Some("Analytics Engineer".to_string()),
@@ -666,6 +710,14 @@ mod tests {
             deserialized.marketplace_url.as_deref(),
             Some("https://github.com/my-org/skills")
         );
+        assert_eq!(deserialized.marketplace_registries.len(), 1);
+        assert_eq!(deserialized.marketplace_registries[0].name, "Test");
+        assert_eq!(
+            deserialized.marketplace_registries[0].source_url,
+            "https://github.com/owner/repo"
+        );
+        assert!(deserialized.marketplace_registries[0].enabled);
+        assert!(!deserialized.marketplace_initialized);
         assert_eq!(
             deserialized.industry.as_deref(),
             Some("Financial Services")
@@ -689,6 +741,8 @@ mod tests {
         assert!(settings.github_user_avatar.is_none());
         assert!(settings.github_user_email.is_none());
         assert!(settings.marketplace_url.is_none());
+        assert!(settings.marketplace_registries.is_empty());
+        assert!(!settings.marketplace_initialized);
 
         // Simulates loading settings that still have the old verbose_logging boolean field
         let json_old = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","verbose_logging":true,"extended_context":false,"splash_shown":false}"#;

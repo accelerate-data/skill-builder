@@ -38,11 +38,11 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     await expect(page.getByText("Saved")).toBeVisible();
   });
 
-  test("shows Marketplace URL section in GitHub tab", async ({ page }) => {
-    // Switch to GitHub section
-    await page.getByRole("button", { name: /GitHub/i }).click();
+  test("shows Marketplace Registries section in Marketplace tab", async ({ page }) => {
+    // Switch to Marketplace section
+    await page.getByRole("button", { name: /Marketplace/i }).click();
 
-    // Marketplace URL card should be visible
-    await expect(page.getByText("Marketplace URL")).toBeVisible();
+    // Registries card should be visible
+    await expect(page.getByText("Registries", { exact: true })).toBeVisible();
   });
 });

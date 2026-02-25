@@ -56,7 +56,8 @@ const defaultSettings: AppSettings = {
   github_user_login: null,
   github_user_avatar: null,
   github_user_email: null,
-  marketplace_url: null,
+  marketplace_registries: [],
+  marketplace_initialized: false,
   max_dimensions: 8,
   industry: null,
   function_role: null,
@@ -156,7 +157,7 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(screen.getByText("No skills yet")).toBeInTheDocument();
       expect(
-        screen.getByText("Create your first skill to get started.")
+        screen.getByText(/Create your first skill to get started\./)
       ).toBeInTheDocument();
     });
   });

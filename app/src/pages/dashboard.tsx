@@ -77,13 +77,14 @@ export default function DashboardPage() {
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const navigate = useNavigate()
   const skillsPath = useSettingsStore((s) => s.skillsPath)
-  const marketplaceUrl = useSettingsStore((s) => s.marketplaceUrl)
+  const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
+  const hasEnabledRegistry = marketplaceRegistries.some(r => r.enabled)
   const savedViewMode = useSettingsStore((s) => s.dashboardViewMode) as ViewMode | null
   const [viewMode, setViewMode] = useState<ViewMode>(savedViewMode ?? "grid")
   const viewModeInitialized = useRef(false)
   const lockedSkills = useSkillStore((s) => s.lockedSkills)
   const setLockedSkills = useSkillStore((s) => s.setLockedSkills)
-  const existingSkillNames = skills.map((s) => s.name)
+  const existingSkillNames = useMemo(() => skills.map((s) => s.name), [skills])
 
   const refreshLocks = useCallback(async () => {
     try {
@@ -468,8 +469,8 @@ export default function DashboardPage() {
           <Button
             variant="outline"
             onClick={() => setSkillLibraryMarketplaceOpen(true)}
-            disabled={!marketplaceUrl}
-            title={!marketplaceUrl ? "Configure marketplace URL in Settings → GitHub" : undefined}
+            disabled={!hasEnabledRegistry}
+            title={!hasEnabledRegistry ? "Enable a marketplace registry in Settings → Marketplace" : undefined}
           >
             <Github className="size-4" />
             Marketplace
@@ -685,7 +686,7 @@ export default function DashboardPage() {
         onOpenChange={setSkillLibraryMarketplaceOpen}
         onImported={async () => { await Promise.all([loadSkills(), loadTags()]); }}
         mode="skill-library"
-        url={marketplaceUrl ?? ""}
+        registries={marketplaceRegistries.filter(r => r.enabled)}
         workspacePath={workspacePath}
       />
 

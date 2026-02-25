@@ -18,6 +18,7 @@ const baseSkill: WorkspaceSkill = {
   argument_hint: null,
   user_invocable: null,
   disable_model_invocation: null,
+  marketplace_source_url: null,
 };
 
 describe("WorkspaceSkillCard", () => {

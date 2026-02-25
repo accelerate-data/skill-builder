@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { MarketplaceRegistry } from "@/lib/types";
 
 export interface ModelInfo {
   id: string;
@@ -16,7 +17,8 @@ interface SettingsState {
   githubUserLogin: string | null;
   githubUserAvatar: string | null;
   githubUserEmail: string | null;
-  marketplaceUrl: string | null;
+  marketplaceRegistries: MarketplaceRegistry[];
+  marketplaceInitialized: boolean;
   maxDimensions: number;
   industry: string | null;
   functionRole: string | null;
@@ -41,7 +43,8 @@ const initialState = {
   githubUserLogin: null,
   githubUserAvatar: null,
   githubUserEmail: null,
-  marketplaceUrl: null,
+  marketplaceRegistries: [] as MarketplaceRegistry[],
+  marketplaceInitialized: false,
   maxDimensions: 5,
   industry: null,
   functionRole: null,

@@ -97,7 +97,8 @@ const defaultSettings: AppSettings = {
   github_user_login: null,
   github_user_avatar: null,
   github_user_email: null,
-  marketplace_url: null,
+  marketplace_registries: [],
+  marketplace_initialized: false,
   max_dimensions: 8,
   industry: null,
   function_role: null,
@@ -358,7 +359,7 @@ describe("AppLayout", () => {
   describe("marketplace update toasts", () => {
     const marketplaceSettings = {
       ...defaultSettings,
-      marketplace_url: "https://github.com/owner/skill-marketplace",
+      marketplace_registries: [{ name: "Test", source_url: "https://github.com/owner/skill-marketplace", enabled: true }],
     };
     const repoInfo = { owner: "owner", repo: "skill-marketplace", branch: "main", subpath: null };
 

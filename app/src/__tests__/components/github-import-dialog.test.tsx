@@ -30,6 +30,7 @@ const sampleSkills: AvailableSkill[] = [
   {
     path: "skills/sales-analytics",
     name: "Sales Analytics",
+    plugin_name: null,
     description: "Analyze your sales pipeline",
     purpose: "skill-builder",
     version: null,
@@ -41,6 +42,7 @@ const sampleSkills: AvailableSkill[] = [
   {
     path: "skills/hr-metrics",
     name: "HR Metrics",
+    plugin_name: null,
     description: null,
     purpose: "skill-builder",
     version: null,
@@ -50,6 +52,8 @@ const sampleSkills: AvailableSkill[] = [
     disable_model_invocation: null,
   },
 ];
+
+const DEFAULT_REGISTRIES = [{ name: "Test Registry", source_url: "https://github.com/acme/skills", enabled: true }];
 
 function renderDialog(props: Partial<React.ComponentProps<typeof GitHubImportDialog>> = {}) {
   const onOpenChange = vi.fn();
@@ -62,7 +66,7 @@ function renderDialog(props: Partial<React.ComponentProps<typeof GitHubImportDia
         open={true}
         onOpenChange={onOpenChange}
         onImported={onImported}
-        url="https://github.com/acme/skills"
+        registries={DEFAULT_REGISTRIES}
         {...props}
       />
     ),
@@ -191,9 +195,9 @@ describe("GitHubImportDialog", () => {
 
     it("does not show skills filtered out by typeFilter in skill-library mode", async () => {
       const mixed: AvailableSkill[] = [
-        { path: "skills/a", name: "Skill A", description: null, purpose: "skill-builder", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
-        { path: "skills/b", name: "Skill B", description: null, purpose: "domain", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
-        { path: "skills/c", name: "Skill C", description: null, purpose: null, version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
+        { path: "skills/a", name: "Skill A", plugin_name: null, description: null, purpose: "skill-builder", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
+        { path: "skills/b", name: "Skill B", plugin_name: null, description: null, purpose: "domain", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
+        { path: "skills/c", name: "Skill C", plugin_name: null, description: null, purpose: null, version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
       ];
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
@@ -242,6 +246,7 @@ describe("GitHubImportDialog", () => {
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
+        marketplace_source_url: null,
       };
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
@@ -632,6 +637,7 @@ describe("GitHubImportDialog", () => {
     const availableSkillVersioned: AvailableSkill = {
       path: "skills/my-skill",
       name: "my-skill",
+      plugin_name: null,
       description: "A versioned skill",
       purpose: "domain",
       version: "2.0.0",
@@ -656,6 +662,7 @@ describe("GitHubImportDialog", () => {
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
+        marketplace_source_url: null,
       };
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
@@ -695,6 +702,7 @@ describe("GitHubImportDialog", () => {
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
+        marketplace_source_url: null,
       };
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
@@ -723,6 +731,7 @@ describe("GitHubImportDialog", () => {
     const makeLibrarySkill = (name: string, version: string | null): AvailableSkill => ({
       path: `skills/${name}`,
       name,
+      plugin_name: null,
       description: `${name} description`,
       purpose: "skill-builder",
       version,
@@ -854,6 +863,7 @@ describe("GitHubImportDialog", () => {
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
+        marketplace_source_url: null,
       };
       // Workspace skill 2: another active skill already occupying "research" purpose
       const occupyingWs: WorkspaceSkill = {
@@ -870,6 +880,7 @@ describe("GitHubImportDialog", () => {
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
+        marketplace_source_url: null,
       };
 
       // Available skill with a newer version (triggers "upgrade" state → selectable)
@@ -916,6 +927,117 @@ describe("GitHubImportDialog", () => {
     });
   });
 
+  describe("Dialog layout and scrollability", () => {
+    beforeEach(() => {
+      resetTauriMocks();
+      mockInvokeCommands({
+        parse_github_url: DEFAULT_REPO_INFO,
+        list_github_skills: sampleSkills,
+        get_dashboard_skill_names: [],
+        list_workspace_skills: [],
+        list_skills: [],
+      });
+    });
+
+    it("DialogContent has max-h-[90vh] and overflow-hidden to constrain dialog height", async () => {
+      renderDialog();
+      await waitFor(() => expect(screen.getByText("Sales Analytics")).toBeInTheDocument());
+
+      const content = document.querySelector('[data-slot="dialog-content"]') as HTMLElement;
+      expect(content).not.toBeNull();
+      expect(content.className).toContain("max-h-[90vh]");
+      expect(content.className).toContain("overflow-hidden");
+    });
+
+    it("truncates descriptions longer than 60 characters with ellipsis", async () => {
+      const longDesc = "A".repeat(80);
+      mockInvokeCommands({
+        parse_github_url: DEFAULT_REPO_INFO,
+        list_github_skills: [{
+          ...sampleSkills[0],
+          description: longDesc,
+        }],
+        get_dashboard_skill_names: [],
+        list_workspace_skills: [],
+        list_skills: [],
+      });
+
+      renderDialog();
+      await waitFor(() => expect(screen.getByText("Sales Analytics")).toBeInTheDocument());
+
+      expect(screen.getByText(`${"A".repeat(60)}...`)).toBeInTheDocument();
+      expect(screen.queryByText(longDesc)).not.toBeInTheDocument();
+    });
+
+    it("does not truncate descriptions of 60 characters or fewer", async () => {
+      const shortDesc = "A".repeat(60);
+      mockInvokeCommands({
+        parse_github_url: DEFAULT_REPO_INFO,
+        list_github_skills: [{
+          ...sampleSkills[0],
+          description: shortDesc,
+        }],
+        get_dashboard_skill_names: [],
+        list_workspace_skills: [],
+        list_skills: [],
+      });
+
+      renderDialog();
+      await waitFor(() => expect(screen.getByText(shortDesc)).toBeInTheDocument());
+      expect(screen.queryByText(`${shortDesc}...`)).not.toBeInTheDocument();
+    });
+
+    it("all skills in a long list are present in the DOM (no scroll clipping)", async () => {
+      const manySkills: AvailableSkill[] = Array.from({ length: 20 }, (_, i) => ({
+        path: `skills/skill-${i}`,
+        name: `Skill ${i}`,
+        plugin_name: null,
+        description: `Description for skill ${i}`,
+        purpose: "skill-builder",
+        version: null,
+        model: null,
+        argument_hint: null,
+        user_invocable: null,
+        disable_model_invocation: null,
+        marketplace_source_url: null,
+      }));
+      mockInvokeCommands({
+        parse_github_url: DEFAULT_REPO_INFO,
+        list_github_skills: manySkills,
+        get_dashboard_skill_names: [],
+        list_workspace_skills: [],
+        list_skills: [],
+      });
+
+      renderDialog();
+
+      await waitFor(() => expect(screen.getByText("Skill 0")).toBeInTheDocument());
+      for (let i = 0; i < 20; i++) {
+        expect(screen.getByText(`Skill ${i}`)).toBeInTheDocument();
+      }
+    });
+  });
+
+  describe("Multiple registries", () => {
+    it("renders a tab for each enabled registry", () => {
+      mockInvoke.mockImplementation(() => new Promise(() => {})); // stay loading
+      const multiRegistries = [
+        { name: "Registry A", source_url: "https://github.com/a/skills", enabled: true },
+        { name: "Registry B", source_url: "https://github.com/b/skills", enabled: true },
+      ];
+
+      renderDialog({ registries: multiRegistries });
+
+      expect(screen.getByRole("tab", { name: "Registry A" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "Registry B" })).toBeInTheDocument();
+    });
+
+    it("shows empty-registry message when registries prop is empty", () => {
+      renderDialog({ registries: [] });
+      expect(screen.getByText(/No enabled registries/i)).toBeInTheDocument();
+    });
+  });
+
   describe("Dialog close", () => {
     it("resets state when closed and reopened (new browse on reopen)", async () => {
       const user = userEvent.setup();
@@ -940,7 +1062,7 @@ describe("GitHubImportDialog", () => {
             open={open}
             onOpenChange={setOpen}
             onImported={onImported}
-            url="https://github.com/acme/skills"
+            registries={DEFAULT_REGISTRIES}
             mode="skill-library"
           />
         );

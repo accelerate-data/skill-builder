@@ -56,6 +56,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (26, run_content_hash_migration),
         (27, run_backfill_null_versions_migration),
         (28, run_rename_purpose_drop_domain_migration),
+        (29, run_marketplace_source_url_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -69,6 +70,10 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
     // Idempotent — checks column existence before ALTER TABLE. Guards against dev builds that
     // recorded migration 24 in schema_migrations before the ALTER TABLE statements ran.
     repair_skills_table_schema(&conn).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
+    // Startup repair: ensure marketplace_source_url columns exist regardless of migration state.
+    // Guards against dev builds that recorded migration 29 before the ALTER TABLE statements ran.
+    run_marketplace_source_url_migration(&conn).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     Ok(Db(Mutex::new(conn)))
 }
@@ -2171,8 +2176,8 @@ pub fn insert_imported_skill(
     let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
-             purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+             purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
@@ -2187,6 +2192,7 @@ pub fn insert_imported_skill(
             skill.user_invocable.map(|v| v as i32),
             skill.disable_model_invocation.map(|v| v as i32),
             skill_master_id,
+            skill.marketplace_source_url,
         ],
     )
     .map_err(|e| {
@@ -2210,8 +2216,8 @@ pub fn upsert_imported_skill(
     let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
-             purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+             purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
          ON CONFLICT(skill_name) DO UPDATE SET
              skill_id = excluded.skill_id,
              disk_path = excluded.disk_path,
@@ -2222,7 +2228,8 @@ pub fn upsert_imported_skill(
              argument_hint = excluded.argument_hint,
              user_invocable = excluded.user_invocable,
              disable_model_invocation = excluded.disable_model_invocation,
-             skill_master_id = excluded.skill_master_id",
+             skill_master_id = excluded.skill_master_id,
+             marketplace_source_url = excluded.marketplace_source_url",
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
@@ -2237,6 +2244,7 @@ pub fn upsert_imported_skill(
             skill.user_invocable.map(|v| v as i32),
             skill.disable_model_invocation.map(|v| v as i32),
             skill_master_id,
+            skill.marketplace_source_url,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -2329,7 +2337,7 @@ pub fn get_imported_skill(
     let mut stmt = conn
         .prepare(
             "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
-                    purpose, version, model, argument_hint, user_invocable, disable_model_invocation
+                    purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
              FROM imported_skills WHERE skill_master_id = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -2349,6 +2357,7 @@ pub fn get_imported_skill(
             argument_hint: row.get(9)?,
             user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
             disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+            marketplace_source_url: row.get(12)?,
         })
     });
 
@@ -2367,7 +2376,7 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
     let mut stmt = conn
         .prepare(
             "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
-                    purpose, version, model, argument_hint, user_invocable, disable_model_invocation
+                    purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
              FROM imported_skills
              WHERE is_active = 1
              ORDER BY skill_name",
@@ -2390,6 +2399,7 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
                 argument_hint: row.get(9)?,
                 user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
                 disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+                marketplace_source_url: row.get(12)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -2406,9 +2416,9 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
 
 // --- Workspace Skills (Settings → Skills tab) ---
 
-const WS_COLUMNS: &str = "skill_id, skill_name, description, is_active, is_bundled, disk_path, imported_at, purpose, version, model, argument_hint, user_invocable, disable_model_invocation";
+const WS_COLUMNS: &str = "skill_id, skill_name, description, is_active, is_bundled, disk_path, imported_at, purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url";
 
-fn ws_params(skill: &WorkspaceSkill) -> [rusqlite::types::Value; 13] {
+fn ws_params(skill: &WorkspaceSkill) -> [rusqlite::types::Value; 14] {
     use rusqlite::types::Value;
     [
         Value::Text(skill.skill_id.clone()),
@@ -2424,12 +2434,13 @@ fn ws_params(skill: &WorkspaceSkill) -> [rusqlite::types::Value; 13] {
         skill.argument_hint.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
         skill.user_invocable.map_or(Value::Null, |b| Value::Integer(b as i64)),
         skill.disable_model_invocation.map_or(Value::Null, |b| Value::Integer(b as i64)),
+        skill.marketplace_source_url.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
     ]
 }
 
 pub fn insert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
     conn.execute(
-        &format!("INSERT INTO workspace_skills ({WS_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"),
+        &format!("INSERT INTO workspace_skills ({WS_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)"),
         rusqlite::params_from_iter(ws_params(skill)),
     ).map_err(|e| {
         if e.to_string().contains("UNIQUE") {
@@ -2445,7 +2456,7 @@ pub fn upsert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Resu
     conn.execute(
         &format!(
             "INSERT INTO workspace_skills ({WS_COLUMNS})
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
              ON CONFLICT(skill_name) DO UPDATE SET
                  description = excluded.description,
                  is_bundled = excluded.is_bundled,
@@ -2455,7 +2466,8 @@ pub fn upsert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Resu
                  model = excluded.model,
                  argument_hint = excluded.argument_hint,
                  user_invocable = excluded.user_invocable,
-                 disable_model_invocation = excluded.disable_model_invocation"
+                 disable_model_invocation = excluded.disable_model_invocation,
+                 marketplace_source_url = excluded.marketplace_source_url"
         ),
         rusqlite::params_from_iter(ws_params(skill)),
     ).map_err(|e| format!("upsert_workspace_skill: {}", e))?;
@@ -2467,7 +2479,7 @@ pub fn upsert_bundled_workspace_skill(conn: &Connection, skill: &WorkspaceSkill)
     conn.execute(
         &format!(
             "INSERT INTO workspace_skills ({WS_COLUMNS})
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
              ON CONFLICT(skill_name) DO UPDATE SET
                  description = excluded.description,
                  is_bundled = 1,
@@ -2478,6 +2490,7 @@ pub fn upsert_bundled_workspace_skill(conn: &Connection, skill: &WorkspaceSkill)
                  argument_hint = excluded.argument_hint,
                  user_invocable = excluded.user_invocable,
                  disable_model_invocation = excluded.disable_model_invocation
+                 -- marketplace_source_url intentionally NOT updated: bundled skills always have NULL
                  -- is_active intentionally NOT updated: preserves user's deactivation"
         ),
         rusqlite::params_from_iter(ws_params(skill)),
@@ -2504,6 +2517,7 @@ fn row_to_workspace_skill(row: &rusqlite::Row) -> rusqlite::Result<WorkspaceSkil
         argument_hint: row.get(10)?,
         user_invocable: user_invocable.map(|v| v != 0),
         disable_model_invocation: disable_model_invocation.map(|v| v != 0),
+        marketplace_source_url: row.get(13)?,
     })
 }
 
@@ -2573,6 +2587,21 @@ pub fn get_workspace_skill_by_name(conn: &Connection, skill_name: &str) -> Resul
     }
 }
 
+/// Look up a workspace skill by name and source registry URL.
+/// Returns only skills that were imported from the specified registry (marketplace_source_url = source_url).
+/// Used to avoid false-positive update notifications for bundled skills sharing a name with marketplace skills.
+pub fn get_workspace_skill_by_name_and_source(conn: &Connection, skill_name: &str, source_url: &str) -> Result<Option<WorkspaceSkill>, String> {
+    let mut stmt = conn.prepare(
+        &format!("SELECT {WS_COLUMNS} FROM workspace_skills WHERE skill_name = ?1 AND marketplace_source_url = ?2")
+    ).map_err(|e| format!("get_workspace_skill_by_name_and_source: {}", e))?;
+    let mut rows = stmt.query_map(rusqlite::params![skill_name, source_url], row_to_workspace_skill)
+        .map_err(|e| format!("get_workspace_skill_by_name_and_source query: {}", e))?;
+    match rows.next() {
+        Some(row) => Ok(Some(row.map_err(|e| format!("get_workspace_skill_by_name_and_source row: {}", e))?)),
+        None => Ok(None),
+    }
+}
+
 /// Look up an active workspace skill by its purpose tag.
 /// Returns the first active skill with the given purpose, or None if not found.
 pub fn get_workspace_skill_by_purpose(
@@ -2632,6 +2661,45 @@ pub fn get_imported_skill_hash_info(conn: &Connection, skill_name: &str) -> Resu
     match rows.next() {
         Some(row) => Ok(Some(row.map_err(|e| format!("get_imported_skill_hash_info row: {}", e))?)),
         None => Ok(None),
+    }
+}
+
+/// Look up an imported (library) skill by name and source registry URL.
+/// Returns only skills that were imported from the specified registry (marketplace_source_url = source_url).
+/// Used to avoid false-positive update notifications for bundled skills sharing a name with marketplace skills.
+pub fn get_imported_skill_by_name_and_source(conn: &Connection, skill_name: &str, source_url: &str) -> Result<Option<ImportedSkill>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+                purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
+         FROM imported_skills WHERE skill_name = ?1 AND marketplace_source_url = ?2"
+    ).map_err(|e| format!("get_imported_skill_by_name_and_source: {}", e))?;
+
+    let result = stmt.query_row(rusqlite::params![skill_name, source_url], |row| {
+        Ok(ImportedSkill {
+            skill_id: row.get(0)?,
+            skill_name: row.get(1)?,
+            is_active: row.get::<_, i32>(2)? != 0,
+            disk_path: row.get(3)?,
+            imported_at: row.get(4)?,
+            is_bundled: row.get::<_, i32>(5)? != 0,
+            description: None,
+            purpose: row.get(6)?,
+            version: row.get(7)?,
+            model: row.get(8)?,
+            argument_hint: row.get(9)?,
+            user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
+            disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+            marketplace_source_url: row.get(12)?,
+        })
+    });
+
+    match result {
+        Ok(mut skill) => {
+            hydrate_skill_metadata(&mut skill);
+            Ok(Some(skill))
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("get_imported_skill_by_name_and_source: {}", e)),
     }
 }
 
@@ -3133,6 +3201,32 @@ fn run_rename_purpose_drop_domain_migration(conn: &Connection) -> Result<(), rus
     Ok(())
 }
 
+/// Migration 29: Add `marketplace_source_url TEXT` to workspace_skills and imported_skills.
+/// This column tracks which registry a skill was imported from (NULL for bundled/manually uploaded).
+fn run_marketplace_source_url_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let check_col = |table: &str, col: &str| -> bool {
+        conn.prepare(&format!("PRAGMA table_info({})", table))
+            .and_then(|mut stmt| {
+                stmt.query_map([], |r| r.get::<_, String>(1))
+                    .map(|rows| rows.filter_map(|r| r.ok()).any(|n| n == col))
+            })
+            .unwrap_or(false)
+    };
+    let mut altered = false;
+    if !check_col("workspace_skills", "marketplace_source_url") {
+        conn.execute_batch("ALTER TABLE workspace_skills ADD COLUMN marketplace_source_url TEXT;")?;
+        altered = true;
+    }
+    if !check_col("imported_skills", "marketplace_source_url") {
+        conn.execute_batch("ALTER TABLE imported_skills ADD COLUMN marketplace_source_url TEXT;")?;
+        altered = true;
+    }
+    if altered {
+        log::info!("migration 29: added marketplace_source_url to workspace_skills and imported_skills");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3166,6 +3260,7 @@ mod tests {
         run_content_hash_migration(&conn).unwrap();
         run_backfill_null_versions_migration(&conn).unwrap();
         run_rename_purpose_drop_domain_migration(&conn).unwrap();
+        run_marketplace_source_url_migration(&conn).unwrap();
         conn
     }
 
@@ -3195,6 +3290,8 @@ mod tests {
             github_user_avatar: None,
             github_user_email: None,
             marketplace_url: None,
+            marketplace_registries: vec![],
+            marketplace_initialized: false,
             max_dimensions: 5,
             industry: None,
             function_role: None,
@@ -3229,6 +3326,8 @@ mod tests {
             github_user_avatar: None,
             github_user_email: None,
             marketplace_url: None,
+            marketplace_registries: vec![],
+            marketplace_initialized: false,
             max_dimensions: 5,
             industry: None,
             function_role: None,
@@ -3259,6 +3358,8 @@ mod tests {
             github_user_avatar: None,
             github_user_email: None,
             marketplace_url: None,
+            marketplace_registries: vec![],
+            marketplace_initialized: false,
             max_dimensions: 5,
             industry: None,
             function_role: None,
@@ -3282,6 +3383,8 @@ mod tests {
             github_user_avatar: None,
             github_user_email: None,
             marketplace_url: None,
+            marketplace_registries: vec![],
+            marketplace_initialized: false,
             max_dimensions: 5,
             industry: None,
             function_role: None,
@@ -4802,6 +4905,7 @@ mod tests {
             user_invocable: None,
             disable_model_invocation: None,
             purpose: None,
+            marketplace_source_url: None,
         };
         insert_imported_skill(&conn, &skill1).unwrap();
 
@@ -4818,6 +4922,7 @@ mod tests {
             user_invocable: None,
             disable_model_invocation: None,
             purpose: None,
+            marketplace_source_url: None,
         };
         insert_imported_skill(&conn, &skill2).unwrap();
 
@@ -4834,6 +4939,7 @@ mod tests {
             user_invocable: None,
             disable_model_invocation: None,
             purpose: None,
+            marketplace_source_url: None,
         };
         insert_imported_skill(&conn, &skill3).unwrap();
 
@@ -4865,6 +4971,7 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+            marketplace_source_url: None,
         };
         insert_imported_skill(&conn, &skill).unwrap();
 
@@ -5224,6 +5331,7 @@ mod tests {
             user_invocable: None,
             disable_model_invocation: None,
             purpose: None,
+            marketplace_source_url: None,
         };
 
         // Insert the workspace skill.
@@ -5265,6 +5373,7 @@ mod tests {
             user_invocable: None,
             disable_model_invocation: None,
             purpose: purpose.map(|s| s.to_string()),
+            marketplace_source_url: None,
         }
     }
 

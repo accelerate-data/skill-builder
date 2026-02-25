@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult, SkillMetadataOverride, SkillUpdateInfo } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult, SkillMetadataOverride, SkillUpdateInfo } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo } from "@/lib/types";
 
 export interface WorkspaceSkillImportRequest {
   path: string;
@@ -373,30 +373,32 @@ export const listWorkspaceSkills = () =>
 export const parseGitHubUrl = (url: string) =>
   invoke<GitHubRepoInfo>("parse_github_url", { url });
 
+/** Validates the URL and returns the registry name from marketplace.json. */
 export const checkMarketplaceUrl = (url: string) =>
-  invoke<void>("check_marketplace_url", { url });
+  invoke<string>("check_marketplace_url", { url });
 
 export const listGitHubSkills = (owner: string, repo: string, branch: string, subpath?: string) =>
   invoke<AvailableSkill[]>("list_github_skills", { owner, repo, branch, subpath: subpath ?? null });
 
-export const importGitHubSkills = (owner: string, repo: string, branch: string, skillRequests: WorkspaceSkillImportRequest[]) =>
-  invoke<ImportedSkill[]>("import_github_skills", { owner, repo, branch, skillRequests });
+export const importGitHubSkills = (owner: string, repo: string, branch: string, skillRequests: WorkspaceSkillImportRequest[], sourceUrl?: string | null) =>
+  invoke<ImportedSkill[]>("import_github_skills", { owner, repo, branch, skillRequests, sourceUrl: sourceUrl ?? null });
 
 export const setWorkspaceSkillPurpose = (skillId: string, purpose: string | null) =>
   invoke<void>("set_workspace_skill_purpose", { skillId, purpose });
 
 // --- Marketplace Import ---
 
-export const importMarketplaceToLibrary = (skillPaths: string[], metadataOverrides?: Record<string, SkillMetadataOverride>) =>
-  invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { skillPaths, metadataOverrides: metadataOverrides ?? null })
+export const importMarketplaceToLibrary = (skillPaths: string[], sourceUrl: string, metadataOverrides?: Record<string, SkillMetadataOverride>) =>
+  invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { sourceUrl, skillPaths, metadataOverrides: metadataOverrides ?? null })
 
 export const checkMarketplaceUpdates = (
   owner: string,
   repo: string,
   branch: string,
-  subpath?: string,
-): Promise<{ library: SkillUpdateInfo[]; workspace: SkillUpdateInfo[] }> =>
-  invoke<{ library: SkillUpdateInfo[]; workspace: SkillUpdateInfo[] }>("check_marketplace_updates", { owner, repo, branch, subpath: subpath ?? null })
+  subpath: string | undefined,
+  sourceUrl: string,
+): Promise<MarketplaceUpdateResult> =>
+  invoke<MarketplaceUpdateResult>("check_marketplace_updates", { owner, repo, branch, subpath: subpath ?? null, sourceUrl })
 
 export const checkSkillCustomized = (skillName: string): Promise<boolean> =>
   invoke<boolean>("check_skill_customized", { skillName })

@@ -3183,6 +3183,7 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -3213,6 +3214,7 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -3251,6 +3253,7 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+            marketplace_source_url: None,
         };
         let imported = crate::types::WorkspaceSkill {
             skill_id: "imp-data-analytics-123".to_string(),
@@ -3266,6 +3269,7 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &bundled).unwrap();
         crate::db::insert_workspace_skill(&conn, &imported).unwrap();
@@ -3316,6 +3320,7 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 

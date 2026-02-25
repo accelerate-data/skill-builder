@@ -68,7 +68,8 @@ const defaultSettings: AppSettings = {
   github_user_login: null,
   github_user_avatar: null,
   github_user_email: null,
-  marketplace_url: null,
+  marketplace_registries: [],
+  marketplace_initialized: false,
   max_dimensions: 8,
   industry: null,
   function_role: null,
@@ -89,7 +90,8 @@ const populatedSettings: AppSettings = {
   github_user_login: null,
   github_user_avatar: null,
   github_user_email: null,
-  marketplace_url: null,
+  marketplace_registries: [],
+  marketplace_initialized: false,
   max_dimensions: 8,
   industry: null,
   function_role: null,
@@ -140,7 +142,7 @@ describe("SettingsPage", () => {
     expect(mockNavigate).toHaveBeenCalledWith({ to: "/" });
   });
 
-  it("renders all 5 sections in left nav", async () => {
+  it("renders all 6 sections in left nav", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
@@ -152,6 +154,7 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("button", { name: /Skill Building/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Skills$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /GitHub/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Marketplace/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Advanced/i })).toBeInTheDocument();
   });
 

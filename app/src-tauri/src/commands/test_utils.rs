@@ -98,7 +98,8 @@ pub fn create_test_db() -> rusqlite::Connection {
             user_invocable INTEGER,
             disable_model_invocation INTEGER,
             skill_master_id INTEGER REFERENCES skills(id),
-            content_hash TEXT
+            content_hash TEXT,
+            marketplace_source_url TEXT
         );
         CREATE TABLE IF NOT EXISTS workspace_skills (
             skill_id     TEXT PRIMARY KEY,
@@ -115,7 +116,8 @@ pub fn create_test_db() -> rusqlite::Connection {
             user_invocable INTEGER,
             disable_model_invocation INTEGER,
             skill_master_id INTEGER REFERENCES skills(id),
-            content_hash TEXT
+            content_hash TEXT,
+            marketplace_source_url TEXT
         );
         CREATE TABLE IF NOT EXISTS skill_locks (
             skill_name TEXT PRIMARY KEY,

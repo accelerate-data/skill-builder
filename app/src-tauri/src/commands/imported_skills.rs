@@ -24,7 +24,6 @@ pub(crate) fn validate_skill_name(name: &str) -> Result<(), String> {
 pub(crate) struct Frontmatter {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub purpose: Option<String>,
     pub version: Option<String>,
     pub model: Option<String>,
     pub argument_hint: Option<String>,
@@ -33,14 +32,14 @@ pub(crate) struct Frontmatter {
 }
 
 /// Parse YAML frontmatter from SKILL.md content.
-/// Extracts `name`, `description`, `domain`, and `skill_type` fields from YAML between `---` markers.
+/// Extracts `name` and `description` fields from YAML between `---` markers.
 /// Multi-line YAML values (using `>` folded scalar) are joined into a single line.
 #[allow(dead_code)]
 pub(crate) fn parse_frontmatter(
     content: &str,
-) -> (Option<String>, Option<String>, Option<String>) {
+) -> (Option<String>, Option<String>) {
     let fm = parse_frontmatter_full(content);
-    (fm.name, fm.description, fm.purpose)
+    (fm.name, fm.description)
 }
 
 /// Parse YAML frontmatter returning all fields.
@@ -61,7 +60,6 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
 
     let mut name = None;
     let mut description = None;
-    let mut skill_type = None;
     let mut version = None;
     let mut model = None;
     let mut argument_hint = None;
@@ -103,10 +101,6 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
             } else {
                 description = Some(val.trim_matches('"').trim_matches('\'').to_string());
             }
-        } else if trimmed_line.starts_with("domain:") {
-            // domain: is read from YAML but no longer stored — ignored for backward compat
-        } else if let Some(val) = trimmed_line.strip_prefix("type:") {
-            skill_type = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
         } else if let Some(val) = trimmed_line.strip_prefix("version:") {
             version = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
         } else if let Some(val) = trimmed_line.strip_prefix("model:") {
@@ -120,6 +114,7 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
             let v = val.trim().to_lowercase();
             disable_model_invocation = Some(v == "true" || v == "yes" || v == "1");
         }
+        // All other keys (domain:, type:, purpose:, tools:, trigger:, etc.) are silently ignored.
     }
 
     // Flush any trailing multi-line value
@@ -138,7 +133,6 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
     Frontmatter {
         name: trim_opt(name),
         description: trim_opt(description),
-        purpose: trim_opt(skill_type),
         version: trim_opt(version),
         model: trim_opt(model),
         argument_hint: trim_opt(argument_hint),
@@ -330,6 +324,7 @@ fn upload_skill_inner(
         argument_hint: fm.argument_hint,
         user_invocable: fm.user_invocable,
         disable_model_invocation: fm.disable_model_invocation,
+        marketplace_source_url: None,
     };
 
     // Insert into workspace_skills DB
@@ -574,6 +569,21 @@ fn toggle_skill_active_inner(
             return Err(format!("Failed to create destination directory: {}", e));
         }
 
+        // If dst already exists (disk/DB desync: skill is in both places), remove the stale
+        // destination before renaming so we don't hit ENOTEMPTY on macOS/Linux.
+        if dst.exists() {
+            log::warn!(
+                "[toggle_skill_active] destination already exists, removing stale copy: {}",
+                dst.display()
+            );
+            if let Err(e) = fs::remove_dir_all(dst) {
+                let _ = crate::db::update_workspace_skill_active(
+                    conn, skill_id, !active, &old_disk_path,
+                );
+                return Err(format!("Failed to clear stale destination for '{}': {}", skill_name, e));
+            }
+        }
+
         if let Err(move_err) = fs::rename(src, dst) {
             // Revert the DB update
             let _ = crate::db::update_workspace_skill_active(
@@ -586,6 +596,13 @@ fn toggle_skill_active_inner(
                 move_err
             ));
         }
+    } else if active && dst.exists() {
+        // Skill is already at the active path but DB thought it was inactive — disk/DB desync.
+        // DB was already updated above; nothing to move.
+        log::warn!(
+            "[toggle_skill_active] activating '{}': src not found but dst exists, DB updated only",
+            skill_name
+        );
     }
 
     Ok(())
@@ -821,9 +838,7 @@ pub(crate) fn seed_bundled_skills(
 
         // Validate required frontmatter fields; skip and error-log if any are missing
         let mut missing_required: Vec<&str> = Vec::new();
-        if fm.purpose.is_none() { missing_required.push("domain"); }
         if fm.description.is_none() { missing_required.push("description"); }
-        if fm.purpose.is_none() { missing_required.push("skill_type"); }
         if !missing_required.is_empty() {
             log::error!(
                 "seed_bundled_skills: skipping '{}' — missing required frontmatter fields: {}",
@@ -879,7 +894,8 @@ pub(crate) fn seed_bundled_skills(
             argument_hint: fm.argument_hint,
             user_invocable: fm.user_invocable,
             disable_model_invocation: fm.disable_model_invocation,
-            purpose: fm.purpose,
+            purpose: None,
+            marketplace_source_url: None,
         };
 
         crate::db::upsert_bundled_workspace_skill(conn, &skill)?;
@@ -936,6 +952,7 @@ mod tests {
             user_invocable: None,
             disable_model_invocation: None,
             purpose: None,
+            marketplace_source_url: None,
         }
     }
 
@@ -1019,16 +1036,13 @@ mod tests {
         let content = r#"---
 name: my-skill
 description: A great skill for analytics
-domain: e-commerce
 ---
 
 # My Skill
 "#;
-        let (name, desc, purpose) = parse_frontmatter(content);
+        let (name, desc) = parse_frontmatter(content);
         assert_eq!(name.as_deref(), Some("my-skill"));
         assert_eq!(desc.as_deref(), Some("A great skill for analytics"));
-        // domain dropped
-        assert!(purpose.is_none());
     }
 
     #[test]
@@ -1038,7 +1052,7 @@ name: "quoted-name"
 description: 'single quoted'
 ---
 "#;
-        let (name, desc, _) = parse_frontmatter(content);
+        let (name, desc) = parse_frontmatter(content);
         assert_eq!(name.as_deref(), Some("quoted-name"));
         assert_eq!(desc.as_deref(), Some("single quoted"));
     }
@@ -1046,11 +1060,9 @@ description: 'single quoted'
     #[test]
     fn test_parse_frontmatter_no_frontmatter() {
         let content = "# Just a heading\nSome content";
-        let (name, desc, purpose) = parse_frontmatter(content);
+        let (name, desc) = parse_frontmatter(content);
         assert!(name.is_none());
         assert!(desc.is_none());
-        assert!(purpose.is_none());
-        assert!(purpose.is_none());
     }
 
     #[test]
@@ -1060,28 +1072,28 @@ name: only-name
 ---
 # Content
 "#;
-        let (name, desc, purpose) = parse_frontmatter(content);
+        let (name, desc) = parse_frontmatter(content);
         assert_eq!(name.as_deref(), Some("only-name"));
         assert!(desc.is_none());
-        assert!(purpose.is_none());
-        assert!(purpose.is_none());
     }
 
     #[test]
-    fn test_parse_frontmatter_with_type() {
+    fn test_parse_frontmatter_unknown_keys_ignored() {
+        // domain:, type:, purpose:, tools:, trigger: and any other unknown keys are silently ignored.
         let content = r#"---
 name: my-platform-skill
 description: A platform skill
 domain: aws
 type: platform
+purpose: skill-builder
+tools: Read, Write
+trigger: some trigger text
 ---
 # My Skill
 "#;
-        let (name, desc, purpose) = parse_frontmatter(content);
+        let (name, desc) = parse_frontmatter(content);
         assert_eq!(name.as_deref(), Some("my-platform-skill"));
         assert_eq!(desc.as_deref(), Some("A platform skill"));
-        // domain dropped
-        assert_eq!(purpose.as_deref(), Some("platform"));
     }
 
     // --- Optional field parsing tests ---
@@ -1091,7 +1103,6 @@ type: platform
         let content = r#"---
 name: my-skill
 description: A skill
-domain: analytics
 version: 1.2.3
 model: claude-opus-4-5
 argument-hint: <topic>
@@ -1113,7 +1124,6 @@ disable-model-invocation: false
         let content = r#"---
 name: my-skill
 description: A skill
-domain: analytics
 ---
 # My Skill
 "#;
@@ -1128,17 +1138,17 @@ domain: analytics
     #[test]
     fn test_parse_frontmatter_boolean_coercion_true_values() {
         // "true", "yes", "1" all coerce to true
-        let content_true = "---\nname: s\ndescription: d\ndomain: d\nuser-invocable: true\ndisable-model-invocation: true\n---\n";
+        let content_true = "---\nname: s\ndescription: d\nuser-invocable: true\ndisable-model-invocation: true\n---\n";
         let fm = parse_frontmatter_full(content_true);
         assert_eq!(fm.user_invocable, Some(true));
         assert_eq!(fm.disable_model_invocation, Some(true));
 
-        let content_yes = "---\nname: s\ndescription: d\ndomain: d\nuser-invocable: yes\ndisable-model-invocation: yes\n---\n";
+        let content_yes = "---\nname: s\ndescription: d\nuser-invocable: yes\ndisable-model-invocation: yes\n---\n";
         let fm = parse_frontmatter_full(content_yes);
         assert_eq!(fm.user_invocable, Some(true));
         assert_eq!(fm.disable_model_invocation, Some(true));
 
-        let content_one = "---\nname: s\ndescription: d\ndomain: d\nuser-invocable: 1\ndisable-model-invocation: 1\n---\n";
+        let content_one = "---\nname: s\ndescription: d\nuser-invocable: 1\ndisable-model-invocation: 1\n---\n";
         let fm = parse_frontmatter_full(content_one);
         assert_eq!(fm.user_invocable, Some(true));
         assert_eq!(fm.disable_model_invocation, Some(true));
@@ -1147,17 +1157,17 @@ domain: analytics
     #[test]
     fn test_parse_frontmatter_boolean_coercion_false_values() {
         // "false", "no", "0", and any other value coerce to false
-        let content_false = "---\nname: s\ndescription: d\ndomain: d\nuser-invocable: false\ndisable-model-invocation: false\n---\n";
+        let content_false = "---\nname: s\ndescription: d\nuser-invocable: false\ndisable-model-invocation: false\n---\n";
         let fm = parse_frontmatter_full(content_false);
         assert_eq!(fm.user_invocable, Some(false));
         assert_eq!(fm.disable_model_invocation, Some(false));
 
-        let content_no = "---\nname: s\ndescription: d\ndomain: d\nuser-invocable: no\ndisable-model-invocation: no\n---\n";
+        let content_no = "---\nname: s\ndescription: d\nuser-invocable: no\ndisable-model-invocation: no\n---\n";
         let fm = parse_frontmatter_full(content_no);
         assert_eq!(fm.user_invocable, Some(false));
         assert_eq!(fm.disable_model_invocation, Some(false));
 
-        let content_zero = "---\nname: s\ndescription: d\ndomain: d\nuser-invocable: 0\ndisable-model-invocation: 0\n---\n";
+        let content_zero = "---\nname: s\ndescription: d\nuser-invocable: 0\ndisable-model-invocation: 0\n---\n";
         let fm = parse_frontmatter_full(content_zero);
         assert_eq!(fm.user_invocable, Some(false));
         assert_eq!(fm.disable_model_invocation, Some(false));
@@ -1166,14 +1176,14 @@ domain: analytics
     #[test]
     fn test_parse_frontmatter_argument_hint_with_angle_brackets() {
         // argument-hint often contains angle-bracket placeholders like "<topic>"
-        let content = "---\nname: s\ndescription: d\ndomain: d\nargument-hint: <keyword>\n---\n";
+        let content = "---\nname: s\ndescription: d\nargument-hint: <keyword>\n---\n";
         let fm = parse_frontmatter_full(content);
         assert_eq!(fm.argument_hint.as_deref(), Some("<keyword>"));
     }
 
     #[test]
     fn test_parse_frontmatter_argument_hint_quoted() {
-        let content = "---\nname: s\ndescription: d\ndomain: d\nargument-hint: \"my hint\"\n---\n";
+        let content = "---\nname: s\ndescription: d\nargument-hint: \"my hint\"\n---\n";
         let fm = parse_frontmatter_full(content);
         assert_eq!(fm.argument_hint.as_deref(), Some("my hint"));
     }
@@ -1262,7 +1272,7 @@ domain: analytics
         let workspace_path = workspace.path().to_str().unwrap();
 
         let zip_file = create_test_zip(&[
-            ("SKILL.md", "---\nname: analytics-skill\ndescription: Analytics domain skill\ndomain: e-commerce\n---\n# Analytics Skill"),
+            ("SKILL.md", "---\nname: analytics-skill\ndescription: Analytics domain skill\n---\n# Analytics Skill"),
             ("references/concepts.md", "# Concepts"),
         ]);
 
@@ -1344,7 +1354,7 @@ domain: analytics
         let workspace_path = workspace.path().to_str().unwrap();
 
         let zip_file = create_test_zip(&[
-            ("nested-skill/SKILL.md", "---\nname: nested-test\ndomain: analytics\ndescription: A nested test skill\n---\n# Nested"),
+            ("nested-skill/SKILL.md", "---\nname: nested-test\ndescription: A nested test skill\n---\n# Nested"),
             ("nested-skill/references/data.md", "# Data"),
         ]);
 
@@ -1370,7 +1380,7 @@ domain: analytics
         let workspace_path = workspace.path().to_str().unwrap();
 
         let zip_file = create_test_zip(&[
-            ("SKILL.md", "---\nname: dup-skill\ndomain: analytics\ndescription: A duplicate skill\n---\n# Dup"),
+            ("SKILL.md", "---\nname: dup-skill\ndescription: A duplicate skill\n---\n# Dup"),
         ]);
 
         // First upload succeeds
@@ -1378,7 +1388,7 @@ domain: analytics
 
         // Second upload with same name should fail
         let zip_file2 = create_test_zip(&[
-            ("SKILL.md", "---\nname: dup-skill\ndomain: analytics\ndescription: A duplicate skill\n---\n# Dup 2"),
+            ("SKILL.md", "---\nname: dup-skill\ndescription: A duplicate skill\n---\n# Dup 2"),
         ]);
         let result = upload_skill_inner(zip_file2.path().to_str().unwrap(), workspace_path, &conn);
         assert!(result.is_err());
@@ -1412,6 +1422,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
         purpose: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1454,6 +1465,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
         purpose: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1497,6 +1509,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
         purpose: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1532,6 +1545,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
         purpose: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1625,6 +1639,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
         purpose: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1694,6 +1709,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
         purpose: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1742,6 +1758,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
         purpose: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1797,6 +1814,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
         purpose: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1847,6 +1865,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
         purpose: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1885,6 +1904,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
         purpose: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1907,7 +1927,7 @@ domain: analytics
         fs::create_dir_all(skill_src.join("references")).unwrap();
         fs::write(
             skill_src.join("SKILL.md"),
-            "---\nname: test-bundled\ndescription: A test bundled skill\ndomain: testing\ntype: skill-builder\n---\n# Test",
+            "---\nname: test-bundled\ndescription: A test bundled skill\n---\n# Test",
         ).unwrap();
         fs::write(skill_src.join("references").join("ref.md"), "# Ref").unwrap();
 
@@ -1929,9 +1949,8 @@ domain: analytics
     }
 
     #[test]
-    fn test_seed_bundled_skills_stores_skill_type() {
-        // Regression test for VD-858: skill_type was omitted from upsert_imported_skill INSERT,
-        // causing bundled skills to land with skill_type = NULL and never appear in Settings → Skills.
+    fn test_seed_bundled_skills_purpose_is_null() {
+        // purpose is a DB-only field set by the user after import; seeding always inserts NULL.
         let conn = create_test_db();
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
@@ -1941,56 +1960,43 @@ domain: analytics
         fs::create_dir_all(&skill_src).unwrap();
         fs::write(
             skill_src.join("SKILL.md"),
-            "---\nname: research\ndescription: Research skill\ndomain: Skill Builder\ntype: skill-builder\n---\n# Research",
+            "---\nname: research\ndescription: Research skill\n---\n# Research",
         ).unwrap();
 
         seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
 
         let skill = crate::db::get_workspace_skill_by_name(&conn, "research").unwrap().unwrap();
-        assert_eq!(
-            skill.purpose.as_deref(),
-            Some("skill-builder"),
-            "skill_type must be stored so Settings → Skills can find bundled skills"
-        );
+        assert!(skill.purpose.is_none(), "purpose must be NULL after seeding — it is set by the user via the UI");
     }
 
     #[test]
     fn test_seed_bundled_skills_skips_missing_required_fields() {
-        // Skills missing domain, description, or skill_type must be skipped (not inserted).
+        // Only description is required; name must also be present (enforced earlier).
+        // domain, type, purpose, and other unknown keys are silently ignored.
         let conn = create_test_db();
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
 
         let bundled_dir = tempdir().unwrap();
 
-        // Missing domain
-        let no_domain = bundled_dir.path().join("no-domain");
-        fs::create_dir_all(&no_domain).unwrap();
-        fs::write(no_domain.join("SKILL.md"),
-            "---\nname: no-domain\ndescription: A skill\ntype: skill-builder\n---\n# No Domain",
+        // Has all required fields — accepted
+        let ok_skill = bundled_dir.path().join("ok-skill");
+        fs::create_dir_all(&ok_skill).unwrap();
+        fs::write(ok_skill.join("SKILL.md"),
+            "---\nname: ok-skill\ndescription: A skill\n---\n# OK",
         ).unwrap();
 
-        // Missing description
+        // Missing description — rejected
         let no_desc = bundled_dir.path().join("no-description");
         fs::create_dir_all(&no_desc).unwrap();
         fs::write(no_desc.join("SKILL.md"),
-            "---\nname: no-description\ndomain: testing\ntype: skill-builder\n---\n# No Desc",
-        ).unwrap();
-
-        // Missing skill_type
-        let no_type = bundled_dir.path().join("no-skill-type");
-        fs::create_dir_all(&no_type).unwrap();
-        fs::write(no_type.join("SKILL.md"),
-            "---\nname: no-skill-type\ndescription: A skill\ndomain: testing\n---\n# No Type",
+            "---\nname: no-description\n---\n# No Desc",
         ).unwrap();
 
         seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
 
-        // All three skills should be absent from the DB
-        // domain no longer required — skill should be accepted
-        assert!(crate::db::get_workspace_skill_by_name(&conn, "no-domain").unwrap().is_some());
+        assert!(crate::db::get_workspace_skill_by_name(&conn, "ok-skill").unwrap().is_some());
         assert!(crate::db::get_workspace_skill_by_name(&conn, "no-description").unwrap().is_none());
-        assert!(crate::db::get_workspace_skill_by_name(&conn, "no-skill-type").unwrap().is_none());
     }
 
     #[test]
@@ -2012,6 +2018,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
         purpose: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -2052,11 +2059,11 @@ domain: analytics
 
         let skill_a = bundled_dir.path().join("skill-a");
         fs::create_dir_all(&skill_a).unwrap();
-        fs::write(skill_a.join("SKILL.md"), "---\nname: skill-a\ndescription: Skill A\ndomain: testing\ntype: skill-builder\n---\n# A").unwrap();
+        fs::write(skill_a.join("SKILL.md"), "---\nname: skill-a\ndescription: Skill A\n---\n# A").unwrap();
 
         let skill_b = bundled_dir.path().join("skill-b");
         fs::create_dir_all(&skill_b).unwrap();
-        fs::write(skill_b.join("SKILL.md"), "---\nname: skill-b\ndescription: Skill B\ndomain: testing\ntype: skill-builder\n---\n# B").unwrap();
+        fs::write(skill_b.join("SKILL.md"), "---\nname: skill-b\ndescription: Skill B\n---\n# B").unwrap();
 
         seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
 
@@ -2087,7 +2094,7 @@ domain: analytics
         fs::create_dir_all(skill_src.join("references").join("dimensions")).unwrap();
         fs::write(
             skill_src.join("SKILL.md"),
-            "---\nname: research\ndescription: Research skill\ndomain: Skill Builder\ntype: skill-builder\n---\n# Research",
+            "---\nname: research\ndescription: Research skill\n---\n# Research",
         ).unwrap();
         fs::write(skill_src.join("references").join("dimension-sets.md"), "# Dimension Sets").unwrap();
         fs::write(skill_src.join("references").join("dimensions").join("entities.md"), "# Entities").unwrap();
@@ -2130,6 +2137,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
         purpose: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -2155,7 +2163,7 @@ domain: analytics
         fs::create_dir_all(skill_src.join("references")).unwrap();
         fs::write(
             skill_src.join("SKILL.md"),
-            "---\nname: validate-skill\ndescription: Validates a completed skill\ndomain: Skill Builder\ntype: skill-builder\n---\n# Validate Skill",
+            "---\nname: validate-skill\ndescription: Validates a completed skill\n---\n# Validate Skill",
         ).unwrap();
         fs::write(skill_src.join("references").join("validate-quality-spec.md"), "# Quality Checker").unwrap();
         fs::write(skill_src.join("references").join("test-skill-spec.md"), "# Test Evaluator").unwrap();
@@ -2197,6 +2205,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
         purpose: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -2289,6 +2298,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
             purpose: None,
+            marketplace_source_url: None,
         };
         crate::db::upsert_imported_skill(&conn, &skill).unwrap();
 
@@ -2312,6 +2322,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
             purpose: None,
+            marketplace_source_url: None,
         };
         crate::db::upsert_imported_skill(&conn, &skill2).unwrap();
 
@@ -2343,6 +2354,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
             purpose: None,
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -2391,6 +2403,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
             purpose: Some("research".to_string()),
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill_a).unwrap();
 
@@ -2411,6 +2424,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
             purpose: Some("research".to_string()),
+            marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill_b).unwrap();
 

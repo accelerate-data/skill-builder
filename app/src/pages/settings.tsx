@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core"
 import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
-import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, ArrowLeft } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, PlugZap, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, ArrowLeft, Plus } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useNavigate } from "@tanstack/react-router"
 import { Button } from "@/components/ui/button"
@@ -14,10 +14,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import type { AppSettings } from "@/lib/types"
+import type { AppSettings, MarketplaceRegistry } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useSettingsStore, type ModelInfo } from "@/stores/settings-store"
 import { useAuthStore } from "@/stores/auth-store"
@@ -28,8 +29,12 @@ import { AboutDialog } from "@/components/about-dialog"
 import { FeedbackDialog } from "@/components/feedback-dialog"
 import { SkillsLibraryTab } from "@/components/skills-library-tab"
 
+/** Must match DEFAULT_MARKETPLACE_URL in app/src-tauri/src/commands/settings.rs */
+const DEFAULT_MARKETPLACE_URL = "https://github.com/hbanerjee74/skills"
+
 const sections = [
   { id: "general", label: "General" },
+  { id: "marketplace", label: "Marketplace" },
   { id: "skill-building", label: "Skill Building" },
   { id: "skills", label: "Skills" },
   { id: "github", label: "GitHub" },
@@ -37,6 +42,15 @@ const sections = [
 ] as const
 
 type SectionId = typeof sections[number]["id"]
+
+type RegistryTestState = "checking" | "valid" | "invalid" | undefined
+
+function RegistryTestIcon({ state }: { state: RegistryTestState }) {
+  if (state === "checking") return <Loader2 className="size-3.5 animate-spin" />
+  if (state === "valid") return <CheckCircle2 className="size-3.5" style={{ color: "var(--color-seafoam)" }} />
+  if (state === "invalid") return <XCircle className="size-3.5 text-destructive" />
+  return <PlugZap className="size-3.5" />
+}
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -61,12 +75,14 @@ export default function SettingsPage() {
   const [logFilePath, setLogFilePath] = useState<string | null>(null)
   const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const [aboutDialogOpen, setAboutDialogOpen] = useState(false)
-  const [marketplaceUrl, setMarketplaceUrl] = useState("")
-  const [marketplaceTesting, setMarketplaceTesting] = useState(false)
-  const [marketplaceValid, setMarketplaceValid] = useState<boolean | null>(null)
-  const [urlCheckState, setUrlCheckState] = useState<"idle" | "checking" | "valid" | "invalid">("idle")
   const [autoUpdate, setAutoUpdate] = useState(false)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
+  const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
+  const [addingRegistry, setAddingRegistry] = useState(false)
+  const [newRegistryUrl, setNewRegistryUrl] = useState("")
+  const [newRegistryAdding, setNewRegistryAdding] = useState(false)
+  const [registryTestState, setRegistryTestState] = useState<Record<string, "checking" | "valid" | "invalid">>({})
+
   const availableModels = useSettingsStore((s) => s.availableModels)
   const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const { user, isLoggedIn, logout } = useAuthStore()
@@ -95,8 +111,8 @@ export default function SettingsPage() {
             setMaxDimensions(result.max_dimensions ?? 5)
             setIndustry(result.industry ?? "")
             setFunctionRole(result.function_role ?? "")
-            setMarketplaceUrl(result.marketplace_url ?? "")
             setAutoUpdate(result.auto_update ?? false)
+            setStoreSettings({ marketplaceRegistries: result.marketplace_registries ?? [], marketplaceInitialized: result.marketplace_initialized ?? false })
             setLoading(false)
             // Fetch available models once we have an API key
             if (result.anthropic_api_key) {
@@ -151,7 +167,7 @@ export default function SettingsPage() {
     logLevel: string;
     extendedThinking: boolean;
     maxDimensions: number;
-    marketplaceUrl: string | null;
+    marketplaceRegistries?: MarketplaceRegistry[];
     industry: string | null;
     functionRole: string | null;
     autoUpdate: boolean;
@@ -171,7 +187,8 @@ export default function SettingsPage() {
       github_user_login: useSettingsStore.getState().githubUserLogin ?? null,
       github_user_avatar: useSettingsStore.getState().githubUserAvatar ?? null,
       github_user_email: useSettingsStore.getState().githubUserEmail ?? null,
-      marketplace_url: overrides.marketplaceUrl !== undefined ? overrides.marketplaceUrl : (useSettingsStore.getState().marketplaceUrl ?? null),
+      marketplace_registries: overrides.marketplaceRegistries !== undefined ? overrides.marketplaceRegistries : (useSettingsStore.getState().marketplaceRegistries ?? []),
+      marketplace_initialized: useSettingsStore.getState().marketplaceInitialized ?? false,
       industry: overrides.industry !== undefined ? overrides.industry : (industry || null),
       function_role: overrides.functionRole !== undefined ? overrides.functionRole : (functionRole || null),
       dashboard_view_mode: useSettingsStore.getState().dashboardViewMode ?? null,
@@ -188,7 +205,7 @@ export default function SettingsPage() {
         logLevel: settings.log_level,
         extendedThinking: settings.extended_thinking,
         maxDimensions: settings.max_dimensions,
-        marketplaceUrl: settings.marketplace_url,
+        marketplaceRegistries: settings.marketplace_registries,
         industry: settings.industry,
         functionRole: settings.function_role,
         autoUpdate: settings.auto_update,
@@ -227,28 +244,6 @@ export default function SettingsPage() {
       )
     } finally {
       setTesting(false)
-    }
-  }
-
-  const handleTestMarketplace = async () => {
-    setMarketplaceTesting(true)
-    setMarketplaceValid(null)
-    setUrlCheckState("checking")
-    try {
-      await checkMarketplaceUrl(marketplaceUrl.trim())
-      setMarketplaceValid(true)
-      setUrlCheckState("valid")
-      toast.success("Marketplace is accessible")
-    } catch (err) {
-      console.error("settings: marketplace test failed", err)
-      setMarketplaceValid(false)
-      setUrlCheckState("invalid")
-      toast.error(
-        `Cannot access marketplace: ${err instanceof Error ? err.message : String(err)}`,
-        { duration: Infinity },
-      )
-    } finally {
-      setMarketplaceTesting(false)
     }
   }
 
@@ -589,69 +584,188 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
+          </div>
+          )}
+
+          {activeSection === "marketplace" && (
+          <div className="space-y-6 p-6">
             <Card>
               <CardHeader>
-                <CardTitle>Marketplace URL</CardTitle>
+                <CardTitle>Registries</CardTitle>
                 <CardDescription>
-                  GitHub repository URL for importing skills from a shared marketplace. Example: https://github.com/your-org/skill-library
+                  GitHub repositories to browse for marketplace skills. The Vibedata Skills registry is built-in and cannot be removed.
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="marketplace-url">Repository URL</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="marketplace-url"
-                      placeholder="https://github.com/owner/skill-library"
-                      value={marketplaceUrl}
-                      onChange={(e) => {
-                        setMarketplaceUrl(e.target.value)
-                        setMarketplaceValid(null)
-                        setUrlCheckState("idle")
-                      }}
-                      onBlur={(e) => autoSave({ marketplaceUrl: e.target.value.trim() || null })}
-                      className="text-sm"
-                    />
-                    {marketplaceUrl && (
-                      <Button
-                        variant={marketplaceValid ? "default" : "outline"}
-                        size="sm"
-                        onClick={handleTestMarketplace}
-                        disabled={marketplaceTesting}
-                        className={marketplaceValid ? "text-white" : ""}
-                        style={marketplaceValid ? { background: "var(--color-seafoam)", color: "white" } : undefined}
-                      >
-                        {marketplaceTesting ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : marketplaceValid ? (
-                          <CheckCircle2 className="size-3.5" />
-                        ) : null}
-                        {marketplaceValid ? "Valid" : "Test"}
-                      </Button>
-                    )}
-                    {urlCheckState === "checking" && <Loader2 className="size-4 animate-spin text-muted-foreground self-center" />}
-                    {urlCheckState === "valid" && <CheckCircle2 className="size-4 self-center" style={{ color: "var(--color-seafoam)" }} />}
-                    {urlCheckState === "invalid" && <XCircle className="size-4 text-destructive self-center" />}
+                <div className="rounded-md border">
+                  <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
+                    <span className="flex-1">Registry</span>
+                    <span className="w-16">Enabled</span>
+                    <span className="w-16" />
                   </div>
-                  {marketplaceValid === false && (
-                    <p className="text-xs text-destructive">
-                      Could not reach this URL. Check it is a public GitHub repository.
-                    </p>
-                  )}
+                  {marketplaceRegistries.map((registry) => {
+                    const isDefault = registry.source_url === DEFAULT_MARKETPLACE_URL
+                    const testState = registryTestState[registry.source_url]
+                    const isFailed = testState === "invalid"
+                    return (
+                      <div
+                        key={registry.source_url}
+                        className={cn(
+                          "flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors",
+                          isFailed && "opacity-60"
+                        )}
+                      >
+                        <div className="flex-1 min-w-0 flex items-center gap-2">
+                          <span className="truncate text-sm font-mono text-muted-foreground">{registry.source_url}</span>
+                          {isDefault && (
+                            <Badge variant="secondary" className="text-xs shrink-0">Built-in</Badge>
+                          )}
+                        </div>
+                        <div className="w-16 shrink-0 flex items-center gap-2">
+                          <Switch
+                            checked={registry.enabled && !isFailed}
+                            disabled={isFailed}
+                            onCheckedChange={(checked) => {
+                              console.log(`[settings] registry toggled: url=${registry.source_url}, enabled=${checked}`)
+                              const current = useSettingsStore.getState().marketplaceRegistries
+                              const updated = current.map(r =>
+                                r.source_url === registry.source_url ? { ...r, enabled: checked } : r
+                              )
+                              autoSave({ marketplaceRegistries: updated })
+                            }}
+                            aria-label={`Toggle ${registry.source_url}`}
+                          />
+                        </div>
+                        <div className="w-16 shrink-0 flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-foreground transition-colors"
+                            aria-label={`Test ${registry.source_url}`}
+                            title="Check marketplace.json is reachable"
+                            disabled={testState === "checking"}
+                            onClick={async () => {
+                              setRegistryTestState((s) => ({ ...s, [registry.source_url]: "checking" }))
+                              try {
+                                await checkMarketplaceUrl(registry.source_url)
+                                setRegistryTestState((s) => ({ ...s, [registry.source_url]: "valid" }))
+                              } catch (err) {
+                                console.error(`[settings] registry test failed for ${registry.source_url}:`, err)
+                                setRegistryTestState((s) => ({ ...s, [registry.source_url]: "invalid" }))
+                              }
+                            }}
+                          >
+                            <RegistryTestIcon state={testState} />
+                          </button>
+                          {!isDefault && (
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-destructive transition-colors"
+                              aria-label={`Remove ${registry.name}`}
+                              onClick={() => {
+                                console.log(`[settings] registry removed: name=${registry.name}`)
+                                const current = useSettingsStore.getState().marketplaceRegistries
+                                const updated = current.filter(r => r.source_url !== registry.source_url)
+                                autoSave({ marketplaceRegistries: updated })
+                              }}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
-                {marketplaceUrl && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col gap-0.5">
-                      <Label htmlFor="auto-update">Auto-update</Label>
-                      <span className="text-sm text-muted-foreground">Automatically apply marketplace updates at startup.</span>
+
+                {!addingRegistry ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-fit"
+                    onClick={() => setAddingRegistry(true)}
+                  >
+                    <Plus className="size-4" />
+                    Add registry
+                  </Button>
+                ) : (
+                  <div className="flex flex-col gap-3 rounded-md border p-4">
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="new-registry-url">GitHub URL</Label>
+                      <Input
+                        id="new-registry-url"
+                        placeholder="https://github.com/owner/skill-library"
+                        value={newRegistryUrl}
+                        onChange={(e) => setNewRegistryUrl(e.target.value)}
+                      />
+                      {newRegistryUrl.trim() && marketplaceRegistries.some(r => r.source_url === newRegistryUrl.trim()) && (
+                        <p className="text-xs text-destructive">This registry is already added.</p>
+                      )}
                     </div>
-                    <Switch
-                      id="auto-update"
-                      checked={autoUpdate}
-                      onCheckedChange={(checked) => { setAutoUpdate(checked); autoSave({ autoUpdate: checked }); }}
-                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        disabled={
+                          !newRegistryUrl.trim() ||
+                          newRegistryAdding ||
+                          marketplaceRegistries.some(r => r.source_url === newRegistryUrl.trim())
+                        }
+                        onClick={async () => {
+                          const url = newRegistryUrl.trim()
+                          setNewRegistryAdding(true)
+                          let name: string
+                          try {
+                            name = await checkMarketplaceUrl(url)
+                          } catch (err) {
+                            console.error(`[settings] add registry check failed for ${url}:`, err)
+                            setNewRegistryAdding(false)
+                            toast.error("Could not reach marketplace.json — check it is a public GitHub repository with a .claude-plugin/marketplace.json file.", { duration: Infinity })
+                            return
+                          }
+                          console.log(`[settings] registry added: name=${name}, url=${url}`)
+                          const entry: MarketplaceRegistry = {
+                            name,
+                            source_url: url,
+                            enabled: true,
+                          }
+                          autoSave({ marketplaceRegistries: [...marketplaceRegistries, entry] })
+                          setNewRegistryUrl("")
+                          setNewRegistryAdding(false)
+                          setAddingRegistry(false)
+                        }}
+                      >
+                        {newRegistryAdding ? <Loader2 className="size-3.5 animate-spin" /> : "Add"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setNewRegistryUrl("")
+                          setNewRegistryAdding(false)
+                          setAddingRegistry(false)
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Auto-update</CardTitle>
+                <CardDescription>
+                  Automatically apply updates from all enabled registries at startup.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Switch
+                  id="auto-update"
+                  checked={autoUpdate}
+                  onCheckedChange={(checked) => { setAutoUpdate(checked); autoSave({ autoUpdate: checked }); }}
+                  aria-label="Enable auto-update"
+                />
               </CardContent>
             </Card>
           </div>

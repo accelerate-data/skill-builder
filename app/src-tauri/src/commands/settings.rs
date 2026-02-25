@@ -5,6 +5,10 @@ use tauri::Manager;
 use crate::db::Db;
 use crate::types::AppSettings;
 
+/// Default built-in marketplace registry URL. Used for both the initial migration
+/// and the "cannot remove" guard in the Settings UI.
+pub(crate) const DEFAULT_MARKETPLACE_URL: &str = "https://github.com/hbanerjee74/skills";
+
 #[tauri::command]
 pub fn get_data_dir(app: tauri::AppHandle) -> Result<String, String> {
     log::info!("[get_data_dir]");
@@ -31,7 +35,37 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
         log::error!("[get_settings] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::read_settings_hydrated(&conn)
+    let mut settings = crate::db::read_settings_hydrated(&conn)?;
+
+    // Migrate legacy marketplace_url → marketplace_registries on first run
+    if !settings.marketplace_initialized {
+        let default_url = DEFAULT_MARKETPLACE_URL;
+        let mut registries = vec![crate::types::MarketplaceRegistry {
+            name: "Vibedata Skills".to_string(),
+            source_url: default_url.to_string(),
+            enabled: true,
+        }];
+        // If there's a legacy URL that differs from the default, migrate it too
+        if let Some(ref legacy_url) = settings.marketplace_url {
+            if legacy_url.as_str() != default_url {
+                registries.push(crate::types::MarketplaceRegistry {
+                    name: "Custom".to_string(),
+                    source_url: legacy_url.clone(),
+                    enabled: true,
+                });
+            }
+        }
+        settings.marketplace_registries = registries;
+        settings.marketplace_url = None; // clear legacy field
+        settings.marketplace_initialized = true;
+        if let Err(e) = crate::db::write_settings(&conn, &settings) {
+            log::error!("[get_settings] failed to persist marketplace migration: {}", e);
+        } else {
+            log::info!("[get_settings] migrated marketplace_url to marketplace_registries ({} entries)", settings.marketplace_registries.len());
+        }
+    }
+
+    Ok(settings)
 }
 
 /// Normalize a path: strip trailing separators and deduplicate the last
@@ -70,6 +104,14 @@ pub fn save_settings(
     let old_sp = old_settings.skills_path.as_deref();
     let new_sp = settings.skills_path.as_deref();
     handle_skills_path_change(old_sp, new_sp)?;
+
+    // Guard: once marketplace_initialized is true in the DB, never let a stale
+    // frontend save overwrite it back to false. This prevents the migration from
+    // re-running if a component calls save_settings with a pre-migration snapshot.
+    if old_settings.marketplace_initialized && !settings.marketplace_initialized {
+        log::warn!("[save_settings] stale save attempted to reset marketplace_initialized — preserving true");
+        settings.marketplace_initialized = true;
+    }
 
     // Log what changed
     let changes = diff_settings(&old_settings, &settings);
@@ -119,6 +161,9 @@ fn diff_settings(old: &AppSettings, new: &AppSettings) -> Vec<String> {
     cmp_bool!(extended_context, "extended_context");
     cmp_bool!(extended_thinking, "extended_thinking");
     cmp_opt!(marketplace_url, "marketplace_url");
+    if old.marketplace_registries.len() != new.marketplace_registries.len() {
+        changes.push(format!("marketplace_registries={} entries", new.marketplace_registries.len()));
+    }
     cmp_val!(max_dimensions, "max_dimensions");
     cmp_opt!(industry, "industry");
     cmp_opt!(function_role, "function_role");

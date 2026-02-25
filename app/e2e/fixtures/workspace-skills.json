@@ -6,12 +6,13 @@
     "disk_path": "/tmp/skills/data-analytics",
     "imported_at": "2025-01-15T10:00:00Z",
     "is_bundled": false,
-    "purpose": "domain",
+    "purpose": "research",
     "version": "1.0.0",
     "model": null,
     "argument_hint": null,
     "user_invocable": null,
-    "disable_model_invocation": null
+    "disable_model_invocation": null,
+    "marketplace_source_url": null
   },
   {
     "skill_id": "skill-002",
@@ -20,12 +21,13 @@
     "disk_path": "/tmp/skills/api-design",
     "imported_at": "2025-01-14T09:00:00Z",
     "is_bundled": false,
-    "purpose": "platform",
+    "purpose": "validate",
     "version": null,
     "model": null,
     "argument_hint": null,
     "user_invocable": null,
-    "disable_model_invocation": null
+    "disable_model_invocation": null,
+    "marketplace_source_url": null
   },
   {
     "skill_id": "bundled-skill-builder-practices",
@@ -34,11 +36,12 @@
     "disk_path": "/tmp/skills/skill-builder-practices",
     "imported_at": "2000-01-01T00:00:00Z",
     "is_bundled": true,
-    "purpose": "skill-builder",
+    "purpose": "skill-building",
     "version": null,
     "model": null,
     "argument_hint": null,
     "user_invocable": null,
-    "disable_model_invocation": null
+    "disable_model_invocation": null,
+    "marketplace_source_url": null
   }
 ]

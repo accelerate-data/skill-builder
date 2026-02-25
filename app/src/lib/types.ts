@@ -22,6 +22,12 @@ export const PURPOSE_COLORS: Record<Purpose, string> = {
   "data-engineering": "bg-[#F0ECF5] text-[#5E4B8B] dark:bg-[#5E4B8B]/15 dark:text-[#A08DC4]",
 };
 
+export interface MarketplaceRegistry {
+  name: string
+  source_url: string
+  enabled: boolean
+}
+
 export interface AppSettings {
   anthropic_api_key: string | null
   workspace_path: string | null
@@ -35,7 +41,8 @@ export interface AppSettings {
   github_user_login: string | null
   github_user_avatar: string | null
   github_user_email: string | null
-  marketplace_url: string | null
+  marketplace_registries: MarketplaceRegistry[]
+  marketplace_initialized: boolean
   max_dimensions: number
   industry: string | null
   function_role: string | null
@@ -47,6 +54,12 @@ export interface SkillUpdateInfo {
   name: string
   path: string
   version: string
+}
+
+export interface MarketplaceUpdateResult {
+  library: SkillUpdateInfo[]
+  workspace: SkillUpdateInfo[]
+  registry_name: string | null
 }
 
 export interface DeviceFlowResponse {
@@ -225,6 +238,8 @@ export interface ImportedSkill {
   argument_hint: string | null
   user_invocable: boolean | null
   disable_model_invocation: boolean | null
+  /** Source registry URL this skill was imported from. null for bundled/manually uploaded skills. */
+  marketplace_source_url: string | null
 }
 
 /** Workspace skill stored in the workspace_skills table (Settings > Skills tab). */
@@ -242,6 +257,8 @@ export interface WorkspaceSkill {
   argument_hint: string | null
   user_invocable: boolean | null
   disable_model_invocation: boolean | null
+  /** Source registry URL this skill was imported from. null for bundled/manually uploaded skills. */
+  marketplace_source_url: string | null
 }
 
 export interface GitHubRepoInfo {
@@ -254,6 +271,8 @@ export interface GitHubRepoInfo {
 export interface AvailableSkill {
   path: string
   name: string
+  /** Plugin name from `plugin.json`, used to display `{plugin_name}:{name}` in the browse dialog. */
+  plugin_name: string | null
   description: string | null
   purpose: string | null
   version: string | null
@@ -266,7 +285,7 @@ export interface AvailableSkill {
 export interface SkillMetadataOverride {
   name: string
   description: string
-  purpose: string
+  purpose?: string | null
   version?: string | null
   model?: string | null
   argument_hint?: string | null
@@ -275,10 +294,10 @@ export interface SkillMetadataOverride {
 }
 
 export const PURPOSE_OPTIONS = [
-  { value: "test-context", label: "test-context" },
-  { value: "research", label: "research" },
-  { value: "validate", label: "validate" },
-  { value: "skill-building", label: "skill-building" },
+  { value: "test-context", label: "Skill Test" },
+  { value: "research", label: "Research" },
+  { value: "validate", label: "Validate" },
+  { value: "skill-building", label: "Skill Standards" },
 ] as const
 
 export interface MarketplaceImportResult {

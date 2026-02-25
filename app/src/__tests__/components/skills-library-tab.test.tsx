@@ -52,7 +52,8 @@ const defaultSettings: AppSettings = {
   github_user_login: null,
   github_user_avatar: null,
   github_user_email: null,
-  marketplace_url: null,
+  marketplace_registries: [],
+  marketplace_initialized: false,
   max_dimensions: 5,
   industry: null,
   function_role: null,
@@ -75,6 +76,7 @@ const sampleSkills: WorkspaceSkill[] = [
     argument_hint: null,
     user_invocable: null,
     disable_model_invocation: null,
+    marketplace_source_url: null,
   },
   {
     skill_id: "id-2",
@@ -90,6 +92,7 @@ const sampleSkills: WorkspaceSkill[] = [
     argument_hint: null,
     user_invocable: null,
     disable_model_invocation: null,
+    marketplace_source_url: null,
   },
 ];
 
@@ -153,7 +156,7 @@ describe("SkillsLibraryTab", () => {
   });
 
   it("Marketplace button is enabled when marketplace URL is configured", async () => {
-    useSettingsStore.getState().setSettings({ marketplaceUrl: "https://github.com/owner/skills" });
+    useSettingsStore.getState().setSettings({ marketplaceRegistries: [{ name: "Test", source_url: "https://github.com/owner/skills", enabled: true }] });
     setupMocks();
     render(<SkillsLibraryTab />);
 
@@ -251,6 +254,7 @@ describe("SkillsLibraryTab", () => {
       argument_hint: null,
       user_invocable: null,
       disable_model_invocation: null,
+      marketplace_source_url: null,
     };
 
     mockInvoke.mockImplementation((cmd: string) => {
@@ -351,55 +355,12 @@ describe("SkillsLibraryTab", () => {
     });
     expect(screen.getByText("plain-skill")).toBeInTheDocument();
 
-    // Purpose badge should show for the skill with purpose
-    expect(screen.getByText("research")).toBeInTheDocument();
+    // Purpose column should show the label for the skill with purpose
+    expect(screen.getByText("Research")).toBeInTheDocument();
 
-    // Only one "research" badge — plain-skill has no purpose badge
-    const purposeBadges = screen.getAllByText("research");
-    expect(purposeBadges).toHaveLength(1);
-  });
-
-  // Test C — Set purpose calls set_workspace_skill_purpose (VD-883)
-  it("calls set_workspace_skill_purpose when a purpose is selected from the popover", async () => {
-    const user = userEvent.setup();
-
-    const skill: WorkspaceSkill = {
-      ...sampleSkills[0],
-      skill_id: "id-purpose-test",
-      skill_name: "my-skill",
-      purpose: null,
-    };
-
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
-      if (cmd === "list_workspace_skills") return Promise.resolve([skill]);
-      if (cmd === "set_workspace_skill_purpose") return Promise.resolve();
-      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
-    });
-
-    render(<SkillsLibraryTab />);
-
-    await waitFor(() => {
-      expect(screen.getByText("my-skill")).toBeInTheDocument();
-    });
-
-    // Open the purpose popover via the Tag icon button
-    const purposeTrigger = screen.getByRole("button", { name: /Set purpose for my-skill/i });
-    await user.click(purposeTrigger);
-
-    // Wait for the popover to open and select "research"
-    await waitFor(() => {
-      expect(screen.getByText("Set purpose")).toBeInTheDocument();
-    });
-
-    const researchOption = screen.getByRole("button", { name: "research" });
-    await user.click(researchOption);
-
-    await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("set_workspace_skill_purpose", {
-        skillId: "id-purpose-test",
-        purpose: "research",
-      });
-    });
+    // Only one "Research" label — plain-skill shows "General Purpose"
+    const purposeLabels = screen.getAllByText("Research");
+    expect(purposeLabels).toHaveLength(1);
+    expect(screen.getByText("General Purpose")).toBeInTheDocument();
   });
 });

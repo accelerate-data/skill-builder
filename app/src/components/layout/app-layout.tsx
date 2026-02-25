@@ -10,16 +10,10 @@ import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useAuthStore } from "@/stores/auth-store";
-import { getSettings, reconcileStartup, parseGitHubUrl, checkMarketplaceUpdates, importGitHubSkills, importMarketplaceToLibrary, checkSkillCustomized } from "@/lib/tauri";
+import { getSettings, saveSettings, reconcileStartup, parseGitHubUrl, checkMarketplaceUpdates, importGitHubSkills, importMarketplaceToLibrary, checkSkillCustomized } from "@/lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelInfo } from "@/stores/settings-store";
-import type { AppSettings, DiscoveredSkill, OrphanSkill } from "@/lib/types";
-
-interface SkillUpdateInfo {
-  name: string;
-  path: string;
-  version: string;
-}
+import type { AppSettings, DiscoveredSkill, OrphanSkill, SkillUpdateInfo } from "@/lib/types";
 
 /** Filter out customized skills, returning only those safe to auto-update. */
 async function filterNonCustomized(skills: SkillUpdateInfo[]): Promise<SkillUpdateInfo[]> {
@@ -32,46 +26,34 @@ async function filterNonCustomized(skills: SkillUpdateInfo[]): Promise<SkillUpda
   return results.filter((s): s is SkillUpdateInfo => s !== null);
 }
 
-/** Read previously notified versions from localStorage. */
-function readNotifiedVersions(): Record<string, string> {
-  try {
-    return JSON.parse(localStorage.getItem("marketplace_notified_versions") ?? "{}");
-  } catch {
-    return {};
-  }
-}
-
-/** Persist notified versions to localStorage so toasts are not repeated on next launch. */
-function saveNotifiedVersions(notified: Record<string, string>): void {
-  try {
-    localStorage.setItem("marketplace_notified_versions", JSON.stringify(notified));
-  } catch { /* ignore */ }
-}
-
-/** Check the marketplace for updates and either auto-update or show notification toasts. */
+/** Check the marketplace for updates and either auto-update or show notification toasts.
+ *  Returns the registry name read from marketplace.json, or null on failure. */
 async function checkForMarketplaceUpdates(
+  sourceUrl: string,
   settings: AppSettings,
   cancelledRef: { current: boolean },
   router: ReturnType<typeof useRouter>,
-): Promise<void> {
+): Promise<string | null> {
   try {
-    const info = await parseGitHubUrl(settings.marketplace_url!);
-    const { library, workspace } = await checkMarketplaceUpdates(
-      info.owner, info.repo, info.branch, info.subpath ?? undefined
+    const info = await parseGitHubUrl(sourceUrl);
+    const { library, workspace, registry_name } = await checkMarketplaceUpdates(
+      info.owner, info.repo, info.branch, info.subpath ?? undefined, sourceUrl
     );
-    if (cancelledRef.current) return;
+    if (cancelledRef.current) return null;
 
     if (settings.auto_update) {
-      await handleAutoUpdate(library, workspace, info, cancelledRef);
+      await handleAutoUpdate(library, workspace, sourceUrl, info, cancelledRef);
     } else {
-      showManualUpdateToasts(library, workspace, router);
+      showManualUpdateToasts(library, workspace, router, registry_name ?? null);
     }
+    return registry_name ?? null;
   } catch (err) {
     console.error("[app-layout] Marketplace update check failed:", err);
     toast.error(
       `Marketplace update check failed: ${err instanceof Error ? err.message : String(err)}`,
       { duration: 8000 }
     );
+    return null;
   }
 }
 
@@ -79,6 +61,7 @@ async function checkForMarketplaceUpdates(
 async function handleAutoUpdate(
   library: SkillUpdateInfo[],
   workspace: SkillUpdateInfo[],
+  sourceUrl: string,
   info: { owner: string; repo: string; branch: string },
   cancelledRef: { current: boolean },
 ): Promise<void> {
@@ -90,14 +73,15 @@ async function handleAutoUpdate(
 
   await Promise.all([
     libFiltered.length > 0
-      ? importMarketplaceToLibrary(libFiltered.map((s) => s.path)).catch((err) =>
+      ? importMarketplaceToLibrary(libFiltered.map((s) => s.path), sourceUrl).catch((err) =>
           console.warn("[app-layout] Auto-update library failed:", err)
         )
       : Promise.resolve(),
     wsFiltered.length > 0
       ? importGitHubSkills(
           info.owner, info.repo, info.branch,
-          wsFiltered.map((s) => ({ path: s.path, purpose: null, metadata_override: null, version: s.version }))
+          wsFiltered.map((s) => ({ path: s.path, purpose: null, metadata_override: null, version: s.version })),
+          sourceUrl
         ).catch((err) =>
           console.warn("[app-layout] Auto-update workspace failed:", err)
         )
@@ -122,21 +106,18 @@ async function handleAutoUpdate(
   }
 }
 
-/** Show persistent notification toasts for skill updates not yet seen by the user. */
+/** Show persistent notification toasts for available skill updates. */
 function showManualUpdateToasts(
   library: SkillUpdateInfo[],
   workspace: SkillUpdateInfo[],
   router: ReturnType<typeof useRouter>,
+  registryName: string | null,
 ): void {
-  const notified = readNotifiedVersions();
-
-  const libNew = library.filter((s) => notified[`lib:${s.name}`] !== s.version);
-  const wsNew = workspace.filter((s) => notified[`ws:${s.name}`] !== s.version);
-
-  if (libNew.length > 0) {
-    const names = libNew.map((s) => s.name);
+  const qualify = (name: string) => registryName ? `${registryName}::${name}` : name;
+  if (library.length > 0) {
+    const names = library.map((s) => qualify(s.name));
     toast.info(
-      `Skills Library: update available for ${libNew.length} skill${libNew.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
+      `Skills Library: update available for ${library.length} skill${library.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
       {
         duration: Infinity,
         action: {
@@ -149,10 +130,10 @@ function showManualUpdateToasts(
       }
     );
   }
-  if (wsNew.length > 0) {
-    const names = wsNew.map((s) => s.name);
+  if (workspace.length > 0) {
+    const names = workspace.map((s) => qualify(s.name));
     toast.info(
-      `Settings \u2192 Skills: update available for ${wsNew.length} skill${wsNew.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
+      `Settings \u2192 Skills: update available for ${workspace.length} skill${workspace.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
       {
         duration: Infinity,
         action: {
@@ -164,13 +145,6 @@ function showManualUpdateToasts(
         },
       }
     );
-  }
-
-  if (libNew.length > 0 || wsNew.length > 0) {
-    const updated = { ...notified };
-    for (const s of libNew) updated[`lib:${s.name}`] = s.version;
-    for (const s of wsNew) updated[`ws:${s.name}`] = s.version;
-    saveNotifiedVersions(updated);
   }
 }
 
@@ -207,7 +181,8 @@ export function AppLayout() {
         githubUserLogin: s.github_user_login,
         githubUserAvatar: s.github_user_avatar,
         githubUserEmail: s.github_user_email,
-        marketplaceUrl: s.marketplace_url,
+        marketplaceRegistries: s.marketplace_registries ?? [],
+        marketplaceInitialized: s.marketplace_initialized ?? false,
         dashboardViewMode: s.dashboard_view_mode,
       });
       setSettingsLoaded(true);
@@ -217,9 +192,24 @@ export function AppLayout() {
           .then((models) => { if (!cancelledRef.current) setSettings({ availableModels: models }); })
           .catch((err) => console.warn("[app-layout] Could not fetch model list:", err));
       }
-      // Check for marketplace updates in the background
-      if (s.marketplace_url) {
-        checkForMarketplaceUpdates(s, cancelledRef, router);
+      // Check for marketplace updates in the background, and refresh stored registry names
+      // from marketplace.json if they have changed since the registry was added.
+      const enabledRegistries = (s.marketplace_registries ?? []).filter(r => r.enabled);
+      for (const registry of enabledRegistries) {
+        checkForMarketplaceUpdates(registry.source_url, s, cancelledRef, router)
+          .then(async (resolvedName) => {
+            if (!resolvedName || resolvedName === registry.name) return;
+            const current = useSettingsStore.getState().marketplaceRegistries;
+            const updated = current.map(r =>
+              r.source_url === registry.source_url ? { ...r, name: resolvedName } : r
+            );
+            useSettingsStore.getState().setSettings({ marketplaceRegistries: updated });
+            // Re-fetch fresh settings before saving to avoid overwriting concurrent changes.
+            const fresh = await getSettings().catch(() => null);
+            if (!fresh) return;
+            saveSettings({ ...fresh, marketplace_registries: updated })
+              .catch(err => console.warn("[app-layout] Failed to persist registry name update:", err));
+          });
       }
     }).catch(() => {
       // Settings may not exist yet — show splash
