@@ -20,7 +20,7 @@ The `purpose` frontmatter field drives routing: `skill-builder` purpose skills b
 
 A marketplace is a GitHub repository containing a `.claude-plugin/marketplace.json` catalog file that lists the plugins (and their skills) it publishes. There is no folder-scan fallback — a missing or malformed catalog is an error, not a silent empty result.
 
-**Multiple named registries** — one or more named registries can be configured in Settings → Marketplace. Each registry has a name (auto-fetched from `marketplace.json`), a GitHub source URL, and an enabled/disabled toggle. The default registry is seeded on first launch and cannot be removed. Additional registries can be added and removed freely.
+**Multiple named registries** — one or more named registries can be configured in Settings → Marketplace. Each registry has a name (auto-fetched from `marketplace.json`), a GitHub source URL, and an enabled/disabled toggle. The default registry is `https://github.com/hbanerjee74/skills` (display name: `vibedata-skills`), seeded on first launch and cannot be removed. Additional registries can be added and removed freely.
 
 **Enabled registries only** — only enabled registries are fetched. Disabling a registry removes it from the browse dialog without deleting it from the list.
 
@@ -34,30 +34,27 @@ A marketplace is a GitHub repository containing a `.claude-plugin/marketplace.js
 
 The catalog follows the [official Claude Code plugin marketplace schema](https://code.claude.com/docs/en/plugin-marketplaces#marketplace-schema).
 
+The example below is the actual `marketplace.json` from the default registry (`https://github.com/hbanerjee74/skills`):
+
 ```json
 {
-  "name": "Anthropic Knowledge Work Plugins",
-  "owner": {
-    "name": "Anthropic",
-    "url": "https://anthropic.com"
-  },
+  "name": "vibedata-skills",
+  "owner": { "name": "hbanerjee74" },
   "metadata": {
-    "pluginRoot": "plugins"
+    "description": "Vibedata Skills Marketplace — practitioner-level data and analytics engineering skills for Claude",
+    "version": "1.0.0"
   },
   "plugins": [
-    {
-      "name": "engineering",
-      "source": "./engineering",
-      "description": "Engineering productivity skills"
-    },
-    {
-      "name": "research",
-      "source": "./research",
-      "description": "Research and analysis skills"
-    }
+    { "name": "skill-builder",           "source": "./plugins/skill-builder",           "description": "Multi-agent workflow for creating domain-specific Claude skills" },
+    { "name": "skill-builder-practices", "source": "./plugins/skill-builder-practices", "description": "Content guidelines and patterns for skill structure" },
+    { "name": "skill-builder-research",  "source": "./plugins/skill-builder-research",  "description": "Research skill for dimension scoring and parallel research" },
+    { "name": "skill-builder-validate",  "source": "./plugins/skill-builder-validate",  "description": "Validate skill for quality checking and companion recommendations" },
+    { "name": "vibedata",                "source": "./",                                "description": "Practitioner-level data and analytics engineering skills for Claude" }
   ]
 }
 ```
+
+Note that `metadata.description` and `metadata.version` are not standard fields recognized by the app — they are silently ignored. The only `metadata` field the app uses is `pluginRoot` (not present here because all five plugin sources use `./`-prefixed paths).
 
 ### Top-level fields
 
@@ -112,6 +109,70 @@ Plugin entries that yield no skills are silently skipped (logged at `debug` leve
 ### Root plugin case
 
 When `source = "./"` the plugin directory is the repo root (or subpath root). In this case `plugin.json` lives at `.claude-plugin/plugin.json` — the same directory as `marketplace.json`. If this file exists and has a `name` field, it is used as the plugin name.
+
+---
+
+## Example: Default Registry Structure
+
+The default registry (`https://github.com/hbanerjee74/skills`) illustrates how a real marketplace repo is organized. It has five plugins: four in a `plugins/` directory and one rooted at `./` (the repo root itself).
+
+```
+hbanerjee74/skills/
+  .claude-plugin/
+    marketplace.json          ← registry catalog (fetched first)
+    plugin.json               ← plugin name for the "./" entry: { "name": "vibedata" }
+  plugins/
+    skill-builder/
+      .claude-plugin/
+        plugin.json           ← { "name": "skill-builder" }
+      skills/
+        building-skills/
+          SKILL.md
+    skill-builder-practices/
+      .claude-plugin/
+        plugin.json           ← { "name": "skill-builder-practices" }
+      skills/
+        ...
+    skill-builder-research/
+      .claude-plugin/
+        plugin.json           ← { "name": "skill-builder-research" }
+      skills/
+        ...
+    skill-builder-validate/
+      .claude-plugin/
+        plugin.json           ← { "name": "skill-builder-validate" }
+      skills/
+        ...
+  skills/                     ← domain skills for the "./" plugin entry (vibedata)
+    dbt-fabric-patterns/
+      SKILL.md
+    dbt-semantic-layer/
+      SKILL.md
+    dbt-snapshot-scd2/
+      SKILL.md
+    dlt-rest-api-connector/
+      SKILL.md
+    elementary-data-quality/
+      SKILL.md
+    revenue-domain/
+      SKILL.md
+    salesforce-extraction/
+      SKILL.md
+```
+
+### How the discovery algorithm resolves each plugin entry
+
+| `source` in catalog | Resolved `plugin_path` | Skills discovered at | Plugin name from |
+|---|---|---|---|
+| `"./plugins/skill-builder"` | `plugins/skill-builder` | `plugins/skill-builder/skills/*/SKILL.md` | `plugins/skill-builder/.claude-plugin/plugin.json` |
+| `"./plugins/skill-builder-practices"` | `plugins/skill-builder-practices` | `plugins/skill-builder-practices/skills/*/SKILL.md` | `plugins/skill-builder-practices/.claude-plugin/plugin.json` |
+| `"./plugins/skill-builder-research"` | `plugins/skill-builder-research` | `plugins/skill-builder-research/skills/*/SKILL.md` | `plugins/skill-builder-research/.claude-plugin/plugin.json` |
+| `"./plugins/skill-builder-validate"` | `plugins/skill-builder-validate` | `plugins/skill-builder-validate/skills/*/SKILL.md` | `plugins/skill-builder-validate/.claude-plugin/plugin.json` |
+| `"./"` | `""` (root) | `skills/*/SKILL.md` | `.claude-plugin/plugin.json` → `"vibedata"` |
+
+The `"vibedata"` plugin is the **root plugin case**: `source = "./"` means the plugin directory is the repo root, so `plugin.json` is at `.claude-plugin/plugin.json` (the same directory as `marketplace.json`) and skills are at `skills/*/SKILL.md` directly under the root.
+
+In the browse dialog, skills from these plugins are displayed as qualified names, e.g. `vibedata:dbt-fabric-patterns`, `skill-builder:building-skills`.
 
 ---
 
@@ -177,6 +238,8 @@ On startup, the app compares installed versions against the marketplace catalog.
 **Manual update mode** — the user is notified of available updates on startup. Each notification links directly to the relevant import dialog where the user can review and apply updates.
 
 If the startup check fails for any reason, a persistent error notification is shown.
+
+**As built:** The startup check failure path currently logs the error and continues silently — the persistent error notification is not yet implemented. The customization warning confirmation dialog (for upgrading locally-modified Settings → Skills) has its state wired up but the AlertDialog is not rendered.
 
 ---
 
