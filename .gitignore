@@ -32,5 +32,4 @@ app/src-tauri/resources/node/*
 !app/src-tauri/resources/node/.gitkeep
 
 # Claude Code
-.claude/*
-!.claude/skills/
+.claude/
