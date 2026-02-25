@@ -1,8 +1,10 @@
 import { useRouterState, useNavigate } from "@tanstack/react-router";
-import { Settings } from "lucide-react";
+import { Settings, CircleHelp } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button } from "@/components/ui/button";
 import { FeedbackDialog } from "@/components/feedback-dialog";
 import { ReviewModeToggle } from "@/components/review-mode-toggle";
+import { getHelpUrl } from "@/lib/help-urls";
 
 function getPageTitle(path: string): string {
   if (path === "/") return "Skill Library";
@@ -25,6 +27,14 @@ export function Header() {
       </div>
       <div className="flex items-center gap-2">
         {isWorkflow && <ReviewModeToggle />}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => openUrl(getHelpUrl(currentPath))}
+          title="Help"
+        >
+          <CircleHelp className="size-4" />
+        </Button>
         <Button
           variant="ghost"
           size="icon-sm"
