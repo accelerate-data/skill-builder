@@ -6,9 +6,7 @@ The marketplace is a **one-way import layer**: skills flow in from GitHub reposi
 |---|---|---|
 | **Purpose** | Skills used by Skill Builder agents to build, refine, and test skills | Domain knowledge — skills users create, import, and refine |
 | **Examples** | `research`, `validate-skill`, `skill-builder-practices` | Sales Pipeline Analytics, dbt Incremental Silver |
-| **After import** | Wired into the agent workspace — active on every agent run | Appears in the dashboard as a completed skill, ready to refine |
-
-The destination is chosen at import time. `purpose` is a database field set on import — it is **not** read from `SKILL.md`.
+| **After import** | Wired into the agent workspace — active on every agent run | Appears in the dashboard as a completed skill, ready to refine. Download skill file to use with Vibedata.|
 
 ---
 
