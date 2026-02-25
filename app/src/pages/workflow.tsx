@@ -1110,9 +1110,7 @@ export default function WorkflowPage() {
               return;
             }
             if (id < currentStep) {
-              // Step 1 (Detailed Research) mutates step 0's clarifications.json,
-              // so resetting to step 1 must also reset step 0.
-              setResetTarget(id === 1 ? 0 : id);
+              setResetTarget(id);
               return;
             }
             setCurrentStep(id);
