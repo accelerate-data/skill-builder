@@ -31,7 +31,6 @@ scripts/eval/results/
 app/src-tauri/resources/node/*
 !app/src-tauri/resources/node/.gitkeep
 
-# Claude Code (track .claude/settings.json for shared hooks, ignore the rest)
+# Claude Code
 .claude/*
-!.claude/settings.json
 !.claude/skills/
