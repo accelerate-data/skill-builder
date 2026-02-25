@@ -33,11 +33,16 @@ Click any card to expand it and see:
 
 ---
 
+## How to edit a needs-review decision
+
+Decisions marked **needs-review** are editable directly in the card — they open expanded by default. An amber banner confirms: *"N decisions need your review — edit the text below, changes save automatically."*
+
+1. Click a **needs-review** card to expand it (it opens automatically).
+2. Edit the **Decision** text and **Implication** text in the fields provided.
+3. Changes save automatically. The contradiction banner turns green: *"Contradictions reviewed — skill will be generated with your edits."*
+
 ## How to continue to Step 4
 
-1. Review the decision cards. Pay close attention to any marked **needs-review** or flagged in the contradiction banner.
-2. Click **Next Step** at the bottom right to advance to Step 4 (Generate Skill).
+Click **Next Step** at the bottom right. You can continue regardless of decision status.
 
-There are no required fields on this step — you can always continue regardless of decision status.
-
-> If you see **needs-review** decisions and want to change your answers, click a completed step in the sidebar to go back, correct your answers, and re-run from that point. See [How to reset a step](overview.md#how-to-reset-a-step).
+> To change your original answers instead of editing decisions here, go back to an earlier step via the sidebar. See [How to reset a step](overview.md#how-to-reset-a-step).

@@ -36,24 +36,22 @@ The page has three zones:
 
 ## How to use commands
 
-Type `/` in the input bar to open the command picker. Two commands are available:
+Type `/` in the input bar to open the command picker:
 
 | Command | What it does |
 |---|---|
-| **Rewrite skill** (`/rewrite`) | Instructs the agent to rewrite the skill from scratch based on your instructions |
-| **Validate skill** (`/validate`) | Instructs the agent to check the skill for issues and report them |
+| `/rewrite` | Rewrites the skill from scratch based on your instructions |
+| `/validate` | Checks the skill for issues and reports them |
 
-Select a command, optionally add instructions in the textarea, and send.
+Select a command, add any extra instructions, then send. You can combine a command with `@filename` to scope it to a specific file.
 
 ---
 
 ## How to review a diff
 
-1. After the agent finishes a run, click **Diff** in the preview panel toolbar.
-2. The panel shows a line-by-line comparison. Green `+` lines are additions; red `-` lines are removals; grey lines are unchanged.
-3. Click **Preview** to return to the rendered markdown view.
+After the agent finishes, click **Diff** in the preview panel toolbar. Green `+` lines are additions; red `-` lines are removals. Click **Preview** to return to rendered markdown.
 
-> **Diff** is disabled until the agent has completed at least one run (there is no baseline before that).
+> **Diff** is disabled until the agent has made at least one change.
 
 ---
 

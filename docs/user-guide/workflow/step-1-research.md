@@ -28,10 +28,14 @@ A list of questions grouped into sections. Each question has a text area for you
 
 ## How to answer clarification questions
 
-1. Read each question. Questions marked with a red **must** badge are required — you cannot continue until all of them are answered.
-2. Type your answer in the text area below the question.
-3. Answers save automatically 1.5 seconds after you stop typing. The bottom-left shows **Unsaved changes**, **Saving...**, or **Saved**.
-4. Once all **must** questions are answered, the **Continue** button activates.
+1. Click a question card to expand it.
+2. If the question has choices, click one to select it. A **recommended** badge marks the agent's suggestion. You can select a choice and edit the answer text, or ignore the choices and type freely.
+3. Questions marked **must** are required — **Continue** stays disabled until all are answered.
+4. Answers save automatically as you type.
+
+## Refinements
+
+Some questions have nested **Refinements** — follow-up sub-questions inside the same card, below the main answer. Answer them the same way. The question header shows a badge like *"2 refinements (1 unanswered)"* when they exist.
 
 ---
 

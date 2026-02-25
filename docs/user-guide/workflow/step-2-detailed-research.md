@@ -16,11 +16,7 @@ The toolbar shows a progress bar and an answered/total count.
 
 ## How to answer and continue
 
-1. Answer all questions marked **must**.
-2. Click **Continue** at the bottom right. The button shows **Evaluating answers...** while the gate check runs.
-3. A transition gate dialog appears — see [Gate 2](#gate-2-transition-dialog) below.
-
-Answers auto-save 1.5 seconds after you stop typing. The status shows **Unsaved changes**, **Saving...**, or **Saved**.
+Same pattern as Step 1 — expand a card, select a choice or type freely, answer any nested **Refinements** inside the card. Answer all **must** questions, then click **Continue**. The button shows **Evaluating answers...** while the gate check runs.
 
 ---
 
@@ -40,6 +36,8 @@ Answers auto-save 1.5 seconds after you stop typing. The status shows **Unsaved 
 
 **"Contradictory Answers"** — answers conflict with each other
 - **Let Me Answer** — returns to the editor (the only option; resolve the contradiction first)
+
+The dialog shows a per-question breakdown listing which question IDs are OK, Missing, Vague, or Contradictory. Use this to identify exactly which answers to fix before retrying.
 
 ---
 
