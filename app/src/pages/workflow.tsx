@@ -92,6 +92,7 @@ export default function WorkflowPage() {
     runtimeError,
     clearRuntimeError,
     resetToStep,
+    navigateBackToStep,
     loadWorkflowState,
     setHydrated,
   } = useWorkflowStore();
@@ -1047,11 +1048,11 @@ export default function WorkflowPage() {
         onOpenChange={(open) => { if (!open) setResetTarget(null) }}
         onReset={() => {
           if (resetTarget !== null) {
-            // End active session — resetting to a prior step starts a fresh workflow context
             endActiveSession();
             clearRuns();
-            resetToStep(resetTarget);
-            // Do not auto-start: user navigated back to review/edit, not to re-run the agent.
+            // Keep the target step as "completed" so its editor/output renders.
+            // Only subsequent steps are reset to "pending".
+            navigateBackToStep(resetTarget);
             setResetTarget(null);
           }
         }}

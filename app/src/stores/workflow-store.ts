@@ -47,6 +47,9 @@ interface WorkflowState {
   setInitProgressMessage: (message: string) => void;
   setDisabledSteps: (steps: number[]) => void;
   resetToStep: (stepId: number) => void;
+  /** Navigate back to a completed step without re-running it: keeps the target step
+   *  as "completed" and resets only subsequent steps to "pending". */
+  navigateBackToStep: (stepId: number) => void;
   loadWorkflowState: (completedStepIds: number[], savedCurrentStep?: number) => void;
   setHydrated: (hydrated: boolean) => void;
   /** Set a structured runtime error from a sidecar startup failure. */
@@ -181,6 +184,16 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       // Always clear disabled steps — guards are re-evaluated from disk after each step completes.
       // Stale guards from a previous run (e.g. contradictory_inputs from old decisions.md) must not
       // persist across resets.
+      disabledSteps: [],
+    })),
+
+  navigateBackToStep: (stepId) =>
+    set((state) => ({
+      currentStep: stepId,
+      isRunning: false,
+      steps: state.steps.map((s) =>
+        s.id > stepId ? { ...s, status: "pending" as const } : s
+      ),
       disabledSteps: [],
     })),
 
