@@ -4,33 +4,32 @@ export default defineConfig({
   title: "Skill Builder",
   description: "User guide for Skill Builder",
   base: "/skill-builder/",
-  srcDir: ".",
-  srcExclude: ["**/node_modules/**", "design/**"],
+  srcDir: "user-guide",
 
   themeConfig: {
-    nav: [{ text: "User Guide", link: "/user-guide/" }],
+    nav: [{ text: "User Guide", link: "/" }],
 
     sidebar: [
       {
         text: "User Guide",
         items: [
-          { text: "Getting Started", link: "/user-guide/" },
-          { text: "Dashboard", link: "/user-guide/dashboard" },
+          { text: "Getting Started", link: "/" },
+          { text: "Dashboard", link: "/dashboard" },
           {
             text: "Building a Skill",
             collapsed: false,
             items: [
-              { text: "Workflow overview", link: "/user-guide/workflow/overview" },
-              { text: "Step 1: Research", link: "/user-guide/workflow/step-1-research" },
-              { text: "Step 2: Detailed Research", link: "/user-guide/workflow/step-2-detailed-research" },
-              { text: "Step 3: Confirm Decisions", link: "/user-guide/workflow/step-3-confirm-decisions" },
-              { text: "Step 4: Generate Skill", link: "/user-guide/workflow/step-4-generate-skill" },
+              { text: "Workflow overview", link: "/workflow/overview" },
+              { text: "Step 1: Research", link: "/workflow/step-1-research" },
+              { text: "Step 2: Detailed Research", link: "/workflow/step-2-detailed-research" },
+              { text: "Step 3: Confirm Decisions", link: "/workflow/step-3-confirm-decisions" },
+              { text: "Step 4: Generate Skill", link: "/workflow/step-4-generate-skill" },
             ],
           },
-          { text: "Refine", link: "/user-guide/refine" },
-          { text: "Test", link: "/user-guide/test" },
-          { text: "Settings", link: "/user-guide/settings" },
-          { text: "Usage", link: "/user-guide/usage" },
+          { text: "Refine", link: "/refine" },
+          { text: "Test", link: "/test" },
+          { text: "Settings", link: "/settings" },
+          { text: "Usage", link: "/usage" },
         ],
       },
     ],
