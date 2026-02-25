@@ -23,7 +23,7 @@ Single `Mutex<Connection>` — all access is serialized. WAL mode enables concur
 
 ### Migration strategy
 
-23 sequential migrations tracked in `schema_migrations`. Migrations run at startup before any commands are registered. Each migration is applied exactly once; version + `applied_at` are recorded.
+Sequential numbered migrations tracked in `schema_migrations`. Migrations run at startup before any commands are registered. Each migration is applied exactly once; version + `applied_at` are recorded.
 
 ### Schema overview
 
@@ -120,11 +120,7 @@ See [api.md](api.md) for the full command reference.
 
 ### Startup reconciliation
 
-On each app launch, `reconcile_startup` scans the workspace directory and compares disk state to the DB:
-- **Orphans**: skill directory on disk but no DB entry → surfaced to user for manual resolution or auto-cleaned if empty.
-- **Discoveries**: skill directory found that was previously unknown → user can register it into the catalog.
-
-This tolerates workspace moves, manual edits, and multi-instance scenarios.
+On each app launch, `reconcile_on_startup` runs before the dashboard loads. See [startup-recon design doc](../startup-recon/README.md) for the full three-pass state machine.
 
 ### Skill ingestion — Settings→Skills
 

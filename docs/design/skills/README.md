@@ -92,7 +92,7 @@ Dimension catalog, per-type template mappings, focus line tailoring, and design 
 
 ## Validate Skill
 
-`validate-skill` runs at step 6. Invoked by:
+`validate-skill` is not a numbered workflow step in the desktop app. Invoked by:
 - **Plugin workflow** — coordinator spawns it via `Task(subagent_type: "skill-builder:validate-skill")` after the Generation phase
 - **Refine workflow** — `refine-skill.md` spawns it on `/validate` or a full `/rewrite` cycle
 

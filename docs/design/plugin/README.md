@@ -219,33 +219,7 @@ No `TeamCreate`, `TaskCreate`, `SendMessage`, or `TeamDelete`.
 
 ## Marketplace
 
-Hosted at `https://github.com/hbanerjee74/skills`:
-
-```
-hbanerjee74/skills/
-├── .claude-plugin/
-│   └── marketplace.json
-└── plugins/
-    ├── skill-builder/
-    ├── skill-builder-research/
-    ├── skill-builder-validate/
-    └── skill-builder-practices/
-```
-
-**marketplace.json:**
-```json
-{
-  "name": "skills",
-  "owner": { "name": "hbanerjee74" },
-  "metadata": { "pluginRoot": "./plugins" },
-  "plugins": [
-    { "name": "skill-builder",           "source": "./plugins/skill-builder" },
-    { "name": "skill-builder-research",  "source": "./plugins/skill-builder-research" },
-    { "name": "skill-builder-validate",  "source": "./plugins/skill-builder-validate" },
-    { "name": "skill-builder-practices", "source": "./plugins/skill-builder-practices" }
-  ]
-}
-```
+The four plugin packages are published to `https://github.com/hbanerjee74/skills`. For the full repo structure and `marketplace.json` schema, see [skills-marketplace design doc](../skills-marketplace/README.md).
 
 **Install:**
 ```bash

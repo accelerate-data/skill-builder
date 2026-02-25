@@ -9,6 +9,5 @@
 | [skill-tester/](skill-tester/README.md) | Skill test runner UI design |
 | [skills-marketplace/](skills-marketplace/README.md) | Skills marketplace design |
 | [branding/](branding/ad-brand.md) | Brand and visual identity |
-| [plugin-v2-design/](plugin-v2-design/app.md) | Plugin v2: app UI changes (app.md), coordinator state machine (coordinator.md), plugin packages (plugin.md) |
-| [release/](release/README.md) | Release pipeline: CI/CD workflows, desktop app build, plugin marketplace publish, credentials |
-| [startup-recon/](startup-recon/README.md) | Startup reconciliation: skills master table, source-aware state machine, ACK dialog |
+| [release/](release/README.md) | Release pipeline: CI/CD workflows, desktop app build, plugin package assembly, credentials |
+| [startup-recon/](startup-recon/README.md) | Startup reconciliation: three-pass state machine, discovery scenarios, ACK dialog |
