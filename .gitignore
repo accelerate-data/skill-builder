@@ -36,3 +36,4 @@ app/src-tauri/resources/node/*
 .claude/settings.local.json
 .claude/worktrees/
 
+
