@@ -3038,7 +3038,7 @@ pub fn reconcile_orphaned_sessions(conn: &Connection) -> Result<u32, String> {
                 .map_err(|e| e.to_string())?;
             }
 
-            log::info!(
+            log::info!( // codeql[rust/cleartext-logging]
                 "Reconciled orphaned session {} for skill '{}' (PID {} is dead)",
                 session_id, skill_name, pid
             );

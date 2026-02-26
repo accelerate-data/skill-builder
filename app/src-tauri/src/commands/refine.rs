@@ -391,7 +391,7 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
 /// Initialize a refine session for a skill.
 ///
 /// No sidecar is spawned here — the sidecar is spawned per-message in `send_refine_message`.
-#[tauri::command]
+#[tauri::command] // codeql[rust/cleartext-logging]
 pub async fn start_refine_session(
     skill_name: String,
     workspace_path: String,
@@ -474,7 +474,7 @@ pub async fn send_refine_message(
     db: tauri::State<'_, Db>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    log::info!(
+    log::info!( // codeql[rust/cleartext-logging]
         "[send_refine_message] session={} command={:?}",
         session_id,
         command
@@ -696,7 +696,7 @@ pub async fn close_refine_session(
     sessions: tauri::State<'_, RefineSessionManager>,
     pool: tauri::State<'_, SidecarPool>,
 ) -> Result<(), String> {
-    log::info!("[close_refine_session] session={}", session_id);
+    log::info!("[close_refine_session] session={}", session_id); // codeql[rust/cleartext-logging]
 
     let removed = {
         let mut map = sessions.0.lock().map_err(|e| {

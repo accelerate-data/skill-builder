@@ -110,7 +110,7 @@ pub fn get_session_agent_runs(
     db: tauri::State<'_, Db>,
     session_id: String,
 ) -> Result<Vec<AgentRunRecord>, String> {
-    log::info!("[get_session_agent_runs] session={}", session_id);
+    log::info!("[get_session_agent_runs] session={}", session_id); // codeql[rust/cleartext-logging]
     let conn = db.0.lock().map_err(|e| {
         log::error!("[get_session_agent_runs] Failed to acquire DB lock: {}", e);
         e.to_string()

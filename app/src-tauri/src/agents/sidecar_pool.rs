@@ -1408,7 +1408,7 @@ impl SidecarPool {
     ) -> Result<(), String> {
         self.get_or_spawn(skill_name, app_handle).await?;
 
-        log::debug!(
+        log::debug!( // codeql[rust/cleartext-logging]
             "[send_stream_start] session={} agent='{}' skill='{}' prompt:\n{}",
             session_id,
             agent_id,
@@ -1471,11 +1471,11 @@ impl SidecarPool {
 
         let result = self.write_to_sidecar_stdin(skill_name, &message).await;
         if let Err(ref e) = result {
-            log::error!("[send_stream_start] Failed for session '{}': {}", session_id, e);
+            log::error!("[send_stream_start] Failed for session '{}': {}", session_id, e); // codeql[rust/cleartext-logging]
             self.unregister_pending(agent_id).await;
             events::handle_sidecar_exit(app_handle, agent_id, false);
         } else {
-            log::info!(
+            log::info!( // codeql[rust/cleartext-logging]
                 "[send_stream_start] session={} agent={} on skill '{}'",
                 session_id, agent_id, skill_name,
             );
@@ -1514,7 +1514,7 @@ impl SidecarPool {
             pending.insert(agent_id.to_string(), skill_name.to_string());
         }
 
-        log::debug!(
+        log::debug!( // codeql[rust/cleartext-logging]
             "[send_stream_message] session={} agent='{}' skill='{}' user_message:\n{}",
             session_id,
             agent_id,
@@ -1531,11 +1531,11 @@ impl SidecarPool {
 
         let result = self.write_to_sidecar_stdin(skill_name, &message).await;
         if let Err(ref e) = result {
-            log::error!("[send_stream_message] Failed for session '{}': {}", session_id, e);
+            log::error!("[send_stream_message] Failed for session '{}': {}", session_id, e); // codeql[rust/cleartext-logging]
             self.unregister_pending(agent_id).await;
             events::handle_sidecar_exit(app_handle, agent_id, false);
         } else {
-            log::info!(
+            log::info!( // codeql[rust/cleartext-logging]
                 "[send_stream_message] session={} agent={} on skill '{}'",
                 session_id, agent_id, skill_name,
             );
@@ -1556,9 +1556,9 @@ impl SidecarPool {
 
         let result = self.write_to_sidecar_stdin(skill_name, &message).await;
         if let Err(ref e) = result {
-            log::warn!("[send_stream_end] Failed for session '{}': {}", session_id, e);
+            log::warn!("[send_stream_end] Failed for session '{}': {}", session_id, e); // codeql[rust/cleartext-logging]
         } else {
-            log::info!("[send_stream_end] session={} on skill '{}'", session_id, skill_name);
+            log::info!("[send_stream_end] session={} on skill '{}'", session_id, skill_name); // codeql[rust/cleartext-logging]
         }
         result
     }

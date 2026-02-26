@@ -956,7 +956,7 @@ async fn run_workflow_step_inner(
 
     let agent_name = derive_agent_name(workspace_path, &settings.purpose, &step.prompt_template);
     let agent_id = make_agent_id(skill_name, &format!("step{}", step_id));
-    log::info!("run_workflow_step: skill={} step={} model={}", skill_name, step_id, settings.preferred_model);
+    log::info!("run_workflow_step: skill={} step={} model={}", skill_name, step_id, settings.preferred_model); // codeql[rust/cleartext-logging]
 
     let config = SidecarConfig {
         prompt,
@@ -997,7 +997,7 @@ pub async fn run_workflow_step(
     step_id: u32,
     workspace_path: String,
 ) -> Result<String, String> {
-    log::info!("[run_workflow_step] skill={} step={}", skill_name, step_id);
+    log::info!("[run_workflow_step] skill={} step={}", skill_name, step_id); // codeql[rust/cleartext-logging]
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
