@@ -46,16 +46,8 @@ Summary:
 
 ## User Guide
 
-Source lives in `docs/user-guide/` (VitePress). Deployed to `https://hbanerjee74.github.io/skill-builder/` via `docs.yml` on every push to `main` that touches `docs/user-guide/**` or `docs/.vitepress/**`.
-
-**Route → docs page mapping:** `app/src/lib/help-urls.ts`
-- `HELP_URLS` maps each app route to its docs URL
-- `getWorkflowStepUrl(step)` maps workflow step number (0–3) to the step-specific doc page
-- The header's CircleHelp button calls `getWorkflowStepUrl(currentStep)` on workflow pages and `getHelpUrl(path)` everywhere else
-
-**Adding a docs link to a new UI surface:** import `getHelpUrl` or `getWorkflowStepUrl` from `@/lib/help-urls`, call `openUrl(url)` from `@tauri-apps/plugin-opener`.
-
-**Adding a new docs page:** create the markdown file in `docs/user-guide/`, add it to the sidebar in `docs/.vitepress/config.ts`, and add the route → URL entry in `help-urls.ts`.
+Source: `docs/user-guide/` (VitePress). Deployed via `docs.yml` on push to `main`.
+Route → docs URL mapping: `app/src/lib/help-urls.ts`. New docs link: import `getHelpUrl`/`getWorkflowStepUrl`, call `openUrl()` from `@tauri-apps/plugin-opener`. New page: add to `docs/user-guide/`, `docs/.vitepress/config.ts`, and `help-urls.ts`.
 
 ## Code Style
 
@@ -68,8 +60,6 @@ Source lives in `docs/user-guide/` (VitePress). Deployed to `https://hbanerjee74
 
 ## Testing
 
-### Mocking Tauri APIs
-
-- **Unit tests (Vitest):** Tauri is globally mocked in `src/test/setup.ts`. Use `mockInvoke` from `src/test/mocks/tauri.ts` to configure per-command return values.
-- **E2E tests (Playwright):** Set `TAURI_E2E=true`. Mocks live in `src/test/mocks/tauri-e2e*.ts`. Override commands via `window.__TAURI_MOCK_OVERRIDES__`. Agent events: `e2e/helpers/agent-simulator.ts`.
+Tauri unit mocks: `src/test/setup.ts` (global) + `mockInvoke` from `src/test/mocks/tauri.ts`.
+E2E: set `TAURI_E2E=true`, mocks in `src/test/mocks/tauri-e2e*.ts`, override via `window.__TAURI_MOCK_OVERRIDES__`.
 
