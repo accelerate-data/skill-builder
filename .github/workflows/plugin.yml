@@ -26,6 +26,9 @@ on:
       - 'app/plugin-tests/**'
       - 'app/vitest.config.plugin.ts'
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
