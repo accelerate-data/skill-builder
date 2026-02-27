@@ -4,7 +4,7 @@ set -euo pipefail
 # Unified test runner for the Skill Builder desktop app.
 #
 # Usage: ./tests/run.sh [level] [--tag TAG]
-# Levels: unit, integration, e2e, plugin, eval, all (default: all)
+# Levels: unit, integration, e2e, agents, eval, all (default: all)
 # Tags (E2E): @dashboard, @settings, @workflow, @workflow-agent, @navigation
 
 # ---------------------------------------------------------------------------
@@ -27,7 +27,6 @@ RESET='\033[0m'
 # ---------------------------------------------------------------------------
 LEVEL="all"
 TAG=""
-RUN_WORKFLOW=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -35,14 +34,9 @@ while [[ $# -gt 0 ]]; do
       LEVEL="$1"
       shift
       ;;
-    plugin)
-      LEVEL="plugin"
+    agents)
+      LEVEL="agents"
       shift
-      # Allow explicit workflow opt-in: ./tests/run.sh plugin workflow
-      if [[ "${1:-}" == "workflow" ]]; then
-        RUN_WORKFLOW=true
-        shift
-      fi
       ;;
     --tag)
       TAG="${2:-}"
@@ -59,7 +53,7 @@ while [[ $# -gt 0 ]]; do
       echo "  unit          Pure logic: stores, utils, hooks, Rust, sidecar"
       echo "  integration   Component rendering with mocked APIs"
       echo "  e2e           Full browser tests (Playwright)"
-      echo "  plugin        Plugin tests (Vitest); add 'workflow' for full E2E (~\$5)"
+      echo "  agents        Agent structural checks (Vitest)"
       echo "  eval          Eval harness tests"
       echo "  all           Run all levels (default)"
       echo ""
@@ -70,9 +64,7 @@ while [[ $# -gt 0 ]]; do
       echo "Examples:"
       echo "  ./tests/run.sh                           # Run everything"
       echo "  ./tests/run.sh unit                      # Unit tests only"
-      echo "  ./tests/run.sh plugin                    # Plugin tests (Vitest)"
-      echo "  ./tests/run.sh plugin workflow                 # Full E2E workflow (opt-in, ~\$5)"
-      echo "  FOREGROUND=1 ./tests/run.sh plugin workflow    # Workflow test with live Claude output"
+      echo "  ./tests/run.sh agents                    # Agent structural tests"
       echo "  ./tests/run.sh e2e --tag @dashboard      # Dashboard E2E tests"
       exit 0
       ;;
@@ -130,7 +122,7 @@ run_unit() {
   fi
 
   # Canonical format compliance is now covered by:
-  # - Agent prompts: npm run test:plugin:structural (plugin-tests/structural.test.ts)
+  # - Agent prompts: npm run test:agents:structural (agent-tests/structural.test.ts)
   # - Mock templates / fixtures: vitest canonical-format.test.ts (included in unit tests above)
 }
 
@@ -164,23 +156,14 @@ run_e2e() {
 }
 
 # ---------------------------------------------------------------------------
-# Level: plugin
+# Level: agents
 # ---------------------------------------------------------------------------
-run_plugin() {
-  header "Plugin Tests (Vitest)"
-  if (cd "$APP_DIR" && npm run test:plugin --silent); then
-    pass "Plugin tests"
+run_agents() {
+  header "Agent Tests (Vitest)"
+  if (cd "$APP_DIR" && npm run test:agents --silent); then
+    pass "Agent tests"
   else
-    fail "Plugin tests"
-  fi
-
-  if [[ "$RUN_WORKFLOW" == "true" ]]; then
-    header "Plugin Tests: Full E2E Workflow (Vitest)"
-    if (cd "$APP_DIR" && npm run test:plugin:workflow --silent); then
-      pass "Plugin workflow (full E2E)"
-    else
-      fail "Plugin workflow (full E2E)"
-    fi
+    fail "Agent tests"
   fi
 }
 
@@ -214,8 +197,8 @@ case "$LEVEL" in
   e2e)
     run_e2e
     ;;
-  plugin)
-    run_plugin
+  agents)
+    run_agents
     ;;
   eval)
     run_eval
@@ -224,7 +207,7 @@ case "$LEVEL" in
     run_unit
     run_integration
     run_e2e
-    run_plugin
+    run_agents
     run_eval
     ;;
 esac

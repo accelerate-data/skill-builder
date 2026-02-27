@@ -3,7 +3,9 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
-export const PLUGIN_DIR = path.resolve(__dirname, "../..");
+export const REPO_ROOT = path.resolve(__dirname, "../..");
+export const AGENTS_DIR = path.join(REPO_ROOT, "agents");
+
 export const CLAUDE_BIN = process.env.CLAUDE_BIN ?? "claude";
 // True when API access is available. Checks for an API key OR the
 // FORCE_PLUGIN_TESTS flag (set in .claude/settings.json for OAuth sessions).
@@ -25,11 +27,6 @@ export function parseBudget(
   return null;
 }
 
-export function hasClaude(): boolean {
-  const result = spawnSync("which", [CLAUDE_BIN], { encoding: "utf8" });
-  return result.status === 0;
-}
-
 /** Create a temp directory for a test fixture, cleaned up automatically via afterAll. */
 export function makeTempDir(label: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `skill-builder-test-${label}-`));
@@ -37,10 +34,11 @@ export function makeTempDir(label: string): string {
 
 /**
  * Run Claude CLI with a prompt and return the stdout output.
+ * Uses -p only — no --plugin-dir. Suitable for standalone agent invocation.
  * Returns null if the process times out or exits non-zero.
  * Pass budgetUsd as null to run without a spending cap.
  */
-export function runClaude(
+export function runAgent(
   prompt: string,
   budgetUsd: string | null,
   timeoutMs: number,
@@ -53,33 +51,31 @@ export function runClaude(
 
   const budgetArgs =
     budgetUsd != null ? ["--max-budget-usd", budgetUsd] : [];
+  const modelArgs = process.env.AGENTS_TEST_MODEL
+    ? ["--model", process.env.AGENTS_TEST_MODEL]
+    : [];
 
   const result = spawnSync(
     CLAUDE_BIN,
-    [
-      "-p",
-      "--plugin-dir",
-      PLUGIN_DIR,
-      "--dangerously-skip-permissions",
-      ...budgetArgs,
-    ],
+    ["-p", "--dangerously-skip-permissions", ...modelArgs, ...budgetArgs],
     {
       input: prompt,
       encoding: "utf8",
       cwd,
       env,
       timeout: timeoutMs,
+      // Inherit stdout and stderr so all Claude output streams to the terminal
+      // in real time. Smoke tests check filesystem output, not stdout.
+      stdio: ["pipe", "inherit", "inherit"],
     }
   );
 
   if (result.error) {
-    throw new Error(
-      `runClaude: process error: ${result.error.message}\nstderr: ${result.stderr ?? ""}`
-    );
+    throw new Error(`runAgent: process error: ${result.error.message}`);
   }
   if (result.status !== 0) {
     throw new Error(
-      `runClaude: exited with status ${result.status}\nstdout: ${result.stdout ?? ""}\nstderr: ${result.stderr ?? ""}`
+      `runAgent: exited with status ${result.status}\nstdout: ${result.stdout ?? ""}`
     );
   }
   return (result.stdout ?? "").trim();

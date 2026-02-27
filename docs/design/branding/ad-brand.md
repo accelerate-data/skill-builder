@@ -1,5 +1,7 @@
 # Brand Alignment Audit
 
+> **Status: In progress.** CSS variables and semantic color system applied (see `.claude/rules/frontend-design.md`). Typography and remaining items below are pending.
+
 Comparing current app UI (`app/src/styles/globals.css`, `public/`) against Accelerate Data brand guidelines (`/branding/gamma-theme.md`).
 
 ---
@@ -7,6 +9,7 @@ Comparing current app UI (`app/src/styles/globals.css`, `public/`) against Accel
 ## 1. Colors
 
 ### Primary Color
+
 | | Value | Appearance |
 |---|---|---|
 | **Current** | `oklch(0.530 0.095 195)` | Darker teal/cyan (~#007ea0) |
@@ -15,6 +18,7 @@ Comparing current app UI (`app/src/styles/globals.css`, `public/`) against Accel
 Action: Update `--primary` to match Pacific `#00b4d8` (~`oklch(0.680 0.120 210)`).
 
 ### Ring / Focus Indicator
+
 | | Value | Appearance |
 |---|---|---|
 | **Current** | `oklch(0.600 0.120 50)` | Yellow/orange — **off-brand** |
@@ -23,6 +27,7 @@ Action: Update `--primary` to match Pacific `#00b4d8` (~`oklch(0.680 0.120 210)`
 Action: Replace `--ring` with Arctic `#90e0ef` (~`oklch(0.870 0.065 208)`).
 
 ### Background
+
 | | Value | Appearance |
 |---|---|---|
 | **Current** | `oklch(0.984 0.003 90)` | Near-white with warm tint |
@@ -31,6 +36,7 @@ Action: Replace `--ring` with Arctic `#90e0ef` (~`oklch(0.870 0.065 208)`).
 Action: Update `--background` to Pearl `#f2f2f2` (~`oklch(0.956 0.000 0)`).
 
 ### Foreground / Text
+
 | | Value | Appearance |
 |---|---|---|
 | **Current** | `oklch(0.185 0.008 260)` | Very dark with slight blue |
@@ -41,6 +47,7 @@ Close match, but headings should use Navy `#03045e` — currently no heading-spe
 Action: Add `--heading-foreground: #03045e` and apply it to `h1`–`h3` headings.
 
 ### Missing Brand Colors
+
 These brand colors have no equivalent in the current CSS variables:
 
 | Brand Token | Hex | Use Case |
@@ -97,6 +104,7 @@ Brand logo assets are available at:
 Light and Dark variants are both present (`/Light/`, `/Dark/`), each with `full_logo.svg`, `full_logo.png`, `icon.svg`, `icon.png`, `icon_name.svg`, `icon_name.png`.
 
 Action:
+
 1. Replace `public/icon-256.png` with `icon.png` from the Light variant.
 2. Update `public/ad-favicon.svg` to use `icon.svg` from the Light variant.
 3. Add the Dark variant `full_logo.svg` for the dark-theme sidebar/header.
@@ -107,16 +115,19 @@ Action:
 ## 4. Component Details
 
 ### Buttons
+
 Brand spec: Pacific (`#00b4d8`) background, white text.
 Current `--primary` is darker than Pacific — will be fixed by the color change above.
 
 ### Cards
+
 Brand spec: Arctic (`#90e0ef`) thin border, medium shadow.
 Current `--border` is `oklch(0.910 0.006 85)` (warm gray) — should move to Arctic.
 
 Action: Update `--border` to `#90e0ef` (Arctic) for cards specifically, or add a `--card-border` variable.
 
 ### Links
+
 Currently no explicit link color override — links inherit from browser defaults or primary.
 Action: Set `a { color: #0077b6; } a:hover { color: #00b4d8; }` in `globals.css`.
 

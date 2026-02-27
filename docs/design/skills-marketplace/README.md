@@ -16,7 +16,7 @@ A marketplace repo has three levels: **registry → plugins → skills**. The ca
 
 The default registry (`https://github.com/hbanerjee74/skills`) shows both common layout patterns — plugins in a subdirectory and a plugin rooted at `./`:
 
-```
+```text
 hbanerjee74/skills/
   .claude-plugin/
     marketplace.json          ← catalog

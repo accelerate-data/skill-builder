@@ -26,7 +26,8 @@ Block if `scope_recommendation: true` or `contradictory_inputs: true` in `{conte
 If blocked, write these stub files and return (use the matching reason in the text):
 
 **`{context_dir}/agent-validation-log.md`:**
-```
+
+```text
 ---
 scope_recommendation: true
 ---
@@ -36,7 +37,8 @@ Scope recommendation is active. No skill was generated, so no validation was per
 ```
 
 **`{context_dir}/test-skill.md`:**
-```
+
+```text
 ---
 scope_recommendation: true
 ---
@@ -46,7 +48,8 @@ Scope recommendation is active. No skill was generated, so no tests were run.
 ```
 
 **`{context_dir}/companion-skills.md`:**
-```
+
+```text
 ---
 scope_recommendation: true
 skill_name: {skill_name}
@@ -72,7 +75,7 @@ Include the full `user-context.md` content under a `## User Context` heading in 
 
 The skill returns three delimited sections:
 
-```
+```text
 === VALIDATION LOG ===
 {full agent-validation-log.md content}
 === TEST RESULTS ===
@@ -82,6 +85,7 @@ The skill returns three delimited sections:
 ```
 
 Extract each section and write verbatim to:
+
 1. `=== VALIDATION LOG ===` → `{context_dir}/agent-validation-log.md`
 2. `=== TEST RESULTS ===` → `{context_dir}/test-skill.md`
 3. `=== COMPANION SKILLS ===` → `{context_dir}/companion-skills.md`

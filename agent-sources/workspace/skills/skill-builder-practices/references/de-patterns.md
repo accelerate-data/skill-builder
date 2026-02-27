@@ -3,6 +3,7 @@
 Stack conventions and anti-patterns for dbt/dlt/elementary/Fabric.
 
 ## Contents
+
 - [dbt (silver + gold)](#dbt-silver--gold)
 - [dlt (bronze / ingestion)](#dlt-bronze--ingestion)
 - [elementary (observability)](#elementary-observability)

@@ -52,18 +52,22 @@ Some questions have nested **Refinements** — follow-up sub-questions inside th
 After you click Continue, the app evaluates your answers and shows one of these dialogs:
 
 **"Skip Detailed Research?"** — your answers are thorough
+
 - **Run Research Anyway** — proceeds to Step 2 (Detailed Research)
 - **Skip to Decisions** — skips Step 2 and jumps directly to Step 3
 
 **"Some Answers Need Deeper Research"** — a few answers need more detail
+
 - **Let Me Revise** — returns to the editor so you can improve your answers
 - **Continue to Research** — proceeds to Step 2 anyway
 
 **"Review Answer Quality"** — some answers are missing or too vague
+
 - **Let Me Answer** — returns to the editor
 - **Continue Anyway** — proceeds to Step 2 despite incomplete answers
 
 **"Contradictory Answers"** — some answers conflict with each other
+
 - **Let Me Answer** — returns to the editor (the only option; you must resolve the contradiction before continuing)
 
 Each dialog shows a per-question breakdown: OK, Missing, Vague, Needs refinement, and Contradictory counts.

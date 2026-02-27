@@ -11,6 +11,7 @@ Build well-structured applications following established patterns for error hand
 ## Quick Start
 
 When starting a new feature:
+
 1. Check the architecture decision records in `docs/adr/`
 2. Create a feature branch from `main`
 3. Implement with the patterns below
@@ -20,7 +21,9 @@ When starting a new feature:
 ## Core Patterns
 
 ### Error Handling
+
 Use result types for expected errors. Every error should have:
+
 - **Detection**: How to identify the error
 - **Impact**: What breaks downstream
 - **Recovery**: Specific steps to fix
@@ -31,12 +34,15 @@ type Result<T, E = Error> = { ok: true; value: T } | { ok: false; error: E };
 ```
 
 ### Testing Strategy
+
 Follow the test pyramid:
+
 - **Unit tests** (70%): Business logic, pure functions, state transitions
 - **Integration tests** (20%): API contracts, database queries, service interactions
 - **E2E tests** (10%): Critical user flows only (login, checkout, data export)
 
 ### Performance Thresholds
+
 - Response time p95: < 200ms
 - Throughput: > 1000 req/s
 - Error rate: < 0.1%

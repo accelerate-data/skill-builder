@@ -29,7 +29,7 @@ scope_recommendation: true        # optional — set by scope advisor, checked b
 | Field | Type | Description |
 |---|---|---|
 | `question_count` | integer | Total number of top-level Q-questions |
-| `sections` | integer | Number of `## ` section headings |
+| `sections` | integer | Number of `##` section headings |
 | `duplicates_removed` | integer | Number of duplicates eliminated during consolidation |
 | `refinement_count` | integer | Total R-level refinement items (0 before Step 3) |
 
@@ -45,7 +45,7 @@ scope_recommendation: true        # optional — set by scope advisor, checked b
 
 ## Heading Hierarchy
 
-```
+```text
 # Research Clarifications          ← document title (H1)
 ## Section Name                    ← topic section (H2)
 ### Required                       ← required question group (H3, conditional)
@@ -142,6 +142,7 @@ C. Other (please specify)
 | Sub-refinement | `R{n}.{m}{a}` | `R12.1a`, `R12.2b` | detailed-research (Step 3) |
 
 The parent is always embedded in the ID:
+
 - `R1.1` → refinement 1 of **Q1**
 - `R12.2b` → sub-refinement (b) of **R12.2**, which itself refines **Q12**
 
@@ -535,7 +536,7 @@ Written by the Rust sidecar layer (`sidecar_pool.rs`) for every agent run. Store
 
 ## Filename
 
-```
+```text
 {step-label}-{timestamp}.jsonl
 ```
 

@@ -8,7 +8,7 @@ Two plan agents run in parallel, then one evaluator compares their outputs.
 
 Before each run, `prepare_skill_test` (Rust) creates two temp directories under `$TMPDIR/skill-builder-test-{uuid}/`:
 
-```
+```text
 baseline/
   .claude/
     CLAUDE.md          ← "# Test Workspace"
@@ -33,7 +33,7 @@ The SDK starts with each directory as its `cwd` and auto-loads `.claude/CLAUDE.m
 
 Both agents run in parallel and receive the same wrapped prompt:
 
-```
+```text
 You are a data engineer and the user is trying to do the following task:
 
 {whatever the user typed}
@@ -47,7 +47,7 @@ The difference between the two runs is entirely in what the SDK loads from each 
 
 Once both plan agents complete, a third agent runs in the **baseline** workspace (so it loads `skill-test` context including the Evaluation Rubric). It receives the raw user prompt (not the wrapped version) and both plan outputs:
 
-```
+```text
 Task prompt:
 """
 {whatever the user typed}

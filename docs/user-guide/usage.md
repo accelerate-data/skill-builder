@@ -19,6 +19,7 @@ The Usage page shows a summary of API costs and token consumption across all ski
 **Cost by Model** bar chart — same breakdown grouped by Claude model.
 
 **Recent Workflow Runs** list — each row shows:
+
 - Skill name
 - Date and time
 - Total cost

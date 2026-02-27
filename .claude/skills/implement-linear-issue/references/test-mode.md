@@ -28,7 +28,6 @@ Everything else. Replays bundled JSONL templates (~1s per step, no API spend).
 - Stores, hooks, utilities (`app/src/stores/`, `app/src/hooks/`, `app/src/lib/`)
 - Non-agent Rust commands: settings, skills, files, git, dashboard, usage
 - Tests and test infrastructure
-- Plugin files (`.claude-plugin/`, `skills/`)
 - Scripts, docs, config files
 
 ## Launch Commands

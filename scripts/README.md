@@ -4,7 +4,7 @@ Automation scripts for the Skill Builder project.
 
 ## Directory Structure
 
-```
+```text
 scripts/
 ├── README.md                      # This file
 ├── build-plugin-skill.sh          # Package workspace CLAUDE.md into skill references
@@ -34,6 +34,7 @@ FOREGROUND=1 ./tests/run.sh plugin workflow   # Full E2E with live Claude output
 ```
 
 Each `it()` block is a standalone Vitest test — filter by name:
+
 ```bash
 npx vitest run --config vitest.config.plugin.ts -t "agent exists: answer-evaluator"
 npx vitest run --config vitest.config.plugin.ts -t "detects: clarification"
@@ -69,15 +70,18 @@ LLM tests are skipped automatically when `ANTHROPIC_API_KEY` is not set.
 ## Scripts Overview
 
 **`build-plugin-skill.sh`**
+
 - Packages `agent-sources/workspace/CLAUDE.md` as `workspace-context.md` into `skills/building-skills/references/`
 - Run after modifying workspace CLAUDE.md
 - Use `--check` flag to verify references are fresh (for CI)
 
 **`validate.sh`**
+
 - Structural validation: plugin manifest, agent frontmatter, model tiers, reference files, coordinator content
 - Fast and free — no LLM calls
 
 **`eval/eval-skill-quality.sh`**
+
 - Multi-perspective skill evaluation harness
 - See `eval/README.md` for documentation
 
@@ -86,6 +90,7 @@ LLM tests are skipped automatically when `ANTHROPIC_API_KEY` is not set.
 ## CI/CD Integration
 
 **Validation (runs on every PR — free):**
+
 ```bash
 ./scripts/build-plugin-skill.sh --check
 ./scripts/validate.sh
@@ -93,6 +98,7 @@ cd app && npm run test:plugin:structural
 ```
 
 **Full plugin testing:**
+
 ```bash
 cd app && npm run test:plugin           # LLM tests (requires API key)
 cd app && npm run test:plugin:workflow  # Full E2E (~$5)

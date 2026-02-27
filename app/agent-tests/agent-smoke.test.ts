@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import fs from "fs";
 import path from "path";
-import { HAS_API_KEY, PLUGIN_DIR, makeTempDir, runClaude, parseBudget } from "./helpers";
+import { HAS_API_KEY, REPO_ROOT, AGENTS_DIR, makeTempDir, runAgent, parseBudget } from "./helpers";
 import {
   createFixtureScoping,
   createFixtureClarification,
@@ -16,14 +16,19 @@ const BUDGET = parseBudget(
   process.env.MAX_BUDGET_WORKFLOW,
   "0.50"
 );
-const WORKSPACE_CONTEXT = fs.readFileSync(
-  path.join(PLUGIN_DIR, "skills", "building-skills", "references", "workspace-context.md"),
-  "utf8"
-);
-const REFINE_SKILL_INSTRUCTIONS = fs.readFileSync(
-  path.join(PLUGIN_DIR, "agents", "refine-skill.md"),
-  "utf8"
-).replace(/^---[\s\S]*?---\n/, ""); // strip YAML frontmatter
+
+let WORKSPACE_CONTEXT: string;
+let REFINE_SKILL_INSTRUCTIONS: string;
+
+beforeAll(() => {
+  WORKSPACE_CONTEXT = fs.readFileSync(
+    path.join(REPO_ROOT, "agent-sources", "workspace", "CLAUDE.md"),
+    "utf8"
+  );
+  REFINE_SKILL_INSTRUCTIONS = fs
+    .readFileSync(path.join(AGENTS_DIR, "refine-skill.md"), "utf8")
+    .replace(/^---[\s\S]*?---\n/, ""); // strip YAML frontmatter
+});
 
 // ── research-orchestrator ────────────────────────────────────────────────────
 
@@ -60,7 +65,7 @@ B. <option>
 
 Return: path to clarifications.md and question count.`;
 
-    runClaude(prompt, BUDGET, 180_000, researchDir);
+    runAgent(prompt, BUDGET, 180_000, researchDir);
   }, 200_000);
 
   it("creates clarifications.md", { timeout: 200_000 }, () => {
@@ -120,7 +125,7 @@ The JSON must contain exactly these fields:
 
 Return: the evaluation JSON contents.`;
 
-    runClaude(prompt, BUDGET, 120_000, evalDir);
+    runAgent(prompt, BUDGET, 120_000, evalDir);
   }, 135_000);
 
   it("creates answer-evaluation.json", { timeout: 135_000 }, () => {
@@ -142,8 +147,6 @@ Return: the evaluation JSON contents.`;
 });
 
 // ── confirm-decisions ────────────────────────────────────────────────────────
-// Depends on answer-evaluator output. Uses its own fixture workspace so it
-// can run independently; copies the answer-evaluation.json from a fresh eval run.
 
 describe.skipIf(!HAS_API_KEY)("confirm-decisions", () => {
   let decisionsDir: string;
@@ -160,7 +163,7 @@ Read: ${evalDir}/${SKILL_NAME}/context/clarifications.md
 Write evaluation to: ${evalDir}/.vibedata/${SKILL_NAME}/answer-evaluation.json
 JSON fields: total_questions, answered_count, empty_count, verdict (sufficient|needs_more_research|insufficient), reasoning.
 Return the JSON.`;
-    runClaude(evalPrompt, BUDGET, 120_000, evalDir);
+    runAgent(evalPrompt, BUDGET, 120_000, evalDir);
     answerEvalPath = path.join(evalDir, ".vibedata", SKILL_NAME, "answer-evaluation.json");
 
     // Set up decisions workspace
@@ -202,7 +205,7 @@ Each decision must follow this format:
 
 Return: path to decisions.md and a one-line summary of key decisions.`;
 
-    runClaude(prompt, BUDGET, 120_000, decisionsDir);
+    runAgent(prompt, BUDGET, 120_000, decisionsDir);
   }, 270_000);
 
   it("creates decisions.md", { timeout: 260_000 }, () => {
@@ -250,25 +253,25 @@ ${WORKSPACE_CONTEXT}
 
 Current user message: Add to the description that this skill works well with dbt-testing when running test suites`;
 
-    runClaude(prompt, BUDGET, 120_000, refineDir);
+    runAgent(prompt, BUDGET, 120_000, refineDir);
   }, 135_000);
 
   it("description field is updated with companion trigger", { timeout: 135_000 }, () => {
     if (!fs.existsSync(skillMdPath)) return;
-    const frontmatter = extractFrontmatter(skillMdPath);
-    expect(frontmatter).toMatch(/dbt.testing/i);
+    const fm = extractFrontmatter(skillMdPath);
+    expect(fm).toMatch(/dbt.testing/i);
   });
 
   it("original description content is preserved", { timeout: 135_000 }, () => {
     if (!fs.existsSync(skillMdPath)) return;
-    const frontmatter = extractFrontmatter(skillMdPath);
-    expect(frontmatter).toContain("Guides data engineers");
+    const fm = extractFrontmatter(skillMdPath);
+    expect(fm).toContain("Guides data engineers");
   });
 
   it("modified date is updated after description edit", { timeout: 135_000 }, () => {
     if (!fs.existsSync(skillMdPath)) return;
-    const frontmatter = extractFrontmatter(skillMdPath);
-    const modifiedMatch = frontmatter.match(/^modified:\s*(.+)$/m);
+    const fm = extractFrontmatter(skillMdPath);
+    const modifiedMatch = fm.match(/^modified:\s*(.+)$/m);
     expect(modifiedMatch).not.toBeNull();
     expect(modifiedMatch![1].trim()).not.toBe("2026-01-15");
   });
