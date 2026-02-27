@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { mockInvoke } from "@/test/mocks/tauri";
 import { useUsageStore } from "@/stores/usage-store";
-import type { UsageSummary, WorkflowSessionRecord, UsageByStep, UsageByModel } from "@/lib/types";
+import type { UsageSummary, WorkflowSessionRecord, UsageByStep, UsageByModel, UsageByDay } from "@/lib/types";
 
 const mockSummary: UsageSummary = {
   total_cost: 1.25,
@@ -38,6 +38,11 @@ const mockByModel: UsageByModel[] = [
   { model: "opus", total_cost: 0.45, run_count: 4 },
 ];
 
+const mockByDay: UsageByDay[] = [
+  { date: "2026-02-15", total_cost: 0.15, total_tokens: 18000, run_count: 1 },
+  { date: "2026-02-16", total_cost: 0.30, total_tokens: 36000, run_count: 2 },
+];
+
 function setupInvokeMock() {
   mockInvoke.mockImplementation((cmd: string) => {
     switch (cmd) {
@@ -49,6 +54,8 @@ function setupInvokeMock() {
         return Promise.resolve(mockByStep);
       case "get_usage_by_model":
         return Promise.resolve(mockByModel);
+      case "get_usage_by_day":
+        return Promise.resolve(mockByDay);
       case "reset_usage":
         return Promise.resolve();
       default:
@@ -64,8 +71,12 @@ describe("useUsageStore", () => {
       recentSessions: [],
       byStep: [],
       byModel: [],
+      byDay: [],
       loading: false,
       error: null,
+      dateRange: "all",
+      skillFilter: null,
+      skillNames: [],
     });
     mockInvoke.mockReset();
   });
@@ -76,8 +87,12 @@ describe("useUsageStore", () => {
     expect(state.recentSessions).toEqual([]);
     expect(state.byStep).toEqual([]);
     expect(state.byModel).toEqual([]);
+    expect(state.byDay).toEqual([]);
     expect(state.loading).toBe(false);
     expect(state.error).toBeNull();
+    expect(state.dateRange).toBe("all");
+    expect(state.skillFilter).toBeNull();
+    expect(state.skillNames).toEqual([]);
   });
 
   describe("fetchUsage", () => {
@@ -99,9 +114,10 @@ describe("useUsageStore", () => {
       expect(state.recentSessions).toEqual(mockSessions);
       expect(state.byStep).toEqual(mockByStep);
       expect(state.byModel).toEqual(mockByModel);
+      expect(state.byDay).toEqual(mockByDay);
     });
 
-    it("calls all four Tauri commands", async () => {
+    it("calls all five Tauri commands", async () => {
       setupInvokeMock();
 
       await useUsageStore.getState().fetchUsage();
@@ -111,6 +127,7 @@ describe("useUsageStore", () => {
       expect(calledCommands).toContain("get_recent_workflow_sessions");
       expect(calledCommands).toContain("get_usage_by_step");
       expect(calledCommands).toContain("get_usage_by_model");
+      expect(calledCommands).toContain("get_usage_by_day");
     });
 
     it("passes limit to get_recent_workflow_sessions", async () => {
@@ -120,7 +137,7 @@ describe("useUsageStore", () => {
 
       const sessionsCall = mockInvoke.mock.calls.find((c) => c[0] === "get_recent_workflow_sessions");
       expect(sessionsCall).toBeDefined();
-      expect(sessionsCall![1]).toEqual({ limit: 50, hideCancelled: false });
+      expect(sessionsCall![1]).toEqual({ limit: 50, hideCancelled: false, startDate: null, skillName: null });
     });
 
     it("sets error state on failure", async () => {
@@ -153,6 +170,7 @@ describe("useUsageStore", () => {
       expect(state.recentSessions).toEqual(mockSessions);
       expect(state.byStep).toEqual(mockByStep);
       expect(state.byModel).toEqual(mockByModel);
+      expect(state.byDay).toEqual(mockByDay);
     });
 
     it("calls reset_usage before refetching", async () => {
