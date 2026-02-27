@@ -1,14 +1,12 @@
 # Skill Builder
 
-Multi-agent workflow for creating domain-specific Claude skills. Two frontends (CLI plugin + Tauri desktop app) share the same agents and references.
+Multi-agent workflow for creating domain-specific Claude skills.
 
 @import CLAUDE-APP.md
-@import CLAUDE-PLUGIN.md
 
 **Companion files** (imported above, must be reviewed together with this file):
 
 - `CLAUDE-APP.md` — Desktop app architecture, Rust/frontend conventions, git/publishing workflow
-- `CLAUDE-PLUGIN.md` — Plugin structure, agent management, validation hooks
 
 **CLAUDE.md maintenance rule**: These files contain architecture, conventions, and guidelines — not product details. Do not add counts (agent counts, step counts, test counts), feature descriptions, or any fact the agent can discover by reading code. If it will go stale when the code changes, it doesn't belong here — point to the source file instead.
 
@@ -21,7 +19,7 @@ npm run dev                              # Dev mode (hot reload)
 MOCK_AGENTS=true npm run dev             # Mock mode (no API calls, replays bundled templates)
 
 # Testing — app (run from app/)
-app/tests/run.sh                         # All levels (unit + integration + e2e + plugin + eval)
+app/tests/run.sh                         # All levels (unit + integration + e2e + agents + eval)
 app/tests/run.sh unit                    # Level 1: stores, utils, hooks, rust, sidecar
 app/tests/run.sh integration             # Level 2: component + page tests
 app/tests/run.sh e2e                     # Level 3: Playwright
@@ -31,20 +29,9 @@ cd app && npm run test:integration       # Integration tests only (frontend)
 cd app && npm run test:e2e               # All E2E tests
 cd app/src-tauri && cargo test           # Rust tests
 
-# Testing — plugin (run from repo root or app/)
-./scripts/build-plugin-skill.sh          # Package workspace CLAUDE.md into skill references
-./scripts/build-plugin-skill.sh --check  # Check if reference files are stale (CI)
-./scripts/validate.sh                    # Structural validation
-cd app && npm run test:plugin            # Plugin tests: structural + LLM (Vitest)
-cd app && npm run test:plugin:structural # Structural checks only (free, no API key)
-cd app && npm run test:plugin:workflow    # Full E2E workflow test (~$5)
-# LLM plugin tests MUST be run from a regular terminal (not inside a Claude Code session).
-# Auth: set ANTHROPIC_API_KEY, or set FORCE_PLUGIN_TESTS=1 for OAuth users (no API key).
-# Budget caps: MAX_BUDGET_LOADING/MODES/AGENTS (default $0.25), MAX_BUDGET_WORKFLOW (default $5)
-claude --plugin-dir .                    # Load plugin locally
-
-# Skill evaluation (LLM-as-judge, run from repo root)
-./scripts/eval/eval-skill-quality.sh --help              # Usage, modes, and options
+# Testing — agents (run from app/)
+cd app && npm run test:agents:structural # Agent structural checks (free, no API key)
+cd app && npm run test:agents:smoke      # Agent smoke tests (requires API key or FORCE_PLUGIN_TESTS=1)
 ```
 
 ## Testing
@@ -61,8 +48,6 @@ claude --plugin-dir .                    # Load plugin locally
 
 Purely cosmetic changes or simple wiring don't require tests. If unclear, ask the user.
 
-**Plugin:** Agent prompts and coordinator changes are validated by the existing test tiers — don't write new tests, run the appropriate tier instead (see quick rules below).
-
 ### Test discipline
 
 Before writing any test code, read existing tests for the files you changed:
@@ -76,34 +61,33 @@ Before writing any test code, read existing tests for the files you changed:
 
 Determine what you changed, then pick the right runner:
 
-| What changed | Plugin tests | App tests |
+| What changed | Agent tests | App tests |
 |---|---|---|
 | Frontend (store/hook/component/page) | — | `npm run test:changed` |
 | Rust command | — | `cargo test <module>` + E2E tag from `app/tests/TEST_MANIFEST.md` |
-| Sidecar agent invocation (`app/sidecar/`) | `cd app && npm run test:plugin:structural test:plugin:agents` | `cd app/sidecar && npx vitest run` |
-| Agent prompt (`agents/`) | `cd app && npm run test:plugin:structural` | `npm run test:unit` (canonical-format) |
-| Agent output format (`agents/`) | `cd app && npm run test:plugin:structural test:plugin:agents` | `npm run test:unit` (canonical-format) |
-| Coordinator (`skills/building-skills/SKILL.md`) | `cd app && npm run test:plugin:structural test:plugin:loading test:plugin:modes` | — |
-| `agent-sources/workspace/CLAUDE.md` | `cd app && npm run test:plugin:structural` | `npm run test:unit` |
+| Sidecar agent invocation (`app/sidecar/`) | `cd app && npm run test:agents:structural test:agents:smoke` | `cd app/sidecar && npx vitest run` |
+| Agent prompt (`agents/`) | `cd app && npm run test:agents:structural` | `npm run test:unit` (canonical-format) |
+| Agent output format (`agents/`) | `cd app && npm run test:agents:structural test:agents:smoke` | `npm run test:unit` (canonical-format) |
+| `agent-sources/workspace/CLAUDE.md` | `cd app && npm run test:agents:structural` | `npm run test:unit` |
 | Mock templates or E2E fixtures | — | `npm run test:unit` |
 | Shared infrastructure (`src/lib/tauri.ts`, test mocks) | — | `app/tests/run.sh` (all levels) |
 | Eval scripts | — | `app/tests/run.sh eval` |
 
-**Artifact format changes** (agent output format + app parser + mock templates): run `cd app && npm run test:plugin:structural test:plugin:agents` **and** `npm run test:unit`. The `canonical-format.test.ts` suite is the canary for format drift across the boundary.
+**Artifact format changes** (agent output format + app parser + mock templates): run `cd app && npm run test:agents:structural test:agents:smoke` **and** `npm run test:unit`. The `canonical-format.test.ts` suite is the canary for format drift across the boundary.
 
-**Unsure?** `app/tests/run.sh` runs everything. `./tests/run.sh plugin workflow` runs the full E2E workflow (~$5).
+**Unsure?** `app/tests/run.sh` runs everything.
 
-### Plugin test policy
+### Agent test policy
 
-**Only `test:plugin:structural` may be run by Claude** — it makes no API calls and is free.
+**Only `test:agents:structural` may be run by Claude** — it makes no API calls and is free.
 
-All other plugin tests (`test:plugin:loading`, `test:plugin:modes`, `test:plugin:agents`, `test:plugin:workflow`, `test:plugin`, `eval-skill-quality.sh`) make real API calls and cost real money. **Do not run them. Do not propose running them. Tell the user to run them manually.**
+`test:agents:smoke` makes real API calls and costs real money. **Do not run it. Tell the user to run it manually.**
 
 Rust → E2E tag mappings, E2E spec files, and cross-boundary format compliance details are in `app/tests/TEST_MANIFEST.md`.
 
 ### Updating the test manifest
 
-Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the cargo test filter + E2E tag), new E2E spec files, new plugin source patterns, or changing shared infrastructure files. Frontend test mappings are handled automatically by `vitest --changed` and naming conventions.
+Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the cargo test filter + E2E tag), new E2E spec files, new agent source patterns, or changing shared infrastructure files. Frontend test mappings are handled automatically by `vitest --changed` and naming conventions.
 
 ## Docs
 
@@ -149,7 +133,7 @@ Every new feature must include logging. The app uses `log` crate (Rust) and `con
 Both frontends use the same files — no conversion needed:
 
 - `agents/` — agent prompts (flat directory, validated by `./scripts/validate.sh`)
-- `agent-sources/workspace/CLAUDE.md` — agent instructions shared by all agents. The app deploys this to the workspace `.claude/CLAUDE.md` (auto-loaded by SDK). The plugin packages it into `skills/building-skills/references/` via `scripts/build-plugin-skill.sh` — run this script after modifying the file.
+- `agent-sources/workspace/CLAUDE.md` — agent instructions shared by all agents. The app deploys this to the workspace `.claude/CLAUDE.md` (auto-loaded by SDK).
 
 ## Issue Management
 

@@ -64,4 +64,3 @@ Route → docs URL mapping: `app/src/lib/help-urls.ts`. New docs link: import `g
 
 Tauri unit mocks: `src/test/setup.ts` (global) + `mockInvoke` from `src/test/mocks/tauri.ts`.
 E2E: set `TAURI_E2E=true`, mocks in `src/test/mocks/tauri-e2e*.ts`, override via `window.__TAURI_MOCK_OVERRIDES__`.
-

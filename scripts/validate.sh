@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Plugin structure validation — runs automatically via hook after Edit/Write
+# Agent structural validation — runs automatically via hook after Edit/Write
 # Also callable manually: ./scripts/validate.sh
 #
 # Exit codes:
@@ -8,8 +8,8 @@
 
 set -euo pipefail
 
-PLUGIN_DIR="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
-cd "$PLUGIN_DIR"
+REPO_DIR="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+cd "$REPO_DIR"
 
 ERRORS=0
 WARNINGS=0
@@ -17,26 +17,6 @@ WARNINGS=0
 pass() { echo "  PASS: $1"; }
 fail() { echo "  FAIL: $1"; ERRORS=$((ERRORS + 1)); }
 warn() { echo "  WARN: $1"; WARNINGS=$((WARNINGS + 1)); }
-
-# ---------- Manifest ----------
-echo "=== Manifest ==="
-if [ -f ".claude-plugin/plugin.json" ]; then
-  if python3 -m json.tool .claude-plugin/plugin.json > /dev/null 2>&1; then
-    pass "plugin.json is valid JSON"
-  else
-    fail "plugin.json is not valid JSON"
-  fi
-
-  for field in name version description skills; do
-    if python3 -c "import json; d=json.load(open('.claude-plugin/plugin.json')); assert '$field' in d" 2>/dev/null; then
-      pass "plugin.json has '$field'"
-    else
-      fail "plugin.json missing '$field'"
-    fi
-  done
-else
-  fail ".claude-plugin/plugin.json not found"
-fi
 
 # ---------- Agent files + frontmatter ----------
 echo "=== Agents ==="
@@ -110,57 +90,12 @@ else
   fail "duplicate agent names found: $dupes"
 fi
 
-# ---------- Skill file ----------
-echo "=== Coordinator Skill ==="
-if [ -f "skills/building-skills/SKILL.md" ]; then
-  if head -1 "skills/building-skills/SKILL.md" | grep -q "^---"; then
-    pass "skills/building-skills/SKILL.md exists with frontmatter"
-  else
-    fail "skills/building-skills/SKILL.md has no YAML frontmatter"
-  fi
-else
-  fail "skills/building-skills/SKILL.md not found"
-fi
-
 # ---------- Workspace CLAUDE.md ----------
 echo "=== Workspace CLAUDE.md ==="
 if [ -f "agent-sources/workspace/CLAUDE.md" ]; then
   pass "agent-sources/workspace/CLAUDE.md exists"
 else
   fail "agent-sources/workspace/CLAUDE.md not found"
-fi
-
-# ---------- Skill reference files ----------
-echo "=== Skill Reference Files ==="
-REFS_DIR="skills/building-skills/references"
-if [ -d "$REFS_DIR" ]; then
-  pass "references/ directory exists"
-  # workspace-context.md (full copy of agent-sources/workspace/CLAUDE.md)
-  if [ -f "$REFS_DIR/workspace-context.md" ]; then
-    size=$(wc -c < "$REFS_DIR/workspace-context.md" | tr -d ' ')
-    if [ "$size" -gt 100 ]; then
-      pass "workspace-context.md exists ($size bytes)"
-    else
-      fail "workspace-context.md is too small ($size bytes)"
-    fi
-  else
-    fail "workspace-context.md missing"
-  fi
-  # skill-builder-practices/ (copied from bundled-skills/)
-  for ref in skill-builder-practices/SKILL.md skill-builder-practices/references/ba-patterns.md skill-builder-practices/references/de-patterns.md; do
-    if [ -f "$REFS_DIR/$ref" ]; then
-      size=$(wc -c < "$REFS_DIR/$ref" | tr -d ' ')
-      if [ "$size" -gt 100 ]; then
-        pass "$ref exists ($size bytes)"
-      else
-        fail "$ref is too small ($size bytes)"
-      fi
-    else
-      fail "$ref missing"
-    fi
-  done
-else
-  fail "references/ directory missing"
 fi
 
 # ---------- Old files removed ----------
@@ -179,16 +114,6 @@ fi
 # ---------- .gitignore ----------
 echo "=== .gitignore ==="
 if [ -f ".gitignore" ]; then
-  if grep -q "^skills/" .gitignore; then
-    fail "skills/ is in .gitignore (plugin skills/ must be tracked)"
-  else
-    pass "skills/ is NOT in .gitignore"
-  fi
-  if grep -q "\.claude/" .gitignore; then
-    pass ".claude/ is in .gitignore"
-  else
-    warn ".claude/ not in .gitignore"
-  fi
   if grep -q "\*\.skill" .gitignore; then
     pass "*.skill is in .gitignore"
   else
@@ -198,28 +123,7 @@ else
   warn ".gitignore not found"
 fi
 
-# ---------- Coordinator content checks ----------
-echo "=== Coordinator Content ==="
-if [ -f "skills/building-skills/SKILL.md" ]; then
-  content=$(cat "skills/building-skills/SKILL.md")
-  for keyword in "CLAUDE_PLUGIN_ROOT" "skill-builder:" "references/workspace-context.md" "session.json"; do
-    if echo "$content" | grep -q "$keyword"; then
-      pass "coordinator references $keyword"
-    else
-      fail "coordinator missing reference to $keyword"
-    fi
-  done
-  # Workflow modes
-  for mode in "guided" "express" "iterative"; do
-    if echo "$content" | grep -q "$mode"; then
-      pass "coordinator has $mode mode"
-    else
-      fail "coordinator missing $mode mode"
-    fi
-  done
-fi
-
-# ---------- Generate-skill agent: best practices in bundled skill + references/ in generate-skill agents ----------
+# ---------- Generate-skill agent: best practices in bundled skill ----------
 echo "=== Generate-Skill Agent ==="
 # SKILL.md structure guidance is in the bundled skill-builder-practices skill (referenced from CLAUDE.md)
 if [ -f "agent-sources/workspace/skills/skill-builder-practices/SKILL.md" ]; then
@@ -232,8 +136,6 @@ if [ -f "agent-sources/workspace/skills/skill-builder-practices/SKILL.md" ]; the
 else
   fail "agent-sources/workspace/skills/skill-builder-practices/SKILL.md not found"
 fi
-# CLAUDE.md guidance section is now dynamically generated from DB at runtime,
-# so we only verify the bundled skill file exists (checked above).
 if [ -f "agents/generate-skill.md" ]; then
   build_content=$(cat "agents/generate-skill.md")
   if echo "$build_content" | grep -q "references/"; then
@@ -291,23 +193,6 @@ if [ -f "$BUNDLED_SKILLS_DIR/validate-skill/SKILL.md" ]; then
   done
 else
   fail "agent-sources/workspace/skills/validate-skill/SKILL.md not found"
-fi
-
-# ---------- Built plugin skill dirs ----------
-echo ""
-echo "=== Built Plugin Skills ==="
-BUNDLED_SKILLS_SRC="$PLUGIN_DIR/agent-sources/workspace/skills"
-if [ -d "$BUNDLED_SKILLS_SRC" ]; then
-  for skill_src in "$BUNDLED_SKILLS_SRC"/*/; do
-    skill_name=$(basename "$skill_src")
-    if [ -d "$PLUGIN_DIR/skills/$skill_name" ] && [ -f "$PLUGIN_DIR/skills/$skill_name/SKILL.md" ]; then
-      pass "skills/$skill_name/ exists (built from agent-sources)"
-    else
-      fail "skills/$skill_name/ missing — run: scripts/build-plugin-skill.sh"
-    fi
-  done
-else
-  warn "agent-sources/workspace/skills/ not found — skipping built skills check"
 fi
 
 # ---------- Summary ----------
