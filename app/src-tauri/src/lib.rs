@@ -228,6 +228,8 @@ pub fn run() {
             commands::usage::get_recent_workflow_sessions,
             commands::usage::get_session_agent_runs,
             commands::usage::get_step_agent_runs,
+            commands::usage::get_usage_by_day,
+            commands::usage::get_workflow_skill_names,
             commands::git::get_skill_history,
             commands::git::get_skill_diff,
             commands::git::restore_skill_version,

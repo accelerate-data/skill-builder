@@ -524,6 +524,14 @@ pub struct UsageByModel {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageByDay {
+    pub date: String,
+    pub total_cost: f64,
+    pub total_tokens: i64,
+    pub run_count: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubRepoInfo {
     pub owner: String,
     pub repo: String,

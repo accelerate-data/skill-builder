@@ -224,6 +224,13 @@ export interface UsageByModel {
   run_count: number
 }
 
+export interface UsageByDay {
+  date: string        // "YYYY-MM-DD"
+  total_cost: number
+  total_tokens: number
+  run_count: number
+}
+
 export interface ImportedSkill {
   skill_id: string
   skill_name: string

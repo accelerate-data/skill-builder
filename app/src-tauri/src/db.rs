@@ -1167,8 +1167,14 @@ pub fn persist_agent_run(
     Ok(())
 }
 
-pub fn get_usage_summary(conn: &Connection, hide_cancelled: bool) -> Result<UsageSummary, String> {
-    const SQL_WITH_HAVING: &str =
+pub fn get_usage_summary(conn: &Connection, hide_cancelled: bool, start_date: Option<&str>, skill_name: Option<&str>) -> Result<UsageSummary, String> {
+    let mut p = 1usize;
+    let date_clause  = if start_date.is_some()  { let s = format!(" AND ws.started_at >= ?{p}"); p += 1; s } else { String::new() };
+    let skill_clause = if skill_name.is_some()   { format!(" AND ws.skill_name = ?{p}")         } else { String::new() };
+    let having_clause = if hide_cancelled {
+        " HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(DISTINCT ar.agent_id) = 0"
+    } else { "" };
+    let sql = format!(
         "SELECT COALESCE(SUM(sub.session_cost), 0.0),
                 COUNT(*),
                 COALESCE(AVG(sub.session_cost), 0.0)
@@ -1177,34 +1183,35 @@ pub fn get_usage_summary(conn: &Connection, hide_cancelled: bool) -> Result<Usag
            FROM workflow_sessions ws
            LEFT JOIN agent_runs ar ON ar.workflow_session_id = ws.session_id
                                   AND ar.reset_marker IS NULL
-           WHERE ws.reset_marker IS NULL
-           GROUP BY ws.session_id
-           HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(DISTINCT ar.agent_id) = 0
-         ) sub";
-    const SQL_WITHOUT_HAVING: &str =
-        "SELECT COALESCE(SUM(sub.session_cost), 0.0),
-                COUNT(*),
-                COALESCE(AVG(sub.session_cost), 0.0)
-         FROM (
-           SELECT ws.session_id, COALESCE(SUM(ar.total_cost), 0.0) as session_cost
-           FROM workflow_sessions ws
-           LEFT JOIN agent_runs ar ON ar.workflow_session_id = ws.session_id
-                                  AND ar.reset_marker IS NULL
-           WHERE ws.reset_marker IS NULL
-           GROUP BY ws.session_id
-         ) sub";
+           WHERE ws.reset_marker IS NULL{date_clause}{skill_clause}
+           GROUP BY ws.session_id{having_clause}
+         ) sub"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    macro_rules! query {
+        ($params:expr) => {
+            stmt.query_row($params, |row| {
+                Ok(UsageSummary { total_cost: row.get(0)?, total_runs: row.get(1)?, avg_cost_per_run: row.get(2)? })
+            })
+            .map_err(|e| e.to_string())
+        };
+    }
+    match (start_date, skill_name) {
+        (Some(sd), Some(sn)) => query!(rusqlite::params![sd, sn]),
+        (Some(sd), None)     => query!(rusqlite::params![sd]),
+        (None,     Some(sn)) => query!(rusqlite::params![sn]),
+        (None,     None)     => query!([]),
+    }
+}
 
-    let sql = if hide_cancelled { SQL_WITH_HAVING } else { SQL_WITHOUT_HAVING };
-    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
-
-    stmt.query_row([], |row| {
-        Ok(UsageSummary {
-            total_cost: row.get(0)?,
-            total_runs: row.get(1)?,
-            avg_cost_per_run: row.get(2)?,
-        })
-    })
-    .map_err(|e| e.to_string())
+pub fn get_workflow_skill_names(conn: &Connection) -> Result<Vec<String>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT skill_name FROM workflow_sessions
+         WHERE reset_marker IS NULL
+         ORDER BY skill_name ASC"
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |row| row.get(0)).map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
 pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRecord>, String> {
@@ -1254,31 +1261,17 @@ pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRe
         .map_err(|e| e.to_string())
 }
 
-pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize, hide_cancelled: bool) -> Result<Vec<WorkflowSessionRecord>, String> {
-    let sql = if hide_cancelled {
-        "SELECT ws.session_id,
-                ws.skill_name,
-                COALESCE(MIN(ar.step_id), 0),
-                COALESCE(MAX(ar.step_id), 0),
-                COALESCE(GROUP_CONCAT(DISTINCT ar.step_id), ''),
-                COUNT(DISTINCT ar.agent_id),
-                COALESCE(SUM(ar.total_cost), 0.0),
-                COALESCE(SUM(ar.input_tokens), 0),
-                COALESCE(SUM(ar.output_tokens), 0),
-                COALESCE(SUM(ar.cache_read_tokens), 0),
-                COALESCE(SUM(ar.cache_write_tokens), 0),
-                COALESCE(SUM(ar.duration_ms), 0),
-                ws.started_at,
-                ws.ended_at
-         FROM workflow_sessions ws
-         LEFT JOIN agent_runs ar ON ar.workflow_session_id = ws.session_id
-                                AND ar.reset_marker IS NULL
-         WHERE ws.reset_marker IS NULL
-         GROUP BY ws.session_id
-         HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(DISTINCT ar.agent_id) = 0
-         ORDER BY ws.started_at DESC
-         LIMIT ?1"
+pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize, hide_cancelled: bool, start_date: Option<&str>, skill_name: Option<&str>) -> Result<Vec<WorkflowSessionRecord>, String> {
+    let having_clause = if hide_cancelled {
+        " HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(DISTINCT ar.agent_id) = 0"
     } else {
+        ""
+    };
+    let mut p = 1usize;
+    let date_clause  = if start_date.is_some()  { let s = format!(" AND ws.started_at >= ?{p}"); p += 1; s } else { String::new() };
+    let skill_clause = if skill_name.is_some()   { let s = format!(" AND ws.skill_name = ?{p}");  p += 1; s } else { String::new() };
+    let limit_param  = format!("?{p}");
+    let sql = format!(
         "SELECT ws.session_id,
                 ws.skill_name,
                 COALESCE(MIN(ar.step_id), 0),
@@ -1296,38 +1289,43 @@ pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize, hide_cancel
          FROM workflow_sessions ws
          LEFT JOIN agent_runs ar ON ar.workflow_session_id = ws.session_id
                                 AND ar.reset_marker IS NULL
-         WHERE ws.reset_marker IS NULL
-         GROUP BY ws.session_id
+         WHERE ws.reset_marker IS NULL{date_clause}{skill_clause}
+         GROUP BY ws.session_id{having_clause}
          ORDER BY ws.started_at DESC
-         LIMIT ?1"
-    };
-    let mut stmt = conn
-        .prepare(sql)
-        .map_err(|e| e.to_string())?;
-
-    let rows = stmt
-        .query_map(rusqlite::params![limit as i64], |row| {
-            Ok(WorkflowSessionRecord {
-                session_id: row.get(0)?,
-                skill_name: row.get(1)?,
-                min_step: row.get(2)?,
-                max_step: row.get(3)?,
-                steps_csv: row.get(4)?,
-                agent_count: row.get(5)?,
-                total_cost: row.get(6)?,
-                total_input_tokens: row.get(7)?,
-                total_output_tokens: row.get(8)?,
-                total_cache_read: row.get(9)?,
-                total_cache_write: row.get(10)?,
-                total_duration_ms: row.get(11)?,
-                started_at: row.get(12)?,
-                completed_at: row.get(13)?,
+         LIMIT {limit_param}"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    macro_rules! collect_rows {
+        ($params:expr) => {
+            stmt.query_map($params, |row| {
+                Ok(WorkflowSessionRecord {
+                    session_id: row.get(0)?,
+                    skill_name: row.get(1)?,
+                    min_step: row.get(2)?,
+                    max_step: row.get(3)?,
+                    steps_csv: row.get(4)?,
+                    agent_count: row.get(5)?,
+                    total_cost: row.get(6)?,
+                    total_input_tokens: row.get(7)?,
+                    total_output_tokens: row.get(8)?,
+                    total_cache_read: row.get(9)?,
+                    total_cache_write: row.get(10)?,
+                    total_duration_ms: row.get(11)?,
+                    started_at: row.get(12)?,
+                    completed_at: row.get(13)?,
+                })
             })
-        })
-        .map_err(|e| e.to_string())?;
-
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+        };
+    }
+    match (start_date, skill_name) {
+        (Some(sd), Some(sn)) => collect_rows!(rusqlite::params![sd, sn, limit as i64]),
+        (Some(sd), None)     => collect_rows!(rusqlite::params![sd, limit as i64]),
+        (None,     Some(sn)) => collect_rows!(rusqlite::params![sn, limit as i64]),
+        (None,     None)     => collect_rows!(rusqlite::params![limit as i64]),
+    }
 }
 
 pub fn get_session_agent_runs(conn: &Connection, session_id: &str) -> Result<Vec<AgentRunRecord>, String> {
@@ -1433,76 +1431,105 @@ pub fn get_step_agent_runs(
         .map_err(|e| e.to_string())
 }
 
-pub fn get_usage_by_step(conn: &Connection, hide_cancelled: bool) -> Result<Vec<UsageByStep>, String> {
-    let sql = if hide_cancelled {
+pub fn get_usage_by_step(conn: &Connection, hide_cancelled: bool, start_date: Option<&str>, skill_name: Option<&str>) -> Result<Vec<UsageByStep>, String> {
+    let cost_clause = if hide_cancelled { " AND total_cost > 0" } else { "" };
+    let mut p = 1usize;
+    let date_clause  = if start_date.is_some()  { let s = format!(" AND started_at >= ?{p}"); p += 1; s } else { String::new() };
+    let skill_clause = if skill_name.is_some()   { format!(" AND skill_name = ?{p}")         } else { String::new() };
+    let sql = format!(
         "SELECT step_id, COALESCE(SUM(total_cost), 0.0), COUNT(*)
          FROM agent_runs
          WHERE reset_marker IS NULL
-           AND workflow_session_id IS NOT NULL
-           AND total_cost > 0
+           AND workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}
          GROUP BY step_id
          ORDER BY SUM(total_cost) DESC"
-    } else {
-        "SELECT step_id, COALESCE(SUM(total_cost), 0.0), COUNT(*)
-         FROM agent_runs
-         WHERE reset_marker IS NULL
-           AND workflow_session_id IS NOT NULL
-         GROUP BY step_id
-         ORDER BY SUM(total_cost) DESC"
-    };
-    let mut stmt = conn
-        .prepare(sql)
-        .map_err(|e| e.to_string())?;
-
-    let rows = stmt
-        .query_map([], |row| {
-            let sid: i32 = row.get(0)?;
-            Ok(UsageByStep {
-                step_id: sid,
-                step_name: step_name(sid),
-                total_cost: row.get(1)?,
-                run_count: row.get(2)?,
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    macro_rules! collect_rows {
+        ($params:expr) => {
+            stmt.query_map($params, |row| {
+                let sid: i32 = row.get(0)?;
+                Ok(UsageByStep { step_id: sid, step_name: step_name(sid), total_cost: row.get(1)?, run_count: row.get(2)? })
             })
-        })
-        .map_err(|e| e.to_string())?;
-
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+        };
+    }
+    match (start_date, skill_name) {
+        (Some(sd), Some(sn)) => collect_rows!(rusqlite::params![sd, sn]),
+        (Some(sd), None)     => collect_rows!(rusqlite::params![sd]),
+        (None,     Some(sn)) => collect_rows!(rusqlite::params![sn]),
+        (None,     None)     => collect_rows!([]),
+    }
 }
 
-pub fn get_usage_by_model(conn: &Connection, hide_cancelled: bool) -> Result<Vec<UsageByModel>, String> {
-    let sql = if hide_cancelled {
+pub fn get_usage_by_model(conn: &Connection, hide_cancelled: bool, start_date: Option<&str>, skill_name: Option<&str>) -> Result<Vec<UsageByModel>, String> {
+    let cost_clause = if hide_cancelled { " AND total_cost > 0" } else { "" };
+    let mut p = 1usize;
+    let date_clause  = if start_date.is_some()  { let s = format!(" AND started_at >= ?{p}"); p += 1; s } else { String::new() };
+    let skill_clause = if skill_name.is_some()   { format!(" AND skill_name = ?{p}")         } else { String::new() };
+    let sql = format!(
         "SELECT model, COALESCE(SUM(total_cost), 0.0), COUNT(*)
          FROM agent_runs
          WHERE reset_marker IS NULL
-           AND workflow_session_id IS NOT NULL
-           AND total_cost > 0
+           AND workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}
          GROUP BY model
          ORDER BY SUM(total_cost) DESC"
-    } else {
-        "SELECT model, COALESCE(SUM(total_cost), 0.0), COUNT(*)
-         FROM agent_runs
-         WHERE reset_marker IS NULL
-           AND workflow_session_id IS NOT NULL
-         GROUP BY model
-         ORDER BY SUM(total_cost) DESC"
-    };
-    let mut stmt = conn
-        .prepare(sql)
-        .map_err(|e| e.to_string())?;
-
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(UsageByModel {
-                model: row.get(0)?,
-                total_cost: row.get(1)?,
-                run_count: row.get(2)?,
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    macro_rules! collect_rows {
+        ($params:expr) => {
+            stmt.query_map($params, |row| {
+                Ok(UsageByModel { model: row.get(0)?, total_cost: row.get(1)?, run_count: row.get(2)? })
             })
-        })
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+        };
+    }
+    match (start_date, skill_name) {
+        (Some(sd), Some(sn)) => collect_rows!(rusqlite::params![sd, sn]),
+        (Some(sd), None)     => collect_rows!(rusqlite::params![sd]),
+        (None,     Some(sn)) => collect_rows!(rusqlite::params![sn]),
+        (None,     None)     => collect_rows!([]),
+    }
+}
 
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())
+pub fn get_usage_by_day(conn: &Connection, hide_cancelled: bool, start_date: Option<&str>, skill_name: Option<&str>) -> Result<Vec<crate::types::UsageByDay>, String> {
+    let mut p = 1usize;
+    let date_clause  = if start_date.is_some()  { let s = format!(" AND ws.started_at >= ?{p}"); p += 1; s } else { String::new() };
+    let skill_clause = if skill_name.is_some()   { format!(" AND ws.skill_name = ?{p}")         } else { String::new() };
+    let having_clause = if hide_cancelled { " HAVING COALESCE(SUM(ar.total_cost), 0) > 0" } else { "" };
+    let sql = format!(
+        "SELECT DATE(ws.started_at),
+                COALESCE(SUM(ar.total_cost), 0.0),
+                COALESCE(SUM(ar.input_tokens + ar.output_tokens), 0),
+                COUNT(DISTINCT ws.session_id)
+         FROM workflow_sessions ws
+         LEFT JOIN agent_runs ar ON ar.workflow_session_id = ws.session_id
+                                AND ar.reset_marker IS NULL
+         WHERE ws.reset_marker IS NULL{date_clause}{skill_clause}
+         GROUP BY DATE(ws.started_at){having_clause}
+         ORDER BY DATE(ws.started_at) ASC"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    macro_rules! collect_rows {
+        ($params:expr) => {
+            stmt.query_map($params, |row| {
+                Ok(crate::types::UsageByDay { date: row.get(0)?, total_cost: row.get(1)?, total_tokens: row.get(2)?, run_count: row.get(3)? })
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+        };
+    }
+    match (start_date, skill_name) {
+        (Some(sd), Some(sn)) => collect_rows!(rusqlite::params![sd, sn]),
+        (Some(sd), None)     => collect_rows!(rusqlite::params![sd]),
+        (None,     Some(sn)) => collect_rows!(rusqlite::params![sn]),
+        (None,     None)     => collect_rows!([]),
+    }
 }
 
 pub fn reset_usage(conn: &Connection) -> Result<(), String> {
@@ -4149,7 +4176,7 @@ mod tests {
         )
         .unwrap();
 
-        let summary = get_usage_summary(&conn, false).unwrap();
+        let summary = get_usage_summary(&conn, false, None, None).unwrap();
         // All three agents share one workflow session → 1 run, total 0.41
         assert_eq!(summary.total_runs, 1);
         assert!((summary.total_cost - 0.41).abs() < 1e-10);
@@ -4159,7 +4186,7 @@ mod tests {
     #[test]
     fn test_get_usage_summary_empty() {
         let conn = create_test_db();
-        let summary = get_usage_summary(&conn, false).unwrap();
+        let summary = get_usage_summary(&conn, false, None, None).unwrap();
         assert_eq!(summary.total_runs, 0);
         assert!((summary.total_cost - 0.0).abs() < f64::EPSILON);
         assert!((summary.avg_cost_per_run - 0.0).abs() < f64::EPSILON);
@@ -4188,7 +4215,7 @@ mod tests {
         reset_usage(&conn).unwrap();
 
         // After reset, summary should show zero (both agent_runs and workflow_sessions are marked)
-        let summary = get_usage_summary(&conn, false).unwrap();
+        let summary = get_usage_summary(&conn, false, None, None).unwrap();
         assert_eq!(summary.total_runs, 0);
         assert!((summary.total_cost - 0.0).abs() < f64::EPSILON);
 
@@ -4197,7 +4224,7 @@ mod tests {
         assert!(runs.is_empty());
 
         // Recent workflow sessions should also be empty
-        let sessions = get_recent_workflow_sessions(&conn, 10, false).unwrap();
+        let sessions = get_recent_workflow_sessions(&conn, 10, false, None, None).unwrap();
         assert!(sessions.is_empty());
 
         // New runs after reset should still be visible
@@ -4210,7 +4237,7 @@ mod tests {
         )
         .unwrap();
 
-        let summary = get_usage_summary(&conn, false).unwrap();
+        let summary = get_usage_summary(&conn, false, None, None).unwrap();
         assert_eq!(summary.total_runs, 1);
         assert!((summary.total_cost - 0.05).abs() < 1e-10);
     }
@@ -4242,7 +4269,7 @@ mod tests {
         )
         .unwrap();
 
-        let by_step = get_usage_by_step(&conn, false).unwrap();
+        let by_step = get_usage_by_step(&conn, false, None, None).unwrap();
         assert_eq!(by_step.len(), 2);
 
         // Ordered by total_cost DESC: step 5 ($0.25) then step 1 ($0.18)
@@ -4284,7 +4311,7 @@ mod tests {
         )
         .unwrap();
 
-        let by_model = get_usage_by_model(&conn, false).unwrap();
+        let by_model = get_usage_by_model(&conn, false, None, None).unwrap();
         assert_eq!(by_model.len(), 2);
 
         // Ordered by total_cost DESC: opus ($0.50) then sonnet ($0.15)
@@ -4310,10 +4337,10 @@ mod tests {
 
         reset_usage(&conn).unwrap();
 
-        let by_step = get_usage_by_step(&conn, false).unwrap();
+        let by_step = get_usage_by_step(&conn, false, None, None).unwrap();
         assert!(by_step.is_empty());
 
-        let by_model = get_usage_by_model(&conn, false).unwrap();
+        let by_model = get_usage_by_model(&conn, false, None, None).unwrap();
         assert!(by_model.is_empty());
     }
 
@@ -4354,7 +4381,7 @@ mod tests {
         assert!(runs.iter().all(|r| r.agent_id == "orchestrator-1"));
 
         // get_usage_by_model should aggregate correctly
-        let by_model = get_usage_by_model(&conn, false).unwrap();
+        let by_model = get_usage_by_model(&conn, false, None, None).unwrap();
         assert_eq!(by_model.len(), 2);
 
         let opus = by_model.iter().find(|m| m.model == "opus").unwrap();
@@ -4441,7 +4468,7 @@ mod tests {
         )
         .unwrap();
 
-        let sessions = get_recent_workflow_sessions(&conn, 10, false).unwrap();
+        let sessions = get_recent_workflow_sessions(&conn, 10, false, None, None).unwrap();
         assert_eq!(sessions.len(), 1);
         // agent_count should be 2 (distinct agents), not 3 (rows)
         assert_eq!(sessions[0].agent_count, 2);
@@ -4651,7 +4678,7 @@ mod tests {
         )
         .unwrap();
 
-        let summary = get_usage_summary(&conn, true).unwrap();
+        let summary = get_usage_summary(&conn, true, None, None).unwrap();
         assert_eq!(summary.total_runs, 1);
         assert!((summary.total_cost - 0.15).abs() < 1e-10);
     }
@@ -4680,7 +4707,7 @@ mod tests {
         )
         .unwrap();
 
-        let sessions = get_recent_workflow_sessions(&conn, 10, false).unwrap();
+        let sessions = get_recent_workflow_sessions(&conn, 10, false, None, None).unwrap();
         assert_eq!(sessions.len(), 2);
 
         // Find each session by ID (ordering may vary when timestamps match)
@@ -4721,7 +4748,7 @@ mod tests {
         )
         .unwrap();
 
-        let sessions = get_recent_workflow_sessions(&conn, 10, true).unwrap();
+        let sessions = get_recent_workflow_sessions(&conn, 10, true, None, None).unwrap();
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].session_id, "sess-good");
     }
@@ -4774,7 +4801,7 @@ mod tests {
         )
         .unwrap();
 
-        let summary = get_usage_summary(&conn, false).unwrap();
+        let summary = get_usage_summary(&conn, false, None, None).unwrap();
         // 3 sessions (not 5 agent runs)
         assert_eq!(summary.total_runs, 3);
         // Total cost: 0.10 + 0.30 + 0.05 + 0.50 + 0.08 = 1.03

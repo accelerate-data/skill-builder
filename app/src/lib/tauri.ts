@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo } from "@/lib/types";
 
 export interface WorkspaceSkillImportRequest {
   path: string;
@@ -330,11 +330,11 @@ export const persistAgentRun = (params: {
   workflowSessionId: params.workflowSessionId ?? null,
 });
 
-export const getUsageSummary = (hideCancelled: boolean = false) =>
-  invoke<UsageSummary>("get_usage_summary", { hideCancelled });
+export const getUsageSummary = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
+  invoke<UsageSummary>("get_usage_summary", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
 
-export const getRecentWorkflowSessions = (limit: number = 50, hideCancelled: boolean = false) =>
-  invoke<WorkflowSessionRecord[]>("get_recent_workflow_sessions", { limit, hideCancelled });
+export const getRecentWorkflowSessions = (limit: number = 50, hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
+  invoke<WorkflowSessionRecord[]>("get_recent_workflow_sessions", { limit, hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
 
 export const getSessionAgentRuns = (sessionId: string) =>
   invoke<AgentRunRecord[]>("get_session_agent_runs", { sessionId });
@@ -342,11 +342,17 @@ export const getSessionAgentRuns = (sessionId: string) =>
 export const getStepAgentRuns = (skillName: string, stepId: number) =>
   invoke<AgentRunRecord[]>("get_step_agent_runs", { skillName, stepId });
 
-export const getUsageByStep = (hideCancelled: boolean = false) =>
-  invoke<UsageByStep[]>("get_usage_by_step", { hideCancelled });
+export const getUsageByStep = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
+  invoke<UsageByStep[]>("get_usage_by_step", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
 
-export const getUsageByModel = (hideCancelled: boolean = false) =>
-  invoke<UsageByModel[]>("get_usage_by_model", { hideCancelled });
+export const getUsageByModel = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
+  invoke<UsageByModel[]>("get_usage_by_model", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
+
+export const getUsageByDay = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
+  invoke<UsageByDay[]>("get_usage_by_day", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
+
+export const getWorkflowSkillNames = () =>
+  invoke<string[]>("get_workflow_skill_names");
 
 export const resetUsage = () =>
   invoke<void>("reset_usage");
