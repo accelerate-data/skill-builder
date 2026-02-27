@@ -175,13 +175,10 @@ Use the lightest option that fits:
 
 ### Sub-agent rules
 
-- Scoped prompts with clear deliverables — prevent rabbit holes
-- Commit + push before reporting completion
-- Final response under 2000 characters — list outcomes, not process
-- Never call TaskOutput twice for the same subagent — increase timeout instead
-- Follow project logging standards (§ Logging): Rust `info!` on entry + `error!` on failure; frontend `console.error/warn/log`
-- Follow project testing rules (§ Testing): run only relevant tests, `npx tsc --noEmit` after implementation
-- Check off ACs on Linear after tests pass; Implementation Updates are coordinator-only
+Sub-agents must follow project conventions:
+
+- Logging (§ Logging): Rust `info!` on entry + `error!` on failure; frontend `console.error/warn/log`
+- Testing (§ Testing): run only relevant tests, `npx tsc --noEmit` after implementation
 
 ## Custom Skills
 
