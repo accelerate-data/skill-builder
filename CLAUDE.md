@@ -183,16 +183,6 @@ Use the lightest option that fits:
 - Follow project testing rules (§ Testing): run only relevant tests, `npx tsc --noEmit` after implementation
 - Check off ACs on Linear after tests pass; Implementation Updates are coordinator-only
 
-### Skill lifecycle
-
-The custom skills form a pipeline: **Create → Implement → Close**.
-
-- `/create-linear-issue` — research, estimate, create issue(s). Can decompose into children.
-- `/implement-linear-issue` — plan, code, test, PR. Handles multi-child issues on one branch.
-- `/close-linear-issue` — verify tests, merge PR, move to Done, cleanup worktree.
-
-Each skill manages its own workflow. Child issues created by `/create` are picked up by `/implement` (detects children via `parentId`) and closed together by `/close` (detects same-PR children via `Fixes` lines).
-
 ## Custom Skills
 
 ### /create-linear-issue
