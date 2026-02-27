@@ -31,6 +31,7 @@ The setup screen appears on first launch. You need two things before you can bui
 **Skill** — A knowledge package (a `SKILL.md` file plus optional reference files) that teaches Claude your team's specific processes, terminology, and standards.
 
 **Skill source** — Where a skill came from:
+
 - **Skill Builder** — built by you using the workflow
 - **Marketplace** — imported from a GitHub-hosted registry
 - **Imported** — imported from a `.skill` package file

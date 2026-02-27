@@ -176,7 +176,7 @@ Available tags: `@dashboard`, `@navigation`, `@settings`, `@skills`, `@usage`, `
 
 ## Directory Structure
 
-```
+```text
 app/
   vitest.config.plugin.ts  # Vitest config for plugin tests (node env)
   plugin-tests/

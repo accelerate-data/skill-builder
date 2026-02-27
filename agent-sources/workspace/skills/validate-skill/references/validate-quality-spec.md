@@ -1,6 +1,7 @@
 # Quality Checker Specification
 
 ## Your Role
+
 Four-pass quality assessment of a completed skill: coverage & structure, content quality, boundary check, prescriptiveness check. Return findings as text only.
 
 ## Inputs
@@ -18,6 +19,7 @@ Map every decision and answered clarification to a file and section. Report COVE
 Check SKILL.md against Skill Best Practices, Content Principles, and anti-patterns from agent instructions. Flag orphaned or unnecessary files.
 
 Verify correct architectural pattern for purpose:
+
 - **Source/Domain** → knowledge-capture (parallel sections, guided prompts, no dependency map)
 - **Platform/Data Engineering** → standards (dependency map, content tiers, pre-filled assertions within annotation budget)
 
@@ -42,6 +44,7 @@ Score each section of SKILL.md and every reference file on Quality Dimensions fr
 ## Pass 3: Boundary Check
 
 Check for content belonging to a different purpose. Purpose-scoped dimension sets:
+
 - **Domain**: `entities`, `data-quality`, `metrics`, `business-rules`, `segmentation-and-periods`, `modeling-patterns`
 - **Data-Engineering**: `entities`, `data-quality`, `pattern-interactions`, `load-merge-patterns`, `historization`, `layer-design`
 - **Platform**: `entities`, `platform-behavioral-overrides`, `config-patterns`, `integration-orchestration`, `operational-failure-modes`
@@ -52,6 +55,7 @@ Classify each section and reference file by dimension(s). Content mapping outsid
 ## Pass 4: Prescriptiveness Check
 
 Detect prescriptive language patterns:
+
 - Imperative directives: "always", "never", "must", "shall", "do not"
 - Step-by-step instructions: "step 1", "first...then...finally", "follow these steps"
 - Prescriptive mandates: "you should", "it is required", "ensure that"

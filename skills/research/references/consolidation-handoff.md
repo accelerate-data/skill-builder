@@ -28,6 +28,7 @@ For each cluster of related questions across dimension findings:
 Arrange into logical sections: broad scoping first, then detailed design decisions. Add a `Cross-cutting` section for questions spanning multiple dimensions.
 
 Within each section, mark questions as either:
+
 - `must_answer: true` — questions critical to producing a correct skill
 - `must_answer: false` — questions where a reasonable default exists
 
@@ -40,6 +41,7 @@ Put contradictions in a `notes` array entry with `type: "inconsistency"`. Do not
 Number questions sequentially (Q1, Q2, ...). Number sections sequentially (S1, S2, ...). Follow the JSON schema below exactly. For consolidated questions from multiple dimensions, list the source dimension names in the `consolidated_from` array.
 
 **Always:**
+
 - Every question must have 2-4 choices plus a final "Other (please specify)" choice with `is_other: true`
 - Include a `recommendation` field with only the recommended choice ID (e.g., `"B"`) — no rationale text
 - `answer_choice` and `answer_text` are always `null` at step 0

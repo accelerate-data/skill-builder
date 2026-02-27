@@ -81,7 +81,7 @@ Completed skills are version-controlled locally (auto-commits via git2) and can 
 
 ## Architecture
 
-```
+```text
 skill-builder/
 ├── agents/                          # Agent prompts (shared by both frontends)
 ├── agent-sources/

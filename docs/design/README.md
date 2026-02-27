@@ -12,3 +12,4 @@
 | [branding/](branding/ad-brand.md) | Brand and visual identity |
 | [release/](release/README.md) | Release pipeline: CI/CD workflows, desktop app build, plugin package assembly, credentials |
 | [startup-recon/](startup-recon/README.md) | Startup reconciliation: three-pass state machine, discovery scenarios, ACK dialog |
+| [remove-plugin/](remove-plugin/README.md) | Cleanup plan for extracting the plugin to its own repo |

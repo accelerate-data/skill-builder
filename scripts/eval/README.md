@@ -35,7 +35,7 @@ The evaluation harness compares Claude's responses with and without skills (base
 
 ## Directory Structure
 
-```
+```text
 scripts/eval/
 ├── README.md                      # This file
 ├── eval-skill-quality.sh          # Main evaluation script
@@ -60,6 +60,7 @@ Compares skill-loaded responses vs no-skill responses to answer: **Does the skil
 ```
 
 **Use when:**
+
 - Validating a new skill before deployment
 - Measuring skill effectiveness
 - Deciding whether to keep or revise a skill
@@ -75,6 +76,7 @@ Compares two skill versions head-to-head to answer: **Which skill version is bet
 ```
 
 **Use when:**
+
 - A/B testing skill improvements
 - Evaluating skill refactoring
 - Choosing between alternative skill designs
@@ -88,22 +90,30 @@ Responses are scored across two judge passes totaling 7 dimensions (max 35 point
 These align with the Skill Builder's validate agent criteria. Both variant A and variant B are scored.
 
 #### 1. Actionability (1-5)
+
 Could an engineer follow this response to implement the pattern in a real system?
+
 - **1** = Too abstract to act on
 - **5** = Ready to implement with clear steps and decisions
 
 #### 2. Specificity (1-5)
+
 Are the instructions concrete with specific implementation details (SQL/code examples, exact patterns, named strategies)?
+
 - **1** = Vague/generic boilerplate
 - **5** = Highly specific with concrete examples
 
 #### 3. Domain Depth (1-5)
+
 Does the response demonstrate deep domain knowledge — hard-to-find rules, edge cases, non-obvious entity relationships, industry-specific pitfalls?
+
 - **1** = Surface-level/common knowledge
 - **5** = Expert-level domain insight
 
 #### 4. Self-Containment (1-5)
+
 Does the response provide enough context to be useful standalone — WHAT and WHY (entities, metrics, business rules, trade-offs)?
+
 - **1** = Requires significant external context
 - **5** = Fully self-contained guidance
 
@@ -112,17 +122,23 @@ Does the response provide enough context to be useful standalone — WHAT and WH
 These evaluate how well the skill follows Anthropic's official best practices for Claude Agent Skills. Only the skill-loaded variant (A) is scored.
 
 #### 5. Progressive Disclosure (1-5)
+
 Is content organized for efficient loading with clear layering?
+
 - **1** = Monolithic blob with everything in one file
 - **5** = Perfectly layered: clear name/description for discovery, core content in SKILL.md, details in references
 
 #### 6. Structure & Organization (1-5)
+
 Is the skill organized like an onboarding guide with clear flow?
+
 - **1** = Chaotic, no clear structure or separation of concerns
 - **5** = Exemplary structure: clear flow from overview to specifics, appropriate separation
 
 #### 7. Claude-Centric Design (1-5)
+
 Is the skill written from Claude's perspective with clear instructions?
+
 - **1** = Confusing: unclear when to trigger, ambiguous instructions
 - **5** = Perfectly clear: obvious triggers, unambiguous instructions, handles common failure modes
 
@@ -147,7 +163,7 @@ Test prompts are organized by skill type in `scripts/eval/prompts/`. Each file c
 
 ### Prompt Format
 
-```
+```text
 First prompt text here.
 Can span multiple lines.
 ---
@@ -167,7 +183,8 @@ When creating test prompts, focus on scenarios where skills should provide value
 4. **Self-contained** — Prompts should be clear without external context
 
 **Example (data-engineering.txt):**
-```
+
+```text
 I'm building a silver layer customer table in dbt. What data quality checks should I implement, and how should I structure them?
 ---
 I need to test my dbt models. What testing strategy should I use for dimension tables vs fact tables?
@@ -178,6 +195,7 @@ I need to test my dbt models. What testing strategy should I use for dimension t
 ### Markdown (default)
 
 Human-readable report with:
+
 - Configuration summary
 - Per-prompt results table
 - Dimension averages
@@ -203,6 +221,7 @@ Machine-readable format for programmatic analysis, CI/CD integration, or time-se
 ```
 
 **JSON Schema:**
+
 ```json
 {
   "metadata": {
@@ -365,12 +384,14 @@ Based on actual runs with Claude Sonnet:
 - **Full skill type suite (4 × 5 prompts):** ~$16-28
 
 **Cost breakdown:**
+
 1. Generate response A (with skill) — ~$0.15-0.30
 2. Generate response B (without skill or with skill B) — ~$0.15-0.30
 3. Quality judge comparison — ~$0.20-0.40
 4. Claude best practices judge — ~$0.20-0.40
 
 **Tips to reduce costs:**
+
 - Use smaller prompt sets during development
 - Run full evaluations only before deployment
 - Use `--dry-run` to validate inputs before running
@@ -385,6 +406,7 @@ The harness includes automatic retry logic with exponential backoff:
 - **Failure handling:** Skips failed prompts, continues evaluation
 
 **Common failure scenarios:**
+
 - API rate limits (retries with backoff)
 - Network timeouts (retries with timeout enforcement)
 - Model overload (retries with exponential backoff)
@@ -394,6 +416,7 @@ The harness includes automatic retry logic with exponential backoff:
 The harness uses Claude Code's `--plugin-dir` mechanism to load skills, testing the actual skill loading behavior rather than appending to system prompt.
 
 **How it works:**
+
 1. Creates temporary plugin directory for each skill
 2. Copies skill to `skills/test-skill/SKILL.md`
 3. Generates minimal `plugin.json` manifest
@@ -401,6 +424,7 @@ The harness uses Claude Code's `--plugin-dir` mechanism to load skills, testing 
 5. Claude loads skill via standard plugin mechanism
 
 **Why this matters:**
+
 - Tests real skill loading behavior
 - Validates skill discovery and activation
 - Ensures skills work as they would in production
@@ -416,16 +440,19 @@ The harness uses Claude Code's `--plugin-dir` mechanism to load skills, testing 
 ### Baseline Mode Interpretation
 
 **Skill wins (positive delta):**
+
 - Skill improves output quality
 - Deploy with confidence
 - Consider expanding to related domains
 
 **No skill wins (negative delta):**
+
 - Skill doesn't add value or makes things worse
 - Revise skill content
 - Check if prompts match skill's intended use case
 
 **Tie (delta near zero):**
+
 - Skill provides marginal value
 - Consider if maintenance cost is worth it
 - May need more specific/targeted skill content
@@ -433,14 +460,17 @@ The harness uses Claude Code's `--plugin-dir` mechanism to load skills, testing 
 ### Compare Mode Interpretation
 
 **Clear winner (delta > 2.0):**
+
 - Significant improvement
 - Deploy winning version
 
 **Marginal difference (0.5 < delta < 2.0):**
+
 - Modest improvement
 - Consider other factors (maintainability, specificity)
 
 **Tie (delta < 0.5):**
+
 - No meaningful difference
 - Choose based on other criteria (clarity, length, maintainability)
 
@@ -503,7 +533,8 @@ git show main:path/to/SKILL.md > /tmp/skill-main.md
 **Cause:** Prompts file is empty or has incorrect format
 
 **Fix:** Ensure prompts are separated by `---` on its own line:
-```
+
+```text
 First prompt
 ---
 Second prompt
@@ -514,6 +545,7 @@ Second prompt
 **Cause:** Judge LLM returned invalid JSON or unexpected format
 
 **Fix:**
+
 - Check `VERBOSE=1` output to see raw judge response
 - Verify `JUDGE_MODEL` is set correctly
 - Retry (may be transient API issue)
@@ -523,6 +555,7 @@ Second prompt
 **Cause:** API rate limits, network issues, or model overload
 
 **Fix:**
+
 - Wait a few minutes and retry
 - Check API key and quota
 - Reduce concurrent evaluations
@@ -532,6 +565,7 @@ Second prompt
 **Cause:** Incorrect path to skill file
 
 **Fix:**
+
 - Use relative paths from repo root
 - Verify file exists: `ls -la path/to/SKILL.md`
 - Check for typos in path
@@ -556,7 +590,7 @@ Skill files are measured in approximate tokens using the same word-count heurist
 
 Per-prompt cost is calculated as:
 
-```
+```text
 cost = (input_tokens * INPUT_COST_PER_MTOK / 1,000,000) + (output_tokens * OUTPUT_COST_PER_MTOK / 1,000,000)
 ```
 
@@ -591,6 +625,7 @@ Use `--perspective cost` to focus exclusively on cost metrics (skips quality jud
 ```
 
 When `--perspective cost` is selected:
+
 - Responses are still generated (needed to measure tokens)
 - Both quality judges are skipped (saves ~$0.40-0.80 per prompt)
 - The verdict is based on cost comparison instead of quality scores
@@ -599,6 +634,7 @@ When `--perspective cost` is selected:
 ### Cost Efficiency Metrics
 
 When quality scores are available (perspective is `quality` or `all`), the report includes:
+
 - **Cost per quality point** — `avg_cost / quality_score`, lower is better
 - **Token delta %** — percentage difference in total tokens between variants
 - **Cost delta %** — percentage difference in estimated cost
@@ -659,6 +695,7 @@ Use `--perspective performance` to focus on performance metrics (skips quality j
 ```
 
 When `--perspective performance` is selected:
+
 - Responses are still generated (needed to measure latency and throughput)
 - Both quality judges are skipped (saves ~$0.40-0.80 per prompt)
 - The verdict is based on latency comparison
@@ -707,6 +744,7 @@ The `all` perspective runs every evaluation and generates a comprehensive report
 ```
 
 This includes:
+
 - Quality scores (4 dimensions) for both variants
 - Claude best practices scores (3 dimensions) for the skill variant
 - Cost analysis with token usage and efficiency metrics
@@ -785,7 +823,8 @@ The harness includes a production readiness assessment that checks whether a ski
 The assessment produces a READY or NOT READY verdict with specific blockers listed:
 
 **Markdown report:**
-```
+
+```text
 ## Production Readiness
 
 | Check | Status |
@@ -799,6 +838,7 @@ The assessment produces a READY or NOT READY verdict with specific blockers list
 ```
 
 **JSON output:**
+
 ```json
 "production_readiness": {
   "quality_score": "29.2/35",
@@ -814,6 +854,7 @@ The assessment produces a READY or NOT READY verdict with specific blockers list
 ### Perspective-Specific Checks
 
 When using a specific perspective, only relevant criteria are checked:
+
 - `--perspective quality`: Checks quality score and practices compliance
 - `--perspective cost`: Checks cost efficiency only
 - `--perspective performance`: Checks success rate and latency only

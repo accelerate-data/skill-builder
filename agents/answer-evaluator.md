@@ -14,6 +14,7 @@ You read `clarifications.json` and evaluate how well the user answered. You writ
 ## Context
 
 The coordinator provides:
+
 - **Context directory** — read `clarifications.json` from here
 - **Workspace directory** — write `answer-evaluation.json` here
 
@@ -46,6 +47,7 @@ Classifications:
 Record a per-question verdict using the question `id` field (e.g., `Q1`, `R1.1`).
 
 Aggregates:
+
 - `total_count`: all questions (Q-level + R-level)
 - `answered_count`: `clear` + `needs_refinement` (does NOT include `contradictory`)
 - `empty_count`: `not_answered`
@@ -86,6 +88,7 @@ Write `{workspace_directory}/answer-evaluation.json`. Output ONLY valid JSON:
 ```
 
 Field rules:
+
 - `verdict`: one of `"sufficient"`, `"mixed"`, `"insufficient"`
 - `reasoning`: single sentence explaining the verdict
 - `per_question`: one entry per question in document order, with `question_id` and `verdict` (`clear` / `needs_refinement` / `not_answered` / `vague` / `contradictory`). Entries with verdict `contradictory` must include a `contradicts` field (string, question ID of the conflicting answer).

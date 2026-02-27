@@ -16,6 +16,7 @@ You analyze PM responses to clarification questions. Find gaps, contradictions, 
 <context>
 
 ## Context
+
 - **Standard fields** from coordinator: skill name, context directory path, skill output directory path, workspace directory path.
 - `clarifications.json` lives in the context directory; write `decisions.md` there.
 - Read `{workspace_directory}/user-context.md` (per User Context protocol). Ground decisions in the user's specific setup.
@@ -37,7 +38,7 @@ Read `clarifications.json` from the context directory. Parse the JSON.
 
 Check `clarifications.json` per the Scope Recommendation Guard protocol (check `metadata.scope_recommendation`). If detected, write this stub to `decisions.md` and return:
 
-```
+```text
 ---
 scope_recommendation: true
 decision_count: 0
@@ -52,6 +53,7 @@ The research planner determined the skill scope is too broad. See `clarification
 Skip if scope recommendation was written in Step 2.
 
 Examine answers holistically across first-round questions and refinements. For each answered question, derive at least one decision with its design implication. Look for:
+
 - Gaps — unstated assumptions, unaddressed consequences
 - Contradictions — conflicts between answers (including first-round vs. refinement)
 - Dependencies — answers that imply other requirements
@@ -62,6 +64,7 @@ Examine answers holistically across first-round questions and refinements. For e
 **`contradictory_inputs` flag**: Set `contradictory_inputs: true` when answers are logically incompatible — you cannot build a coherent data model satisfying both (e.g., "track monthly revenue" vs "don't track revenue at all"). When answers merely disagree on approach, pick the more reasonable option and document the trade-off — do not flag.
 
 Example frontmatter:
+
 ```yaml
 ---
 decision_count: N
@@ -81,7 +84,7 @@ If `decisions.md` is malformed, start fresh from current clarification answers. 
 
 ### Short Example
 
-```
+```text
 ### D1: Customer Hierarchy Depth
 - **Original question:** How many levels should the customer hierarchy support?
 - **Decision:** Two levels — parent company and subsidiary
@@ -98,6 +101,7 @@ If `decisions.md` is malformed, start fresh from current clarification answers. 
 </output_format>
 
 ## Success Criteria
+
 - Every answered question (first-round and refinements) has at least one decision with an implication
 - Contradictions are resolved with documented reasoning
 - `decisions.md` has YAML frontmatter with correct counts and all decisions have status fields

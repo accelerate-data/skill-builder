@@ -59,6 +59,7 @@ Keep the existing split-pane layout unchanged. The left pane stays as a raw MDEd
 Still a split pane, but the right preview is replaced with a custom accordion component. The left stays as a raw MDEditor with improved syntax highlighting (section headings, answer lines, refinements, and `[MUST ANSWER]` tags each get distinct colors).
 
 Right pane accordion:
+
 - Six collapsible section groups, each showing an answered/total chip
 - Questions listed with a green/amber dot indicating answer status
 - Click a question row to expand it and see the options, current answer, and any refinements

@@ -24,7 +24,7 @@ The skills path defaults to `~/skill-builder/` but is set by the user on first l
 
 ### Workspace (`{home}/.vibedata/`)
 
-```
+```text
 ~/.vibedata/
 ├── .claude/
 │   ├── CLAUDE.md                 # Rebuilt on startup: base + active skills + user customization
@@ -48,7 +48,7 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
 
 ### Skills Path (`~/skill-builder/` or user-configured)
 
-```
+```text
 ~/skill-builder/
 ├── .git/                         # Git repo, initialized on first configuration
 └── {skill-name}/
@@ -106,24 +106,31 @@ Agents are told to read only specific named files and never create directories �
 On every launch, `lib.rs` calls `init_workspace()` followed by `reconcile_startup()`.
 
 ### 1. Resolve workspace path
+
 `dirs::home_dir()` + `.vibedata` → absolute path. Create directory if missing.
 
 ### 2. Deploy agent infrastructure
+
 Copy bundled agent prompts (`agents/*.md`) to `{workspace}/.claude/agents/`. Seed bundled skills to `{workspace}/.claude/skills/`. Both are overwritten unconditionally to stay in sync with the app version. Session-scoped cache prevents redundant copies within a single run.
 
 ### 3. Rebuild CLAUDE.md
+
 Merge three sections and write to `{workspace}/.claude/CLAUDE.md`:
+
 1. **Base** — bundled template from `agent-sources/workspace/CLAUDE.md` (always overwritten)
 2. **Custom Skills** — generated from `list_active_skills(db)` (regenerated)
 3. **Customization** — extracted from the existing file's `## Customization` section (preserved)
 
 ### 4. Migrate stale layout (one-time)
+
 Remove root-level `agents/`, `references/`, `vibedata.db`, and `CLAUDE.md` left by pre-reorganization app versions.
 
 ### 5. One-time git upgrade
+
 If `skills_path` has content but no `.git`, initialize a git repo and create an initial snapshot. Only runs once per skills path.
 
 ### 6. Reconcile DB ↔ disk
+
 See [Reconciliation](#reconciliation) below.
 
 ---

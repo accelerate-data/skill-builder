@@ -24,12 +24,13 @@ Each bundled skill has a **purpose** — a slot identifier that controls which s
 ## Research Skill
 
 `research-orchestrator` runs at step 0. Invoked by:
+
 - **Tauri app** — `workflow.rs` step 0 via the sidecar
 - **Plugin workflow** — coordinator spawns it via `Task(subagent_type: "skill-builder:research-orchestrator")`
 
 ### Structure
 
-```
+```text
 agent-sources/workspace/skills/research/
   SKILL.md
   references/
@@ -69,7 +70,7 @@ agent-sources/workspace/skills/research/
 
 ### Return Format
 
-```
+```text
 === RESEARCH PLAN ===
 [scored dimension table + selected dimensions]
 === CLARIFICATIONS ===
@@ -77,6 +78,7 @@ agent-sources/workspace/skills/research/
 ```
 
 Orchestrator writes:
+
 - `=== RESEARCH PLAN ===` → `{context_dir}/research-plan.md`
 - `=== CLARIFICATIONS ===` → `{context_dir}/clarifications.md`
 
@@ -93,12 +95,13 @@ Dimension catalog, per-type template mappings, focus line tailoring, and design 
 ## Validate Skill
 
 `validate-skill` is not a numbered workflow step in the desktop app. Invoked by:
+
 - **Plugin workflow** — coordinator spawns it via `Task(subagent_type: "skill-builder:validate-skill")` after the Generation phase
 - **Refine workflow** — `refine-skill.md` spawns it on `/validate` or a full `/rewrite` cycle
 
 ### Structure
 
-```
+```text
 agent-sources/workspace/skills/validate-skill/
   SKILL.md
   references/
@@ -121,7 +124,7 @@ agent-sources/workspace/skills/validate-skill/
 
 ### Return Format
 
-```
+```text
 === VALIDATION LOG ===
 [full agent-validation-log.md content]
 === TEST RESULTS ===
@@ -131,6 +134,7 @@ agent-sources/workspace/skills/validate-skill/
 ```
 
 Orchestrator writes:
+
 - `=== VALIDATION LOG ===` → `{context_dir}/agent-validation-log.md`
 - `=== TEST RESULTS ===` → `{context_dir}/test-skill.md`
 - `=== COMPANION SKILLS ===` → `{context_dir}/companion-skills.md`
@@ -150,13 +154,14 @@ Replace by importing a custom skill into Settings→Skills and assigning purpose
 `skill-test` provides the test context and evaluation rubric for skill test runs. It contains no sub-agents and no references directory — it is a context-only skill deployed as a `.claude/skills/` directory in both temp workspaces.
 
 Used by:
+
 - **Tauri app** — `prepare_skill_test()` copies the skill directory from bundled resources into `.claude/skills/skill-test/` in both temp workspaces before each test run
 
 Purpose slot: `test-context`. Replace by importing a custom skill into Settings→Skills and assigning purpose `test-context`.
 
 ### Structure
 
-```
+```text
 agent-sources/workspace/skills/skill-test/
   SKILL.md     ← two sections: Test Context + Evaluation Rubric
 ```

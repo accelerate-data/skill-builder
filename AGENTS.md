@@ -5,6 +5,7 @@ Instructions for non-Claude agents (Codex, etc.). All authoritative details are 
 ## Project Scope
 
 Multi-agent workflow for creating domain-specific skills. Two frontends share the same prompt assets:
+
 - Claude Code plugin (CLI)
 - Tauri desktop app (GUI)
 

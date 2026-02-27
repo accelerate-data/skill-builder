@@ -13,6 +13,7 @@
 | Sub-refinement | `R{n}.{m}{a}` | `R12.1a`, `R12.2b` | **detailed-research** consolidation (Step 3) |
 
 The parent is always embedded in the ID:
+
 - `R1.1` → refinement 1 of **Q1**
 - `R12.2b` → sub-refinement (b) of **R12.2**, which itself refines **Q12**
 
@@ -70,7 +71,7 @@ The PM confirmed named stage — but which one?
 
 ## Current Flow (Pre-VD-807)
 
-```
+```text
 Step 1: research-orchestrator
   └─ consolidate-research (opus) → writes clarifications.md with Q1..Qn
 
@@ -104,6 +105,7 @@ When answer-evaluator returns `mixed` and the user continues to Step 3, detailed
 ### 1. answer-evaluator (Haiku) — enhanced output
 
 **Current output** (`answer-evaluation.json`):
+
 ```json
 {
   "verdict": "mixed",
@@ -116,6 +118,7 @@ When answer-evaluator returns `mixed` and the user continues to Step 3, detailed
 ```
 
 **New output** — adds `per_question` array using the same IDs from `clarifications.md`:
+
 ```json
 {
   "verdict": "mixed",
@@ -144,6 +147,7 @@ When answer-evaluator returns `mixed` and the user continues to Step 3, detailed
 ```
 
 **Rules** (mechanical, same as aggregate counting):
+
 - `clear` — substantive, specific text (same as current "answered" classification)
 - `not_answered` — empty or only whitespace / `(accepted recommendation)`
 - `vague` — fewer than 5 words, or contains only "not sure", "default is fine", "TBD", "N/A", etc.
@@ -180,12 +184,14 @@ decision_count: 12
 ```
 
 Draft entries are **structured, not reasoned** — no implications, no trade-off analysis. That's confirm-decisions' (Opus) job. Each entry records:
+
 - The source `question_id` (e.g. `Q1`) — ties back to clarifications
 - The section name
 - The user's answer (verbatim or lightly summarized)
 - `status: draft`
 
 Also in Phase 1, detailed-research performs **cross-answer analysis** (which Haiku can't do):
+
 - **Contradictions**: Two clear answers that conflict → flagged with both sides
 - **Critical gaps**: `[MUST ANSWER]` questions that are `not_answered` → flagged as blocking
 
@@ -194,12 +200,14 @@ Also in Phase 1, detailed-research performs **cross-answer analysis** (which Hai
 Group non-clear questions (`not_answered` + `vague`) by section. Spawn one sub-agent per section that has at least one non-clear item. Sections where all questions are `clear` get **no sub-agent**.
 
 Each sub-agent receives:
+
 - The full `clarifications.md` (for context)
 - The per-question verdicts for their section (which items need refinement)
 - The user's answers to clear questions in the same section (for cross-reference)
 
 Sub-agents produce refinement questions using the canonical format:
-```
+
+```text
 Refinements for Q6:
 
 ##### R6.1: Follow-up topic
@@ -246,7 +254,7 @@ The draft is input, not output — confirm-decisions always produces the authori
 
 Add `answer-evaluation.json` path to the Step 3 prompt:
 
-```
+```text
 prompt: "...
   Context directory: ./<skillname>/context/
   Answer evaluation: ./<skillname>/context/answer-evaluation.json
@@ -259,7 +267,7 @@ No other coordinator changes.
 
 ## ID Flow Across the Workflow
 
-```
+```text
 Step 1:  consolidate-research creates    Q1, Q2, ... Q23
 Step 2:  user fills in                   **Answer:** fields
 Gate:    answer-evaluator emits          per_question: [{ question_id: "Q1", verdict: "clear" }, ...]
@@ -373,6 +381,7 @@ Surfaced during review. To be resolved before or during implementation of VD-807
 The answer-evaluator currently runs once before Step 3, when only Q-numbers exist. After Step 4 (user answers refinements), does the evaluator run again before Step 5? If so, `per_question` must handle R-numbers (`R1.1`, `R12.1a`), not just Q-numbers.
 
 **Options:**
+
 - **A.** Evaluator runs once (before Step 3 only). Step 5 always runs confirm-decisions regardless of refinement answer quality.
 - **B.** Evaluator runs again after Step 4, extending `per_question` to include R-numbers. This lets confirm-decisions skip fully-clear refinements.
 
@@ -383,6 +392,7 @@ Option A is simpler and probably sufficient — confirm-decisions (Opus) can han
 Currently: "spawn one sub-agent per section with at least one non-clear item." If a section has a single vague answer, the overhead of a sub-agent (prompt construction, SDK round-trip, response parsing) may exceed the benefit.
 
 **Options:**
+
 - **A.** No threshold — spawn a sub-agent even for 1 item. Simpler logic, consistent behavior.
 - **B.** Minimum 2 non-clear items per section to justify a sub-agent. Single items handled inline by detailed-research.
 

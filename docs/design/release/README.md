@@ -50,7 +50,7 @@ Uploads the result as a GitHub Actions artifact. **Does not push to the marketpl
 
 What `package-plugins` assembles:
 
-```
+```text
 hbanerjee74/skills/
 ├── .claude-plugin/
 │   └── marketplace.json          ← lists all 4 plugins

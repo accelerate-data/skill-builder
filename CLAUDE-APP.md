@@ -24,6 +24,7 @@ Agents run via the **Claude Agent SDK** in a Node.js sidecar. Two modes:
 **Streaming mode** (refine chat): `stream_start` → SDK `query({ prompt: AsyncGenerator })` → `stream_message` (repeating) → `stream_end`. SDK maintains full conversation state across turns. `turn_complete` signals each turn boundary; `session_exhausted` fires when maxTurns (400) is reached.
 
 Key files:
+
 - **Sidecar entry:** `app/sidecar/agent-runner.ts` — receives config JSON, calls SDK `query()`, streams JSON lines to stdout
 - **Streaming sessions:** `app/sidecar/stream-session.ts` — async generator push pattern for multi-turn conversations
 - **Persistent mode:** `app/sidecar/persistent-mode.ts` — message demultiplexer routing one-shot vs streaming
@@ -37,6 +38,7 @@ Key files:
 Full path reference (layout diagrams, file ownership, agent prompt variables): [`docs/design/agent-specs/storage.md`](../docs/design/agent-specs/storage.md)
 
 Summary:
+
 - **Workspace** (`~/.vibedata/` default, configurable): agent prompts, skill context, logs
 - **Skill output** (`skills_path` in Settings, default `~/skill-builder/`): SKILL.md, references, git-managed
 - **App database:** Tauri `app_data_dir()` + `skill-builder.db` — **not in `~/.vibedata/`**

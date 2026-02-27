@@ -58,6 +58,7 @@ Select the Claude model used for all workflow agents.
 A table of GitHub repository URLs used as skill sources. Each row shows the URL, an **Enabled** toggle, a connectivity test icon, and a delete button (built-in registries cannot be removed).
 
 **How to add a registry**
+
 1. Click **Add registry**.
 2. Enter a GitHub URL (e.g. `https://github.com/owner/skill-library`) in the **GitHub URL** field.
 3. Click **Add**. The app fetches the registry's `marketplace.json` to validate it. On success, the registry appears in the table.
@@ -82,6 +83,7 @@ Toggle **Automatically apply updates from all enabled registries at startup** to
 Shows your connected GitHub account avatar and username when signed in.
 
 **How to connect GitHub**
+
 1. Click **Sign in with GitHub**.
 2. A device code appears in the dialog. Click the copy icon to copy it.
 3. Click **Open GitHub**. Your browser opens `github.com/login/device` and the app begins polling.

@@ -21,7 +21,7 @@ Four installable plugins:
 
 ### skill-builder
 
-```
+```text
 .claude-plugin/
   plugin.json
 skills/
@@ -35,7 +35,7 @@ references/
 
 ### skill-builder-research
 
-```
+```text
 .claude-plugin/
   plugin.json
 skills/
@@ -51,7 +51,7 @@ skills/
 
 ### skill-builder-validate
 
-```
+```text
 .claude-plugin/
   plugin.json
 skills/
@@ -65,7 +65,7 @@ skills/
 
 ### skill-builder-practices
 
-```
+```text
 .claude-plugin/
   plugin.json
 skills/
@@ -84,7 +84,7 @@ The coordinator (`skills/generate-skill/SKILL.md`) is a state-aware router. On e
 
 ### Working Directory Layout
 
-```
+```text
 .vibedata/                    ← plugin internals, never committed
   <skill-name>/
     session.json
@@ -185,7 +185,7 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
 
 Every agent call:
 
-```
+```text
 Task(
   subagent_type: "skill-builder:<agent>",
   prompt: "
@@ -205,7 +205,7 @@ Task(
 
 For generate-skill, validate-skill, refine-skill — additionally:
 
-```
+```text
     <skill-practices>
     {content of $PLUGIN_ROOT/references/skill-builder-practices/SKILL.md}
     {content of $PLUGIN_ROOT/references/skill-builder-practices/references/ba-patterns.md}
@@ -222,6 +222,7 @@ No `TeamCreate`, `TaskCreate`, `SendMessage`, or `TeamDelete`.
 The four plugin packages are published to `https://github.com/hbanerjee74/skills`. For the full repo structure and `marketplace.json` schema, see [skills-marketplace design doc](../skills-marketplace/README.md).
 
 **Install:**
+
 ```bash
 claude plugin marketplace add hbanerjee74/skills
 claude plugin install skill-builder

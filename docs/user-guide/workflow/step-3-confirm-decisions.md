@@ -27,6 +27,7 @@ Each card shows a decision ID (e.g. D1), a title, and a status badge.
 | **needs-review** | The agent could not resolve a contradiction — you should review this before continuing |
 
 Click any card to expand it and see:
+
 - **Original question**
 - **Decision** — what was decided
 - **Implication** — what this decision means for the skill

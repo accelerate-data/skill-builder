@@ -6,6 +6,7 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 @import CLAUDE-PLUGIN.md
 
 **Companion files** (imported above, must be reviewed together with this file):
+
 - `CLAUDE-APP.md` — Desktop app architecture, Rust/frontend conventions, git/publishing workflow
 - `CLAUDE-PLUGIN.md` — Plugin structure, agent management, validation hooks
 
@@ -51,6 +52,7 @@ claude --plugin-dir .                    # Load plugin locally
 ### When to write tests
 
 **App:**
+
 1. New state logic (store actions, derived state) → store unit tests
 2. New Rust command with testable logic → `#[cfg(test)]` tests
 3. New UI interaction (button states, form validation) → component test
@@ -64,6 +66,7 @@ Purely cosmetic changes or simple wiring don't require tests. If unclear, ask th
 ### Test discipline
 
 Before writing any test code, read existing tests for the files you changed:
+
 1. Update tests that broke due to your changes
 2. Remove tests that are now redundant
 3. Add new tests only for genuinely new behavior
@@ -106,6 +109,8 @@ Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the 
 
 Design notes live in `docs/design/`. Each topic gets its own subdirectory with a `README.md` (e.g. `docs/design/backend-design/README.md`). The index at `docs/design/README.md` must be updated when adding a new subdirectory.
 
+Write design docs concisely — state the decision and the reason, not the reasoning process. One sentence beats a paragraph. Avoid restating what the code already makes obvious.
+
 ## Code Style
 
 - Granular commits: one concern per commit, run tests before each
@@ -142,6 +147,7 @@ Every new feature must include logging. The app uses `log` crate (Rust) and `con
 ## Shared Components
 
 Both frontends use the same files — no conversion needed:
+
 - `agents/` — agent prompts (flat directory, validated by `./scripts/validate.sh`)
 - `agent-sources/workspace/CLAUDE.md` — agent instructions shared by all agents. The app deploys this to the workspace `.claude/CLAUDE.md` (auto-loaded by SDK). The plugin packages it into `skills/building-skills/references/` via `scripts/build-plugin-skill.sh` — run this script after modifying the file.
 
@@ -189,6 +195,7 @@ Each skill manages its own workflow. Child issues created by `/create` are picke
 ## Custom Skills
 
 ### /create-linear-issue
+
 When the user runs /create-linear-issue or asks to create a Linear issue, log a bug, file a ticket,
 track a feature idea, break down a large issue, or decompose an issue into smaller ones
 (e.g. "break down VD-123", "decompose VD-123", "split VD-123"),
@@ -197,11 +204,13 @@ read and follow the skill at `.claude/skills/create-linear-issue/SKILL.md`.
 Default project: **Skill Builder** — use this project unless the user specifies otherwise.
 
 ### /implement-linear-issue
+
 When the user runs /implement-linear-issue, or mentions a Linear issue identifier (e.g. "VD-123", "implement VD-123",
 "work on VD-452", "working on VD-100", "build VD-100", "fix VD-99"), or asks to implement, build, fix, or work on a Linear issue,
 read and follow the skill at `.claude/skills/implement-linear-issue/SKILL.md`.
 
 ### /close-linear-issue
+
 When the user runs /close-linear-issue, or asks to close, complete, merge, or ship a Linear issue (e.g. "close VD-123",
 "merge VD-453", "ship VD-100", "complete VD-99"), read and follow the skill at
 `.claude/skills/close-linear-issue/SKILL.md`.

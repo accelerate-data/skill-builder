@@ -8,6 +8,7 @@ description: Generate domain-specific Claude skills through a guided multi-agent
 You are the coordinator for the Skill Builder workflow. On every invocation: detect state → classify intent → dispatch.
 
 ## Contents
+
 - [Path Resolution]
 - [State Detection]
 - [Intent Classification]
@@ -20,13 +21,13 @@ You are the coordinator for the Skill Builder workflow. On every invocation: det
 
 ## Path Resolution
 
-```
+```text
 PLUGIN_ROOT = $CLAUDE_PLUGIN_ROOT
 ```
 
 Directory layout:
 
-```
+```text
 .vibedata/                    ← plugin internals, never committed
   <skill-name>/
     session.json
@@ -66,6 +67,7 @@ On startup: glob `.vibedata/*/session.json`. For each found, derive `skill_dir` 
 | nothing | `fresh` |
 
 Check each row strictly, top-to-bottom. Use the first row where ALL artifact conditions are met. Stop immediately — do not continue checking lower rows. Examples:
+
 - `SKILL.md` exists but no `agent-validation-log.md` → **generation** (not validation)
 - `decisions.md` AND `SKILL.md` both exist → **generation** (SKILL.md row comes first)
 - `decisions.md` exists but no `SKILL.md` → **decisions**
@@ -131,6 +133,7 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
 3. Create directories: `.vibedata/<skill-name>/`, `<skill-dir>/`, `<skill-dir>/context/`, `<skill-dir>/references/`
    - Default `skill_dir`: `~/skill-builder/<skill-name>/`. Ask user only if they mention a different location.
 4. Write `.vibedata/<skill-name>/session.json`:
+
    ```json
    {
      "skill_name": "<skill-name>",
@@ -149,10 +152,12 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
      "iterative_history": []
    }
    ```
+
 5. Detect mode from user message (express if "express"/"skip research"/detailed spec provided)
 6. If express mode: → Decisions (skip user-context collection)
    If guided mode: ask the following questions conversationally and **end the turn** (do not dispatch yet):
-   ```
+
+   ```text
    Before starting research, I'd like to understand your context so the research is tailored to your needs:
 
    1. What industry is this skill for?
@@ -165,7 +170,9 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
 
    Feel free to skip any that aren't relevant.
    ```
+
    When the user responds (next invocation, `scoping | resume`): parse their answers from the message, write `.vibedata/<skill-name>/user-context.md`:
+
    ```markdown
    # User Context
 
@@ -177,11 +184,12 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
    - **What Makes This Setup Unique**: {answer}
    - **What Claude Gets Wrong**: {answer}
    ```
+
    Skip any field with an empty or skipped answer. Then → Research.
 
 ### Research
 
-```
+```text
 Task(subagent_type: "skill-builder:research-orchestrator")
 Passes: purpose, context_dir, workspace_dir
 ```
@@ -191,7 +199,8 @@ Passes: purpose, context_dir, workspace_dir
   - If `priority_questions` list exists and has 1+ entries:
     - Read the full question block for each Q-ID (up to 4) from `clarifications.md`
     - Present conversationally:
-      ```
+
+      ```text
       Before you open the full question set, let me ask the most important ones:
 
       **Q1: [question title]**
@@ -205,6 +214,7 @@ Passes: purpose, context_dir, workspace_dir
 
       Answer above. I'll capture your responses and write the remaining questions to clarifications.md.
       ```
+
     - Update `session.json`: set `interactive_questions_asked` to the Q-IDs shown (e.g. `["Q1", "Q4", "Q7"]`), `current_phase = "research"`, append `"research"` to `phases_completed`
     - End turn — wait for user response
   - If `priority_questions` is empty or absent:
@@ -239,7 +249,7 @@ Triggered when state = `clarification_interactive_pending`.
 
 On resume from `clarification` state:
 
-```
+```text
 Task(subagent_type: "skill-builder:answer-evaluator")
 Passes: context_dir, workspace_dir
 ```
@@ -253,7 +263,7 @@ Passes: context_dir, workspace_dir
 
 Skipped when `answer-evaluation.json.verdict == "sufficient"`.
 
-```
+```text
 Task(subagent_type: "skill-builder:detailed-research")
 Passes: purpose, context_dir, workspace_dir
 ```
@@ -263,7 +273,7 @@ Passes: purpose, context_dir, workspace_dir
 
 ### Decisions
 
-```
+```text
 Task(subagent_type: "skill-builder:confirm-decisions")
 Passes: purpose, context_dir, skill_dir, workspace_dir
 ```
@@ -274,7 +284,7 @@ Passes: purpose, context_dir, skill_dir, workspace_dir
 
 ### Generation
 
-```
+```text
 Task(subagent_type: "skill-builder:generate-skill")
 Passes: purpose, skill_name, context_dir, skill_dir, workspace_dir
         + skill-builder-practices content inline (see Agent Call Format)
@@ -285,7 +295,7 @@ Passes: purpose, skill_name, context_dir, skill_dir, workspace_dir
 
 ### Validation
 
-```
+```text
 Task(subagent_type: "skill-builder:validate-skill")
 Passes: purpose, skill_name, context_dir, skill_dir, workspace_dir
         + skill-builder-practices content inline (see Agent Call Format)
@@ -299,7 +309,7 @@ Passes: purpose, skill_name, context_dir, skill_dir, workspace_dir
 
 ### Iterative
 
-```
+```text
 Task(subagent_type: "skill-builder:refine-skill")
 Passes: skill_dir, context_dir, workspace_dir, purpose,
         current user message (the improvement request)
@@ -311,17 +321,21 @@ Passes: skill_dir, context_dir, workspace_dir, purpose,
 
 **Targeted edit path (`targeted_edit` intent):**
 Before dispatching: emit "Starting a targeted iterative edit of the [section] section — will refine and then validate the skill."
+
 1. Glob `<skill_dir>/references/*.md` to find the reference file whose name best matches the section named in the user message. Append `@<filename>` to the user message passed to refine-skill so edits are constrained to that file. If no reference file closely matches, omit the `@` annotation and pass the user message as-is.
 2. After refine-skill returns, automatically spawn validate-skill.
 3. Append to `session.json.iterative_history`:
+
    ```json
    { "timestamp": "<ISO>", "type": "targeted", "description": "<section name>" }
    ```
 
 **Full rewrite path (`full_rewrite` intent):**
 Before dispatching: emit "Starting a full rewrite of the entire skill from scratch — will regenerate and validate."
+
 1. Prepend `/rewrite` to the user message passed to refine-skill (it delegates to generate-skill + validate-skill internally).
 2. Append to `session.json.iterative_history`:
+
    ```json
    { "timestamp": "<ISO>", "type": "full_rewrite", "description": "full rewrite" }
    ```
@@ -353,7 +367,7 @@ Mode is detected at Scoping and stored in `session.json.mode`. Explicit mode in 
 
 Every agent call uses this base structure. Read `$PLUGIN_ROOT/references/workspace-context.md` and inject inline:
 
-```
+```text
 Task(
   subagent_type: "skill-builder:<agent>",
   prompt: "
@@ -373,7 +387,7 @@ Task(
 
 For generate-skill, validate-skill, and refine-skill — also read and inject the skill-builder-practices content:
 
-```
+```text
     <skill-practices>
     {content of $PLUGIN_ROOT/references/skill-builder-practices/SKILL.md}
     {content of $PLUGIN_ROOT/references/skill-builder-practices/references/ba-patterns.md}

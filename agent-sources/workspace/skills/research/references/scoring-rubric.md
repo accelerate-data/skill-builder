@@ -27,6 +27,7 @@ Score only on the **delta** — customer-specific and domain-specific knowledge 
 Before scoring, decide whether the domain is legitimate for the given purpose.
 
 **Not relevant** (e.g., "pizza-jokes" for a data engineering skill):
+
 - `topic_relevance: not_relevant`, `dimensions_evaluated: 0`, `dimensions_selected: 0`
 - Empty selected list with brief explanation. Return immediately.
 
@@ -63,7 +64,7 @@ Use the canonical format in the Scoring Output Format section below.
 
 **Poor:** "Identify key business metrics."
 
-### Requirements:
+### Requirements
 
 - Reference domain-specific entities, metric names, pattern types, or platform specifics
 - Identify what diverges from standard practice
