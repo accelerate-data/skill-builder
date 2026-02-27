@@ -1,5 +1,7 @@
 # Brand Alignment Audit
 
+> **Status: In progress.** CSS variables and semantic color system applied (see `.claude/rules/frontend-design.md`). Typography and remaining items below are pending.
+
 Comparing current app UI (`app/src/styles/globals.css`, `public/`) against Accelerate Data brand guidelines (`/branding/gamma-theme.md`).
 
 ---

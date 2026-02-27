@@ -1,14 +1,27 @@
 # Skill Builder
 
-Multi-agent workflow for creating domain-specific Claude skills.
+Multi-agent workflow for creating domain-specific Claude skills. Tauri desktop app (React + Rust) orchestrates agents via a Node.js sidecar.
 
-@import CLAUDE-APP.md
+**CLAUDE.md maintenance rule**: This file contains architecture, conventions, and guidelines — not product details. Do not add counts, feature descriptions, or any fact discoverable by reading code. If it will go stale when code changes, point to the source file instead.
 
-**Companion files** (imported above, must be reviewed together with this file):
+## Architecture
 
-- `CLAUDE-APP.md` — Desktop app architecture, Rust/frontend conventions, git/publishing workflow
+React 19 (WebView) → Tauri IPC → Rust backend → spawns Node.js sidecar (`@anthropic-ai/claude-agent-sdk`)
 
-**CLAUDE.md maintenance rule**: These files contain architecture, conventions, and guidelines — not product details. Do not add counts (agent counts, step counts, test counts), feature descriptions, or any fact the agent can discover by reading code. If it will go stale when the code changes, it doesn't belong here — point to the source file instead.
+**Tech stack:** React 19, TypeScript, Vite 7, Tailwind CSS 4, shadcn/ui, Zustand, TanStack Router · Tauri 2, rusqlite, git2, reqwest · Node.js + `@anthropic-ai/claude-agent-sdk` (sidecar)
+
+**Agent runtime:** No hot-reload — restart `npm run dev` after editing `app/sidecar/`. Requires Node.js 18–24 (Node 25+ crashes the SDK). See `.claude/rules/agent-sidecar.md` when working in `app/sidecar/`.
+
+**Key directories:**
+
+- Workspace (`~/.vibedata/` default, configurable): agent prompts, skill context, logs
+- Skill output (`~/skill-builder/` default): SKILL.md, references, git-managed
+- App database: `~/Library/Application Support/com.skillbuilder.app/skill-builder.db` (macOS)
+- Full layout: [`docs/design/agent-specs/storage.md`](docs/design/agent-specs/storage.md)
+
+## User Guide
+
+Source: `docs/user-guide/` (VitePress). Deployed via `docs.yml` on push to `main`. Route → URL map: `app/src/lib/help-urls.ts`. New docs link: import `getHelpUrl`/`getWorkflowStepUrl`, call `openUrl()` from `@tauri-apps/plugin-opener`. New page: add to `docs/user-guide/`, `docs/.vitepress/config.ts`, and `help-urls.ts`.
 
 ## Dev Commands
 
@@ -98,10 +111,12 @@ Write design docs concisely — state the decision and the reason, not the reaso
 ## Code Style
 
 - Granular commits: one concern per commit, run tests before each
-
-## Frontend Design System (AD Brand)
-
-See `.claude/rules/frontend-design.md` — auto-loaded when working in `app/src/`.
+- TypeScript strict mode, no `any`
+- Zustand stores: one file per store in `app/src/stores/`
+- Rust commands: one module per concern in `app/src-tauri/src/commands/`
+- Tailwind 4 + shadcn/ui for all UI — see `.claude/rules/frontend-design.md` (auto-loaded in `app/src/`)
+- **Error colors:** Always use `text-destructive` for error text — never hardcoded `text-red-*`
+- Verify before committing: `cd app && npx tsc --noEmit` (frontend) + `cargo check --manifest-path app/src-tauri/Cargo.toml` (backend)
 
 ## Logging
 
@@ -130,15 +145,15 @@ Every new feature must include logging. The app uses `log` crate (Rust) and `con
 
 ## Shared Components
 
-Both frontends use the same files — no conversion needed:
+The desktop app uses these files:
 
 - `agents/` — agent prompts (flat directory, validated by `./scripts/validate.sh`)
 - `agent-sources/workspace/CLAUDE.md` — agent instructions shared by all agents. The app deploys this to the workspace `.claude/CLAUDE.md` (auto-loaded by SDK).
 
 ## Issue Management
 
-- **PR title format**: `VD-XXX: short description`
-- **PR body link**: `Fixes VD-XXX`
+- **PR title format**: `VU-XXX: short description`
+- **PR body link**: `Fixes VU-XXX`
 
 ## Delegation Policy
 
@@ -164,6 +179,8 @@ Use the lightest option that fits:
 - Commit + push before reporting completion
 - Final response under 2000 characters — list outcomes, not process
 - Never call TaskOutput twice for the same subagent — increase timeout instead
+- Follow project logging standards (§ Logging): Rust `info!` on entry + `error!` on failure; frontend `console.error/warn/log`
+- Follow project testing rules (§ Testing): run only relevant tests, `npx tsc --noEmit` after implementation
 - Check off ACs on Linear after tests pass; Implementation Updates are coordinator-only
 
 ### Skill lifecycle
@@ -189,12 +206,12 @@ Default project: **Skill Builder** — use this project unless the user specifie
 
 ### /implement-linear-issue
 
-When the user runs /implement-linear-issue, or mentions a Linear issue identifier (e.g. "VD-123", "implement VD-123",
-"work on VD-452", "working on VD-100", "build VD-100", "fix VD-99"), or asks to implement, build, fix, or work on a Linear issue,
+When the user runs /implement-linear-issue, or mentions a Linear issue identifier (e.g. "VU-123", "implement VU-123",
+"work on VU-452", "working on VU-100", "build VU-100", "fix VU-99"), or asks to implement, build, fix, or work on a Linear issue,
 read and follow the skill at `.claude/skills/implement-linear-issue/SKILL.md`.
 
 ### /close-linear-issue
 
-When the user runs /close-linear-issue, or asks to close, complete, merge, or ship a Linear issue (e.g. "close VD-123",
-"merge VD-453", "ship VD-100", "complete VD-99"), read and follow the skill at
+When the user runs /close-linear-issue, or asks to close, complete, merge, or ship a Linear issue (e.g. "close VU-123",
+"merge VU-453", "ship VU-100", "complete VU-99"), read and follow the skill at
 `.claude/skills/close-linear-issue/SKILL.md`.

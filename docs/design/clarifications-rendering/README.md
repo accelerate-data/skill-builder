@@ -1,5 +1,7 @@
 # VD-799 — Review Step Visual Mockups
 
+> **Status: Implemented.** VD-817 shipped Option 2b (single-pane structured editor, JSON-native). VD-819 shipped format canonicalization. VD-807 (agent redesign) remains open. This doc is retained as a design record.
+
 The Step 4 Review screen becomes a wall of undifferentiated text when a skill has many clarification questions. These mockups explore three approaches to fixing that.
 
 All mockups use the real sales-pipeline sample data (26 questions, 6 sections, 16 refinements). The original mockups used `clarifications.md` (markdown); VD-817 implemented the JSON-native approach (`clarifications.json`).
