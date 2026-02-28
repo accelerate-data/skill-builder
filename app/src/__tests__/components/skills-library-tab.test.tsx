@@ -1,5 +1,6 @@
+import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   mockInvoke,
@@ -9,6 +10,21 @@ import { open as mockOpen } from "@tauri-apps/plugin-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import type { WorkspaceSkill, AppSettings } from "@/lib/types";
+
+// Mock shadcn Select with a native <select> so onValueChange is testable in jsdom
+vi.mock("@/components/ui/select", () => ({
+  Select: ({ children, value, onValueChange }: { children: React.ReactNode; value: string; onValueChange: (v: string) => void }) => (
+    <select data-testid="purpose-select" data-value={value} value={value} onChange={(e) => onValueChange(e.target.value)}>
+      {children}
+    </select>
+  ),
+  SelectTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SelectValue: ({ placeholder }: { placeholder?: string }) => <span>{placeholder}</span>,
+  SelectContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SelectItem: ({ children, value }: { children: React.ReactNode; value: string }) => (
+    <option value={value}>{children}</option>
+  ),
+}));
 
 // Mock sonner
 vi.mock("sonner", () => ({
@@ -333,8 +349,8 @@ describe("SkillsLibraryTab", () => {
     expect(builtInBadges).toHaveLength(1);
   });
 
-  // Test B — Purpose badge renders for skills with a purpose (VD-883)
-  it("shows purpose badge for skill with purpose and not for skill with null purpose", async () => {
+  // Test B — Purpose selector renders for skills (VD-883, VU-338)
+  it("shows purpose selector with options and placeholder for null purpose", async () => {
     const skillWithPurpose: WorkspaceSkill = {
       ...sampleSkills[0],
       skill_id: "id-purpose",
@@ -355,12 +371,58 @@ describe("SkillsLibraryTab", () => {
     });
     expect(screen.getByText("plain-skill")).toBeInTheDocument();
 
-    // Purpose column should show the label for the skill with purpose
-    expect(screen.getByText("Research")).toBeInTheDocument();
+    // Both skills render a purpose selector
+    const selects = screen.getAllByTestId("purpose-select");
+    expect(selects).toHaveLength(2);
 
-    // Only one "Research" label — plain-skill shows "General Purpose"
-    const purposeLabels = screen.getAllByText("Research");
-    expect(purposeLabels).toHaveLength(1);
-    expect(screen.getByText("General Purpose")).toBeInTheDocument();
+    // Skill with purpose "research" has data-value="research" on the select
+    const researchSelect = selects.find((s) => s.getAttribute("data-value") === "research");
+    expect(researchSelect).toBeDefined();
+
+    // Skill with null purpose has data-value="" (empty) on the select
+    const nopurposeSelect = selects.find((s) => s.getAttribute("data-value") === "");
+    expect(nopurposeSelect).toBeDefined();
+
+    // "General Purpose" is no longer shown as static text
+    expect(screen.queryByText("General Purpose")).not.toBeInTheDocument();
+  });
+
+  // Test C — setPurpose is called when purpose selector changes (VU-338)
+  it("calls setPurpose when purpose selector value changes", async () => {
+    const skillNoPurpose: WorkspaceSkill = {
+      ...sampleSkills[0],
+      skill_id: "id-1",
+      skill_name: "sales-analytics",
+      purpose: null,
+    };
+
+    const setPurposeMock = vi.fn().mockResolvedValue(undefined);
+    useImportedSkillsStore.setState({
+      skills: [skillNoPurpose],
+      isLoading: false,
+      error: null,
+      selectedSkill: null,
+      setPurpose: setPurposeMock,
+    } as unknown as Parameters<typeof useImportedSkillsStore.setState>[0]);
+
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "list_workspace_skills") return Promise.resolve([skillNoPurpose]);
+      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
+    });
+
+    render(<SkillsLibraryTab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("sales-analytics")).toBeInTheDocument();
+    });
+
+    // The Select mock renders a native <select>; change it to "research"
+    const select = screen.getByTestId("purpose-select");
+    fireEvent.change(select, { target: { value: "research" } });
+
+    await waitFor(() => {
+      expect(setPurposeMock).toHaveBeenCalledWith("id-1", "research");
+    });
   });
 });

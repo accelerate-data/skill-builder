@@ -317,8 +317,7 @@ fn upload_skill_inner(
         is_bundled: false,
         // Store description from frontmatter in DB
         description: fm.description,
-        // Always force purpose to 'skill-builder' for uploaded zips
-        purpose: Some("skill-builder".to_string()),
+        purpose: None,
         version: fm.version,
         model: fm.model,
         argument_hint: fm.argument_hint,
@@ -1287,8 +1286,8 @@ description: A skill
         assert_eq!(skill.skill_name, "analytics-skill");
         assert_eq!(skill.description.as_deref(), Some("Analytics domain skill"));
         assert!(skill.is_active);
-        // purpose is always forced to 'skill-builder' on zip upload
-        assert_eq!(skill.purpose.as_deref(), Some("skill-builder"));
+        // purpose is None by default on zip upload
+        assert_eq!(skill.purpose, None);
 
         // Verify files were extracted
         let skill_dir = workspace.path().join(".claude").join("skills").join("analytics-skill");
@@ -1393,6 +1392,30 @@ description: A skill
         let result = upload_skill_inner(zip_file2.path().to_str().unwrap(), workspace_path, &conn);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("already exists"));
+    }
+
+    #[test]
+    fn test_upload_skill_purpose_is_none() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        let zip_file = create_test_zip(&[
+            ("SKILL.md", "---\nname: purpose-test\ndescription: Purpose test skill\n---\n# Purpose Test"),
+        ]);
+
+        let result = upload_skill_inner(
+            zip_file.path().to_str().unwrap(),
+            workspace_path,
+            &conn,
+        );
+        assert!(result.is_ok(), "upload_skill_inner failed: {:?}", result.err());
+
+        let skill = result.unwrap();
+        assert_eq!(
+            skill.purpose, None,
+            "uploaded zip should have purpose == None, not a hardcoded value"
+        );
     }
 
     // --- Toggle active/inactive tests ---

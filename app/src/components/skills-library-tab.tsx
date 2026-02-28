@@ -12,6 +12,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useImportedSkillsStore } from "@/stores/imported-skills-store"
 import type { WorkspaceSkill } from "@/stores/imported-skills-store"
 import { useSettingsStore } from "@/stores/settings-store"
@@ -26,6 +33,7 @@ export function SkillsLibraryTab() {
     uploadSkill,
     toggleActive,
     deleteSkill,
+    setPurpose,
   } = useImportedSkillsStore()
 
   const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
@@ -101,6 +109,17 @@ export function SkillsLibraryTab() {
     [deleteSkill]
   )
 
+  const handlePurposeChange = useCallback(
+    async (skillId: string, newPurpose: string | null) => {
+      try {
+        await setPurpose(skillId, newPurpose)
+      } catch (err) {
+        console.error("[skills-library] setPurpose failed:", err)
+        toast.error(`Failed to update purpose: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    },
+    [setPurpose]
+  )
 
   return (
     <div className="space-y-6">
@@ -169,9 +188,28 @@ export function SkillsLibraryTab() {
                 )}
               </div>
               <div className="w-28 shrink-0">
-                <span className="text-xs text-muted-foreground">
-                  {PURPOSE_OPTIONS.find(o => o.value === skill.purpose)?.label ?? "General Purpose"}
-                </span>
+                <Select
+                  value={skill.purpose ?? ""}
+                  onValueChange={(val) =>
+                    handlePurposeChange(skill.skill_id, val === "__clear__" ? null : val || null)
+                  }
+                >
+                  <SelectTrigger className="h-6 text-xs border-0 bg-transparent px-0 shadow-none focus:ring-0 text-muted-foreground hover:text-foreground w-full">
+                    <SelectValue placeholder="Set purpose…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PURPOSE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                    {skill.purpose && (
+                      <SelectItem value="__clear__" className="text-xs text-muted-foreground">
+                        Clear
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="w-24 shrink-0">
                 {skill.version ? (
