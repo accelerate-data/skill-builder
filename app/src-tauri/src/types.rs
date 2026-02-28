@@ -357,6 +357,17 @@ pub struct ImportedSkill {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillFileMeta {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub version: Option<String>,
+    pub model: Option<String>,
+    pub argument_hint: Option<String>,
+    pub user_invocable: Option<bool>,
+    pub disable_model_invocation: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceSkill {
     pub skill_id: String,
     pub skill_name: String,

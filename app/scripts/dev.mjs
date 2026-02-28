@@ -26,7 +26,9 @@ const env = { ...process.env, DEV_PORT: port };
 
 try {
   execSync('npm run sidecar:build', { stdio: 'inherit', cwd: root });
-  execSync(`npx tauri dev --config '${config}'`, { stdio: 'inherit', cwd: root, env });
+  const quote = process.platform === 'win32' ? `"` : `'`;
+  const escapedConfig = process.platform === 'win32' ? config.replace(/"/g, '\\"') : config;
+  execSync(`npx tauri dev --config ${quote}${escapedConfig}${quote}`, { stdio: 'inherit', cwd: root, env });
 } catch (e) {
   process.exit(e.status || 1);
 }
