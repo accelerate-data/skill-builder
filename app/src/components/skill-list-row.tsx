@@ -28,7 +28,7 @@ import {
 } from "@/components/skill-card"
 import { SkillSourceBadge } from "@/components/skill-source-badge"
 import type { SkillSummary, Purpose } from "@/lib/types"
-import { PURPOSE_LABELS } from "@/lib/types"
+import { PURPOSE_SHORT_LABELS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 function formatRelativeDate(isoDate: string): string {
@@ -111,7 +111,7 @@ export default function SkillListRow({
           {isLocked && <Lock className="size-3.5 shrink-0 text-muted-foreground" />}
           <div className="truncate text-sm font-medium">{skill.name}</div>
           <div className="hidden sm:block truncate text-xs text-muted-foreground">
-            {skill.purpose ? (PURPOSE_LABELS[skill.purpose as Purpose] || skill.purpose) : ""}
+            {skill.purpose ? (PURPOSE_SHORT_LABELS[skill.purpose as Purpose] || skill.purpose) : ""}
           </div>
         </div>
       </td>
