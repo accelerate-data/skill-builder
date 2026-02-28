@@ -391,7 +391,7 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
 /// Initialize a refine session for a skill.
 ///
 /// No sidecar is spawned here — the sidecar is spawned per-message in `send_refine_message`.
-#[tauri::command] // codeql[rust/cleartext-logging]
+#[tauri::command]
 pub async fn start_refine_session(
     skill_name: String,
     workspace_path: String,
@@ -474,9 +474,8 @@ pub async fn send_refine_message(
     db: tauri::State<'_, Db>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    log::info!( // codeql[rust/cleartext-logging]
-        "[send_refine_message] session={} command={:?}",
-        session_id,
+    log::info!(
+        "[send_refine_message] session=[REDACTED] command={:?}",
         command
     );
 
@@ -696,7 +695,7 @@ pub async fn close_refine_session(
     sessions: tauri::State<'_, RefineSessionManager>,
     pool: tauri::State<'_, SidecarPool>,
 ) -> Result<(), String> {
-    log::info!("[close_refine_session] session={}", session_id); // codeql[rust/cleartext-logging]
+    log::info!("[close_refine_session] session=[REDACTED]");
 
     let removed = {
         let mut map = sessions.0.lock().map_err(|e| {
@@ -708,8 +707,7 @@ pub async fn close_refine_session(
 
     if let Some(session) = removed {
         log::debug!(
-            "[close_refine_session] removed session {} (stream_started={})",
-            session_id,
+            "[close_refine_session] removed session [REDACTED] (stream_started={})",
             session.stream_started
         );
 
@@ -720,14 +718,13 @@ pub async fn close_refine_session(
                 .await
             {
                 log::warn!(
-                    "[close_refine_session] Failed to send stream_end for session {}: {}",
-                    session_id,
+                    "[close_refine_session] Failed to send stream_end for session [REDACTED]: {}",
                     e
                 );
             }
         }
     } else {
-        log::debug!("[close_refine_session] session {} not found (already closed)", session_id);
+        log::debug!("[close_refine_session] session [REDACTED] not found (already closed)");
     }
 
     Ok(())
