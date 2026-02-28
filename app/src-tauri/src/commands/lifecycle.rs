@@ -7,7 +7,7 @@ pub async fn has_running_agents(
     workflow_session_id: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<bool, String> {
-    log::info!("[has_running_agents] session_id={:?}", workflow_session_id); // codeql[rust/cleartext-logging]
+    log::info!("[has_running_agents] session_id=[REDACTED]");
     let session_id = match workflow_session_id {
         Some(id) => id,
         None => {
@@ -33,6 +33,6 @@ pub async fn has_running_agents(
             e.to_string()
         })?;
     let running = count > 0;
-    log::info!("[has_running_agents] running={} count={} session={}", running, count, session_id);
+    log::info!("[has_running_agents] running={} count={} session=[REDACTED]", running, count);
     Ok(running)
 }

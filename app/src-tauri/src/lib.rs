@@ -100,7 +100,7 @@ pub fn run() {
                 id: uuid::Uuid::new_v4().to_string(),
                 pid: std::process::id(),
             };
-            log::info!("Instance ID: {}, PID: {}", instance_info.id, instance_info.pid);
+            log::info!("Instance ID: [REDACTED], PID: [REDACTED]");
             app.manage(instance_info);
 
             // Apply persisted log level setting (fall back to info if DB read fails).

@@ -337,7 +337,7 @@ pub fn create_workflow_session(
     session_id: String,
     skill_name: String,
 ) -> Result<(), String> {
-    log::info!("[create_workflow_session] session={} skill={}", session_id, skill_name); // codeql[rust/cleartext-logging]
+    log::info!("[create_workflow_session] session=[REDACTED] skill={}", skill_name);
     let conn = db.0.lock().map_err(|e| {
         log::error!("[create_workflow_session] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -350,7 +350,7 @@ pub fn end_workflow_session(
     db: tauri::State<'_, Db>,
     session_id: String,
 ) -> Result<(), String> {
-    log::info!("[end_workflow_session] session={}", session_id); // codeql[rust/cleartext-logging]
+    log::info!("[end_workflow_session] session=[REDACTED]");
     let conn = db.0.lock().map_err(|e| {
         log::error!("[end_workflow_session] Failed to acquire DB lock: {}", e);
         e.to_string()
