@@ -191,7 +191,7 @@ export function SkillsLibraryTab() {
                 <Select
                   value={skill.purpose ?? ""}
                   onValueChange={(val) =>
-                    handlePurposeChange(skill.skill_id, val === "__clear__" ? null : val || null)
+                    handlePurposeChange(skill.skill_id, val)
                   }
                 >
                   <SelectTrigger className="h-6 text-xs border-0 bg-transparent px-0 shadow-none focus:ring-0 text-muted-foreground hover:text-foreground w-full">
@@ -203,11 +203,6 @@ export function SkillsLibraryTab() {
                         {opt.label}
                       </SelectItem>
                     ))}
-                    {skill.purpose && (
-                      <SelectItem value="__clear__" className="text-xs text-muted-foreground">
-                        Clear
-                      </SelectItem>
-                    )}
                   </SelectContent>
                 </Select>
               </div>

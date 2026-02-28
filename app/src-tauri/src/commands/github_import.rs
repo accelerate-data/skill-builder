@@ -413,7 +413,7 @@ pub(crate) fn discover_skills_from_catalog(
                     name: skill_name.to_string(),
                     plugin_name: None, // populated later from plugin.json
                     description: plugin.description.clone(),
-                    purpose: None,
+                    purpose: Some("general-purpose".to_string()),
                     version: None,
                     model: None,
                     argument_hint: None,

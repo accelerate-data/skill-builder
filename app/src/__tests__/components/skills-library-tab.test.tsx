@@ -383,8 +383,8 @@ describe("SkillsLibraryTab", () => {
     const nopurposeSelect = selects.find((s) => s.getAttribute("data-value") === "");
     expect(nopurposeSelect).toBeDefined();
 
-    // "General Purpose" is no longer shown as static text
-    expect(screen.queryByText("General Purpose")).not.toBeInTheDocument();
+    // "General Purpose" appears as a selectable option in the purpose dropdown
+    expect(screen.getAllByText("General Purpose").length).toBeGreaterThan(0);
   });
 
   // Test C — setPurpose is called when purpose selector changes (VU-338)
