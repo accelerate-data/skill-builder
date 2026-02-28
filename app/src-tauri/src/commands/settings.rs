@@ -7,7 +7,7 @@ use crate::types::AppSettings;
 
 /// Default built-in marketplace registry URL. Used for both the initial migration
 /// and the "cannot remove" guard in the Settings UI.
-pub(crate) const DEFAULT_MARKETPLACE_URL: &str = "https://github.com/hbanerjee74/skills";
+pub(crate) const DEFAULT_MARKETPLACE_URL: &str = "hbanerjee74/skills";
 
 #[tauri::command]
 pub fn get_data_dir(app: tauri::AppHandle) -> Result<String, String> {
@@ -62,6 +62,29 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
             log::error!("[get_settings] failed to persist marketplace migration: {}", e);
         } else {
             log::info!("[get_settings] migrated marketplace_url to marketplace_registries ({} entries)", settings.marketplace_registries.len());
+        }
+    }
+
+    // Normalize all stored registry URLs to canonical shorthand (owner/repo or owner/repo#branch).
+    // This migrates existing entries that were saved as full HTTPS URLs.
+    let mut normalized = false;
+    for registry in &mut settings.marketplace_registries {
+        if let Ok(info) = crate::commands::github_import::parse_github_url_inner(&registry.source_url) {
+            let canonical = if info.branch == "main" {
+                format!("{}/{}", info.owner, info.repo)
+            } else {
+                format!("{}/{}#{}", info.owner, info.repo, info.branch)
+            };
+            if canonical != registry.source_url {
+                log::info!("[get_settings] normalizing registry url: {} -> {}", registry.source_url, canonical);
+                registry.source_url = canonical;
+                normalized = true;
+            }
+        }
+    }
+    if normalized {
+        if let Err(e) = crate::db::write_settings(&conn, &settings) {
+            log::error!("[get_settings] failed to persist normalized registry URLs: {}", e);
         }
     }
 

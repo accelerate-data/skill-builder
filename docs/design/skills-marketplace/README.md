@@ -14,7 +14,7 @@ The marketplace is a **one-way import layer**: skills flow in from GitHub reposi
 
 A marketplace repo has three levels: **registry → plugins → skills**. The catalog at `.claude-plugin/marketplace.json` lists each plugin directory; each plugin directory contains `.claude-plugin/plugin.json` (its name) and a `skills/` subdirectory of skill folders. No catalog = error, never a silent empty result.
 
-The default registry (`https://github.com/hbanerjee74/skills`) shows both common layout patterns — plugins in a subdirectory and a plugin rooted at `./`:
+The default registry (`hbanerjee74/skills`) shows both common layout patterns — plugins in a subdirectory and a plugin rooted at `./`:
 
 ```text
 hbanerjee74/skills/
@@ -115,8 +115,8 @@ Plugin entries with no valid skills are silently skipped. External source types 
 
 Configured in Settings → Marketplace. Each registry has a name, GitHub URL, and enabled/disabled toggle.
 
-- **Default** — `https://github.com/hbanerjee74/skills` (`vibedata-skills`), seeded on first launch, cannot be removed.
-- **Adding** — paste a GitHub URL; the app fetches `marketplace.json` and uses its `name` field as the display name (falls back to `"{owner}/{repo}"`).
+- **Default** — `hbanerjee74/skills` (`vibedata-skills`), seeded on first launch, cannot be removed.
+- **Adding** — enter a repo in `owner/repo` or `owner/repo#branch` format; the app fetches `marketplace.json` and uses its `name` field as the display name (falls back to `"{owner}/{repo}"`).
 - **Enabled only** — disabled registries are hidden from the browse dialog but not deleted.
 - **No nesting** — registry → plugins → skills is fixed at three levels. Sub-collections must each be added as a separate registry URL.
 
