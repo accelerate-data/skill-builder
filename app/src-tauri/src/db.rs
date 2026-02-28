@@ -2511,14 +2511,14 @@ pub fn upsert_bundled_workspace_skill(conn: &Connection, skill: &WorkspaceSkill)
                  description = excluded.description,
                  is_bundled = 1,
                  disk_path = excluded.disk_path,
-                 purpose = excluded.purpose,
                  version = excluded.version,
                  model = excluded.model,
                  argument_hint = excluded.argument_hint,
                  user_invocable = excluded.user_invocable,
                  disable_model_invocation = excluded.disable_model_invocation
                  -- marketplace_source_url intentionally NOT updated: bundled skills always have NULL
-                 -- is_active intentionally NOT updated: preserves user's deactivation"
+                 -- is_active intentionally NOT updated: preserves user's deactivation
+                 -- purpose intentionally NOT updated: preserves user's purpose setting"
         ),
         rusqlite::params_from_iter(ws_params(skill)),
     ).map_err(|e| format!("upsert_bundled_workspace_skill: {}", e))?;
