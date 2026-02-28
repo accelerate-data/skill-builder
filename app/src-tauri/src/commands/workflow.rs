@@ -1917,7 +1917,7 @@ mod tests {
     fn test_build_prompt_all_three_paths() {
         let prompt = build_prompt(
             "my-skill",
-            "/home/user/.vibedata",
+            "/home/user/.vibedata/skill-builder",
             "/home/user/my-skills",
             None,
             None,
@@ -1925,7 +1925,7 @@ mod tests {
         );
         assert!(prompt.contains("my-skill"));
         // 3 distinct paths in prompt
-        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/my-skill"));
+        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
         assert!(prompt.contains("The context directory is: /home/user/my-skills/my-skill/context"));
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
     }
@@ -1934,7 +1934,7 @@ mod tests {
     fn test_build_prompt_with_skill_type() {
         let prompt = build_prompt(
             "my-skill",
-            "/home/user/.vibedata",
+            "/home/user/.vibedata/skill-builder",
             "/home/user/my-skills",
             None,
             None,
@@ -1948,7 +1948,7 @@ mod tests {
     fn test_build_prompt_with_author_info() {
         let prompt = build_prompt(
             "my-skill",
-            "/home/user/.vibedata",
+            "/home/user/.vibedata/skill-builder",
             "/home/user/my-skills",
             Some("octocat"),
             Some("2025-06-15T12:00:00Z"),
@@ -1963,7 +1963,7 @@ mod tests {
     fn test_build_prompt_without_author_info() {
         let prompt = build_prompt(
             "my-skill",
-            "/home/user/.vibedata",
+            "/home/user/.vibedata/skill-builder",
             "/home/user/my-skills",
             None,
             None,
@@ -1978,7 +1978,7 @@ mod tests {
         // The answer-evaluator prompt must follow the same "workspace directory" /
         // "context directory" pattern as build_prompt so the mock agent and real
         // agent can parse paths consistently.
-        let workspace_path = "/home/user/.vibedata";
+        let workspace_path = "/home/user/.vibedata/skill-builder";
         let skills_path = "/home/user/my-skills";
         let skill_name = "my-skill";
 
@@ -1996,7 +1996,7 @@ mod tests {
         );
 
         // Verify standard path markers that mock agent and agent prompts rely on
-        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/my-skill."));
+        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill."));
         assert!(prompt.contains("The context directory is: /home/user/my-skills/my-skill/context."));
         assert!(prompt.contains("do not create any directories"));
         // Workspace dir is NOT context dir (answer-evaluation.json goes to workspace)
