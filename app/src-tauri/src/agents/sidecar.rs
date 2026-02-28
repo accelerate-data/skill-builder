@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SidecarConfig {
     pub prompt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -32,6 +32,24 @@ pub struct SidecarConfig {
         skip_serializing_if = "Option::is_none"
     )]
     pub conversation_history: Option<Vec<serde_json::Value>>,
+}
+
+impl std::fmt::Debug for SidecarConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SidecarConfig")
+            .field("prompt", &self.prompt)
+            .field("model", &self.model)
+            .field("api_key", &"[redacted]")
+            .field("cwd", &self.cwd)
+            .field("allowed_tools", &self.allowed_tools)
+            .field("max_turns", &self.max_turns)
+            .field("permission_mode", &self.permission_mode)
+            .field("session_id", &self.session_id)
+            .field("betas", &self.betas)
+            .field("max_thinking_tokens", &self.max_thinking_tokens)
+            .field("agent_name", &self.agent_name)
+            .finish()
+    }
 }
 
 /// Spawn an agent using the persistent sidecar pool, which reuses a long-lived
