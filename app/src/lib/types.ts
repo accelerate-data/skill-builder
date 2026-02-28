@@ -315,3 +315,13 @@ export interface SkillFileEntry {
   size_bytes: number
 }
 
+export interface SkillFileMeta {
+  name: string | null
+  description: string | null
+  version: string | null
+  model: string | null
+  argument_hint: string | null
+  user_invocable: boolean | null
+  disable_model_invocation: boolean | null
+}
+
