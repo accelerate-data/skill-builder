@@ -25,7 +25,7 @@ import { useWorkflowStore } from "@/stores/workflow-store"
 import { renameSkill, updateSkillMetadata, generateSuggestions, type FieldSuggestions } from "@/lib/tauri"
 import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
 import type { SkillSummary } from "@/lib/types"
-import { PURPOSES, PURPOSE_LABELS, PURPOSE_SHORT_LABELS } from "@/lib/types"
+import { PURPOSES, PURPOSE_LABELS } from "@/lib/types"
 
 // --- Built skill detection ---
 
@@ -501,7 +501,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                   >
                     <option value="" disabled>Select a purpose...</option>
                     {PURPOSES.map((p) => (
-                      <option key={p} value={p} title={PURPOSE_LABELS[p]}>{PURPOSE_SHORT_LABELS[p]}</option>
+                      <option key={p} value={p}>{PURPOSE_LABELS[p]}</option>
                     ))}
                   </select>
                 </div>
