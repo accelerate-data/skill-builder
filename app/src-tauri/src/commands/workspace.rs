@@ -22,7 +22,7 @@ fn resolve_workspace_path() -> Result<String, String> {
 ///   ~/.vibedata → ~/.vibedata-migrating (take old dir out of the way)
 ///   mkdir ~/.vibedata                   (recreate the parent)
 ///   ~/.vibedata-migrating → ~/.vibedata/skill-builder (move data to new location)
-fn migrate_to_skill_builder_subdir(home: &std::path::Path) {
+fn migrate_to_skill_builder_subdir(home: &Path) {
     let old_root = home.join(WORKSPACE_PARENT);
     let new_root = home.join(WORKSPACE_PARENT).join(WORKSPACE_SUBDIR);
 
@@ -32,35 +32,36 @@ fn migrate_to_skill_builder_subdir(home: &std::path::Path) {
     }
 
     // If old root is empty, nothing to move (create_dir_all will handle it)
-    let has_content = std::fs::read_dir(&old_root)
+    let has_content = fs::read_dir(&old_root)
         .map(|mut d| d.next().is_some())
         .unwrap_or(false);
     if !has_content {
         return;
     }
 
-    let tmp = home.join(".vibedata-migrating");
+    let tmp_name = format!("{}-migrating", WORKSPACE_PARENT);
+    let tmp = home.join(&tmp_name);
     if tmp.exists() {
-        log::warn!("[init_workspace] migration skipped: ~/.vibedata-migrating already exists (leftover from a previous failed migration?)");
+        log::warn!("[init_workspace] migration skipped: ~/{} already exists (leftover from a previous failed migration?)", tmp_name);
         return;
     }
 
-    if let Err(e) = std::fs::rename(&old_root, &tmp) {
+    if let Err(e) = fs::rename(&old_root, &tmp) {
         log::warn!("[init_workspace] migration step 1 failed (rename ~/.vibedata to tmp): {}", e);
         return;
     }
 
-    if let Err(e) = std::fs::create_dir_all(&old_root) {
+    if let Err(e) = fs::create_dir_all(&old_root) {
         log::warn!("[init_workspace] migration step 2 failed (recreate ~/.vibedata): {}", e);
-        let _ = std::fs::rename(&tmp, &old_root); // restore
+        let _ = fs::rename(&tmp, &old_root); // restore
         return;
     }
 
-    if let Err(e) = std::fs::rename(&tmp, &new_root) {
+    if let Err(e) = fs::rename(&tmp, &new_root) {
         log::warn!("[init_workspace] migration step 3 failed (rename tmp to ~/.vibedata/skill-builder): {}", e);
         // Try to restore: drop newly created empty parent, rename tmp back
-        let _ = std::fs::remove_dir(&old_root);
-        let _ = std::fs::rename(&tmp, &old_root);
+        let _ = fs::remove_dir(&old_root);
+        let _ = fs::rename(&tmp, &old_root);
         return;
     }
 
@@ -76,19 +77,19 @@ fn migrate_workspace_layout(workspace_path: &str) {
     for name in &["agents", "references"] {
         let path = base.join(name);
         if path.is_dir() {
-            let _ = std::fs::remove_dir_all(&path);
+            let _ = fs::remove_dir_all(&path);
         }
     }
     // Remove dead database artifact
     let db_file = base.join("vibedata.db");
     if db_file.is_file() {
-        let _ = std::fs::remove_file(&db_file);
+        let _ = fs::remove_file(&db_file);
     }
     // Remove root CLAUDE.md only if .claude/CLAUDE.md exists (migration complete)
     let old_claude_md = base.join("CLAUDE.md");
     let new_claude_md = base.join(".claude").join("CLAUDE.md");
     if old_claude_md.is_file() && new_claude_md.is_file() {
-        let _ = std::fs::remove_file(&old_claude_md);
+        let _ = fs::remove_file(&old_claude_md);
     }
 }
 
@@ -108,7 +109,7 @@ pub fn init_workspace(
     let workspace_path = resolve_workspace_path()?;
 
     // Create directory if it doesn't exist
-    std::fs::create_dir_all(&workspace_path)
+    fs::create_dir_all(&workspace_path)
         .map_err(|e| format!("Failed to create workspace directory: {}", e))?;
 
     // Update settings with the workspace path
@@ -153,7 +154,7 @@ pub fn init_workspace(
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         if let Ok(settings) = crate::db::read_settings(&conn) {
             if let Some(ref sp) = settings.skills_path {
-                let sp_path = std::path::Path::new(sp);
+                let sp_path = Path::new(sp);
                 if sp_path.exists() && !sp_path.join(".git").exists() {
                     log::info!("One-time git upgrade: initializing repo at {}", sp);
                     if let Err(e) = crate::git::ensure_repo(sp_path) {
@@ -200,9 +201,9 @@ pub fn clear_workspace(
     drop(conn);
 
     // Delete only .claude/agents/ — preserve skills/ and CLAUDE.md
-    let agents_dir = std::path::Path::new(&workspace_path).join(".claude").join("agents");
+    let agents_dir = Path::new(&workspace_path).join(".claude").join("agents");
     if agents_dir.is_dir() {
-        std::fs::remove_dir_all(&agents_dir).map_err(|e| e.to_string())?;
+        fs::remove_dir_all(&agents_dir).map_err(|e| e.to_string())?;
     }
 
     // Invalidate the session cache so next workflow start re-checks
@@ -350,7 +351,7 @@ pub fn resolve_discovery(
             validate_path_within(ws_path, &skill_name, "workspace_path")?;
             // Create workspace marker
             let workspace_dir = ws_path.join(&skill_name);
-            let _ = std::fs::create_dir_all(&workspace_dir);
+            let _ = fs::create_dir_all(&workspace_dir);
             log::info!("[resolve_discovery] '{}': added as skill-builder (completed)", skill_name);
             Ok(())
         }
@@ -363,7 +364,7 @@ pub fn resolve_discovery(
             // Clear context folder
             let context_dir = sp.join(&skill_name).join("context");
             if context_dir.exists() {
-                let _ = std::fs::remove_dir_all(&context_dir);
+                let _ = fs::remove_dir_all(&context_dir);
                 log::info!("[resolve_discovery] '{}': cleared context folder", skill_name);
             }
             log::info!("[resolve_discovery] '{}': added as imported", skill_name);
@@ -376,7 +377,7 @@ pub fn resolve_discovery(
             // Delete from disk
             let skill_dir = sp.join(&skill_name);
             if skill_dir.exists() {
-                std::fs::remove_dir_all(&skill_dir)
+                fs::remove_dir_all(&skill_dir)
                     .map_err(|e| format!("Failed to remove '{}': {}", skill_name, e))?;
             }
             log::info!("[resolve_discovery] '{}': removed from disk", skill_name);
@@ -423,19 +424,18 @@ mod tests {
     #[test]
     fn test_resolve_workspace_path() {
         let path = resolve_workspace_path().unwrap();
-        assert!(path.ends_with("skill-builder"));
-        assert!(path.starts_with('/'));
+        assert!(path.ends_with(".vibedata/skill-builder"), "expected path ending in .vibedata/skill-builder, got {}", path);
     }
 
     #[test]
     fn test_validate_path_within_rejects_traversal() {
         let tmp = tempfile::tempdir().unwrap();
         let parent = tmp.path().join("parent");
-        std::fs::create_dir_all(&parent).unwrap();
+        fs::create_dir_all(&parent).unwrap();
 
         // Create a directory outside parent that a traversal would reach
         let outside = tmp.path().join("outside");
-        std::fs::create_dir_all(&outside).unwrap();
+        fs::create_dir_all(&outside).unwrap();
 
         // The traversal path "../outside" resolves to tmp/outside which is outside parent
         // It must exist for canonicalize to work
@@ -451,11 +451,11 @@ mod tests {
     fn test_validate_path_within_accepts_valid_path() {
         let tmp = tempfile::tempdir().unwrap();
         let parent = tmp.path().join("parent");
-        std::fs::create_dir_all(&parent).unwrap();
+        fs::create_dir_all(&parent).unwrap();
 
         // Create a valid child directory
         let child = parent.join("valid-skill");
-        std::fs::create_dir_all(&child).unwrap();
+        fs::create_dir_all(&child).unwrap();
 
         // Should succeed
         let result = validate_path_within(&parent, "valid-skill", "test");
@@ -466,10 +466,81 @@ mod tests {
     fn test_validate_path_within_skips_nonexistent_path() {
         let tmp = tempfile::tempdir().unwrap();
         let parent = tmp.path().join("parent");
-        std::fs::create_dir_all(&parent).unwrap();
+        fs::create_dir_all(&parent).unwrap();
 
         // Non-existent child: no validation happens (path doesn't exist yet)
         let result = validate_path_within(&parent, "does-not-exist", "test");
         assert!(result.is_ok(), "Non-existent path should be accepted (not yet created)");
+    }
+
+    // --- migrate_to_skill_builder_subdir tests ---
+
+    #[test]
+    fn test_migrate_happy_path() {
+        let home = tempfile::tempdir().unwrap();
+        let old_root = home.path().join(".vibedata");
+        fs::create_dir_all(&old_root).unwrap();
+        fs::write(old_root.join("agents.md"), "content").unwrap();
+
+        migrate_to_skill_builder_subdir(home.path());
+
+        let new_root = home.path().join(".vibedata").join("skill-builder");
+        assert!(new_root.join("agents.md").exists(), "file should be at new location");
+        assert!(!home.path().join(".vibedata-migrating").exists(), "tmp should be cleaned up");
+    }
+
+    #[test]
+    fn test_migrate_skips_if_already_migrated() {
+        let home = tempfile::tempdir().unwrap();
+        let new_root = home.path().join(".vibedata").join("skill-builder");
+        fs::create_dir_all(&new_root).unwrap();
+        fs::write(new_root.join("agents.md"), "content").unwrap();
+
+        // Should be a no-op
+        migrate_to_skill_builder_subdir(home.path());
+
+        assert!(new_root.join("agents.md").exists(), "existing new layout should be untouched");
+    }
+
+    #[test]
+    fn test_migrate_skips_if_old_dir_absent() {
+        let home = tempfile::tempdir().unwrap();
+
+        // Old ~/.vibedata doesn't exist — nothing to do
+        migrate_to_skill_builder_subdir(home.path());
+
+        assert!(!home.path().join(".vibedata").exists(), "nothing should be created");
+    }
+
+    #[test]
+    fn test_migrate_skips_if_old_dir_empty() {
+        let home = tempfile::tempdir().unwrap();
+        let old_root = home.path().join(".vibedata");
+        fs::create_dir_all(&old_root).unwrap();
+        // No files inside
+
+        migrate_to_skill_builder_subdir(home.path());
+
+        // Old empty dir should still be there (create_dir_all would have made it anyway)
+        // New subdir should not have been created by migration
+        assert!(!old_root.join("skill-builder").exists(), "should not create skill-builder from empty dir");
+    }
+
+    #[test]
+    fn test_migrate_skips_if_tmp_exists() {
+        let home = tempfile::tempdir().unwrap();
+        let old_root = home.path().join(".vibedata");
+        fs::create_dir_all(&old_root).unwrap();
+        fs::write(old_root.join("agents.md"), "content").unwrap();
+
+        // Simulate a leftover tmp from a previous failed migration
+        let tmp = home.path().join(".vibedata-migrating");
+        fs::create_dir_all(&tmp).unwrap();
+
+        migrate_to_skill_builder_subdir(home.path());
+
+        // Should be a no-op: original file still in old location
+        assert!(old_root.join("agents.md").exists(), "file should remain in old location");
+        assert!(!old_root.join("skill-builder").exists(), "skill-builder should not be created");
     }
 }
