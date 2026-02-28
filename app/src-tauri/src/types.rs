@@ -55,7 +55,7 @@ pub struct MarketplaceRegistry {
     pub enabled: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub anthropic_api_key: Option<String>,
     pub workspace_path: Option<String>,
@@ -100,6 +100,34 @@ pub struct AppSettings {
     /// Automatically apply marketplace updates at startup (default: false).
     #[serde(default)]
     pub auto_update: bool,
+}
+
+impl std::fmt::Debug for AppSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppSettings")
+            .field("anthropic_api_key", &self.anthropic_api_key.as_ref().map(|_| "[REDACTED]"))
+            .field("workspace_path", &self.workspace_path)
+            .field("skills_path", &self.skills_path)
+            .field("preferred_model", &self.preferred_model)
+            .field("debug_mode", &self.debug_mode)
+            .field("log_level", &self.log_level)
+            .field("extended_context", &self.extended_context)
+            .field("extended_thinking", &self.extended_thinking)
+            .field("splash_shown", &self.splash_shown)
+            .field("github_oauth_token", &self.github_oauth_token.as_ref().map(|_| "[REDACTED]"))
+            .field("github_user_login", &self.github_user_login)
+            .field("github_user_avatar", &self.github_user_avatar)
+            .field("github_user_email", &self.github_user_email)
+            .field("marketplace_url", &self.marketplace_url)
+            .field("marketplace_registries", &self.marketplace_registries)
+            .field("marketplace_initialized", &self.marketplace_initialized)
+            .field("max_dimensions", &self.max_dimensions)
+            .field("industry", &self.industry)
+            .field("function_role", &self.function_role)
+            .field("dashboard_view_mode", &self.dashboard_view_mode)
+            .field("auto_update", &self.auto_update)
+            .finish()
+    }
 }
 
 impl Default for AppSettings {
@@ -403,12 +431,23 @@ pub struct OrphanSkill {
     pub purpose: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SkillLock {
     pub skill_name: String,
     pub instance_id: String,
     pub pid: u32,
     pub acquired_at: String,
+}
+
+impl std::fmt::Debug for SkillLock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SkillLock")
+            .field("skill_name", &self.skill_name)
+            .field("instance_id", &self.instance_id)
+            .field("pid", &"[REDACTED]")
+            .field("acquired_at", &self.acquired_at)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -483,7 +522,7 @@ pub struct AgentRunRecord {
     pub completed_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct WorkflowSessionRecord {
     pub session_id: String,
     pub skill_name: String,
@@ -499,6 +538,27 @@ pub struct WorkflowSessionRecord {
     pub total_duration_ms: i64,
     pub started_at: String,
     pub completed_at: Option<String>,
+}
+
+impl std::fmt::Debug for WorkflowSessionRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WorkflowSessionRecord")
+            .field("session_id", &"[REDACTED]")
+            .field("skill_name", &self.skill_name)
+            .field("min_step", &self.min_step)
+            .field("max_step", &self.max_step)
+            .field("steps_csv", &self.steps_csv)
+            .field("agent_count", &self.agent_count)
+            .field("total_cost", &self.total_cost)
+            .field("total_input_tokens", &self.total_input_tokens)
+            .field("total_output_tokens", &self.total_output_tokens)
+            .field("total_cache_read", &self.total_cache_read)
+            .field("total_cache_write", &self.total_cache_write)
+            .field("total_duration_ms", &self.total_duration_ms)
+            .field("started_at", &self.started_at)
+            .field("completed_at", &self.completed_at)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -623,11 +683,21 @@ pub struct RefineDiff {
     pub files: Vec<RefineFileDiff>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RefineSessionInfo {
     pub session_id: String,
     pub skill_name: String,
     pub created_at: String,
+}
+
+impl std::fmt::Debug for RefineSessionInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RefineSessionInfo")
+            .field("session_id", &"[REDACTED]")
+            .field("skill_name", &self.skill_name)
+            .field("created_at", &self.created_at)
+            .finish()
+    }
 }
 
 /// A single message in a refine conversation history.
