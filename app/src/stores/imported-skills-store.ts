@@ -76,6 +76,10 @@ export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
       skills: state.skills.map((s) =>
         s.skill_id === skillId ? { ...s, purpose } : s
       ),
+      selectedSkill:
+        state.selectedSkill?.skill_id === skillId
+          ? { ...state.selectedSkill, purpose }
+          : state.selectedSkill,
     }));
   },
 }));

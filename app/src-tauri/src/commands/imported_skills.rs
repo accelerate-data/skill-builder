@@ -624,13 +624,24 @@ pub fn set_workspace_skill_purpose(
         log::error!("[set_workspace_skill_purpose] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    conn.execute(
+    do_set_workspace_skill_purpose(&conn, &skill_id, purpose.as_deref())
+}
+
+fn do_set_workspace_skill_purpose(
+    conn: &rusqlite::Connection,
+    skill_id: &str,
+    purpose: Option<&str>,
+) -> Result<(), String> {
+    let rows = conn.execute(
         "UPDATE workspace_skills SET purpose = ?1 WHERE skill_id = ?2",
         rusqlite::params![purpose, skill_id],
     ).map_err(|e| {
         log::error!("[set_workspace_skill_purpose] DB update failed: {}", e);
         format!("set_workspace_skill_purpose: {}", e)
     })?;
+    if rows == 0 {
+        return Err(format!("set_workspace_skill_purpose: skill '{}' not found", skill_id));
+    }
     Ok(())
 }
 
@@ -2382,22 +2393,24 @@ description: A skill
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
         // Set purpose to "research"
-        conn.execute(
-            "UPDATE workspace_skills SET purpose = ?1 WHERE skill_id = ?2",
-            rusqlite::params!["research", "id-purpose-test"],
-        ).unwrap();
+        do_set_workspace_skill_purpose(&conn, "id-purpose-test", Some("research")).unwrap();
 
         let updated = crate::db::get_workspace_skill_by_name(&conn, "purpose-skill").unwrap().unwrap();
         assert_eq!(updated.purpose.as_deref(), Some("research"), "purpose should be set to 'research'");
 
         // Clear purpose (set to NULL)
-        conn.execute(
-            "UPDATE workspace_skills SET purpose = ?1 WHERE skill_id = ?2",
-            rusqlite::params![Option::<String>::None, "id-purpose-test"],
-        ).unwrap();
+        do_set_workspace_skill_purpose(&conn, "id-purpose-test", None).unwrap();
 
         let cleared = crate::db::get_workspace_skill_by_name(&conn, "purpose-skill").unwrap().unwrap();
         assert!(cleared.purpose.is_none(), "purpose should be NULL after clearing");
+
+        // Verify zero-rows check: unknown skill_id should return an error
+        let err = do_set_workspace_skill_purpose(&conn, "nonexistent-id", Some("research"))
+            .unwrap_err();
+        assert!(
+            err.contains("not found"),
+            "expected 'not found' error for unknown skill, got: {err}"
+        );
     }
 
     // --- toggle_skill_active sibling deactivation test ---
