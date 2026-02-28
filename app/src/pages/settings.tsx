@@ -30,7 +30,7 @@ import { FeedbackDialog } from "@/components/feedback-dialog"
 import { SkillsLibraryTab } from "@/components/skills-library-tab"
 
 /** Must match DEFAULT_MARKETPLACE_URL in app/src-tauri/src/commands/settings.rs */
-const DEFAULT_MARKETPLACE_URL = "https://github.com/hbanerjee74/skills"
+const DEFAULT_MARKETPLACE_URL = "hbanerjee74/skills"
 
 const sections = [
   { id: "general", label: "General" },
@@ -690,10 +690,10 @@ export default function SettingsPage() {
                 ) : (
                   <div className="flex flex-col gap-3 rounded-md border p-4">
                     <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="new-registry-url">GitHub URL</Label>
+                      <Label htmlFor="new-registry-url">GitHub repository</Label>
                       <Input
                         id="new-registry-url"
-                        placeholder="https://github.com/owner/skill-library"
+                        placeholder="owner/repo or owner/repo#branch"
                         value={newRegistryUrl}
                         onChange={(e) => setNewRegistryUrl(e.target.value)}
                       />

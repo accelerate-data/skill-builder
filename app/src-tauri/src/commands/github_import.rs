@@ -131,6 +131,7 @@ pub(crate) fn build_github_client(token: Option<&str>) -> reqwest::Client {
 /// - `https://github.com/owner/repo/tree/branch/sub/path`
 /// - `github.com/owner/repo`
 /// - `owner/repo`
+/// - `owner/repo#branch`
 #[tauri::command]
 pub fn parse_github_url(url: String) -> Result<GitHubRepoInfo, String> {
     log::info!("[parse_github_url] url={}", url);
@@ -159,6 +160,13 @@ fn parse_github_url_inner(url: &str) -> Result<GitHubRepoInfo, String> {
     if path.is_empty() {
         return Err("Could not extract owner/repo from URL".to_string());
     }
+
+    // Handle owner/repo#branch shorthand — extract branch before splitting on '/'
+    let (path, hash_branch) = if let Some((before, after)) = path.split_once('#') {
+        (before.trim_end_matches('/'), Some(after))
+    } else {
+        (path, None)
+    };
 
     let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
 
@@ -195,17 +203,21 @@ fn parse_github_url_inner(url: &str) -> Result<GitHubRepoInfo, String> {
             subpath,
         })
     } else if segments.len() == 2 {
-        // Just owner/repo — default branch to "main"
+        // owner/repo or owner/repo#branch — use hash_branch if present, else default to "main"
+        let branch = hash_branch
+            .filter(|b| !b.is_empty())
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "main".to_string());
         Ok(GitHubRepoInfo {
             owner,
             repo,
-            branch: "main".to_string(),
+            branch,
             subpath: None,
         })
     } else {
         // Something like owner/repo/blob/... or other unsupported pattern
         Err(format!(
-            "Unsupported GitHub URL format '{}': expected owner/repo or owner/repo/tree/branch[/path]",
+            "Unsupported GitHub URL format '{}': expected owner/repo, owner/repo#branch, or owner/repo/tree/branch[/path]",
             url
         ))
     }
@@ -1808,6 +1820,32 @@ mod tests {
         let result = parse_github_url_inner("  acme/skills  ").unwrap();
         assert_eq!(result.owner, "acme");
         assert_eq!(result.repo, "skills");
+    }
+
+    #[test]
+    fn test_parse_shorthand_with_branch() {
+        let result = parse_github_url_inner("acme/skills#develop").unwrap();
+        assert_eq!(result.owner, "acme");
+        assert_eq!(result.repo, "skills");
+        assert_eq!(result.branch, "develop");
+        assert!(result.subpath.is_none());
+    }
+
+    #[test]
+    fn test_parse_shorthand_with_branch_main() {
+        let result = parse_github_url_inner("acme/skills#main").unwrap();
+        assert_eq!(result.owner, "acme");
+        assert_eq!(result.repo, "skills");
+        assert_eq!(result.branch, "main");
+    }
+
+    #[test]
+    fn test_parse_shorthand_with_empty_branch_defaults_to_main() {
+        // owner/repo# with empty branch after # defaults to "main"
+        let result = parse_github_url_inner("acme/skills#").unwrap();
+        assert_eq!(result.owner, "acme");
+        assert_eq!(result.repo, "skills");
+        assert_eq!(result.branch, "main");
     }
 
     // --- Frontmatter reuse test ---

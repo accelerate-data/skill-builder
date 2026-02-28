@@ -7,7 +7,7 @@ use crate::types::AppSettings;
 
 /// Default built-in marketplace registry URL. Used for both the initial migration
 /// and the "cannot remove" guard in the Settings UI.
-pub(crate) const DEFAULT_MARKETPLACE_URL: &str = "https://github.com/hbanerjee74/skills";
+pub(crate) const DEFAULT_MARKETPLACE_URL: &str = "hbanerjee74/skills";
 
 #[tauri::command]
 pub fn get_data_dir(app: tauri::AppHandle) -> Result<String, String> {
