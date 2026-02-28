@@ -44,7 +44,7 @@ impl std::fmt::Debug for SidecarConfig {
             .field("allowed_tools", &self.allowed_tools)
             .field("max_turns", &self.max_turns)
             .field("permission_mode", &self.permission_mode)
-            .field("session_id", &self.session_id.as_ref().map(|_| "[REDACTED]"))
+            .field("session_id", &self.session_id.is_some().then_some("[REDACTED]"))
             .field("betas", &self.betas)
             .field("max_thinking_tokens", &self.max_thinking_tokens)
             .field("agent_name", &self.agent_name)

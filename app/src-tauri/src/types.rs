@@ -105,7 +105,7 @@ pub struct AppSettings {
 impl std::fmt::Debug for AppSettings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppSettings")
-            .field("anthropic_api_key", &self.anthropic_api_key.as_ref().map(|_| "[REDACTED]"))
+            .field("anthropic_api_key", &self.anthropic_api_key.is_some().then_some("[REDACTED]"))
             .field("workspace_path", &self.workspace_path)
             .field("skills_path", &self.skills_path)
             .field("preferred_model", &self.preferred_model)
@@ -114,7 +114,7 @@ impl std::fmt::Debug for AppSettings {
             .field("extended_context", &self.extended_context)
             .field("extended_thinking", &self.extended_thinking)
             .field("splash_shown", &self.splash_shown)
-            .field("github_oauth_token", &self.github_oauth_token.as_ref().map(|_| "[REDACTED]"))
+            .field("github_oauth_token", &self.github_oauth_token.is_some().then_some("[REDACTED]"))
             .field("github_user_login", &self.github_user_login)
             .field("github_user_avatar", &self.github_user_avatar)
             .field("github_user_email", &self.github_user_email)
