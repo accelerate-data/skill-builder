@@ -787,7 +787,7 @@ mod tests {
             extended_context: false,
             extended_thinking: true,
             splash_shown: false,
-            github_oauth_token: Some("gho_testtoken123".to_string()),
+            github_oauth_token: Some("test-github-token".to_string()),
             github_user_login: Some("testuser".to_string()),
             github_user_avatar: Some("https://avatars.githubusercontent.com/u/12345".to_string()),
             github_user_email: Some("test@example.com".to_string()),
