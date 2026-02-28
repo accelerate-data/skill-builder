@@ -22,7 +22,7 @@ import type { AppSettings, MarketplaceRegistry } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useSettingsStore, type ModelInfo } from "@/stores/settings-store"
 import { useAuthStore } from "@/stores/auth-store"
-import { getDataDir, checkMarketplaceUrl } from "@/lib/tauri"
+import { getDataDir, checkMarketplaceUrl, parseGitHubUrl } from "@/lib/tauri"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
@@ -712,6 +712,31 @@ export default function SettingsPage() {
                         onClick={async () => {
                           const url = newRegistryUrl.trim()
                           setNewRegistryAdding(true)
+
+                          // Parse and normalize to canonical shorthand (owner/repo or owner/repo#branch)
+                          let info: Awaited<ReturnType<typeof parseGitHubUrl>>
+                          try {
+                            info = await parseGitHubUrl(url)
+                          } catch {
+                            toast.error("Invalid GitHub repository format — use owner/repo or owner/repo#branch.")
+                            setNewRegistryAdding(false)
+                            return
+                          }
+                          const canonicalUrl = info.branch === "main"
+                            ? `${info.owner}/${info.repo}`
+                            : `${info.owner}/${info.repo}#${info.branch}`
+
+                          // Block duplicates: same owner/repo regardless of format or branch
+                          const isDuplicate = marketplaceRegistries.some(r => {
+                            const m = r.source_url.match(/^([^/]+)\/([^/#]+)/)
+                            return m && m[1] === info.owner && m[2] === info.repo
+                          })
+                          if (isDuplicate) {
+                            toast.error(`${info.owner}/${info.repo} is already in your registries.`)
+                            setNewRegistryAdding(false)
+                            return
+                          }
+
                           let name: string
                           try {
                             name = await checkMarketplaceUrl(url)
@@ -721,10 +746,10 @@ export default function SettingsPage() {
                             toast.error("Could not reach marketplace.json — check it is a public GitHub repository with a .claude-plugin/marketplace.json file.", { duration: Infinity })
                             return
                           }
-                          console.log(`[settings] registry added: name=${name}, url=${url}`)
+                          console.log(`[settings] registry added: name=${name}, url=${canonicalUrl}`)
                           const entry: MarketplaceRegistry = {
                             name,
-                            source_url: url,
+                            source_url: canonicalUrl,
                             enabled: true,
                           }
                           autoSave({ marketplaceRegistries: [...marketplaceRegistries, entry] })

@@ -138,7 +138,7 @@ pub fn parse_github_url(url: String) -> Result<GitHubRepoInfo, String> {
     parse_github_url_inner(&url)
 }
 
-fn parse_github_url_inner(url: &str) -> Result<GitHubRepoInfo, String> {
+pub(crate) fn parse_github_url_inner(url: &str) -> Result<GitHubRepoInfo, String> {
     let url = url.trim();
     if url.is_empty() {
         return Err("URL cannot be empty".to_string());

@@ -65,6 +65,29 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
         }
     }
 
+    // Normalize all stored registry URLs to canonical shorthand (owner/repo or owner/repo#branch).
+    // This migrates existing entries that were saved as full HTTPS URLs.
+    let mut normalized = false;
+    for registry in &mut settings.marketplace_registries {
+        if let Ok(info) = crate::commands::github_import::parse_github_url_inner(&registry.source_url) {
+            let canonical = if info.branch == "main" {
+                format!("{}/{}", info.owner, info.repo)
+            } else {
+                format!("{}/{}#{}", info.owner, info.repo, info.branch)
+            };
+            if canonical != registry.source_url {
+                log::info!("[get_settings] normalizing registry url: {} -> {}", registry.source_url, canonical);
+                registry.source_url = canonical;
+                normalized = true;
+            }
+        }
+    }
+    if normalized {
+        if let Err(e) = crate::db::write_settings(&conn, &settings) {
+            log::error!("[get_settings] failed to persist normalized registry URLs: {}", e);
+        }
+    }
+
     Ok(settings)
 }
 
