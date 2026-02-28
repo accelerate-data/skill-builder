@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
-import { save } from "@tauri-apps/plugin-dialog"
+import { open, save } from "@tauri-apps/plugin-dialog"
 import { toast } from "sonner"
-import { FolderOpen, Search, Filter, AlertCircle, Settings, Plus, Github, ChevronUp, ChevronDown } from "lucide-react"
+import { FolderOpen, Search, Filter, AlertCircle, Settings, Plus, Github, ChevronUp, ChevronDown, Upload } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -30,11 +30,12 @@ import SkillDialog from "@/components/skill-dialog"
 import DeleteSkillDialog from "@/components/delete-skill-dialog"
 import TagFilter from "@/components/tag-filter"
 import GitHubImportDialog from "@/components/github-import-dialog"
+import { ImportSkillDialog } from "@/components/import-skill-dialog"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useSkillStore } from "@/stores/skill-store"
 import { useWorkflowStore } from "@/stores/workflow-store"
-import { packageSkill, getLockedSkills } from "@/lib/tauri"
-import type { SkillSummary, AppSettings } from "@/lib/types"
+import { packageSkill, getLockedSkills, parseSkillFile } from "@/lib/tauri"
+import type { SkillSummary, AppSettings, SkillFileMeta } from "@/lib/types"
 import { PURPOSES, PURPOSE_LABELS } from "@/lib/types"
 import { SOURCE_DISPLAY_LABELS } from "@/components/skill-source-badge"
 
@@ -64,6 +65,9 @@ export default function DashboardPage() {
   const [workspacePath, setWorkspacePath] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [skillLibraryMarketplaceOpen, setSkillLibraryMarketplaceOpen] = useState(false)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importFilePath, setImportFilePath] = useState<string | null>(null)
+  const [importMeta, setImportMeta] = useState<SkillFileMeta | null>(null)
   const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
   const [editTarget, setEditTarget] = useState<SkillSummary | null>(null)
@@ -311,6 +315,24 @@ export default function DashboardPage() {
     }
   }, [workspacePath])
 
+  const handleImportFromFile = useCallback(async () => {
+    const filePath = await open({
+      title: "Import Skill",
+      filters: [{ name: "Skill Package", extensions: ["skill", "zip"] }],
+    })
+    if (!filePath) return
+
+    try {
+      const meta = await parseSkillFile(filePath)
+      setImportFilePath(filePath)
+      setImportMeta(meta)
+      setImportDialogOpen(true)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast.error(`Import failed: ${msg}`)
+    }
+  }, [])
+
   function sharedSkillProps(skill: SkillSummary) {
     return {
       skill,
@@ -474,6 +496,10 @@ export default function DashboardPage() {
           >
             <Github className="size-4" />
             Marketplace
+          </Button>
+          <Button variant="outline" onClick={handleImportFromFile}>
+            <Upload className="size-4" />
+            Import
           </Button>
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" />
@@ -689,6 +715,16 @@ export default function DashboardPage() {
         registries={marketplaceRegistries.filter(r => r.enabled)}
         workspacePath={workspacePath}
       />
+
+      {importFilePath && importMeta && (
+        <ImportSkillDialog
+          open={importDialogOpen}
+          onOpenChange={setImportDialogOpen}
+          filePath={importFilePath}
+          meta={importMeta}
+          onImported={() => { loadSkills(); loadTags(); }}
+        />
+      )}
 
     </div>
   )

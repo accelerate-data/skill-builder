@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta } from "@/lib/types";
 
 export interface WorkspaceSkillImportRequest {
   path: string;
@@ -489,4 +489,32 @@ export const prepareSkillTest = (workspacePath: string, skillName: string) =>
 
 export const cleanupSkillTest = (testId: string) =>
   invoke<void>("cleanup_skill_test", { testId })
+
+// --- File Import ---
+
+export const parseSkillFile = (filePath: string): Promise<SkillFileMeta> =>
+  invoke<SkillFileMeta>("parse_skill_file", { filePath })
+
+export const importSkillFromFile = (params: {
+  filePath: string
+  name: string
+  description: string
+  version: string
+  model?: string | null
+  argumentHint?: string | null
+  userInvocable?: boolean | null
+  disableModelInvocation?: boolean | null
+  forceOverwrite: boolean
+}): Promise<string> =>
+  invoke<string>("import_skill_from_file", {
+    filePath: params.filePath,
+    name: params.name,
+    description: params.description,
+    version: params.version,
+    model: params.model ?? null,
+    argumentHint: params.argumentHint ?? null,
+    userInvocable: params.userInvocable ?? null,
+    disableModelInvocation: params.disableModelInvocation ?? null,
+    forceOverwrite: params.forceOverwrite,
+  })
 
