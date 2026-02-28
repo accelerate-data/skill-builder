@@ -65,9 +65,7 @@ export default function DashboardPage() {
   const [workspacePath, setWorkspacePath] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [skillLibraryMarketplaceOpen, setSkillLibraryMarketplaceOpen] = useState(false)
-  const [importDialogOpen, setImportDialogOpen] = useState(false)
-  const [importFilePath, setImportFilePath] = useState<string | null>(null)
-  const [importMeta, setImportMeta] = useState<SkillFileMeta | null>(null)
+  const [importState, setImportState] = useState<{ filePath: string; meta: SkillFileMeta } | null>(null)
   const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
   const [editTarget, setEditTarget] = useState<SkillSummary | null>(null)
@@ -322,12 +320,12 @@ export default function DashboardPage() {
     })
     if (!filePath) return
 
+    console.log("[dashboard] import from file: path=%s", filePath)
     try {
       const meta = await parseSkillFile(filePath)
-      setImportFilePath(filePath)
-      setImportMeta(meta)
-      setImportDialogOpen(true)
+      setImportState({ filePath, meta })
     } catch (err) {
+      console.error("[dashboard] parseSkillFile failed:", err)
       const msg = err instanceof Error ? err.message : String(err)
       toast.error(`Import failed: ${msg}`)
     }
@@ -716,12 +714,12 @@ export default function DashboardPage() {
         workspacePath={workspacePath}
       />
 
-      {importFilePath && importMeta && (
+      {importState && (
         <ImportSkillDialog
-          open={importDialogOpen}
-          onOpenChange={setImportDialogOpen}
-          filePath={importFilePath}
-          meta={importMeta}
+          open={true}
+          onOpenChange={(open) => { if (!open) setImportState(null) }}
+          filePath={importState.filePath}
+          meta={importState.meta}
           onImported={() => { loadSkills(); loadTags(); }}
         />
       )}
