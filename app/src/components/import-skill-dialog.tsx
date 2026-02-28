@@ -77,8 +77,9 @@ export function ImportSkillDialog({
   const doImport = useCallback(
     async (forceOverwrite: boolean) => {
       setSubmitting(true)
+      setNameConflictError(null)
       if (!forceOverwrite) {
-        setNameConflictError(null)
+        setShowOverwriteConfirm(false)
       }
 
       try {
@@ -132,10 +133,6 @@ export function ImportSkillDialog({
     doImport(false)
   }
 
-  const handleOverwrite = () => {
-    doImport(true)
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -161,7 +158,7 @@ export function ImportSkillDialog({
               </Button>
               <Button
                 variant="destructive"
-                onClick={handleOverwrite}
+                onClick={() => doImport(true)}
                 disabled={submitting}
               >
                 {submitting && <Loader2 className="size-4 animate-spin" />}
