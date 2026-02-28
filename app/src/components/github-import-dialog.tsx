@@ -798,7 +798,7 @@ export default function GitHubImportDialog({
                   </Select>
                   {purposeConflict && (
                     <p className="text-xs text-destructive">
-                      Purpose already assigned to &ldquo;{purposeConflict.skill_name}&rdquo;
+                      A skill with purpose {PURPOSE_OPTIONS.find(o => o.value === editForm.settings_purpose)?.label ?? editForm.settings_purpose} already exists: &ldquo;{purposeConflict.skill_name}&rdquo;
                     </p>
                   )}
                 </div>

@@ -16,6 +16,7 @@ interface ImportedSkillsState {
   deleteSkill: (skillId: string) => Promise<void>;
   getSkillContent: (skillName: string) => Promise<string>;
   setSelectedSkill: (skill: WorkspaceSkill | null) => void;
+  setPurpose: (skillId: string, purpose: string | null) => Promise<void>;
 }
 
 export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
@@ -68,4 +69,17 @@ export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
   },
 
   setSelectedSkill: (skill) => set({ selectedSkill: skill }),
+
+  setPurpose: async (skillId: string, purpose: string | null) => {
+    await invoke<void>("set_workspace_skill_purpose", { skillId, purpose });
+    set((state) => ({
+      skills: state.skills.map((s) =>
+        s.skill_id === skillId ? { ...s, purpose } : s
+      ),
+      selectedSkill:
+        state.selectedSkill?.skill_id === skillId
+          ? { ...state.selectedSkill, purpose }
+          : state.selectedSkill,
+    }));
+  },
 }));

@@ -317,8 +317,7 @@ fn upload_skill_inner(
         is_bundled: false,
         // Store description from frontmatter in DB
         description: fm.description,
-        // Always force purpose to 'skill-builder' for uploaded zips
-        purpose: Some("skill-builder".to_string()),
+        purpose: Some("general-purpose".to_string()),
         version: fm.version,
         model: fm.model,
         argument_hint: fm.argument_hint,
@@ -625,13 +624,24 @@ pub fn set_workspace_skill_purpose(
         log::error!("[set_workspace_skill_purpose] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    conn.execute(
+    do_set_workspace_skill_purpose(&conn, &skill_id, purpose.as_deref())
+}
+
+fn do_set_workspace_skill_purpose(
+    conn: &rusqlite::Connection,
+    skill_id: &str,
+    purpose: Option<&str>,
+) -> Result<(), String> {
+    let rows = conn.execute(
         "UPDATE workspace_skills SET purpose = ?1 WHERE skill_id = ?2",
         rusqlite::params![purpose, skill_id],
     ).map_err(|e| {
         log::error!("[set_workspace_skill_purpose] DB update failed: {}", e);
         format!("set_workspace_skill_purpose: {}", e)
     })?;
+    if rows == 0 {
+        return Err(format!("set_workspace_skill_purpose: skill '{}' not found", skill_id));
+    }
     Ok(())
 }
 
@@ -1287,8 +1297,8 @@ description: A skill
         assert_eq!(skill.skill_name, "analytics-skill");
         assert_eq!(skill.description.as_deref(), Some("Analytics domain skill"));
         assert!(skill.is_active);
-        // purpose is always forced to 'skill-builder' on zip upload
-        assert_eq!(skill.purpose.as_deref(), Some("skill-builder"));
+        // purpose defaults to "general-purpose" on zip upload
+        assert_eq!(skill.purpose, Some("general-purpose".to_string()));
 
         // Verify files were extracted
         let skill_dir = workspace.path().join(".claude").join("skills").join("analytics-skill");
@@ -1393,6 +1403,31 @@ description: A skill
         let result = upload_skill_inner(zip_file2.path().to_str().unwrap(), workspace_path, &conn);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("already exists"));
+    }
+
+    #[test]
+    fn test_upload_skill_purpose_is_general_purpose() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        let zip_file = create_test_zip(&[
+            ("SKILL.md", "---\nname: purpose-test\ndescription: Purpose test skill\n---\n# Purpose Test"),
+        ]);
+
+        let result = upload_skill_inner(
+            zip_file.path().to_str().unwrap(),
+            workspace_path,
+            &conn,
+        );
+        assert!(result.is_ok(), "upload_skill_inner failed: {:?}", result.err());
+
+        let skill = result.unwrap();
+        assert_eq!(
+            skill.purpose,
+            Some("general-purpose".to_string()),
+            "uploaded zip should have purpose == Some(\"general-purpose\")"
+        );
     }
 
     // --- Toggle active/inactive tests ---
@@ -2359,22 +2394,24 @@ description: A skill
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
         // Set purpose to "research"
-        conn.execute(
-            "UPDATE workspace_skills SET purpose = ?1 WHERE skill_id = ?2",
-            rusqlite::params!["research", "id-purpose-test"],
-        ).unwrap();
+        do_set_workspace_skill_purpose(&conn, "id-purpose-test", Some("research")).unwrap();
 
         let updated = crate::db::get_workspace_skill_by_name(&conn, "purpose-skill").unwrap().unwrap();
         assert_eq!(updated.purpose.as_deref(), Some("research"), "purpose should be set to 'research'");
 
         // Clear purpose (set to NULL)
-        conn.execute(
-            "UPDATE workspace_skills SET purpose = ?1 WHERE skill_id = ?2",
-            rusqlite::params![Option::<String>::None, "id-purpose-test"],
-        ).unwrap();
+        do_set_workspace_skill_purpose(&conn, "id-purpose-test", None).unwrap();
 
         let cleared = crate::db::get_workspace_skill_by_name(&conn, "purpose-skill").unwrap().unwrap();
         assert!(cleared.purpose.is_none(), "purpose should be NULL after clearing");
+
+        // Verify zero-rows check: unknown skill_id should return an error
+        let err = do_set_workspace_skill_purpose(&conn, "nonexistent-id", Some("research"))
+            .unwrap_err();
+        assert!(
+            err.contains("not found"),
+            "expected 'not found' error for unknown skill, got: {err}"
+        );
     }
 
     // --- toggle_skill_active sibling deactivation test ---
