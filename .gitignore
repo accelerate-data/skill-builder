@@ -22,6 +22,9 @@ app/playwright-artifacts/
 # Research design working documents (kept locally, not committed)
 docs/design/research-design/
 
+# VitePress build output
+docs/.vitepress/dist/
+
 # Bundled Node.js binary (downloaded during CI build, not committed)
 app/src-tauri/resources/node/*
 !app/src-tauri/resources/node/.gitkeep
