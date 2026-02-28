@@ -31,6 +31,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `src-tauri/src/commands/clarification.rs` | `commands::clarification` | `@workflow` |
 | `src-tauri/src/commands/github_push.rs` | `commands::github_push` | `@dashboard` |
 | `src-tauri/src/commands/github_auth.rs` | -- | `@settings` |
+| `src-tauri/src/commands/imported_skills.rs` (`parse_skill_file`, `import_skill_from_file`) | `commands::imported_skills` | `@import` |
 | `src-tauri/src/commands/imported_skills.rs` | `commands::imported_skills` | `@skills` |
 | `src-tauri/src/commands/github_import.rs` | `commands::github_import` | `@skills` |
 | `src-tauri/src/commands/github_import.rs` (`check_marketplace_updates`) | `commands::github_import` | `@skills` |
@@ -72,6 +73,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `e2e/dashboard/skill-crud.spec.ts` | `@dashboard` |
 | `e2e/dashboard/dashboard-views.spec.ts` | `@dashboard` |
 | `e2e/dashboard/usage-multi-model.spec.ts` | `@dashboard` |
+| `e2e/dashboard/import-skill.spec.ts` | `@import` |
 | `e2e/setup/setup-screen.spec.ts` | `@workflow` |
 | `e2e/settings/settings.spec.ts` | `@settings` |
 | `e2e/workflow/workflow-agent.spec.ts` | `@workflow-agent` |
