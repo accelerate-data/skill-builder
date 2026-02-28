@@ -366,7 +366,7 @@ mod tests {
     fn test_resolve_workspace_path() {
         let path = resolve_workspace_path().unwrap();
         assert!(path.ends_with(".vibedata"));
-        assert!(path.starts_with('/'));
+        assert!(std::path::Path::new(&path).is_absolute());
     }
 
     #[test]
