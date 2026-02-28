@@ -51,6 +51,21 @@ Select the Claude model used for all workflow agents.
 
 ---
 
+## Skills Library
+
+### Purpose Selector
+
+Each skill in your library can be assigned a **purpose**, which describes the skill's intended use. Click the purpose field next to a skill to open a dropdown and select one of four options:
+
+- **Skill Test** — Testing and validation of individual components or techniques
+- **Research** — Exploring domains, gathering information, or benchmarking
+- **Validate** — Checking assumptions, verifying outputs, or quality assurance
+- **Skill Standards** — Building domain-specific, production-grade skills
+
+If a skill has no purpose set, it displays as "Set purpose…". Click the dropdown and choose a purpose, or if a purpose is already set, select **Clear** to remove it.
+
+---
+
 ## Marketplace
 
 ### Registries
