@@ -499,7 +499,7 @@ pub struct StepResetPreview {
     pub files: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AgentRunRecord {
     pub agent_id: String,
     pub skill_name: String,
@@ -520,6 +520,32 @@ pub struct AgentRunRecord {
     pub session_id: Option<String>,
     pub started_at: String,
     pub completed_at: Option<String>,
+}
+
+impl std::fmt::Debug for AgentRunRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AgentRunRecord")
+            .field("agent_id", &self.agent_id)
+            .field("skill_name", &self.skill_name)
+            .field("step_id", &self.step_id)
+            .field("model", &self.model)
+            .field("status", &self.status)
+            .field("input_tokens", &self.input_tokens)
+            .field("output_tokens", &self.output_tokens)
+            .field("cache_read_tokens", &self.cache_read_tokens)
+            .field("cache_write_tokens", &self.cache_write_tokens)
+            .field("total_cost", &self.total_cost)
+            .field("duration_ms", &self.duration_ms)
+            .field("num_turns", &self.num_turns)
+            .field("stop_reason", &self.stop_reason)
+            .field("duration_api_ms", &self.duration_api_ms)
+            .field("tool_use_count", &self.tool_use_count)
+            .field("compaction_count", &self.compaction_count)
+            .field("session_id", &"[REDACTED]")
+            .field("started_at", &self.started_at)
+            .field("completed_at", &self.completed_at)
+            .finish()
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
