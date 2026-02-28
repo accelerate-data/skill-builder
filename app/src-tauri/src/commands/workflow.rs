@@ -850,8 +850,10 @@ fn read_workflow_settings(
     let settings = crate::db::read_settings_hydrated(&conn)?;
     let skills_path = settings.skills_path
         .ok_or_else(|| "Skills path not configured. Please set it in Settings before running workflow steps.".to_string())?;
-    let api_key = settings.anthropic_api_key
-        .ok_or_else(|| "Anthropic API key not configured".to_string())?;
+    let api_key = match settings.anthropic_api_key {
+        Some(k) => k,
+        None => return Err("Anthropic API key not configured".to_string()),
+    };
     let preferred_model = resolve_model_id(
         settings.preferred_model.as_deref().unwrap_or("sonnet")
     );
@@ -1394,10 +1396,13 @@ pub async fn run_answer_evaluator(
             log::error!("run_answer_evaluator: failed to read settings: {}", e);
             e.to_string()
         })?;
-        let key = settings.anthropic_api_key.ok_or_else(|| {
-            log::error!("run_answer_evaluator: API key not configured");
-            "Anthropic API key not configured".to_string()
-        })?;
+        let key = match settings.anthropic_api_key {
+            Some(k) => k,
+            None => {
+                log::error!("run_answer_evaluator: API key not configured");
+                return Err("Anthropic API key not configured".to_string());
+            }
+        };
         let sp = settings.skills_path.ok_or_else(|| {
             log::error!("run_answer_evaluator: skills_path not configured");
             "Skills path not configured".to_string()

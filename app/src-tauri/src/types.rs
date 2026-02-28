@@ -105,7 +105,7 @@ pub struct AppSettings {
 impl std::fmt::Debug for AppSettings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppSettings")
-            .field("anthropic_api_key", &self.anthropic_api_key.as_ref().map(|_| "[REDACTED]"))
+            .field("anthropic_api_key", &"[REDACTED]")
             .field("workspace_path", &self.workspace_path)
             .field("skills_path", &self.skills_path)
             .field("preferred_model", &self.preferred_model)
@@ -114,7 +114,7 @@ impl std::fmt::Debug for AppSettings {
             .field("extended_context", &self.extended_context)
             .field("extended_thinking", &self.extended_thinking)
             .field("splash_shown", &self.splash_shown)
-            .field("github_oauth_token", &self.github_oauth_token.as_ref().map(|_| "[REDACTED]"))
+            .field("github_oauth_token", &"[REDACTED]")
             .field("github_user_login", &self.github_user_login)
             .field("github_user_avatar", &self.github_user_avatar)
             .field("github_user_email", &self.github_user_email)
@@ -465,13 +465,25 @@ pub struct ReconciliationResult {
     pub discovered_skills: Vec<DiscoveredSkill>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct DeviceFlowResponse {
     pub device_code: String,
     pub user_code: String,
     pub verification_uri: String,
     pub expires_in: u64,
     pub interval: u64,
+}
+
+impl std::fmt::Debug for DeviceFlowResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeviceFlowResponse")
+            .field("device_code", &"[REDACTED]")
+            .field("user_code", &self.user_code)
+            .field("verification_uri", &self.verification_uri)
+            .field("expires_in", &self.expires_in)
+            .field("interval", &self.interval)
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
