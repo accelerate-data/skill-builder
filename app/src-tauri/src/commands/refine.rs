@@ -487,8 +487,8 @@ pub async fn send_refine_message(
         let session = map.get(&session_id).ok_or_else(|| {
             // Log active sessions to help diagnose stale-session or post-restart failures
             let active: Vec<String> = map
-                .iter()
-                .map(|(_, s)| s.skill_name.clone())
+                .values()
+                .map(|s| s.skill_name.clone())
                 .collect();
             let msg = format!(
                 "No refine session found. Active sessions ({}): [{}]",
