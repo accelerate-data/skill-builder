@@ -501,8 +501,8 @@ pub async fn send_refine_message(
         (session.skill_name.clone(), session.stream_started)
     };
     log::info!(
-        "[send_refine_message] session={} skill={} stream_started={}",
-        session_id, skill_name, stream_started
+        "[send_refine_message] skill={} stream_started={}",
+        skill_name, stream_started
     );
 
     if !stream_started {
