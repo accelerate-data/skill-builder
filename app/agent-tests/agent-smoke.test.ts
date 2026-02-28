@@ -45,7 +45,7 @@ Skill type: domain
 Domain: Pet Store Analytics
 Skill name: ${SKILL_NAME}
 Context directory: ${researchDir}/${SKILL_NAME}/context
-Workspace directory: ${researchDir}/.vibedata/${SKILL_NAME}
+Workspace directory: ${researchDir}/.vibedata/skill-builder/${SKILL_NAME}
 
 <agent-instructions>
 ${WORKSPACE_CONTEXT}
@@ -101,7 +101,7 @@ describe.skipIf(!HAS_API_KEY)("answer-evaluator", () => {
     const prompt = `You are the answer-evaluator agent for the skill-builder plugin.
 
 Context directory: ${evalDir}/${SKILL_NAME}/context
-Workspace directory: ${evalDir}/.vibedata/${SKILL_NAME}
+Workspace directory: ${evalDir}/.vibedata/skill-builder/${SKILL_NAME}
 
 <agent-instructions>
 ${WORKSPACE_CONTEXT}
@@ -112,7 +112,7 @@ Read the clarification file at: ${evalDir}/${SKILL_NAME}/context/clarifications.
 Count answered vs unanswered questions (answered = **Answer:** has non-empty content after the colon).
 Evaluate whether the answers are sufficient to proceed to skill generation without more research.
 
-Write your evaluation to: ${evalDir}/.vibedata/${SKILL_NAME}/answer-evaluation.json
+Write your evaluation to: ${evalDir}/.vibedata/skill-builder/${SKILL_NAME}/answer-evaluation.json
 
 The JSON must contain exactly these fields:
 {
@@ -158,9 +158,9 @@ describe.skipIf(!HAS_API_KEY)("confirm-decisions", () => {
     createFixtureClarification(evalDir, SKILL_NAME);
     const evalPrompt = `You are the answer-evaluator agent for the skill-builder plugin.
 Context directory: ${evalDir}/${SKILL_NAME}/context
-Workspace directory: ${evalDir}/.vibedata/${SKILL_NAME}
+Workspace directory: ${evalDir}/.vibedata/skill-builder/${SKILL_NAME}
 Read: ${evalDir}/${SKILL_NAME}/context/clarifications.md
-Write evaluation to: ${evalDir}/.vibedata/${SKILL_NAME}/answer-evaluation.json
+Write evaluation to: ${evalDir}/.vibedata/skill-builder/${SKILL_NAME}/answer-evaluation.json
 JSON fields: total_questions, answered_count, empty_count, verdict (sufficient|needs_more_research|insufficient), reasoning.
 Return the JSON.`;
     runAgent(evalPrompt, BUDGET, 120_000, evalDir);
@@ -186,7 +186,7 @@ Domain: Pet Store Analytics
 Skill name: ${SKILL_NAME}
 Context directory: ${decisionsDir}/${SKILL_NAME}/context
 Skill directory: ${decisionsDir}/${SKILL_NAME}
-Workspace directory: ${decisionsDir}/.vibedata/${SKILL_NAME}
+Workspace directory: ${decisionsDir}/.vibedata/skill-builder/${SKILL_NAME}
 
 <agent-instructions>
 ${WORKSPACE_CONTEXT}

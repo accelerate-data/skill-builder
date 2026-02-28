@@ -501,8 +501,8 @@ pub async fn send_refine_message(
         (session.skill_name.clone(), session.stream_started)
     };
     log::info!(
-        "[send_refine_message] session={} skill={} stream_started={}",
-        session_id, skill_name, stream_started
+        "[send_refine_message] skill={} stream_started={}",
+        skill_name, stream_started
     );
 
     if !stream_started {
@@ -985,7 +985,7 @@ mod tests {
         build_refine_config(
             prompt.to_string(),
             "my-skill",
-            "/home/user/.vibedata",
+            "/home/user/.vibedata/skill-builder",
             "sk-test-key".to_string(),
             "sonnet".to_string(),
             false,
@@ -1032,12 +1032,12 @@ mod tests {
         let (config, _) = build_refine_config(
             "test".to_string(),
             "data-engineering",
-            "/home/user/.vibedata",
+            "/home/user/.vibedata/skill-builder",
             "sk-key".to_string(),
             "sonnet".to_string(),
             false,
         );
-        assert_eq!(config.cwd, "/home/user/.vibedata");
+        assert_eq!(config.cwd, "/home/user/.vibedata/skill-builder");
     }
 
     #[test]
@@ -1127,12 +1127,12 @@ mod tests {
 
     #[test]
     fn test_refine_prompt_includes_all_three_paths() {
-        let prompt = build_refine_prompt("my-skill", "/home/user/.vibedata", "/home/user/skills",
+        let prompt = build_refine_prompt("my-skill", "/home/user/.vibedata/skill-builder", "/home/user/skills",
             "Add metrics section", None, None,
         );
         assert!(prompt.contains("The skill directory is: /home/user/skills/my-skill"));
         assert!(prompt.contains("The context directory is: /home/user/skills/my-skill/context"));
-        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/my-skill"));
+        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
     }
 
     #[test]

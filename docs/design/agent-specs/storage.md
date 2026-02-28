@@ -11,10 +11,10 @@ For artifact file formats, see [canonical-format.md](canonical-format.md).
 | Location | Path | Purpose | Lifecycle |
 |---|---|---|---|
 | **Database** | Tauri app data dir (`app_data_dir()`) + `skill-builder.db` — macOS: `~/Library/Application Support/com.skillbuilder.app/skill-builder.db`, Linux: `~/.local/share/com.skillbuilder.app/skill-builder.db` | All workflow state, settings, agent runs — single source of truth after reconciliation | Persists permanently; never in the workspace |
-| **Workspace** | `{home}/.vibedata/` | Transient working directory: agent infrastructure, per-skill scratch dirs, logs | Recreated on startup if missing |
+| **Workspace** | `{home}/.vibedata/skill-builder/` | Transient working directory: agent infrastructure, per-skill scratch dirs, logs | Recreated on startup if missing |
 | **Skills path** | User-configured, default `~/skill-builder/` | Permanent skill output: context files, SKILL.md, references | Persists across app restarts; git-tracked |
 
-The workspace folder name `.vibedata` is hardcoded (`WORKSPACE_DIR_NAME`). The parent is `dirs::home_dir()` — it follows the user's home directory, not a fixed absolute path.
+The workspace lives at `~/.vibedata/skill-builder/`. The constants `WORKSPACE_PARENT` (`.vibedata`) and `WORKSPACE_SUBDIR` (`skill-builder`) are defined in `workspace.rs`. The parent is `dirs::home_dir()` — it follows the user's home directory, not a fixed absolute path. On first launch after upgrading from an older version, the app automatically migrates `~/.vibedata` to `~/.vibedata/skill-builder`.
 
 The skills path defaults to `~/skill-builder/` but is set by the user on first launch. It can be changed in Settings; the app moves the directory and preserves git history.
 
@@ -22,26 +22,27 @@ The skills path defaults to `~/skill-builder/` but is set by the user on first l
 
 ## Directory Layout
 
-### Workspace (`{home}/.vibedata/`)
+### Workspace (`{home}/.vibedata/skill-builder/`)
 
 ```text
 ~/.vibedata/
-├── .claude/
-│   ├── CLAUDE.md                 # Rebuilt on startup: base + active skills + user customization
-│   ├── agents/                   # Bundled agent prompts, copied from agents/ on startup
-│   │   ├── research-orchestrator.md
-│   │   ├── detailed-research.md
-│   │   ├── confirm-decisions.md
-│   │   ├── generate-skill.md
-│   │   └── ...
-│   └── skills/                   # Bundled and imported skills (seeded on startup)
-│       ├── research/
-│       ├── validate-skill/
-│       └── ...
-└── {skill-name}/                 # One directory per skill (marker + scratch)
-    ├── user-context.md           # Written by Rust before each step (see below)
-    └── logs/
-        └── {step}-{timestamp}.jsonl   # One JSONL transcript per agent run
+└── skill-builder/
+    ├── .claude/
+    │   ├── CLAUDE.md                 # Rebuilt on startup: base + active skills + user customization
+    │   ├── agents/                   # Bundled agent prompts, copied from agents/ on startup
+    │   │   ├── research-orchestrator.md
+    │   │   ├── detailed-research.md
+    │   │   ├── confirm-decisions.md
+    │   │   ├── generate-skill.md
+    │   │   └── ...
+    │   └── skills/                   # Bundled and imported skills (seeded on startup)
+    │       ├── research/
+    │       ├── validate-skill/
+    │       └── ...
+    └── {skill-name}/                 # One directory per skill (marker + scratch)
+        ├── user-context.md           # Written by Rust before each step (see below)
+        └── logs/
+            └── {step}-{timestamp}.jsonl   # One JSONL transcript per agent run
 ```
 
 The per-skill directory (`{skill-name}/`) is a **marker directory**: its existence tells the reconciler the skill has a workspace record. The only files in it are `user-context.md` (optional) and `logs/`.
@@ -89,7 +90,7 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
 
 ## Agent Working Directory
 
-Agents run with `cwd = {workspace}` (i.e., `~/.vibedata/`). The app passes the following paths explicitly in the agent prompt:
+Agents run with `cwd = {workspace}` (i.e., `~/.vibedata/skill-builder/`). The app passes the following paths explicitly in the agent prompt:
 
 | Prompt variable | Resolved path | Purpose |
 |---|---|---|
@@ -105,15 +106,19 @@ Agents are told to read only specific named files and never create directories �
 
 On every launch, `lib.rs` calls `init_workspace()` followed by `reconcile_startup()`.
 
-### 1. Resolve workspace path
+### 1. Migrate workspace path (one-time, first launch after upgrade)
 
-`dirs::home_dir()` + `.vibedata` → absolute path. Create directory if missing.
+If `~/.vibedata` exists and contains data but `~/.vibedata/skill-builder` does not yet exist, the app moves the old workspace into the new location using a three-step atomic rename. Safe to run on every startup — skips if already migrated or if the old directory is absent.
 
-### 2. Deploy agent infrastructure
+### 2. Resolve workspace path
+
+`dirs::home_dir()` + `.vibedata/skill-builder` → absolute path. Create directory if missing.
+
+### 3. Deploy agent infrastructure
 
 Copy bundled agent prompts (`agents/*.md`) to `{workspace}/.claude/agents/`. Seed bundled skills to `{workspace}/.claude/skills/`. Both are overwritten unconditionally to stay in sync with the app version. Session-scoped cache prevents redundant copies within a single run.
 
-### 3. Rebuild CLAUDE.md
+### 4. Rebuild CLAUDE.md
 
 Merge three sections and write to `{workspace}/.claude/CLAUDE.md`:
 
@@ -121,15 +126,15 @@ Merge three sections and write to `{workspace}/.claude/CLAUDE.md`:
 2. **Custom Skills** — generated from `list_active_skills(db)` (regenerated)
 3. **Customization** — extracted from the existing file's `## Customization` section (preserved)
 
-### 4. Migrate stale layout (one-time)
+### 5. Migrate stale layout (one-time)
 
 Remove root-level `agents/`, `references/`, `vibedata.db`, and `CLAUDE.md` left by pre-reorganization app versions.
 
-### 5. One-time git upgrade
+### 6. One-time git upgrade
 
 If `skills_path` has content but no `.git`, initialize a git repo and create an initial snapshot. Only runs once per skills path.
 
-### 6. Reconcile DB ↔ disk
+### 7. Reconcile DB ↔ disk
 
 See [Reconciliation](#reconciliation) below.
 
