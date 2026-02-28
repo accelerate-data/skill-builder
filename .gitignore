@@ -30,7 +30,6 @@ app/src-tauri/resources/node/*
 !app/src-tauri/resources/node/.gitkeep
 
 # Claude Code — ignore local config, track committed skills
-.claude/settings.json
 .claude/settings.local.json
 .claude/worktrees/
 
