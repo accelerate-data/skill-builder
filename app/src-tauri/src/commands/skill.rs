@@ -839,12 +839,13 @@ pub async fn generate_suggestions(
             log::error!("[generate_suggestions] Failed to read settings: {}", e);
             e
         })?;
-        settings
-            .anthropic_api_key
-            .ok_or_else(|| {
+        match settings.anthropic_api_key {
+            Some(k) => k,
+            None => {
                 log::error!("[generate_suggestions] API key not configured");
-                "API key not configured".to_string()
-            })?
+                return Err("API key not configured".to_string());
+            }
+        }
     };
 
     let readable_name = skill_name.replace('-', " ");

@@ -518,10 +518,13 @@ pub async fn send_refine_message(
                 log::error!("[send_refine_message] Failed to read settings: {}", e);
                 e
             })?;
-            let key = settings.anthropic_api_key.ok_or_else(|| {
-                log::error!("[send_refine_message] Anthropic API key not configured");
-                "Anthropic API key not configured".to_string()
-            })?;
+            let key = match settings.anthropic_api_key {
+                Some(k) => k,
+                None => {
+                    log::error!("[send_refine_message] Anthropic API key not configured");
+                    return Err("Anthropic API key not configured".to_string());
+                }
+            };
             let model = resolve_model_id(
                 settings.preferred_model.as_deref().unwrap_or("sonnet")
             );
