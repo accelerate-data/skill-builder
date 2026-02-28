@@ -22,12 +22,14 @@ app/playwright-artifacts/
 # Research design working documents (kept locally, not committed)
 docs/design/research-design/
 
+# VitePress build output
+docs/.vitepress/dist/
+
 # Bundled Node.js binary (downloaded during CI build, not committed)
 app/src-tauri/resources/node/*
 !app/src-tauri/resources/node/.gitkeep
 
 # Claude Code — ignore local config, track committed skills
-.claude/settings.json
 .claude/settings.local.json
 .claude/worktrees/
 
