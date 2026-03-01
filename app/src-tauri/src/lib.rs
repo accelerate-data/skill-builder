@@ -25,7 +25,8 @@ pub fn run() {
         .setup(|app| {
             use tauri::Manager;
 
-            // Native app menu with About item (macOS)
+            // Native app menu with About item (macOS only)
+            #[cfg(target_os = "macos")]
             {
                 use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
                 let icon = app.default_window_icon().cloned();

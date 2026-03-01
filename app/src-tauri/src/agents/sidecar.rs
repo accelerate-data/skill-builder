@@ -75,7 +75,7 @@ fn resolve_sdk_cli_path(app_handle: &tauri::AppHandle) -> Result<String, String>
         if cli.exists() {
             return cli
                 .to_str()
-                .map(|s| s.to_string())
+                .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
                 .ok_or_else(|| "Invalid SDK cli.js path".to_string());
         }
     }
@@ -87,7 +87,7 @@ fn resolve_sdk_cli_path(app_handle: &tauri::AppHandle) -> Result<String, String>
             if cli.exists() {
                 return cli
                     .to_str()
-                    .map(|s| s.to_string())
+                    .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
                     .ok_or_else(|| "Invalid SDK cli.js path".to_string());
             }
         }
@@ -101,7 +101,7 @@ fn resolve_sdk_cli_path(app_handle: &tauri::AppHandle) -> Result<String, String>
         if path.exists() {
             return path
                 .to_str()
-                .map(|s| s.to_string())
+                .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
                 .ok_or_else(|| "Invalid SDK cli.js path".to_string());
         }
     }
