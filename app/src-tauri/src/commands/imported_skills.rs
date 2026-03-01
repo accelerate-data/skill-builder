@@ -965,6 +965,7 @@ pub fn parse_skill_file(file_path: String) -> Result<crate::types::SkillFileMeta
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn import_skill_from_file(
     file_path: String,
     name: String,
