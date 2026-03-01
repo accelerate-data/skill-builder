@@ -39,13 +39,15 @@ Fallback behavior:
 
 1. Product-level only. No file names, component names, or architecture in issue body.
 2. Confirm before creating. Always show final issue draft before `save_issue`.
-3. Clarifications: ask at most 2 targeted questions. If confidence is high (>=80%), default assumptions and proceed.
+3. Clarifications: ask at most 2 targeted questions. If critical requirements are ambiguous or missing, ask before creating. Do not default assumptions that can change scope or behavior.
 4. Idempotency: re-runs must not duplicate equivalent issues/comments. Reuse discovered open issue when appropriate.
 5. Acceptance criteria in Linear must use Markdown checkboxes (`- [ ] ...`).
 6. Resolve the target project from repo policy in `AGENTS.md` (Issue Management section). Do not hardcode a project name in this skill.
 7. Milestone selection must be from the resolved project only. If no clear milestone match exists, ask the user before creating the issue.
 8. Do not decompose by implementation layer (`frontend`/`backend`/`API`). Issues must represent integrated, user-visible outcomes that can be validated end-to-end.
 9. Decomposition is allowed only by feature slices. Frontend-only splits are allowed only when each split is an independently testable feature outcome.
+10. Every issue must contain feature requirements/spec detail, not only a goal and acceptance criteria.
+11. Requirements must be precise and testable. Avoid ambiguous words like "better", "support", "handle", "improve", or "optimize" without explicit behavior.
 
 ## Outcomes
 
@@ -75,6 +77,10 @@ Use this description template:
 
 ## Goal
 ...
+
+## Requirements
+- ...
+- ...
 
 ## Non-goals
 - ...
@@ -112,7 +118,7 @@ Before drafting or creating an issue:
 
 1. Resolve project from `AGENTS.md` policy and fetch labels.
 2. Resolve milestone candidates from that project.
-3. Draft title, estimate, project, milestone (if resolved), labels, description (schema above).
+3. Draft title, estimate, project, milestone (if resolved), labels, description (schema above), including explicit requirements/spec.
 4. Confirm draft with user.
 5. Create with `mcp__linear__save_issue` (`assignee: "me"` when allowed).
 6. Return issue ID + URL.
