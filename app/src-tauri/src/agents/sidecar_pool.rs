@@ -604,7 +604,6 @@ impl SidecarPool {
 
         #[cfg(target_os = "windows")]
         {
-            use std::os::windows::process::CommandExt;
             cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
 
@@ -1949,7 +1948,6 @@ async fn try_bundled_node(bundled_path: &std::path::Path) -> Option<NodeResoluti
 
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
 
@@ -1999,7 +1997,6 @@ async fn resolve_system_node() -> Result<NodeResolution, String> {
 
         #[cfg(target_os = "windows")]
         {
-            use std::os::windows::process::CommandExt;
             cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
 
