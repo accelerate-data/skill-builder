@@ -99,7 +99,7 @@ export function ImportSkillDialog({
     }
   }, [open, filePath, meta])
 
-  const purposeConflict = showPurpose && purpose
+  const purposeConflict = showPurpose && purpose && purpose !== "general-purpose"
     ? activeSkills.find((s) => s.purpose === purpose && s.skill_name !== name && s.is_active)
     : null
 
