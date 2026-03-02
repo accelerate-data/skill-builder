@@ -1,5 +1,6 @@
 use crate::db::Db;
 use crate::types::WorkspaceSkill;
+use rusqlite::OptionalExtension;
 use std::fs;
 use std::io::Read;
 use std::path::Path;
@@ -938,6 +939,151 @@ pub(crate) fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[tauri::command]
+pub fn parse_skill_file(file_path: String) -> Result<crate::types::SkillFileMeta, String> {
+    log::info!("[parse_skill_file] file_path={}", file_path);
+    let zip_file = std::fs::File::open(&file_path)
+        .map_err(|e| format!("Failed to open file: {}", e))?;
+    let mut archive = zip::ZipArchive::new(zip_file)
+        .map_err(|_| "not a valid skill package".to_string())?;
+    let (_, skill_md_content) = find_skill_md(&mut archive)?;
+    let fm = parse_frontmatter_full(&skill_md_content);
+    if fm.name.is_none() {
+        return Err("not a valid skill package: missing name field".to_string());
+    }
+    Ok(crate::types::SkillFileMeta {
+        name: fm.name,
+        description: fm.description,
+        version: fm.version,
+        model: fm.model,
+        argument_hint: fm.argument_hint,
+        user_invocable: fm.user_invocable,
+        disable_model_invocation: fm.disable_model_invocation,
+    })
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn import_skill_from_file(
+    file_path: String,
+    name: String,
+    description: String,
+    version: String,
+    model: Option<String>,
+    argument_hint: Option<String>,
+    user_invocable: Option<bool>,
+    disable_model_invocation: Option<bool>,
+    force_overwrite: bool,
+    db: tauri::State<'_, Db>,
+) -> Result<String, String> {
+    log::info!("[import_skill_from_file] name={} force_overwrite={}", name, force_overwrite);
+
+    validate_skill_name(&name)?;
+
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[import_skill_from_file] failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+    let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
+        log::error!("[import_skill_from_file] failed to read settings: {}", e);
+        e
+    })?;
+    let skills_path = settings.skills_path.ok_or_else(|| {
+        "Skills path not configured. Set it in Settings.".to_string()
+    })?;
+    let workspace_path = settings.workspace_path.unwrap_or_default();
+
+    // Re-validate zip (prevent TOCTOU between parse and import)
+    let zip_file = std::fs::File::open(&file_path)
+        .map_err(|e| format!("Failed to open file: {}", e))?;
+    let mut archive = zip::ZipArchive::new(zip_file)
+        .map_err(|_| "not a valid skill package".to_string())?;
+    let (skill_md_path, _) = find_skill_md(&mut archive)?;
+    let prefix = get_archive_prefix(&skill_md_path);
+
+    // Conflict check
+    let existing_source: Option<String> = conn.query_row(
+        "SELECT skill_source FROM skills WHERE name = ?1",
+        rusqlite::params![&name],
+        |row| row.get::<_, String>(0),
+    ).optional().map_err(|e| e.to_string())?;
+
+    match existing_source.as_deref() {
+        Some("skill-builder") | Some("marketplace") => {
+            return Err(format!("conflict_no_overwrite:{}", name));
+        }
+        Some("imported") if !force_overwrite => {
+            return Err(format!("conflict_overwrite_required:{}", name));
+        }
+        Some("imported") => {
+            // force_overwrite=true — clean up existing
+            let dest = std::path::Path::new(&skills_path).join(&name);
+            if dest.exists() {
+                std::fs::remove_dir_all(&dest).map_err(|e| {
+                    log::error!("[import_skill_from_file] failed to remove dir: {}", e);
+                    e.to_string()
+                })?;
+            }
+            crate::db::delete_imported_skill_by_name(&conn, &name)?;
+            conn.execute(
+                "DELETE FROM skills WHERE name = ?1 AND skill_source = 'imported'",
+                rusqlite::params![&name],
+            ).map_err(|e| e.to_string())?;
+        }
+        _ => {} // Not found — proceed normally
+    }
+
+    // Extract all files to {skills_path}/{name}/
+    let dest_dir = std::path::Path::new(&skills_path).join(&name);
+    std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+    // Re-open archive (consumed during prefix scan)
+    let zip_file2 = std::fs::File::open(&file_path)
+        .map_err(|e| format!("Failed to re-open file: {}", e))?;
+    let mut archive2 = zip::ZipArchive::new(zip_file2)
+        .map_err(|_| "not a valid skill package".to_string())?;
+    extract_archive(&mut archive2, &prefix, &dest_dir)?;
+
+    // Write to skills master table
+    crate::db::upsert_skill_with_source(&conn, &name, "imported", "domain")?;
+
+    // Update description (not mirrored by upsert_imported_skill)
+    conn.execute(
+        "UPDATE skills SET description = ?2 WHERE name = ?1",
+        rusqlite::params![&name, &description],
+    ).map_err(|e| e.to_string())?;
+
+    // Build ImportedSkill and upsert to imported_skills + mirror frontmatter to skills master
+    let skill_id = generate_skill_id(&name);
+    let imported_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let skill = crate::types::ImportedSkill {
+        skill_id,
+        skill_name: name.clone(),
+        is_active: true,
+        disk_path: dest_dir.to_string_lossy().to_string(),
+        imported_at,
+        is_bundled: false,
+        description: Some(description),
+        purpose: Some("domain".to_string()),
+        version: if version.is_empty() { None } else { Some(version) },
+        model,
+        argument_hint,
+        user_invocable,
+        disable_model_invocation,
+        marketplace_source_url: None,
+    };
+    crate::db::upsert_imported_skill(&conn, &skill)?;
+
+    // Regenerate CLAUDE.md
+    if !workspace_path.is_empty() {
+        if let Err(e) = super::workflow::update_skills_section(&workspace_path, &conn) {
+            log::warn!("[import_skill_from_file] update_skills_section failed: {}", e);
+        }
+    }
+
+    log::info!("[import_skill_from_file] imported '{}' to '{}'", name, dest_dir.display());
+    Ok(name)
 }
 
 #[cfg(test)]
@@ -2481,5 +2627,251 @@ description: A skill
 
         let b = crate::db::get_workspace_skill_by_name(&conn, "skill-b").unwrap().unwrap();
         assert!(b.is_active, "skill-b should now be active");
+    }
+
+    // --- parse_skill_file tests ---
+
+    #[test]
+    fn test_parse_skill_file_valid() {
+        let zip_file = create_test_zip(&[
+            ("SKILL.md", "---\nname: my-skill\ndescription: A test skill\nversion: 1.0.0\n---\n# My Skill"),
+        ]);
+        let result = parse_skill_file(zip_file.path().to_str().unwrap().to_string());
+        assert!(result.is_ok(), "parse_skill_file failed: {:?}", result.err());
+        let meta = result.unwrap();
+        assert_eq!(meta.name.as_deref(), Some("my-skill"));
+        assert_eq!(meta.description.as_deref(), Some("A test skill"));
+        assert_eq!(meta.version.as_deref(), Some("1.0.0"));
+    }
+
+    #[test]
+    fn test_parse_skill_file_invalid_zip() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut tmp.as_file().try_clone().unwrap(), b"not a zip file").unwrap();
+        let result = parse_skill_file(tmp.path().to_str().unwrap().to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not a valid skill package"));
+    }
+
+    #[test]
+    fn test_parse_skill_file_missing_skill_md() {
+        let zip_file = create_test_zip(&[
+            ("README.md", "# No SKILL.md here"),
+        ]);
+        let result = parse_skill_file(zip_file.path().to_str().unwrap().to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("SKILL.md not found"));
+    }
+
+    #[test]
+    fn test_parse_skill_file_missing_name() {
+        let zip_file = create_test_zip(&[
+            ("SKILL.md", "---\ndescription: A skill without a name\n---\n# No Name"),
+        ]);
+        let result = parse_skill_file(zip_file.path().to_str().unwrap().to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("missing name field"));
+    }
+
+    // --- import_skill_from_file tests ---
+
+    fn setup_settings(conn: &rusqlite::Connection, skills_path: &str, workspace_path: &str) {
+        let settings = crate::types::AppSettings {
+            workspace_path: Some(workspace_path.to_string()),
+            skills_path: Some(skills_path.to_string()),
+            ..Default::default()
+        };
+        crate::db::write_settings(conn, &settings).unwrap();
+    }
+
+    #[test]
+    fn test_import_skill_conflict_no_overwrite() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let skills_dir = workspace.path().join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+        setup_settings(&conn, skills_dir.to_str().unwrap(), workspace.path().to_str().unwrap());
+
+        // Pre-insert a skill-builder skill with the conflicting name
+        crate::db::upsert_skill_with_source(&conn, "my-skill", "skill-builder", "domain").unwrap();
+
+        let zip_file = create_test_zip(&[
+            ("SKILL.md", "---\nname: my-skill\ndescription: A skill\n---\n# My Skill"),
+        ]);
+
+        // Use import_skill_from_file_inner to bypass tauri::State
+        let result = import_skill_from_file_test(
+            zip_file.path().to_str().unwrap().to_string(),
+            "my-skill".to_string(),
+            "A skill".to_string(),
+            String::new(),
+            None, None, None, None,
+            false,
+            &conn,
+        );
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.starts_with("conflict_no_overwrite:"), "got: {}", err);
+    }
+
+    #[test]
+    fn test_import_skill_conflict_overwrite_required() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let skills_dir = workspace.path().join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+        setup_settings(&conn, skills_dir.to_str().unwrap(), workspace.path().to_str().unwrap());
+
+        // Pre-insert an imported skill with the conflicting name
+        crate::db::upsert_skill_with_source(&conn, "my-skill", "imported", "domain").unwrap();
+
+        let zip_file = create_test_zip(&[
+            ("SKILL.md", "---\nname: my-skill\ndescription: A skill\n---\n# My Skill"),
+        ]);
+
+        let result = import_skill_from_file_test(
+            zip_file.path().to_str().unwrap().to_string(),
+            "my-skill".to_string(),
+            "A skill".to_string(),
+            String::new(),
+            None, None, None, None,
+            false, // force_overwrite=false
+            &conn,
+        );
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.starts_with("conflict_overwrite_required:"), "got: {}", err);
+    }
+
+    #[test]
+    fn test_import_skill_force_overwrite() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let skills_dir = workspace.path().join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+        setup_settings(&conn, skills_dir.to_str().unwrap(), workspace.path().to_str().unwrap());
+
+        // Pre-insert an imported skill with the conflicting name
+        crate::db::upsert_skill_with_source(&conn, "my-skill", "imported", "domain").unwrap();
+        // Create the old files on disk
+        let old_skill_dir = skills_dir.join("my-skill");
+        fs::create_dir_all(&old_skill_dir).unwrap();
+        fs::write(old_skill_dir.join("old-file.txt"), "old content").unwrap();
+
+        let zip_file = create_test_zip(&[
+            ("SKILL.md", "---\nname: my-skill\ndescription: Updated skill\n---\n# My Skill"),
+        ]);
+
+        let result = import_skill_from_file_test(
+            zip_file.path().to_str().unwrap().to_string(),
+            "my-skill".to_string(),
+            "Updated skill".to_string(),
+            String::new(),
+            None, None, None, None,
+            true, // force_overwrite=true
+            &conn,
+        );
+        assert!(result.is_ok(), "force overwrite failed: {:?}", result.err());
+        assert_eq!(result.unwrap(), "my-skill");
+
+        // Old file should be gone, new SKILL.md should exist
+        assert!(!old_skill_dir.join("old-file.txt").exists());
+        assert!(old_skill_dir.join("SKILL.md").exists());
+
+        // DB should have the updated record
+        let imported = crate::db::get_imported_skill(&conn, "my-skill").unwrap();
+        assert!(imported.is_some());
+    }
+
+    /// Testable inner function for import_skill_from_file (bypasses tauri::State).
+    #[allow(clippy::too_many_arguments)]
+    fn import_skill_from_file_test(
+        file_path: String,
+        name: String,
+        description: String,
+        version: String,
+        model: Option<String>,
+        argument_hint: Option<String>,
+        user_invocable: Option<bool>,
+        disable_model_invocation: Option<bool>,
+        force_overwrite: bool,
+        conn: &rusqlite::Connection,
+    ) -> Result<String, String> {
+        validate_skill_name(&name)?;
+
+        let settings = crate::db::read_settings_hydrated(conn)?;
+        let skills_path = settings.skills_path.ok_or_else(|| {
+            "Skills path not configured. Set it in Settings.".to_string()
+        })?;
+
+        let zip_file = std::fs::File::open(&file_path)
+            .map_err(|e| format!("Failed to open file: {}", e))?;
+        let mut archive = zip::ZipArchive::new(zip_file)
+            .map_err(|_| "not a valid skill package".to_string())?;
+        let (skill_md_path, _) = find_skill_md(&mut archive)?;
+        let prefix = get_archive_prefix(&skill_md_path);
+
+        let existing_source: Option<String> = conn.query_row(
+            "SELECT skill_source FROM skills WHERE name = ?1",
+            rusqlite::params![&name],
+            |row| row.get::<_, String>(0),
+        ).optional().map_err(|e| e.to_string())?;
+
+        match existing_source.as_deref() {
+            Some("skill-builder") | Some("marketplace") => {
+                return Err(format!("conflict_no_overwrite:{}", name));
+            }
+            Some("imported") if !force_overwrite => {
+                return Err(format!("conflict_overwrite_required:{}", name));
+            }
+            Some("imported") => {
+                let dest = std::path::Path::new(&skills_path).join(&name);
+                if dest.exists() {
+                    std::fs::remove_dir_all(&dest).map_err(|e| e.to_string())?;
+                }
+                crate::db::delete_imported_skill_by_name(conn, &name)?;
+                conn.execute(
+                    "DELETE FROM skills WHERE name = ?1 AND skill_source = 'imported'",
+                    rusqlite::params![&name],
+                ).map_err(|e| e.to_string())?;
+            }
+            _ => {}
+        }
+
+        let dest_dir = std::path::Path::new(&skills_path).join(&name);
+        std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+        let zip_file2 = std::fs::File::open(&file_path)
+            .map_err(|e| format!("Failed to re-open file: {}", e))?;
+        let mut archive2 = zip::ZipArchive::new(zip_file2)
+            .map_err(|_| "not a valid skill package".to_string())?;
+        extract_archive(&mut archive2, &prefix, &dest_dir)?;
+
+        crate::db::upsert_skill_with_source(conn, &name, "imported", "domain")?;
+        conn.execute(
+            "UPDATE skills SET description = ?2 WHERE name = ?1",
+            rusqlite::params![&name, &description],
+        ).map_err(|e| e.to_string())?;
+
+        let skill_id = generate_skill_id(&name);
+        let imported_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let skill = crate::types::ImportedSkill {
+            skill_id,
+            skill_name: name.clone(),
+            is_active: true,
+            disk_path: dest_dir.to_string_lossy().to_string(),
+            imported_at,
+            is_bundled: false,
+            description: Some(description),
+            purpose: Some("domain".to_string()),
+            version: if version.is_empty() { None } else { Some(version) },
+            model,
+            argument_hint,
+            user_invocable,
+            disable_model_invocation,
+            marketplace_source_url: None,
+        };
+        crate::db::upsert_imported_skill(conn, &skill)?;
+
+        Ok(name)
     }
 }
