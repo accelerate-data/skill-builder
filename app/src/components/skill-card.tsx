@@ -22,7 +22,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import type { SkillSummary, Purpose } from "@/lib/types"
-import { PURPOSE_LABELS, PURPOSE_COLORS } from "@/lib/types"
+import { PURPOSE_SHORT_LABELS, PURPOSE_COLORS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 interface SkillCardProps {
@@ -154,7 +154,7 @@ export default function SkillCard({
         <div className="flex flex-wrap items-center gap-1">
           {skill.purpose && (
             <Badge className={cn("w-fit max-w-full text-xs", PURPOSE_COLORS[skill.purpose as Purpose])}>
-              <span className="truncate">{PURPOSE_LABELS[skill.purpose as Purpose] || skill.purpose}</span>
+              <span className="truncate">{PURPOSE_SHORT_LABELS[skill.purpose as Purpose] || skill.purpose}</span>
             </Badge>
           )}
           <SkillSourceBadge skillSource={skill.skill_source} />

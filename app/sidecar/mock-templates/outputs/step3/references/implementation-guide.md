@@ -3,6 +3,7 @@
 ## Error Handling Patterns
 
 ### Result Type Pattern
+
 Use discriminated unions for type-safe error handling:
 
 ```typescript
@@ -34,6 +35,7 @@ async function fetchUser(id: string): Promise<ApiResult<User>> {
 ```
 
 ### Structured Logging
+
 Use JSON logging with correlation IDs:
 
 ```typescript
@@ -52,6 +54,7 @@ const logger = {
 ## Deployment Patterns
 
 ### Blue-Green Deployment
+
 1. Deploy new version to inactive environment
 2. Run health checks (HTTP 200, latency < 500ms, no error spike)
 3. Switch traffic via load balancer
@@ -59,6 +62,7 @@ const logger = {
 5. If error rate > 1%, automatic rollback to previous environment
 
 ### Database Migrations
+
 - Forward-only migrations with explicit rollback scripts
 - Test rollback in staging before production deploy
 - Never drop columns in the same release that removes code usage
@@ -67,6 +71,7 @@ const logger = {
 ## Performance Optimization Sequence
 
 When p95 latency exceeds thresholds:
+
 1. **Measure**: Profile with APM tool, identify top 5 slow endpoints
 2. **Identify**: Check database queries (N+1, missing indexes), external API calls, serialization
 3. **Fix**: Apply targeted optimization (add index, batch queries, add cache layer)

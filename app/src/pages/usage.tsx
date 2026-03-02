@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { Loader2, DollarSign, Activity, TrendingUp, RotateCcw, ChevronDown, ChevronRight } from "lucide-react"
-import type { AgentRunRecord } from "@/lib/types"
+import type { AgentRunRecord, UsageByDay } from "@/lib/types"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,7 +21,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { useUsageStore } from "@/stores/usage-store"
+import { useUsageStore, type DateRange } from "@/stores/usage-store"
 import { getSessionAgentRuns } from "@/lib/tauri"
 
 const STEP_NAMES: Record<number, string> = {
@@ -43,6 +43,14 @@ const MODEL_COLORS: Record<string, string> = {
   haiku: "var(--color-pacific)",
   opus: "var(--color-navy)",
 }
+
+const DATE_RANGE_OPTIONS: { label: string; value: DateRange }[] = [
+  { label: "7d", value: "7d" },
+  { label: "14d", value: "14d" },
+  { label: "30d", value: "30d" },
+  { label: "90d", value: "90d" },
+  { label: "All time", value: "all" },
+]
 
 function getStepName(stepId: number): string {
   return STEP_NAMES[stepId] ?? `Step ${stepId}`
@@ -78,6 +86,16 @@ function formatSessionTime(iso: string): string {
   }
 }
 
+function formatDayLabel(dateStr: string): string {
+  try {
+    // dateStr is "YYYY-MM-DD" from SQLite DATE()
+    const [, month, day] = dateStr.split("-")
+    return `${parseInt(month)}/${parseInt(day)}`
+  } catch {
+    return dateStr
+  }
+}
+
 interface StepSummary {
   stepId: number
   name: string
@@ -99,8 +117,103 @@ function groupByStep(agents: AgentRunRecord[]): StepSummary[] {
     .sort((a, b) => a.stepId !== b.stepId ? a.stepId - b.stepId : a.model.localeCompare(b.model))
 }
 
+function formatTokensShort(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return String(n)
+}
+
+function CostOverTimeChart({ data }: { data: UsageByDay[] }) {
+  const [metric, setMetric] = useState<"cost" | "tokens">("cost")
+
+  if (data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-24 text-muted-foreground text-sm">
+        No data for this period
+      </div>
+    )
+  }
+
+  const getValue = (d: UsageByDay) => metric === "cost" ? d.total_cost : d.total_tokens
+  const maxVal = Math.max(...data.map(getValue), 0.0001)
+  const showValueLabels = data.length <= 30
+  const labelStep = data.length <= 7 ? 1 : data.length <= 14 ? 2 : data.length <= 31 ? 5 : 10
+
+  return (
+    <div className="flex flex-col gap-2">
+      {/* Toggle */}
+      <div className="flex justify-end">
+        <div className="flex items-center gap-0.5 rounded-md bg-muted p-0.5">
+          {(["cost", "tokens"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMetric(m)}
+              className={`px-2.5 py-0.5 rounded text-xs font-medium transition-all ${
+                metric === m
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {m === "cost" ? "Cost" : "Tokens"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Bars */}
+      <div className="flex gap-px h-40">
+        {data.map((day) => {
+          const val = getValue(day)
+          const pct = (val / maxVal) * 100
+          const label = metric === "cost" ? formatCost(val) : formatTokensShort(val)
+          const tooltip = `${day.date}: ${metric === "cost" ? formatCost(day.total_cost) : formatTokens(day.total_tokens)} (${day.run_count} run${day.run_count !== 1 ? "s" : ""})`
+          return (
+            <div
+              key={day.date}
+              className="flex-1 min-w-[4px] max-w-[48px] flex flex-col justify-end group relative"
+              title={tooltip}
+            >
+              {showValueLabels && val > 0 && (
+                <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-0.5 text-[9px] text-muted-foreground whitespace-nowrap">
+                  {label}
+                </span>
+              )}
+              <div
+                className="w-full rounded-sm transition-opacity group-hover:opacity-70"
+                style={{
+                  height: `${Math.max(pct, 1)}%`,
+                  backgroundColor: "var(--color-pacific)",
+                }}
+              />
+            </div>
+          )
+        })}
+      </div>
+
+      {/* X-axis labels */}
+      <div className="flex gap-px">
+        {data.map((day, i) => (
+          <div key={day.date} className="flex-1 min-w-[4px] max-w-[48px] text-center overflow-hidden">
+            {i % labelStep === 0 && (
+              <span className="text-[10px] text-muted-foreground leading-none">
+                {formatDayLabel(day.date)}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function UsagePage() {
-  const { summary, recentSessions, byStep, byModel, loading, error, fetchUsage, resetCounter, hideCancelled, toggleHideCancelled } = useUsageStore()
+  const {
+    summary, recentSessions, byStep, byModel, byDay,
+    loading, error, fetchUsage, resetCounter,
+    hideCancelled, toggleHideCancelled,
+    dateRange, setDateRange,
+    skillFilter, skillNames, setSkillFilter, fetchSkillNames,
+  } = useUsageStore()
   const [resetting, setResetting] = useState(false)
   const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set())
   const [sessionAgents, setSessionAgents] = useState<Record<string, AgentRunRecord[]>>({})
@@ -108,7 +221,8 @@ export default function UsagePage() {
 
   useEffect(() => {
     fetchUsage()
-  }, [fetchUsage])
+    fetchSkillNames()
+  }, [fetchUsage, fetchSkillNames])
 
   const handleReset = async () => {
     setResetting(true)
@@ -136,7 +250,6 @@ export default function UsagePage() {
       return next
     })
 
-    // Lazy-load agent runs if not already loaded
     if (!sessionAgents[sessionId] && !loadingSessions.has(sessionId)) {
       setLoadingSessions((prev) => new Set(prev).add(sessionId))
       try {
@@ -175,6 +288,37 @@ export default function UsagePage() {
   if (isEmpty) {
     return (
       <div className="flex flex-col gap-6 p-6">
+        <div className="flex items-center justify-end gap-2">
+          {/* Skill filter */}
+          {skillNames.length > 0 && (
+            <select
+              value={skillFilter ?? ""}
+              onChange={(e) => setSkillFilter(e.target.value || null)}
+              className="h-8 rounded-lg bg-muted border-0 px-3 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="">All Skills</option>
+              {skillNames.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          )}
+          {/* Date range filter shown even on empty state */}
+          <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
+            {DATE_RANGE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setDateRange(opt.value)}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                  dateRange === opt.value
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <DollarSign className="size-12 text-muted-foreground/40 mb-4" />
           <p className="text-muted-foreground text-lg">No usage data yet.</p>
@@ -189,7 +333,40 @@ export default function UsagePage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center justify-end gap-4">
+      {/* Controls row */}
+      <div className="flex items-center justify-between gap-4">
+        {/* Left: skill filter + date range */}
+        <div className="flex items-center gap-2">
+          {skillNames.length > 0 && (
+            <select
+              value={skillFilter ?? ""}
+              onChange={(e) => setSkillFilter(e.target.value || null)}
+              className="h-8 rounded-lg bg-muted border-0 px-3 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="">All Skills</option>
+              {skillNames.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          )}
+          <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
+            {DATE_RANGE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setDateRange(opt.value)}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                  dateRange === opt.value
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
           <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
             <input
               type="checkbox"
@@ -199,29 +376,30 @@ export default function UsagePage() {
             />
             Hide cancelled runs
           </label>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="outline" size="sm" className="text-destructive hover:text-destructive">
-              <RotateCcw className="size-4" />
-              Reset
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Reset Usage Data</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will permanently delete all usage tracking data, including cost history and run records. This action cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction variant="destructive" onClick={handleReset} disabled={resetting}>
-                {resetting && <Loader2 className="size-4 animate-spin" />}
-                Reset All Data
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" size="sm" className="text-destructive hover:text-destructive">
+                <RotateCcw className="size-4" />
+                Reset
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Reset Usage Data</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete all usage tracking data, including cost history and run records. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction variant="destructive" onClick={handleReset} disabled={resetting}>
+                  {resetting && <Loader2 className="size-4 animate-spin" />}
+                  Reset All Data
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -330,6 +508,16 @@ export default function UsagePage() {
         </Card>
       </div>
 
+      {/* Cost Over Time Chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Cost Over Time</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CostOverTimeChart data={byDay} />
+        </CardContent>
+      </Card>
+
       {/* Recent Workflow Sessions */}
       <Card>
         <CardHeader>
@@ -338,8 +526,8 @@ export default function UsagePage() {
         <CardContent>
           {recentSessions.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-8 text-center">
-              <p className="text-sm font-medium text-muted-foreground">No usage data yet</p>
-              <p className="text-xs text-muted-foreground/60">Run a skill to populate usage history.</p>
+              <p className="text-sm font-medium text-muted-foreground">No runs in this period</p>
+              <p className="text-xs text-muted-foreground/60">Try selecting a wider date range.</p>
             </div>
           ) : (
             <div className="flex flex-col divide-y">

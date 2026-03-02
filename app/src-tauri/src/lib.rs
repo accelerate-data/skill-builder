@@ -101,7 +101,7 @@ pub fn run() {
                 id: uuid::Uuid::new_v4().to_string(),
                 pid: std::process::id(),
             };
-            log::info!("Instance ID: {}, PID: {}", instance_info.id, instance_info.pid);
+            log::info!("Instance ID: [REDACTED], PID: [REDACTED]");
             app.manage(instance_info);
 
             // Apply persisted log level setting (fall back to info if DB read fails).
@@ -229,6 +229,8 @@ pub fn run() {
             commands::usage::get_recent_workflow_sessions,
             commands::usage::get_session_agent_runs,
             commands::usage::get_step_agent_runs,
+            commands::usage::get_usage_by_day,
+            commands::usage::get_workflow_skill_names,
             commands::git::get_skill_history,
             commands::git::get_skill_diff,
             commands::git::restore_skill_version,
@@ -240,6 +242,8 @@ pub fn run() {
             commands::refine::close_refine_session,
             commands::skill_test::prepare_skill_test,
             commands::skill_test::cleanup_skill_test,
+            commands::imported_skills::parse_skill_file,
+            commands::imported_skills::import_skill_from_file,
         ])
         .on_window_event(|window, event| {
             use tauri::Emitter;

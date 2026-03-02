@@ -918,7 +918,7 @@ describe("GitHubImportDialog", () => {
 
       // Conflict message should appear because "research" is occupied by "other-research-skill"
       await waitFor(() => {
-        expect(screen.getByText(/Purpose already assigned to/i)).toBeInTheDocument();
+        expect(screen.getByText(/A skill with purpose/i)).toBeInTheDocument();
       });
 
       // Import button should be disabled due to conflict

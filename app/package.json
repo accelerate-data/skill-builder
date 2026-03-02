@@ -25,12 +25,9 @@
     "test:e2e:skills": "playwright test --grep @skills",
     "test:e2e:usage": "playwright test --grep @usage",
     "test:changed": "vitest run --changed HEAD~1",
-    "test:plugin": "vitest run --config vitest.config.plugin.ts",
-    "test:plugin:structural": "vitest run --config vitest.config.plugin.ts plugin-tests/structural.test.ts",
-    "test:plugin:loading": "vitest run --config vitest.config.plugin.ts plugin-tests/plugin-loading.test.ts",
-    "test:plugin:modes": "vitest run --config vitest.config.plugin.ts plugin-tests/mode-detection.test.ts",
-    "test:plugin:agents": "vitest run --config vitest.config.plugin.ts plugin-tests/agent-smoke.test.ts",
-    "test:plugin:workflow": "vitest run --config vitest.config.plugin.ts plugin-tests/workflow.test.ts",
+    "test:agents": "vitest run --config vitest.config.agent.ts",
+    "test:agents:structural": "vitest run --config vitest.config.agent.ts agent-tests/agent-structure.test.ts",
+    "test:agents:smoke": "vitest run --config vitest.config.agent.ts --reporter=verbose agent-tests/agent-smoke.test.ts",
     "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e"
   },
   "dependencies": {

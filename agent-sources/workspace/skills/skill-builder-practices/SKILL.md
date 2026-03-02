@@ -48,9 +48,11 @@ Guidance for building data engineering skills. Users can deactivate and import a
 The user's purpose (from user-context.md) determines the structure pattern.
 
 ### Knowledge-Capture Skills
+
 **Purposes:** Business process knowledge, Source system customizations
 
 Capture **questions about the customer's environment**:
+
 - Sections are **question-oriented and parallel**
 - **Zero pre-filled assertions** — all content from user answers
 - No Getting Started checklist, no dependency map
@@ -59,9 +61,11 @@ Capture **questions about the customer's environment**:
   - Source systems: Field Semantics, Extraction Gotchas, Reconciliation Rules, Lifecycle/State, System Workarounds, API Behaviors
 
 ### Standards Skills
+
 **Purposes:** Organization specific data engineering standards, Organization specific Azure or Fabric standards
 
 Capture **implementation decisions with dependency ordering**:
+
 - Sections are **decision-oriented** — choices constrain downstream sections
 - Include **Getting Started** checklist (5-8 ordered steps) after Quick Reference
 - Include **Decision Dependency Map**
@@ -78,7 +82,7 @@ Include only what Claude would get wrong without this skill. If it's in Context7
 
 Every skill must have `evaluations.md` in the **context directory**. At least 3 scenarios:
 
-```
+```text
 ### Scenario 1: [Short name]
 **Prompt**: [Exact prompt to send to Claude with this skill active]
 **Expected behavior**: [What Claude should do — specific, observable]
@@ -90,6 +94,7 @@ Scenarios must be runnable, grounded (exercise different skill sections), and ob
 ### Output Separation
 
 Skill output directory contains ONLY:
+
 - `SKILL.md`
 - `references/*.md`
 
@@ -117,6 +122,7 @@ Create evaluations BEFORE writing documentation:
 ### Cross-model testing
 
 Test with:
+
 - **Haiku**: enough guidance?
 - **Sonnet**: clear and efficient?
 - **Opus**: avoiding over-explaining?
@@ -137,12 +143,14 @@ Use templates for output format. Use examples for quality-dependent output.
 ## Anti-patterns
 
 ### Skill structure
+
 - Windows paths — use forward slashes
 - Too many options without a clear default
 - Nested reference files
 - Vague descriptions ("configure your data warehouse")
 
 ### Content
+
 - Over-explaining basic dbt/SQL
 - Mixing dlt (dlthub) with Databricks DLT
 - `dbt-utils` macros instead of `tsql-utils`

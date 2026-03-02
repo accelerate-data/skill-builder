@@ -318,12 +318,14 @@ Use this section when evaluating, adding, modifying, or removing dimensions.
 ### What makes a good dimension
 
 A dimension is justified when it:
+
 - Surfaces knowledge with a genuine **parametric gap** (Claude can't produce it reliably)
 - Maps to one or more **template sections** that need customer-specific content
 - Produces **meaningfully different questions** for different skill instances within the same type
 - Would cause **silent failures** if skipped — not just missing information, but wrong outputs
 
 A dimension is unjustified when it:
+
 - Restates knowledge Claude already has (suppression risk)
 - Always produces the same generic questions regardless of the specific domain/source/platform
 - Is so narrow it applies to only one skill instance
@@ -364,6 +366,7 @@ Reference cases that ground dimension evaluation. When assessing whether a dimen
 *Tech services company. Coverage targets segmented by deal type (4.5x New Business, 2x Renewal). Win rate excludes sub-$25K and sub-14-day deals. Velocity formula includes custom discount impact factor.*
 
 What goes wrong without the right dimensions:
+
 - "Coverage target = 3x" when the customer targets 4.5x New Business / 2x Renewal — every pipeline assessment is wrong
 - "Win rate = won / (won + lost)" when the customer excludes sub-$25K and sub-14-day deals — systematically wrong analysis
 - "PO Cycle Time from PO creation" when the customer measures from requisition approval — cycle times 3-4 days short
@@ -373,6 +376,7 @@ What goes wrong without the right dimensions:
 *Salesforce CRM with Steelbrick CPQ (overrides Opportunity.Amount), Clari (writes forecast values nightly), Gong (activity data model), Territory2 with custom Named_Account_Tier__c.*
 
 What goes wrong without the right dimensions:
+
 - CPQ overrides Opportunity.Amount — the "standard" field is wrong
 - SystemModstamp vs. LastModifiedDate for CDC — Claude inconsistently recommends the correct one
 - queryAll() required for soft deletes — standard query() silently excludes IsDeleted records
@@ -382,6 +386,7 @@ What goes wrong without the right dimensions:
 ### Source: Oracle ERP
 
 What goes wrong without the right dimensions:
+
 - ORG_ID filtering on PO_HEADERS_ALL — omitting returns cross-org data without error (~4/10 Claude responses miss this)
 - WHO column CDC limitation — parent timestamps miss child-record changes
 - Interface tables (*_INTERFACE) contain uncommitted transactions — extracting produces wrong data
@@ -391,6 +396,7 @@ What goes wrong without the right dimensions:
 *dbt-fabric adapter on Microsoft Fabric. Lakehouse vs. warehouse endpoints, custom SQL dialect, CI/CD via GitHub Actions.*
 
 What goes wrong without the right dimensions:
+
 - `merge` strategy silently degrades on Lakehouse endpoints — standard dbt docs don't cover this
 - `datetime2` precision causes snapshot failures in certain Fabric configurations
 - Warehouse vs. Lakehouse endpoints change which SQL features and materializations are available

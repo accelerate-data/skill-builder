@@ -7,6 +7,7 @@ Validates the `skills` master catalog against disk artifacts on every launch, be
 ## Two Paths, Three Passes
 
 **Pass 1 — DB-driven:** Loop over every row in `skills`, branch on `skill_source`:
+
 - `skill-builder` → full step reconciliation (scenarios 1–8, 10)
 - `marketplace` → SKILL.md presence check (scenarios 11–12)
 - `imported` → skip (no reconciliation)

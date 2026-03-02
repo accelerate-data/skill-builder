@@ -4,6 +4,19 @@ import type { WorkspaceSkill } from "@/lib/types";
 
 export type { WorkspaceSkill };
 
+export interface UploadSkillParams {
+  filePath: string;
+  name: string;
+  description: string;
+  version: string;
+  model?: string | null;
+  argumentHint?: string | null;
+  userInvocable?: boolean | null;
+  disableModelInvocation?: boolean | null;
+  purpose?: string | null;
+  forceOverwrite: boolean;
+}
+
 interface ImportedSkillsState {
   skills: WorkspaceSkill[];
   isLoading: boolean;
@@ -11,11 +24,12 @@ interface ImportedSkillsState {
   selectedSkill: WorkspaceSkill | null;
 
   fetchSkills: () => Promise<void>;
-  uploadSkill: (filePath: string) => Promise<WorkspaceSkill>;
+  uploadSkill: (params: UploadSkillParams) => Promise<WorkspaceSkill>;
   toggleActive: (skillId: string, active: boolean) => Promise<void>;
   deleteSkill: (skillId: string) => Promise<void>;
   getSkillContent: (skillName: string) => Promise<string>;
   setSelectedSkill: (skill: WorkspaceSkill | null) => void;
+  setPurpose: (skillId: string, purpose: string | null) => Promise<void>;
 }
 
 export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
@@ -37,9 +51,26 @@ export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
     }
   },
 
-  uploadSkill: async (filePath: string) => {
-    const skill = await invoke<WorkspaceSkill>("upload_skill", { filePath });
-    set((state) => ({ skills: [skill, ...state.skills] }));
+  uploadSkill: async (params: UploadSkillParams) => {
+    const skill = await invoke<WorkspaceSkill>("upload_skill", {
+      filePath: params.filePath,
+      name: params.name,
+      description: params.description,
+      version: params.version,
+      model: params.model ?? null,
+      argumentHint: params.argumentHint ?? null,
+      userInvocable: params.userInvocable ?? null,
+      disableModelInvocation: params.disableModelInvocation ?? null,
+      purpose: params.purpose ?? null,
+      forceOverwrite: params.forceOverwrite,
+    });
+    set((state) => {
+      const exists = state.skills.some((s) => s.skill_name === skill.skill_name);
+      const skills = exists
+        ? state.skills.map((s) => (s.skill_name === skill.skill_name ? skill : s))
+        : [skill, ...state.skills];
+      return { skills };
+    });
     return skill;
   },
 
@@ -68,4 +99,17 @@ export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
   },
 
   setSelectedSkill: (skill) => set({ selectedSkill: skill }),
+
+  setPurpose: async (skillId: string, purpose: string | null) => {
+    await invoke<void>("set_workspace_skill_purpose", { skillId, purpose });
+    set((state) => ({
+      skills: state.skills.map((s) =>
+        s.skill_id === skillId ? { ...s, purpose } : s
+      ),
+      selectedSkill:
+        state.selectedSkill?.skill_id === skillId
+          ? { ...state.selectedSkill, purpose }
+          : state.selectedSkill,
+    }));
+  },
 }));

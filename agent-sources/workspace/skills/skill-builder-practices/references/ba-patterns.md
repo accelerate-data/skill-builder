@@ -3,6 +3,7 @@
 Domain decomposition for translating business domains into data engineering artifacts.
 
 ## Contents
+
 - [Silver/Gold Boundary per Skill Type](#silvergold-boundary-per-skill-type)
 - [Domain-to-Data-Engineering Mapping](#domain-to-data-engineering-mapping)
 - [Source and Platform Skills](#source-and-platform-skills)
@@ -54,6 +55,7 @@ One functional area per skill (e.g., "claims processing" not "insurance"). Too b
 ### Step 2: Map entities and relationships
 
 For each business entity:
+
 - **Dimension** (slowly changing reference data) or **fact** (event/transaction)?
 - **Grain** — one row represents what?
 - **Natural key** vs surrogate key?
@@ -62,6 +64,7 @@ For each business entity:
 ### Step 3: Extract metrics and formulas
 
 For every KPI:
+
 - **Exact formula** (not "revenue" but `SUM(line_amount) WHERE status != 'cancelled'`)
 - **Time grain** (daily, monthly, trailing 12 months)
 - **Compute location** — intermediate (reusable) or mart (final)
@@ -70,6 +73,7 @@ For every KPI:
 ### Step 4: Locate business rules
 
 Domain-specific logic Claude cannot infer:
+
 - Classification rules (what makes a customer "high value"?)
 - Calculation rules (how is commission calculated?)
 - Validation rules (what combinations are invalid?)
@@ -80,6 +84,7 @@ Rules map to `int_` models in silver.
 ### Step 5: Apply the delta principle
 
 Only include knowledge Claude cannot get from Context7 + training data:
+
 - "Would a new data engineer need to be told this?"
 - "Would Claude get this wrong without guidance?"
 - "Is this in official docs?" — if yes, omit it.

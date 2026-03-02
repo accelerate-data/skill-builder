@@ -10,6 +10,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 <role>
 
 ## Your Role
+
 Read answer-evaluation verdicts, then orchestrate targeted refinements for non-clear answers. Clear answers are skipped. Non-clear answers get refinement sub-agents.
 
 </role>
@@ -17,6 +18,7 @@ Read answer-evaluation verdicts, then orchestrate targeted refinements for non-c
 <context>
 
 ## Context
+
 - The coordinator provides these standard fields at runtime:
   - The **skill name**
   - The **context directory** path (contains `clarifications.json`; refinements are merged back into it)
@@ -46,6 +48,7 @@ Check `clarifications.json` per the Scope Recommendation Guard protocol. If dete
 Read `{workspace_directory}/user-context.md` (per User Context protocol).
 
 Read `clarifications.json` from the context directory and `answer-evaluation.json` from the workspace directory. Extract the `per_question` array. Each entry has:
+
 - `question_id` (e.g., Q1, Q2, ...)
 - `verdict` — one of `clear`, `needs_refinement`, `not_answered`, or `vague`
 
@@ -60,6 +63,7 @@ Use these verdicts directly — do NOT re-triage:
 Group questions with verdict `not_answered`, `vague`, or `needs_refinement` by their section in the `sections[]` array of `clarifications.json`. Follow the Sub-agent Spawning protocol. Spawn one sub-agent per section **that has at least one non-clear item** (`name: "detailed-<section-slug>"`). All-clear sections get no sub-agent.
 
 All sub-agents **return text** — they do not write files. Include the standard sub-agent directive (per Sub-agent Spawning protocol). Each receives:
+
 - The full `clarifications.json` content (as JSON text)
 - The list of question IDs to refine with their verdict and user's answer text
 - The clear answers in the same section (for cross-reference)
@@ -67,6 +71,7 @@ All sub-agents **return text** — they do not write files. Include the standard
 - The full **user context** from `user-context.md` (under `## User Context`)
 
 Each sub-agent's task per question:
+
 - `not_answered`: 1-3 questions to validate or refine the recommended approach
 - `vague`: 1-3 questions to pin down the vague response
 - `needs_refinement`: 1-3 questions to clarify the unstated parameters/assumptions
@@ -114,7 +119,7 @@ Follow the format example below. Return ONLY a JSON array of refinement objects 
 
 Return **one sentence only** — do not include file contents, JSON, or any other output:
 
-```
+```text
 Detailed research complete: {refinement_count} refinements added across {section_count} sections.
 ```
 
@@ -128,6 +133,7 @@ Detailed research complete: {refinement_count} refinements added across {section
 </instructions>
 
 ## Success Criteria
+
 - `answer-evaluation.json` verdicts used directly — no re-triage
 - Refinement sub-agents spawn only for sections with non-clear items — all-clear sections skipped
 - Updated `clarifications.json` written as valid JSON in one pass with updated `metadata.refinement_count`

@@ -49,14 +49,14 @@ describe("parsePromptPaths", () => {
     const prompt =
       "The domain is: e-commerce. The skill name is: my-skill. " +
       "The skill type is: domain. " +
-      "The workspace directory is: /Users/john.doe/.vibedata/my-skill. " +
+      "The workspace directory is: /Users/john.doe/.vibedata/skill-builder/my-skill. " +
       "The context directory is: /home/user/my-skills/my-skill/context. " +
       "The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill. " +
       "All directories already exist.";
 
     const paths = parsePromptPaths(prompt);
     expect(paths.workspaceDir).toBe(
-      "/Users/john.doe/.vibedata/my-skill",
+      "/Users/john.doe/.vibedata/skill-builder/my-skill",
     );
     expect(paths.contextDir).toBe(
       "/home/user/my-skills/my-skill/context",
@@ -67,12 +67,12 @@ describe("parsePromptPaths", () => {
 
   it("extracts workspace + context from answer-evaluator prompt", () => {
     const prompt =
-      "The workspace directory is: /Users/hb/.vibedata/test-skill. " +
+      "The workspace directory is: /Users/hb/.vibedata/skill-builder/test-skill. " +
       "The context directory is: /Users/hb/skills/test-skill/context. " +
       "All directories already exist — do not create any directories.";
 
     const paths = parsePromptPaths(prompt);
-    expect(paths.workspaceDir).toBe("/Users/hb/.vibedata/test-skill");
+    expect(paths.workspaceDir).toBe("/Users/hb/.vibedata/skill-builder/test-skill");
     expect(paths.contextDir).toBe("/Users/hb/skills/test-skill/context");
     expect(paths.skillOutputDir).toBeNull();
   });

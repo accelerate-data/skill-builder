@@ -31,6 +31,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `src-tauri/src/commands/clarification.rs` | `commands::clarification` | `@workflow` |
 | `src-tauri/src/commands/github_push.rs` | `commands::github_push` | `@dashboard` |
 | `src-tauri/src/commands/github_auth.rs` | -- | `@settings` |
+| `src-tauri/src/commands/imported_skills.rs` (`parse_skill_file`, `import_skill_from_file`) | `commands::imported_skills` | `@import` |
 | `src-tauri/src/commands/imported_skills.rs` | `commands::imported_skills` | `@skills` |
 | `src-tauri/src/commands/github_import.rs` | `commands::github_import` | `@skills` |
 | `src-tauri/src/commands/github_import.rs` (`check_marketplace_updates`) | `commands::github_import` | `@skills` |
@@ -53,15 +54,12 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `src-tauri/src/fs_validation.rs` | `fs_validation` | -- |
 | `src-tauri/src/reconciliation.rs` | `reconciliation` | `@dashboard` |
 
-## CLI Plugin
+## Agents
 
 | Source Pattern | npm script |
 |---|---|
-| `agents/*.md` | `test:plugin:structural`, `test:plugin:agents` |
-| `agent-sources/workspace/CLAUDE.md` | `test:plugin:structural` |
-| `agent-sources/workspace/skills/research/**` | `test:plugin:structural`, `test:plugin:agents` |
-| `skills/generate-skill/SKILL.md` | `test:plugin:structural`, `test:plugin:loading`, `test:plugin:modes` |
-| `.claude-plugin/plugin.json` | `test:plugin:structural` |
+| `agents/*.md` | `test:agents:structural`, `test:agents:smoke` |
+| `agent-sources/workspace/CLAUDE.md` | `test:agents:structural` |
 
 ## E2E Spec Files
 
@@ -72,6 +70,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `e2e/dashboard/skill-crud.spec.ts` | `@dashboard` |
 | `e2e/dashboard/dashboard-views.spec.ts` | `@dashboard` |
 | `e2e/dashboard/usage-multi-model.spec.ts` | `@dashboard` |
+| `e2e/dashboard/import-skill.spec.ts` | `@import` |
 | `e2e/setup/setup-screen.spec.ts` | `@workflow` |
 | `e2e/settings/settings.spec.ts` | `@settings` |
 | `e2e/workflow/workflow-agent.spec.ts` | `@workflow-agent` |
@@ -94,13 +93,13 @@ Agent prompts define artifact formats (`clarifications.md`, `decisions.md`, etc.
 2. Run the test in the **Compliance Test** column
 3. If your change affects an artifact format (e.g. changing `**Answer:**` to something else), check whether other sources reference the same artifact — run their tests too
 
-**Example:** You change `agents/consolidate-research.md` to use a different choices format. Look it up → run `npm run test:plugin:structural`. But the mock templates also contain choices in the same format → also run `npm run test:unit` to catch the drift.
+**Example:** You change `agents/consolidate-research.md` to use a different choices format. Look it up → run `npm run test:agents:structural`. But the mock templates also contain choices in the same format → also run `npm run test:unit` to catch the drift.
 
 **Canonical heading changes:** If you change the heading hierarchy in `docs/design/agent-specs/canonical-format.md` (e.g., adding new H3 sub-headings), also update Rust parser tests (`cargo test commands::workflow`) — the `autofill_answers` and `autofill_refinement_answers` functions use `starts_with("### ")` / `starts_with("## ")` for state resets and must be tested against the new heading structure.
 
 | Source | What it validates | Compliance Test |
 |---|---|---|
-| `agents/*.md` (all agent prompts) | Anti-patterns: colon placement, checkboxes, labels | `npm run test:plugin:structural` |
+| `agents/*.md` (all agent prompts) | Anti-patterns: colon placement, checkboxes, labels | `npm run test:agents:structural` |
 | `app/sidecar/mock-templates/outputs/*/context/*.md` | Structure + anti-patterns for all markdown artifacts | `npm run test:unit` (`canonical-format.test.ts`) |
 | `app/sidecar/mock-templates/outputs/gate-*/context/*.json` | JSON schema (answer-evaluation.json) | `npm run test:unit` (`canonical-format.test.ts`) |
 | `app/e2e/fixtures/agent-responses/*.md` | E2E fixture structure + anti-patterns | `npm run test:unit` (`canonical-format.test.ts`) |
@@ -117,10 +116,10 @@ npm run test:changed                           # Tests affected by recent change
 cargo test --manifest-path src-tauri/Cargo.toml commands::workflow
 ./tests/run.sh e2e --tag @workflow             # Cross-layer E2E
 
-# Plugin
-npm run test:plugin:structural                 # Quick structural check (free)
-npm run test:plugin:agents                     # Agent prompts changed
-npm run test:plugin                            # All plugin tests (coordinator + agents)
+# Agents
+npm run test:agents:structural                 # Quick structural check (free)
+npm run test:agents:smoke                      # Agent smoke tests (requires API key)
+npm run test:agents                            # All agent tests (structural + smoke)
 
 # Full suite (shared infrastructure changes)
 ./tests/run.sh

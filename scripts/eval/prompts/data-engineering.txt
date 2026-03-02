@@ -1,9 +1,0 @@
-Design an SCD Type 2 implementation for a customer dimension in Snowflake, including surrogate key strategy, merge logic, and handling of late-arriving changes.
----
-Build an incremental load pipeline for a large fact table that handles late-arriving data, ensures idempotency, and supports backfill operations.
----
-Design a data quality framework for a dimensional data warehouse that validates referential integrity, business rules, and SCD consistency across multiple subject areas.
----
-Create a medallion architecture (bronze/silver/gold) for ingesting semi-structured JSON event data into a lakehouse, with schema evolution handling and data contracts between layers.
----
-Design a slowly changing dimension Type 3 and Type 6 (hybrid) strategy for a product dimension that needs to track both current and previous category assignments while maintaining full history.

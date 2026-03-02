@@ -42,6 +42,7 @@ Check `{context_dir}/decisions.md` frontmatter. If `contradictory_inputs: revise
 Read the three spec files in `references/`. Spawn one sub-agent per spec with the spec content as instructions plus these paths.
 
 **Quality checker** — `references/validate-quality-spec.md`:
+
 - `decisions.md`: `{context_dir}/decisions.md`
 - `clarifications.json`: `{context_dir}/clarifications.json` _(omit if `contradictory_inputs: revised`)_
 - `SKILL.md`: `{skill_output_dir}/SKILL.md`
@@ -50,6 +51,7 @@ Read the three spec files in `references/`. Spawn one sub-agent per spec with th
 - Purpose: `{purpose}`
 
 **Test evaluator** — `references/test-skill-spec.md`:
+
 - `decisions.md`: `{context_dir}/decisions.md`
 - `clarifications.json`: `{context_dir}/clarifications.json` _(omit if `contradictory_inputs: revised`)_
 - `SKILL.md`: `{skill_output_dir}/SKILL.md`
@@ -57,13 +59,13 @@ Read the three spec files in `references/`. Spawn one sub-agent per spec with th
 - Workspace directory: `{workspace_dir}`
 
 **Companion recommender** — `references/companion-recommender-spec.md`:
+
 - `SKILL.md`: `{skill_output_dir}/SKILL.md`
 - Reference files: all paths from Step 1 glob
 - `decisions.md`: `{context_dir}/decisions.md`
 - `research-plan.md`: `{context_dir}/research-plan.md`
 - Workspace directory: `{workspace_dir}`
 - Purpose: `{purpose}`
-
 
 ---
 
@@ -85,7 +87,7 @@ Consolidate sub-agent results into three output sections. Do not modify skill fi
 
 Return inline text with three delimited sections. Delimiters must be exactly as shown:
 
-```
+```text
 === VALIDATION LOG ===
 [full agent-validation-log.md content]
 === TEST RESULTS ===
@@ -103,11 +105,13 @@ All three sections must be present.
 ### `=== VALIDATION LOG ===`
 
 Summary (decisions covered X/Y, structural checks, content checks, auto-fixed count, manual review count), then:
+
 - Coverage results, Structural results, Content results, Boundary check, Prescriptiveness rewrites, Manual review items
 
 ### `=== TEST RESULTS ===`
 
 Summary (total/passed/partial/failed counts), then:
+
 - Test results (prompt, category, result, coverage, gap per test), Skill content issues, Suggested PM prompts
 
 ### `=== COMPANION SKILLS ===`
@@ -138,6 +142,7 @@ If no recommendations, use `companions: []`.
 ## Success Criteria
 
 ### Validation
+
 - Every decision and answered clarification mapped to a file and section
 - All Skill Best Practices checks pass
 - Each content file scores 3+ on all Quality Dimensions
@@ -146,12 +151,14 @@ If no recommendations, use `companions: []`.
 - No process artifacts, stakeholder questions, or redundant discovery sections
 
 ### Evaluations
+
 - `{context_dir}/evaluations.md` present with 3+ complete evaluation scenarios
 - Each scenario actually run against Claude with the skill active
 - Each result has PASS/PARTIAL/FAIL with specific evidence
 - Actionable gaps identified
 
 ### Testing
+
 - 5 test prompts covering all 6 categories
 - Each result has PASS/PARTIAL/FAIL with specific evidence
 - Report identifies actionable patterns

@@ -711,7 +711,7 @@ export default function WorkflowPage() {
         return;
       }
 
-      // Write gate result to .vibedata (internal files) so it appears in Rust
+      // Write gate result to .vibedata/skill-builder (internal files) so it appears in Rust
       // [write_file] logs and persists for debugging.
       if (workspacePath) {
         const gateLog = JSON.stringify({ ...evaluation, action: "show_dialog", timestamp: new Date().toISOString() });
@@ -750,7 +750,7 @@ export default function WorkflowPage() {
     toast.success(message);
   };
 
-  /** Write the user's gate decision to .vibedata so it appears in Rust [write_file] logs. */
+  /** Write the user's gate decision to .vibedata/skill-builder so it appears in Rust [write_file] logs. */
   const logGateAction = (decision: string) => {
     if (!workspacePath) return;
     const entry = JSON.stringify({ decision, verdict: gateVerdict, timestamp: new Date().toISOString() });

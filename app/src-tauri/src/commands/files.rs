@@ -38,7 +38,7 @@ fn collect_entries(
             .strip_prefix(base)
             .map_err(|e| e.to_string())?
             .to_string_lossy()
-            .to_string();
+            .replace('\\', "/");
 
         let absolute = fs::canonicalize(&path)
             .unwrap_or_else(|_| path.clone())

@@ -1,15 +1,19 @@
 # Data Extraction
 
 ## Focus
+
 Probe each extraction pattern (full, incremental, CDC) for silent data loss. Look for timestamp fields that miss system-initiated changes, soft delete mechanisms requiring special API calls, multi-tenant filtering gaps, and parent-child relationships where parent changes do not propagate to child timestamps. Include scale-specific failures like governor limits and rate throttling.
 
 ## Delta Principle
+
 The key failure modes include: ORG_ID filtering (missed in ~4/10 Claude responses), SystemModstamp vs. LastModifiedDate (Claude inconsistently recommends the correct one), queryAll() for soft deletes, and WHO column CDC limitations. These are platform-specific traps within each extraction pattern that cause silent data loss — the pipeline runs successfully but produces incomplete or stale data.
 
 ## Coverage Targets
+
 Research should surface: platform-specific extraction traps causing silent data loss, CDC mechanism selection, soft delete handling, and completeness guarantees. Focus on decisions that change skill content.
 
 ## Questions to Research
+
 1. Which timestamp field should be used for incremental change detection, and which commonly used alternatives miss system-initiated changes?
 2. How are soft deletes surfaced by this platform's API — does the standard query endpoint return deleted records, or is a special query mode or endpoint required?
 3. Are there multi-tenant filtering requirements (e.g., ORG_ID) that must be applied to every extraction query, and what happens when they are omitted?

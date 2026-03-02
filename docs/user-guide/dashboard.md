@@ -7,13 +7,15 @@ The Dashboard is the home screen. It lists all your skills and is where you crea
 ## What's on this screen
 
 **Top bar** (visible when workspace and skills folder are configured)
+
 - **Marketplace** button — browse and import skills from GitHub-hosted registries
 - **New Skill** button — opens the skill creation dialog
 
 **Filter and view bar** (visible when at least one skill exists)
+
 - Search field — filters by name, description, or type as you type
 - **Tags** dropdown — filter by one or more tags
-- **Type** dropdown — filter by purpose (e.g. Process, Domain Knowledge)
+- **Type** dropdown — filter by purpose (e.g. Business Process, Source Systems)
 - **Source** dropdown — filter by Skill Builder, Marketplace, or Imported
 - **Status** dropdown — filter by All, Completed, or In Progress
 - View toggle — switch between Grid and List view

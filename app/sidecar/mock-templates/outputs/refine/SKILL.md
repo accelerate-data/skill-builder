@@ -11,12 +11,15 @@ Build well-structured applications following established patterns for error hand
 ## Getting Started
 
 ### Prerequisites
+
 - Node.js 18+ or Bun 1.0+
 - Access to the project repository
 - Familiarity with TypeScript and the project's coding standards
 
 ### Steps
+
 When starting a new feature:
+
 1. Check the architecture decision records in `docs/adr/`
 2. Create a feature branch from `main`
 3. Implement with the patterns below
@@ -26,7 +29,9 @@ When starting a new feature:
 ## Core Patterns
 
 ### Error Handling
+
 Use result types for expected errors. Every error should have:
+
 - **Detection**: How to identify the error
 - **Impact**: What breaks downstream
 - **Recovery**: Specific steps to fix
@@ -46,12 +51,15 @@ async function tryAsync<T>(fn: () => Promise<T>): Promise<Result<T>> {
 ```
 
 ### Testing Strategy
+
 Follow the test pyramid:
+
 - **Unit tests** (70%): Business logic, pure functions, state transitions
 - **Integration tests** (20%): API contracts, database queries, service interactions
 - **E2E tests** (10%): Critical user flows only (login, checkout, data export)
 
 ### Performance Thresholds
+
 - Response time p95: < 200ms
 - Throughput: > 1000 req/s
 - Error rate: < 0.1%

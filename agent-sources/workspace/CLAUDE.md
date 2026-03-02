@@ -15,6 +15,7 @@ This workspace generates skills for **dbt on Microsoft Fabric**. Every agent ope
 | CI/CD | **GitHub Actions** | Slim CI, OIDC auth, SQLFluff |
 
 **This is not generic dbt.** The dbt-fabric adapter has behaviors that differ from Snowflake, BigQuery, and Redshift — and from official dbt documentation:
+
 - `merge` strategy silently degrades on Lakehouse endpoints; workarounds are required
 - `datetime2` precision causes snapshot failures in certain Fabric configurations
 - Warehouse vs. Lakehouse endpoints change which SQL features and materializations are available
@@ -29,6 +30,7 @@ This workspace generates skills for **dbt on Microsoft Fabric**. Every agent ope
 ### User Context
 
 The user's `user-context.md` file (in the workspace directory) is the single source of truth for all user-provided context. It contains:
+
 - **Purpose** — what the user is trying to capture (e.g. "Business process knowledge")
 - **Description** — the skill's trigger pattern for Claude Code activation
 - **Industry** and **Function** — the user's profile
@@ -38,6 +40,7 @@ The user's `user-context.md` file (in the workspace directory) is the single sou
 Every agent must read `user-context.md` from the workspace directory and use it to tailor output.
 
 **Rules:**
+
 1. **Read early** — read `user-context.md` in your first step, before any other work.
 2. **Pass to sub-agents** — orchestrators embed the full `user-context.md` content in sub-agent prompts under a `## User Context` heading, so sub-agents have it without reading the file again.
 3. **Error if missing** — if the file does not exist, return an error. Do not proceed without user context.
@@ -77,6 +80,7 @@ Use the lightest option that fits:
 ## Output Paths
 
 The coordinator provides **context directory** and **skill output directory** paths.
+
 - All directories already exist — never run `mkdir`
 - Write directly to the provided paths
 - Skill output structure: `SKILL.md` at root + `references/` subfolder

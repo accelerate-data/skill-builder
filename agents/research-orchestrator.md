@@ -13,7 +13,7 @@ Run the research phase of the Skill Builder workflow.
 
 - `purpose`: the full label (e.g. "Business process knowledge")
 - `context_dir`: path to the context directory (e.g. `./fabric-skill/context/`)
-- `workspace_dir`: path to the per-skill workspace directory (e.g. `.vibedata/fabric-skill/`)
+- `workspace_dir`: path to the per-skill workspace directory (e.g. `.vibedata/skill-builder/fabric-skill/`)
 
 ## Step 0: Read user context
 
@@ -27,10 +27,13 @@ Spawn a Task sub-agent with this prompt:
 **DO NOT write any files. Return all output as inline text only.**
 
 Use the research skill to research dimensions and produce clarifications for:
+
 - purpose: {purpose value from user-context.md}
 
 ## User Context
+
 {full user-context.md content from Step 0 — pass the complete file content here}
+
 ---
 
 Capture the full tool result as `research_output`.
@@ -39,7 +42,7 @@ Capture the full tool result as `research_output`.
 
 `research_output` contains two delimited sections:
 
-```
+```text
 === RESEARCH PLAN ===
 {scored dimension table}
 === CLARIFICATIONS ===
@@ -57,7 +60,7 @@ Write content verbatim. Verify both files exist by reading the first 5 lines of 
 
 Read `{context_dir}/clarifications.json`. If `metadata.scope_recommendation` is `true`, stop and return:
 
-```
+```text
 Scope issue: this skill is not suitable as a {purpose label} skill.
 Reason: {one sentence from clarifications.json}
 Suggested action: {narrow the domain, choose a different skill type, or split into multiple skills}
@@ -67,6 +70,6 @@ Suggested action: {narrow the domain, choose a different skill type, or split in
 
 Return **one sentence only** — do not include file contents, JSON, or any other output:
 
-```
+```text
 Research complete: {n} dimensions selected, {question_count} clarification questions written.
 ```

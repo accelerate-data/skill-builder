@@ -7,9 +7,7 @@ node_modules/
 # Skill build artifacts
 *.skill
 
-# Skill working directories (user-generated output, not plugin source)
-context/
-workflow-state.md
+# Skill working directories (user-generated output)
 .vibedata/
 
 # Allow mock-template context/ dirs (bundled test fixtures, not user output)
@@ -24,15 +22,14 @@ app/playwright-artifacts/
 # Research design working documents (kept locally, not committed)
 docs/design/research-design/
 
-# Evaluation results
-scripts/eval/results/
+# VitePress build output
+docs/.vitepress/dist/
 
 # Bundled Node.js binary (downloaded during CI build, not committed)
 app/src-tauri/resources/node/*
 !app/src-tauri/resources/node/.gitkeep
 
 # Claude Code — ignore local config, track committed skills
-.claude/settings.json
 .claude/settings.local.json
 .claude/worktrees/
 

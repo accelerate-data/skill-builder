@@ -727,6 +727,9 @@ fn build_prompt(
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let context_dir = Path::new(skills_path).join(skill_name).join("context");
     let skill_output_dir = Path::new(skills_path).join(skill_name);
+    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let context_str = context_dir.to_string_lossy().replace('\\', "/");
+    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
     let mut prompt = format!(
         "The skill name is: {}. \
          The workspace directory is: {}. \
@@ -734,9 +737,9 @@ fn build_prompt(
          The skill output directory (SKILL.md and references/) is: {}. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
         skill_name,
-        workspace_dir.display(),
-        context_dir.display(),
-        skill_output_dir.display(),
+        workspace_str,
+        context_str,
+        skill_output_str,
     );
 
     if let Some(author) = author_login {
@@ -850,8 +853,10 @@ fn read_workflow_settings(
     let settings = crate::db::read_settings_hydrated(&conn)?;
     let skills_path = settings.skills_path
         .ok_or_else(|| "Skills path not configured. Please set it in Settings before running workflow steps.".to_string())?;
-    let api_key = settings.anthropic_api_key
-        .ok_or_else(|| "Anthropic API key not configured".to_string())?;
+    let api_key = match settings.anthropic_api_key {
+        Some(k) => k,
+        None => return Err("Anthropic API key not configured".to_string()),
+    };
     let preferred_model = resolve_model_id(
         settings.preferred_model.as_deref().unwrap_or("sonnet")
     );
@@ -956,7 +961,7 @@ async fn run_workflow_step_inner(
 
     let agent_name = derive_agent_name(workspace_path, &settings.purpose, &step.prompt_template);
     let agent_id = make_agent_id(skill_name, &format!("step{}", step_id));
-    log::info!("run_workflow_step: skill={} step={} model={}", skill_name, step_id, settings.preferred_model); // codeql[rust/cleartext-logging]
+    log::info!("run_workflow_step: skill={} step={} model={}", skill_name, step_id, settings.preferred_model);
 
     let config = SidecarConfig {
         prompt,
@@ -997,7 +1002,7 @@ pub async fn run_workflow_step(
     step_id: u32,
     workspace_path: String,
 ) -> Result<String, String> {
-    log::info!("[run_workflow_step] skill={} step={}", skill_name, step_id); // codeql[rust/cleartext-logging]
+    log::info!("[run_workflow_step] skill={} step={}", skill_name, step_id);
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
@@ -1394,10 +1399,13 @@ pub async fn run_answer_evaluator(
             log::error!("run_answer_evaluator: failed to read settings: {}", e);
             e.to_string()
         })?;
-        let key = settings.anthropic_api_key.ok_or_else(|| {
-            log::error!("run_answer_evaluator: API key not configured");
-            "Anthropic API key not configured".to_string()
-        })?;
+        let key = match settings.anthropic_api_key {
+            Some(k) => k,
+            None => {
+                log::error!("run_answer_evaluator: API key not configured");
+                return Err("Anthropic API key not configured".to_string());
+            }
+        };
         let sp = settings.skills_path.ok_or_else(|| {
             log::error!("run_answer_evaluator: skills_path not configured");
             "Skills path not configured".to_string()
@@ -1426,6 +1434,8 @@ pub async fn run_answer_evaluator(
         .join(&skill_name)
         .join("context");
     let workspace_dir = std::path::Path::new(&workspace_path).join(&skill_name);
+    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let context_str = context_dir.to_string_lossy().replace('\\', "/");
 
     // Point agent at workspace and context dirs; user-context.md is already written.
     let prompt = format!(
@@ -1433,8 +1443,8 @@ pub async fn run_answer_evaluator(
          The context directory is: {context}. \
          All directories already exist — do not create any directories. \
          Read {workspace}/user-context.md for purpose, description, and all user context. Use it to evaluate answers in the user's specific domain.",
-        workspace = workspace_dir.display(),
-        context = context_dir.display(),
+        workspace = workspace_str,
+        context = context_str,
     );
 
     log::debug!("run_answer_evaluator: prompt={}", prompt);
@@ -1912,7 +1922,7 @@ mod tests {
     fn test_build_prompt_all_three_paths() {
         let prompt = build_prompt(
             "my-skill",
-            "/home/user/.vibedata",
+            "/home/user/.vibedata/skill-builder",
             "/home/user/my-skills",
             None,
             None,
@@ -1920,7 +1930,7 @@ mod tests {
         );
         assert!(prompt.contains("my-skill"));
         // 3 distinct paths in prompt
-        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/my-skill"));
+        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
         assert!(prompt.contains("The context directory is: /home/user/my-skills/my-skill/context"));
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
     }
@@ -1929,7 +1939,7 @@ mod tests {
     fn test_build_prompt_with_skill_type() {
         let prompt = build_prompt(
             "my-skill",
-            "/home/user/.vibedata",
+            "/home/user/.vibedata/skill-builder",
             "/home/user/my-skills",
             None,
             None,
@@ -1943,7 +1953,7 @@ mod tests {
     fn test_build_prompt_with_author_info() {
         let prompt = build_prompt(
             "my-skill",
-            "/home/user/.vibedata",
+            "/home/user/.vibedata/skill-builder",
             "/home/user/my-skills",
             Some("octocat"),
             Some("2025-06-15T12:00:00Z"),
@@ -1958,7 +1968,7 @@ mod tests {
     fn test_build_prompt_without_author_info() {
         let prompt = build_prompt(
             "my-skill",
-            "/home/user/.vibedata",
+            "/home/user/.vibedata/skill-builder",
             "/home/user/my-skills",
             None,
             None,
@@ -1973,7 +1983,7 @@ mod tests {
         // The answer-evaluator prompt must follow the same "workspace directory" /
         // "context directory" pattern as build_prompt so the mock agent and real
         // agent can parse paths consistently.
-        let workspace_path = "/home/user/.vibedata";
+        let workspace_path = "/home/user/.vibedata/skill-builder";
         let skills_path = "/home/user/my-skills";
         let skill_name = "my-skill";
 
@@ -1986,12 +1996,12 @@ mod tests {
             "The workspace directory is: {workspace}. \
              The context directory is: {context}. \
              All directories already exist — do not create any directories.",
-            workspace = workspace_dir.display(),
-            context = context_dir.display(),
+            workspace = workspace_dir.to_string_lossy().replace('\\', "/"),
+            context = context_dir.to_string_lossy().replace('\\', "/"),
         );
 
         // Verify standard path markers that mock agent and agent prompts rely on
-        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/my-skill."));
+        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill."));
         assert!(prompt.contains("The context directory is: /home/user/my-skills/my-skill/context."));
         assert!(prompt.contains("do not create any directories"));
         // Workspace dir is NOT context dir (answer-evaluation.json goes to workspace)

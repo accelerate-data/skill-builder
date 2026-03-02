@@ -224,6 +224,13 @@ export interface UsageByModel {
   run_count: number
 }
 
+export interface UsageByDay {
+  date: string        // "YYYY-MM-DD"
+  total_cost: number
+  total_tokens: number
+  run_count: number
+}
+
 export interface ImportedSkill {
   skill_id: string
   skill_name: string
@@ -294,6 +301,7 @@ export interface SkillMetadataOverride {
 }
 
 export const PURPOSE_OPTIONS = [
+  { value: "general-purpose", label: "General Purpose" },
   { value: "test-context", label: "Skill Test" },
   { value: "research", label: "Research" },
   { value: "validate", label: "Validate" },
@@ -313,5 +321,15 @@ export interface SkillFileEntry {
   is_directory: boolean
   is_readonly: boolean
   size_bytes: number
+}
+
+export interface SkillFileMeta {
+  name: string | null
+  description: string | null
+  version: string | null
+  model: string | null
+  argument_hint: string | null
+  user_invocable: boolean | null
+  disable_model_invocation: boolean | null
 }
 

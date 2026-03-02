@@ -55,7 +55,7 @@ pub struct MarketplaceRegistry {
     pub enabled: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub anthropic_api_key: Option<String>,
     pub workspace_path: Option<String>,
@@ -100,6 +100,34 @@ pub struct AppSettings {
     /// Automatically apply marketplace updates at startup (default: false).
     #[serde(default)]
     pub auto_update: bool,
+}
+
+impl std::fmt::Debug for AppSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppSettings")
+            .field("anthropic_api_key", &"[REDACTED]")
+            .field("workspace_path", &self.workspace_path)
+            .field("skills_path", &self.skills_path)
+            .field("preferred_model", &self.preferred_model)
+            .field("debug_mode", &self.debug_mode)
+            .field("log_level", &self.log_level)
+            .field("extended_context", &self.extended_context)
+            .field("extended_thinking", &self.extended_thinking)
+            .field("splash_shown", &self.splash_shown)
+            .field("github_oauth_token", &"[REDACTED]")
+            .field("github_user_login", &self.github_user_login)
+            .field("github_user_avatar", &self.github_user_avatar)
+            .field("github_user_email", &self.github_user_email)
+            .field("marketplace_url", &self.marketplace_url)
+            .field("marketplace_registries", &self.marketplace_registries)
+            .field("marketplace_initialized", &self.marketplace_initialized)
+            .field("max_dimensions", &self.max_dimensions)
+            .field("industry", &self.industry)
+            .field("function_role", &self.function_role)
+            .field("dashboard_view_mode", &self.dashboard_view_mode)
+            .field("auto_update", &self.auto_update)
+            .finish()
+    }
 }
 
 impl Default for AppSettings {
@@ -357,6 +385,17 @@ pub struct ImportedSkill {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillFileMeta {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub version: Option<String>,
+    pub model: Option<String>,
+    pub argument_hint: Option<String>,
+    pub user_invocable: Option<bool>,
+    pub disable_model_invocation: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceSkill {
     pub skill_id: String,
     pub skill_name: String,
@@ -403,12 +442,23 @@ pub struct OrphanSkill {
     pub purpose: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SkillLock {
     pub skill_name: String,
     pub instance_id: String,
     pub pid: u32,
     pub acquired_at: String,
+}
+
+impl std::fmt::Debug for SkillLock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SkillLock")
+            .field("skill_name", &self.skill_name)
+            .field("instance_id", &self.instance_id)
+            .field("pid", &"[REDACTED]")
+            .field("acquired_at", &self.acquired_at)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -426,13 +476,25 @@ pub struct ReconciliationResult {
     pub discovered_skills: Vec<DiscoveredSkill>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct DeviceFlowResponse {
     pub device_code: String,
     pub user_code: String,
     pub verification_uri: String,
     pub expires_in: u64,
     pub interval: u64,
+}
+
+impl std::fmt::Debug for DeviceFlowResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeviceFlowResponse")
+            .field("device_code", &"[REDACTED]")
+            .field("user_code", &self.user_code)
+            .field("verification_uri", &self.verification_uri)
+            .field("expires_in", &self.expires_in)
+            .field("interval", &self.interval)
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -460,7 +522,7 @@ pub struct StepResetPreview {
     pub files: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AgentRunRecord {
     pub agent_id: String,
     pub skill_name: String,
@@ -483,7 +545,33 @@ pub struct AgentRunRecord {
     pub completed_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl std::fmt::Debug for AgentRunRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AgentRunRecord")
+            .field("agent_id", &self.agent_id)
+            .field("skill_name", &self.skill_name)
+            .field("step_id", &self.step_id)
+            .field("model", &self.model)
+            .field("status", &self.status)
+            .field("input_tokens", &self.input_tokens)
+            .field("output_tokens", &self.output_tokens)
+            .field("cache_read_tokens", &self.cache_read_tokens)
+            .field("cache_write_tokens", &self.cache_write_tokens)
+            .field("total_cost", &self.total_cost)
+            .field("duration_ms", &self.duration_ms)
+            .field("num_turns", &self.num_turns)
+            .field("stop_reason", &self.stop_reason)
+            .field("duration_api_ms", &self.duration_api_ms)
+            .field("tool_use_count", &self.tool_use_count)
+            .field("compaction_count", &self.compaction_count)
+            .field("session_id", &"[REDACTED]")
+            .field("started_at", &self.started_at)
+            .field("completed_at", &self.completed_at)
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct WorkflowSessionRecord {
     pub session_id: String,
     pub skill_name: String,
@@ -499,6 +587,27 @@ pub struct WorkflowSessionRecord {
     pub total_duration_ms: i64,
     pub started_at: String,
     pub completed_at: Option<String>,
+}
+
+impl std::fmt::Debug for WorkflowSessionRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WorkflowSessionRecord")
+            .field("session_id", &"[REDACTED]")
+            .field("skill_name", &self.skill_name)
+            .field("min_step", &self.min_step)
+            .field("max_step", &self.max_step)
+            .field("steps_csv", &self.steps_csv)
+            .field("agent_count", &self.agent_count)
+            .field("total_cost", &self.total_cost)
+            .field("total_input_tokens", &self.total_input_tokens)
+            .field("total_output_tokens", &self.total_output_tokens)
+            .field("total_cache_read", &self.total_cache_read)
+            .field("total_cache_write", &self.total_cache_write)
+            .field("total_duration_ms", &self.total_duration_ms)
+            .field("started_at", &self.started_at)
+            .field("completed_at", &self.completed_at)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -520,6 +629,14 @@ pub struct UsageByStep {
 pub struct UsageByModel {
     pub model: String,
     pub total_cost: f64,
+    pub run_count: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageByDay {
+    pub date: String,
+    pub total_cost: f64,
+    pub total_tokens: i64,
     pub run_count: i32,
 }
 
@@ -615,11 +732,21 @@ pub struct RefineDiff {
     pub files: Vec<RefineFileDiff>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RefineSessionInfo {
     pub session_id: String,
     pub skill_name: String,
     pub created_at: String,
+}
+
+impl std::fmt::Debug for RefineSessionInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RefineSessionInfo")
+            .field("session_id", &"[REDACTED]")
+            .field("skill_name", &self.skill_name)
+            .field("created_at", &self.created_at)
+            .finish()
+    }
 }
 
 /// A single message in a refine conversation history.
@@ -671,7 +798,7 @@ mod tests {
             extended_context: false,
             extended_thinking: true,
             splash_shown: false,
-            github_oauth_token: Some("gho_testtoken123".to_string()),
+            github_oauth_token: Some("test-github-token".to_string()),
             github_user_login: Some("testuser".to_string()),
             github_user_avatar: Some("https://avatars.githubusercontent.com/u/12345".to_string()),
             github_user_email: Some("test@example.com".to_string()),

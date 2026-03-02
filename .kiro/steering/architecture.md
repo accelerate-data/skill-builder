@@ -4,13 +4,11 @@ inclusion: always
 
 # Skill Builder Architecture
 
-All authoritative details are in `CLAUDE.md`, `CLAUDE-APP.md`, and `CLAUDE-PLUGIN.md`. This file provides a Kiro-friendly summary.
+All authoritative details are in `CLAUDE.md` and `CLAUDE-APP.md`. This file provides a Kiro-friendly summary.
 
 ## Project Overview
 
-A multi-agent workflow for creating domain-specific Claude skills. Two frontends:
-- **CLI** (Claude Code plugin) — entry point: `/skill-builder:generate-skill`
-- **Desktop App** (Tauri) — all code in `app/`
+A multi-agent workflow for creating domain-specific Claude skills. The frontend is a Tauri desktop app — all code in `app/`.
 
 ## Tech Stack
 
@@ -37,5 +35,5 @@ Backend (Rust) → Agent Orchestrator → Node.js Sidecar
 - `app/src/` — React frontend
 - `app/src-tauri/` — Rust backend
 - `app/sidecar/` — Node.js agent runner
-- `agents/` — 25 agents (flat directory, no subdirectories)
-- `agent-sources/workspace/CLAUDE.md` — agent instructions (app: auto-loaded; plugin: embedded in SKILL.md)
+- `agents/` — agent prompts (flat directory, no subdirectories)
+- `agent-sources/workspace/CLAUDE.md` — agent instructions (auto-loaded by SDK)

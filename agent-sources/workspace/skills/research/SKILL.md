@@ -67,7 +67,7 @@ For each selected dimension, read `references/dimensions/{slug}.md`.
 
 Spawn a Task sub-agent per dimension. Pass the full user context. Construct the Task prompt:
 
-```
+```text
 You are researching the {dimension_name} dimension for a {purpose} skill about {skill_name}.
 
 {full content of references/dimensions/{slug}.md}
@@ -89,6 +89,7 @@ Wait for all Tasks to return before proceeding to Step 4.
 Read `references/consolidation-handoff.md`. Follow its instructions to deduplicate and synthesize all dimension Task outputs into canonical `clarifications.json` content (valid JSON).
 
 **CRITICAL — the output JSON MUST use this exact top-level structure:**
+
 ```json
 {
   "version": "1",
@@ -97,6 +98,7 @@ Read `references/consolidation-handoff.md`. Follow its instructions to deduplica
   "notes": []
 }
 ```
+
 Do NOT invent alternative structures like `{"clarifications": [...]}` or flat question arrays. The downstream UI parser requires exactly `sections[].questions[]`.
 
 ---
@@ -105,7 +107,7 @@ Do NOT invent alternative structures like `{"clarifications": [...]}` or flat qu
 
 Return inline text with two delimited sections. Delimiter lines must be exactly as shown:
 
-```
+```text
 === RESEARCH PLAN ===
 ---
 purpose: [purpose]

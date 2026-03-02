@@ -4,23 +4,22 @@ inclusion: always
 
 # Testing Strategy
 
-All authoritative details are in `CLAUDE.md` (when to write tests, test discipline, choosing which tests to run, plugin test tiers). This file provides a Kiro-friendly summary.
+All authoritative details are in `CLAUDE.md` (when to write tests, test discipline, choosing which tests to run, agent test tiers). This file provides a Kiro-friendly summary.
 
 ## Quick Commands
 
 ```bash
 # App tests (all from app/)
-./tests/run.sh                    # All levels (unit + integration + e2e)
+./tests/run.sh                    # All levels (unit + integration + e2e + agents)
 ./tests/run.sh unit               # Stores, utils, hooks, rust, sidecar
 ./tests/run.sh integration        # Component + page tests
 ./tests/run.sh e2e                # Playwright
 ./tests/run.sh e2e --tag @workflow
 cd src-tauri && cargo test        # Rust tests
 
-# Plugin tests
-./scripts/validate.sh             # Structural validation (free)
-cd app && npm run test:plugin     # All plugin tests (structural + LLM)
-cd app && npm run test:plugin:workflow  # Full E2E workflow (~$5)
+# Agent tests
+cd app && npm run test:agents:structural  # Structural checks (free)
+cd app && npm run test:agents:smoke       # Smoke tests (requires API key)
 ```
 
 ## When to Write Tests

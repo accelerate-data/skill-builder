@@ -29,6 +29,7 @@ The Test page runs your skill against a task and shows a side-by-side comparison
 Once both agents finish, the **Evaluator** panel populates:
 
 **Comparison bullets** — each line compares the two plans on a specific dimension:
+
 - **↑** — the plan with skill is better on this dimension
 - **↓** — the plan without skill is better (indicates a potential regression or over-constraint)
 - **→** — the two plans are similar on this dimension

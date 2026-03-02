@@ -1,7 +1,7 @@
 use crate::db::Db;
 use crate::types::{DeviceFlowResponse, GitHubAuthResult, GitHubUser};
 
-const GITHUB_CLIENT_ID: &str = "Ov23linGGsgCgOEGIzwD";
+const GITHUB_CLIENT_ID: &str = "Ov23lioPbQz4gAFxEfhM";
 
 /// Start the GitHub Device Flow by requesting a device code.
 #[tauri::command]

@@ -8,7 +8,7 @@ The workflow runs on two layers:
 
 **Bundled skills** (`agent-sources/workspace/skills/`) — pure computation units. No file I/O, no path knowledge. Each skill receives inputs inline, runs its logic (including spawning sub-agents via `Task`), and returns results as delimited inline text:
 
-```
+```text
 === SECTION NAME ===
 [full content]
 === NEXT SECTION ===
@@ -18,6 +18,7 @@ The workflow runs on two layers:
 The calling agent extracts each section and writes the files to disk. Skills are marketplace-updatable — teams can replace them without an app release.
 
 Two agents delegate to skills:
+
 - `research-orchestrator` → `skills/research/` (dimension scoring, parallel research, consolidation)
 - `validate-skill` → `skills/validate-skill/` (quality check, test evaluation, companion recommendations)
 

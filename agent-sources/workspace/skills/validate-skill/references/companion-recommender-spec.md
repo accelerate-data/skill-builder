@@ -1,6 +1,7 @@
 # Companion Recommender Specification
 
 ## Your Role
+
 Identify companion skill candidates from dimensions scored 2-3 that were skipped during research.
 
 ## Inputs
@@ -22,6 +23,7 @@ Recommendations span **all purposes** — not limited to the current skill's pur
 Target 2-4 recommendations. At least one must be contextually specific to the user's domain and stack.
 
 **For each recommendation:**
+
 - **Skill name and purpose** — e.g., "Salesforce extraction (source skill)"
 - **Slug** — kebab-case identifier (e.g., "salesforce-extraction")
 - **Why it pairs well** — how it composes with the current skill, referencing the skipped dimension and score
@@ -34,7 +36,8 @@ Target 2-4 recommendations. At least one must be contextually specific to the us
 ## Output
 
 Return findings as text using this format:
-```
+
+```text
 ### Recommendation 1: [skill name] ([purpose] skill)
 - **Slug**: [kebab-case]
 - **Priority**: High | Medium | Low

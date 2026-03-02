@@ -106,6 +106,7 @@ fn build_followup_prompt(
     command: Option<&str>,
 ) -> String {
     let skill_dir = Path::new(skills_path).join(skill_name);
+    let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
     let effective_command = command.unwrap_or("refine");
 
     let mut prompt = format!("The command is: {}.", effective_command);
@@ -114,7 +115,7 @@ fn build_followup_prompt(
         if !files.is_empty() {
             let abs_files: Vec<String> = files
                 .iter()
-                .map(|f| format!("{}/{}", skill_dir.display(), f))
+                .map(|f| format!("{}/{}", skill_dir_str, f))
                 .collect();
             prompt.push_str(&format!(
                 "\n\nIMPORTANT: Only edit these files: {}. Do not modify any other files.",
@@ -143,6 +144,9 @@ fn build_refine_prompt(
     let skill_dir = Path::new(skills_path).join(skill_name);
     let context_dir = Path::new(skills_path).join(skill_name).join("context");
     let workspace_dir = Path::new(workspace_path).join(skill_name);
+    let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
+    let context_dir_str = context_dir.to_string_lossy().replace('\\', "/");
+    let workspace_dir_str = workspace_dir.to_string_lossy().replace('\\', "/");
 
     let effective_command = command.unwrap_or("refine");
 
@@ -152,9 +156,9 @@ fn build_refine_prompt(
          All directories already exist — never create directories with mkdir or any other method.",
         skill_name,
         effective_command,
-        skill_dir.display(),
-        context_dir.display(),
-        workspace_dir.display(),
+        skill_dir_str,
+        context_dir_str,
+        workspace_dir_str,
     );
 
     prompt.push_str(" Read user-context.md from the workspace directory for purpose, description, and all user context.");
@@ -164,7 +168,7 @@ fn build_refine_prompt(
         if !files.is_empty() {
             let abs_files: Vec<String> = files
                 .iter()
-                .map(|f| format!("{}/{}", skill_dir.display(), f))
+                .map(|f| format!("{}/{}", skill_dir_str, f))
                 .collect();
             prompt.push_str(&format!(
                 "\n\nIMPORTANT: Only edit these files: {}. Do not modify any other files.",
@@ -391,7 +395,7 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
 /// Initialize a refine session for a skill.
 ///
 /// No sidecar is spawned here — the sidecar is spawned per-message in `send_refine_message`.
-#[tauri::command] // codeql[rust/cleartext-logging]
+#[tauri::command]
 pub async fn start_refine_session(
     skill_name: String,
     workspace_path: String,
@@ -429,8 +433,7 @@ pub async fn start_refine_session(
     let session_id = uuid::Uuid::new_v4().to_string();
     let created_at = chrono::Utc::now().to_rfc3339();
     log::debug!(
-        "[start_refine_session] creating session {} for skill '{}'",
-        session_id,
+        "[start_refine_session] creating session [REDACTED] for skill '{}'",
         skill_name
     );
 
@@ -474,9 +477,8 @@ pub async fn send_refine_message(
     db: tauri::State<'_, Db>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    log::info!( // codeql[rust/cleartext-logging]
-        "[send_refine_message] session={} command={:?}",
-        session_id,
+    log::info!(
+        "[send_refine_message] session=[REDACTED] command={:?}",
         command
     );
 
@@ -489,12 +491,11 @@ pub async fn send_refine_message(
         let session = map.get(&session_id).ok_or_else(|| {
             // Log active sessions to help diagnose stale-session or post-restart failures
             let active: Vec<String> = map
-                .iter()
-                .map(|(id, s)| format!("{}={}", &id[..8.min(id.len())], s.skill_name))
+                .values()
+                .map(|s| s.skill_name.clone())
                 .collect();
             let msg = format!(
-                "No refine session found for id '{}'. Active sessions ({}): [{}]",
-                session_id,
+                "No refine session found. Active sessions ({}): [{}]",
                 map.len(),
                 active.join(", ")
             );
@@ -504,8 +505,8 @@ pub async fn send_refine_message(
         (session.skill_name.clone(), session.stream_started)
     };
     log::info!(
-        "[send_refine_message] session={} skill={} stream_started={}",
-        session_id, skill_name, stream_started
+        "[send_refine_message] skill={} stream_started={}",
+        skill_name, stream_started
     );
 
     if !stream_started {
@@ -520,10 +521,13 @@ pub async fn send_refine_message(
                 log::error!("[send_refine_message] Failed to read settings: {}", e);
                 e
             })?;
-            let key = settings.anthropic_api_key.ok_or_else(|| {
-                log::error!("[send_refine_message] Anthropic API key not configured");
-                "Anthropic API key not configured".to_string()
-            })?;
+            let key = match settings.anthropic_api_key {
+                Some(k) => k,
+                None => {
+                    log::error!("[send_refine_message] Anthropic API key not configured");
+                    return Err("Anthropic API key not configured".to_string());
+                }
+            };
             let model = resolve_model_id(
                 settings.preferred_model.as_deref().unwrap_or("sonnet")
             );
@@ -610,8 +614,8 @@ pub async fn send_refine_message(
         }
 
         log::debug!(
-            "[send_refine_message] starting stream session {} agent={} cwd={}",
-            session_id, agent_id, config.cwd,
+            "[send_refine_message] starting stream agent={} cwd={}",
+            agent_id, config.cwd,
         );
 
         // 5. Send stream_start via pool
@@ -696,7 +700,7 @@ pub async fn close_refine_session(
     sessions: tauri::State<'_, RefineSessionManager>,
     pool: tauri::State<'_, SidecarPool>,
 ) -> Result<(), String> {
-    log::info!("[close_refine_session] session={}", session_id); // codeql[rust/cleartext-logging]
+    log::info!("[close_refine_session] session=[REDACTED]");
 
     let removed = {
         let mut map = sessions.0.lock().map_err(|e| {
@@ -708,8 +712,7 @@ pub async fn close_refine_session(
 
     if let Some(session) = removed {
         log::debug!(
-            "[close_refine_session] removed session {} (stream_started={})",
-            session_id,
+            "[close_refine_session] removed session [REDACTED] (stream_started={})",
             session.stream_started
         );
 
@@ -720,14 +723,13 @@ pub async fn close_refine_session(
                 .await
             {
                 log::warn!(
-                    "[close_refine_session] Failed to send stream_end for session {}: {}",
-                    session_id,
+                    "[close_refine_session] Failed to send stream_end for session [REDACTED]: {}",
                     e
                 );
             }
         }
     } else {
-        log::debug!("[close_refine_session] session {} not found (already closed)", session_id);
+        log::debug!("[close_refine_session] session [REDACTED] not found (already closed)");
     }
 
     Ok(())
@@ -987,7 +989,7 @@ mod tests {
         build_refine_config(
             prompt.to_string(),
             "my-skill",
-            "/home/user/.vibedata",
+            "/home/user/.vibedata/skill-builder",
             "sk-test-key".to_string(),
             "sonnet".to_string(),
             false,
@@ -1034,12 +1036,12 @@ mod tests {
         let (config, _) = build_refine_config(
             "test".to_string(),
             "data-engineering",
-            "/home/user/.vibedata",
+            "/home/user/.vibedata/skill-builder",
             "sk-key".to_string(),
             "sonnet".to_string(),
             false,
         );
-        assert_eq!(config.cwd, "/home/user/.vibedata");
+        assert_eq!(config.cwd, "/home/user/.vibedata/skill-builder");
     }
 
     #[test]
@@ -1129,12 +1131,12 @@ mod tests {
 
     #[test]
     fn test_refine_prompt_includes_all_three_paths() {
-        let prompt = build_refine_prompt("my-skill", "/home/user/.vibedata", "/home/user/skills",
+        let prompt = build_refine_prompt("my-skill", "/home/user/.vibedata/skill-builder", "/home/user/skills",
             "Add metrics section", None, None,
         );
         assert!(prompt.contains("The skill directory is: /home/user/skills/my-skill"));
         assert!(prompt.contains("The context directory is: /home/user/skills/my-skill/context"));
-        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/my-skill"));
+        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
     }
 
     #[test]

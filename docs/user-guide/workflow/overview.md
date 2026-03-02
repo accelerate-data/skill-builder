@@ -37,6 +37,7 @@ The current step is highlighted. **Completed steps are clickable** — click one
 ## What you see while an agent is running
 
 The content area shows a live stream of the agent's activity:
+
 - **Agent text** — rendered as markdown as it arrives
 - **Tool calls** — shown as collapsible rows (e.g. "Reading SKILL.md", "Web search: …"). Click to expand and see details. Multiple consecutive tool calls are grouped.
 - The **footer bar** shows: status dot, agent name, model, elapsed time, and turn count.
@@ -46,6 +47,7 @@ The content area shows a live stream of the agent's activity:
 ## When the agent finishes
 
 A step completion view replaces the stream:
+
 - Steps 1–2: the clarifications editor opens so you can answer questions.
 - Step 3: a decisions summary card with expandable decision cards.
 - Step 4: a file viewer showing the generated output files.
@@ -72,6 +74,7 @@ If a step fails, the content area shows:
 *"Step N failed — An error occurred. You can retry this step."*
 
 Two buttons appear:
+
 - **Reset Step** — clears partial output and resets the step
 - **Retry** — re-runs the step without clearing output
 

@@ -8,7 +8,7 @@ SQLite database at `{app_data_dir}/skill-builder.db` (macOS: `~/Library/Applicat
 
 ## Table map
 
-```
+```text
 Skills Library                          Settings → Skills
 ──────────────────────────────────────  ─────────────────────────
 skills  (master catalog)                workspace_skills

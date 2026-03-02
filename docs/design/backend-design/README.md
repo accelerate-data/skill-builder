@@ -7,13 +7,13 @@ As-built reference for the Tauri/Rust backend in `app/src-tauri/`.
 The backend bridges the React frontend and the Node.js agent sidecar. It owns all persistent state (SQLite), orchestrates agent processes, manages the skill lifecycle on disk, and exposes its surface to the frontend as Tauri commands.
 
 **Stack:**
+
 - **Tauri 2** — desktop framework; commands are the IPC boundary
 - **Rust** — all backend logic
 - **rusqlite (SQLite)** — single embedded database, WAL mode
 - **Node.js sidecar** — separate child process running `@anthropic-ai/claude-agent-sdk`; managed by the Rust backend
 
 ---
-
 
 ## Database Design
 
@@ -29,7 +29,7 @@ Sequential numbered migrations tracked in `schema_migrations`. Migrations run at
 
 The schema has two independent skill registries that serve different parts of the UI:
 
-```
+```text
 Skills Library (list_skills)             Settings→Skills (list_workspace_skills)
 ─────────────────────────────            ──────────────────────────────────────
 skills  ← master                         workspace_skills  ← standalone
@@ -99,7 +99,6 @@ skills  ← master                         workspace_skills  ← standalone
 
 **`schema_migrations`** — Migration version tracker. `version` + `applied_at`.
 
-
 ---
 
 ## API Surface (Tauri Commands)
@@ -166,6 +165,7 @@ The agent runtime is a Node.js process using `@anthropic-ai/claude-agent-sdk`, m
 **Transcripts**: Every agent request produces a JSONL transcript at `{workspace}/logs/{step}-{timestamp}.jsonl`. The first line is the config object (API key redacted). Subsequent lines are the full SDK conversation: prompts, assistant messages, tool use, tool results. Transcripts are pruned at startup (>30 days old).
 
 **Pool lifecycle**:
+
 - Agents idle for more than 5 minutes are cleaned up automatically.
 - `graceful_shutdown` terminates all active sidecars with a configurable timeout before the app exits.
 - `cleanup_skill_sidecar` terminates the sidecar for a specific skill (used when resetting or deleting).
