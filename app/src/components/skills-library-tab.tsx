@@ -23,7 +23,8 @@ import { useImportedSkillsStore } from "@/stores/imported-skills-store"
 import type { WorkspaceSkill } from "@/stores/imported-skills-store"
 import { useSettingsStore } from "@/stores/settings-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
-import { WorkspaceImportSkillDialog } from "@/components/workspace-import-skill-dialog"
+import { ImportSkillDialog } from "@/components/import-skill-dialog"
+import type { ImportConfirmParams } from "@/components/import-skill-dialog"
 import { parseSkillFile } from "@/lib/tauri"
 import type { SkillFileMeta } from "@/lib/types"
 import { PURPOSE_OPTIONS } from "@/lib/types"
@@ -33,6 +34,7 @@ export function SkillsLibraryTab() {
     skills,
     isLoading,
     fetchSkills,
+    uploadSkill,
     toggleActive,
     deleteSkill,
     setPurpose,
@@ -109,6 +111,24 @@ export function SkillsLibraryTab() {
       }
     },
     [deleteSkill]
+  )
+
+  const handleWorkspaceConfirm = useCallback(
+    async (params: ImportConfirmParams) => {
+      await uploadSkill({
+        filePath: params.filePath,
+        name: params.name,
+        description: params.description,
+        version: params.version,
+        model: params.model,
+        argumentHint: params.argumentHint,
+        userInvocable: params.userInvocable,
+        disableModelInvocation: params.disableModelInvocation,
+        purpose: params.purpose,
+        forceOverwrite: params.forceOverwrite,
+      })
+    },
+    [uploadSkill]
   )
 
   const handlePurposeChange = useCallback(
@@ -247,12 +267,14 @@ export function SkillsLibraryTab() {
         registries={marketplaceRegistries.filter(r => r.enabled)}
       />
 
-      <WorkspaceImportSkillDialog
+      <ImportSkillDialog
         open={workspaceImportOpen}
         onOpenChange={setWorkspaceImportOpen}
         filePath={workspaceImportFile}
         meta={workspaceImportMeta}
+        showPurpose
         activeSkills={skills}
+        onConfirm={handleWorkspaceConfirm}
         onImported={fetchSkills}
       />
     </div>

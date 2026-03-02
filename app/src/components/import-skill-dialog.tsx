@@ -13,8 +13,16 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { importSkillFromFile } from "@/lib/tauri"
-import type { SkillFileMeta } from "@/lib/types"
+import type { SkillFileMeta, WorkspaceSkill } from "@/lib/types"
+import { PURPOSE_OPTIONS } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
 
 const FALLBACK_MODEL_OPTIONS = [
@@ -23,12 +31,31 @@ const FALLBACK_MODEL_OPTIONS = [
   { id: "claude-opus-4-6", displayName: "Opus -- most capable" },
 ]
 
+export interface ImportConfirmParams {
+  filePath: string
+  name: string
+  description: string
+  version: string
+  model: string | null
+  argumentHint: string | null
+  userInvocable: boolean
+  disableModelInvocation: boolean
+  forceOverwrite: boolean
+  purpose?: string | null
+}
+
 interface ImportSkillDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   filePath: string
   meta: SkillFileMeta
   onImported: () => void
+  /** Show the Purpose dropdown (workspace skills context) */
+  showPurpose?: boolean
+  /** Active workspace skills used for purpose-conflict detection */
+  activeSkills?: WorkspaceSkill[]
+  /** Override the default importSkillFromFile handler */
+  onConfirm?: (params: ImportConfirmParams) => Promise<void>
 }
 
 export function ImportSkillDialog({
@@ -37,6 +64,9 @@ export function ImportSkillDialog({
   filePath,
   meta,
   onImported,
+  showPurpose = false,
+  activeSkills = [],
+  onConfirm,
 }: ImportSkillDialogProps) {
   const availableModels = useSettingsStore((s) => s.availableModels)
 
@@ -47,11 +77,11 @@ export function ImportSkillDialog({
   const [argumentHint, setArgumentHint] = useState("")
   const [userInvocable, setUserInvocable] = useState(false)
   const [disableModelInvocation, setDisableModelInvocation] = useState(false)
+  const [purpose, setPurpose] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [nameConflictError, setNameConflictError] = useState<string | null>(null)
   const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false)
 
-  // Reset form fields from meta when dialog opens
   useEffect(() => {
     if (open) {
       console.log("[import-skill-dialog] opening with file:", filePath)
@@ -62,38 +92,49 @@ export function ImportSkillDialog({
       setArgumentHint(meta.argument_hint ?? "")
       setUserInvocable(meta.user_invocable ?? false)
       setDisableModelInvocation(meta.disable_model_invocation ?? false)
+      setPurpose(null)
       setSubmitting(false)
       setNameConflictError(null)
       setShowOverwriteConfirm(false)
     }
   }, [open, filePath, meta])
 
+  const purposeConflict = showPurpose && purpose
+    ? activeSkills.find((s) => s.purpose === purpose && s.skill_name !== name && s.is_active)
+    : null
+
   const canSubmit =
     name.trim() !== "" &&
     description.trim() !== "" &&
     version.trim() !== "" &&
+    !purposeConflict &&
     !submitting
 
   const doImport = useCallback(
     async (forceOverwrite: boolean) => {
       setSubmitting(true)
       setNameConflictError(null)
-      if (!forceOverwrite) {
-        setShowOverwriteConfirm(false)
+      if (!forceOverwrite) setShowOverwriteConfirm(false)
+
+      const params: ImportConfirmParams = {
+        filePath,
+        name: name.trim(),
+        description: description.trim(),
+        version: version.trim(),
+        model: model || null,
+        argumentHint: argumentHint || null,
+        userInvocable,
+        disableModelInvocation,
+        forceOverwrite,
+        purpose: showPurpose ? purpose : undefined,
       }
 
       try {
-        await importSkillFromFile({
-          filePath,
-          name: name.trim(),
-          description: description.trim(),
-          version: version.trim(),
-          model: model || null,
-          argumentHint: argumentHint || null,
-          userInvocable,
-          disableModelInvocation,
-          forceOverwrite,
-        })
+        if (onConfirm) {
+          await onConfirm(params)
+        } else {
+          await importSkillFromFile(params)
+        }
         onOpenChange(false)
         toast.success(`Imported "${name.trim()}"`)
         onImported()
@@ -114,16 +155,9 @@ export function ImportSkillDialog({
       }
     },
     [
-      filePath,
-      name,
-      description,
-      version,
-      model,
-      argumentHint,
-      userInvocable,
-      disableModelInvocation,
-      onOpenChange,
-      onImported,
+      filePath, name, description, version, model, argumentHint,
+      userInvocable, disableModelInvocation, purpose,
+      showPurpose, onConfirm, onOpenChange, onImported,
     ]
   )
 
@@ -213,6 +247,33 @@ export function ImportSkillDialog({
                 disabled={submitting}
               />
             </div>
+
+            {showPurpose && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="import-purpose">Purpose</Label>
+                <Select
+                  value={purpose ?? ""}
+                  onValueChange={(val) => setPurpose(val || null)}
+                  disabled={submitting}
+                >
+                  <SelectTrigger id="import-purpose">
+                    <SelectValue placeholder="Select a purpose (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PURPOSE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {purposeConflict && (
+                  <p className="text-xs text-destructive">
+                    &quot;{purposeConflict.skill_name}&quot; is already active for this purpose. Deactivate it first or choose a different purpose.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="import-model">Model</Label>

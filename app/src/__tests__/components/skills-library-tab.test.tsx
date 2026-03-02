@@ -151,12 +151,12 @@ describe("SkillsLibraryTab", () => {
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
-  it("renders upload button", async () => {
+  it("renders import button", async () => {
     setupMocks();
     render(<SkillsLibraryTab />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Upload Skill/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Import" })).toBeInTheDocument();
     });
   });
 
@@ -204,7 +204,7 @@ describe("SkillsLibraryTab", () => {
       expect(screen.getByText("No workspace skills")).toBeInTheDocument();
     });
     expect(
-      screen.getByText("Upload a .skill package or browse the marketplace to add skills.")
+      screen.getByText("Import a .skill package or browse the marketplace to add skills.")
     ).toBeInTheDocument();
   });
 
@@ -253,7 +253,7 @@ describe("SkillsLibraryTab", () => {
     expect(screen.queryByRole("button", { name: /Delete bundled-skill/i })).not.toBeInTheDocument();
   });
 
-  it("calls upload_skill when file is selected", async () => {
+  it("calls upload_skill when file is selected and dialog confirmed", async () => {
     const user = userEvent.setup();
 
     const newSkill: WorkspaceSkill = {
@@ -265,7 +265,7 @@ describe("SkillsLibraryTab", () => {
       imported_at: new Date().toISOString(),
       is_bundled: false,
       purpose: null,
-      version: null,
+      version: "1.0.0",
       model: null,
       argument_hint: null,
       user_invocable: null,
@@ -276,6 +276,15 @@ describe("SkillsLibraryTab", () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "list_workspace_skills") return Promise.resolve([]);
+      if (cmd === "parse_skill_file") return Promise.resolve({
+        name: "new-skill",
+        description: "A new skill",
+        version: "1.0.0",
+        model: null,
+        argument_hint: null,
+        user_invocable: null,
+        disable_model_invocation: null,
+      });
       if (cmd === "upload_skill") return Promise.resolve(newSkill);
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
@@ -287,15 +296,25 @@ describe("SkillsLibraryTab", () => {
       expect(screen.getByText("No workspace skills")).toBeInTheDocument();
     });
 
-    const uploadButton = screen.getByRole("button", { name: /Upload Skill/i });
-    await user.click(uploadButton);
+    const importButton = screen.getByRole("button", { name: "Import" });
+    await user.click(importButton);
 
     await waitFor(() => {
       expect(mockOpen).toHaveBeenCalled();
     });
 
+    // Dialog should open — confirm import
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("upload_skill", { filePath: "/path/to/file.skill" });
+      expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("upload_skill", expect.objectContaining({
+        filePath: "/path/to/file.skill",
+        name: "new-skill",
+      }));
     });
   });
 
@@ -311,8 +330,8 @@ describe("SkillsLibraryTab", () => {
       expect(screen.getByText("No workspace skills")).toBeInTheDocument();
     });
 
-    const uploadButton = screen.getByRole("button", { name: /Upload Skill/i });
-    await user.click(uploadButton);
+    const importButton = screen.getByRole("button", { name: "Import" });
+    await user.click(importButton);
 
     // upload_skill should never be called
     await new Promise((r) => setTimeout(r, 50));
