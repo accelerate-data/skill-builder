@@ -133,6 +133,18 @@ export function SkillsLibraryTab() {
 
   const handlePurposeChange = useCallback(
     async (skillId: string, newPurpose: string | null) => {
+      if (newPurpose && newPurpose !== "general-purpose") {
+        const conflict = skills.find(
+          (s) => s.purpose === newPurpose && s.skill_id !== skillId && s.is_active
+        )
+        if (conflict) {
+          toast.error(
+            `"${conflict.skill_name}" is already active for this purpose. Deactivate it first.`,
+            { duration: Infinity }
+          )
+          return
+        }
+      }
       try {
         await setPurpose(skillId, newPurpose)
       } catch (err) {
@@ -140,7 +152,7 @@ export function SkillsLibraryTab() {
         toast.error(`Failed to update purpose: ${err instanceof Error ? err.message : String(err)}`)
       }
     },
-    [setPurpose]
+    [setPurpose, skills]
   )
 
   return (
