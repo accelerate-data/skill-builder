@@ -604,9 +604,12 @@ impl SidecarPool {
 
         #[cfg(target_os = "windows")]
         {
-            use std::os::windows::process::CommandExt;
             cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
+
+        // Prevent nested-session rejection: the SDK refuses to start if CLAUDECODE
+        // is set in the environment (it assumes it's running inside Claude Code).
+        cmd.env_remove("CLAUDECODE");
 
         // On Windows, the Claude Code SDK requires git-bash. Auto-detect it
         // so the user doesn't have to configure CLAUDE_CODE_GIT_BASH_PATH.
@@ -1795,7 +1798,7 @@ fn resolve_sidecar_path(app_handle: &tauri::AppHandle) -> Result<String, String>
             if sidecar.exists() {
                 return sidecar
                     .to_str()
-                    .map(|s| s.to_string())
+                    .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
                     .ok_or_else(|| "Invalid sidecar path".to_string());
             }
         }
@@ -1808,7 +1811,7 @@ fn resolve_sidecar_path(app_handle: &tauri::AppHandle) -> Result<String, String>
                 if sidecar.exists() {
                     return sidecar
                         .to_str()
-                        .map(|s| s.to_string())
+                        .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
                         .ok_or_else(|| "Invalid sidecar path".to_string());
                 }
             }
@@ -1824,7 +1827,7 @@ fn resolve_sidecar_path(app_handle: &tauri::AppHandle) -> Result<String, String>
             if path.exists() {
                 return path
                     .to_str()
-                    .map(|s| s.to_string())
+                    .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
                     .ok_or_else(|| "Invalid sidecar path".to_string());
             }
         }
@@ -1943,7 +1946,6 @@ async fn try_bundled_node(bundled_path: &std::path::Path) -> Option<NodeResoluti
 
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
 
@@ -1993,7 +1995,6 @@ async fn resolve_system_node() -> Result<NodeResolution, String> {
 
         #[cfg(target_os = "windows")]
         {
-            use std::os::windows::process::CommandExt;
             cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
 
