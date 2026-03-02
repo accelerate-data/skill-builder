@@ -72,7 +72,7 @@ assert_exit   "--help exits 0"              0 "$RUN_SH" --help
 assert_contains "--help lists unit level"     "unit"        "$RUN_SH" --help
 assert_contains "--help lists integration"    "integration" "$RUN_SH" --help
 assert_contains "--help lists e2e level"      "e2e"         "$RUN_SH" --help
-assert_contains "--help lists plugin level"   "plugin"      "$RUN_SH" --help
+assert_contains "--help lists agents level"   "agents"      "$RUN_SH" --help
 assert_contains "--help lists all level"      "all"         "$RUN_SH" --help
 assert_contains "--help shows E2E tags"       "@dashboard"  "$RUN_SH" --help
 

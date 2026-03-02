@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
-import { REPO_ROOT, AGENTS_DIR } from "./helpers";
+import { AGENTS_DIR } from "./helpers";
 
 const EXPECTED_AGENTS = [
   "answer-evaluator",
@@ -85,18 +84,5 @@ describe("canonical format compliance", () => {
       "utf8"
     );
     expect(content).not.toMatch(pattern);
-  });
-});
-
-// ── validate.sh ───────────────────────────────────────────────────────────
-
-describe("validate.sh", () => {
-  it("passes structural validation", () => {
-    const result = spawnSync(
-      path.join(REPO_ROOT, "scripts", "validate.sh"),
-      [],
-      { encoding: "utf8", cwd: REPO_ROOT }
-    );
-    expect(result.status).toBe(0);
   });
 });

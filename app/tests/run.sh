@@ -4,7 +4,7 @@ set -euo pipefail
 # Unified test runner for the Skill Builder desktop app.
 #
 # Usage: ./tests/run.sh [level] [--tag TAG]
-# Levels: unit, integration, e2e, agents, eval, all (default: all)
+# Levels: unit, integration, e2e, agents, all (default: all)
 # Tags (E2E): @dashboard, @settings, @workflow, @workflow-agent, @navigation
 
 # ---------------------------------------------------------------------------
@@ -30,7 +30,7 @@ TAG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    unit|integration|e2e|eval|all)
+    unit|integration|e2e|all)
       LEVEL="$1"
       shift
       ;;
@@ -54,7 +54,6 @@ while [[ $# -gt 0 ]]; do
       echo "  integration   Component rendering with mocked APIs"
       echo "  e2e           Full browser tests (Playwright)"
       echo "  agents        Agent structural checks (Vitest)"
-      echo "  eval          Eval harness tests"
       echo "  all           Run all levels (default)"
       echo ""
       echo "Options:"
@@ -160,27 +159,10 @@ run_e2e() {
 # ---------------------------------------------------------------------------
 run_agents() {
   header "Agent Tests (Vitest)"
-  if (cd "$APP_DIR" && npm run test:agents --silent); then
-    pass "Agent tests"
+  if (cd "$APP_DIR" && npm run test:agents:structural --silent); then
+    pass "Agent structural tests"
   else
-    fail "Agent tests"
-  fi
-}
-
-# ---------------------------------------------------------------------------
-# Level: eval
-# ---------------------------------------------------------------------------
-run_eval() {
-  header "Eval Harness Tests"
-  EVAL_SCRIPT="$APP_DIR/../scripts/eval/test-eval-harness.sh"
-  if [[ ! -x "$EVAL_SCRIPT" ]]; then
-    fail "Eval harness tests (scripts/eval/test-eval-harness.sh not found)"
-    return
-  fi
-  if ("$EVAL_SCRIPT"); then
-    pass "Eval harness tests"
-  else
-    fail "Eval harness tests"
+    fail "Agent structural tests"
   fi
 }
 
@@ -200,15 +182,11 @@ case "$LEVEL" in
   agents)
     run_agents
     ;;
-  eval)
-    run_eval
-    ;;
   all)
     run_unit
     run_integration
     run_e2e
     run_agents
-    run_eval
     ;;
 esac
 

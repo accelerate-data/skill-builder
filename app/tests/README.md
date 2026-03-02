@@ -1,6 +1,6 @@
 # Skill Builder Test Guide
 
-Unified test documentation for the Skill Builder desktop app. Tests span four runtimes (Vitest, Playwright, cargo, sidecar Vitest) organized into five logical levels plus a self-test suite.
+Unified test documentation for the Skill Builder desktop app. Tests span four runtimes (Vitest, Playwright, cargo, sidecar Vitest) organized into four logical levels plus a self-test suite.
 
 ## Quick Start
 
@@ -15,7 +15,6 @@ cd app
 ./tests/run.sh integration     # Component rendering with mocked APIs
 ./tests/run.sh e2e             # Full browser tests (Playwright)
 ./tests/run.sh agents          # Agent structural tests (Vitest, free)
-./tests/run.sh eval            # Eval harness tests
 
 # E2E: run by feature area
 ./tests/run.sh e2e --tag @dashboard
@@ -27,8 +26,8 @@ cd app
 ./tests/run.sh e2e --tag @usage
 
 # Validate the harness and manifest themselves
-./tests/harness-test.sh        # Harness arg parsing + error handling (21 tests)
-./tests/manifest-scenarios.sh  # Cross-layer manifest validation (45 scenarios)
+./tests/harness-test.sh        # Harness arg parsing + error handling
+./tests/manifest-scenarios.sh  # Cross-layer manifest validation
 
 # npm script equivalents
 npm run test:unit
@@ -84,14 +83,6 @@ Structural checks for agent prompts in Vitest. Run without an API key — no LLM
 npm run test:agents:structural     # Structural only (free, no API key needed)
 ```
 
-### Level 5: Eval Harness Tests
-
-Structural and live API tests for the skill evaluation harness. Structural tests run without API keys; live tests require `ANTHROPIC_API_KEY`.
-
-| Runtime | Command | Location |
-|---|---|---|
-| Bash + Claude | `./tests/run.sh eval` | `scripts/eval/test-eval-harness.sh` |
-
 ### Self-Tests
 
 Validate the test infrastructure itself — argument parsing, tag routing, and cross-layer manifest mappings.
@@ -99,7 +90,7 @@ Validate the test infrastructure itself — argument parsing, tag routing, and c
 | Script | Tests | What it validates |
 |---|---|---|
 | `./tests/harness-test.sh` | — | run.sh accepts valid args, rejects invalid ones, shows help |
-| `./tests/manifest-scenarios.sh` | 45 | Cross-layer mappings: Rust → E2E tags, shared infra, plugin sources |
+| `./tests/manifest-scenarios.sh` | — | Cross-layer mappings: Rust → E2E tags, shared infra, agent sources |
 
 ## Running by Area
 
@@ -173,4 +164,4 @@ Symlinks provide a single entry point for browsing tests without moving files fr
 
 ## For AI Assistants
 
-For frontend changes, use `npm run test:changed` to auto-detect affected tests. For Rust and cross-layer concerns, consult **`TEST_MANIFEST.md`** in this directory — it maps Rust modules to E2E tags, shared infrastructure files, and plugin sources.
+For frontend changes, use `npm run test:changed` to auto-detect affected tests. For Rust and cross-layer concerns, consult **`TEST_MANIFEST.md`** in this directory — it maps Rust modules to E2E tags, shared infrastructure files, and agent sources.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Scenario-based validation of TEST_MANIFEST.md.
 # Verifies the cross-layer manifest maps Rust → E2E tags, shared infrastructure,
-# plugin sources, and E2E spec files correctly.
+# agent sources, and E2E spec files correctly.
 #
 # Usage: ./tests/manifest-scenarios.sh
 
@@ -102,38 +102,13 @@ assert_row_contains "github_push.rs → E2E tag"      "commands/github_push.rs" 
 assert_row_contains "reconciliation.rs → E2E tag"   "reconciliation.rs"       "@dashboard"
 assert_row_contains "db.rs → cargo filter"          "db.rs"                   "db"
 
-# ===== Plugin: Agent Prompts =====
+# ===== Agents =====
 
 echo ""
-echo -e "${CYAN}${BOLD}━━━ Plugin: Agent Prompts ━━━${RESET}"
-assert_in_manifest  "CLI Plugin section exists"       "CLI Plugin"
-assert_row_contains "agent files → plugin tag"        "agents/*.md"             "@agents"
-assert_row_contains "agent files → tier t1"           "agents/*.md"             "t1"
-assert_row_contains "agent files → tier t4"           "agents/*.md"             "t4"
-
-# ===== Plugin: Coordinator =====
-
-echo ""
-echo -e "${CYAN}${BOLD}━━━ Plugin: Coordinator ━━━${RESET}"
-assert_row_contains "SKILL.md → plugin tag"           "skills/generate-skill/SKILL.md"   "@coordinator"
-assert_row_contains "SKILL.md → tier t1"              "skills/generate-skill/SKILL.md"   "t1"
-assert_row_contains "SKILL.md → tier t2"              "skills/generate-skill/SKILL.md"   "t2"
-assert_row_contains "SKILL.md → tier t3"              "skills/generate-skill/SKILL.md"   "t3"
-
-# ===== Cross-cutting: Agent Instructions =====
-
-echo ""
-echo -e "${CYAN}${BOLD}━━━ Cross-cutting: Agent Instructions ━━━${RESET}"
-assert_row_contains "agent-sources/workspace/CLAUDE.md → plugin tag"     "agent-sources/workspace/CLAUDE.md" "@agents"
-assert_row_contains "agent-sources/workspace/CLAUDE.md → tier t1"        "agent-sources/workspace/CLAUDE.md" "t1"
-assert_row_contains "agent-sources/workspace/CLAUDE.md → tier t4"        "agent-sources/workspace/CLAUDE.md" "t4"
-
-# ===== Cross-cutting: Plugin Manifest =====
-
-echo ""
-echo -e "${CYAN}${BOLD}━━━ Cross-cutting: Plugin Manifest ━━━${RESET}"
-assert_row_contains "plugin.json → plugin tag"        "plugin.json"             "@structure"
-assert_row_contains "plugin.json → tier t1"           "plugin.json"             "t1"
+echo -e "${CYAN}${BOLD}━━━ Agents ━━━${RESET}"
+assert_row_contains "agents/*.md → structural tests"               "agents/*.md"                      "test:agents:structural"
+assert_row_contains "agents/*.md → smoke tests"                    "agents/*.md"                      "test:agents:smoke"
+assert_row_contains "agent-sources CLAUDE.md → structural tests"   "agent-sources/workspace/CLAUDE.md" "test:agents:structural"
 
 # ===== E2E Spec Files =====
 

@@ -643,8 +643,24 @@ describe("SettingsPage", () => {
     await switchToSection(/GitHub/i);
 
     expect(screen.getByText("GitHub Account")).toBeInTheDocument();
-    expect(screen.getByText("Not connected")).toBeInTheDocument();
+    expect(screen.getAllByText("Not connected").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /Sign in with GitHub/i })).toBeInTheDocument();
+  });
+
+  it("shows checking state while auth status is loading", async () => {
+    useAuthStore.setState({ user: null, isLoggedIn: false, isLoading: true, lastCheckedAt: null });
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    await switchToSection(/GitHub/i);
+
+    expect(screen.getByText("Checking")).toBeInTheDocument();
+    expect(screen.getByText("Checking GitHub connection...")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Sign in with GitHub/i })).not.toBeInTheDocument();
   });
 
   it("shows user info when logged in", async () => {
@@ -652,6 +668,7 @@ describe("SettingsPage", () => {
       user: { login: "octocat", avatar_url: "https://github.com/octocat.png", email: "octocat@github.com" },
       isLoggedIn: true,
       isLoading: false,
+      lastCheckedAt: "2026-01-01T00:00:00.000Z",
     });
     setupDefaultMocks();
     render(<SettingsPage />);
@@ -665,6 +682,8 @@ describe("SettingsPage", () => {
     expect(screen.getByText("GitHub Account")).toBeInTheDocument();
     expect(screen.getByText("@octocat")).toBeInTheDocument();
     expect(screen.getByText("octocat@github.com")).toBeInTheDocument();
+    expect(screen.getByText("Connected")).toBeInTheDocument();
+    expect(screen.getByText(/Last checked/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Sign Out/i })).toBeInTheDocument();
     // Should NOT show "Not connected"
     expect(screen.queryByText("Not connected")).not.toBeInTheDocument();
