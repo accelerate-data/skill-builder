@@ -241,6 +241,8 @@ pub fn run() {
             commands::refine::close_refine_session,
             commands::skill_test::prepare_skill_test,
             commands::skill_test::cleanup_skill_test,
+            commands::imported_skills::parse_skill_file,
+            commands::imported_skills::import_skill_from_file,
         ])
         .on_window_event(|window, event| {
             use tauri::Emitter;

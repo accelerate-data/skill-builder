@@ -727,6 +727,9 @@ fn build_prompt(
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let context_dir = Path::new(skills_path).join(skill_name).join("context");
     let skill_output_dir = Path::new(skills_path).join(skill_name);
+    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let context_str = context_dir.to_string_lossy().replace('\\', "/");
+    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
     let mut prompt = format!(
         "The skill name is: {}. \
          The workspace directory is: {}. \
@@ -734,9 +737,9 @@ fn build_prompt(
          The skill output directory (SKILL.md and references/) is: {}. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
         skill_name,
-        workspace_dir.display(),
-        context_dir.display(),
-        skill_output_dir.display(),
+        workspace_str,
+        context_str,
+        skill_output_str,
     );
 
     if let Some(author) = author_login {
@@ -1431,6 +1434,8 @@ pub async fn run_answer_evaluator(
         .join(&skill_name)
         .join("context");
     let workspace_dir = std::path::Path::new(&workspace_path).join(&skill_name);
+    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let context_str = context_dir.to_string_lossy().replace('\\', "/");
 
     // Point agent at workspace and context dirs; user-context.md is already written.
     let prompt = format!(
@@ -1438,8 +1443,8 @@ pub async fn run_answer_evaluator(
          The context directory is: {context}. \
          All directories already exist — do not create any directories. \
          Read {workspace}/user-context.md for purpose, description, and all user context. Use it to evaluate answers in the user's specific domain.",
-        workspace = workspace_dir.display(),
-        context = context_dir.display(),
+        workspace = workspace_str,
+        context = context_str,
     );
 
     log::debug!("run_answer_evaluator: prompt={}", prompt);
@@ -1991,8 +1996,8 @@ mod tests {
             "The workspace directory is: {workspace}. \
              The context directory is: {context}. \
              All directories already exist — do not create any directories.",
-            workspace = workspace_dir.display(),
-            context = context_dir.display(),
+            workspace = workspace_dir.to_string_lossy().replace('\\', "/"),
+            context = context_dir.to_string_lossy().replace('\\', "/"),
         );
 
         // Verify standard path markers that mock agent and agent prompts rely on

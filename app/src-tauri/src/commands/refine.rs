@@ -106,6 +106,7 @@ fn build_followup_prompt(
     command: Option<&str>,
 ) -> String {
     let skill_dir = Path::new(skills_path).join(skill_name);
+    let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
     let effective_command = command.unwrap_or("refine");
 
     let mut prompt = format!("The command is: {}.", effective_command);
@@ -114,7 +115,7 @@ fn build_followup_prompt(
         if !files.is_empty() {
             let abs_files: Vec<String> = files
                 .iter()
-                .map(|f| format!("{}/{}", skill_dir.display(), f))
+                .map(|f| format!("{}/{}", skill_dir_str, f))
                 .collect();
             prompt.push_str(&format!(
                 "\n\nIMPORTANT: Only edit these files: {}. Do not modify any other files.",
@@ -143,6 +144,9 @@ fn build_refine_prompt(
     let skill_dir = Path::new(skills_path).join(skill_name);
     let context_dir = Path::new(skills_path).join(skill_name).join("context");
     let workspace_dir = Path::new(workspace_path).join(skill_name);
+    let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
+    let context_dir_str = context_dir.to_string_lossy().replace('\\', "/");
+    let workspace_dir_str = workspace_dir.to_string_lossy().replace('\\', "/");
 
     let effective_command = command.unwrap_or("refine");
 
@@ -152,9 +156,9 @@ fn build_refine_prompt(
          All directories already exist — never create directories with mkdir or any other method.",
         skill_name,
         effective_command,
-        skill_dir.display(),
-        context_dir.display(),
-        workspace_dir.display(),
+        skill_dir_str,
+        context_dir_str,
+        workspace_dir_str,
     );
 
     prompt.push_str(" Read user-context.md from the workspace directory for purpose, description, and all user context.");
@@ -164,7 +168,7 @@ fn build_refine_prompt(
         if !files.is_empty() {
             let abs_files: Vec<String> = files
                 .iter()
-                .map(|f| format!("{}/{}", skill_dir.display(), f))
+                .map(|f| format!("{}/{}", skill_dir_str, f))
                 .collect();
             prompt.push_str(&format!(
                 "\n\nIMPORTANT: Only edit these files: {}. Do not modify any other files.",
