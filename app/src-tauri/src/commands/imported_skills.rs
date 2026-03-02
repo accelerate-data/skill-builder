@@ -142,22 +142,6 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
     }
 }
 
-/// Derive a skill name from a zip filename by removing the extension
-/// and replacing non-alphanumeric characters with hyphens.
-fn derive_name_from_filename(file_path: &str) -> String {
-    let path = Path::new(file_path);
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("imported-skill");
-
-    // Clean up: replace spaces and underscores with hyphens, lowercase
-    stem.to_lowercase()
-        .replace(['_', ' '], "-")
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == '-')
-        .collect()
-}
 
 /// Find SKILL.md in the zip archive, either at the root or one level deep.
 /// Returns the path within the archive and the content.
@@ -1338,15 +1322,6 @@ description: A skill
         let content = "---\nname: s\ndescription: d\nargument-hint: \"my hint\"\n---\n";
         let fm = parse_frontmatter_full(content);
         assert_eq!(fm.argument_hint.as_deref(), Some("my hint"));
-    }
-
-    // --- Filename derivation tests ---
-
-    #[test]
-    fn test_derive_name_from_filename() {
-        assert_eq!(derive_name_from_filename("/path/to/My Skill.skill"), "my-skill");
-        assert_eq!(derive_name_from_filename("analytics_v2.zip"), "analytics-v2");
-        assert_eq!(derive_name_from_filename("simple.skill"), "simple");
     }
 
     // --- Zip validation tests ---
