@@ -269,7 +269,7 @@ export default function DashboardPage() {
   }, [sortBy])
 
   const handleContinue = (skill: SkillSummary) => {
-    if (skill.skill_source === 'marketplace') {
+    if (skill.skill_source === 'marketplace' || skill.skill_source === 'imported') {
       navigate({ to: "/refine", search: { skill: skill.name } })
       return
     }
