@@ -107,12 +107,13 @@ export const startAgent = (
   cwd: string,
   allowedTools?: string[],
   maxTurns?: number,
+  permissionMode?: string,
   sessionId?: string,
   skillName?: string,
   stepLabel?: string,
   agentName?: string,
   transcriptLogDir?: string,
-) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns, sessionId, skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown", agentName: agentName ?? null, transcriptLogDir: transcriptLogDir ?? null });
+) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns, permissionMode: permissionMode ?? null, sessionId, skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown", agentName: agentName ?? null, transcriptLogDir: transcriptLogDir ?? null });
 
 // --- Workflow ---
 
