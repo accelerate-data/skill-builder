@@ -106,6 +106,7 @@ fn build_followup_prompt(
     command: Option<&str>,
 ) -> String {
     let skill_dir = Path::new(skills_path).join(skill_name);
+    let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
     let effective_command = command.unwrap_or("refine");
 
     let mut prompt = format!("The command is: {}.", effective_command);
@@ -114,7 +115,7 @@ fn build_followup_prompt(
         if !files.is_empty() {
             let abs_files: Vec<String> = files
                 .iter()
-                .map(|f| format!("{}/{}", skill_dir.display(), f))
+                .map(|f| format!("{}/{}", skill_dir_str, f))
                 .collect();
             prompt.push_str(&format!(
                 "\n\nIMPORTANT: Only edit these files: {}. Do not modify any other files.",
@@ -143,6 +144,9 @@ fn build_refine_prompt(
     let skill_dir = Path::new(skills_path).join(skill_name);
     let context_dir = Path::new(skills_path).join(skill_name).join("context");
     let workspace_dir = Path::new(workspace_path).join(skill_name);
+    let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
+    let context_dir_str = context_dir.to_string_lossy().replace('\\', "/");
+    let workspace_dir_str = workspace_dir.to_string_lossy().replace('\\', "/");
 
     let effective_command = command.unwrap_or("refine");
 
@@ -152,9 +156,9 @@ fn build_refine_prompt(
          All directories already exist — never create directories with mkdir or any other method.",
         skill_name,
         effective_command,
-        skill_dir.display(),
-        context_dir.display(),
-        workspace_dir.display(),
+        skill_dir_str,
+        context_dir_str,
+        workspace_dir_str,
     );
 
     prompt.push_str(" Read user-context.md from the workspace directory for purpose, description, and all user context.");
@@ -164,7 +168,7 @@ fn build_refine_prompt(
         if !files.is_empty() {
             let abs_files: Vec<String> = files
                 .iter()
-                .map(|f| format!("{}/{}", skill_dir.display(), f))
+                .map(|f| format!("{}/{}", skill_dir_str, f))
                 .collect();
             prompt.push_str(&format!(
                 "\n\nIMPORTANT: Only edit these files: {}. Do not modify any other files.",
@@ -985,7 +989,7 @@ mod tests {
         build_refine_config(
             prompt.to_string(),
             "my-skill",
-            "/home/user/.vibedata",
+            "/home/user/.vibedata/skill-builder",
             "sk-test-key".to_string(),
             "sonnet".to_string(),
             false,
@@ -1032,12 +1036,12 @@ mod tests {
         let (config, _) = build_refine_config(
             "test".to_string(),
             "data-engineering",
-            "/home/user/.vibedata",
+            "/home/user/.vibedata/skill-builder",
             "sk-key".to_string(),
             "sonnet".to_string(),
             false,
         );
-        assert_eq!(config.cwd, "/home/user/.vibedata");
+        assert_eq!(config.cwd, "/home/user/.vibedata/skill-builder");
     }
 
     #[test]
@@ -1127,12 +1131,12 @@ mod tests {
 
     #[test]
     fn test_refine_prompt_includes_all_three_paths() {
-        let prompt = build_refine_prompt("my-skill", "/home/user/.vibedata", "/home/user/skills",
+        let prompt = build_refine_prompt("my-skill", "/home/user/.vibedata/skill-builder", "/home/user/skills",
             "Add metrics section", None, None,
         );
         assert!(prompt.contains("The skill directory is: /home/user/skills/my-skill"));
         assert!(prompt.contains("The context directory is: /home/user/skills/my-skill/context"));
-        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/my-skill"));
+        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
     }
 
     #[test]

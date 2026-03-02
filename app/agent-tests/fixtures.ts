@@ -21,7 +21,7 @@ const SESSION_JSON = (
 }`;
 
 function writeSessionJson(dir: string, skillName: string, phase: string) {
-  const vibeDir = path.join(dir, ".vibedata", skillName);
+  const vibeDir = path.join(dir, ".vibedata/skill-builder", skillName);
   fs.mkdirSync(vibeDir, { recursive: true });
   fs.writeFileSync(path.join(vibeDir, "session.json"), SESSION_JSON(skillName, phase));
 }
@@ -32,7 +32,7 @@ function makeSkillDirs(dir: string, skillName: string) {
 }
 
 function writeUserContextMd(dir: string, skillName: string) {
-  const vibeDir = path.join(dir, ".vibedata", skillName);
+  const vibeDir = path.join(dir, ".vibedata/skill-builder", skillName);
   fs.mkdirSync(vibeDir, { recursive: true });
   fs.writeFileSync(
     path.join(vibeDir, "user-context.md"),

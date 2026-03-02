@@ -148,6 +148,17 @@ const mockResponses: Record<string, unknown> = {
       is_bundled: false,
     },
   ],
+  // File import
+  parse_skill_file: {
+    name: "imported-skill",
+    description: "A skill imported from a file",
+    version: "1.2.0",
+    model: null,
+    argument_hint: null,
+    user_invocable: false,
+    disable_model_invocation: false,
+  },
+  import_skill_from_file: "imported-skill",
   // Models (available from API key)
   list_models: [],
   // Usage

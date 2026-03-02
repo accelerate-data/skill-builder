@@ -12,7 +12,7 @@ React 19 (WebView) → Tauri IPC → Rust backend → spawns Node.js sidecar (`@
 
 **Key directories:**
 
-- Workspace (`~/.vibedata/` default, configurable): agent prompts, skill context, logs
+- Workspace (`~/.vibedata/skill-builder/` default, configurable): agent prompts, skill context, logs
 - Skill output (`~/skill-builder/` default): SKILL.md, references, git-managed
 - App database: `~/Library/Application Support/com.skillbuilder.app/skill-builder.db` (macOS)
 - Full layout: [`docs/design/agent-specs/storage.md`](docs/design/agent-specs/storage.md)

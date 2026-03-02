@@ -13,7 +13,7 @@ Run the research phase of the Skill Builder workflow.
 
 - `purpose`: the full label (e.g. "Business process knowledge")
 - `context_dir`: path to the context directory (e.g. `./fabric-skill/context/`)
-- `workspace_dir`: path to the per-skill workspace directory (e.g. `.vibedata/fabric-skill/`)
+- `workspace_dir`: path to the per-skill workspace directory (e.g. `.vibedata/skill-builder/fabric-skill/`)
 
 ## Step 0: Read user context
 
