@@ -122,10 +122,20 @@ describe("useImportedSkillsStore", () => {
       // Start with existing skills
       useImportedSkillsStore.setState({ skills: sampleSkills });
 
-      const result = await useImportedSkillsStore.getState().uploadSkill("/path/to/file.skill");
+      const result = await useImportedSkillsStore.getState().uploadSkill({
+        filePath: "/path/to/file.skill",
+        name: "new-skill",
+        description: "A new skill",
+        version: "1.0.0",
+        forceOverwrite: false,
+      });
 
       expect(result).toEqual(newSkill);
-      expect(mockInvoke).toHaveBeenCalledWith("upload_skill", { filePath: "/path/to/file.skill" });
+      expect(mockInvoke).toHaveBeenCalledWith("upload_skill", expect.objectContaining({
+        filePath: "/path/to/file.skill",
+        name: "new-skill",
+        forceOverwrite: false,
+      }));
 
       const state = useImportedSkillsStore.getState();
       expect(state.skills).toHaveLength(3);

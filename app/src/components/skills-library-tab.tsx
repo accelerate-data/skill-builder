@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState } from "react"
 import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "sonner"
-import { Upload, Package, Github, Trash2 } from "lucide-react"
+import { FolderInput, Package, Github, Trash2 } from "lucide-react"
 import {
   Card,
   CardDescription,
@@ -23,6 +23,9 @@ import { useImportedSkillsStore } from "@/stores/imported-skills-store"
 import type { WorkspaceSkill } from "@/stores/imported-skills-store"
 import { useSettingsStore } from "@/stores/settings-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
+import { WorkspaceImportSkillDialog } from "@/components/workspace-import-skill-dialog"
+import { parseSkillFile } from "@/lib/tauri"
+import type { SkillFileMeta } from "@/lib/types"
 import { PURPOSE_OPTIONS } from "@/lib/types"
 
 export function SkillsLibraryTab() {
@@ -30,7 +33,6 @@ export function SkillsLibraryTab() {
     skills,
     isLoading,
     fetchSkills,
-    uploadSkill,
     toggleActive,
     deleteSkill,
     setPurpose,
@@ -40,6 +42,12 @@ export function SkillsLibraryTab() {
   const hasEnabledRegistry = marketplaceRegistries.some(r => r.enabled)
   const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const [showGitHubImport, setShowGitHubImport] = useState(false)
+  const [workspaceImportOpen, setWorkspaceImportOpen] = useState(false)
+  const [workspaceImportFile, setWorkspaceImportFile] = useState("")
+  const [workspaceImportMeta, setWorkspaceImportMeta] = useState<SkillFileMeta>({
+    name: null, description: null, version: null, model: null,
+    argument_hint: null, user_invocable: null, disable_model_invocation: null,
+  })
 
   useEffect(() => {
     fetchSkills()
@@ -52,32 +60,26 @@ export function SkillsLibraryTab() {
     }
   }, [pendingUpgrade])
 
-  const handleUpload = useCallback(async () => {
+  const handleImport = useCallback(async () => {
     const filePath = await open({
       title: "Import Skill Package",
       filters: [{ name: "Skill Package", extensions: ["skill", "zip"] }],
     })
     if (!filePath) return
 
-    const toastId = toast.loading("Importing skill...")
     try {
-      const skill = await uploadSkill(filePath)
-      toast.success(`Imported "${skill.skill_name}"`, { id: toastId })
+      const meta = await parseSkillFile(filePath)
+      setWorkspaceImportFile(filePath)
+      setWorkspaceImportMeta(meta)
+      setWorkspaceImportOpen(true)
     } catch (err) {
-      console.error("[skills-library] upload failed:", err)
-      const message = err instanceof Error ? err.message : String(err)
-      const missingPrefix = "missing_mandatory_fields:"
-      if (message.startsWith(missingPrefix)) {
-        const fields = message.slice(missingPrefix.length).split(",").filter(Boolean)
-        toast.error(
-          `Import failed: SKILL.md is missing required fields: ${fields.join(", ")}.`,
-          { id: toastId, duration: Infinity }
-        )
-      } else {
-        toast.error(`Import failed: ${message}`, { id: toastId, duration: Infinity })
-      }
+      console.error("[skills-library] parse failed:", err)
+      toast.error(
+        `Import failed: not a valid skill package.`,
+        { duration: Infinity }
+      )
     }
-  }, [uploadSkill])
+  }, [])
 
   const handleToggle = useCallback(
     async (skill: WorkspaceSkill) => {
@@ -134,9 +136,9 @@ export function SkillsLibraryTab() {
           <Github className="size-4" />
           Marketplace
         </Button>
-        <Button className="w-36" onClick={handleUpload}>
-          <Upload className="size-4" />
-          Upload Skill
+        <Button className="w-36" onClick={handleImport}>
+          <FolderInput className="size-4" />
+          Import
         </Button>
       </div>
 
@@ -158,7 +160,7 @@ export function SkillsLibraryTab() {
             </div>
             <CardTitle>No workspace skills</CardTitle>
             <CardDescription>
-              Upload a .skill package or browse the marketplace to add skills.
+              Import a .skill package or browse the marketplace to add skills.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -243,6 +245,15 @@ export function SkillsLibraryTab() {
         onImported={fetchSkills}
         mode="settings-skills"
         registries={marketplaceRegistries.filter(r => r.enabled)}
+      />
+
+      <WorkspaceImportSkillDialog
+        open={workspaceImportOpen}
+        onOpenChange={setWorkspaceImportOpen}
+        filePath={workspaceImportFile}
+        meta={workspaceImportMeta}
+        activeSkills={skills}
+        onImported={fetchSkills}
       />
     </div>
   )
