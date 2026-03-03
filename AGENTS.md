@@ -155,7 +155,7 @@ See `.claude/rules/coding-conventions.md` for canonical error-handling policy.
 
 - **PR title format:** `VU-XXX: short description`
 - **PR body link:** `Fixes VU-XXX`
-- **Linear project:** All issues for this project must be created under **Skill Builder**.
+- **Linear project:** All issues created for this repository must be created under **Skill Builder**.
 - **Worktrees:** `../worktrees/<branchName>` relative to repo root. Full rules: `.claude/rules/git-workflow.md`.
 
 ## Skills
