@@ -15,6 +15,8 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
+  Copy,
+  Check,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -343,6 +345,15 @@ export function CollapsibleToolCall({ message }: { message: AgentMessage }) {
 
   const toolInput = getToolInput(message);
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    if (!toolInput) return;
+    navigator.clipboard.writeText(toolInput).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  }
 
   // No expand affordance when there's no tool input to show
   if (!toolInput) {
@@ -381,9 +392,19 @@ export function CollapsibleToolCall({ message }: { message: AgentMessage }) {
         data-testid="collapsible-tool-details"
       >
         <div className="ml-3 mt-1 border-l-2 border-l-[var(--chat-tool-border)] pl-3">
-          <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-all">
-            {toolInput}
-          </pre>
+          <div className="relative rounded-sm bg-muted/40 px-2 py-1.5">
+            <button
+              type="button"
+              onClick={handleCopy}
+              aria-label="Copy JSON"
+              className="absolute right-1.5 top-1.5 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+            </button>
+            <pre className="max-h-96 overflow-y-auto text-xs text-muted-foreground whitespace-pre-wrap break-words pr-5">
+              {toolInput}
+            </pre>
+          </div>
         </div>
       </div>
     </div>

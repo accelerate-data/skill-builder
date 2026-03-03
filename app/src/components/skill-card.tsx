@@ -25,6 +25,13 @@ import type { SkillSummary, Purpose } from "@/lib/types"
 import { PURPOSE_SHORT_LABELS, PURPOSE_COLORS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
+const PURPOSE_BAND_COLOR: Partial<Record<Purpose, string>> = {
+  platform: "var(--purpose-platform)",
+  domain: "var(--purpose-domain)",
+  source: "var(--purpose-source)",
+  "data-engineering": "var(--purpose-data-engineering)",
+}
+
 interface SkillCardProps {
   skill: SkillSummary
   isLocked?: boolean
@@ -131,6 +138,8 @@ export default function SkillCard({
   // Only skill-builder skills have the right-click context menu
   const showContextMenu = skill.skill_source === 'skill-builder'
 
+  const bandColor = skill.purpose ? PURPOSE_BAND_COLOR[skill.purpose as Purpose] : undefined
+
   const cardContent = (
     <Card
       className={cn(
@@ -139,6 +148,9 @@ export default function SkillCard({
       )}
       onClick={() => !isLocked && onContinue(skill)}
     >
+      {bandColor && (
+        <div className="h-[3px] w-full shrink-0" style={{ backgroundColor: bandColor }} />
+      )}
       <CardHeader className="relative group/header">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="min-w-0 truncate text-base">

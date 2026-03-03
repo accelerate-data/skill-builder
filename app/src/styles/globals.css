@@ -95,6 +95,12 @@
   --color-pearl: oklch(0.956 0 0);
   --heading-foreground: oklch(0.215 0.105 265);
 
+  /* Purpose accent colors (skill card header bands) */
+  --purpose-platform: oklch(0.490 0.090 195);
+  --purpose-domain: oklch(0.480 0.100 155);
+  --purpose-source: oklch(0.530 0.110 40);
+  --purpose-data-engineering: oklch(0.450 0.120 290);
+
   /* Chat message type colors */
   --chat-tool-bg: oklch(0.960 0.015 195);
   --chat-tool-border: oklch(0.720 0.055 195);
@@ -144,6 +150,12 @@
   --color-arctic: oklch(0.700 0.070 208);
   --color-pearl: oklch(0.200 0 0);
   --heading-foreground: oklch(0.870 0.065 208);
+
+  /* Purpose accent colors (dark) */
+  --purpose-platform: oklch(0.680 0.110 195);
+  --purpose-domain: oklch(0.660 0.120 155);
+  --purpose-source: oklch(0.680 0.110 40);
+  --purpose-data-engineering: oklch(0.640 0.130 290);
 
   /* Chat message type colors */
   --chat-tool-bg: oklch(0.250 0.020 195 / 0.35);
@@ -508,4 +520,12 @@ html, body, #root {
 [data-sonner-toast][data-styled='true'] [data-button] {
   background: var(--primary) !important;
   color: var(--primary-foreground) !important;
+}
+
+/* Dashboard background texture — subtle dot grid */
+.dashboard-texture {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Ccircle cx='1' cy='1' r='1' fill='%23000' fill-opacity='0.035'/%3E%3C/svg%3E");
+}
+.dark .dashboard-texture {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Ccircle cx='1' cy='1' r='1' fill='%23fff' fill-opacity='0.025'/%3E%3C/svg%3E");
 }

@@ -483,7 +483,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className={viewMode === "list" ? "flex flex-col h-full gap-6 p-6" : "flex flex-col gap-6 p-6"}>
+    <div className={viewMode === "list" ? "flex flex-col h-full gap-6 p-6 dashboard-texture" : "flex flex-col gap-6 p-6 dashboard-texture"}>
       {workspacePath && skillsPath && (
         <div className="flex items-center justify-end gap-2">
           <Button

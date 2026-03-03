@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { CheckCircle2, Clock, DollarSign, GitBranch, Shield, AlertTriangle, ChevronRight } from "lucide-react";
+import { CheckCircle2, Clock, DollarSign, GitBranch, Shield, AlertTriangle, ChevronRight, ChevronDown } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -135,6 +135,7 @@ export function DecisionsSummaryCard({
   const rawFrontmatter = extractRawFrontmatter(decisionsContent);
 
   const [decisions, setDecisions] = useState<Decision[]>(() => parseDecisions(decisionsContent));
+  const [summaryExpanded, setSummaryExpanded] = useState(true);
   // Track whether the user has made any edit this session — used to show revised banner immediately
   const [wasEdited, setWasEdited] = useState(false);
 
@@ -163,8 +164,17 @@ export function DecisionsSummaryCard({
     <div className="flex flex-col gap-4">
       {/* Summary Card */}
       <div className="rounded-lg border shadow-sm overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-3 border-b bg-muted/30">
+        {/* Header — collapsible */}
+        <button
+          type="button"
+          className="flex w-full items-center gap-3 px-5 py-3 border-b bg-muted/30 text-left cursor-pointer"
+          onClick={() => setSummaryExpanded((prev) => !prev)}
+        >
+          {summaryExpanded ? (
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-150" />
+          ) : (
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform duration-150" />
+          )}
           <CheckCircle2 className="size-5 shrink-0" style={{ color: "var(--color-seafoam)" }} />
           <span className="text-sm font-semibold tracking-tight text-foreground">
             Decisions Complete
@@ -184,7 +194,7 @@ export function DecisionsSummaryCard({
               </span>
             )}
           </div>
-        </div>
+        </button>
 
         {/* Contradictory inputs banner */}
         {effectiveContradictory === true && (
@@ -214,8 +224,8 @@ export function DecisionsSummaryCard({
           </div>
         )}
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 divide-x">
+        {/* Stats Grid — collapsible */}
+        {summaryExpanded && <div className="grid grid-cols-2 divide-x">
           {/* Decisions Column */}
           <div className="p-4">
             <div className="flex items-center gap-1.5 mb-3">
@@ -279,7 +289,7 @@ export function DecisionsSummaryCard({
             )}
           </div>
 
-        </div>
+        </div>}
       </div>
 
       {/* Decision Cards */}
@@ -381,10 +391,10 @@ function DecisionCard({
           {decision.title}
         </span>
         <span
-          className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
+          className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium"
           style={{ background: colors.badgeBg, color: colors.badge, border: `1px solid ${colors.badge}40` }}
         >
-          {decision.status}
+          {decision.status === "conflict-resolved" ? "conflict" : decision.status}
         </span>
         <ChevronRight
           className="mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform duration-150"

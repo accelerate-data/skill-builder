@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle2, Clock, DollarSign, Layers, MessageCircleQuestion, StickyNote, AlertTriangle, ChevronRight } from "lucide-react";
+import { CheckCircle2, Clock, DollarSign, Layers, MessageCircleQuestion, StickyNote, AlertTriangle, ChevronRight, Info } from "lucide-react";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
 import type { SaveStatus } from "@/components/clarifications-editor";
 import { type ClarificationsFile, getTotalCounts } from "@/lib/clarifications-types";
@@ -174,7 +174,7 @@ export function ResearchSummaryCard({
               </span>
             </div>
             {/* Progress bar */}
-            <div className="h-1 w-full rounded-full bg-border mb-3">
+            <div className="h-1.5 w-full rounded-full bg-border mb-3">
               <div
                 className="h-full rounded-full transition-all duration-300"
                 style={{ width: `${dimPct}%`, background: "var(--color-pacific)" }}
@@ -254,7 +254,7 @@ export function ResearchSummaryCard({
           {/* Notes Column */}
           <div className="p-4">
             <div className="flex items-center gap-1.5 mb-3">
-              <StickyNote className="size-3.5" style={{ color: "var(--color-ocean)" }} />
+              <StickyNote className="size-3.5 text-muted-foreground" />
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Notes
               </span>
@@ -279,7 +279,7 @@ export function ResearchSummaryCard({
                 )}
                 {noteCount - warnCount > 0 && (
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <span className="size-3 flex items-center justify-center text-[10px]">i</span>
+                    <Info className="size-3" />
                     <span>{noteCount - warnCount} informational</span>
                   </div>
                 )}
