@@ -6,10 +6,17 @@ use std::io::Read;
 use std::path::Path;
 
 /// Validate that a skill name is safe for use in file paths.
-/// Rejects names containing path traversal characters or empty strings.
+/// Rejects empty names, names starting with a dot (including "."), and
+/// names containing path traversal characters.
 pub(crate) fn validate_skill_name(name: &str) -> Result<(), String> {
     if name.is_empty() {
         return Err("Skill name cannot be empty".to_string());
+    }
+    if name.starts_with('.') {
+        return Err(format!(
+            "Invalid skill name '{}': must not start with '.'",
+            name
+        ));
     }
     if name.contains('/') || name.contains('\\') || name.contains("..") {
         return Err(format!(
