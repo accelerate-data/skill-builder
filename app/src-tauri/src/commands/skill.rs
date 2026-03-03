@@ -211,6 +211,7 @@ pub fn create_skill(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!("[create_skill] name={} purpose={:?} tags={:?} intake={} description={}", name, purpose, tags, intake_json.is_some(), description.is_some());
+    super::imported_skills::validate_skill_name(&name)?;
     let conn = db.0.lock().map_err(|e| {
         log::error!("[create_skill] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -266,6 +267,7 @@ fn create_skill_inner(
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
 ) -> Result<(), String> {
+    super::imported_skills::validate_skill_name(name)?;
     // Check for collision in workspace_path (working directory)
     let base = Path::new(workspace_path).join(name);
     if base.exists() {
@@ -1152,6 +1154,136 @@ mod tests {
         let result = create_skill_inner(workspace, "dup-skill", None, None, None, None, None, None, None, None, None, None, None, None, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("already exists"));
+    }
+
+    #[test]
+    fn test_create_skill_rejects_parent_dir_traversal() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap();
+
+        let result = create_skill_inner(
+            workspace,
+            "../bad-skill",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid skill name"));
+    }
+
+    #[test]
+    fn test_create_skill_rejects_path_separator() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap();
+
+        let result = create_skill_inner(
+            workspace,
+            "bad/name",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid skill name"));
+    }
+
+    #[test]
+    fn test_create_skill_rejects_empty_name() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap();
+
+        let result = create_skill_inner(
+            workspace,
+            "",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("cannot be empty"));
+    }
+
+    #[test]
+    fn test_create_skill_rejects_single_dot() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap();
+
+        let result = create_skill_inner(
+            workspace,
+            ".",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid skill name"));
+    }
+
+    #[test]
+    fn test_create_skill_rejects_dot_prefix() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap();
+
+        let result = create_skill_inner(
+            workspace,
+            ".hidden-skill",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid skill name"));
     }
 
     // ===== delete_skill_inner tests =====
