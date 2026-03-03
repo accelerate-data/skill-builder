@@ -107,6 +107,11 @@ fn get_allowed_roots(db: &tauri::State<'_, Db>) -> Result<Vec<PathBuf>, String> 
             if !canonical_roots.iter().any(|r| r == &canonical) {
                 canonical_roots.push(canonical);
             }
+        } else {
+            log::warn!(
+                "[get_allowed_roots] configured root does not exist and will be excluded: {}",
+                root.display()
+            );
         }
     }
 
@@ -310,8 +315,8 @@ pub fn write_base64_to_temp_file(file_name: String, base64_content: String) -> R
     log::info!("[write_base64_to_temp_file] file_name={}", file_name);
 
     // Reject path traversal attempts: no separators, no "..", no leading "."
-    if file_name.contains('/') || file_name.contains('\\') || file_name.contains("..") {
-        log::error!("[write_base64_to_temp_file] Rejected path traversal attempt: {}", file_name);
+    if file_name.contains('/') || file_name.contains('\\') || file_name.contains("..") || file_name.starts_with('.') {
+        log::error!("[write_base64_to_temp_file] Rejected invalid file name: {}", file_name);
         return Err("Invalid file name: path traversal not allowed".to_string());
     }
 
@@ -664,5 +669,12 @@ mod tests {
     fn test_write_base64_rejects_absolute_path() {
         let result = write_base64_to_temp_file("/etc/passwd".into(), "aGVsbG8=".into());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_write_base64_rejects_leading_dot() {
+        let result = write_base64_to_temp_file(".hidden".into(), "aGVsbG8=".into());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("path traversal"));
     }
 }

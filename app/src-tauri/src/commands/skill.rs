@@ -1234,6 +1234,58 @@ mod tests {
         assert!(result.unwrap_err().contains("cannot be empty"));
     }
 
+    #[test]
+    fn test_create_skill_rejects_single_dot() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap();
+
+        let result = create_skill_inner(
+            workspace,
+            ".",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid skill name"));
+    }
+
+    #[test]
+    fn test_create_skill_rejects_dot_prefix() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap();
+
+        let result = create_skill_inner(
+            workspace,
+            ".hidden-skill",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid skill name"));
+    }
+
     // ===== delete_skill_inner tests =====
 
     #[test]
