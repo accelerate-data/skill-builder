@@ -42,7 +42,7 @@ Fallback behavior:
 3. Clarifications: ask at most 2 targeted questions. If confidence is high (>=80%), default assumptions and proceed.
 4. Idempotency: re-runs must not duplicate equivalent issues/comments. Reuse discovered open issue when appropriate.
 5. Acceptance criteria in Linear must use Markdown checkboxes (`- [ ] ...`).
-6. Resolve the target project from repo policy in `AGENTS.md` (Issue Management section). Do not hardcode a project name in this skill.
+6. Resolve the target project from user input or existing issue context. Do not hardcode a project name in this skill.
 7. Milestone selection must be from the resolved project only. If no clear milestone match exists, ask the user before creating the issue.
 8. Do not decompose by implementation layer (`frontend`/`backend`/`API`). Issues must represent integrated, user-visible outcomes that can be validated end-to-end.
 9. Decomposition is allowed only by feature slices. Frontend-only splits are allowed only when each split is an independently testable feature outcome.
@@ -101,16 +101,16 @@ See `references/linear-operations.md` for estimate table.
 
 Before drafting or creating an issue:
 
-1. Read `AGENTS.md` and resolve the project policy from **Issue Management**.
-2. Use `list_projects`/`get_project` to resolve the Linear project ID/name from that policy.
+1. Resolve the target project from explicit user input, parent issue context, or team defaults discovered through Linear.
+2. Use `list_projects`/`get_project` to resolve the project ID/name.
 3. Use `list_milestones` for that project and map feature intent to milestone candidates.
 4. If exactly one milestone is a clear match, include it in the draft.
-5. If none or multiple plausible matches, ask the user which milestone to use before `save_issue`.
+5. If project or milestone is ambiguous, ask the user before `save_issue`.
 6. Never pick a milestone from a different project.
 
 ## Create Path
 
-1. Resolve project from `AGENTS.md` policy and fetch labels.
+1. Resolve project and fetch labels.
 2. Resolve milestone candidates from that project.
 3. Draft title, estimate, project, milestone (if resolved), labels, description (schema above).
 4. Confirm draft with user.
@@ -119,7 +119,7 @@ Before drafting or creating an issue:
 
 ## Decompose Path
 
-1. Fetch parent issue, resolve project from `AGENTS.md` policy, and fetch labels.
+1. Fetch parent issue, resolve project, and fetch labels.
 2. Split into 2-4 child issues, each <= `L`.
 3. Traceability rule: each child maps to exactly one AC group from parent.
 4. Resolve milestone candidates from the resolved project; if unclear, ask user before create.

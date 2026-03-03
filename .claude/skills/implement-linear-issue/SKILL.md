@@ -3,7 +3,7 @@ name: implement-linear-issue
 description: |
   Implements a Linear issue end-to-end, from planning through PR creation.
   Triggers on "implement <issue-id>", "work on <issue-id>", "working on <issue-id>", "build <issue-id>", "fix <issue-id>", or "/implement-issue".
-  Also triggers when the user simply mentions a Linear issue identifier (e.g. "VD-123").
+  Also triggers when the user simply mentions a Linear issue identifier (e.g. "ABC-123").
 ---
 
 # Implement Linear Issue
