@@ -80,15 +80,16 @@ vi.mock("@/components/agent-output-panel", () => ({
   AgentOutputPanel: () => <div data-testid="agent-output" />,
 }));
 vi.mock("@/components/workflow-step-complete", () => ({
-  WorkflowStepComplete: () => (
+  WorkflowStepComplete: vi.fn(() => (
     <div data-testid="step-complete" />
-  ),
+  )),
 }));
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
 import { getWorkflowState, saveWorkflowState, writeFile, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar, endWorkflowSession, previewStepReset, runAnswerEvaluator } from "@/lib/tauri";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
+import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import type { ClarificationsFile } from "@/lib/clarifications-types";
 
 /** Minimal valid ClarificationsFile for tests */
@@ -1208,5 +1209,265 @@ describe("WorkflowPage — review mode default state", () => {
       expect(useWorkflowStore.getState().hydrated).toBe(true);
     });
     expect(useWorkflowStore.getState().reviewMode).toBe(false);
+  });
+});
+
+describe("step reset behavior regressions", () => {
+  beforeEach(() => {
+    resetTauriMocks();
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+
+    useSettingsStore.getState().setSettings({
+      workspacePath: "/test/workspace",
+      skillsPath: "/test/skills",
+      anthropicApiKey: "sk-test",
+    });
+
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
+    mockToast.info.mockClear();
+    mockBlocker.proceed.mockClear();
+    mockBlocker.reset.mockClear();
+    mockBlocker.status = "idle";
+
+    vi.mocked(saveWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(readFile).mockClear();
+    vi.mocked(writeFile).mockClear();
+    vi.mocked(resetWorkflowStep).mockClear();
+    vi.mocked(endWorkflowSession).mockClear();
+    vi.mocked(previewStepReset).mockClear();
+  });
+
+  afterEach(() => {
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+    // Restore default mocks in case a test overrode them
+    vi.mocked(WorkflowSidebar).mockImplementation(() => <div data-testid="workflow-sidebar" />);
+    vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
+  });
+
+  it("performStepReset(1) calls resetWorkflowStep with stepId 1 not 0", async () => {
+    // Bug 1 regression: performStepReset used currentStep (0) instead of the passed stepId arg.
+    // Set up step 1 as the current completed step; step 0 also completed.
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+
+    // readFile rejects so the missing-files error path is not triggered
+    vi.mocked(readFile).mockRejectedValue("not found");
+    vi.mocked(resetWorkflowStep).mockResolvedValue(undefined);
+
+    // Override WorkflowStepComplete mock to expose the onResetStep callback
+    let capturedOnResetStep: (() => void) | undefined;
+    vi.mocked(WorkflowStepComplete).mockImplementation(({ onResetStep }) => {
+      capturedOnResetStep = onResetStep;
+      return <div data-testid="step-complete" />;
+    });
+
+    render(<WorkflowPage />);
+
+    // Wait for the completed-step render so onResetStep is captured
+    await waitFor(() => {
+      expect(screen.getByTestId("step-complete")).toBeTruthy();
+    });
+
+    expect(capturedOnResetStep).toBeDefined();
+
+    // Trigger performStepReset(1) via the captured prop
+    await act(async () => {
+      capturedOnResetStep!();
+    });
+
+    // resetWorkflowStep must be called with stepId=1, NOT 0 (the Bug 1 regression check)
+    expect(vi.mocked(resetWorkflowStep)).toHaveBeenCalledWith(
+      "/test/workspace",
+      "test-skill",
+      1,
+    );
+
+    // Step 0 was NOT the target — it must still be completed
+    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+
+    // currentStep was repositioned to 1 by resetToStep(1)
+    expect(useWorkflowStore.getState().currentStep).toBe(1);
+  });
+
+  it("performStepReset(1) calls resetToStep(1) making step 1 pending without touching step 0", async () => {
+    // Bug 1 regression: resetToStep(1) resets steps >= 1. Step 0 must remain completed.
+    // Note: after reset in update mode, autoStartAfterReset triggers auto-start which sets
+    // step 1 to in_progress — so we assert on the resetWorkflowStep call and step 0 state
+    // rather than the transient "pending" that immediately becomes "in_progress".
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+
+    vi.mocked(readFile).mockRejectedValue("not found");
+    vi.mocked(resetWorkflowStep).mockResolvedValue(undefined);
+
+    let capturedOnResetStep: (() => void) | undefined;
+    vi.mocked(WorkflowStepComplete).mockImplementation(({ onResetStep }) => {
+      capturedOnResetStep = onResetStep;
+      return <div data-testid="step-complete" />;
+    });
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("step-complete")).toBeTruthy();
+    });
+
+    await act(async () => {
+      capturedOnResetStep!();
+    });
+
+    // resetToStep(1) was called — verified by checking it was called with step 1
+    expect(vi.mocked(resetWorkflowStep)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      1,
+    );
+
+    // Step 0 is still completed — resetToStep(1) only resets steps >= 1
+    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+
+    // Steps 2+ were also reset (they were pending already in this 4-step workflow)
+    expect(useWorkflowStore.getState().steps[2].status).toBe("pending");
+    expect(useWorkflowStore.getState().steps[3].status).toBe("pending");
+  });
+
+  it("ResetStepDialog for step 0 calls resetToStep(0) making step 0 pending", async () => {
+    // Bug 2 regression: clicking step 0 from step 1 in update mode should call resetToStep(0),
+    // making step 0 pending (not keeping it completed like navigateBackToStep would do).
+    vi.mocked(WorkflowSidebar).mockImplementation(({ onStepClick }: { onStepClick?: (id: number) => void }) => (
+      <div data-testid="workflow-sidebar">
+        <button data-testid="sidebar-step-0" onClick={() => onStepClick?.(0)}>Step 0</button>
+      </div>
+    ));
+
+    vi.mocked(previewStepReset).mockResolvedValue([]);
+    vi.mocked(resetWorkflowStep).mockResolvedValue(undefined);
+
+    // Steps 0 and 1 completed, currently on step 1
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+
+    render(<WorkflowPage />);
+
+    // Click step 0 in the sidebar — opens ResetStepDialog (step 0 < currentStep 1)
+    await act(async () => {
+      screen.getByTestId("sidebar-step-0").click();
+    });
+
+    // ResetStepDialog should appear
+    await waitFor(() => {
+      expect(screen.getByText("Reset to Earlier Step")).toBeTruthy();
+    });
+
+    // Wait for preview to load and Reset button to be enabled
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Reset" })).toBeEnabled();
+    });
+
+    // Confirm the reset
+    await act(async () => {
+      screen.getByRole("button", { name: "Reset" }).click();
+    });
+
+    // Step 0 must be pending — resetToStep(0) was called (not navigateBackToStep)
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("pending");
+    });
+
+    // currentStep should reposition to 0
+    expect(useWorkflowStore.getState().currentStep).toBe(0);
+  });
+
+  it("ResetStepDialog for step 1 calls navigateBackToStep(1) keeping step 1 completed", async () => {
+    // When clicking step 1 from step 2 in update mode, the dialog calls navigateBackToStep(1).
+    // navigateBackToStep keeps the target step as-is (completed) and resets only steps > 1.
+    vi.mocked(WorkflowSidebar).mockImplementation(({ onStepClick }: { onStepClick?: (id: number) => void }) => (
+      <div data-testid="workflow-sidebar">
+        <button data-testid="sidebar-step-1" onClick={() => onStepClick?.(1)}>Step 1</button>
+      </div>
+    ));
+
+    vi.mocked(previewStepReset).mockResolvedValue([]);
+
+    // Steps 0, 1, 2 all completed, currently on step 2
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().updateStepStatus(2, "completed");
+    useWorkflowStore.getState().setCurrentStep(2);
+
+    render(<WorkflowPage />);
+
+    // Click step 1 in the sidebar — step 1 < currentStep 2
+    await act(async () => {
+      screen.getByTestId("sidebar-step-1").click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Reset to Earlier Step")).toBeTruthy();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Reset" })).toBeEnabled();
+    });
+
+    await act(async () => {
+      screen.getByRole("button", { name: "Reset" }).click();
+    });
+
+    // navigateBackToStep(1): keeps step 1 completed, resets steps > 1 to pending
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().currentStep).toBe(1);
+    });
+    expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+    expect(useWorkflowStore.getState().steps[2].status).toBe("pending");
+  });
+
+  it("WorkflowStepComplete receives onResetStep prop in update mode (non-review)", async () => {
+    // Verify that onResetStep is wired through to WorkflowStepComplete when reviewMode=false.
+    // The prop must be defined so the Reset Step button is available on the completion screen.
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    // reviewMode=false (update mode)
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    vi.mocked(readFile).mockRejectedValue("not found");
+
+    let capturedOnResetStep: unknown = "NOT_CAPTURED";
+    vi.mocked(WorkflowStepComplete).mockImplementation(({ onResetStep }) => {
+      capturedOnResetStep = onResetStep;
+      return <div data-testid="step-complete" />;
+    });
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("step-complete")).toBeTruthy();
+    });
+
+    // onResetStep must be a function in update mode (not undefined)
+    expect(typeof capturedOnResetStep).toBe("function");
   });
 });

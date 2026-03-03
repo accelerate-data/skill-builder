@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { AgentRunRecord } from "@/lib/types";
 
 // Mock tauri before importing the component
@@ -255,5 +256,68 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
 
     // Continue button should be rendered (since onClarificationsContinue is provided)
     expect(screen.getByTestId("clarifications-continue")).toBeInTheDocument();
+  });
+});
+
+describe("missing-files error state", () => {
+  const researchProps = {
+    stepName: "Research",
+    stepId: 0,
+    outputFiles: ["context/research-plan.md", "context/clarifications.json"],
+    skillName: "my-skill",
+    skillsPath: "/skills",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetStepAgentRuns.mockResolvedValue([]);
+    mockReadFile.mockResolvedValue("__NOT_FOUND__");
+  });
+
+  it("shows Reset Step button when research files are missing and onResetStep is provided", async () => {
+    const onResetStep = vi.fn();
+
+    render(<WorkflowStepComplete {...researchProps} onResetStep={onResetStep} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Reset Step")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Research step completed but output files are missing")).toBeInTheDocument();
+  });
+
+  it("calls onResetStep when Reset Step button is clicked", async () => {
+    const onResetStep = vi.fn();
+    const user = userEvent.setup();
+
+    render(<WorkflowStepComplete {...researchProps} onResetStep={onResetStep} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Reset Step")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Reset Step"));
+    expect(onResetStep).toHaveBeenCalledOnce();
+  });
+
+  it("hides Reset Step button when onResetStep is not provided", async () => {
+    render(<WorkflowStepComplete {...researchProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Research step completed but output files are missing")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Reset Step")).not.toBeInTheDocument();
+  });
+
+  it("does not render StepActionBar (Next Step) in missing-files error state", async () => {
+    const onNextStep = vi.fn();
+
+    render(<WorkflowStepComplete {...researchProps} onNextStep={onNextStep} isLastStep={false} reviewMode={false} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Research step completed but output files are missing")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Next Step")).not.toBeInTheDocument();
   });
 });

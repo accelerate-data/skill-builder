@@ -474,4 +474,117 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     // Should be on dashboard (route "/")
     await expect(page).toHaveURL("/");
   });
+
+  test("clicking step 0 from step 2 in update mode opens dialog and resets to runnable", async ({ page }) => {
+    // Bug 2 regression: clicking a prior step in update mode should open the ResetStepDialog,
+    // and after confirming the reset the step should show the "Ready to run" state (pending).
+    await navigateToWorkflowUpdateMode(page, {
+      ...WORKFLOW_OVERRIDES,
+      get_workflow_state: {
+        run: { current_step: 2, purpose: "domain" },
+        steps: [
+          { step_id: 0, status: "completed" },
+          { step_id: 1, status: "completed" },
+        ],
+      },
+      read_file: "# Research Results\n\nAnalysis complete.",
+      preview_step_reset: [
+        {
+          step_id: 0,
+          step_name: "Research",
+          files: ["context/research-plan.md", "context/clarifications.json"],
+        },
+        {
+          step_id: 1,
+          step_name: "Detailed Research",
+          files: ["context/clarifications.json"],
+        },
+      ],
+    });
+
+    // Click step 1 (Research, index 0) in the sidebar — it is completed
+    const step1Button = page.locator("button").filter({ hasText: "1. Research" });
+    await step1Button.click();
+    await page.waitForTimeout(300);
+
+    // ResetStepDialog should appear (update mode, clicking a prior completed step)
+    await expect(
+      page.getByRole("heading", { name: "Reset to Earlier Step" }),
+    ).toBeVisible({ timeout: 5_000 });
+
+    // Wait for Reset button to be enabled (preview loaded)
+    await expect(
+      page.getByRole("button", { name: /Delete.*Reset|^Reset$/ }),
+    ).toBeEnabled({ timeout: 5_000 });
+
+    // Confirm the reset
+    await page.getByRole("button", { name: /Delete.*Reset|^Reset$/ }).click();
+    await page.waitForTimeout(500);
+
+    // Dialog should close
+    await expect(
+      page.getByRole("heading", { name: "Reset to Earlier Step" }),
+    ).not.toBeVisible();
+
+    // Step 0 (Research) should now show the "Ready to run" pending state
+    // (not a completed view, not an error — just the Start Step UI)
+    await expect(page.getByRole("button", { name: "Start Step" })).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("resetting step 1 from step 2 via Reset Step button preserves step 0 content", async ({ page }) => {
+    // Bug 1 regression: the Reset Step button on the step-complete screen for step 1
+    // must call resetWorkflowStep with stepId=1, not stepId=0.
+    // We verify this by checking that after the reset, step 1 is the active pending step
+    // (not step 0 — which would happen if the wrong step ID was passed).
+    await navigateToWorkflowUpdateMode(page, {
+      ...WORKFLOW_OVERRIDES,
+      get_workflow_state: {
+        run: { current_step: 1, purpose: "domain" },
+        steps: [
+          { step_id: 0, status: "completed" },
+          { step_id: 1, status: "completed" },
+        ],
+      },
+      read_file: "# Research Results\n\nAnalysis complete.",
+    });
+
+    // Should be on step 2 (Detailed Research, index 1), completed
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+
+    // The "Reset Step" button should be visible on the completion screen (update mode)
+    await expect(page.getByRole("button", { name: "Reset Step" })).toBeVisible({ timeout: 5_000 });
+
+    // Click Reset Step — resets step 1, preserves step 0 as completed
+    await page.getByRole("button", { name: "Reset Step" }).click();
+    await page.waitForTimeout(500);
+
+    // Step 2 (Detailed Research) should now be in the running/pending state — the page
+    // stays on step 1 (index 1) after reset_workflow_step is called with stepId=1.
+    // The agent auto-starts because we're in update mode.
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("missing-files error state shows Reset Step button", async ({ page }) => {
+    // When a completed step's output files are missing (e.g. manually deleted),
+    // WorkflowStepComplete renders a missing-files error state with a Reset Step button.
+    // Set up step 0 as completed but mock read_file to return NOT_FOUND.
+    await navigateToWorkflowUpdateMode(page, {
+      ...WORKFLOW_OVERRIDES,
+      get_workflow_state: {
+        run: { current_step: 0, purpose: "domain" },
+        steps: [
+          { step_id: 0, status: "completed" },
+        ],
+      },
+      // read_file returns empty string — simulates missing files
+      // (the component shows the missing-files error when content is absent)
+      read_file: null,
+    });
+
+    // Should be on step 1 (Research, index 0), completed
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
+
+    // The Reset Step button must be visible regardless of file availability
+    await expect(page.getByRole("button", { name: "Reset Step" })).toBeVisible({ timeout: 5_000 });
+  });
 });

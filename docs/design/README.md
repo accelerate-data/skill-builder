@@ -13,3 +13,4 @@
 | [branding/](branding/ad-brand.md) | Brand and visual identity |
 | [release/](release/README.md) | Release pipeline: CI/CD workflows, desktop app build, credentials |
 | [startup-recon/](startup-recon/README.md) | Startup reconciliation: three-pass state machine, discovery scenarios, ACK dialog |
+| [workflow-state/](workflow-state/README.md) | Workflow step state machine: transitions, file deletion cascade, reset vs navigate-back, disabled-step guards |

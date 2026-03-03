@@ -793,21 +793,18 @@ export default function WorkflowPage() {
 
   /** Full reset for the current step: end session, clear disk artifacts, revert store, auto-start. */
   const performStepReset = async (stepId: number) => {
-    // Step 1 (Detailed Research) mutates step 0's clarifications.json,
-    // so resetting step 1 must also reset step 0.
-    const effectiveStep = stepId === 1 ? 0 : stepId;
     endActiveSession();
     if (workspacePath) {
       try {
-        await resetWorkflowStep(workspacePath, skillName, effectiveStep);
+        await resetWorkflowStep(workspacePath, skillName, stepId);
       } catch {
         // best-effort -- proceed even if disk cleanup fails
       }
     }
     clearRuns();
-    resetToStep(effectiveStep);
-    autoStartAfterReset(effectiveStep);
-    toast.success(stepId === 1 ? "Reset to Research step" : `Reset to step ${effectiveStep + 1}`);
+    resetToStep(stepId);
+    autoStartAfterReset(stepId);
+    toast.success(`Reset to step ${stepId + 1}`);
   };
 
   const handleClarificationsChange = useCallback((updated: ClarificationsFile) => {
@@ -886,6 +883,7 @@ export default function WorkflowPage() {
         onClarificationsChange={handleClarificationsChange}
         onClarificationsContinue={() => handleReviewContinue()}
         onReset={!reviewMode && stepConfig?.clarificationsEditable ? () => setResetTarget(0) : undefined}
+        onResetStep={!reviewMode ? () => performStepReset(currentStep) : undefined}
         saveStatus={saveStatus}
         evaluating={!!gateLoading}
       />
@@ -1050,9 +1048,14 @@ export default function WorkflowPage() {
           if (resetTarget !== null) {
             endActiveSession();
             clearRuns();
-            // Keep the target step as "completed" so its editor/output renders.
-            // Only subsequent steps are reset to "pending".
-            navigateBackToStep(resetTarget);
+            if (resetTarget === 0) {
+              // Step 0 output files are deleted; mark it pending so it re-runs from scratch.
+              resetToStep(0);
+            } else {
+              // Steps 1+ keep the target as "completed" so its editor/output renders.
+              // Only subsequent steps are reset to "pending".
+              navigateBackToStep(resetTarget);
+            }
             setResetTarget(null);
           }
         }}

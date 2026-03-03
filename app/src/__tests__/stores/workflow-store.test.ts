@@ -393,4 +393,50 @@ describe("useWorkflowStore", () => {
       expect(useWorkflowStore.getState().disabledSteps).toEqual([]);
     });
   });
+
+  describe("navigateBackToStep", () => {
+    it("navigateBackToStep(0) keeps step 0 as completed, resets steps 1–3 to pending", () => {
+      const store = useWorkflowStore.getState();
+      store.updateStepStatus(0, "completed");
+      store.updateStepStatus(1, "completed");
+      store.updateStepStatus(2, "completed");
+      store.updateStepStatus(3, "completed");
+      store.setCurrentStep(3);
+
+      useWorkflowStore.getState().navigateBackToStep(0);
+
+      const state = useWorkflowStore.getState();
+      expect(state.steps[0].status).toBe("completed");
+      expect(state.steps[1].status).toBe("pending");
+      expect(state.steps[2].status).toBe("pending");
+      expect(state.steps[3].status).toBe("pending");
+      expect(state.currentStep).toBe(0);
+    });
+
+    it("navigateBackToStep(1) keeps step 1 completed, resets steps 2–3 to pending", () => {
+      const store = useWorkflowStore.getState();
+      store.updateStepStatus(0, "completed");
+      store.updateStepStatus(1, "completed");
+      store.updateStepStatus(2, "completed");
+      store.updateStepStatus(3, "completed");
+      store.setCurrentStep(3);
+
+      useWorkflowStore.getState().navigateBackToStep(1);
+
+      const state = useWorkflowStore.getState();
+      expect(state.steps[0].status).toBe("completed");
+      expect(state.steps[1].status).toBe("completed");
+      expect(state.steps[2].status).toBe("pending");
+      expect(state.steps[3].status).toBe("pending");
+      expect(state.currentStep).toBe(1);
+    });
+
+    it("navigateBackToStep clears disabledSteps", () => {
+      useWorkflowStore.getState().setDisabledSteps([1, 2, 3]);
+
+      useWorkflowStore.getState().navigateBackToStep(1);
+
+      expect(useWorkflowStore.getState().disabledSteps).toEqual([]);
+    });
+  });
 });

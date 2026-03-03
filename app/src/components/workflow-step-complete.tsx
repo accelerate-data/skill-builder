@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/markdown-link";
-import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2, MessageSquare, AlertTriangle } from "lucide-react";
+import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2, MessageSquare, AlertTriangle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { readFile, writeFile, listSkillFiles, getStepAgentRuns } from "@/lib/tauri";
@@ -36,6 +36,8 @@ interface WorkflowStepCompleteProps {
   onClarificationsChange?: (data: ClarificationsFile) => void;
   onClarificationsContinue?: () => void;
   onReset?: () => void;
+  /** Called when the user clicks "Reset Step" from the missing-files error state. */
+  onResetStep?: () => void;
   saveStatus?: "idle" | "dirty" | "saving" | "saved";
   evaluating?: boolean;
 }
@@ -104,6 +106,7 @@ export function WorkflowStepComplete({
   onClarificationsChange,
   onClarificationsContinue,
   onReset,
+  onResetStep,
   saveStatus,
   evaluating,
 }: WorkflowStepCompleteProps) {
@@ -249,20 +252,22 @@ export function WorkflowStepComplete({
 
     if (missingFiles.length > 0) {
       return (
-        <div className="flex h-full flex-col gap-4 overflow-hidden">
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
-            <AlertTriangle className="size-8 text-destructive/50" />
-            <div className="text-center">
-              <p className="font-medium text-destructive">Research step completed but output files are missing</p>
-              <div className="mt-2 text-sm">
-                {missingFiles.map((f) => (
-                  <p key={f}>Expected <code className="text-xs">{f}</code> but it was not found.</p>
-                ))}
-              </div>
-              <p className="mt-2 text-sm">The agent may not have written files to the correct path. Reset and re-run the step.</p>
+        <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
+          <AlertTriangle className="size-8 text-destructive/50" />
+          <div className="text-center">
+            <p className="font-medium text-destructive">Research step completed but output files are missing</p>
+            <div className="mt-2 text-sm">
+              {missingFiles.map((f) => (
+                <p key={f}>Expected <code className="text-xs">{f}</code> but it was not found.</p>
+              ))}
             </div>
           </div>
-          <StepActionBar isLastStep={isLastStep} reviewMode={reviewMode} onRefine={onRefine} onClose={onClose} onNextStep={onNextStep} />
+          {onResetStep && (
+            <Button size="sm" variant="outline" onClick={onResetStep}>
+              <RotateCcw className="size-3.5" />
+              Reset Step
+            </Button>
+          )}
         </div>
       );
     }
