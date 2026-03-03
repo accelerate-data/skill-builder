@@ -20,8 +20,13 @@ Canonical logging requirements (levels, redaction, correlation IDs) are in `.cla
 
 ## Error Types
 
-Use `thiserror` for all error types. Commands return `Result<T, CommandError>` where `CommandError`
-derives `serde::Serialize` so Tauri serialises it to the frontend as a typed error, not a raw string.
+Use `thiserror` for all new or refactored error types. Prefer command signatures that return
+`Result<T, CommandError>` where `CommandError` derives `serde::Serialize` so Tauri serializes typed
+errors to the frontend, not raw strings.
+
+Legacy commands that currently return `Result<T, String>` can remain as-is unless touched by your
+change. When modifying those commands, migrate toward `CommandError` incrementally.
+
 Map external errors at boundaries with `map_err(CommandError::from)` where possible; use custom
 message mapping only when adding user-facing context.
 

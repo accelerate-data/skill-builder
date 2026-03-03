@@ -27,8 +27,6 @@ track a feature idea, break down a large issue, or decompose an issue into small
 (e.g. "break down VU-123", "decompose VU-123", "split VU-123"),
 read and follow the skill at `.claude/skills/create-linear-issue/SKILL.md`.
 
-Default project: **Skill Builder** — use this project unless the user specifies otherwise.
-
 ### /implement-linear-issue
 
 When the user runs /implement-linear-issue, or mentions a Linear issue identifier (e.g. "VU-123"), or asks to implement, build, fix, or work on a Linear issue,

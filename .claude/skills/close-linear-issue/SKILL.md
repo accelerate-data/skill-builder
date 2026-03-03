@@ -65,8 +65,9 @@ Before merge:
 
 Check PR body `## Test plan` section.
 
-- If unchecked items exist, ask user whether to proceed.
-- If section is absent, warn and ask whether to proceed.
+- If unchecked items exist, stop and report which items remain unchecked.
+- If section is absent, stop and report the missing section.
+- Continue only after the PR test plan reflects completed automated and manual validation.
 
 ## Merge
 

@@ -95,14 +95,14 @@ Determine what you changed, then pick the right runner:
 |---|---|---|
 | Frontend (store/hook/component/page) | — | `npm run test:changed` |
 | Rust command | — | `cargo test <module>` + E2E tag from `app/tests/TEST_MANIFEST.md` |
-| Sidecar agent invocation (`app/sidecar/`) | `cd app && npm run test:agents:structural test:agents:smoke` | `cd app/sidecar && npx vitest run` |
+| Sidecar agent invocation (`app/sidecar/`) | `cd app && npm run test:agents:structural` (tell user to run `test:agents:smoke` manually) | `cd app/sidecar && npx vitest run` |
 | Agent prompt (`agents/`) | `cd app && npm run test:agents:structural` | `npm run test:unit` (canonical-format) |
-| Agent output format (`agents/`) | `cd app && npm run test:agents:structural test:agents:smoke` | `npm run test:unit` (canonical-format) |
+| Agent output format (`agents/`) | `cd app && npm run test:agents:structural` (tell user to run `test:agents:smoke` manually) | `npm run test:unit` (canonical-format) |
 | `agent-sources/workspace/CLAUDE.md` | `cd app && npm run test:agents:structural` | `npm run test:unit` |
 | Mock templates or E2E fixtures | — | `npm run test:unit` |
 | Shared infrastructure (`src/lib/tauri.ts`, test mocks) | — | `app/tests/run.sh` (all levels) |
 
-**Artifact format changes** (agent output format + app parser + mock templates): run `cd app && npm run test:agents:structural test:agents:smoke` **and** `npm run test:unit`. The `canonical-format.test.ts` suite is the canary for format drift across the boundary.
+**Artifact format changes** (agent output format + app parser + mock templates): run `cd app && npm run test:agents:structural` and `npm run test:unit`, then tell the user to run `cd app && npm run test:agents:smoke` manually. The `canonical-format.test.ts` suite is the canary for format drift across the boundary.
 
 **Unsure?** `app/tests/run.sh` runs everything.
 
@@ -129,6 +129,7 @@ Write design docs concisely — state the decision and the reason, not the reaso
 - Granular commits: one concern per commit, run tests before each
 - Stage specific files — use `git add <file>` not `git add .`
 - All `.md` files must pass `markdownlint` before committing (`markdownlint <file>`)
+- When editing `AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, or `.claude/skills/`, run `bash app/scripts/lint-agent-docs.sh`
 - Verify before committing: `cd app && npx tsc --noEmit` + `cargo check --manifest-path app/src-tauri/Cargo.toml`
 - Canonical naming and error-handling conventions live in `.claude/rules/coding-conventions.md`
 
