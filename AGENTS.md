@@ -2,11 +2,31 @@
 
 Multi-agent workflow for creating domain-specific Claude skills. Tauri desktop app (React + Rust) orchestrates agents via a Node.js sidecar.
 
+**Maintenance rule:** This file contains architecture, conventions, and guidelines — not product details. Do not add counts, feature descriptions, or any fact that can be discovered by reading code. If it will go stale when the code changes, it doesn't belong here — point to the source file instead.
+
+## Instruction Hierarchy
+
+Use this precedence when maintaining agent guidance:
+
+1. `AGENTS.md` (canonical, cross-agent source of truth)
+2. `.claude/rules/*.md` (shared detailed rules; agent-agnostic content)
+3. `.claude/skills/*/SKILL.md` (workflow playbooks)
+4. Agent-specific adapter files (for example `CLAUDE.md`) that reference canonical docs
+
+Adapter files must not duplicate canonical policy unless they are adding agent-specific behavior.
+
 ## Architecture
 
-React 19 (WebView) → Tauri IPC → Rust backend → spawns Node.js sidecar (`@anthropic-ai/claude-agent-sdk`)
-
-**Tech stack:** React 19, TypeScript, Vite 7, Tailwind CSS 4, shadcn/ui, Zustand, TanStack Router · Tauri 2, rusqlite, git2, reqwest · Node.js + `@anthropic-ai/claude-agent-sdk` (sidecar)
+| Layer | Technology |
+|---|---|
+| Desktop framework | Tauri v2 |
+| Frontend | React 19, TypeScript strict, Vite 7 |
+| Styling | Tailwind CSS 4, shadcn/ui |
+| State | Zustand, TanStack Router |
+| Icons | Lucide React |
+| Agent sidecar | Node.js + TypeScript + `@anthropic-ai/claude-agent-sdk` |
+| Database | SQLite (`rusqlite` bundled) |
+| Rust errors | `thiserror` |
 
 **Agent runtime:** No hot-reload — restart `npm run dev` after editing `app/sidecar/`. Requires Node.js 18–24 (Node 25+ crashes the SDK). See `.claude/rules/agent-sidecar.md` when working in `app/sidecar/`.
 
@@ -16,6 +36,20 @@ React 19 (WebView) → Tauri IPC → Rust backend → spawns Node.js sidecar (`@
 - Skill output (`~/skill-builder/` default): SKILL.md, references, git-managed
 - App database: `~/Library/Application Support/com.skillbuilder.app/skill-builder.db` (macOS)
 - Full layout: [`docs/design/agent-specs/storage.md`](docs/design/agent-specs/storage.md)
+
+## Repository Folder Map
+
+Use this map before reasoning about implementation location:
+
+- `app/src/` — frontend runtime code (React/TypeScript surfaces, components, stores, hooks).
+- `app/src-tauri/src/` — Rust backend runtime code (Tauri commands, DB, logging, startup wiring).
+- `app/sidecar/` — Node/TypeScript sidecar runtime code.
+- `app/e2e/` — Playwright E2E tests only.
+- `app/src/__tests__/` and `app/sidecar/__tests__/` — unit/integration tests only.
+- `agents/` — agent prompts (flat directory, validated by `./scripts/validate.sh`).
+- `agent-sources/workspace/CLAUDE.md` — agent instructions shared by all agents (deployed to workspace `.claude/CLAUDE.md`).
+- `docs/` — documentation and design/reference material only; do not treat as executable source unless explicitly asked.
+- `scripts/` — developer/automation scripts.
 
 ## User Guide
 
@@ -93,41 +127,35 @@ Write design docs concisely — state the decision and the reason, not the reaso
 ## Code Style
 
 - Granular commits: one concern per commit, run tests before each
-- TypeScript strict mode, no `any`
-- Zustand stores: one file per store in `app/src/stores/`
-- Rust commands: one module per concern in `app/src-tauri/src/commands/`
-- Tailwind 4 + shadcn/ui for all UI — see `.claude/rules/frontend-design.md` (auto-loaded in `app/src/`)
-- **Error colors:** Always use `text-destructive` for error text — never hardcoded `text-red-*`
-- Verify before committing: `cd app && npx tsc --noEmit` (frontend) + `cargo check --manifest-path app/src-tauri/Cargo.toml` (backend)
+- Stage specific files — use `git add <file>` not `git add .`
+- All `.md` files must pass `markdownlint` before committing (`markdownlint <file>`)
+- Verify before committing: `cd app && npx tsc --noEmit` + `cargo check --manifest-path app/src-tauri/Cargo.toml`
+- Canonical naming and error-handling conventions live in `.claude/rules/coding-conventions.md`
 
-## Logging
+### Frontend (`app/src/`)
 
-Every new feature must include logging. Use `log` crate (Rust) and `console.*` (frontend, bridged via `attachConsole()`). Per-request JSONL transcripts at `{workspace}/{skill}/logs/{step}-{timestamp}.jsonl`. Layer-specific rules are in the relevant `.claude/rules/` file.
+For AD brand rules, component constraints, and state indicator conventions, see:
 
-| Level | When to use |
-|---|---|
-| **error** | Operation failed, user impact likely |
-| **warn** | Unexpected but recoverable |
-| **info** | Key lifecycle events (command invoked, skill created, agent started) |
-| **debug** | Internal details useful only when troubleshooting |
+- `.claude/rules/frontend-design.md`
 
-## Gotchas
+### Rust backend (`app/src-tauri/`)
 
-- **SDK has NO team tools**: `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. The "Teams" option in the Delegation Policy applies to the main Claude Code session only — agents running inside the SDK cannot form teams. Use the Task tool for sub-agents. Multiple Task calls in same turn run in parallel.
-- **Parallel worktrees**: `npm run dev` auto-assigns a free port.
+Command conventions, error types, and Rust-specific testing guidance live in `.claude/rules/rust-backend.md`.
 
-## Shared Components
+### Sidecar (`app/sidecar/`)
 
-The desktop app uses these files:
+Protocol and sidecar-specific constraints live in `.claude/rules/agent-sidecar.md`.
 
-- `agents/` — agent prompts (flat directory, validated by `./scripts/validate.sh`)
-- `agent-sources/workspace/CLAUDE.md` — agent instructions shared by all agents. The app deploys this to the workspace `.claude/CLAUDE.md` (auto-loaded by SDK).
+### Error handling
+
+See `.claude/rules/coding-conventions.md` for canonical error-handling policy.
 
 ## Issue Management
 
-- **PR title format**: `VU-XXX: short description`
-- **PR body link**: `Fixes VU-XXX`
-- **Linear project policy**: All Linear issues for this project must be created under `Warehouse Migration`.
+- **PR title format:** `VU-XXX: short description`
+- **PR body link:** `Fixes VU-XXX`
+- **Linear project:** All issues for this project must be created under **Skill Builder**.
+- **Worktrees:** `../worktrees/<branchName>` relative to repo root. Full rules: `.claude/rules/git-workflow.md`.
 
 ## Skills
 
@@ -138,3 +166,13 @@ Use these repo-local skills when requests match:
 - `.claude/skills/close-linear-issue/SKILL.md` — close/complete/ship/merge a Linear issue
 - `.claude/skills/tauri/SKILL.md` — Tauri-specific implementation or debugging
 - `.claude/skills/shadcn-ui/SKILL.md` — shadcn/ui component work
+- `.claude/skills/front-end-design/SKILL.md` — design-first UI workflow for screens and components
+
+## Logging
+
+Every new feature must include logging. Canonical logging conventions and log-level guidance live in `.claude/rules/logging-policy.md`.
+
+## Gotchas
+
+- **SDK has NO team tools:** `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. The "Teams" option in the Delegation Policy applies to the main Claude Code session only — agents running inside the SDK cannot form teams. Use the Task tool for sub-agents. Multiple Task calls in the same turn run in parallel.
+- **Parallel worktrees:** `npm run dev` auto-assigns a free port — safe to run multiple Tauri instances simultaneously.

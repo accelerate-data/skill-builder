@@ -1,31 +1,22 @@
 @AGENTS.md
 
-**CLAUDE.md maintenance rule**: `AGENTS.md` is the single source of truth for shared content. Only add to this file what is Claude Code-specific (skill triggers, delegation policy). Never duplicate content already in `AGENTS.md`.
+## Adapter Role
+
+`AGENTS.md` is canonical for repository-wide guidance. This file is an adapter for Claude-specific routing and should stay lightweight.
 
 ## Delegation Policy
-
-### Hierarchy
-
-Use the lightest option that fits:
-
-1. **Inline** — trivial: one-liner, single-file read, direct answer
-2. **Task subagents** — independent workstreams, no mid-task coordination (the common case)
-3. **Teams (TeamCreate)** — agents must exchange findings mid-task or hold competing hypotheses
 
 ### Model tiers
 
 | Tier | Model | When |
 |---|---|---|
 | Reasoning | sonnet | Planning, architecture, requirements drafting |
-| Implementation | sonnet (inherited) | Coding, exploration, review, merge |
+| Implementation | default | Coding, exploration, review, merge |
 | Lightweight | haiku | Linear API calls, AC checkoffs, status updates |
 
 ### Sub-agent rules
 
-Sub-agents must follow project conventions:
-
-- Logging (§ Logging): Rust `info!` on entry + `error!` on failure; frontend `console.error/warn/log`
-- Testing (§ Testing): run only relevant tests, `npx tsc --noEmit` after implementation
+Commit + push before reporting completion.
 
 ## Custom Skills
 
@@ -40,12 +31,10 @@ Default project: **Skill Builder** — use this project unless the user specifie
 
 ### /implement-linear-issue
 
-When the user runs /implement-linear-issue, or mentions a Linear issue identifier (e.g. "VU-123", "implement VU-123",
-"work on VU-452", "working on VU-100", "build VU-100", "fix VU-99"), or asks to implement, build, fix, or work on a Linear issue,
+When the user runs /implement-linear-issue, or mentions a Linear issue identifier (e.g. "VU-123"), or asks to implement, build, fix, or work on a Linear issue,
 read and follow the skill at `.claude/skills/implement-linear-issue/SKILL.md`.
 
 ### /close-linear-issue
 
-When the user runs /close-linear-issue, or asks to close, complete, merge, or ship a Linear issue (e.g. "close VU-123",
-"merge VU-453", "ship VU-100", "complete VU-99"), read and follow the skill at
-`.claude/skills/close-linear-issue/SKILL.md`.
+When the user runs /close-linear-issue, or asks to close, complete, merge, or ship a Linear issue,
+read and follow the skill at `.claude/skills/close-linear-issue/SKILL.md`.
