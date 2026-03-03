@@ -7,15 +7,16 @@ paths:
 
 ## Colors — no raw Tailwind color classes
 
-**Never** use Tailwind color classes like `text-green-500`, `bg-blue-400`, `text-yellow-600`, `text-red-500`. All semantic colors use AD brand CSS variables defined in `app/src/styles/globals.css` (auto-switch light/dark):
+Use AD brand CSS variables defined in `app/src/styles/globals.css` (auto-switch light/dark). Never
+hardcode hex values or raw Tailwind palette classes (`text-green-500`, `bg-blue-400`, etc.).
 
 | Semantic | How to use | Examples |
 |---|---|---|
-| Success/completed | `style={{ color: "var(--color-seafoam)" }}` | Check icons, answered states, "Saved" |
+| Success/completed | `style={{ color: "var(--color-seafoam)" }}` | Check icons, completed states, "Saved" |
 | Primary/action/info | `style={{ color: "var(--color-pacific)" }}` | CTAs, active states, progress, links |
-| Secondary/depth | `style={{ color: "var(--color-ocean)" }}` | Refinements, secondary accents |
-| Warning | `text-amber-600 dark:text-amber-400` | Only exception — amber IS the AD warning color |
-| Error/destructive | `text-destructive` / `bg-destructive` | Already themed via CSS variable |
+| Secondary/depth | `style={{ color: "var(--color-ocean)" }}` | Secondary accents |
+| Warning | `text-amber-600 dark:text-amber-400` | AD warning color — no CSS variable exists for amber |
+| Error/destructive | `text-destructive` / `bg-destructive` | Themed via CSS variable |
 | Text | `text-foreground` / `text-muted-foreground` | Body text, labels |
 | Backgrounds | `bg-muted`, `bg-card`, `bg-background` | Themed surfaces |
 | Tinted backgrounds | `color-mix(in oklch, var(--color-pacific), transparent 85%)` | Section bands, badges, highlights |
@@ -30,7 +31,7 @@ The app uses **Inter Variable** (sans) and **JetBrains Mono Variable** (mono), d
 | Body | `text-sm` (13px) | `font-normal` (400) | default | Primary content |
 | Caption | `text-xs` (12px) | `font-medium` (500) | default | Labels, metadata, badges |
 | Micro | `text-[11px]` | `font-medium` (500) | `tracking-wide` | Monospace IDs, tiny labels |
-| Monospace | `font-mono` | any | default | Question IDs, code values, data |
+| Monospace | `font-mono` | any | default | Skill IDs, code values, data |
 
 **Never** use `font-bold` (700) for UI headings — use `font-semibold` (600). Reserve 700 for emphasis within body text.
 
@@ -54,9 +55,59 @@ Cards use `shadow-sm` with `hover:shadow`. No heavy drop shadows. Dark mode pref
 
 Use `duration-150` (150ms) for micro interactions (hover, toggle). `duration-200` for standard transitions (expand/collapse). Easing: default ease-out.
 
+## State Indicators
+
+Every pipeline/agent state maps to a fixed colour + icon combination. Never invent new state colours.
+
+| State | Colour | Icon | Badge background |
+|---|---|---|---|
+| Completed | `var(--color-seafoam)` | `CheckCircle2` | `color-mix(in oklch, var(--color-seafoam), transparent 85%)` |
+| Running | `var(--color-pacific)` | `Loader2 animate-spin` | `color-mix(in oklch, var(--color-pacific), transparent 85%)` |
+| Pending | `text-muted-foreground` | `Circle` or `Clock` | `bg-muted` |
+| Failed | `text-destructive` | `XCircle` | `bg-destructive/15` |
+| Blocked | `text-amber-600 dark:text-amber-400` | `AlertTriangle` | `bg-amber-100 dark:bg-amber-900/30` |
+
+All badges: `rounded-full text-xs font-medium px-2 py-0.5`.
+
+## Icons
+
+Use **Lucide React** (`lucide-react`) exclusively. Never install a second icon library.
+
+| Icon | Semantic |
+|---|---|
+| `CheckCircle2` | Complete / confirmed |
+| `Circle` | Pending (no time reference) |
+| `Clock` | Pending (time-aware) |
+| `ChevronRight` | Active step indicator |
+| `Loader2` + `animate-spin` | Running |
+| `XCircle` | Failed |
+| `AlertTriangle` | Blocked / warning |
+| `ChevronDown` | Row expansion |
+
+Icon colours follow the state indicator table above. Apply via `style={{ color: "var(...)" }}` or a Tailwind color class matching the state rules.
+
+## Components (shadcn/ui)
+
+Install from shadcn/ui only. Do not bring in other component libraries.
+
+| Component | Typical use |
+|---|---|
+| `Table`, `TableRow`, `TableCell` | Data-heavy tabular views |
+| `Checkbox` | Multi-select and opt-in controls |
+| `Input` | Free-form text input |
+| `Select` | Small predefined option sets |
+| `Button` | Primary and secondary actions |
+| `Badge` | Compact status indicators |
+| `Card`, `Separator` | Grouping and section boundaries |
+| `Sheet` | Contextual side panels |
+| `RadioGroup` | Single choice among a few options |
+| `Textarea` | Multi-line user input |
+| `ResizablePanelGroup`, `ResizablePanel` | Split-pane layouts |
+| `Combobox` | Searchable option picking |
+| `ScrollArea` | Scrollable bounded regions |
+| `Progress` | Percent-complete feedback |
+| `Collapsible` | Progressive disclosure |
+
 ## Logging
 
-- `console.error()` for caught errors
-- `console.warn()` for unexpected states
-- `console.log()` for significant user actions (navigation, form submissions)
-- Do not log render cycles or state reads
+Canonical logging requirements (levels, redaction, correlation IDs) are in `.claude/rules/logging-policy.md`.
