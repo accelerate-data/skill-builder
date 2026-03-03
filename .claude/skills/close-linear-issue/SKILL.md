@@ -73,7 +73,7 @@ Check PR body `## Test plan` section.
 
 Direct merge execution is allowed.
 
-1. If PR open: rebase branch onto `origin/main`.
+1. First merge action (if PR is open): rebase branch onto `origin/main`.
 2. Resolve conflicts when mechanical; escalate to user when judgment is needed.
 3. Run `cd app && npx tsc --noEmit`.
 4. Push with `--force-with-lease` if rebase changed history.

@@ -76,6 +76,15 @@ Do not ask permission for non-destructive work. Only confirm with user:
 - M+ or multi-component: create a short plan, then execute with parallelism where useful.
 - User can always override.
 
+## Branch Sync (required)
+
+Before running Quality Gates, rebase the working branch onto `origin/main`.
+
+1. Fetch latest `origin/main`.
+2. Rebase current branch onto `origin/main`.
+3. Resolve conflicts when mechanical; escalate to user when semantic judgment is required.
+4. Push with `--force-with-lease` if history changed.
+
 ## Quality Gates
 
 ```text
