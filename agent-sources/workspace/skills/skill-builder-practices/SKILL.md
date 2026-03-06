@@ -14,151 +14,179 @@ trigger: >
 
 # Skill Builder Practices
 
-Guidance for building data engineering skills. Users can deactivate and import a customized replacement.
+## Overview
+
+Use this skill to keep generated skills concise, decision-oriented, and reusable.
+
+Audience:
+- Agents creating or updating data engineering skills
+- Agents validating skill quality and structure
+
+Core model:
+- Put trigger logic in frontmatter description
+- Keep SKILL.md concise and move details to references
+- Include only knowledge Claude is likely to get wrong without this skill
+
+## Quick Reference
+
+- Keep `SKILL.md` under 500 lines
+- Keep references one level deep from `SKILL.md`
+- Avoid duplicating official docs or common training-data knowledge
+- Match specificity to failure risk (degrees of freedom)
+- Enforce the four quality dimensions at score >= 4
+- Keep process artifacts in `context/`, not skill output
+
+## Getting Started
+
+1. Identify the skill purpose from `user-context.md` and classify as standards or knowledge-capture.
+2. Define trigger behavior in frontmatter `description` using concrete usage phrases.
+3. Draft `Overview` and `Quick Reference` with only high-signal constraints.
+4. Map required sections from this skill and create reference files for long content.
+5. Write `context/evaluations.md` with at least 3 runnable scenarios before deep writing.
+6. Add only domain-specific guidance that Claude would likely miss without the skill.
+7. Validate against Actionability, Specificity, Domain Depth, and Self-Containment.
+8. Remove redundant explanations, process artifacts, and non-essential text before finalizing.
+
+## Decision Dependency Map
+
+1. Purpose classification: standards vs knowledge-capture
+2. Structure pattern: decision-oriented vs question-oriented
+3. Section inventory: required sections and reference split
+4. Evaluation design: scenarios covering different failure modes
+5. Content detail level: enforce delta rule + degrees of freedom
+6. Final quality gate: score all dimensions, then trim for concision
 
 ## Content Principles
 
-1. **Omit what's in Context7 or LLM training data** — standard SQL, basic dbt, general Python, official API docs. Context7 covers dbt, dlt, elementary, Fabric, GitHub Actions.
-2. **Focus on domain-specific data engineering patterns** — entity/metric/rule mapping to medallion layers, Fabric/T-SQL quirks, dlt-to-dbt handoffs, elementary test placement.
-3. **Guide WHAT and WHY, not HOW** — no step-by-step tutorials. Exception: be prescriptive where exactness matters (metric formulas, surrogate key macros, CI pipeline YAML).
-4. **Calibrate to medallion architecture** — every data skill has a layer context (bronze/silver/gold).
-5. **Bridge domain to artifacts** — domain skills must map concepts to implementable dbt models.
+1. Omit what's in Context7 or common training data (basic SQL/dbt/Python and official API docs).
+2. Focus on domain-specific data engineering patterns and stack-specific gotchas.
+3. Guide WHAT and WHY, not tutorials for basic mechanics.
+4. Calibrate to medallion architecture constraints (bronze/silver/gold).
+5. Bridge domain knowledge to implementable artifacts.
 
 ## Skill Structure
 
 ### Naming and Description
 
-- Gerund names, lowercase+hyphens, max 64 chars (e.g., `building-incremental-models`)
-- Description pattern: `[What it does]. Use when [triggers]. [How it works]. Also use when [more triggers].` Max 1024 chars.
-- Description is third person.
-- Triggers live exclusively in description frontmatter. No "When to Use This Skill" body section.
-- For dbt skills, include layer-specific triggers: `Use when building dbt silver or gold layer models for [domain]. Also use when the user mentions "[domain] models", "silver layer", "gold layer", "marts", "staging", or "[domain]-specific dbt".`
+- Gerund names, lowercase+hyphens, max 64 chars (example: `building-incremental-models`)
+- Description pattern: `[What it does]. Use when [triggers]. [How it works]. Also use when [more triggers].`
+- Description is third person and is the primary trigger surface
+- Keep trigger conditions in frontmatter description only
+- For dbt skills, include layer-specific trigger terms
 
 ### SKILL.md Anatomy
 
-- Under 500 lines.
-- Extract sections past a few paragraphs to reference files.
-- Reference files one level deep. TOC for files over 100 lines.
-- **Required sections:** Metadata | Overview (scope, audience, key concepts) | Quick reference | Pointers to references
-- **Standards skills**: add **Getting Started** checklist (5-8 ordered steps) after Quick Reference, before Decision Dependency Map.
-- **Knowledge-capture skills**: no Getting Started section.
+- Required sections: Metadata | Overview | Quick Reference | Pointers to references
+- Standards skills: include Getting Started (5-8 steps) and Decision Dependency Map
+- Knowledge-capture skills: no Getting Started, no dependency map
+- If content grows beyond a few paragraphs, extract it to `references/`
 
 ## Purpose and Structure Patterns
 
-The user's purpose (from user-context.md) determines the structure pattern.
-
 ### Knowledge-Capture Skills
 
-**Purposes:** Business process knowledge, Source system customizations
+Purposes:
+- Business process knowledge
+- Source system customizations
 
-Capture **questions about the customer's environment**:
-
-- Sections are **question-oriented and parallel**
-- **Zero pre-filled assertions** — all content from user answers
-- No Getting Started checklist, no dependency map
-- Section themes (adapt to decisions.md):
-  - Business process: Metric Definitions, Segmentation Standards, Period Handling, Business Logic, Output Standards
-  - Source systems: Field Semantics, Extraction Gotchas, Reconciliation Rules, Lifecycle/State, System Workarounds, API Behaviors
+Pattern:
+- Question-oriented parallel sections
+- Zero pre-filled assertions
+- No dependency ordering sections
 
 ### Standards Skills
 
-**Purposes:** Organization specific data engineering standards, Organization specific Azure or Fabric standards
+Purposes:
+- Organization specific data engineering standards
+- Organization specific Azure or Fabric standards
 
-Capture **implementation decisions with dependency ordering**:
+Pattern:
+- Decision-oriented sections with dependency ordering
+- Include Getting Started and Decision Dependency Map
+- Allow up to 5 pre-filled factual assertions where model priors are wrong
 
-- Sections are **decision-oriented** — choices constrain downstream sections
-- Include **Getting Started** checklist (5-8 ordered steps) after Quick Reference
-- Include **Decision Dependency Map**
-- **Up to 5 pre-filled factual assertions** where Claude's training data is wrong
-- Section themes (adapt to decisions.md):
-  - Data engineering: Pattern Selection, Key/Identity Decisions, Temporal Design, Implementation Approach, Edge Cases, Performance
-  - Platform: Target Architecture, Materialization, Incremental Strategy, Platform Constraints, Capacity/Cost, Testing/Deployment
+## Delta Rule
 
-### Delta Rule (all skills)
+Include only guidance Claude is likely to miss without this skill.
+If it is already reliable from Context7 or model priors, omit it.
 
-Include only what Claude would get wrong without this skill. If it's in Context7, official docs, or training data — leave it out.
+## Evaluations (mandatory)
 
-### Evaluations (mandatory)
-
-Every skill must have `evaluations.md` in the **context directory**. At least 3 scenarios:
+Create `context/evaluations.md` with at least 3 scenarios:
 
 ```text
 ### Scenario 1: [Short name]
 **Prompt**: [Exact prompt to send to Claude with this skill active]
-**Expected behavior**: [What Claude should do — specific, observable]
-**Pass criteria**: [1-2 measurable signals the skill is working]
+**Expected behavior**: [Specific, observable behavior]
+**Pass criteria**: [1-2 measurable signals]
 ```
 
-Scenarios must be runnable, grounded (exercise different skill sections), and observable (checkable without running code).
+Scenarios must be runnable, grounded, and observable.
 
-### Output Separation
+## Output Separation
 
-Skill output directory contains ONLY:
-
+Skill output directory contains only:
 - `SKILL.md`
 - `references/*.md`
 
-Context-only files (`clarifications.json`, `decisions.md`, `evaluations.md`, `research-plan.md`, validation logs) go in context/.
+Context-only files in `context/`:
+- `clarifications.json`
+- `decisions.md`
+- `evaluations.md`
+- `research-plan.md`
+- validation/test logs
 
-## Quality Dimensions (scored 1-5)
+## Quality Dimensions
 
-- **Actionability** — could a data engineer build/modify a dbt model from this?
-- **Specificity** — concrete Fabric/T-SQL details, exact macro names, real config values
-- **Domain Depth** — stack-specific gotchas vs surface-level docs rehash
-- **Self-Containment** — WHAT and WHY without needing external docs
+- Actionability: can a data engineer execute work from this guidance?
+- Specificity: concrete stack details, not generic advice
+- Domain Depth: real failure modes and non-obvious constraints
+- Self-Containment: usable without external doc hunting
 
 ## Evaluation Methodology
 
-### Build evaluations first
+1. Identify baseline failures without the skill.
+2. Build evaluations that exercise those failures.
+3. Measure baseline behavior.
+4. Add minimal guidance required to pass.
+5. Re-test and refine.
 
-Create evaluations BEFORE writing documentation:
-
-1. **Identify gaps**: Run Claude on representative tasks without the skill. Document failures.
-2. **Create evaluations**: 3+ scenarios testing these gaps.
-3. **Establish baseline**: Measure without the skill.
-4. **Write minimal instructions**: Just enough to pass evaluations.
-5. **Iterate**: Execute, compare against baseline, refine.
-
-### Cross-model testing
-
-Test with:
-
-- **Haiku**: enough guidance?
-- **Sonnet**: clear and efficient?
-- **Opus**: avoiding over-explaining?
+Cross-model checks:
+- Haiku: enough guidance?
+- Sonnet: concise and clear?
+- Opus: avoids over-explaining?
 
 ## Degrees of Freedom
 
-- **High freedom** (text instructions): multiple valid approaches.
-- **Medium freedom** (pseudocode/templates): preferred pattern, some variation ok.
-- **Low freedom** (exact scripts): fragile operations, exact sequence required.
+- High freedom: heuristics where many approaches are valid
+- Medium freedom: preferred pattern with constrained variation
+- Low freedom: exact sequence for fragile operations
 
-Use templates for output format. Use examples for quality-dependent output.
+Use templates for output shape and examples for quality-critical behaviors.
 
 ## Content Rules
 
-- No time-sensitive info. Consistent terminology ("Fabric" not "Synapse", "dlt" not "DLT" unless Databricks).
-- Most precise where mistakes are costliest.
+- No time-sensitive claims
+- Use consistent terminology (`Fabric`, `dlt`)
+- Be most precise where mistakes are costly
 
 ## Anti-patterns
 
-### Skill structure
+### Structure
 
-- Windows paths — use forward slashes
-- Too many options without a clear default
-- Nested reference files
-- Vague descriptions ("configure your data warehouse")
+- Windows paths
+- Too many options without defaults
+- Nested references
+- Vague section guidance
 
 ### Content
 
-- Over-explaining basic dbt/SQL
-- Mixing dlt (dlthub) with Databricks DLT
-- `dbt-utils` macros instead of `tsql-utils`
-- "When to Use This Skill" body section
-- "Questions for your stakeholder" blocks — stakeholder communication belongs in context/decisions.md
-- Process artifacts in skill directory (belong in context/)
+- Over-explaining basic SQL/dbt concepts
+- Mixing dlt (dlthub) and Databricks DLT terminology
+- Reintroducing process artifacts into skill output
+- Duplicating trigger guidance in body sections
 
 ## Reference Files
 
-- **[references/ba-patterns.md](references/ba-patterns.md)** — Domain decomposition: entity identification, metric mapping, grain decisions, business rule placement, completeness validation.
-- **[references/de-patterns.md](references/de-patterns.md)** — Stack conventions and anti-patterns for dbt, dlt, elementary, Fabric, GitHub CI/CD.
+- [references/ba-patterns.md](references/ba-patterns.md): domain decomposition and mapping patterns
+- [references/de-patterns.md](references/de-patterns.md): stack conventions and anti-patterns

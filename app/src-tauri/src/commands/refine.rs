@@ -64,7 +64,7 @@ fn build_refine_config(
     let thinking_budget = extended_thinking.then_some(16_000u32);
 
     // CWD is the workspace root (.vibedata) so the sidecar can find
-    // .claude/agents/ and .claude/CLAUDE.md. Skill files are accessed via
+    // .claude/agents/ and workspace-root CLAUDE.md. Skill files are accessed via
     // absolute paths embedded in the prompt.
     let cwd = workspace_path.to_string();
     let agent_id = format!(
@@ -321,6 +321,8 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
 
     // Collect per-file diffs using print() which provides a single mutable callback
     let mut file_map: HashMap<String, RefineFileDiff> = HashMap::new();
+    let mut insertions = 0usize;
+    let mut deletions = 0usize;
 
     diff.print(DiffFormat::Patch, |delta, _hunk, line| {
         let path = delta
@@ -344,6 +346,16 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
         // Append diff content: hunk headers, context, additions, deletions
         let origin = line.origin();
         if let Ok(s) = std::str::from_utf8(line.content()) {
+            // Exclude file header lines ("+++ b/path", "--- a/path") from stats.
+            // They can be emitted as '+'/'-' lines in patch format but are metadata.
+            let is_file_header_line = (origin == '+' && s.starts_with("++ "))
+                || (origin == '-' && s.starts_with("-- "));
+            if origin == '+' && !is_file_header_line {
+                insertions += 1;
+            } else if origin == '-' && !is_file_header_line {
+                deletions += 1;
+            }
+
             match origin {
                 '+' | '-' | ' ' => {
                     entry.diff.push(origin);
@@ -371,13 +383,6 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
 
     // Build stat summary from line counts (single pass per file)
     let total_files = file_map.len();
-    let (insertions, deletions) = file_map.values().fold((0usize, 0usize), |(ins, del), f| {
-        f.diff.lines().fold((ins, del), |(i, d), line| match line.as_bytes().first() {
-            Some(b'+') => (i + 1, d),
-            Some(b'-') => (i, d + 1),
-            _ => (i, d),
-        })
-    });
 
     let stat = format!(
         "{} file(s) changed, {} insertion(s)(+), {} deletion(s)(-)",
@@ -1031,7 +1036,7 @@ mod tests {
     #[test]
     fn test_refine_config_cwd_points_to_workspace_root() {
         // cwd must be workspace_path (.vibedata), NOT skills_path.
-        // This matches workflow agents — the sidecar needs .claude/agents/ and CLAUDE.md
+        // This matches workflow agents — the sidecar needs .claude/agents/ and root CLAUDE.md
         // which are deployed to the workspace root.
         let (config, _) = build_refine_config(
             "test".to_string(),
@@ -1295,6 +1300,64 @@ mod tests {
         // 1 file changed, 2 insertions (new + extra), 1 deletion (old)
         assert!(result.stat.contains("1 file(s) changed"));
         assert!(result.stat.contains("2 insertion(s)(+)"));
+        assert!(result.stat.contains("1 deletion(s)(-)"));
+    }
+
+    #[test]
+    fn test_get_refine_diff_stat_counts_added_and_deleted_files() {
+        let dir = tempdir().unwrap();
+        crate::git::ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("remove.md"), "gone-1\ngone-2\n").unwrap();
+        crate::git::commit_all(dir.path(), "initial").unwrap();
+
+        std::fs::remove_file(skill_dir.join("remove.md")).unwrap();
+        std::fs::write(skill_dir.join("add.md"), "new-1\nnew-2\nnew-3\n").unwrap();
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let mut index = repo.index().unwrap();
+        index
+            .add_path(std::path::Path::new("my-skill/add.md"))
+            .unwrap();
+        index
+            .remove_path(std::path::Path::new("my-skill/remove.md"))
+            .unwrap();
+        index.write().unwrap();
+
+        let result = get_refine_diff_inner("my-skill", dir.path().to_str().unwrap()).unwrap();
+        assert!(result.stat.contains("2 file(s) changed"));
+        assert!(result.stat.contains("3 insertion(s)(+)"));
+        assert!(result.stat.contains("2 deletion(s)(-)"));
+    }
+
+    #[test]
+    fn test_get_refine_diff_stat_ignores_patch_file_header_lines() {
+        let dir = tempdir().unwrap();
+        crate::git::ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("old.md"), "line-a\n").unwrap();
+        crate::git::commit_all(dir.path(), "initial").unwrap();
+
+        std::fs::remove_file(skill_dir.join("old.md")).unwrap();
+        std::fs::write(skill_dir.join("new.md"), "line-b\n").unwrap();
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let mut index = repo.index().unwrap();
+        index
+            .add_path(std::path::Path::new("my-skill/new.md"))
+            .unwrap();
+        index
+            .remove_path(std::path::Path::new("my-skill/old.md"))
+            .unwrap();
+        index.write().unwrap();
+
+        let result = get_refine_diff_inner("my-skill", dir.path().to_str().unwrap()).unwrap();
+        // Added/deleted file diffs include patch file headers (---/+++ metadata).
+        // Those header lines must not affect insertion/deletion stats.
+        assert!(result.stat.contains("2 file(s) changed"));
+        assert!(result.stat.contains("1 insertion(s)(+)"));
         assert!(result.stat.contains("1 deletion(s)(-)"));
     }
 

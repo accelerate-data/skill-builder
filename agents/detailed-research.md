@@ -76,6 +76,12 @@ Each sub-agent's task per question:
 - `vague`: 1-3 questions to pin down the vague response
 - `needs_refinement`: 1-3 questions to clarify the unstated parameters/assumptions
 
+Purpose-aware refinement rules:
+
+- Keep refinements centered on the selected purpose and decision impact.
+- For `platform` purpose, include Lakehouse endpoint/runtime constraints where relevant.
+- For non-platform purposes, ask Lakehouse-specific follow-ups only if the answer touches platform behavior, materialization, runtime limits, or adapter-specific risk.
+
 Follow the format example below. Return ONLY a JSON array of refinement objects — no preamble, no markdown, no wrapping text. The output is merged directly into `clarifications.json`.
 
 - Number sub-questions as `R{n}.{m}` where `n` is the parent question number

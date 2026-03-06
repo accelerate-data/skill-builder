@@ -317,7 +317,7 @@ pub fn ensure_workspace_prompts_sync(
 }
 
 /// Re-deploy only the bundled agents to `.claude/agents/`, preserving
-/// other contents of the `.claude/` directory (skills, CLAUDE.md, etc.).
+/// other contents of the `.claude/` directory (skills, agents, etc.).
 pub fn redeploy_agents(app_handle: &tauri::AppHandle, workspace_path: &str) -> Result<(), String> {
     let (agents_dir, _) = resolve_prompt_source_dirs(app_handle);
     if agents_dir.is_dir() {
@@ -367,7 +367,7 @@ fn write_claude_md(
     workspace_path: &str,
     conn: &rusqlite::Connection,
 ) -> Result<(), String> {
-    let claude_md_path = Path::new(workspace_path).join(".claude").join("CLAUDE.md");
+    let claude_md_path = Path::new(workspace_path).join("CLAUDE.md");
 
     let skills_section = generate_skills_section(conn)?;
 
@@ -389,9 +389,6 @@ fn write_claude_md(
     final_content.push_str("\n\n");
     final_content.push_str(&customization);
 
-    let claude_dir = Path::new(workspace_path).join(".claude");
-    std::fs::create_dir_all(&claude_dir)
-        .map_err(|e| format!("Failed to create .claude dir: {}", e))?;
     std::fs::write(&claude_md_path, final_content)
         .map_err(|e| format!("Failed to write CLAUDE.md: {}", e))?;
     Ok(())
@@ -428,7 +425,7 @@ pub fn update_skills_section(
     workspace_path: &str,
     conn: &rusqlite::Connection,
 ) -> Result<(), String> {
-    let claude_md_path = Path::new(workspace_path).join(".claude").join("CLAUDE.md");
+    let claude_md_path = Path::new(workspace_path).join("CLAUDE.md");
     let content = if claude_md_path.is_file() {
         std::fs::read_to_string(&claude_md_path)
             .map_err(|e| format!("Failed to read CLAUDE.md: {}", e))?

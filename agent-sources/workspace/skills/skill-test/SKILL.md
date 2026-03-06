@@ -9,51 +9,66 @@ user-invocable: false
 disable-model-invocation: false
 ---
 
+# Skill Test
+
+## Overview
+
+Evaluate whether loading a skill improves planning quality for dbt work on Microsoft Fabric/Azure.
+
+Use comparative scoring only: `Plan A` (skill loaded) vs `Plan B` (no skill loaded).
+
+## Quick Reference
+
+- Always compare A vs B for the same prompt
+- Score only dimensions relevant to that prompt
+- Do not score formatting, verbosity, or style
+- Output concise bullet lines with up/down signals
+- Treat adapter and endpoint constraints as first-class evaluation targets
+
 ## Test Context
 
-You are an **analytics engineer** planning **dbt models** for a **Microsoft Fabric** lakehouse. Given a data or business requirement, identify which dbt models to create or modify, their lakehouse layer (**silver** = clean, source-aligned; **gold** = business-ready aggregates), and project placement.
+Assume an analytics engineer planning dbt models for a Microsoft Fabric lakehouse.
 
-Orient questions and plans toward:
+Purpose-aware evaluation:
 
-| Area | What to uncover |
-| -- | -- |
-| **Silver vs gold** | Which lakehouse layer? |
-| **Model transformations** | Joins, aggregations, business rules, derived columns, grain? |
-| **dbt project structure** | Staging, intermediate, or marts? |
-| **dbt tests** | Unit tests vs data tests? |
-| **dbt contracts** | Contract changes required? |
-| **Semantic model** | Metrics, entities, or measures to add? |
-| **Fabric endpoint & adapter** | Lakehouse or Warehouse endpoint? dbt-fabric adapter constraints (materialization, merge strategy, incremental)? |
+- Score purpose alignment first (business process, source, data-engineering, or platform).
+- For platform-focused prompts, require explicit Lakehouse endpoint/adapter correctness.
+- For non-platform prompts, do not penalize missing deep Lakehouse detail unless the prompt requires it.
 
----
+For each test prompt, identify:
+
+- Which models to create or modify
+- Which layer they belong to (`silver` or `gold`)
+- How work fits project structure and tests
 
 ## Evaluation Rubric
 
 Compare two plans for the same task:
 
-- **Plan A** — skill loaded
-- **Plan B** — no skill loaded
+- `Plan A`: skill loaded
+- `Plan B`: no skill loaded
 
-Score each dimension **A vs B** only if **relevant to the test prompt**. Skip irrelevant dimensions.
+Score each dimension only when relevant.
 
 ### Dimensions
 
 | Dimension | What to score |
 | -- | -- |
-| **Silver vs gold** | Correct lakehouse layer identification? |
-| **Model transformations** | Correct joins, aggregations, business rules, derived columns, grain? |
-| **dbt project structure** | Correct placement (staging → intermediate → marts)? |
-| **dbt tests** | Unit tests vs data tests correctly differentiated? |
-| **Unit test cases** | Specific assertions for unit vs data tests? |
-| **dbt contracts** | Contract impact identified? |
-| **Semantic model** | Semantic layer additions identified? |
-| **Fabric endpoint & adapter** | Target endpoint and dbt-fabric constraints (merge strategy, incremental) addressed? |
+| Silver vs gold | Correct lakehouse layer identification |
+| Model transformations | Correct joins, aggregations, business rules, derived columns, grain |
+| dbt project structure | Correct placement (staging -> intermediate -> marts) |
+| dbt tests | Correct split between unit and data tests |
+| Unit test cases | Specific assertions for testable behavior |
+| dbt contracts | Contract impact identified |
+| Semantic model | Metrics/entities/measures additions identified |
+| Fabric endpoint & adapter | Endpoint and dbt-fabric constraints addressed |
 
-### Scoring rules
+### Scoring Rules
 
-- **Always A vs B** — never evaluate in isolation
-- **Never score** "B didn't use the skill"
-- **Never score** formatting, length, structure
-- ↑ = skill improved this dimension
-- ↓ = gap or regression
-- Output ONLY bullet points, one per line
+- Always score A vs B, never in isolation
+- Never score "B didn't use the skill"
+- Never score formatting, length, or section style
+- Penalize generic warehouse advice only when it conflicts with Fabric/Azure context
+- Use `up` when skill improves the dimension
+- Use `down` when skill regresses or misses an expected behavior
+- Output bullet lines only, one finding per line

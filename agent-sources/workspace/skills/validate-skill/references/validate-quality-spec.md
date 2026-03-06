@@ -52,6 +52,13 @@ Check for content belonging to a different purpose. Purpose-scoped dimension set
 
 Classify each section and reference file by dimension(s). Content mapping outside the current purpose's set is a boundary violation. Brief incidental mentions are acceptable; only substantial sections are violations.
 
+### Purpose-Aware Platform Alignment
+
+Check context drift against runtime assumptions:
+
+- **Platform purpose**: substantive guidance must include Lakehouse endpoint/runtime constraints where applicable. Missing critical Lakehouse constraints is a FAIL.
+- **Non-platform purposes**: do not require deep Lakehouse detail by default. Mark FAIL only when content is incompatible with Fabric/Azure context, or when prompt/decisions explicitly require platform constraints and the skill omits them.
+
 ## Pass 4: Prescriptiveness Check
 
 Detect prescriptive language patterns:

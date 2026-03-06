@@ -53,10 +53,11 @@ function parseFrontmatter(content: string): DecisionFrontmatter {
 export function parseDecisions(content: string): Decision[] {
   const decisions: Decision[] = [];
   const body = content.replace(/^---[\s\S]*?---\n*/, "");
-  const sections = body.split(/(?=^### D\d+)/m).filter((s) => s.trim());
+  // Accept either ## or ### headings (both appear in generated decisions.md files).
+  const sections = body.split(/(?=^##+\s*D\d+\s*:)/m).filter((s) => s.trim());
 
   for (const section of sections) {
-    const headingMatch = section.match(/^### (D\d+):\s*(.+)/);
+    const headingMatch = section.match(/^##+\s*(D\d+):\s*(.+)/);
     if (!headingMatch) continue;
 
     const id = headingMatch[1];

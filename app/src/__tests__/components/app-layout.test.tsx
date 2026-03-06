@@ -148,6 +148,7 @@ describe("AppLayout", () => {
         return new Promise<ReconciliationResult>((resolve) => {
           resolveReconcile = resolve;
         });
+      if (cmd === "list_models") return Promise.resolve([]);
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
 
@@ -288,6 +289,7 @@ describe("AppLayout", () => {
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup")
         return Promise.reject(new Error("Workspace path not initialized"));
+      if (cmd === "list_models") return Promise.resolve([]);
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
 
@@ -367,7 +369,7 @@ describe("AppLayout", () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
-        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "list_models") return Promise.resolve([]);
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
         if (cmd === "check_marketplace_updates") return Promise.resolve({
           library: [{ name: "sales-skill", path: "skills/sales-skill", version: "1.1.0" }],
@@ -390,7 +392,7 @@ describe("AppLayout", () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
-        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "list_models") return Promise.resolve([]);
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
         if (cmd === "check_marketplace_updates") return Promise.resolve({
           library: [],
@@ -413,7 +415,7 @@ describe("AppLayout", () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "get_settings") return Promise.resolve({ ...marketplaceSettings, auto_update: true });
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
-        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "list_models") return Promise.resolve([]);
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
         if (cmd === "check_marketplace_updates") return Promise.resolve({
           library: [{ name: "sales-skill", path: "skills/sales-skill", version: "1.1.0" }],
@@ -438,7 +440,7 @@ describe("AppLayout", () => {
       mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
         if (cmd === "get_settings") return Promise.resolve({ ...marketplaceSettings, auto_update: true });
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
-        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "list_models") return Promise.resolve([]);
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
         if (cmd === "check_marketplace_updates") return Promise.resolve({
           library: [
@@ -467,7 +469,7 @@ describe("AppLayout", () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
-        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "list_models") return Promise.resolve([]);
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
         if (cmd === "check_marketplace_updates") return Promise.resolve({
           library: [],
@@ -491,7 +493,7 @@ describe("AppLayout", () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
-        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "list_models") return Promise.resolve([]);
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
         if (cmd === "check_marketplace_updates") return Promise.reject(new Error("marketplace.json not found"));
         return Promise.resolve(undefined);

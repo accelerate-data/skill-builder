@@ -14,6 +14,7 @@ pub fn create_test_db() -> rusqlite::Connection {
             purpose      TEXT,
             created_at   TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            deleted_at   TEXT,
             description  TEXT,
             version      TEXT,
             model        TEXT,

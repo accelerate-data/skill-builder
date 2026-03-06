@@ -11,25 +11,45 @@ pub struct PrepareResult {
     pub transcript_log_dir: String,
 }
 
-/// Create a `.claude/CLAUDE.md` file inside `parent_dir` with the given content.
-fn write_workspace_claude_md(parent_dir: &Path, content: &str, label: &str) -> Result<(), String> {
-    let claude_dir = parent_dir.join(".claude");
-    std::fs::create_dir_all(&claude_dir).map_err(|e| {
-        log::error!(
-            "[prepare_skill_test] Failed to create {} dir: {}",
-            label,
-            e
-        );
+/// Create a workspace root and copy `CLAUDE.md` from the main workspace into it.
+fn copy_workspace_claude_md(
+    src_workspace_path: &Path,
+    dest_workspace_dir: &Path,
+    label: &str,
+) -> Result<(), String> {
+    let src_claude_md = src_workspace_path.join("CLAUDE.md");
+    std::fs::create_dir_all(dest_workspace_dir).map_err(|e| {
+        log::error!("[prepare_skill_test] Failed to create {} workspace dir: {}", label, e);
         format!("Failed to create {} workspace: {}", label, e)
     })?;
-    std::fs::write(claude_dir.join("CLAUDE.md"), content).map_err(|e| {
-        log::error!(
-            "[prepare_skill_test] Failed to write {} CLAUDE.md: {}",
-            label,
-            e
+    let dest_claude_md = dest_workspace_dir.join("CLAUDE.md");
+
+    if src_claude_md.exists() {
+        std::fs::copy(&src_claude_md, &dest_claude_md).map_err(|e| {
+            log::error!(
+                "[prepare_skill_test] Failed to copy {} CLAUDE.md from {:?}: {}",
+                label,
+                src_claude_md,
+                e
+            );
+            format!("Failed to copy {} CLAUDE.md: {}", label, e)
+        })?;
+    } else {
+        log::warn!(
+            "[prepare_skill_test] source CLAUDE.md not found at {:?}; writing fallback",
+            src_claude_md
         );
-        format!("Failed to write {} CLAUDE.md: {}", label, e)
-    })
+        std::fs::write(&dest_claude_md, "# Test Workspace").map_err(|e| {
+            log::error!(
+                "[prepare_skill_test] Failed to write fallback {} CLAUDE.md: {}",
+                label,
+                e
+            );
+            format!("Failed to write fallback {} CLAUDE.md: {}", label, e)
+        })?;
+    }
+
+    Ok(())
 }
 
 /// Recursively copy a skill directory into `dest_skills_dir/{skill_name}/`.
@@ -54,7 +74,7 @@ fn copy_skill_dir(src_skills_dir: &Path, dest_skills_dir: &Path, skill_name: &st
 /// - `baseline_cwd`: skill-test context only (no user skill)
 /// - `with_skill_cwd`: skill-test context + user skill
 ///
-/// Both contain a `.claude/CLAUDE.md` and `.claude/skills/skill-test/` so agents
+/// Both contain a root `CLAUDE.md` and `.claude/skills/skill-test/` so agents
 /// pick up skill context automatically via the SDK's workspace loading.
 #[tauri::command]
 pub fn prepare_skill_test(
@@ -91,9 +111,10 @@ pub fn prepare_skill_test(
     let baseline_dir = tmp_parent.join("baseline");
     let with_skill_dir = tmp_parent.join("with-skill");
 
-    // Write minimal CLAUDE.md to both workspaces
-    write_workspace_claude_md(&baseline_dir, "# Test Workspace", "baseline")?;
-    write_workspace_claude_md(&with_skill_dir, "# Test Workspace", "with-skill")?;
+    // Copy workspace CLAUDE.md so test runs use the same global context.
+    let workspace_root = Path::new(&workspace_path);
+    copy_workspace_claude_md(workspace_root, &baseline_dir, "baseline")?;
+    copy_workspace_claude_md(workspace_root, &with_skill_dir, "with-skill")?;
 
     let baseline_skills_dir = baseline_dir.join(".claude").join("skills");
     let with_skill_skills_dir = with_skill_dir.join(".claude").join("skills");

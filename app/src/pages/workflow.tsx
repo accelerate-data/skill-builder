@@ -6,6 +6,7 @@ import {
   Play,
   AlertCircle,
   RotateCcw,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -425,7 +426,7 @@ export default function WorkflowPage() {
   }, [currentStep, steps, stepConfig?.clarificationsEditable, skillsPath, skillName]);
 
   // Advance to next step helper
-  const [pendingAutoStart, setPendingAutoStart] = useState(false);
+  const [pendingAutoStartStep, setPendingAutoStartStep] = useState<number | null>(null);
 
   /** After resetting to a step, auto-start if it's an agent step in update mode. */
   const isAgentType = stepConfig?.type === "agent" || stepConfig?.type === "reasoning";
@@ -433,13 +434,15 @@ export default function WorkflowPage() {
   const autoStartAfterReset = (stepId: number) => {
     const cfg = STEP_CONFIGS[stepId];
     if ((cfg?.type === "agent" || cfg?.type === "reasoning") && !useWorkflowStore.getState().reviewMode) {
-      setPendingAutoStart(true);
+      setPendingAutoStartStep(stepId);
     }
   };
 
   const advanceToNextStep = useCallback(() => {
+    const { gateLoading: gateLoadingNow, disabledSteps: disabled } = useWorkflowStore.getState();
+    // Transition gate owns progression while answer analysis is running.
+    if (gateLoadingNow || gateAgentIdRef.current) return;
     if (currentStep >= steps.length - 1) return;
-    const { disabledSteps: disabled } = useWorkflowStore.getState();
     const nextStep = currentStep + 1;
 
     // Don't advance if the next step is disabled (scope too broad)
@@ -448,20 +451,26 @@ export default function WorkflowPage() {
     setCurrentStep(nextStep);
 
     // All steps are agent or reasoning — auto-start
-    setPendingAutoStart(true);
+    setPendingAutoStartStep(nextStep);
   }, [currentStep, steps, setCurrentStep]);
 
   // Auto-start agent/reasoning steps:
   // 1. When advancing from a completed step (pendingAutoStart set by advanceToNextStep)
   // 2. On initial page load when step hasn't started yet
   useEffect(() => {
-    if (!pendingAutoStart) return;
+    if (pendingAutoStartStep === null) return;
+    if (pendingAutoStartStep !== currentStep) return;
     if (!isAgentType) return;
     if (isRunning) return;
-    setPendingAutoStart(false);
+    if (gateLoading || gateAgentIdRef.current) return;
+    if (steps[currentStep]?.status !== "pending") {
+      setPendingAutoStartStep(null);
+      return;
+    }
+    setPendingAutoStartStep(null);
     handleStartAgentStep();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingAutoStart, currentStep]);
+  }, [pendingAutoStartStep, currentStep, steps, isRunning, isAgentType, gateLoading]);
 
   // Auto-start when switching from Review → Update mode on a pending agent step.
   // Does NOT fire on initial page load (new skills show a Start button per AC 1).
@@ -476,9 +485,9 @@ export default function WorkflowPage() {
     if (!workspacePath) return;
     const status = steps[currentStep]?.status;
     if (status && status !== "pending") return;
-    if (isRunning || pendingAutoStart) return;
+    if (isRunning || pendingAutoStartStep !== null || gateLoading) return;
     console.log(`[workflow] Auto-starting step ${currentStep} (review→update toggle)`);
-    setPendingAutoStart(true);
+    setPendingAutoStartStep(currentStep);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, reviewMode]);
 
@@ -598,6 +607,10 @@ export default function WorkflowPage() {
       toast.error("Missing workspace path", { duration: Infinity });
       return;
     }
+    if (gateLoading || gateAgentIdRef.current) {
+      toast.info("Answer analysis is in progress. Please wait for results.");
+      return;
+    }
 
     try {
       clearRuns();
@@ -632,6 +645,8 @@ export default function WorkflowPage() {
   const runGateEvaluation = async () => {
     if (!workspacePath) return;
     console.log(`[workflow] Running answer evaluator gate for "${skillName}"`);
+    // Ensure no stale auto-start trigger can run another step during gate analysis.
+    setPendingAutoStartStep(null);
     setGateLoading(true);
 
     try {
@@ -650,6 +665,10 @@ export default function WorkflowPage() {
   };
 
   const runGateOrAdvance = () => {
+    const { gateLoading: gateLoadingNow } = useWorkflowStore.getState();
+    // Ignore duplicate clicks while evaluator is already running.
+    if (gateLoadingNow || gateAgentIdRef.current) return;
+
     // Gate 1: after step 0 (Research), evaluate answers before advancing to Detailed Research
     if (currentStep === 0 && workspacePath && !disabledSteps.includes(1)) {
       setGateContext("clarifications");
@@ -956,7 +975,7 @@ export default function WorkflowPage() {
         </div>
       );
     }
-    if (pendingAutoStart) {
+    if (pendingAutoStartStep !== null) {
       return <AgentInitializingIndicator />;
     }
     return (
@@ -1097,6 +1116,22 @@ export default function WorkflowPage() {
         onLetMeAnswer={handleGateLetMeAnswer}
         onContinueAnyway={handleGateContinueAnyway}
       />
+
+      {/* Gate evaluation progress modal — shown while answer evaluator runs */}
+      <Dialog open={gateLoading && !showGateDialog}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Analyzing Responses</DialogTitle>
+            <DialogDescription>
+              Reviewing your answers to determine whether to continue, ask for refinements, or skip ahead.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" />
+            Running answer analysis...
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="flex h-[calc(100%+3rem)] -m-6">
         <WorkflowSidebar

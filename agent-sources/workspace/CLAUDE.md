@@ -4,7 +4,7 @@ Auto-loaded into every agent's system prompt. Do not read manually.
 
 ## Domain Focus
 
-This workspace generates skills for **dbt on Microsoft Fabric**. Every agent operates in this context by default.
+This workspace generates skills for **dbt on Microsoft Fabric/Azure**. Every agent operates in this context by default.
 
 | Layer | Tool | Role |
 |---|---|---|
@@ -14,20 +14,15 @@ This workspace generates skills for **dbt on Microsoft Fabric**. Every agent ope
 | Platform | **Microsoft Fabric** on Azure | Lakehouse, Delta tables, SQL analytics |
 | CI/CD | **GitHub Actions** | Slim CI, OIDC auth, SQLFluff |
 
-**This is not generic dbt.** The dbt-fabric adapter has behaviors that differ from Snowflake, BigQuery, and Redshift — and from official dbt documentation:
+**This is not generic dbt.** The dbt-fabric adapter diverges from warehouse-first dbt guidance. Treat Fabric/Azure constraints and endpoint behavior as first-class when researching, making decisions, generating skills, validating outputs, and testing skills. Keep detailed behavior in references and supporting docs, not hardcoded in this global prompt.
 
-- `merge` strategy silently degrades on Lakehouse endpoints; workarounds are required
-- `datetime2` precision causes snapshot failures in certain Fabric configurations
-- Warehouse vs. Lakehouse endpoints change which SQL features and materializations are available
-- Incremental materialization options and their behavior differ from standard dbt docs
+**Default lens for all agents**: Orient research, examples, configurations, failure modes, and anti-patterns to dbt on Fabric/Azure unless `user-context.md` explicitly states otherwise. For `platform` purpose, enforce Lakehouse-first guidance. For other purposes (`business process`, `source`, `data-engineering`), bring Lakehouse constraints in only when they materially affect design, risk, or validation outcomes.
 
-**Default lens for all agents**: Orient research, examples, configurations, failure modes, and anti-patterns to dbt on Fabric unless `user-context.md` explicitly states otherwise. Surface Fabric-specific behaviors, dbt-fabric adapter constraints, and Delta table semantics rather than generic dbt guidance.
-
-**Documentation source**: [Context7](https://context7.com) provides up-to-date docs and code examples for all libraries in this stack. Use Context7 (`resolve-library-id` → `query-docs`) to look up current API docs, configuration references, and code patterns. Skills should NOT rehash what Context7 already provides — focus on the delta: what the docs say vs. what Fabric actually does, what breaks in practice, what's missing from official documentation.
+**Documentation source**: [Context7](https://context7.com) provides up-to-date docs and code examples for all libraries in this stack as well as any systems the user wants to ingest in bronze. Use Context7 (`resolve-library-id` → `query-docs`) to look up current API docs, configuration references, and code patterns. Skills should NOT rehash what Context7 already provides — focus on the delta: what the docs say vs. what Fabric/Azure actually does in the user's environment, what breaks in practice, and what's missing from official documentation.
 
 ## Protocols
 
-### User Context
+### Required Input: User Context
 
 The user's `user-context.md` file (in the workspace directory) is the single source of truth for all user-provided context. It contains:
 
@@ -47,7 +42,17 @@ Every agent must read `user-context.md` from the workspace directory and use it 
 
 **Workspace directory contents:** Only read the `user-context.md` from the workspace directory.
 
-### Scope Recommendation Guard
+### Execution Defaults (All Agents)
+
+- Ask one focused clarification when ambiguity blocks a concrete recommendation.
+- Check existing artifacts/context first before generating new guidance.
+- Validate consistency before final output: recommendations must align with stated purpose, user context, and cited sources.
+- Do not provide warehouse-generic dbt guidance that conflicts with Fabric/Azure context.
+- Apply Lakehouse constraints strictly for `platform` purpose; apply them conditionally for other purposes.
+- Use Context7 (or user-provided sources) for current APIs/configuration; do not invent undocumented behavior.
+- Prefer concrete, actionable outputs over long explanations.
+
+### Workflow Guard (Workflow/Refine/Validate/Test Pipeline)
 
 When `metadata.scope_recommendation` is `true` in `clarifications.json` or `scope_recommendation: true` in the YAML frontmatter of `decisions.md`, the scope was too broad and a recommendation was issued instead of normal output. Every agent that runs after research (detailed-research, confirm-decisions, generate-skill, validate-skill) must check this before starting work. If detected: write any required stub output files (see agent-specific instructions), then return immediately. Do NOT spawn sub-agents, analyze content, or generate output.
 
@@ -79,7 +84,7 @@ Use the lightest option that fits:
 
 ## Output Paths
 
-The coordinator provides **context directory** and **skill output directory** paths.
+For agents that write files, the coordinator provides **context directory** and **skill output directory** paths.
 
 - All directories already exist — never run `mkdir`
 - Write directly to the provided paths

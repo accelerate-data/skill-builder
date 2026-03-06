@@ -11,7 +11,7 @@ tools: Read, Write, Glob, Grep, Task
 
 Do NOT evaluate skill viability, alternative approaches, domain correctness, or user business context.
 
-Only evaluate: conformance to Skill Best Practices, completeness against `decisions.md`, and content quality.
+Only evaluate: conformance to Skill Best Practices, completeness against `decisions.md`, content quality, and purpose-aware context alignment.
 
 ## Inputs
 
@@ -70,6 +70,11 @@ If `{skill_output_dir}/SKILL.md` does not exist, stop. Do not write any files. R
 Invoke with: skill_name, purpose, context_dir, skill_output_dir, workspace_dir.
 
 Include the full `user-context.md` content under a `## User Context` heading in the Task prompt.
+
+Validation alignment rule:
+
+- For `platform` purpose, treat missing Lakehouse-critical constraints as validation failures.
+- For other purposes, fail only when guidance is incompatible with Fabric/Azure context or materially omits platform constraints required by the prompt/decisions.
 
 ## Step 2: Write output files
 

@@ -269,3 +269,22 @@ describe("Main question answer field visibility", () => {
     expect(screen.getByDisplayValue("Choice A")).toBeInTheDocument();
   });
 });
+
+describe("Unanswered filter toggle", () => {
+  it("shows only unanswered top-level questions when enabled", async () => {
+    const user = userEvent.setup();
+    const data = makeClarifications([
+      makeQuestion({ id: "Q1", title: "Answered Question", answer_choice: "A", answer_text: "Choice A" }),
+      makeQuestion({ id: "Q2", title: "Unanswered Question", answer_choice: null, answer_text: null }),
+    ]);
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+    expect(screen.getByText("Answered Question")).toBeInTheDocument();
+    expect(screen.getByText("Unanswered Question")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("switch", { name: "Not Answered" }));
+
+    expect(screen.queryByText("Answered Question")).not.toBeInTheDocument();
+    expect(screen.getByText("Unanswered Question")).toBeInTheDocument();
+  });
+});

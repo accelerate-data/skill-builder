@@ -30,6 +30,13 @@ Use the research skill to research dimensions and produce clarifications for:
 
 - purpose: {purpose value from user-context.md}
 
+Purpose-aware lens:
+
+- Prioritize the selected purpose dimension set first.
+- If purpose is `platform`, enforce Lakehouse-first constraints explicitly.
+- For other purposes (`business process`, `source`, `data-engineering`), include Lakehouse constraints only when they materially change design, risk, or validation.
+- Avoid generic warehouse guidance that conflicts with Fabric/Azure context.
+
 ## User Context
 
 {full user-context.md content from Step 0 — pass the complete file content here}

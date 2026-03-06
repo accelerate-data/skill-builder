@@ -732,6 +732,55 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     );
   });
 
+  it("does not advance to Detailed Research while answer analysis is running", async () => {
+    const jsonData = makeClarificationsJson();
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path.includes("research-plan.md")) {
+        return Promise.resolve("# Research Plan\nTest content");
+      }
+      return Promise.reject("not found");
+    });
+
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-1");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const firstRenderProps = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    expect(firstRenderProps).toBeTruthy();
+    expect(typeof firstRenderProps?.onClarificationsContinue).toBe("function");
+
+    await act(async () => {
+      firstRenderProps?.onClarificationsContinue?.();
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().gateLoading).toBe(true);
+    });
+
+    // Simulate an accidental stale "Next Step" callback firing while the gate is active.
+    act(() => {
+      firstRenderProps?.onNextStep?.();
+    });
+
+    const wf = useWorkflowStore.getState();
+    expect(wf.currentStep).toBe(0);
+    expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalledWith("test-skill", 1, "/test/workspace");
+
+  });
+
   it("skipToDecisions from step 0 skips to step 2 (Confirm Decisions)", async () => {
     // Set up step 0 completed
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");

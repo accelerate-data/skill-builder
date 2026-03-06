@@ -35,8 +35,8 @@ const mockSummary: UsageSummary = {
 
 const mockByStep: UsageByStep[] = [
   { step_id: 0, step_name: "Research", total_cost: 3.5, run_count: 10 },
-  { step_id: 2, step_name: "Confirm Decisions", total_cost: 6.0, run_count: 8 },
-  { step_id: 3, step_name: "Generate Skill", total_cost: 2.0, run_count: 5 },
+  { step_id: 4, step_name: "Confirm Decisions", total_cost: 6.0, run_count: 8 },
+  { step_id: 5, step_name: "Generate Skill", total_cost: 2.0, run_count: 5 },
 ];
 
 const mockByModel: UsageByModel[] = [
@@ -64,9 +64,9 @@ const mockRecentSessions: WorkflowSessionRecord[] = [
   {
     session_id: "ws-2",
     skill_name: "another-skill",
-    min_step: 3,
-    max_step: 3,
-    steps_csv: "3",
+    min_step: 5,
+    max_step: 5,
+    steps_csv: "5",
     agent_count: 1,
     total_cost: 1.2345,
     total_input_tokens: 50000,
@@ -197,7 +197,7 @@ describe("UsagePage", () => {
       {
         agent_id: "a2",
         skill_name: "my-skill",
-        step_id: 2,
+        step_id: 4,
         model: "opus",
         status: "completed",
         input_tokens: 5000,
@@ -237,6 +237,68 @@ describe("UsagePage", () => {
       // Model names appear only in the step table
       expect(table.textContent).toContain("sonnet");
       expect(table.textContent).toContain("opus");
+    });
+  });
+
+  it("maps review and synthetic test step ids to stable labels in session details", async () => {
+    const { getSessionAgentRuns } = await import("@/lib/tauri");
+    vi.mocked(getSessionAgentRuns).mockResolvedValueOnce([
+      {
+        agent_id: "review-agent",
+        skill_name: "my-skill",
+        step_id: 1,
+        model: "sonnet",
+        status: "completed",
+        input_tokens: 4000,
+        output_tokens: 700,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        total_cost: 0.03,
+        duration_ms: 5000,
+        num_turns: 2,
+        stop_reason: "end_turn",
+        duration_api_ms: 4800,
+        tool_use_count: 1,
+        compaction_count: 0,
+        session_id: "ws-1",
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+      },
+      {
+        agent_id: "test-agent",
+        skill_name: "my-skill",
+        step_id: -11,
+        model: "haiku",
+        status: "completed",
+        input_tokens: 2500,
+        output_tokens: 350,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        total_cost: 0.01,
+        duration_ms: 4000,
+        num_turns: 1,
+        stop_reason: "end_turn",
+        duration_api_ms: 3900,
+        tool_use_count: 0,
+        compaction_count: 0,
+        session_id: "ws-1",
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+      },
+    ]);
+
+    const user = userEvent.setup();
+    render(<UsagePage />);
+
+    await user.click(screen.getByLabelText(/Toggle details for my-skill workflow run/));
+
+    await waitFor(() => {
+      const table = screen.getByTestId("step-table");
+      expect(table).toBeInTheDocument();
+      expect(table.textContent).toContain("Review");
+      expect(table.textContent).toContain("Test");
+      expect(table.textContent).not.toContain("Step 1");
+      expect(table.textContent).not.toContain("Step -11");
     });
   });
 

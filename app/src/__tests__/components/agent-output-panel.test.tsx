@@ -1049,7 +1049,7 @@ describe("Tool call rendering: standalone vs grouped", () => {
       />,
     );
     // Click button to expand
-    const button = screen.getByRole("button");
+    const button = screen.getByRole("button", { name: /Grep: "TODO" .*expand/i });
     fireEvent.click(button);
 
     // Should show the tool input details
@@ -1086,7 +1086,7 @@ describe("Tool call rendering: standalone vs grouped", () => {
     render(<ToolCallGroup messages={groupMessages} />);
 
     // Click group header to expand
-    fireEvent.click(screen.getAllByRole("button")[0]);
+    fireEvent.click(screen.getByLabelText(/3 tool calls/));
 
     // Should show the three tool summaries as text
     expect(screen.getByText("Reading a.ts")).toBeInTheDocument();
@@ -1095,7 +1095,7 @@ describe("Tool call rendering: standalone vs grouped", () => {
 
     // Each expanded member is now a CollapsibleToolCall with its own button
     const details = screen.getByTestId("tool-group-details");
-    const memberButtons = details.querySelectorAll("button");
+    const memberButtons = details.querySelectorAll("button[aria-label*='expand']");
     // Each tool call with input gets a button
     expect(memberButtons.length).toBe(3);
   });
@@ -1273,7 +1273,7 @@ describe("CollapsibleToolCall", () => {
     expect(screen.getByText("Reading app.ts")).toBeInTheDocument();
 
     // Should have a button with aria-expanded=false
-    const button = screen.getByRole("button");
+    const button = screen.getByRole("button", { name: /Reading app\.ts .*expand/i });
     expect(button).toHaveAttribute("aria-expanded", "false");
 
     // Expanded content should not be visible (max-h-0, opacity-0)
@@ -1286,7 +1286,7 @@ describe("CollapsibleToolCall", () => {
     render(
       <CollapsibleToolCall message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })} />,
     );
-    const button = screen.getByRole("button");
+    const button = screen.getByRole("button", { name: /Reading app\.ts .*expand/i });
     fireEvent.click(button);
 
     // aria-expanded should be true
@@ -1305,7 +1305,7 @@ describe("CollapsibleToolCall", () => {
     render(
       <CollapsibleToolCall message={makeToolCallMsg("Grep", { pattern: "TODO" })} />,
     );
-    const button = screen.getByRole("button");
+    const button = screen.getByRole("button", { name: /Grep: "TODO" .*expand/i });
 
     // Expand
     fireEvent.click(button);
@@ -1368,7 +1368,7 @@ describe("CollapsibleToolCall", () => {
     render(
       <CollapsibleToolCall message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })} />,
     );
-    const button = screen.getByRole("button");
+    const button = screen.getByRole("button", { name: /Reading app\.ts .*expand/i });
     expect(button.getAttribute("aria-label")).toContain("Reading app.ts");
     expect(button.getAttribute("aria-label")).toContain("expand");
   });

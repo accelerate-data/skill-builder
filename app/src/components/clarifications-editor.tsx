@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { ChevronRight, AlertTriangle, Info, RotateCcw, Check, Loader2, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   type ClarificationsFile,
   type Section,
@@ -64,6 +65,7 @@ export function ClarificationsEditor({
   evaluating = false,
 }: ClarificationsEditorProps) {
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [showUnansweredOnly, setShowUnansweredOnly] = useState(false);
   const { answered, total, mustUnanswered } = getTotalCounts(data);
   const canContinue = mustUnanswered === 0;
   const progressPct = total > 0 ? Math.round((answered / total) * 100) : 0;
@@ -101,6 +103,20 @@ export function ClarificationsEditor({
     [data, onChange],
   );
 
+  const hasUnansweredInTree = useCallback((q: Question): boolean => {
+    if (!isQuestionAnswered(q)) return true;
+    return q.refinements.some(hasUnansweredInTree);
+  }, []);
+
+  const visibleSections = data.sections
+    .map((section) => ({
+      section,
+      visibleQuestions: showUnansweredOnly
+        ? section.questions.filter(hasUnansweredInTree)
+        : section.questions,
+    }))
+    .filter(({ visibleQuestions }) => visibleQuestions.length > 0);
+
   return (
     <div className="flex h-full flex-col">
       {/* ── Toolbar ── */}
@@ -133,6 +149,15 @@ export function ClarificationsEditor({
         {filePath && (
           <span className="text-[11px] font-mono text-muted-foreground">{filePath}</span>
         )}
+        <div className="ml-1 flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Not Answered</span>
+          <Switch
+            size="sm"
+            aria-label="Not Answered"
+            checked={showUnansweredOnly}
+            onCheckedChange={setShowUnansweredOnly}
+          />
+        </div>
       </div>
 
       {/* ── Scrollable document ── */}
@@ -156,16 +181,22 @@ export function ClarificationsEditor({
 
         {data.notes.length > 0 && <NotesBlock notes={data.notes} />}
 
-        {data.sections.map((section) => (
+        {visibleSections.map(({ section, visibleQuestions }) => (
           <SectionBlock
             key={section.id}
             section={section}
+            visibleQuestions={visibleQuestions}
             expandedCards={expandedCards}
             toggleCard={toggleCard}
             updateQuestion={updateQuestion}
             readOnly={readOnly}
           />
         ))}
+        {visibleSections.length === 0 && (
+          <div className="mx-6 mt-6 rounded-md border border-dashed px-4 py-3 text-sm text-muted-foreground">
+            No unanswered questions in the current filter.
+          </div>
+        )}
       </div>
 
       {/* ── Bottom bar ── */}
@@ -238,9 +269,10 @@ function MetadataBlock({ data }: { data: ClarificationsFile }) {
 // ─── Section Band ─────────────────────────────────────────────────────────────
 
 function SectionBlock({
-  section, expandedCards, toggleCard, updateQuestion, readOnly,
+  section, visibleQuestions, expandedCards, toggleCard, updateQuestion, readOnly,
 }: {
   section: Section;
+  visibleQuestions: Question[];
   expandedCards: Set<string>;
   toggleCard: (id: string) => void;
   updateQuestion: (id: string, updater: (q: Question) => Question) => void;
@@ -273,7 +305,7 @@ function SectionBlock({
         </div>
       )}
 
-      {section.questions.map((question) => (
+      {visibleQuestions.map((question) => (
         <QuestionCard
           key={question.id}
           question={question}

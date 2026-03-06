@@ -100,6 +100,13 @@ modified: <today's date>
 
 `tools` is the only field the agent determines. All others come from user-context.md or the coordinator prompt.
 
+Context alignment rules:
+
+- Keep generated guidance aligned with purpose and user context first.
+- For `platform` purpose, enforce Lakehouse-first recommendations where technical behavior depends on endpoint/runtime constraints.
+- For non-platform purposes, include Lakehouse-specific detail only when it materially affects the skill's decisions, risks, or tests.
+- Avoid generic warehouse-first prescriptions that conflict with Fabric/Azure context.
+
 **Description** trigger pattern: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` If the user's description in user-context.md already matches, use as-is. If too short, expand from description + purpose + "What Claude Needs to Know".
 
 **Sections (all skills):** Metadata → Overview → Quick Reference → Purpose-specific sections → Reference Files (pointers with description and when to read).

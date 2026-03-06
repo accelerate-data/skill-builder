@@ -1,10 +1,15 @@
 import { vi } from "vitest";
 
 // Mock @tauri-apps/api/core
-// Default: resolve for fire-and-forget commands, undefined for unknown
+// Default: resolve for fire-and-forget commands; return empty lists for common
+// non-critical initialization/listing commands; undefined for other unknown commands.
 const FIRE_AND_FORGET_COMMANDS = new Set(["persist_agent_run"]);
 const defaultInvokeImpl = (cmd: string) =>
-  FIRE_AND_FORGET_COMMANDS.has(cmd) ? Promise.resolve() : undefined;
+  FIRE_AND_FORGET_COMMANDS.has(cmd)
+    ? Promise.resolve()
+    : (cmd === "list_models" || cmd === "list_workspace_skills")
+      ? Promise.resolve([])
+      : undefined;
 export const mockInvoke = vi.fn().mockImplementation(defaultInvokeImpl);
 export const mockListen = vi.fn(() => Promise.resolve(() => {}));
 
@@ -59,6 +64,8 @@ export function mockInvokeCommand(
 ): void {
   mockInvoke.mockImplementation((cmd: string) => {
     if (cmd === command) return Promise.resolve(returnValue);
+    const defaultResult = defaultInvokeImpl(cmd);
+    if (defaultResult !== undefined) return defaultResult;
     return Promise.reject(new Error(`Unmocked command: ${cmd}`));
   });
 }
@@ -69,6 +76,8 @@ export function mockInvokeCommands(
 ): void {
   mockInvoke.mockImplementation((cmd: string) => {
     if (cmd in commands) return Promise.resolve(commands[cmd]);
+    const defaultResult = defaultInvokeImpl(cmd);
+    if (defaultResult !== undefined) return defaultResult;
     return Promise.reject(new Error(`Unmocked command: ${cmd}`));
   });
 }
