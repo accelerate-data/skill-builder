@@ -144,8 +144,15 @@ describe("useImportedSkillsStore", () => {
   });
 
   describe("toggleActive", () => {
-    it("toggles skill active state", async () => {
-      mockInvokeCommands({ toggle_skill_active: undefined });
+    it("toggles skill active state and refreshes list", async () => {
+      const refreshedSkills: WorkspaceSkill[] = [
+        { ...sampleSkills[0], is_active: false },
+        sampleSkills[1],
+      ];
+      mockInvokeCommands({
+        toggle_skill_active: undefined,
+        list_workspace_skills: refreshedSkills,
+      });
       useImportedSkillsStore.setState({ skills: sampleSkills });
 
       await useImportedSkillsStore.getState().toggleActive("id-1", false);
@@ -158,17 +165,58 @@ describe("useImportedSkillsStore", () => {
       const state = useImportedSkillsStore.getState();
       const toggled = state.skills.find((s) => s.skill_name === "sales-analytics");
       expect(toggled?.is_active).toBe(false);
+      expect(mockInvoke).toHaveBeenCalledWith("list_workspace_skills");
     });
 
-    it("does not affect other skills", async () => {
-      mockInvokeCommands({ toggle_skill_active: undefined });
+    it("keeps selectedSkill synced with refreshed list", async () => {
+      const refreshedSkills: WorkspaceSkill[] = [
+        sampleSkills[0],
+        { ...sampleSkills[1], is_active: true },
+      ];
+      mockInvokeCommands({
+        toggle_skill_active: undefined,
+        list_workspace_skills: refreshedSkills,
+      });
       useImportedSkillsStore.setState({ skills: sampleSkills });
+      useImportedSkillsStore.getState().setSelectedSkill(sampleSkills[1]);
 
       await useImportedSkillsStore.getState().toggleActive("id-2", true);
 
-      const state = useImportedSkillsStore.getState();
-      const other = state.skills.find((s) => s.skill_name === "sales-analytics");
-      expect(other?.is_active).toBe(true); // unchanged
+      expect(useImportedSkillsStore.getState().selectedSkill?.is_active).toBe(true);
+    });
+  });
+
+  describe("setPurpose", () => {
+    it("sets purpose and refreshes list", async () => {
+      const refreshedSkills: WorkspaceSkill[] = [
+        sampleSkills[0],
+        { ...sampleSkills[1], purpose: "research" },
+      ];
+      mockInvokeCommands({
+        set_workspace_skill_purpose: undefined,
+        list_workspace_skills: refreshedSkills,
+      });
+      useImportedSkillsStore.setState({ skills: sampleSkills });
+
+      await useImportedSkillsStore.getState().setPurpose("id-2", "research");
+
+      expect(mockInvoke).toHaveBeenCalledWith("set_workspace_skill_purpose", {
+        skillId: "id-2",
+        purpose: "research",
+      });
+      expect(useImportedSkillsStore.getState().skills[1].purpose).toBe("research");
+    });
+
+    it("clears selectedSkill if it disappears after refresh", async () => {
+      mockInvokeCommands({
+        set_workspace_skill_purpose: undefined,
+        list_workspace_skills: [sampleSkills[1]],
+      });
+      useImportedSkillsStore.setState({ skills: sampleSkills, selectedSkill: sampleSkills[0] });
+
+      await useImportedSkillsStore.getState().setPurpose("id-2", "research");
+
+      expect(useImportedSkillsStore.getState().selectedSkill).toBeNull();
     });
   });
 

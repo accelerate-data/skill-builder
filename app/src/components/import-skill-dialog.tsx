@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { importSkillFromFile } from "@/lib/tauri"
-import type { SkillFileMeta, WorkspaceSkill } from "@/lib/types"
+import type { SkillFileMeta } from "@/lib/types"
 import { PURPOSE_OPTIONS } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
 
@@ -52,8 +52,6 @@ interface ImportSkillDialogProps {
   onImported: () => void
   /** Show the Purpose dropdown (workspace skills context) */
   showPurpose?: boolean
-  /** Active workspace skills used for purpose-conflict detection */
-  activeSkills?: WorkspaceSkill[]
   /** Override the default importSkillFromFile handler */
   onConfirm?: (params: ImportConfirmParams) => Promise<void>
 }
@@ -65,7 +63,6 @@ export function ImportSkillDialog({
   meta,
   onImported,
   showPurpose = false,
-  activeSkills = [],
   onConfirm,
 }: ImportSkillDialogProps) {
   const availableModels = useSettingsStore((s) => s.availableModels)
@@ -99,15 +96,10 @@ export function ImportSkillDialog({
     }
   }, [open, filePath, meta])
 
-  const purposeConflict = showPurpose && purpose && purpose !== "general-purpose"
-    ? activeSkills.find((s) => s.purpose === purpose && s.skill_name !== name && s.is_active)
-    : null
-
   const canSubmit =
     name.trim() !== "" &&
     description.trim() !== "" &&
     version.trim() !== "" &&
-    !purposeConflict &&
     !submitting
 
   const doImport = useCallback(
@@ -267,11 +259,6 @@ export function ImportSkillDialog({
                     ))}
                   </SelectContent>
                 </Select>
-                {purposeConflict && (
-                  <p className="text-xs text-destructive">
-                    &quot;{purposeConflict.skill_name}&quot; is already active for this purpose. Deactivate it first or choose a different purpose.
-                  </p>
-                )}
               </div>
             )}
 
