@@ -341,13 +341,13 @@ fn upload_skill_inner(
         marketplace_source_url: None,
     };
 
-    if let Some(ref p) = skill.purpose {
-        if is_exclusive_purpose(Some(p.as_str())) {
-            deactivate_active_siblings_for_purpose(conn, workspace_path, p, None)?;
-        }
-    }
-
     crate::db::insert_workspace_skill(conn, &skill)?;
+    deactivate_conflicting_active_skills(
+        conn,
+        workspace_path,
+        &skill.skill_id,
+        skill.purpose.as_deref(),
+    )?;
 
     Ok(skill)
 }
@@ -478,18 +478,17 @@ pub fn toggle_skill_active(
         .ok_or_else(|| format!("Workspace skill with id '{}' not found", skill_id))?;
     let skill_name = &skill.skill_name;
 
-    // Deactivate same-purpose siblings first, then activate the selected skill.
-    if active && is_exclusive_purpose(skill.purpose.as_deref()) {
-        if let Some(ref purpose) = skill.purpose {
-            deactivate_active_siblings_for_purpose(
-                &conn,
-                &workspace_path,
-                purpose,
-                Some(&skill_id),
-            )?;
-        }
-    }
     toggle_skill_active_inner(&skill_id, skill_name, active, &workspace_path, &conn)?;
+
+    // When activating, auto-deactivate any other active skill with the same purpose.
+    if active {
+        deactivate_conflicting_active_skills(
+            &conn,
+            &workspace_path,
+            &skill_id,
+            skill.purpose.as_deref(),
+        )?;
+    }
 
     // Regenerate CLAUDE.md with updated active skills
     if let Err(e) = super::workflow::update_skills_section(&workspace_path, &conn) {
@@ -497,107 +496,6 @@ pub fn toggle_skill_active(
     }
 
     Ok(())
-}
-
-pub(crate) fn is_exclusive_purpose(purpose: Option<&str>) -> bool {
-    match purpose.map(str::trim).filter(|p| !p.is_empty()) {
-        Some("general-purpose") | None => false,
-        Some(_) => true,
-    }
-}
-
-pub(crate) fn deactivate_active_siblings_for_purpose(
-    conn: &rusqlite::Connection,
-    workspace_path: &str,
-    purpose: &str,
-    exclude_skill_id: Option<&str>,
-) -> Result<usize, String> {
-    let siblings: Vec<(String, String)> = if let Some(exclude_id) = exclude_skill_id {
-        let mut stmt = conn
-            .prepare(
-                "SELECT skill_id, skill_name FROM workspace_skills
-                 WHERE purpose = ?1 AND is_active = 1 AND skill_id != ?2",
-            )
-            .map_err(|e| format!("Failed to prepare sibling query: {}", e))?;
-        let rows = stmt
-            .query_map(rusqlite::params![purpose, exclude_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })
-            .map_err(|e| format!("Failed to query siblings: {}", e))?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(|e| format!("Failed to collect siblings: {}", e))?
-    } else {
-        let mut stmt = conn
-            .prepare(
-                "SELECT skill_id, skill_name FROM workspace_skills
-                 WHERE purpose = ?1 AND is_active = 1",
-            )
-            .map_err(|e| format!("Failed to prepare sibling query: {}", e))?;
-        let rows = stmt
-            .query_map(rusqlite::params![purpose], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })
-            .map_err(|e| format!("Failed to query siblings: {}", e))?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(|e| format!("Failed to collect siblings: {}", e))?
-    };
-
-    let skills_dir = Path::new(workspace_path).join(".claude").join("skills");
-    let inactive_dir = skills_dir.join(".inactive");
-    let mut deactivated = 0usize;
-
-    for (sibling_id, sibling_name) in siblings {
-        let src = skills_dir.join(&sibling_name);
-        let dst = inactive_dir.join(&sibling_name);
-        let new_disk_path = dst.to_string_lossy().to_string();
-        let old_disk_path = src.to_string_lossy().to_string();
-
-        crate::db::update_workspace_skill_active(conn, &sibling_id, false, &new_disk_path)?;
-        deactivated += 1;
-
-        if src.exists() {
-            if let Err(e) = fs::create_dir_all(&inactive_dir) {
-                let _ = crate::db::update_workspace_skill_active(
-                    conn,
-                    &sibling_id,
-                    true,
-                    &old_disk_path,
-                );
-                return Err(format!(
-                    "Failed to create .inactive dir for sibling '{}': {}",
-                    sibling_name, e
-                ));
-            }
-            if dst.exists() {
-                fs::remove_dir_all(&dst).map_err(|e| {
-                    let _ = crate::db::update_workspace_skill_active(
-                        conn,
-                        &sibling_id,
-                        true,
-                        &old_disk_path,
-                    );
-                    format!(
-                        "Failed to clear stale destination for sibling '{}': {}",
-                        sibling_name, e
-                    )
-                })?;
-            }
-            if let Err(e) = fs::rename(&src, &dst) {
-                let _ = crate::db::update_workspace_skill_active(
-                    conn,
-                    &sibling_id,
-                    true,
-                    &old_disk_path,
-                );
-                return Err(format!(
-                    "Failed to move sibling '{}' to inactive: {}",
-                    sibling_name, e
-                ));
-            }
-        }
-    }
-
-    Ok(deactivated)
 }
 
 fn toggle_skill_active_inner(
@@ -680,6 +578,43 @@ fn toggle_skill_active_inner(
     Ok(())
 }
 
+pub(crate) fn deactivate_conflicting_active_skills(
+    conn: &rusqlite::Connection,
+    workspace_path: &str,
+    current_skill_id: &str,
+    purpose: Option<&str>,
+) -> Result<(), String> {
+    let purpose = match purpose {
+        Some(p) if !p.trim().is_empty() && p != "general-purpose" => p,
+        _ => return Ok(()),
+    };
+
+    let mut sibling_stmt = conn
+        .prepare(
+            "SELECT skill_id, skill_name FROM workspace_skills WHERE purpose = ?1 AND skill_id != ?2 AND is_active = 1",
+        )
+        .map_err(|e| format!("Failed to prepare sibling query: {}", e))?;
+    let siblings: Vec<(String, String)> = sibling_stmt
+        .query_map(rusqlite::params![purpose, current_skill_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| format!("Failed to query siblings: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect siblings: {}", e))?;
+    drop(sibling_stmt);
+
+    for (sibling_id, sibling_name) in siblings {
+        toggle_skill_active_inner(&sibling_id, &sibling_name, false, workspace_path, conn)?;
+        log::info!(
+            "[deactivate_conflicting_active_skills] deactivated sibling '{}' (purpose='{}')",
+            sibling_name,
+            purpose
+        );
+    }
+
+    Ok(())
+}
+
 /// Set or clear the `purpose` tag on a workspace skill.
 /// Purpose tags allow callers to resolve skills by role (e.g. "test-context",
 /// "research", "validate", "skill-building") instead of by name.
@@ -705,6 +640,7 @@ pub fn set_workspace_skill_purpose(
     let workspace_path = settings
         .workspace_path
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
+
     do_set_workspace_skill_purpose(&conn, &skill_id, purpose.as_deref(), &workspace_path)?;
 
     if let Err(e) = super::workflow::update_skills_section(&workspace_path, &conn) {
@@ -723,19 +659,6 @@ fn do_set_workspace_skill_purpose(
     purpose: Option<&str>,
     workspace_path: &str,
 ) -> Result<(), String> {
-    let skill = crate::db::get_workspace_skill(conn, skill_id)?.ok_or_else(|| {
-        format!(
-            "set_workspace_skill_purpose: skill '{}' not found",
-            skill_id
-        )
-    })?;
-
-    if skill.is_active && is_exclusive_purpose(purpose) {
-        if let Some(p) = purpose {
-            deactivate_active_siblings_for_purpose(conn, workspace_path, p, Some(skill_id))?;
-        }
-    }
-
     let rows = conn
         .execute(
             "UPDATE workspace_skills SET purpose = ?1 WHERE skill_id = ?2",
@@ -751,6 +674,17 @@ fn do_set_workspace_skill_purpose(
             skill_id
         ));
     }
+
+    let updated_skill = crate::db::get_workspace_skill(conn, skill_id)?.ok_or_else(|| {
+        format!(
+            "set_workspace_skill_purpose: skill '{}' not found",
+            skill_id
+        )
+    })?;
+    if updated_skill.is_active {
+        deactivate_conflicting_active_skills(conn, workspace_path, skill_id, purpose)?;
+    }
+
     Ok(())
 }
 
@@ -3099,15 +3033,11 @@ description: A skill
         };
         crate::db::insert_workspace_skill(&conn, &skill_b).unwrap();
 
-        // Command path behavior: deactivate siblings first, then activate target.
-        let deactivated =
-            deactivate_active_siblings_for_purpose(&conn, workspace_path, "research", Some("id-b"))
-                .unwrap();
-        assert_eq!(
-            deactivated, 1,
-            "exactly one sibling (skill-a) should be deactivated"
-        );
+        // Activate skill B — this triggers sibling deactivation of skill A
         toggle_skill_active_inner("id-b", "skill-b", true, workspace_path, &conn).unwrap();
+
+        deactivate_conflicting_active_skills(&conn, workspace_path, "id-b", Some("research"))
+            .unwrap();
 
         // Verify DB state
         let a = crate::db::get_workspace_skill_by_name(&conn, "skill-a")
@@ -3125,23 +3055,23 @@ description: A skill
     }
 
     #[test]
-    fn test_set_workspace_skill_purpose_deactivates_active_sibling() {
+    fn test_set_workspace_skill_purpose_deactivates_same_purpose_active_sibling() {
         let conn = create_test_db();
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
         let skills_dir = workspace.path().join(".claude").join("skills");
         let inactive_dir = skills_dir.join(".inactive");
 
-        let active_a = skills_dir.join("skill-a");
-        fs::create_dir_all(&active_a).unwrap();
-        fs::write(active_a.join("SKILL.md"), "# Skill A").unwrap();
+        let skill_a_dir = skills_dir.join("skill-a");
+        fs::create_dir_all(&skill_a_dir).unwrap();
+        fs::write(skill_a_dir.join("SKILL.md"), "# Skill A").unwrap();
         let skill_a = WorkspaceSkill {
             skill_id: "id-a".to_string(),
             skill_name: "skill-a".to_string(),
             description: None,
             is_active: true,
             is_bundled: false,
-            disk_path: active_a.to_string_lossy().to_string(),
+            disk_path: skill_a_dir.to_string_lossy().to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             version: None,
             model: None,
@@ -3153,16 +3083,16 @@ description: A skill
         };
         crate::db::insert_workspace_skill(&conn, &skill_a).unwrap();
 
-        let active_b = skills_dir.join("skill-b");
-        fs::create_dir_all(&active_b).unwrap();
-        fs::write(active_b.join("SKILL.md"), "# Skill B").unwrap();
+        let skill_b_dir = skills_dir.join("skill-b");
+        fs::create_dir_all(&skill_b_dir).unwrap();
+        fs::write(skill_b_dir.join("SKILL.md"), "# Skill B").unwrap();
         let skill_b = WorkspaceSkill {
             skill_id: "id-b".to_string(),
             skill_name: "skill-b".to_string(),
             description: None,
             is_active: true,
             is_bundled: false,
-            disk_path: active_b.to_string_lossy().to_string(),
+            disk_path: skill_b_dir.to_string_lossy().to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             version: None,
             model: None,
@@ -3179,18 +3109,16 @@ description: A skill
         let a = crate::db::get_workspace_skill_by_name(&conn, "skill-a")
             .unwrap()
             .unwrap();
+        assert!(!a.is_active, "skill-a should be auto-deactivated");
         let b = crate::db::get_workspace_skill_by_name(&conn, "skill-b")
             .unwrap()
             .unwrap();
-        assert!(
-            !a.is_active,
-            "existing same-purpose active sibling should be deactivated"
-        );
-        assert!(b.is_active, "target skill remains active");
+        assert!(b.is_active, "skill-b should remain active");
         assert_eq!(b.purpose.as_deref(), Some("research"));
+
         assert!(
             inactive_dir.join("skill-a").exists(),
-            "deactivated sibling should move to .inactive"
+            "skill-a should be moved to .inactive on disk"
         );
     }
 

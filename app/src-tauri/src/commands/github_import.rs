@@ -956,18 +956,6 @@ pub async fn import_github_skills(
                     ws_skill.is_bundled = existing_skill.is_bundled;
                     ws_skill.skill_id = existing_skill.skill_id.clone();
                     ws_skill.imported_at = existing_skill.imported_at.clone();
-                    if ws_skill.is_active
-                        && super::imported_skills::is_exclusive_purpose(ws_skill.purpose.as_deref())
-                    {
-                        if let Some(ref p) = ws_skill.purpose {
-                            super::imported_skills::deactivate_active_siblings_for_purpose(
-                                &conn,
-                                &workspace_path,
-                                p,
-                                Some(&ws_skill.skill_id),
-                            )?;
-                        }
-                    }
                     if let Err(e) = crate::db::upsert_workspace_skill(&conn, &ws_skill) {
                         if let Err(cleanup_err) = fs::remove_dir_all(&skill.disk_path) {
                             log::warn!(
@@ -977,6 +965,19 @@ pub async fn import_github_skills(
                         }
                         errors.push(format!("{}: {}", skill.skill_name, e));
                     } else {
+                        if ws_skill.is_active {
+                            if let Err(e) =
+                                super::imported_skills::deactivate_conflicting_active_skills(
+                                    &conn,
+                                    &workspace_path,
+                                    &ws_skill.skill_id,
+                                    ws_skill.purpose.as_deref(),
+                                )
+                            {
+                                errors.push(format!("{}: {}", skill.skill_name, e));
+                                continue;
+                            }
+                        }
                         // Compute and store the content hash as the new baseline
                         if let Some(hash) = compute_skill_content_hash(&skill.disk_path) {
                             if let Err(e) = crate::db::set_workspace_skill_content_hash(
@@ -994,20 +995,21 @@ pub async fn import_github_skills(
                         "[import_github_skills] inserting new workspace skill '{}'",
                         ws_skill.skill_name
                     );
-                    if ws_skill.is_active
-                        && super::imported_skills::is_exclusive_purpose(ws_skill.purpose.as_deref())
-                    {
-                        if let Some(ref p) = ws_skill.purpose {
-                            super::imported_skills::deactivate_active_siblings_for_purpose(
-                                &conn,
-                                &workspace_path,
-                                p,
-                                None,
-                            )?;
-                        }
-                    }
                     match crate::db::insert_workspace_skill(&conn, &ws_skill) {
                         Ok(()) => {
+                            if ws_skill.is_active {
+                                if let Err(e) =
+                                    super::imported_skills::deactivate_conflicting_active_skills(
+                                        &conn,
+                                        &workspace_path,
+                                        &ws_skill.skill_id,
+                                        ws_skill.purpose.as_deref(),
+                                    )
+                                {
+                                    errors.push(format!("{}: {}", skill.skill_name, e));
+                                    continue;
+                                }
+                            }
                             // Compute and store the content hash as the baseline
                             if let Some(hash) = compute_skill_content_hash(&ws_skill.disk_path) {
                                 if let Err(e) = crate::db::set_workspace_skill_content_hash(

@@ -77,7 +77,12 @@ export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
   toggleActive: async (skillId: string, active: boolean) => {
     await invoke("toggle_skill_active", { skillId, active });
     const skills = await invoke<WorkspaceSkill[]>("list_workspace_skills");
-    set({ skills });
+    set((state) => ({
+      skills,
+      selectedSkill: state.selectedSkill
+        ? skills.find((s) => s.skill_id === state.selectedSkill?.skill_id) ?? null
+        : null,
+    }));
   },
 
   deleteSkill: async (skillId: string) => {
@@ -102,10 +107,9 @@ export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
     const skills = await invoke<WorkspaceSkill[]>("list_workspace_skills");
     set((state) => ({
       skills,
-      selectedSkill: (() => {
-        const selectedId = state.selectedSkill?.skill_id;
-        return selectedId ? skills.find((s) => s.skill_id === selectedId) ?? null : null;
-      })(),
+      selectedSkill: state.selectedSkill
+        ? skills.find((s) => s.skill_id === state.selectedSkill?.skill_id) ?? null
+        : null,
     }));
   },
 }));

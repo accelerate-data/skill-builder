@@ -2928,12 +2928,11 @@ pub fn get_workspace_skill_by_purpose(
     conn: &Connection,
     purpose: &str,
 ) -> rusqlite::Result<Option<WorkspaceSkill>> {
-    let mut stmt = conn.prepare(&format!(
-        "SELECT {WS_COLUMNS} FROM workspace_skills
-             WHERE purpose = ?1 AND is_active = 1
-             ORDER BY imported_at DESC, skill_name ASC
-             LIMIT 1"
-    ))?;
+    let mut stmt = conn.prepare(
+        &format!(
+            "SELECT {WS_COLUMNS} FROM workspace_skills WHERE purpose = ?1 AND is_active = 1 ORDER BY imported_at DESC, skill_name ASC LIMIT 1"
+        )
+    )?;
     let mut rows = stmt.query_map(rusqlite::params![purpose], row_to_workspace_skill)?;
     match rows.next() {
         Some(row) => Ok(Some(row?)),
@@ -6579,39 +6578,12 @@ mod tests {
     #[test]
     fn test_get_workspace_skill_by_purpose_prefers_latest_imported_at() {
         let conn = create_test_db();
-        let older = WorkspaceSkill {
-            skill_id: "id-old".to_string(),
-            skill_name: "research-old".to_string(),
-            description: None,
-            is_active: true,
-            is_bundled: false,
-            disk_path: "/tmp/research-old".to_string(),
-            imported_at: "2025-01-01T00:00:00Z".to_string(),
-            version: None,
-            model: None,
-            argument_hint: None,
-            user_invocable: None,
-            disable_model_invocation: None,
-            purpose: Some("research".to_string()),
-            marketplace_source_url: None,
-        };
-        let newer = WorkspaceSkill {
-            skill_id: "id-new".to_string(),
-            skill_name: "research-new".to_string(),
-            description: None,
-            is_active: true,
-            is_bundled: false,
-            disk_path: "/tmp/research-new".to_string(),
-            imported_at: "2025-02-01T00:00:00Z".to_string(),
-            version: None,
-            model: None,
-            argument_hint: None,
-            user_invocable: None,
-            disable_model_invocation: None,
-            purpose: Some("research".to_string()),
-            marketplace_source_url: None,
-        };
+        let mut older = make_ws_skill("id-older", "research-old", Some("research"), true);
+        older.imported_at = "2025-01-01T00:00:00Z".to_string();
         insert_workspace_skill(&conn, &older).unwrap();
+
+        let mut newer = make_ws_skill("id-newer", "research-new", Some("research"), true);
+        newer.imported_at = "2025-02-01T00:00:00Z".to_string();
         insert_workspace_skill(&conn, &newer).unwrap();
 
         let found = get_workspace_skill_by_purpose(&conn, "research")
