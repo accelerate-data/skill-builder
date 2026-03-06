@@ -125,6 +125,7 @@ export function parseClarifications(content: string | null): ClarificationsFile 
   try {
     const raw = JSON.parse(content) as ClarificationsFile & {
       dimensions?: LegacyDimension[];
+      clarifications?: { dimensions?: LegacyDimension[] };
       metadata?: ClarificationsMetadata & {
         domain?: string;
         skill_name?: string;
@@ -132,11 +133,22 @@ export function parseClarifications(content: string | null): ClarificationsFile 
       };
     };
 
+    const rawSections = Array.isArray(raw.sections) ? raw.sections : [];
+    const rawQuestionCount = rawSections.reduce((count, section) => {
+      const questions = Array.isArray((section as { questions?: unknown[] }).questions)
+        ? (section as { questions?: unknown[] }).questions
+        : [];
+      return count + questions.length;
+    }, 0);
+    const legacyDimensions = Array.isArray(raw.dimensions)
+      ? raw.dimensions
+      : (Array.isArray(raw.clarifications?.dimensions) ? raw.clarifications.dimensions : []);
+
     // Back-compat: some older or non-canonical research flows write
     // `dimensions[]` with string questions. Convert to canonical shape so
     // Step 0/1 can still render and edit questions.
-    if ((!Array.isArray(raw.sections) || raw.sections.length === 0) && Array.isArray(raw.dimensions)) {
-      const convertedSections: Section[] = raw.dimensions.map((d, sectionIndex) => {
+    if (rawQuestionCount === 0 && legacyDimensions.length > 0) {
+      const convertedSections: Section[] = legacyDimensions.map((d, sectionIndex) => {
         const sectionId = d.id || `S${sectionIndex + 1}`;
         const sourceQuestions = Array.isArray(d.questions) ? d.questions : [];
         return {
