@@ -58,6 +58,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (28, run_rename_purpose_drop_domain_migration),
         (29, run_marketplace_source_url_migration),
         (30, run_skills_soft_delete_migration),
+        (31, run_backfill_synthetic_sessions_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -524,6 +525,31 @@ fn run_skills_soft_delete_migration(conn: &Connection) -> Result<(), rusqlite::E
     if !has_deleted_at {
         conn.execute_batch("ALTER TABLE skills ADD COLUMN deleted_at TEXT;")?;
     }
+    Ok(())
+}
+
+/// Migration 31: Backfill missing workflow_sessions rows for historical synthetic
+/// refine/test usage runs written before synthetic session persistence.
+fn run_backfill_synthetic_sessions_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "INSERT INTO workflow_sessions (session_id, skill_name, skill_id, pid, started_at, ended_at)
+         SELECT
+           ar.workflow_session_id,
+           ar.skill_name,
+           s.id,
+           0,
+           MIN(COALESCE(ar.started_at, datetime('now') || 'Z')),
+           MAX(COALESCE(ar.completed_at, ar.started_at, datetime('now') || 'Z'))
+         FROM agent_runs ar
+         LEFT JOIN skills s ON s.name = ar.skill_name
+         LEFT JOIN workflow_sessions ws ON ws.session_id = ar.workflow_session_id
+         WHERE ar.workflow_session_id IS NOT NULL
+           AND ar.workflow_session_id LIKE 'synthetic:%'
+           AND ar.reset_marker IS NULL
+           AND ws.session_id IS NULL
+         GROUP BY ar.workflow_session_id, ar.skill_name, s.id",
+        [],
+    )?;
     Ok(())
 }
 
@@ -1103,6 +1129,8 @@ fn run_agent_stats_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
 
 fn step_name(step_id: i32) -> String {
     match step_id {
+        -11 => "Test".to_string(),
+        -10 => "Refine".to_string(),
         0 => "Research".to_string(),
         1 => "Review".to_string(),
         2 => "Detailed Research".to_string(),
@@ -1147,6 +1175,31 @@ pub fn persist_agent_run(
             .ok();
         if matches!(existing_status.as_deref(), Some("completed") | Some("error")) {
             return Ok(());
+        }
+    }
+
+    // Ensure session-backed usage views include this run. For workflow runs this is
+    // idempotent with create_workflow_session; for refine/test synthetic IDs this
+    // creates the required session row on first persist.
+    if let Some(ws_id) = workflow_session_id {
+        let skill_master_id = get_skill_master_id(conn, skill_name)?;
+        conn.execute(
+            "INSERT OR IGNORE INTO workflow_sessions (session_id, skill_name, skill_id, pid)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![ws_id, skill_name, skill_master_id, std::process::id() as i64],
+        )
+        .map_err(|e| e.to_string())?;
+
+        // Synthetic sessions are one run per session; mark them ended on terminal status
+        // so recent sessions show completion timing.
+        if ws_id.starts_with("synthetic:") && matches!(status, "completed" | "error" | "shutdown") {
+            conn.execute(
+                "UPDATE workflow_sessions
+                 SET ended_at = COALESCE(ended_at, datetime('now') || 'Z')
+                 WHERE session_id = ?1",
+                rusqlite::params![ws_id],
+            )
+            .map_err(|e| e.to_string())?;
         }
     }
 
@@ -3308,6 +3361,7 @@ mod tests {
         run_rename_purpose_drop_domain_migration(&conn).unwrap();
         run_marketplace_source_url_migration(&conn).unwrap();
         run_skills_soft_delete_migration(&conn).unwrap();
+        run_backfill_synthetic_sessions_migration(&conn).unwrap();
         conn
     }
 
@@ -4401,6 +4455,58 @@ mod tests {
     }
 
     #[test]
+    fn test_persist_agent_run_auto_creates_workflow_session_for_synthetic_ids() {
+        let conn = create_test_db();
+
+        persist_agent_run(
+            &conn, "agent-r", "my-skill", -10, "sonnet", "completed",
+            1200, 300, 0, 0, 0.12, 3200,
+            0, None, None, 0, 0,
+            None, Some("synthetic:refine:my-skill:agent-r"),
+        )
+        .unwrap();
+
+        let sess_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM workflow_sessions WHERE session_id = 'synthetic:refine:my-skill:agent-r'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(sess_count, 1);
+
+        let summary = get_usage_summary(&conn, false, None, None).unwrap();
+        assert_eq!(summary.total_runs, 1);
+        assert!((summary.total_cost - 0.12).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_get_usage_by_step_labels_refine_and_test() {
+        let conn = create_test_db();
+
+        persist_agent_run(
+            &conn, "agent-refine", "skill-a", -10, "sonnet", "completed",
+            1000, 200, 0, 0, 0.10, 2000,
+            0, None, None, 0, 0,
+            None, Some("synthetic:refine:skill-a:agent-refine"),
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn, "agent-test", "skill-a", -11, "sonnet", "completed",
+            900, 180, 0, 0, 0.09, 1800,
+            0, None, None, 0, 0,
+            None, Some("synthetic:test:skill-a:agent-test"),
+        )
+        .unwrap();
+
+        let by_step = get_usage_by_step(&conn, false, None, None).unwrap();
+        let refine = by_step.iter().find(|s| s.step_id == -10).unwrap();
+        let test = by_step.iter().find(|s| s.step_id == -11).unwrap();
+        assert_eq!(refine.step_name, "Refine");
+        assert_eq!(test.step_name, "Test");
+    }
+
+    #[test]
     fn test_reset_usage_excludes_from_by_step_and_by_model() {
         let conn = create_test_db();
         persist_agent_run(
@@ -4989,6 +5095,44 @@ mod tests {
                 col
             );
         }
+    }
+
+    #[test]
+    fn test_backfill_synthetic_sessions_migration_creates_missing_sessions() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "legacy-skill", 0, "completed", "domain").unwrap();
+
+        conn.execute(
+            "INSERT INTO agent_runs
+             (agent_id, skill_name, step_id, model, status, total_cost, workflow_session_id, started_at, completed_at)
+             VALUES ('legacy-agent-1', 'legacy-skill', -10, 'sonnet', 'completed', 0.25, 'synthetic:refine:legacy-skill:legacy-agent-1', datetime('now') || 'Z', datetime('now') || 'Z')",
+            [],
+        )
+        .unwrap();
+
+        let before: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM workflow_sessions WHERE session_id = 'synthetic:refine:legacy-skill:legacy-agent-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(before, 0);
+
+        run_backfill_synthetic_sessions_migration(&conn).unwrap();
+
+        let after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM workflow_sessions WHERE session_id = 'synthetic:refine:legacy-skill:legacy-agent-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(after, 1);
+
+        let summary = get_usage_summary(&conn, false, None, None).unwrap();
+        assert_eq!(summary.total_runs, 1);
+        assert!((summary.total_cost - 0.25).abs() < 1e-10);
     }
 
     #[test]

@@ -15,6 +15,10 @@ interface AgentTurnInlineProps {
   agentId: string;
 }
 
+function formatCost(cost: number): string {
+  return `$${cost.toFixed(4)}`;
+}
+
 export function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
   const run = useAgentStore((s) => s.runs[agentId]);
 
@@ -80,6 +84,11 @@ export function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
       {run.status === "running" && run.messages.length > 0 && (
         <div className="flex items-center gap-1.5 py-1 text-muted-foreground">
           <Loader2 className="size-3 animate-spin" />
+        </div>
+      )}
+      {run.status !== "running" && run.totalCost !== undefined && (
+        <div className="pt-1 text-xs text-muted-foreground/70">
+          Cost {formatCost(run.totalCost)}
         </div>
       )}
     </div>

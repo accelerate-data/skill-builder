@@ -177,6 +177,11 @@ export default function GitHubImportDialog({
   const error = currentTab.error
   const skillStates = currentTab.skillStates
   const repoInfo = currentTab.repoInfo
+  const topLevelDescription = registries.length === 0
+    ? "No enabled registries. Configure registries in Settings → Marketplace."
+    : repoInfo
+      ? `${skills.length} skill${skills.length !== 1 ? "s" : ""} in ${repoInfo.owner}/${repoInfo.repo}`
+      : "Browse and import skills from your configured registries."
 
   function setSkillState(path: string, state: SkillState): void {
     const tabKey = activeTabRef.current
@@ -449,13 +454,7 @@ export default function GitHubImportDialog({
     if (skills.length > 0 && repoInfo) {
       return (
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>Browse Marketplace</DialogTitle>
-            <DialogDescription>
-              {skills.length} skill{skills.length !== 1 ? "s" : ""} in {repoInfo.owner}/{repoInfo.repo}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto rounded-md border mt-2">
+          <div className="flex-1 min-h-0 overflow-y-auto rounded-md border">
             <table className="w-full text-sm table-fixed border-separate border-spacing-0">
               <colgroup>
                 <col style={{ width: "76%" }} />
@@ -573,6 +572,10 @@ export default function GitHubImportDialog({
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Browse Marketplace</DialogTitle>
+            <DialogDescription>{topLevelDescription}</DialogDescription>
+          </DialogHeader>
           {registries.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               No enabled registries. Configure registries in Settings → Marketplace.

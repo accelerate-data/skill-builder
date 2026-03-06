@@ -1014,10 +1014,7 @@ pub fn import_skill_from_file(
                 })?;
             }
             crate::db::delete_imported_skill_by_name(&conn, &name)?;
-            conn.execute(
-                "DELETE FROM skills WHERE name = ?1 AND skill_source = 'imported'",
-                rusqlite::params![&name],
-            ).map_err(|e| e.to_string())?;
+            crate::db::delete_skill(&conn, &name)?;
         }
         _ => {} // Not found — proceed normally
     }
@@ -2759,6 +2756,108 @@ description: A skill
         assert!(imported.is_some());
     }
 
+    #[test]
+    fn test_import_skill_force_overwrite_preserves_skill_id_and_usage_rows() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let skills_dir = workspace.path().join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+        setup_settings(&conn, skills_dir.to_str().unwrap(), workspace.path().to_str().unwrap());
+
+        // Existing imported skill + usage row that must survive overwrite.
+        let initial_skill_id =
+            crate::db::upsert_skill_with_source(&conn, "my-skill", "imported", "domain").unwrap();
+        conn.execute(
+            "INSERT INTO workflow_sessions (session_id, skill_name, pid, skill_id)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![
+                "synthetic:refine:my-skill:agent-refine-1",
+                "my-skill",
+                12345_i64,
+                initial_skill_id
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO agent_runs
+             (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens, total_cost, session_id, workflow_run_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL)",
+            rusqlite::params![
+                "agent-refine-1",
+                "my-skill",
+                -10,
+                "sonnet",
+                "completed",
+                100_i64,
+                50_i64,
+                0.25_f64,
+                "sess-1"
+            ],
+        )
+        .unwrap();
+
+        let zip_file = create_test_zip(&[
+            ("SKILL.md", "---\nname: my-skill\ndescription: Updated\n---\n# My Skill"),
+        ]);
+
+        let result = import_skill_from_file_test(
+            zip_file.path().to_str().unwrap().to_string(),
+            "my-skill".to_string(),
+            "Updated".to_string(),
+            String::new(),
+            None,
+            None,
+            None,
+            None,
+            true, // force_overwrite=true
+            &conn,
+        );
+        assert!(result.is_ok(), "force overwrite failed: {:?}", result.err());
+
+        // The master row should be restored in-place (same id, not delete+reinsert).
+        let post_skill_id = crate::db::get_skill_master_id(&conn, "my-skill")
+            .unwrap()
+            .expect("skill id should exist after overwrite");
+        assert_eq!(post_skill_id, initial_skill_id);
+
+        let deleted_at: Option<String> = conn
+            .query_row(
+                "SELECT deleted_at FROM skills WHERE name = 'my-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(deleted_at.is_none(), "skill should be active after overwrite");
+
+        // Historical usage/cost rows must remain intact.
+        let usage_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM agent_runs WHERE skill_name = 'my-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(usage_count, 1);
+
+        let total_cost: f64 = conn
+            .query_row(
+                "SELECT total_cost FROM agent_runs WHERE agent_id = 'agent-refine-1' AND model = 'sonnet'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(total_cost, 0.25);
+
+        let session_skill_id: i64 = conn
+            .query_row(
+                "SELECT skill_id FROM workflow_sessions WHERE session_id = 'synthetic:refine:my-skill:agent-refine-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(session_skill_id, initial_skill_id);
+    }
+
     /// Testable inner function for import_skill_from_file (bypasses tauri::State).
     #[allow(clippy::too_many_arguments)]
     fn import_skill_from_file_test(
@@ -2806,10 +2905,7 @@ description: A skill
                     std::fs::remove_dir_all(&dest).map_err(|e| e.to_string())?;
                 }
                 crate::db::delete_imported_skill_by_name(conn, &name)?;
-                conn.execute(
-                    "DELETE FROM skills WHERE name = ?1 AND skill_source = 'imported'",
-                    rusqlite::params![&name],
-                ).map_err(|e| e.to_string())?;
+                crate::db::delete_skill(conn, &name)?;
             }
             _ => {}
         }

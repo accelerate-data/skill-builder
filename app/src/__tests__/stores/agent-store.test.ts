@@ -174,6 +174,48 @@ describe("useAgentStore", () => {
     expect(state.runs["nonexistent"]).toBeUndefined();
   });
 
+  it("replays queued completion when terminal event arrives before registration", () => {
+    mockInvoke.mockReset().mockResolvedValue(undefined);
+
+    // Simulate agent-exit arriving before registerRun/startRun.
+    useAgentStore.getState().completeRun("late-agent", true);
+    expect(useAgentStore.getState().runs["late-agent"]).toBeUndefined();
+
+    // Registering the run should replay completion and persist.
+    useAgentStore.getState().registerRun("late-agent", "sonnet", "my-skill", "refine");
+    const run = useAgentStore.getState().runs["late-agent"];
+    expect(run.status).toBe("completed");
+
+    const persistCalls = (mockInvoke.mock.calls as [string, Record<string, unknown>][]).filter(
+      ([cmd]) => cmd === "persist_agent_run",
+    );
+    expect(persistCalls).toHaveLength(1);
+    const args = persistCalls[0][1] as Record<string, unknown>;
+    expect(args.agentId).toBe("late-agent");
+    expect(args.status).toBe("completed");
+    expect(args.stepId).toBe(-10);
+  });
+
+  it("replays queued shutdown when shutdown event arrives before registration", () => {
+    mockInvoke.mockReset().mockResolvedValue(undefined);
+
+    useAgentStore.getState().shutdownRun("late-shutdown");
+    expect(useAgentStore.getState().runs["late-shutdown"]).toBeUndefined();
+
+    useAgentStore.getState().registerRun("late-shutdown", "sonnet", "my-skill", "test");
+    const run = useAgentStore.getState().runs["late-shutdown"];
+    expect(run.status).toBe("shutdown");
+
+    const persistCalls = (mockInvoke.mock.calls as [string, Record<string, unknown>][]).filter(
+      ([cmd]) => cmd === "persist_agent_run",
+    );
+    expect(persistCalls).toHaveLength(1);
+    const args = persistCalls[0][1] as Record<string, unknown>;
+    expect(args.agentId).toBe("late-shutdown");
+    expect(args.status).toBe("shutdown");
+    expect(args.stepId).toBe(-11);
+  });
+
   it("clearRuns empties everything", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
     useAgentStore.getState().startRun("agent-2", "opus");

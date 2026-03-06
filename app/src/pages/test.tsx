@@ -238,9 +238,10 @@ interface PlanPanelProps {
   badgeText: string;
   badgeClass: string;
   idlePlaceholder: string;
+  cost?: number;
 }
 
-function PlanPanel({ scrollRef, text, phase, label, badgeText, badgeClass, idlePlaceholder }: PlanPanelProps) {
+function PlanPanel({ scrollRef, text, phase, label, badgeText, badgeClass, idlePlaceholder, cost }: PlanPanelProps) {
   return (
     <>
       <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
@@ -250,6 +251,11 @@ function PlanPanel({ scrollRef, text, phase, label, badgeText, badgeClass, idleP
         <Badge className={cn("text-xs px-1.5 py-0", badgeClass)}>
           {badgeText}
         </Badge>
+        {cost !== undefined && (
+          <span className="ml-auto text-xs text-muted-foreground">
+            ${cost.toFixed(4)}
+          </span>
+        )}
       </div>
       <div ref={scrollRef} className="flex-1 overflow-auto p-4">
         {text ? (
@@ -493,11 +499,20 @@ export default function TestPage() {
   const withStatus = useAgentStore((s) =>
     state.withAgentId ? s.runs[state.withAgentId]?.status : undefined,
   );
+  const withCost = useAgentStore((s) =>
+    state.withAgentId ? s.runs[state.withAgentId]?.totalCost : undefined,
+  );
   const withoutStatus = useAgentStore((s) =>
     state.withoutAgentId ? s.runs[state.withoutAgentId]?.status : undefined,
   );
+  const withoutCost = useAgentStore((s) =>
+    state.withoutAgentId ? s.runs[state.withoutAgentId]?.totalCost : undefined,
+  );
   const evalStatus = useAgentStore((s) =>
     state.evalAgentId ? s.runs[state.evalAgentId]?.status : undefined,
+  );
+  const evalCost = useAgentStore((s) =>
+    state.evalAgentId ? s.runs[state.evalAgentId]?.totalCost : undefined,
   );
 
   // Track when plan agents complete
@@ -897,6 +912,7 @@ export default function TestPage() {
               badgeText="with skill"
               badgeClass="bg-[#2D7A35]/15 text-[#5D9B62]"
               idlePlaceholder="Run a test to see the with-skill plan"
+              cost={withCost}
             />
           </div>
 
@@ -921,6 +937,7 @@ export default function TestPage() {
               badgeText="no skill"
               badgeClass="bg-[#A85A33]/15 text-[#D4916E]"
               idlePlaceholder="Run a test to see the no-skill plan"
+              cost={withoutCost}
             />
           </div>
         </div>
@@ -1043,7 +1060,15 @@ export default function TestPage() {
         <span className="text-muted-foreground/20">&middot;</span>
         <span className="text-xs text-muted-foreground/60">plan mode</span>
         <span className="text-muted-foreground/20">&middot;</span>
-        <span className="text-xs text-muted-foreground/60">{modelLabel}</span>
+          <span className="text-xs text-muted-foreground/60">{modelLabel}</span>
+        {(withCost !== undefined || withoutCost !== undefined || evalCost !== undefined) && (
+          <>
+            <span className="text-muted-foreground/20">&middot;</span>
+            <span className="text-xs text-muted-foreground/60">
+              {`with ${withCost !== undefined ? `$${withCost.toFixed(4)}` : "—"} · without ${withoutCost !== undefined ? `$${withoutCost.toFixed(4)}` : "—"} · eval ${evalCost !== undefined ? `$${evalCost.toFixed(4)}` : "—"}`}
+            </span>
+          </>
+        )}
         {state.startTime && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>

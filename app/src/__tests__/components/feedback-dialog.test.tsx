@@ -34,6 +34,7 @@ vi.mock("@/lib/tauri", () => ({
   startAgent: mockStartAgent,
   getWorkspacePath: mockGetWorkspacePath,
   createGithubIssue: mockCreateGithubIssue,
+  persistAgentRun: vi.fn(() => Promise.resolve()),
   githubGetUser: vi.fn(() => Promise.resolve(null)),
   githubLogout: vi.fn(),
 }));

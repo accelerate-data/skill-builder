@@ -16,6 +16,40 @@ interface BufferedMessage {
 let _messageBuffer: BufferedMessage[] = [];
 let _rafScheduled = false;
 let _rafId = 0;
+type PendingTerminalStatus = "completed" | "error" | "shutdown";
+let _pendingTerminalByAgent = new Map<string, PendingTerminalStatus>();
+
+function queuePendingTerminal(agentId: string, status: PendingTerminalStatus) {
+  const existing = _pendingTerminalByAgent.get(agentId);
+  // Preserve the most informative terminal state. A later completed/error
+  // event should overwrite an earlier shutdown fallback.
+  if (!existing || existing === "shutdown") {
+    _pendingTerminalByAgent.set(agentId, status);
+    console.warn(
+      "[agent-store] event=terminal_queued operation=queue_pending_terminal agent_id=%s status=%s",
+      agentId,
+      status,
+    );
+  }
+}
+
+function drainPendingTerminal(agentId: string) {
+  const pending = _pendingTerminalByAgent.get(agentId);
+  if (!pending) return;
+  if (!useAgentStore.getState().runs[agentId]) return;
+
+  _pendingTerminalByAgent.delete(agentId);
+  console.log(
+    "[agent-store] event=terminal_replayed operation=drain_pending_terminal agent_id=%s status=%s",
+    agentId,
+    pending,
+  );
+  if (pending === "shutdown") {
+    useAgentStore.getState().shutdownRun(agentId);
+    return;
+  }
+  useAgentStore.getState().completeRun(agentId, pending === "completed");
+}
 
 function _flushMessageBuffer() {
   _rafScheduled = false;
@@ -23,8 +57,12 @@ function _flushMessageBuffer() {
 
   const batch = _messageBuffer;
   _messageBuffer = [];
+  const touchedAgentIds = [...new Set(batch.map((b) => b.agentId))];
 
   useAgentStore.getState()._applyMessageBatch(batch);
+  for (const agentId of touchedAgentIds) {
+    drainPendingTerminal(agentId);
+  }
 }
 
 /** Force-flush any buffered messages (for cleanup / testing). */
@@ -298,9 +336,11 @@ export const useAgentStore = create<AgentState>((set) => ({
       durationMs: 0,
       workflowSessionId: workflow.workflowSessionId ?? undefined,
     }).catch((err) => console.error("Failed to persist agent start:", err));
+
+    drainPendingTerminal(agentId);
   },
 
-  registerRun: (agentId, model, skillName?, runSource = "refine") =>
+  registerRun: (agentId, model, skillName?, runSource = "refine") => {
     set((state) => {
       const existing = state.runs[agentId];
       return {
@@ -324,7 +364,9 @@ export const useAgentStore = create<AgentState>((set) => ({
         },
         // Do NOT set activeAgentId — callers manage their own lifecycle
       };
-    }),
+    });
+    drainPendingTerminal(agentId);
+  },
 
   addMessage: (agentId, message) => {
     _messageBuffer.push({ agentId, message });
@@ -340,6 +382,10 @@ export const useAgentStore = create<AgentState>((set) => ({
 
     // Capture run data before status update for persistence
     const runBeforeUpdate = useAgentStore.getState().runs[agentId];
+    if (!runBeforeUpdate) {
+      queuePendingTerminal(agentId, success ? "completed" : "error");
+      return;
+    }
 
     set((state) => {
       const run = state.runs[agentId];
@@ -404,6 +450,10 @@ export const useAgentStore = create<AgentState>((set) => ({
     flushMessageBuffer();
 
     const runBeforeUpdate = useAgentStore.getState().runs[agentId];
+    if (!runBeforeUpdate) {
+      queuePendingTerminal(agentId, "shutdown");
+      return;
+    }
 
     set((state) => {
       const run = state.runs[agentId];
@@ -452,6 +502,13 @@ export const useAgentStore = create<AgentState>((set) => ({
       _rafScheduled = false;
     }
     _messageBuffer = [];
+    if (_pendingTerminalByAgent.size > 0) {
+      console.warn(
+        "[agent-store] event=pending_terminal_cleared operation=clear_runs count=%d",
+        _pendingTerminalByAgent.size,
+      );
+      _pendingTerminalByAgent.clear();
+    }
     set({ runs: {}, activeAgentId: null });
   },
 

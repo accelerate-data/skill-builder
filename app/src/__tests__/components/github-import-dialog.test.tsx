@@ -1034,7 +1034,7 @@ describe("GitHubImportDialog", () => {
 
     it("shows empty-registry message when registries prop is empty", () => {
       renderDialog({ registries: [] });
-      expect(screen.getByText(/No enabled registries/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/No enabled registries/i).length).toBeGreaterThan(0);
     });
   });
 
