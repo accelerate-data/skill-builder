@@ -966,14 +966,13 @@ pub async fn import_github_skills(
                         errors.push(format!("{}: {}", skill.skill_name, e));
                     } else {
                         if ws_skill.is_active {
-                            if let Err(e) =
-                                super::imported_skills::deactivate_conflicting_active_skills(
-                                    &conn,
-                                    &workspace_path,
-                                    &ws_skill.skill_id,
-                                    ws_skill.purpose.as_deref(),
-                                )
-                            {
+                            if let Err(e) = super::imported_skills::apply_import_purpose_conflict_policy(
+                                &conn,
+                                &workspace_path,
+                                &ws_skill.skill_id,
+                                &ws_skill.skill_name,
+                                ws_skill.purpose.as_deref(),
+                            ) {
                                 errors.push(format!("{}: {}", skill.skill_name, e));
                                 continue;
                             }
@@ -998,14 +997,13 @@ pub async fn import_github_skills(
                     match crate::db::insert_workspace_skill(&conn, &ws_skill) {
                         Ok(()) => {
                             if ws_skill.is_active {
-                                if let Err(e) =
-                                    super::imported_skills::deactivate_conflicting_active_skills(
-                                        &conn,
-                                        &workspace_path,
-                                        &ws_skill.skill_id,
-                                        ws_skill.purpose.as_deref(),
-                                    )
-                                {
+                                if let Err(e) = super::imported_skills::apply_import_purpose_conflict_policy(
+                                    &conn,
+                                    &workspace_path,
+                                    &ws_skill.skill_id,
+                                    &ws_skill.skill_name,
+                                    ws_skill.purpose.as_deref(),
+                                ) {
                                     errors.push(format!("{}: {}", skill.skill_name, e));
                                     continue;
                                 }

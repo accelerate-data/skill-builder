@@ -342,14 +342,18 @@ fn upload_skill_inner(
     };
 
     crate::db::insert_workspace_skill(conn, &skill)?;
-    deactivate_conflicting_active_skills(
+    let imported_is_active = apply_import_purpose_conflict_policy(
         conn,
         workspace_path,
         &skill.skill_id,
+        &skill.skill_name,
         skill.purpose.as_deref(),
     )?;
 
-    Ok(skill)
+    let mut persisted = crate::db::get_workspace_skill(conn, &skill.skill_id)?
+        .ok_or_else(|| format!("Uploaded skill '{}' not found after insert", skill.skill_name))?;
+    persisted.is_active = imported_is_active;
+    Ok(persisted)
 }
 
 /// Helper to generate a simple unique ID from inputs
@@ -613,6 +617,47 @@ pub(crate) fn deactivate_conflicting_active_skills(
     }
 
     Ok(())
+}
+
+pub(crate) fn has_active_purpose_conflict(
+    conn: &rusqlite::Connection,
+    purpose: Option<&str>,
+    current_skill_id: &str,
+) -> Result<bool, String> {
+    let purpose = match purpose {
+        Some(p) if !p.trim().is_empty() && p != "general-purpose" => p,
+        _ => return Ok(false),
+    };
+
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(1) FROM workspace_skills
+             WHERE purpose = ?1 AND is_active = 1 AND skill_id != ?2",
+            rusqlite::params![purpose, current_skill_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to check active purpose conflicts: {}", e))?;
+
+    Ok(count > 0)
+}
+
+pub(crate) fn apply_import_purpose_conflict_policy(
+    conn: &rusqlite::Connection,
+    workspace_path: &str,
+    skill_id: &str,
+    skill_name: &str,
+    purpose: Option<&str>,
+) -> Result<bool, String> {
+    if has_active_purpose_conflict(conn, purpose, skill_id)? {
+        toggle_skill_active_inner(skill_id, skill_name, false, workspace_path, conn)?;
+        log::info!(
+            "[apply_import_purpose_conflict_policy] imported '{}' as inactive due to active purpose conflict ({:?})",
+            skill_name,
+            purpose
+        );
+        return Ok(false);
+    }
+    Ok(true)
 }
 
 /// Set or clear the `purpose` tag on a workspace skill.
@@ -1713,6 +1758,76 @@ description: A skill
             result.err()
         );
         assert_eq!(result.unwrap().purpose, Some("general-purpose".to_string()));
+    }
+
+    #[test]
+    fn test_upload_skill_conflicting_purpose_imports_as_inactive() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+        let skills_dir = workspace.path().join(".claude").join("skills");
+
+        // Existing active research skill remains active.
+        let existing_dir = skills_dir.join("existing-research");
+        fs::create_dir_all(&existing_dir).unwrap();
+        fs::write(existing_dir.join("SKILL.md"), "# Existing").unwrap();
+        let existing = WorkspaceSkill {
+            skill_id: "id-existing".to_string(),
+            skill_name: "existing-research".to_string(),
+            description: None,
+            is_active: true,
+            is_bundled: false,
+            disk_path: existing_dir.to_string_lossy().to_string(),
+            imported_at: "2025-01-01 00:00:00".to_string(),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: Some("research".to_string()),
+            marketplace_source_url: None,
+        };
+        crate::db::insert_workspace_skill(&conn, &existing).unwrap();
+
+        let zip_file = create_test_zip(&[(
+            "SKILL.md",
+            "---\nname: incoming-research\ndescription: Incoming\n---\n# Incoming",
+        )]);
+        let imported = upload_skill_inner(
+            zip_file.path().to_str().unwrap(),
+            "incoming-research",
+            "Incoming",
+            "1.0.0",
+            None,
+            None,
+            None,
+            None,
+            Some("research".to_string()),
+            false,
+            workspace_path,
+            &conn,
+        )
+        .unwrap();
+
+        assert!(
+            !imported.is_active,
+            "newly imported conflicting-purpose skill should be inactive"
+        );
+
+        let existing_after = crate::db::get_workspace_skill_by_name(&conn, "existing-research")
+            .unwrap()
+            .unwrap();
+        assert!(existing_after.is_active, "existing active skill should stay active");
+
+        let imported_after = crate::db::get_workspace_skill_by_name(&conn, "incoming-research")
+            .unwrap()
+            .unwrap();
+        assert!(!imported_after.is_active);
+        assert!(
+            imported_after.disk_path.contains("/.inactive/"),
+            "imported conflicting skill should be moved to .inactive"
+        );
+        assert!(skills_dir.join(".inactive").join("incoming-research").exists());
     }
 
     // --- Toggle active/inactive tests ---
@@ -3052,6 +3167,77 @@ description: A skill
             .unwrap()
             .unwrap();
         assert!(b.is_active, "skill-b should now be active");
+    }
+
+    #[test]
+    fn test_apply_import_conflict_policy_disables_imported_skill_only() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+        let skills_dir = workspace.path().join(".claude").join("skills");
+
+        let incumbent_dir = skills_dir.join("incumbent");
+        fs::create_dir_all(&incumbent_dir).unwrap();
+        fs::write(incumbent_dir.join("SKILL.md"), "# Incumbent").unwrap();
+        let incumbent = WorkspaceSkill {
+            skill_id: "id-incumbent".to_string(),
+            skill_name: "incumbent".to_string(),
+            description: None,
+            is_active: true,
+            is_bundled: false,
+            disk_path: incumbent_dir.to_string_lossy().to_string(),
+            imported_at: "2025-01-01 00:00:00".to_string(),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: Some("review".to_string()),
+            marketplace_source_url: None,
+        };
+        crate::db::insert_workspace_skill(&conn, &incumbent).unwrap();
+
+        let incoming_dir = skills_dir.join("incoming");
+        fs::create_dir_all(&incoming_dir).unwrap();
+        fs::write(incoming_dir.join("SKILL.md"), "# Incoming").unwrap();
+        let incoming = WorkspaceSkill {
+            skill_id: "id-incoming".to_string(),
+            skill_name: "incoming".to_string(),
+            description: None,
+            is_active: true,
+            is_bundled: false,
+            disk_path: incoming_dir.to_string_lossy().to_string(),
+            imported_at: "2025-01-02 00:00:00".to_string(),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: Some("review".to_string()),
+            marketplace_source_url: None,
+        };
+        crate::db::insert_workspace_skill(&conn, &incoming).unwrap();
+
+        let is_active = apply_import_purpose_conflict_policy(
+            &conn,
+            workspace_path,
+            "id-incoming",
+            "incoming",
+            Some("review"),
+        )
+        .unwrap();
+        assert!(!is_active, "policy should disable incoming conflicting skill");
+
+        let incumbent_after = crate::db::get_workspace_skill(&conn, "id-incumbent")
+            .unwrap()
+            .unwrap();
+        assert!(incumbent_after.is_active, "incumbent should stay active");
+
+        let incoming_after = crate::db::get_workspace_skill(&conn, "id-incoming")
+            .unwrap()
+            .unwrap();
+        assert!(!incoming_after.is_active, "incoming should be inactive");
+        assert!(skills_dir.join(".inactive").join("incoming").exists());
     }
 
     #[test]
