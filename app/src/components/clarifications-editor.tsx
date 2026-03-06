@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { ChevronRight, AlertTriangle, Info, RotateCcw, Check, Loader2, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   type ClarificationsFile,
   type Section,
@@ -148,15 +149,15 @@ export function ClarificationsEditor({
         {filePath && (
           <span className="text-[11px] font-mono text-muted-foreground">{filePath}</span>
         )}
-        <Button
-          type="button"
-          variant={showUnansweredOnly ? "default" : "outline"}
-          size="sm"
-          onClick={() => setShowUnansweredOnly((v) => !v)}
-          className="ml-1"
-        >
-          {showUnansweredOnly ? "Showing unanswered only" : "Show unanswered only"}
-        </Button>
+        <div className="ml-1 flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Not Answered</span>
+          <Switch
+            size="sm"
+            aria-label="Not Answered"
+            checked={showUnansweredOnly}
+            onCheckedChange={setShowUnansweredOnly}
+          />
+        </div>
       </div>
 
       {/* ── Scrollable document ── */}

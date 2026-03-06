@@ -282,7 +282,7 @@ describe("Unanswered filter toggle", () => {
     expect(screen.getByText("Answered Question")).toBeInTheDocument();
     expect(screen.getByText("Unanswered Question")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Show unanswered only" }));
+    await user.click(screen.getByRole("switch", { name: "Not Answered" }));
 
     expect(screen.queryByText("Answered Question")).not.toBeInTheDocument();
     expect(screen.getByText("Unanswered Question")).toBeInTheDocument();
