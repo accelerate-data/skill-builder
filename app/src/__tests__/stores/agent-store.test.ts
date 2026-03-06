@@ -1044,4 +1044,43 @@ describe("completeRun persistence with modelUsageBreakdown", () => {
       expect(a.stopReason).toBe("end_turn");
     }
   });
+
+  it("persists when tokenUsage is missing but modelUsageBreakdown exists", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    mockInvoke.mockClear();
+
+    useAgentStore.getState().addMessage("agent-1", {
+      type: "result",
+      content: "Done",
+      raw: {
+        // intentionally no `usage` field
+        total_cost_usd: 0.06,
+        modelUsage: {
+          "claude-sonnet-4-5-20250929": {
+            inputTokens: 1200,
+            outputTokens: 300,
+            cost: 0.06,
+            contextWindow: 200000,
+          },
+        },
+      },
+      timestamp: Date.now(),
+    });
+    flushMessageBuffer();
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.tokenUsage).toBeUndefined();
+    expect(run.modelUsageBreakdown).toHaveLength(1);
+
+    useAgentStore.getState().completeRun("agent-1", true);
+
+    const persistCalls = (mockInvoke.mock.calls as [string, Record<string, unknown>][]).filter(
+      ([cmd]) => cmd === "persist_agent_run"
+    );
+    expect(persistCalls).toHaveLength(1);
+    const args = persistCalls[0][1] as Record<string, unknown>;
+    expect(args.model).toBe("claude-sonnet-4-5-20250929");
+    expect(args.totalCost).toBe(0.06);
+    expect(args.status).toBe("completed");
+  });
 });

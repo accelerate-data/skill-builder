@@ -356,8 +356,9 @@ export const useAgentStore = create<AgentState>((set) => ({
       };
     });
 
-    // Persist agent run to SQLite (fire-and-forget)
-    if (runBeforeUpdate?.tokenUsage && runBeforeUpdate?.totalCost !== undefined) {
+    // Persist agent run to SQLite (fire-and-forget). Do not require tokenUsage;
+    // some runs only report modelUsage breakdown or partial result metadata.
+    if (runBeforeUpdate) {
       const workflow = useWorkflowStore.getState();
       const persistenceContext = resolvePersistenceContext(
         runBeforeUpdate,
