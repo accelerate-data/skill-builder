@@ -1,7 +1,7 @@
 use tauri_plugin_log::{Target, TargetKind};
 
 /// The log file name written to the app log directory each session.
-const LOG_FILE_NAME: &str = "skill-builder";
+const LOG_FILE_NAME: &str = "app";
 
 /// Truncate the log file so each session starts fresh.
 ///
@@ -345,5 +345,10 @@ mod tests {
 
         prune_transcript_files(workspace.to_str().unwrap());
         // Should complete without error
+    }
+
+    #[test]
+    fn test_log_file_name_is_app() {
+        assert_eq!(LOG_FILE_NAME, "app");
     }
 }

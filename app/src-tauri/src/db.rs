@@ -5,15 +5,14 @@ use crate::types::{
 use rusqlite::{Connection, OptionalExtension};
 use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 use std::sync::Mutex;
 
 pub struct Db(pub Mutex<Connection>);
 
-pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
-    use tauri::Manager;
-    let app_dir = app.path().app_data_dir()?;
-    fs::create_dir_all(&app_dir)?;
-    let conn = Connection::open(app_dir.join("skill-builder.db"))?;
+pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
+    fs::create_dir_all(data_dir)?;
+    let conn = Connection::open(data_dir.join("skill-builder.db"))?;
     conn.pragma_update(None, "journal_mode", "WAL")
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     conn.pragma_update(None, "busy_timeout", "5000")

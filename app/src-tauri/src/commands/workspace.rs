@@ -4,68 +4,32 @@ use std::fs;
 use std::path::Path;
 
 const WORKSPACE_PARENT: &str = ".vibedata";
-const WORKSPACE_SUBDIR: &str = "skill-builder";
+const WORKSPACE_SUBDIR: &str = "workspace";
 
-/// Resolve the default workspace path: `~/.vibedata/skill-builder`
-fn resolve_workspace_path() -> Result<String, String> {
-    let home = dirs::home_dir().ok_or_else(|| "Could not determine home directory".to_string())?;
-    let workspace = home.join(WORKSPACE_PARENT).join(WORKSPACE_SUBDIR);
+/// Resolve the workspace path from the shared app-local data directory.
+fn resolve_workspace_path(data_dir: &Path) -> Result<String, String> {
+    let workspace = data_dir.join(WORKSPACE_SUBDIR);
     workspace
         .to_str()
         .map(|s| s.to_string())
-        .ok_or_else(|| "Home directory path contains invalid UTF-8".to_string())
+        .ok_or_else(|| "Data directory path contains invalid UTF-8".to_string())
 }
 
-/// Migrate existing `~/.vibedata` workspace to `~/.vibedata/skill-builder`.
-/// Safe to call on every startup — skips if already migrated or if old dir is empty/absent.
-/// Uses a three-step atomic rename to avoid data loss:
-///   ~/.vibedata → ~/.vibedata-migrating (take old dir out of the way)
-///   mkdir ~/.vibedata                   (recreate the parent)
-///   ~/.vibedata-migrating → ~/.vibedata/skill-builder (move data to new location)
-fn migrate_to_skill_builder_subdir(home: &Path) {
-    let old_root = home.join(WORKSPACE_PARENT);
-    let new_root = home.join(WORKSPACE_PARENT).join(WORKSPACE_SUBDIR);
-
-    // Already on new layout, or nothing to migrate
-    if !old_root.is_dir() || new_root.exists() {
+/// Best-effort cleanup for legacy `~/.vibedata` folder from pre-DataDir builds.
+/// Non-fatal by design: startup must continue even if cleanup fails.
+fn cleanup_legacy_vibedata(home: &Path) {
+    let legacy_root = home.join(WORKSPACE_PARENT);
+    if !legacy_root.exists() {
         return;
     }
-
-    // If old root is empty, nothing to move (create_dir_all will handle it)
-    let has_content = fs::read_dir(&old_root)
-        .map(|mut d| d.next().is_some())
-        .unwrap_or(false);
-    if !has_content {
-        return;
+    match fs::remove_dir_all(&legacy_root) {
+        Ok(()) => log::info!("[init_workspace] removed legacy path {}", legacy_root.display()),
+        Err(e) => log::warn!(
+            "[init_workspace] failed to remove legacy path {}: {}",
+            legacy_root.display(),
+            e
+        ),
     }
-
-    let tmp_name = format!("{}-migrating", WORKSPACE_PARENT);
-    let tmp = home.join(&tmp_name);
-    if tmp.exists() {
-        log::warn!("[init_workspace] migration skipped: ~/{} already exists (leftover from a previous failed migration?)", tmp_name);
-        return;
-    }
-
-    if let Err(e) = fs::rename(&old_root, &tmp) {
-        log::warn!("[init_workspace] migration step 1 failed (rename ~/.vibedata to tmp): {}", e);
-        return;
-    }
-
-    if let Err(e) = fs::create_dir_all(&old_root) {
-        log::warn!("[init_workspace] migration step 2 failed (recreate ~/.vibedata): {}", e);
-        let _ = fs::rename(&tmp, &old_root); // restore
-        return;
-    }
-
-    if let Err(e) = fs::rename(&tmp, &new_root) {
-        log::warn!("[init_workspace] migration step 3 failed (rename tmp to ~/.vibedata/skill-builder): {}", e);
-        // Try to restore: drop newly created empty parent, rename tmp back
-        let _ = fs::remove_dir(&old_root);
-        let _ = fs::rename(&tmp, &old_root);
-        return;
-    }
-
-    log::info!("[init_workspace] migrated workspace: ~/.vibedata → ~/.vibedata/skill-builder");
 }
 
 /// Migrate stale workspace layout artifacts after reorganization.
@@ -94,19 +58,19 @@ fn migrate_workspace_layout(workspace_path: &str) {
 }
 
 /// Initialize the workspace directory on app startup.
-/// Creates `~/.vibedata/skill-builder` if it doesn't exist, updates settings,
+/// Creates `<data_dir>/workspace` if it doesn't exist, updates settings,
 /// and deploys bundled agents to `.claude/`.
-/// Also migrates existing `~/.vibedata` data to `~/.vibedata/skill-builder` on first run.
 pub fn init_workspace(
     app: &tauri::AppHandle,
     db: &tauri::State<'_, Db>,
+    data_dir: &Path,
 ) -> Result<String, String> {
-    // Migrate old ~/.vibedata workspace to ~/.vibedata/skill-builder on first launch after upgrade
+    // Best-effort cleanup of pre-DataDir legacy folder.
     if let Some(home) = dirs::home_dir() {
-        migrate_to_skill_builder_subdir(&home);
+        cleanup_legacy_vibedata(&home);
     }
 
-    let workspace_path = resolve_workspace_path()?;
+    let workspace_path = resolve_workspace_path(data_dir)?;
 
     // Create directory if it doesn't exist
     fs::create_dir_all(&workspace_path)
@@ -423,8 +387,9 @@ mod tests {
 
     #[test]
     fn test_resolve_workspace_path() {
-        let path = resolve_workspace_path().unwrap();
-        assert!(path.ends_with(".vibedata/skill-builder"), "expected path ending in .vibedata/skill-builder, got {}", path);
+        let tmp = tempfile::tempdir().unwrap();
+        let path = resolve_workspace_path(tmp.path()).unwrap();
+        assert!(path.ends_with("/workspace"), "expected path ending in /workspace, got {}", path);
     }
 
     #[test]
@@ -473,74 +438,24 @@ mod tests {
         assert!(result.is_ok(), "Non-existent path should be accepted (not yet created)");
     }
 
-    // --- migrate_to_skill_builder_subdir tests ---
+    // --- cleanup_legacy_vibedata tests ---
 
     #[test]
-    fn test_migrate_happy_path() {
+    fn test_cleanup_legacy_vibedata_happy_path() {
         let home = tempfile::tempdir().unwrap();
         let old_root = home.path().join(".vibedata");
         fs::create_dir_all(&old_root).unwrap();
         fs::write(old_root.join("agents.md"), "content").unwrap();
 
-        migrate_to_skill_builder_subdir(home.path());
-
-        let new_root = home.path().join(".vibedata").join("skill-builder");
-        assert!(new_root.join("agents.md").exists(), "file should be at new location");
-        assert!(!home.path().join(".vibedata-migrating").exists(), "tmp should be cleaned up");
+        cleanup_legacy_vibedata(home.path());
+        assert!(!old_root.exists(), "legacy root should be removed");
     }
 
     #[test]
-    fn test_migrate_skips_if_already_migrated() {
-        let home = tempfile::tempdir().unwrap();
-        let new_root = home.path().join(".vibedata").join("skill-builder");
-        fs::create_dir_all(&new_root).unwrap();
-        fs::write(new_root.join("agents.md"), "content").unwrap();
-
-        // Should be a no-op
-        migrate_to_skill_builder_subdir(home.path());
-
-        assert!(new_root.join("agents.md").exists(), "existing new layout should be untouched");
-    }
-
-    #[test]
-    fn test_migrate_skips_if_old_dir_absent() {
+    fn test_cleanup_legacy_vibedata_skips_if_absent() {
         let home = tempfile::tempdir().unwrap();
 
-        // Old ~/.vibedata doesn't exist — nothing to do
-        migrate_to_skill_builder_subdir(home.path());
-
-        assert!(!home.path().join(".vibedata").exists(), "nothing should be created");
-    }
-
-    #[test]
-    fn test_migrate_skips_if_old_dir_empty() {
-        let home = tempfile::tempdir().unwrap();
-        let old_root = home.path().join(".vibedata");
-        fs::create_dir_all(&old_root).unwrap();
-        // No files inside
-
-        migrate_to_skill_builder_subdir(home.path());
-
-        // Old empty dir should still be there (create_dir_all would have made it anyway)
-        // New subdir should not have been created by migration
-        assert!(!old_root.join("skill-builder").exists(), "should not create skill-builder from empty dir");
-    }
-
-    #[test]
-    fn test_migrate_skips_if_tmp_exists() {
-        let home = tempfile::tempdir().unwrap();
-        let old_root = home.path().join(".vibedata");
-        fs::create_dir_all(&old_root).unwrap();
-        fs::write(old_root.join("agents.md"), "content").unwrap();
-
-        // Simulate a leftover tmp from a previous failed migration
-        let tmp = home.path().join(".vibedata-migrating");
-        fs::create_dir_all(&tmp).unwrap();
-
-        migrate_to_skill_builder_subdir(home.path());
-
-        // Should be a no-op: original file still in old location
-        assert!(old_root.join("agents.md").exists(), "file should remain in old location");
-        assert!(!old_root.join("skill-builder").exists(), "skill-builder should not be created");
+        cleanup_legacy_vibedata(home.path());
+        assert!(!home.path().join(".vibedata").exists(), "absent legacy path should remain absent");
     }
 }

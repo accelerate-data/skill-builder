@@ -9,12 +9,16 @@ mod reconciliation;
 mod types;
 
 pub use types::*;
+use std::path::PathBuf;
 
 #[derive(Clone)]
 pub struct InstanceInfo {
     pub id: String,
     pub pid: u32,
 }
+
+#[derive(Clone)]
+pub struct DataDir(pub PathBuf);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -94,7 +98,14 @@ pub fn run() {
             // Uses app_log_dir() so the path always matches the log plugin's target.
             logging::truncate_log_file(app.handle());
 
-            let db = db::init_db(app).expect("failed to initialize database");
+            let data_dir = app
+                .path()
+                .app_local_data_dir()
+                .expect("failed to resolve app_local_data_dir");
+            std::fs::create_dir_all(&data_dir).expect("failed to create data directory");
+            app.manage(DataDir(data_dir.clone()));
+
+            let db = db::init_db(&data_dir).expect("failed to initialize database");
             app.manage(db);
 
             let instance_info = InstanceInfo {
@@ -127,7 +138,7 @@ pub fn run() {
             // Initialize workspace directory and deploy bundled prompts
             let db_state = app.state::<db::Db>();
             let handle = app.handle().clone();
-            let workspace_path = commands::workspace::init_workspace(&handle, &db_state)
+            let workspace_path = commands::workspace::init_workspace(&handle, &db_state, &data_dir)
                 .expect("failed to initialize workspace");
 
             // Prune old transcript files before any agents are spawned.

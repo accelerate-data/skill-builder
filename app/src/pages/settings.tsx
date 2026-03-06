@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core"
 import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
-import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, PlugZap, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, ArrowLeft, Plus } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, PlugZap, FolderOpen, FolderSearch, Trash2, Github, LogOut, Monitor, Sun, Moon, Info, ArrowLeft, Plus } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useNavigate } from "@tanstack/react-router"
 import { Button } from "@/components/ui/button"
@@ -69,10 +69,8 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState(false)
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null)
   const [showApiKey, setShowApiKey] = useState(false)
-  const [clearing, setClearing] = useState(false)
   const [appVersion, setAppVersion] = useState<string>("dev")
   const [dataDir, setDataDir] = useState<string | null>(null)
-  const [logFilePath, setLogFilePath] = useState<string | null>(null)
   const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const [aboutDialogOpen, setAboutDialogOpen] = useState(false)
   const [autoUpdate, setAutoUpdate] = useState(false)
@@ -142,12 +140,6 @@ export default function SettingsPage() {
     getDataDir()
       .then((dir) => setDataDir(dir))
       .catch(() => setDataDir(null))
-  }, [])
-
-  useEffect(() => {
-    invoke<string>("get_log_file_path")
-      .then(setLogFilePath)
-      .catch(() => setLogFilePath(null))
   }, [])
 
   const fetchModels = async (key: string) => {
@@ -259,22 +251,6 @@ export default function SettingsPage() {
       }
       setSkillsPath(normalized)
       autoSave({ skillsPath: normalized })
-    }
-  }
-
-  const handleClearWorkspace = async () => {
-    if (!window.confirm("This will reset the bundled agent files in your workspace. Your imported skills, CLAUDE.md, and workflow data will not be affected.\n\nAre you sure?")) {
-      return
-    }
-    setClearing(true)
-    try {
-      await invoke("clear_workspace")
-      toast.success("Workspace cleared", { duration: 1500 })
-    } catch (err) {
-      console.error("settings: clear workspace failed", err)
-      toast.error(`Failed to clear workspace: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity })
-    } finally {
-      setClearing(false)
     }
   }
 
@@ -819,7 +795,7 @@ export default function SettingsPage() {
               <CardHeader>
                 <CardTitle>Logging</CardTitle>
                 <CardDescription>
-                  Configure application logging. Chat transcripts (JSONL) are always captured regardless of level.
+                  Configure application logging level. Chat transcripts (JSONL) are always captured regardless of level.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -846,12 +822,6 @@ export default function SettingsPage() {
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <FileText className="size-4 text-muted-foreground" />
-                  <code className="text-sm text-muted-foreground flex-1">
-                    {logFilePath || "Not available"}
-                  </code>
-                </div>
               </CardContent>
             </Card>
 
@@ -873,29 +843,6 @@ export default function SettingsPage() {
                     <Button variant="outline" size="sm" onClick={handleBrowseSkillsPath}>
                       <FolderSearch className="size-4" />
                       Browse
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label>Workspace Folder</Label>
-                  <div className="flex items-center gap-2">
-                    <FolderOpen className="size-4 text-muted-foreground" />
-                    <code className="text-sm text-muted-foreground flex-1">
-                      {workspacePath || "Not initialized"}
-                    </code>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleClearWorkspace}
-                      disabled={clearing || !workspacePath}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      {clearing ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="size-4" />
-                      )}
-                      Clear
                     </Button>
                   </div>
                 </div>
