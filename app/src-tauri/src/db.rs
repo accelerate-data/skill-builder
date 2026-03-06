@@ -875,6 +875,7 @@ fn repair_skills_table_schema(conn: &Connection) -> Result<(), rusqlite::Error> 
 
     let mut added_any = false;
     for (col, def) in &[
+        ("deleted_at", "TEXT"),
         ("description", "TEXT"),
         ("version", "TEXT"),
         ("model", "TEXT"),
@@ -1000,7 +1001,7 @@ fn run_rename_upload_migration(conn: &Connection) -> Result<(), rusqlite::Error>
     conn.execute(
         "DELETE FROM imported_skills
          WHERE is_bundled = 0
-           AND skill_name NOT IN (SELECT name FROM skills WHERE deleted_at IS NULL)",
+           AND skill_name NOT IN (SELECT name FROM skills WHERE COALESCE(deleted_at, '') = '')",
         [],
     )?;
     log::info!("migration 19: renamed upload→imported, cleaned orphaned imported_skills");
@@ -1672,7 +1673,7 @@ pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String>
             "SELECT id, name, skill_source, purpose, created_at, updated_at,
                     description, version, model, argument_hint, user_invocable, disable_model_invocation
              FROM skills
-             WHERE deleted_at IS NULL
+             WHERE COALESCE(deleted_at, '') = ''
              ORDER BY name",
         )
         .map_err(|e| {
@@ -1717,7 +1718,10 @@ pub fn delete_skill(conn: &Connection, name: &str) -> Result<(), String> {
     log::info!("delete_skill: name={}", name);
     conn.execute(
         "UPDATE skills
-         SET deleted_at = COALESCE(deleted_at, datetime('now') || 'Z'),
+         SET deleted_at = CASE
+               WHEN deleted_at IS NULL OR deleted_at = '' THEN datetime('now') || 'Z'
+               ELSE deleted_at
+             END,
              updated_at = datetime('now')
          WHERE name = ?1",
         rusqlite::params![name],
@@ -2766,7 +2770,7 @@ pub fn get_all_installed_skill_names(conn: &Connection) -> Result<Vec<String>, S
 /// Return names of all skills in the skills master table.
 /// Used by the skill-library (dashboard) path to check which skills are already installed.
 pub fn get_dashboard_skill_names(conn: &Connection) -> Result<Vec<String>, String> {
-    let mut stmt = conn.prepare("SELECT name FROM skills WHERE deleted_at IS NULL")
+    let mut stmt = conn.prepare("SELECT name FROM skills WHERE COALESCE(deleted_at, '') = ''")
         .map_err(|e| e.to_string())?;
     let names = stmt.query_map([], |row| row.get::<_, String>(0))
         .map_err(|e| e.to_string())?
@@ -5122,7 +5126,7 @@ mod tests {
         conn.execute(
             "DELETE FROM imported_skills
              WHERE is_bundled = 0
-               AND skill_name NOT IN (SELECT name FROM skills WHERE deleted_at IS NULL)",
+               AND skill_name NOT IN (SELECT name FROM skills WHERE COALESCE(deleted_at, '') = '')",
             [],
         ).unwrap();
 
