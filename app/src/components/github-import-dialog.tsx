@@ -411,22 +411,9 @@ export default function GitHubImportDialog({
     }
   }, [editingSkill, editForm, repoInfo, onImported])
 
-  /** Check if a purpose is already occupied by another active workspace skill */
-  function getPurposeConflict(purpose: string | null, excludeSkillName?: string | null): WorkspaceSkill | null {
-    if (!purpose) return null
-    return workspaceSkills.find(
-      (w) => w.is_active && w.purpose === purpose && w.skill_name !== excludeSkillName
-    ) ?? null
-  }
-
   const isMandatoryMissing = editForm
     ? !editForm.name.trim() || !editForm.description.trim() || !editForm.version.trim()
     : false
-
-  // settings-skills: purpose conflict blocks import
-  const purposeConflict = editForm && mode === 'settings-skills' && editingSkill
-    ? getPurposeConflict(editForm.settings_purpose, editingSkill.name)
-    : null
 
   function renderSkillList() {
     if (loading) {
@@ -792,18 +779,13 @@ export default function GitHubImportDialog({
                     <SelectTrigger id="si-purpose">
                       <SelectValue placeholder="General Purpose" />
                     </SelectTrigger>
-                    <SelectContent>
+                  <SelectContent>
                       <SelectItem value="__none__">General Purpose</SelectItem>
                       {PURPOSE_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {purposeConflict && (
-                    <p className="text-xs text-destructive">
-                      A skill with purpose {PURPOSE_OPTIONS.find(o => o.value === editForm.settings_purpose)?.label ?? editForm.settings_purpose} already exists: &ldquo;{purposeConflict.skill_name}&rdquo;
-                    </p>
-                  )}
                 </div>
 
                 <div className="flex flex-col gap-1.5">
@@ -879,7 +861,7 @@ export default function GitHubImportDialog({
           <DialogFooter>
             <Button variant="outline" onClick={closeEditForm}>Cancel</Button>
             <Button
-              disabled={isMandatoryMissing || !!purposeConflict || editForm === null}
+              disabled={isMandatoryMissing || editForm === null}
               onClick={handleSettingsImport}
             >
               Confirm Import

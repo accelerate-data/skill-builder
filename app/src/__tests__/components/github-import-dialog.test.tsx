@@ -842,9 +842,9 @@ describe("GitHubImportDialog", () => {
     });
   });
 
-  // Test F — Conflict guard disables confirm when purpose is occupied
-  describe("Purpose conflict guard — settings-skills mode", () => {
-    it("disables import button and shows conflict message when pre-populated purpose is occupied", async () => {
+  // Test F — Purpose conflicts no longer block import in settings-skills mode
+  describe("Purpose conflict behavior — settings-skills mode", () => {
+    it("keeps import enabled when pre-populated purpose is already occupied", async () => {
       const user = userEvent.setup();
 
       // Workspace skill 1: the existing version of "Sales Analytics" with purpose="research"
@@ -893,6 +893,7 @@ describe("GitHubImportDialog", () => {
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: [upgradeAvailableSkill],
         list_workspace_skills: [existingVersionWs, occupyingWs],
+        import_github_skills: undefined,
         check_skill_customized: false,
       });
 
@@ -911,19 +912,26 @@ describe("GitHubImportDialog", () => {
       // Click the edit button — existingVersionWs has purpose="research" which conflicts
       await user.click(editButtons[0]);
 
-      // Import dialog shown with conflict message
+      // Import dialog shown
       await waitFor(() => {
         expect(screen.getByText("Update Skill")).toBeInTheDocument();
       });
 
-      // Conflict message should appear because "research" is occupied by "other-research-skill"
-      await waitFor(() => {
-        expect(screen.getByText(/A skill with purpose/i)).toBeInTheDocument();
-      });
-
-      // Import button should be disabled due to conflict
+      // Import remains enabled; backend will handle purpose conflict policy.
       const importBtn = screen.getByRole("button", { name: /Confirm Import/i });
-      expect(importBtn).toBeDisabled();
+      expect(importBtn).toBeEnabled();
+      await user.click(importBtn);
+
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith(
+          "import_github_skills",
+          expect.objectContaining({
+            skillRequests: expect.arrayContaining([
+              expect.objectContaining({ purpose: "research" }),
+            ]),
+          })
+        );
+      });
     });
   });
 
