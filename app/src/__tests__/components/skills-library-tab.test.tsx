@@ -12,19 +12,40 @@ import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import type { WorkspaceSkill, AppSettings } from "@/lib/types";
 
 // Mock shadcn Select with a native <select> so onValueChange is testable in jsdom
-vi.mock("@/components/ui/select", () => ({
-  Select: ({ children, value, onValueChange }: { children: React.ReactNode; value: string; onValueChange: (v: string) => void }) => (
-    <select data-testid="purpose-select" data-value={value} value={value} onChange={(e) => onValueChange(e.target.value)}>
-      {children}
-    </select>
+vi.mock("@/components/ui/select", () => {
+  const Ctx = React.createContext<{ value: string; onValueChange: (v: string) => void } | null>(null);
+  return {
+  Select: ({
+    children,
+    value,
+    onValueChange,
+  }: {
+    children: React.ReactNode;
+    value: string;
+    onValueChange: (v: string) => void;
+  }) => (
+    <Ctx.Provider value={{ value, onValueChange }}>{children}</Ctx.Provider>
   ),
-  SelectTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SelectTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   SelectValue: ({ placeholder }: { placeholder?: string }) => <span>{placeholder}</span>,
-  SelectContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SelectContent: ({ children }: { children: React.ReactNode }) => {
+    const ctx = React.useContext(Ctx);
+    return (
+      <select
+        data-testid="purpose-select"
+        data-value={ctx?.value ?? ""}
+        value={ctx?.value ?? ""}
+        onChange={(e) => ctx?.onValueChange(e.target.value)}
+      >
+        <option value="">Set purpose…</option>
+        {children}
+      </select>
+    );
+  },
   SelectItem: ({ children, value }: { children: React.ReactNode; value: string }) => (
     <option value={value}>{children}</option>
   ),
-}));
+}});
 
 // Mock sonner
 vi.mock("sonner", () => ({

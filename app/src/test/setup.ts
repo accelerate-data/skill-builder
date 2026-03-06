@@ -19,5 +19,13 @@ globalThis.requestAnimationFrame = (cb: FrameRequestCallback): number => {
 };
 globalThis.cancelAnimationFrame = () => {};
 
+// Suppress known React test noise so warnings don't drown out actionable failures.
+const __consoleError = console.error;
+console.error = (...args: unknown[]) => {
+  const msg = String(args[0] ?? "");
+  if (msg.includes("not wrapped in act(")) return;
+  __consoleError(...args);
+};
+
 // Mock Tauri APIs globally for all tests
 import "./mocks/tauri";

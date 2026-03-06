@@ -1578,11 +1578,16 @@ mod tests {
         // Delete via delete_skill_inner
         delete_skill_inner(workspace, "mkt-skill", Some(&conn), None).unwrap();
 
-        // Both skills master and imported_skills rows should be gone
-        let skills_after: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM skills WHERE name = 'mkt-skill'", [], |r| r.get(0)
+        // skills master row is soft-deleted (deleted_at set), imported_skills row is removed
+        let deleted_at: Option<String> = conn.query_row(
+            "SELECT deleted_at FROM skills WHERE name = 'mkt-skill'",
+            [],
+            |r| r.get(0),
         ).unwrap();
-        assert_eq!(skills_after, 0, "skills master row should be deleted");
+        assert!(
+            deleted_at.as_deref().is_some_and(|v| !v.is_empty()),
+            "skills master row should be soft-deleted",
+        );
 
         let imported_after: i64 = conn.query_row(
             "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'mkt-skill'", [], |r| r.get(0)
@@ -1609,11 +1614,16 @@ mod tests {
         let wf_after = crate::db::get_workflow_run(&conn, "builder-skill").unwrap();
         assert!(wf_after.is_none(), "workflow_run should be deleted");
 
-        // skills master row should also be gone
-        let skills_after: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM skills WHERE name = 'builder-skill'", [], |r| r.get(0)
+        // skills master row should be soft-deleted
+        let deleted_at: Option<String> = conn.query_row(
+            "SELECT deleted_at FROM skills WHERE name = 'builder-skill'",
+            [],
+            |r| r.get(0),
         ).unwrap();
-        assert_eq!(skills_after, 0, "skills master row should be deleted");
+        assert!(
+            deleted_at.as_deref().is_some_and(|v| !v.is_empty()),
+            "skills master row should be soft-deleted",
+        );
     }
 
     #[test]

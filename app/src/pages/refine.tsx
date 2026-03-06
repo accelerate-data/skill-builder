@@ -82,6 +82,10 @@ export default function RefinePage() {
   const activeRunStatus = useAgentStore((s) =>
     activeAgentId ? s.runs[activeAgentId]?.status : undefined,
   );
+  const activeRunCost = useAgentStore((s) =>
+    activeAgentId ? s.runs[activeAgentId]?.totalCost : undefined,
+  );
+  const [lastTurnCost, setLastTurnCost] = useState<number | undefined>(undefined);
 
   // Track which skillParam was last auto-selected so navigating back with a
   // different skill (e.g. from the skill library) triggers a fresh selection.
@@ -266,6 +270,7 @@ export default function RefinePage() {
 
     // Check for session exhaustion — the SDK ran out of turns
     const agentRun = useAgentStore.getState().runs[activeAgentId];
+    setLastTurnCost(agentRun?.totalCost);
     if (agentRun) {
       const hasExhausted = agentRun.messages.some(
         (m) => (m.raw as Record<string, unknown>)?.type === "session_exhausted",
@@ -348,7 +353,7 @@ export default function RefinePage() {
 
         // Register run in agent store (events may have already started streaming —
         // addMessage auto-creates runs, registerRun merges with the correct model)
-        useAgentStore.getState().registerRun(agentId, model, selectedSkill.name);
+        useAgentStore.getState().registerRun(agentId, model, selectedSkill.name, "refine");
 
         // Add agent turn to chat
         store.addAgentTurn(agentId);
@@ -398,6 +403,7 @@ export default function RefinePage() {
       : undefined;
   const dotClass = isRunning ? "animate-pulse" : selectedSkill ? "" : "bg-zinc-500";
   const statusLabel = isRunning ? "running..." : selectedSkill ? "ready" : "no skill selected";
+  const statusCost = activeRunCost ?? (!isRunning ? lastTurnCost : undefined);
 
   return (
     <div className="-m-6 flex h-[calc(100%+3rem)] flex-col">
@@ -460,6 +466,12 @@ export default function RefinePage() {
           <>
             <span className="text-muted-foreground/20">&middot;</span>
             <span className="text-xs text-muted-foreground/60">{(elapsed / 1000).toFixed(1)}s</span>
+          </>
+        )}
+        {statusCost !== undefined && (
+          <>
+            <span className="text-muted-foreground/20">&middot;</span>
+            <span className="text-xs text-muted-foreground/60">${statusCost.toFixed(4)}</span>
           </>
         )}
       </div>

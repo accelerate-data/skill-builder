@@ -16,6 +16,40 @@ interface BufferedMessage {
 let _messageBuffer: BufferedMessage[] = [];
 let _rafScheduled = false;
 let _rafId = 0;
+type PendingTerminalStatus = "completed" | "error" | "shutdown";
+let _pendingTerminalByAgent = new Map<string, PendingTerminalStatus>();
+
+function queuePendingTerminal(agentId: string, status: PendingTerminalStatus) {
+  const existing = _pendingTerminalByAgent.get(agentId);
+  // Preserve the most informative terminal state. A later completed/error
+  // event should overwrite an earlier shutdown fallback.
+  if (!existing || existing === "shutdown") {
+    _pendingTerminalByAgent.set(agentId, status);
+    console.warn(
+      "[agent-store] event=terminal_queued operation=queue_pending_terminal agent_id=%s status=%s",
+      agentId,
+      status,
+    );
+  }
+}
+
+function drainPendingTerminal(agentId: string) {
+  const pending = _pendingTerminalByAgent.get(agentId);
+  if (!pending) return;
+  if (!useAgentStore.getState().runs[agentId]) return;
+
+  _pendingTerminalByAgent.delete(agentId);
+  console.log(
+    "[agent-store] event=terminal_replayed operation=drain_pending_terminal agent_id=%s status=%s",
+    agentId,
+    pending,
+  );
+  if (pending === "shutdown") {
+    useAgentStore.getState().shutdownRun(agentId);
+    return;
+  }
+  useAgentStore.getState().completeRun(agentId, pending === "completed");
+}
 
 function _flushMessageBuffer() {
   _rafScheduled = false;
@@ -23,8 +57,12 @@ function _flushMessageBuffer() {
 
   const batch = _messageBuffer;
   _messageBuffer = [];
+  const touchedAgentIds = [...new Set(batch.map((b) => b.agentId))];
 
   useAgentStore.getState()._applyMessageBatch(batch);
+  for (const agentId of touchedAgentIds) {
+    drainPendingTerminal(agentId);
+  }
 }
 
 /** Force-flush any buffered messages (for cleanup / testing). */
@@ -141,6 +179,7 @@ interface AgentRun {
   numTurns?: number;
   durationApiMs?: number | null;
   modelUsageBreakdown?: ModelUsageBreakdown[];
+  runSource?: "workflow" | "refine" | "test";
 }
 
 interface AgentState {
@@ -150,7 +189,7 @@ interface AgentState {
   /** Register a run for streaming without setting activeAgentId.
    *  Used by refine page which manages its own agent lifecycle.
    *  Pass skillName so usage data is attributed correctly (otherwise defaults to workflow store). */
-  registerRun: (agentId: string, model: string, skillName?: string) => void;
+  registerRun: (agentId: string, model: string, skillName?: string, runSource?: "refine" | "test") => void;
   addMessage: (agentId: string, message: AgentMessage) => void;
   completeRun: (agentId: string, success: boolean) => void;
   shutdownRun: (agentId: string) => void;
@@ -220,6 +259,34 @@ function buildModelEntries(
   }];
 }
 
+function resolvePersistenceContext(
+  run: AgentRun | undefined,
+  workflowSessionId: string | null,
+  currentStep: number,
+): { stepId: number; workflowSessionId?: string } {
+  if (workflowSessionId) {
+    return { stepId: currentStep, workflowSessionId };
+  }
+
+  if (!run) return { stepId: -1 };
+
+  if (run.runSource === "refine") {
+    return {
+      stepId: -10,
+      workflowSessionId: `synthetic:refine:${run.skillName ?? "unknown"}:${run.agentId}`,
+    };
+  }
+
+  if (run.runSource === "test") {
+    return {
+      stepId: -11,
+      workflowSessionId: `synthetic:test:${run.skillName ?? "unknown"}:${run.agentId}`,
+    };
+  }
+
+  return { stepId: -1 };
+}
+
 export const useAgentStore = create<AgentState>((set) => ({
   runs: {},
   activeAgentId: null,
@@ -247,6 +314,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 contextWindow: 200_000,
                 compactionEvents: [],
                 thinkingEnabled: false,
+                runSource: "workflow",
               },
         },
         activeAgentId: agentId,
@@ -268,16 +336,18 @@ export const useAgentStore = create<AgentState>((set) => ({
       durationMs: 0,
       workflowSessionId: workflow.workflowSessionId ?? undefined,
     }).catch((err) => console.error("Failed to persist agent start:", err));
+
+    drainPendingTerminal(agentId);
   },
 
-  registerRun: (agentId, model, skillName?) =>
+  registerRun: (agentId, model, skillName?, runSource = "refine") => {
     set((state) => {
       const existing = state.runs[agentId];
       return {
         runs: {
           ...state.runs,
           [agentId]: existing
-            ? { ...existing, model, skillName: skillName ?? existing.skillName, status: "running" as const }
+            ? { ...existing, model, skillName: skillName ?? existing.skillName, status: "running" as const, runSource }
             : {
                 agentId,
                 model,
@@ -289,11 +359,14 @@ export const useAgentStore = create<AgentState>((set) => ({
                 contextWindow: 200_000,
                 compactionEvents: [],
                 thinkingEnabled: false,
+                runSource,
               },
         },
         // Do NOT set activeAgentId — callers manage their own lifecycle
       };
-    }),
+    });
+    drainPendingTerminal(agentId);
+  },
 
   addMessage: (agentId, message) => {
     _messageBuffer.push({ agentId, message });
@@ -309,6 +382,10 @@ export const useAgentStore = create<AgentState>((set) => ({
 
     // Capture run data before status update for persistence
     const runBeforeUpdate = useAgentStore.getState().runs[agentId];
+    if (!runBeforeUpdate) {
+      queuePendingTerminal(agentId, success ? "completed" : "error");
+      return;
+    }
 
     set((state) => {
       const run = state.runs[agentId];
@@ -325,9 +402,15 @@ export const useAgentStore = create<AgentState>((set) => ({
       };
     });
 
-    // Persist agent run to SQLite (fire-and-forget)
-    if (runBeforeUpdate?.tokenUsage && runBeforeUpdate?.totalCost !== undefined) {
+    // Persist agent run to SQLite (fire-and-forget). Do not require tokenUsage;
+    // some runs only report modelUsage breakdown or partial result metadata.
+    if (runBeforeUpdate) {
       const workflow = useWorkflowStore.getState();
+      const persistenceContext = resolvePersistenceContext(
+        runBeforeUpdate,
+        workflow.workflowSessionId,
+        workflow.currentStep,
+      );
 
       // Count tool uses across all assistant messages
       let toolUseCount = 0;
@@ -346,7 +429,7 @@ export const useAgentStore = create<AgentState>((set) => ({
         {
           agentId,
           skillName: runBeforeUpdate.skillName ?? workflow.skillName ?? "unknown",
-          stepId: workflow.currentStep,
+          stepId: persistenceContext.stepId,
           status: success ? "completed" : "error",
           durationMs: Date.now() - runBeforeUpdate.startTime,
           numTurns: runBeforeUpdate.numTurns ?? 0,
@@ -355,7 +438,7 @@ export const useAgentStore = create<AgentState>((set) => ({
           toolUseCount,
           compactionCount: runBeforeUpdate.compactionEvents.length,
           sessionId: runBeforeUpdate.sessionId,
-          workflowSessionId: workflow.workflowSessionId ?? undefined,
+          workflowSessionId: persistenceContext.workflowSessionId,
         },
         buildModelEntries(runBeforeUpdate),
       );
@@ -367,6 +450,10 @@ export const useAgentStore = create<AgentState>((set) => ({
     flushMessageBuffer();
 
     const runBeforeUpdate = useAgentStore.getState().runs[agentId];
+    if (!runBeforeUpdate) {
+      queuePendingTerminal(agentId, "shutdown");
+      return;
+    }
 
     set((state) => {
       const run = state.runs[agentId];
@@ -386,14 +473,19 @@ export const useAgentStore = create<AgentState>((set) => ({
     // Persist shutdown status with whatever partial data we have
     if (runBeforeUpdate) {
       const workflow = useWorkflowStore.getState();
+      const persistenceContext = resolvePersistenceContext(
+        runBeforeUpdate,
+        workflow.workflowSessionId,
+        workflow.currentStep,
+      );
       persistRunRows(
         {
           agentId,
           skillName: runBeforeUpdate.skillName ?? workflow.skillName ?? "unknown",
-          stepId: workflow.currentStep,
+          stepId: persistenceContext.stepId,
           status: "shutdown" as const,
           durationMs: Date.now() - runBeforeUpdate.startTime,
-          workflowSessionId: workflow.workflowSessionId ?? undefined,
+          workflowSessionId: persistenceContext.workflowSessionId,
         },
         buildModelEntries(runBeforeUpdate),
       );
@@ -410,6 +502,13 @@ export const useAgentStore = create<AgentState>((set) => ({
       _rafScheduled = false;
     }
     _messageBuffer = [];
+    if (_pendingTerminalByAgent.size > 0) {
+      console.warn(
+        "[agent-store] event=pending_terminal_cleared operation=clear_runs count=%d",
+        _pendingTerminalByAgent.size,
+      );
+      _pendingTerminalByAgent.clear();
+    }
     set({ runs: {}, activeAgentId: null });
   },
 

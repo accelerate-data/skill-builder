@@ -57,6 +57,8 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (27, run_backfill_null_versions_migration),
         (28, run_rename_purpose_drop_domain_migration),
         (29, run_marketplace_source_url_migration),
+        (30, run_skills_soft_delete_migration),
+        (31, run_backfill_synthetic_sessions_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -176,7 +178,8 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             domain       TEXT,
             skill_type   TEXT,
             created_at   TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            deleted_at   TEXT
         );",
     )
 }
@@ -504,10 +507,49 @@ fn run_skills_table_migration(conn: &Connection) -> Result<(), rusqlite::Error> 
             domain       TEXT,
             skill_type   TEXT,
             created_at   TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            deleted_at   TEXT
         );",
     )?;
     log::info!("migration 17: created skills table");
+    Ok(())
+}
+
+/// Migration 30: Add soft-delete timestamp to skills master table.
+fn run_skills_soft_delete_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let has_deleted_at = conn
+        .prepare("PRAGMA table_info(skills)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .any(|r| r.map(|n| n == "deleted_at").unwrap_or(false));
+
+    if !has_deleted_at {
+        conn.execute_batch("ALTER TABLE skills ADD COLUMN deleted_at TEXT;")?;
+    }
+    Ok(())
+}
+
+/// Migration 31: Backfill missing workflow_sessions rows for historical synthetic
+/// refine/test usage runs written before synthetic session persistence.
+fn run_backfill_synthetic_sessions_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "INSERT INTO workflow_sessions (session_id, skill_name, skill_id, pid, started_at, ended_at)
+         SELECT
+           ar.workflow_session_id,
+           ar.skill_name,
+           s.id,
+           0,
+           MIN(COALESCE(ar.started_at, datetime('now') || 'Z')),
+           MAX(COALESCE(ar.completed_at, ar.started_at, datetime('now') || 'Z'))
+         FROM agent_runs ar
+         LEFT JOIN skills s ON s.name = ar.skill_name
+         LEFT JOIN workflow_sessions ws ON ws.session_id = ar.workflow_session_id
+         WHERE ar.workflow_session_id IS NOT NULL
+           AND ar.workflow_session_id LIKE 'synthetic:%'
+           AND ar.reset_marker IS NULL
+           AND ws.session_id IS NULL
+         GROUP BY ar.workflow_session_id, ar.skill_name, s.id",
+        [],
+    )?;
     Ok(())
 }
 
@@ -859,6 +901,7 @@ fn repair_skills_table_schema(conn: &Connection) -> Result<(), rusqlite::Error> 
 
     let mut added_any = false;
     for (col, def) in &[
+        ("deleted_at", "TEXT"),
         ("description", "TEXT"),
         ("version", "TEXT"),
         ("model", "TEXT"),
@@ -982,7 +1025,9 @@ fn run_rename_upload_migration(conn: &Connection) -> Result<(), rusqlite::Error>
     conn.execute("UPDATE skills SET skill_source = 'imported' WHERE skill_source = 'upload'", [])?;
     // Clean orphaned non-bundled imported_skills with no skills master row
     conn.execute(
-        "DELETE FROM imported_skills WHERE is_bundled = 0 AND skill_name NOT IN (SELECT name FROM skills)",
+        "DELETE FROM imported_skills
+         WHERE is_bundled = 0
+           AND skill_name NOT IN (SELECT name FROM skills WHERE COALESCE(deleted_at, '') = '')",
         [],
     )?;
     log::info!("migration 19: renamed upload→imported, cleaned orphaned imported_skills");
@@ -1084,6 +1129,8 @@ fn run_agent_stats_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
 
 fn step_name(step_id: i32) -> String {
     match step_id {
+        -11 => "Test".to_string(),
+        -10 => "Refine".to_string(),
         0 => "Research".to_string(),
         1 => "Review".to_string(),
         2 => "Detailed Research".to_string(),
@@ -1128,6 +1175,31 @@ pub fn persist_agent_run(
             .ok();
         if matches!(existing_status.as_deref(), Some("completed") | Some("error")) {
             return Ok(());
+        }
+    }
+
+    // Ensure session-backed usage views include this run. For workflow runs this is
+    // idempotent with create_workflow_session; for refine/test synthetic IDs this
+    // creates the required session row on first persist.
+    if let Some(ws_id) = workflow_session_id {
+        let skill_master_id = get_skill_master_id(conn, skill_name)?;
+        conn.execute(
+            "INSERT OR IGNORE INTO workflow_sessions (session_id, skill_name, skill_id, pid)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![ws_id, skill_name, skill_master_id, std::process::id() as i64],
+        )
+        .map_err(|e| e.to_string())?;
+
+        // Synthetic sessions are one run per session; mark them ended on terminal status
+        // so recent sessions show completion timing.
+        if ws_id.starts_with("synthetic:") && matches!(status, "completed" | "error" | "shutdown") {
+            conn.execute(
+                "UPDATE workflow_sessions
+                 SET ended_at = COALESCE(ended_at, datetime('now') || 'Z')
+                 WHERE session_id = ?1",
+                rusqlite::params![ws_id],
+            )
+            .map_err(|e| e.to_string())?;
         }
     }
 
@@ -1592,7 +1664,7 @@ pub fn upsert_skill(
         "INSERT INTO skills (name, skill_source, purpose, updated_at)
          VALUES (?1, ?2, ?3, datetime('now'))
          ON CONFLICT(name) DO UPDATE SET
-             purpose = ?3, updated_at = datetime('now')",
+             purpose = ?3, updated_at = datetime('now'), deleted_at = NULL",
         rusqlite::params![name, skill_source, purpose],
     )
     .map_err(|e| {
@@ -1627,7 +1699,7 @@ pub fn upsert_skill_with_source(
         "INSERT INTO skills (name, skill_source, purpose, updated_at)
          VALUES (?1, ?2, ?3, datetime('now'))
          ON CONFLICT(name) DO UPDATE SET
-             skill_source = ?2, purpose = ?3, updated_at = datetime('now')",
+             skill_source = ?2, purpose = ?3, updated_at = datetime('now'), deleted_at = NULL",
         rusqlite::params![name, skill_source, purpose],
     )
     .map_err(|e| {
@@ -1653,7 +1725,9 @@ pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String>
         .prepare(
             "SELECT id, name, skill_source, purpose, created_at, updated_at,
                     description, version, model, argument_hint, user_invocable, disable_model_invocation
-             FROM skills ORDER BY name",
+             FROM skills
+             WHERE COALESCE(deleted_at, '') = ''
+             ORDER BY name",
         )
         .map_err(|e| {
             log::error!("list_all_skills: failed to prepare query: {}", e);
@@ -1695,7 +1769,16 @@ pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String>
 /// Delete a skill from the master table by name.
 pub fn delete_skill(conn: &Connection, name: &str) -> Result<(), String> {
     log::info!("delete_skill: name={}", name);
-    conn.execute("DELETE FROM skills WHERE name = ?1", rusqlite::params![name])
+    conn.execute(
+        "UPDATE skills
+         SET deleted_at = CASE
+               WHEN deleted_at IS NULL OR deleted_at = '' THEN datetime('now') || 'Z'
+               ELSE deleted_at
+             END,
+             updated_at = datetime('now')
+         WHERE name = ?1",
+        rusqlite::params![name],
+    )
         .map_err(|e| {
             log::error!("delete_skill: failed to delete '{}': {}", name, e);
             e.to_string()
@@ -1957,7 +2040,8 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
     let s_id = get_skill_master_id(conn, skill_name)?
         .ok_or_else(|| format!("Skill '{}' not found in skills master", skill_name))?;
 
-    // Delete child rows by FK columns only (migration 22 guarantees no NULL FKs)
+    // Delete workflow-state child rows by FK columns only.
+    // Usage history tables (agent_runs/workflow_sessions) are intentionally retained.
     conn.execute(
         "DELETE FROM workflow_artifacts WHERE workflow_run_id = ?1",
         rusqlite::params![wr_id],
@@ -1971,19 +2055,7 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
     .map_err(|e| e.to_string())?;
 
     conn.execute(
-        "DELETE FROM agent_runs WHERE workflow_run_id = ?1",
-        rusqlite::params![wr_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    conn.execute(
         "DELETE FROM skill_locks WHERE skill_id = ?1",
-        rusqlite::params![s_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    conn.execute(
-        "DELETE FROM workflow_sessions WHERE skill_id = ?1",
         rusqlite::params![s_id],
     )
     .map_err(|e| e.to_string())?;
@@ -2751,7 +2823,7 @@ pub fn get_all_installed_skill_names(conn: &Connection) -> Result<Vec<String>, S
 /// Return names of all skills in the skills master table.
 /// Used by the skill-library (dashboard) path to check which skills are already installed.
 pub fn get_dashboard_skill_names(conn: &Connection) -> Result<Vec<String>, String> {
-    let mut stmt = conn.prepare("SELECT name FROM skills")
+    let mut stmt = conn.prepare("SELECT name FROM skills WHERE COALESCE(deleted_at, '') = ''")
         .map_err(|e| e.to_string())?;
     let names = stmt.query_map([], |row| row.get::<_, String>(0))
         .map_err(|e| e.to_string())?
@@ -3287,7 +3359,10 @@ mod tests {
         run_content_hash_migration(&conn).unwrap();
         run_backfill_null_versions_migration(&conn).unwrap();
         run_rename_purpose_drop_domain_migration(&conn).unwrap();
+        run_skills_soft_delete_migration(&conn).unwrap();
         run_marketplace_source_url_migration(&conn).unwrap();
+        run_skills_soft_delete_migration(&conn).unwrap();
+        run_backfill_synthetic_sessions_migration(&conn).unwrap();
         conn
     }
 
@@ -3597,13 +3672,25 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_skill_removes_from_master() {
+    fn test_delete_skill_soft_deletes_from_master() {
         let conn = create_test_db();
         upsert_skill(&conn, "to-delete", "marketplace", "domain").unwrap();
         assert!(get_skill_master_id(&conn, "to-delete").unwrap().is_some());
 
         delete_skill(&conn, "to-delete").unwrap();
-        assert!(get_skill_master_id(&conn, "to-delete").unwrap().is_none());
+        // Row remains for historical joins but is hidden from active skill lists.
+        assert!(get_skill_master_id(&conn, "to-delete").unwrap().is_some());
+        let listed = list_all_skills(&conn).unwrap();
+        assert!(!listed.iter().any(|s| s.name == "to-delete"));
+
+        let deleted_at: Option<String> = conn
+            .query_row(
+                "SELECT deleted_at FROM skills WHERE name = 'to-delete'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(deleted_at.is_some());
     }
 
     #[test]
@@ -3642,16 +3729,60 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_workflow_run_also_deletes_from_skills_master() {
+    fn test_delete_workflow_run_soft_deletes_skills_master() {
         let conn = create_test_db();
         save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
         assert!(get_skill_master_id(&conn, "my-skill").unwrap().is_some());
 
         delete_workflow_run(&conn, "my-skill").unwrap();
 
-        // Both workflow_runs and skills master should be cleaned
+        // Workflow state is removed while the skills master row is soft-deleted.
         assert!(get_workflow_run(&conn, "my-skill").unwrap().is_none());
-        assert!(get_skill_master_id(&conn, "my-skill").unwrap().is_none());
+        assert!(get_skill_master_id(&conn, "my-skill").unwrap().is_some());
+        let listed = list_all_skills(&conn).unwrap();
+        assert!(!listed.iter().any(|s| s.name == "my-skill"));
+    }
+
+    #[test]
+    fn test_delete_workflow_run_preserves_agent_run_usage_history() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
+        create_workflow_session(&conn, "sess-usage", "my-skill", 12345).unwrap();
+
+        persist_agent_run(
+            &conn,
+            "agent-usage-1",
+            "my-skill",
+            0,
+            "sonnet",
+            "completed",
+            100,
+            50,
+            0,
+            0,
+            0.01,
+            1000,
+            1,
+            None,
+            None,
+            0,
+            0,
+            None,
+            Some("sess-usage"),
+        )
+        .unwrap();
+
+        let count_before: i64 = conn
+            .query_row("SELECT COUNT(*) FROM agent_runs WHERE skill_name = 'my-skill'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count_before, 1);
+
+        delete_workflow_run(&conn, "my-skill").unwrap();
+
+        let count_after: i64 = conn
+            .query_row("SELECT COUNT(*) FROM agent_runs WHERE skill_name = 'my-skill'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count_after, 1);
     }
 
     // --- Skills Backfill Migration tests ---
@@ -3702,6 +3833,7 @@ mod tests {
         run_content_hash_migration(&conn).unwrap();
         run_backfill_null_versions_migration(&conn).unwrap();
         run_rename_purpose_drop_domain_migration(&conn).unwrap();
+        run_skills_soft_delete_migration(&conn).unwrap();
 
         // Verify skills master was populated
         let skills = list_all_skills(&conn).unwrap();
@@ -4325,6 +4457,58 @@ mod tests {
     }
 
     #[test]
+    fn test_persist_agent_run_auto_creates_workflow_session_for_synthetic_ids() {
+        let conn = create_test_db();
+
+        persist_agent_run(
+            &conn, "agent-r", "my-skill", -10, "sonnet", "completed",
+            1200, 300, 0, 0, 0.12, 3200,
+            0, None, None, 0, 0,
+            None, Some("synthetic:refine:my-skill:agent-r"),
+        )
+        .unwrap();
+
+        let sess_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM workflow_sessions WHERE session_id = 'synthetic:refine:my-skill:agent-r'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(sess_count, 1);
+
+        let summary = get_usage_summary(&conn, false, None, None).unwrap();
+        assert_eq!(summary.total_runs, 1);
+        assert!((summary.total_cost - 0.12).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_get_usage_by_step_labels_refine_and_test() {
+        let conn = create_test_db();
+
+        persist_agent_run(
+            &conn, "agent-refine", "skill-a", -10, "sonnet", "completed",
+            1000, 200, 0, 0, 0.10, 2000,
+            0, None, None, 0, 0,
+            None, Some("synthetic:refine:skill-a:agent-refine"),
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn, "agent-test", "skill-a", -11, "sonnet", "completed",
+            900, 180, 0, 0, 0.09, 1800,
+            0, None, None, 0, 0,
+            None, Some("synthetic:test:skill-a:agent-test"),
+        )
+        .unwrap();
+
+        let by_step = get_usage_by_step(&conn, false, None, None).unwrap();
+        let refine = by_step.iter().find(|s| s.step_id == -10).unwrap();
+        let test = by_step.iter().find(|s| s.step_id == -11).unwrap();
+        assert_eq!(refine.step_name, "Refine");
+        assert_eq!(test.step_name, "Test");
+    }
+
+    #[test]
     fn test_reset_usage_excludes_from_by_step_and_by_model() {
         let conn = create_test_db();
         persist_agent_run(
@@ -4628,7 +4812,7 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_workflow_run_cascades_sessions() {
+    fn test_delete_workflow_run_preserves_usage_sessions() {
         let conn = create_test_db();
         save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
         create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
@@ -4642,7 +4826,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(count, 0);
+        assert_eq!(count, 1);
     }
 
     #[test]
@@ -4916,6 +5100,44 @@ mod tests {
     }
 
     #[test]
+    fn test_backfill_synthetic_sessions_migration_creates_missing_sessions() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "legacy-skill", 0, "completed", "domain").unwrap();
+
+        conn.execute(
+            "INSERT INTO agent_runs
+             (agent_id, skill_name, step_id, model, status, total_cost, workflow_session_id, started_at, completed_at)
+             VALUES ('legacy-agent-1', 'legacy-skill', -10, 'sonnet', 'completed', 0.25, 'synthetic:refine:legacy-skill:legacy-agent-1', datetime('now') || 'Z', datetime('now') || 'Z')",
+            [],
+        )
+        .unwrap();
+
+        let before: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM workflow_sessions WHERE session_id = 'synthetic:refine:legacy-skill:legacy-agent-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(before, 0);
+
+        run_backfill_synthetic_sessions_migration(&conn).unwrap();
+
+        let after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM workflow_sessions WHERE session_id = 'synthetic:refine:legacy-skill:legacy-agent-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(after, 1);
+
+        let summary = get_usage_summary(&conn, false, None, None).unwrap();
+        assert_eq!(summary.total_runs, 1);
+        assert!((summary.total_cost - 0.25).abs() < 1e-10);
+    }
+
+    #[test]
     fn test_list_active_skills() {
         let conn = create_test_db();
 
@@ -5048,7 +5270,9 @@ mod tests {
 
         // Run migration 19's orphan cleanup SQL directly
         conn.execute(
-            "DELETE FROM imported_skills WHERE is_bundled = 0 AND skill_name NOT IN (SELECT name FROM skills)",
+            "DELETE FROM imported_skills
+             WHERE is_bundled = 0
+               AND skill_name NOT IN (SELECT name FROM skills WHERE COALESCE(deleted_at, '') = '')",
             [],
         ).unwrap();
 
