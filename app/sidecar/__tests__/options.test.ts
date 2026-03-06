@@ -22,9 +22,9 @@ describe("buildQueryOptions", () => {
     expect(opts).not.toHaveProperty("model");
   });
 
-  it("always includes claude_code system prompt preset", () => {
+  it("omits systemPrompt when none is provided", () => {
     const opts = buildQueryOptions(makeConfig(), new AbortController());
-    expect(opts.systemPrompt).toEqual({ type: "preset", preset: "claude_code" });
+    expect(opts).not.toHaveProperty("systemPrompt");
   });
 
   it("uses model when agentName is absent", () => {

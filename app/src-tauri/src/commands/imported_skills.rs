@@ -1774,9 +1774,8 @@ description: A skill
         let workspace_path = workspace.path().to_str().unwrap();
 
         // Create a base CLAUDE.md with customization marker
-        let claude_dir = workspace.path().join(".claude");
-        fs::create_dir_all(&claude_dir).unwrap();
-        fs::write(claude_dir.join("CLAUDE.md"), "# Base Content\n\nSome instructions.\n\n## Customization\n\nUser notes.\n").unwrap();
+        let claude_md = workspace.path().join("CLAUDE.md");
+        fs::write(&claude_md, "# Base Content\n\nSome instructions.\n\n## Customization\n\nUser notes.\n").unwrap();
 
         // Create skill on disk with trigger in frontmatter
         let skill_tmp = tempdir().unwrap();
@@ -1807,7 +1806,7 @@ description: A skill
 
         crate::commands::workflow::update_skills_section(workspace_path, &conn).unwrap();
 
-        let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+        let content = fs::read_to_string(&claude_md).unwrap();
         assert!(content.contains("# Base Content"));
         assert!(content.contains("## Custom Skills"));
         assert!(content.contains("### /my-analytics"));
@@ -1825,14 +1824,13 @@ description: A skill
         let workspace_path = workspace.path().to_str().unwrap();
 
         // Create a base CLAUDE.md with customization marker
-        let claude_dir = workspace.path().join(".claude");
-        fs::create_dir_all(&claude_dir).unwrap();
-        fs::write(claude_dir.join("CLAUDE.md"), "# Base Content\n\n## Customization\n\nMy rules.\n").unwrap();
+        let claude_md = workspace.path().join("CLAUDE.md");
+        fs::write(&claude_md, "# Base Content\n\n## Customization\n\nMy rules.\n").unwrap();
 
         // No skills inserted — section should not be present
         crate::commands::workflow::update_skills_section(workspace_path, &conn).unwrap();
 
-        let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+        let content = fs::read_to_string(&claude_md).unwrap();
         assert!(content.contains("# Base Content"));
         assert!(!content.contains("## Custom Skills"));
         // Customization preserved
@@ -1847,10 +1845,9 @@ description: A skill
         let workspace_path = workspace.path().to_str().unwrap();
 
         // Create CLAUDE.md with an existing imported skills section + customization
-        let claude_dir = workspace.path().join(".claude");
-        fs::create_dir_all(&claude_dir).unwrap();
+        let claude_md = workspace.path().join("CLAUDE.md");
         fs::write(
-            claude_dir.join("CLAUDE.md"),
+            &claude_md,
             "# Base\n\n## Custom Skills\n\n### /old-skill\nOld trigger text.\n\n## Customization\n\nKeep me.\n",
         ).unwrap();
 
@@ -1877,7 +1874,7 @@ description: A skill
 
         crate::commands::workflow::update_skills_section(workspace_path, &conn).unwrap();
 
-        let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+        let content = fs::read_to_string(&claude_md).unwrap();
         assert!(content.contains("# Base"));
         assert!(content.contains("### /new-skill"));
         assert!(content.contains("New skill description."), "should include description");
@@ -1896,10 +1893,9 @@ description: A skill
         let workspace_path = workspace.path().to_str().unwrap();
 
         // CLAUDE.md with imported skills in the middle and customization after
-        let claude_dir = workspace.path().join(".claude");
-        fs::create_dir_all(&claude_dir).unwrap();
+        let claude_md = workspace.path().join("CLAUDE.md");
         fs::write(
-            claude_dir.join("CLAUDE.md"),
+            &claude_md,
             "# Base Content\n\nSome text.\n\n## Custom Skills\n\n### /old-skill\nOld trigger.\n\n## Customization\n\nMy workspace rules.\n",
         ).unwrap();
 
@@ -1926,7 +1922,7 @@ description: A skill
 
         crate::commands::workflow::update_skills_section(workspace_path, &conn).unwrap();
 
-        let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+        let content = fs::read_to_string(&claude_md).unwrap();
         // Base content preserved
         assert!(content.contains("# Base Content"));
         assert!(content.contains("Some text."));
@@ -1952,10 +1948,9 @@ description: A skill
         fs::write(&base_path, "# Agent Instructions\n\nBase content.\n\n## Customization\n\nDefault instructions.\n").unwrap();
 
         // Create an existing workspace CLAUDE.md with user customization
-        let claude_dir = workspace.path().join(".claude");
-        fs::create_dir_all(&claude_dir).unwrap();
+        let claude_md = workspace.path().join("CLAUDE.md");
         fs::write(
-            claude_dir.join("CLAUDE.md"),
+            &claude_md,
             "# Old Base\n\n## Custom Skills\n\n### /stale-skill\nStale.\n\n## Customization\n\nMy custom instructions.\nDo not lose this.\n",
         ).unwrap();
 
@@ -1983,7 +1978,7 @@ description: A skill
         // Simulate startup: rebuild from bundled base
         crate::commands::workflow::rebuild_claude_md(&base_path, workspace_path, &conn).unwrap();
 
-        let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+        let content = fs::read_to_string(&claude_md).unwrap();
         // Base content from bundled template (not old base)
         assert!(content.contains("# Agent Instructions"));
         assert!(content.contains("Base content."));

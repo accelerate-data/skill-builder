@@ -68,8 +68,7 @@ fn migrate_to_skill_builder_subdir(home: &Path) {
     log::info!("[init_workspace] migrated workspace: ~/.vibedata → ~/.vibedata/skill-builder");
 }
 
-/// Migrate from the old workspace layout (agents/, references/, CLAUDE.md at root)
-/// to the new layout where everything lives under `.claude/`.
+/// Migrate stale workspace layout artifacts after reorganization.
 /// Safe to call on every startup — only removes files that exist.
 fn migrate_workspace_layout(workspace_path: &str) {
     let base = Path::new(workspace_path);
@@ -85,11 +84,12 @@ fn migrate_workspace_layout(workspace_path: &str) {
     if db_file.is_file() {
         let _ = fs::remove_file(&db_file);
     }
-    // Remove root CLAUDE.md only if .claude/CLAUDE.md exists (migration complete)
-    let old_claude_md = base.join("CLAUDE.md");
-    let new_claude_md = base.join(".claude").join("CLAUDE.md");
-    if old_claude_md.is_file() && new_claude_md.is_file() {
-        let _ = fs::remove_file(&old_claude_md);
+    // Remove stale nested CLAUDE.md if both files exist.
+    // Workspace instructions now live at workspace/CLAUDE.md.
+    let root_claude_md = base.join("CLAUDE.md");
+    let nested_claude_md = base.join(".claude").join("CLAUDE.md");
+    if root_claude_md.is_file() && nested_claude_md.is_file() {
+        let _ = fs::remove_file(&nested_claude_md);
     }
 }
 

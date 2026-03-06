@@ -59,6 +59,12 @@ Examine answers holistically across first-round questions and refinements. For e
 - Dependencies — answers that imply other requirements
 - Ambiguities — note the ambiguity and its design implications
 
+Purpose-aware implication rules:
+
+- Keep decisions grounded in the selected purpose and user context.
+- If purpose is `platform`, include explicit Lakehouse compatibility implications when technical choices depend on endpoint behavior.
+- For other purposes, include Lakehouse implications only when they materially change architecture, risk, or validation outcomes.
+
 **Writing `decisions.md`**: Write from scratch each time — clean snapshot, not a log. Use YAML frontmatter with `decision_count`, `conflicts_resolved`, and `round` fields. For contradictions, pick the most reasonable option and document reasoning in `**Implication**` — the user can override. Status values: `resolved`, `conflict-resolved`, `needs-review`.
 
 **`contradictory_inputs` flag**: Set `contradictory_inputs: true` when answers are logically incompatible — you cannot build a coherent data model satisfying both (e.g., "track monthly revenue" vs "don't track revenue at all"). When answers merely disagree on approach, pick the more reasonable option and document the trade-off — do not flag.

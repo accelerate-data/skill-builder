@@ -64,7 +64,7 @@ fn build_refine_config(
     let thinking_budget = extended_thinking.then_some(16_000u32);
 
     // CWD is the workspace root (.vibedata) so the sidecar can find
-    // .claude/agents/ and .claude/CLAUDE.md. Skill files are accessed via
+    // .claude/agents/ and workspace-root CLAUDE.md. Skill files are accessed via
     // absolute paths embedded in the prompt.
     let cwd = workspace_path.to_string();
     let agent_id = format!(
@@ -1036,7 +1036,7 @@ mod tests {
     #[test]
     fn test_refine_config_cwd_points_to_workspace_root() {
         // cwd must be workspace_path (.vibedata), NOT skills_path.
-        // This matches workflow agents — the sidecar needs .claude/agents/ and CLAUDE.md
+        // This matches workflow agents — the sidecar needs .claude/agents/ and root CLAUDE.md
         // which are deployed to the workspace root.
         let (config, _) = build_refine_config(
             "test".to_string(),
