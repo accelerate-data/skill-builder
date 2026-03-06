@@ -141,6 +141,7 @@ interface AgentRun {
   numTurns?: number;
   durationApiMs?: number | null;
   modelUsageBreakdown?: ModelUsageBreakdown[];
+  runSource?: "workflow" | "refine" | "test";
 }
 
 interface AgentState {
@@ -150,7 +151,7 @@ interface AgentState {
   /** Register a run for streaming without setting activeAgentId.
    *  Used by refine page which manages its own agent lifecycle.
    *  Pass skillName so usage data is attributed correctly (otherwise defaults to workflow store). */
-  registerRun: (agentId: string, model: string, skillName?: string) => void;
+  registerRun: (agentId: string, model: string, skillName?: string, runSource?: "refine" | "test") => void;
   addMessage: (agentId: string, message: AgentMessage) => void;
   completeRun: (agentId: string, success: boolean) => void;
   shutdownRun: (agentId: string) => void;
@@ -220,6 +221,34 @@ function buildModelEntries(
   }];
 }
 
+function resolvePersistenceContext(
+  run: AgentRun | undefined,
+  workflowSessionId: string | null,
+  currentStep: number,
+): { stepId: number; workflowSessionId?: string } {
+  if (workflowSessionId) {
+    return { stepId: currentStep, workflowSessionId };
+  }
+
+  if (!run) return { stepId: -1 };
+
+  if (run.runSource === "refine") {
+    return {
+      stepId: -10,
+      workflowSessionId: `synthetic:refine:${run.skillName ?? "unknown"}:${run.agentId}`,
+    };
+  }
+
+  if (run.runSource === "test") {
+    return {
+      stepId: -11,
+      workflowSessionId: `synthetic:test:${run.skillName ?? "unknown"}:${run.agentId}`,
+    };
+  }
+
+  return { stepId: -1 };
+}
+
 export const useAgentStore = create<AgentState>((set) => ({
   runs: {},
   activeAgentId: null,
@@ -247,6 +276,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 contextWindow: 200_000,
                 compactionEvents: [],
                 thinkingEnabled: false,
+                runSource: "workflow",
               },
         },
         activeAgentId: agentId,
@@ -270,14 +300,14 @@ export const useAgentStore = create<AgentState>((set) => ({
     }).catch((err) => console.error("Failed to persist agent start:", err));
   },
 
-  registerRun: (agentId, model, skillName?) =>
+  registerRun: (agentId, model, skillName?, runSource = "refine") =>
     set((state) => {
       const existing = state.runs[agentId];
       return {
         runs: {
           ...state.runs,
           [agentId]: existing
-            ? { ...existing, model, skillName: skillName ?? existing.skillName, status: "running" as const }
+            ? { ...existing, model, skillName: skillName ?? existing.skillName, status: "running" as const, runSource }
             : {
                 agentId,
                 model,
@@ -289,6 +319,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 contextWindow: 200_000,
                 compactionEvents: [],
                 thinkingEnabled: false,
+                runSource,
               },
         },
         // Do NOT set activeAgentId — callers manage their own lifecycle
@@ -328,6 +359,11 @@ export const useAgentStore = create<AgentState>((set) => ({
     // Persist agent run to SQLite (fire-and-forget)
     if (runBeforeUpdate?.tokenUsage && runBeforeUpdate?.totalCost !== undefined) {
       const workflow = useWorkflowStore.getState();
+      const persistenceContext = resolvePersistenceContext(
+        runBeforeUpdate,
+        workflow.workflowSessionId,
+        workflow.currentStep,
+      );
 
       // Count tool uses across all assistant messages
       let toolUseCount = 0;
@@ -346,7 +382,7 @@ export const useAgentStore = create<AgentState>((set) => ({
         {
           agentId,
           skillName: runBeforeUpdate.skillName ?? workflow.skillName ?? "unknown",
-          stepId: workflow.currentStep,
+          stepId: persistenceContext.stepId,
           status: success ? "completed" : "error",
           durationMs: Date.now() - runBeforeUpdate.startTime,
           numTurns: runBeforeUpdate.numTurns ?? 0,
@@ -355,7 +391,7 @@ export const useAgentStore = create<AgentState>((set) => ({
           toolUseCount,
           compactionCount: runBeforeUpdate.compactionEvents.length,
           sessionId: runBeforeUpdate.sessionId,
-          workflowSessionId: workflow.workflowSessionId ?? undefined,
+          workflowSessionId: persistenceContext.workflowSessionId,
         },
         buildModelEntries(runBeforeUpdate),
       );
@@ -386,14 +422,19 @@ export const useAgentStore = create<AgentState>((set) => ({
     // Persist shutdown status with whatever partial data we have
     if (runBeforeUpdate) {
       const workflow = useWorkflowStore.getState();
+      const persistenceContext = resolvePersistenceContext(
+        runBeforeUpdate,
+        workflow.workflowSessionId,
+        workflow.currentStep,
+      );
       persistRunRows(
         {
           agentId,
           skillName: runBeforeUpdate.skillName ?? workflow.skillName ?? "unknown",
-          stepId: workflow.currentStep,
+          stepId: persistenceContext.stepId,
           status: "shutdown" as const,
           durationMs: Date.now() - runBeforeUpdate.startTime,
-          workflowSessionId: workflow.workflowSessionId ?? undefined,
+          workflowSessionId: persistenceContext.workflowSessionId,
         },
         buildModelEntries(runBeforeUpdate),
       );

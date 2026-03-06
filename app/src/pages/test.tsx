@@ -577,7 +577,7 @@ export default function TestPage() {
     }
 
     const evalModel = useSettingsStore.getState().preferredModel ?? "sonnet";
-    useAgentStore.getState().registerRun(evalId, evalModel, "__test_baseline__");
+    useAgentStore.getState().registerRun(evalId, evalModel, "__test_baseline__", "test");
     startAgent(
       evalId,
       evalPrompt,
@@ -707,8 +707,8 @@ export default function TestPage() {
 
       // Register runs in agent store
       const testModel = useSettingsStore.getState().preferredModel ?? "sonnet";
-      useAgentStore.getState().registerRun(withId, testModel, skillName);
-      useAgentStore.getState().registerRun(withoutId, testModel, "__test_baseline__");
+      useAgentStore.getState().registerRun(withId, testModel, skillName, "test");
+      useAgentStore.getState().registerRun(withoutId, testModel, "__test_baseline__", "test");
 
       // Wrap the prompt so plan agents know the domain context
       const wrappedPrompt = `You are a data engineer and the user is trying to do the following task:\n\n${s.prompt}`;
