@@ -27,15 +27,15 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
     // To add a new migration, append a (version, function) entry to this array.
     #[allow(clippy::type_complexity)]
     let migrations: &[(u32, fn(&Connection) -> Result<(), rusqlite::Error>)] = &[
-        (1,  run_add_skill_type_migration),
-        (2,  run_lock_table_migration),
-        (3,  run_author_migration),
-        (4,  run_usage_tracking_migration),
-        (5,  run_workflow_session_migration),
-        (6,  run_sessions_table_migration),
-        (7,  run_trigger_text_migration),
-        (8,  run_agent_stats_migration),
-        (9,  run_intake_migration),
+        (1, run_add_skill_type_migration),
+        (2, run_lock_table_migration),
+        (3, run_author_migration),
+        (4, run_usage_tracking_migration),
+        (5, run_workflow_session_migration),
+        (6, run_sessions_table_migration),
+        (7, run_trigger_text_migration),
+        (8, run_agent_stats_migration),
+        (9, run_intake_migration),
         (10, run_composite_pk_migration),
         (11, run_bundled_skill_migration),
         (12, run_drop_trigger_description_migration),
@@ -74,7 +74,8 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
 
     // Startup repair: ensure marketplace_source_url columns exist regardless of migration state.
     // Guards against dev builds that recorded migration 29 before the ALTER TABLE statements ran.
-    run_marketplace_source_url_migration(&conn).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    run_marketplace_source_url_migration(&conn)
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     Ok(Db(Mutex::new(conn)))
 }
@@ -84,7 +85,7 @@ fn ensure_migration_table(conn: &Connection) -> Result<(), rusqlite::Error> {
         "CREATE TABLE IF NOT EXISTS schema_migrations (
             version INTEGER PRIMARY KEY,
             applied_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
-        );"
+        );",
     )
 }
 
@@ -93,14 +94,17 @@ fn migration_applied(conn: &Connection, version: u32) -> bool {
         "SELECT COUNT(*) FROM schema_migrations WHERE version = ?1",
         rusqlite::params![version],
         |row| row.get::<_, i64>(0),
-    ).unwrap_or(0) > 0
+    )
+    .unwrap_or(0)
+        > 0
 }
 
 fn mark_migration_applied(conn: &Connection, version: u32) -> Result<(), rusqlite::Error> {
     conn.execute(
         "INSERT OR IGNORE INTO schema_migrations (version) VALUES (?1)",
         rusqlite::params![version],
-    ).map(|_| ())
+    )
+    .map(|_| ())
 }
 
 fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -237,9 +241,7 @@ fn run_sessions_table_migration(conn: &Connection) -> Result<(), rusqlite::Error
         .unwrap_or_default();
 
     if !columns.iter().any(|name| name == "reset_marker") {
-        conn.execute_batch(
-            "ALTER TABLE workflow_sessions ADD COLUMN reset_marker TEXT;",
-        )?;
+        conn.execute_batch("ALTER TABLE workflow_sessions ADD COLUMN reset_marker TEXT;")?;
     }
     Ok(())
 }
@@ -249,14 +251,15 @@ fn run_trigger_text_migration(conn: &Connection) -> Result<(), rusqlite::Error> 
         .prepare("PRAGMA table_info(imported_skills)")
         .and_then(|mut stmt| {
             stmt.query_map([], |row| row.get::<_, String>(1))
-                .map(|rows| rows.filter_map(|r| r.ok()).any(|name| name == "trigger_text"))
+                .map(|rows| {
+                    rows.filter_map(|r| r.ok())
+                        .any(|name| name == "trigger_text")
+                })
         })
         .unwrap_or(false);
 
     if !has_trigger_text {
-        conn.execute_batch(
-            "ALTER TABLE imported_skills ADD COLUMN trigger_text TEXT;",
-        )?;
+        conn.execute_batch("ALTER TABLE imported_skills ADD COLUMN trigger_text TEXT;")?;
     }
     Ok(())
 }
@@ -271,14 +274,10 @@ fn run_intake_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
         .unwrap_or_default();
 
     if !columns.iter().any(|name| name == "display_name") {
-        conn.execute_batch(
-            "ALTER TABLE workflow_runs ADD COLUMN display_name TEXT;",
-        )?;
+        conn.execute_batch("ALTER TABLE workflow_runs ADD COLUMN display_name TEXT;")?;
     }
     if !columns.iter().any(|name| name == "intake_json") {
-        conn.execute_batch(
-            "ALTER TABLE workflow_runs ADD COLUMN intake_json TEXT;",
-        )?;
+        conn.execute_batch("ALTER TABLE workflow_runs ADD COLUMN intake_json TEXT;")?;
     }
     Ok(())
 }
@@ -374,7 +373,10 @@ fn run_drop_trigger_description_migration(conn: &Connection) -> Result<(), rusql
         .prepare("PRAGMA table_info(imported_skills)")
         .and_then(|mut stmt| {
             stmt.query_map([], |row| row.get::<_, String>(1))
-                .map(|rows| rows.filter_map(|r| r.ok()).any(|name| name == "trigger_text"))
+                .map(|rows| {
+                    rows.filter_map(|r| r.ok())
+                        .any(|name| name == "trigger_text")
+                })
         })
         .unwrap_or(false);
 
@@ -466,7 +468,7 @@ fn run_cleanup_stale_running_rows_migration(conn: &Connection) -> Result<(), rus
     conn.execute_batch(
         "UPDATE agent_runs
          SET status = 'shutdown', completed_at = datetime('now') || 'Z'
-         WHERE status = 'running';"
+         WHERE status = 'running';",
     )
 }
 
@@ -489,7 +491,10 @@ fn run_workflow_runs_extended_migration(conn: &Connection) -> Result<(), rusqlit
     ];
     for (col, def) in &columns {
         if !existing.contains(&col.to_string()) {
-            conn.execute_batch(&format!("ALTER TABLE workflow_runs ADD COLUMN {} {};", col, def))?;
+            conn.execute_batch(&format!(
+                "ALTER TABLE workflow_runs ADD COLUMN {} {};",
+                col, def
+            ))?;
         }
     }
     Ok(())
@@ -587,20 +592,20 @@ fn run_skills_backfill_migration(conn: &Connection) -> Result<(), rusqlite::Erro
         "DELETE FROM workflow_steps WHERE skill_name IN (SELECT skill_name FROM workflow_runs WHERE source = 'marketplace')",
         [],
     ).ok(); // marketplace skills may not have step rows — ignore errors
-    let removed: usize = conn.execute(
-        "DELETE FROM workflow_runs WHERE source = 'marketplace'",
-        [],
-    )?;
+    let removed: usize =
+        conn.execute("DELETE FROM workflow_runs WHERE source = 'marketplace'", [])?;
 
     log::info!(
         "migration 18: backfilled {} skills, removed {} marketplace workflow_runs",
-        backfilled, removed
+        backfilled,
+        removed
     );
     Ok(())
 }
 
 fn run_workspace_skills_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         BEGIN;
 
         CREATE TABLE IF NOT EXISTS workspace_skills (
@@ -634,7 +639,8 @@ fn run_workspace_skills_migration(conn: &Connection) -> Result<(), rusqlite::Err
         DELETE FROM imported_skills WHERE skill_type = 'skill-builder' OR is_bundled = 1;
 
         COMMIT;
-    ")?;
+    ",
+    )?;
     log::info!("migration 20: created workspace_skills table, migrated skill-builder rows");
     Ok(())
 }
@@ -654,7 +660,8 @@ fn run_workflow_runs_id_migration(conn: &Connection) -> Result<(), rusqlite::Err
         return Ok(());
     }
 
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         BEGIN;
 
         DROP TABLE IF EXISTS workflow_runs_new;
@@ -697,7 +704,8 @@ fn run_workflow_runs_id_migration(conn: &Connection) -> Result<(), rusqlite::Err
         ALTER TABLE workflow_runs_new RENAME TO workflow_runs;
 
         COMMIT;
-    ")?;
+    ",
+    )?;
 
     log::info!("migration 21: added integer PK to workflow_runs");
     Ok(())
@@ -769,7 +777,8 @@ fn run_fk_columns_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     }
 
     // Backfill all new FK columns in a single transaction
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         BEGIN;
 
         UPDATE workflow_steps
@@ -815,7 +824,8 @@ fn run_fk_columns_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
         WHERE skill_master_id IS NULL;
 
         COMMIT;
-    ")?;
+    ",
+    )?;
 
     log::info!("migration 22: added FK columns to child tables and backfilled");
     Ok(())
@@ -910,7 +920,10 @@ fn repair_skills_table_schema(conn: &Connection) -> Result<(), rusqlite::Error> 
     ] {
         if !cols.contains(&col.to_string()) {
             conn.execute_batch(&format!("ALTER TABLE skills ADD COLUMN {} {};", col, def))?;
-            log::info!("repair_skills_table_schema: added missing column '{}' to skills", col);
+            log::info!(
+                "repair_skills_table_schema: added missing column '{}' to skills",
+                col
+            );
             added_any = true;
         }
     }
@@ -957,7 +970,8 @@ fn repair_skills_table_schema(conn: &Connection) -> Result<(), rusqlite::Error> 
 }
 
 fn run_workspace_skills_purpose_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
-    let has_column = conn.prepare("PRAGMA table_info(workspace_skills)")
+    let has_column = conn
+        .prepare("PRAGMA table_info(workspace_skills)")
         .and_then(|mut stmt| {
             stmt.query_map([], |r| r.get::<_, String>(1))
                 .map(|rows| rows.filter_map(|r| r.ok()).any(|n| n == "purpose"))
@@ -1021,7 +1035,10 @@ fn run_backfill_null_versions_migration(conn: &Connection) -> Result<(), rusqlit
 
 fn run_rename_upload_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     // Rename upload → imported
-    conn.execute("UPDATE skills SET skill_source = 'imported' WHERE skill_source = 'upload'", [])?;
+    conn.execute(
+        "UPDATE skills SET skill_source = 'imported' WHERE skill_source = 'upload'",
+        [],
+    )?;
     // Clean orphaned non-bundled imported_skills with no skills master row
     conn.execute(
         "DELETE FROM imported_skills
@@ -1038,7 +1055,10 @@ fn run_author_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
         .prepare("PRAGMA table_info(workflow_runs)")
         .and_then(|mut stmt| {
             stmt.query_map([], |row| row.get::<_, String>(1))
-                .map(|rows| rows.filter_map(|r| r.ok()).any(|name| name == "author_login"))
+                .map(|rows| {
+                    rows.filter_map(|r| r.ok())
+                        .any(|name| name == "author_login")
+                })
         })
         .unwrap_or(false);
     if !has_author {
@@ -1088,9 +1108,7 @@ fn run_workflow_session_migration(conn: &Connection) -> Result<(), rusqlite::Err
         .unwrap_or_default();
 
     if !columns.iter().any(|name| name == "workflow_session_id") {
-        conn.execute_batch(
-            "ALTER TABLE agent_runs ADD COLUMN workflow_session_id TEXT;",
-        )?;
+        conn.execute_batch("ALTER TABLE agent_runs ADD COLUMN workflow_session_id TEXT;")?;
     }
     Ok(())
 }
@@ -1172,7 +1190,10 @@ pub fn persist_agent_run(
                 |row| row.get(0),
             )
             .ok();
-        if matches!(existing_status.as_deref(), Some("completed") | Some("error")) {
+        if matches!(
+            existing_status.as_deref(),
+            Some("completed") | Some("error")
+        ) {
             return Ok(());
         }
     }
@@ -1185,7 +1206,12 @@ pub fn persist_agent_run(
         conn.execute(
             "INSERT OR IGNORE INTO workflow_sessions (session_id, skill_name, skill_id, pid)
              VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![ws_id, skill_name, skill_master_id, std::process::id() as i64],
+            rusqlite::params![
+                ws_id,
+                skill_name,
+                skill_master_id,
+                std::process::id() as i64
+            ],
         )
         .map_err(|e| e.to_string())?;
 
@@ -1238,13 +1264,30 @@ pub fn persist_agent_run(
     Ok(())
 }
 
-pub fn get_usage_summary(conn: &Connection, hide_cancelled: bool, start_date: Option<&str>, skill_name: Option<&str>) -> Result<UsageSummary, String> {
+pub fn get_usage_summary(
+    conn: &Connection,
+    hide_cancelled: bool,
+    start_date: Option<&str>,
+    skill_name: Option<&str>,
+) -> Result<UsageSummary, String> {
     let mut p = 1usize;
-    let date_clause  = if start_date.is_some()  { let s = format!(" AND ws.started_at >= ?{p}"); p += 1; s } else { String::new() };
-    let skill_clause = if skill_name.is_some()   { format!(" AND ws.skill_name = ?{p}")         } else { String::new() };
+    let date_clause = if start_date.is_some() {
+        let s = format!(" AND ws.started_at >= ?{p}");
+        p += 1;
+        s
+    } else {
+        String::new()
+    };
+    let skill_clause = if skill_name.is_some() {
+        format!(" AND ws.skill_name = ?{p}")
+    } else {
+        String::new()
+    };
     let having_clause = if hide_cancelled {
         " HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(DISTINCT ar.agent_id) = 0"
-    } else { "" };
+    } else {
+        ""
+    };
     let sql = format!(
         "SELECT COALESCE(SUM(sub.session_cost), 0.0),
                 COUNT(*),
@@ -1262,27 +1305,36 @@ pub fn get_usage_summary(conn: &Connection, hide_cancelled: bool, start_date: Op
     macro_rules! query {
         ($params:expr) => {
             stmt.query_row($params, |row| {
-                Ok(UsageSummary { total_cost: row.get(0)?, total_runs: row.get(1)?, avg_cost_per_run: row.get(2)? })
+                Ok(UsageSummary {
+                    total_cost: row.get(0)?,
+                    total_runs: row.get(1)?,
+                    avg_cost_per_run: row.get(2)?,
+                })
             })
             .map_err(|e| e.to_string())
         };
     }
     match (start_date, skill_name) {
         (Some(sd), Some(sn)) => query!(rusqlite::params![sd, sn]),
-        (Some(sd), None)     => query!(rusqlite::params![sd]),
-        (None,     Some(sn)) => query!(rusqlite::params![sn]),
-        (None,     None)     => query!([]),
+        (Some(sd), None) => query!(rusqlite::params![sd]),
+        (None, Some(sn)) => query!(rusqlite::params![sn]),
+        (None, None) => query!([]),
     }
 }
 
 pub fn get_workflow_skill_names(conn: &Connection) -> Result<Vec<String>, String> {
-    let mut stmt = conn.prepare(
-        "SELECT DISTINCT skill_name FROM workflow_sessions
+    let mut stmt = conn
+        .prepare(
+            "SELECT DISTINCT skill_name FROM workflow_sessions
          WHERE reset_marker IS NULL
-         ORDER BY skill_name ASC"
-    ).map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([], |row| row.get(0)).map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+         ORDER BY skill_name ASC",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRecord>, String> {
@@ -1332,16 +1384,34 @@ pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRe
         .map_err(|e| e.to_string())
 }
 
-pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize, hide_cancelled: bool, start_date: Option<&str>, skill_name: Option<&str>) -> Result<Vec<WorkflowSessionRecord>, String> {
+pub fn get_recent_workflow_sessions(
+    conn: &Connection,
+    limit: usize,
+    hide_cancelled: bool,
+    start_date: Option<&str>,
+    skill_name: Option<&str>,
+) -> Result<Vec<WorkflowSessionRecord>, String> {
     let having_clause = if hide_cancelled {
         " HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(DISTINCT ar.agent_id) = 0"
     } else {
         ""
     };
     let mut p = 1usize;
-    let date_clause  = if start_date.is_some()  { let s = format!(" AND ws.started_at >= ?{p}"); p += 1; s } else { String::new() };
-    let skill_clause = if skill_name.is_some()   { let s = format!(" AND ws.skill_name = ?{p}");  p += 1; s } else { String::new() };
-    let limit_param  = format!("?{p}");
+    let date_clause = if start_date.is_some() {
+        let s = format!(" AND ws.started_at >= ?{p}");
+        p += 1;
+        s
+    } else {
+        String::new()
+    };
+    let skill_clause = if skill_name.is_some() {
+        let s = format!(" AND ws.skill_name = ?{p}");
+        p += 1;
+        s
+    } else {
+        String::new()
+    };
+    let limit_param = format!("?{p}");
     let sql = format!(
         "SELECT ws.session_id,
                 ws.skill_name,
@@ -1393,13 +1463,16 @@ pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize, hide_cancel
     }
     match (start_date, skill_name) {
         (Some(sd), Some(sn)) => collect_rows!(rusqlite::params![sd, sn, limit as i64]),
-        (Some(sd), None)     => collect_rows!(rusqlite::params![sd, limit as i64]),
-        (None,     Some(sn)) => collect_rows!(rusqlite::params![sn, limit as i64]),
-        (None,     None)     => collect_rows!(rusqlite::params![limit as i64]),
+        (Some(sd), None) => collect_rows!(rusqlite::params![sd, limit as i64]),
+        (None, Some(sn)) => collect_rows!(rusqlite::params![sn, limit as i64]),
+        (None, None) => collect_rows!(rusqlite::params![limit as i64]),
     }
 }
 
-pub fn get_session_agent_runs(conn: &Connection, session_id: &str) -> Result<Vec<AgentRunRecord>, String> {
+pub fn get_session_agent_runs(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Vec<AgentRunRecord>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT agent_id, skill_name, step_id, model, status,
@@ -1502,11 +1575,30 @@ pub fn get_step_agent_runs(
         .map_err(|e| e.to_string())
 }
 
-pub fn get_usage_by_step(conn: &Connection, hide_cancelled: bool, start_date: Option<&str>, skill_name: Option<&str>) -> Result<Vec<UsageByStep>, String> {
-    let cost_clause = if hide_cancelled { " AND total_cost > 0" } else { "" };
+pub fn get_usage_by_step(
+    conn: &Connection,
+    hide_cancelled: bool,
+    start_date: Option<&str>,
+    skill_name: Option<&str>,
+) -> Result<Vec<UsageByStep>, String> {
+    let cost_clause = if hide_cancelled {
+        " AND total_cost > 0"
+    } else {
+        ""
+    };
     let mut p = 1usize;
-    let date_clause  = if start_date.is_some()  { let s = format!(" AND started_at >= ?{p}"); p += 1; s } else { String::new() };
-    let skill_clause = if skill_name.is_some()   { format!(" AND skill_name = ?{p}")         } else { String::new() };
+    let date_clause = if start_date.is_some() {
+        let s = format!(" AND started_at >= ?{p}");
+        p += 1;
+        s
+    } else {
+        String::new()
+    };
+    let skill_clause = if skill_name.is_some() {
+        format!(" AND skill_name = ?{p}")
+    } else {
+        String::new()
+    };
     let sql = format!(
         "SELECT step_id, COALESCE(SUM(total_cost), 0.0), COUNT(*)
          FROM agent_runs
@@ -1520,7 +1612,12 @@ pub fn get_usage_by_step(conn: &Connection, hide_cancelled: bool, start_date: Op
         ($params:expr) => {
             stmt.query_map($params, |row| {
                 let sid: i32 = row.get(0)?;
-                Ok(UsageByStep { step_id: sid, step_name: step_name(sid), total_cost: row.get(1)?, run_count: row.get(2)? })
+                Ok(UsageByStep {
+                    step_id: sid,
+                    step_name: step_name(sid),
+                    total_cost: row.get(1)?,
+                    run_count: row.get(2)?,
+                })
             })
             .map_err(|e| e.to_string())?
             .collect::<Result<Vec<_>, _>>()
@@ -1529,17 +1626,36 @@ pub fn get_usage_by_step(conn: &Connection, hide_cancelled: bool, start_date: Op
     }
     match (start_date, skill_name) {
         (Some(sd), Some(sn)) => collect_rows!(rusqlite::params![sd, sn]),
-        (Some(sd), None)     => collect_rows!(rusqlite::params![sd]),
-        (None,     Some(sn)) => collect_rows!(rusqlite::params![sn]),
-        (None,     None)     => collect_rows!([]),
+        (Some(sd), None) => collect_rows!(rusqlite::params![sd]),
+        (None, Some(sn)) => collect_rows!(rusqlite::params![sn]),
+        (None, None) => collect_rows!([]),
     }
 }
 
-pub fn get_usage_by_model(conn: &Connection, hide_cancelled: bool, start_date: Option<&str>, skill_name: Option<&str>) -> Result<Vec<UsageByModel>, String> {
-    let cost_clause = if hide_cancelled { " AND total_cost > 0" } else { "" };
+pub fn get_usage_by_model(
+    conn: &Connection,
+    hide_cancelled: bool,
+    start_date: Option<&str>,
+    skill_name: Option<&str>,
+) -> Result<Vec<UsageByModel>, String> {
+    let cost_clause = if hide_cancelled {
+        " AND total_cost > 0"
+    } else {
+        ""
+    };
     let mut p = 1usize;
-    let date_clause  = if start_date.is_some()  { let s = format!(" AND started_at >= ?{p}"); p += 1; s } else { String::new() };
-    let skill_clause = if skill_name.is_some()   { format!(" AND skill_name = ?{p}")         } else { String::new() };
+    let date_clause = if start_date.is_some() {
+        let s = format!(" AND started_at >= ?{p}");
+        p += 1;
+        s
+    } else {
+        String::new()
+    };
+    let skill_clause = if skill_name.is_some() {
+        format!(" AND skill_name = ?{p}")
+    } else {
+        String::new()
+    };
     let sql = format!(
         "SELECT model, COALESCE(SUM(total_cost), 0.0), COUNT(*)
          FROM agent_runs
@@ -1552,7 +1668,11 @@ pub fn get_usage_by_model(conn: &Connection, hide_cancelled: bool, start_date: O
     macro_rules! collect_rows {
         ($params:expr) => {
             stmt.query_map($params, |row| {
-                Ok(UsageByModel { model: row.get(0)?, total_cost: row.get(1)?, run_count: row.get(2)? })
+                Ok(UsageByModel {
+                    model: row.get(0)?,
+                    total_cost: row.get(1)?,
+                    run_count: row.get(2)?,
+                })
             })
             .map_err(|e| e.to_string())?
             .collect::<Result<Vec<_>, _>>()
@@ -1561,17 +1681,36 @@ pub fn get_usage_by_model(conn: &Connection, hide_cancelled: bool, start_date: O
     }
     match (start_date, skill_name) {
         (Some(sd), Some(sn)) => collect_rows!(rusqlite::params![sd, sn]),
-        (Some(sd), None)     => collect_rows!(rusqlite::params![sd]),
-        (None,     Some(sn)) => collect_rows!(rusqlite::params![sn]),
-        (None,     None)     => collect_rows!([]),
+        (Some(sd), None) => collect_rows!(rusqlite::params![sd]),
+        (None, Some(sn)) => collect_rows!(rusqlite::params![sn]),
+        (None, None) => collect_rows!([]),
     }
 }
 
-pub fn get_usage_by_day(conn: &Connection, hide_cancelled: bool, start_date: Option<&str>, skill_name: Option<&str>) -> Result<Vec<crate::types::UsageByDay>, String> {
+pub fn get_usage_by_day(
+    conn: &Connection,
+    hide_cancelled: bool,
+    start_date: Option<&str>,
+    skill_name: Option<&str>,
+) -> Result<Vec<crate::types::UsageByDay>, String> {
     let mut p = 1usize;
-    let date_clause  = if start_date.is_some()  { let s = format!(" AND ws.started_at >= ?{p}"); p += 1; s } else { String::new() };
-    let skill_clause = if skill_name.is_some()   { format!(" AND ws.skill_name = ?{p}")         } else { String::new() };
-    let having_clause = if hide_cancelled { " HAVING COALESCE(SUM(ar.total_cost), 0) > 0" } else { "" };
+    let date_clause = if start_date.is_some() {
+        let s = format!(" AND ws.started_at >= ?{p}");
+        p += 1;
+        s
+    } else {
+        String::new()
+    };
+    let skill_clause = if skill_name.is_some() {
+        format!(" AND ws.skill_name = ?{p}")
+    } else {
+        String::new()
+    };
+    let having_clause = if hide_cancelled {
+        " HAVING COALESCE(SUM(ar.total_cost), 0) > 0"
+    } else {
+        ""
+    };
     let sql = format!(
         "SELECT DATE(ws.started_at),
                 COALESCE(SUM(ar.total_cost), 0.0),
@@ -1588,7 +1727,12 @@ pub fn get_usage_by_day(conn: &Connection, hide_cancelled: bool, start_date: Opt
     macro_rules! collect_rows {
         ($params:expr) => {
             stmt.query_map($params, |row| {
-                Ok(crate::types::UsageByDay { date: row.get(0)?, total_cost: row.get(1)?, total_tokens: row.get(2)?, run_count: row.get(3)? })
+                Ok(crate::types::UsageByDay {
+                    date: row.get(0)?,
+                    total_cost: row.get(1)?,
+                    total_tokens: row.get(2)?,
+                    run_count: row.get(3)?,
+                })
             })
             .map_err(|e| e.to_string())?
             .collect::<Result<Vec<_>, _>>()
@@ -1597,9 +1741,9 @@ pub fn get_usage_by_day(conn: &Connection, hide_cancelled: bool, start_date: Opt
     }
     match (start_date, skill_name) {
         (Some(sd), Some(sn)) => collect_rows!(rusqlite::params![sd, sn]),
-        (Some(sd), None)     => collect_rows!(rusqlite::params![sd]),
-        (None,     Some(sn)) => collect_rows!(rusqlite::params![sn]),
-        (None,     None)     => collect_rows!([]),
+        (Some(sd), None) => collect_rows!(rusqlite::params![sd]),
+        (None, Some(sn)) => collect_rows!(rusqlite::params![sn]),
+        (None, None) => collect_rows!([]),
     }
 }
 
@@ -1693,7 +1837,11 @@ pub fn upsert_skill_with_source(
     skill_source: &str,
     purpose: &str,
 ) -> Result<i64, String> {
-    log::debug!("upsert_skill_with_source: name={} skill_source={}", name, skill_source);
+    log::debug!(
+        "upsert_skill_with_source: name={} skill_source={}",
+        name,
+        skill_source
+    );
     conn.execute(
         "INSERT INTO skills (name, skill_source, purpose, updated_at)
          VALUES (?1, ?2, ?3, datetime('now'))
@@ -1702,7 +1850,11 @@ pub fn upsert_skill_with_source(
         rusqlite::params![name, skill_source, purpose],
     )
     .map_err(|e| {
-        log::error!("upsert_skill_with_source: failed to upsert '{}': {}", name, e);
+        log::error!(
+            "upsert_skill_with_source: failed to upsert '{}': {}",
+            name,
+            e
+        );
         e.to_string()
     })?;
     let id: i64 = conn
@@ -1712,7 +1864,11 @@ pub fn upsert_skill_with_source(
             |row| row.get(0),
         )
         .map_err(|e| {
-            log::error!("upsert_skill_with_source: failed to retrieve id for '{}': {}", name, e);
+            log::error!(
+                "upsert_skill_with_source: failed to retrieve id for '{}': {}",
+                name,
+                e
+            );
             e.to_string()
         })?;
     Ok(id)
@@ -1755,12 +1911,10 @@ pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String>
             e.to_string()
         })?;
 
-    let result: Vec<SkillMasterRow> = rows
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| {
-            log::error!("list_all_skills: failed to collect rows: {}", e);
-            e.to_string()
-        })?;
+    let result: Vec<SkillMasterRow> = rows.collect::<Result<Vec<_>, _>>().map_err(|e| {
+        log::error!("list_all_skills: failed to collect rows: {}", e);
+        e.to_string()
+    })?;
     log::debug!("list_all_skills: returning {} skills", result.len());
     Ok(result)
 }
@@ -1778,10 +1932,10 @@ pub fn delete_skill(conn: &Connection, name: &str) -> Result<(), String> {
          WHERE name = ?1",
         rusqlite::params![name],
     )
-        .map_err(|e| {
-            log::error!("delete_skill: failed to delete '{}': {}", name, e);
-            e.to_string()
-        })?;
+    .map_err(|e| {
+        log::error!("delete_skill: failed to delete '{}': {}", name, e);
+        e.to_string()
+    })?;
     Ok(())
 }
 
@@ -1897,7 +2051,8 @@ pub fn set_skill_behaviour(
     disable_model_invocation: Option<bool>,
 ) -> Result<(), String> {
     let user_invocable_i: Option<i32> = user_invocable.map(|v| if v { 1 } else { 0 });
-    let disable_model_invocation_i: Option<i32> = disable_model_invocation.map(|v| if v { 1 } else { 0 });
+    let disable_model_invocation_i: Option<i32> =
+        disable_model_invocation.map(|v| if v { 1 } else { 0 });
 
     // Write to skills master — canonical store for all skill sources
     conn.execute(
@@ -2140,7 +2295,8 @@ pub fn get_workflow_steps(
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 pub fn reset_workflow_steps_from(
@@ -2212,11 +2368,7 @@ pub fn get_tags_for_skills(
     Ok(map)
 }
 
-pub fn set_skill_tags(
-    conn: &Connection,
-    skill_name: &str,
-    tags: &[String],
-) -> Result<(), String> {
+pub fn set_skill_tags(conn: &Connection, skill_name: &str, tags: &[String]) -> Result<(), String> {
     let s_id = get_skill_master_id(conn, skill_name)?
         .ok_or_else(|| format!("Skill '{}' not found in skills master", skill_name))?;
 
@@ -2267,10 +2419,7 @@ pub fn hydrate_skill_metadata(skill: &mut ImportedSkill) {
 }
 
 #[allow(dead_code)]
-pub fn insert_imported_skill(
-    conn: &Connection,
-    skill: &ImportedSkill,
-) -> Result<(), String> {
+pub fn insert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
     let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
@@ -2307,10 +2456,7 @@ pub fn insert_imported_skill(
 /// (e.g. after the skills_path setting changed or files were manually deleted) always
 /// updates the existing record rather than failing with a UNIQUE constraint.
 /// Also mirrors frontmatter fields to the `skills` master table (canonical store).
-pub fn upsert_imported_skill(
-    conn: &Connection,
-    skill: &ImportedSkill,
-) -> Result<(), String> {
+pub fn upsert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
     let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
@@ -2415,11 +2561,18 @@ pub fn delete_imported_skill_by_name(conn: &Connection, name: &str) -> Result<()
         Some(id) => id,
         None => return Ok(()), // Skill not in library — nothing to delete
     };
-    conn.execute("DELETE FROM imported_skills WHERE skill_master_id = ?1", rusqlite::params![s_id])
-        .map_err(|e| {
-            log::error!("delete_imported_skill_by_name: failed to delete '{}': {}", name, e);
-            e.to_string()
-        })?;
+    conn.execute(
+        "DELETE FROM imported_skills WHERE skill_master_id = ?1",
+        rusqlite::params![s_id],
+    )
+    .map_err(|e| {
+        log::error!(
+            "delete_imported_skill_by_name: failed to delete '{}': {}",
+            name,
+            e
+        );
+        e.to_string()
+    })?;
     Ok(())
 }
 
@@ -2502,7 +2655,8 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
         })
         .map_err(|e| e.to_string())?;
 
-    let mut skills: Vec<ImportedSkill> = rows.collect::<Result<Vec<_>, _>>()
+    let mut skills: Vec<ImportedSkill> = rows
+        .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
     for skill in &mut skills {
@@ -2521,18 +2675,40 @@ fn ws_params(skill: &WorkspaceSkill) -> [rusqlite::types::Value; 14] {
     [
         Value::Text(skill.skill_id.clone()),
         Value::Text(skill.skill_name.clone()),
-        skill.description.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill
+            .description
+            .as_ref()
+            .map_or(Value::Null, |v| Value::Text(v.clone())),
         Value::Integer(skill.is_active as i64),
         Value::Integer(skill.is_bundled as i64),
         Value::Text(skill.disk_path.clone()),
         Value::Text(skill.imported_at.clone()),
-        skill.purpose.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
-        skill.version.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
-        skill.model.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
-        skill.argument_hint.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
-        skill.user_invocable.map_or(Value::Null, |b| Value::Integer(b as i64)),
-        skill.disable_model_invocation.map_or(Value::Null, |b| Value::Integer(b as i64)),
-        skill.marketplace_source_url.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill
+            .purpose
+            .as_ref()
+            .map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill
+            .version
+            .as_ref()
+            .map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill
+            .model
+            .as_ref()
+            .map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill
+            .argument_hint
+            .as_ref()
+            .map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill
+            .user_invocable
+            .map_or(Value::Null, |b| Value::Integer(b as i64)),
+        skill
+            .disable_model_invocation
+            .map_or(Value::Null, |b| Value::Integer(b as i64)),
+        skill
+            .marketplace_source_url
+            .as_ref()
+            .map_or(Value::Null, |v| Value::Text(v.clone())),
     ]
 }
 
@@ -2568,12 +2744,16 @@ pub fn upsert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Resu
                  marketplace_source_url = excluded.marketplace_source_url"
         ),
         rusqlite::params_from_iter(ws_params(skill)),
-    ).map_err(|e| format!("upsert_workspace_skill: {}", e))?;
+    )
+    .map_err(|e| format!("upsert_workspace_skill: {}", e))?;
     Ok(())
 }
 
 /// Re-seed a bundled skill: overwrites all frontmatter + disk path, preserves is_active.
-pub fn upsert_bundled_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
+pub fn upsert_bundled_workspace_skill(
+    conn: &Connection,
+    skill: &WorkspaceSkill,
+) -> Result<(), String> {
     conn.execute(
         &format!(
             "INSERT INTO workspace_skills ({WS_COLUMNS})
@@ -2620,10 +2800,13 @@ fn row_to_workspace_skill(row: &rusqlite::Row) -> rusqlite::Result<WorkspaceSkil
 }
 
 pub fn list_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, String> {
-    let mut stmt = conn.prepare(
-        &format!("SELECT {WS_COLUMNS} FROM workspace_skills ORDER BY imported_at DESC")
-    ).map_err(|e| format!("list_workspace_skills: {}", e))?;
-    let skills = stmt.query_map([], row_to_workspace_skill)
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT {WS_COLUMNS} FROM workspace_skills ORDER BY imported_at DESC"
+        ))
+        .map_err(|e| format!("list_workspace_skills: {}", e))?;
+    let skills = stmt
+        .query_map([], row_to_workspace_skill)
         .map_err(|e| format!("list_workspace_skills query: {}", e))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("list_workspace_skills collect: {}", e))?;
@@ -2631,21 +2814,31 @@ pub fn list_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, S
 }
 
 pub fn list_active_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, String> {
-    let mut stmt = conn.prepare(
-        &format!("SELECT {WS_COLUMNS} FROM workspace_skills WHERE is_active = 1 ORDER BY skill_name")
-    ).map_err(|e| format!("list_active_workspace_skills: {}", e))?;
-    let skills = stmt.query_map([], row_to_workspace_skill)
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT {WS_COLUMNS} FROM workspace_skills WHERE is_active = 1 ORDER BY skill_name"
+        ))
+        .map_err(|e| format!("list_active_workspace_skills: {}", e))?;
+    let skills = stmt
+        .query_map([], row_to_workspace_skill)
         .map_err(|e| format!("list_active_workspace_skills query: {}", e))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("list_active_workspace_skills collect: {}", e))?;
     Ok(skills)
 }
 
-pub fn update_workspace_skill_active(conn: &Connection, skill_id: &str, is_active: bool, new_disk_path: &str) -> Result<(), String> {
-    let rows = conn.execute(
-        "UPDATE workspace_skills SET is_active = ?1, disk_path = ?2 WHERE skill_id = ?3",
-        rusqlite::params![is_active as i64, new_disk_path, skill_id],
-    ).map_err(|e| format!("update_workspace_skill_active: {}", e))?;
+pub fn update_workspace_skill_active(
+    conn: &Connection,
+    skill_id: &str,
+    is_active: bool,
+    new_disk_path: &str,
+) -> Result<(), String> {
+    let rows = conn
+        .execute(
+            "UPDATE workspace_skills SET is_active = ?1, disk_path = ?2 WHERE skill_id = ?3",
+            rusqlite::params![is_active as i64, new_disk_path, skill_id],
+        )
+        .map_err(|e| format!("update_workspace_skill_active: {}", e))?;
     if rows == 0 {
         return Err(format!("Workspace skill with id '{}' not found", skill_id));
     }
@@ -2656,31 +2849,50 @@ pub fn delete_workspace_skill(conn: &Connection, skill_id: &str) -> Result<(), S
     conn.execute(
         "DELETE FROM workspace_skills WHERE skill_id = ?1",
         rusqlite::params![skill_id],
-    ).map_err(|e| format!("delete_workspace_skill: {}", e))?;
+    )
+    .map_err(|e| format!("delete_workspace_skill: {}", e))?;
     Ok(())
 }
 
-pub fn get_workspace_skill(conn: &Connection, skill_id: &str) -> Result<Option<WorkspaceSkill>, String> {
-    let mut stmt = conn.prepare(
-        &format!("SELECT {WS_COLUMNS} FROM workspace_skills WHERE skill_id = ?1")
-    ).map_err(|e| format!("get_workspace_skill: {}", e))?;
-    let mut rows = stmt.query_map(rusqlite::params![skill_id], row_to_workspace_skill)
+pub fn get_workspace_skill(
+    conn: &Connection,
+    skill_id: &str,
+) -> Result<Option<WorkspaceSkill>, String> {
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT {WS_COLUMNS} FROM workspace_skills WHERE skill_id = ?1"
+        ))
+        .map_err(|e| format!("get_workspace_skill: {}", e))?;
+    let mut rows = stmt
+        .query_map(rusqlite::params![skill_id], row_to_workspace_skill)
         .map_err(|e| format!("get_workspace_skill query: {}", e))?;
     match rows.next() {
-        Some(row) => Ok(Some(row.map_err(|e| format!("get_workspace_skill row: {}", e))?)),
+        Some(row) => Ok(Some(
+            row.map_err(|e| format!("get_workspace_skill row: {}", e))?,
+        )),
         None => Ok(None),
     }
 }
 
 /// Look up a workspace skill by name. Used when skill_id is not known.
-pub fn get_workspace_skill_by_name(conn: &Connection, skill_name: &str) -> Result<Option<WorkspaceSkill>, String> {
-    let mut stmt = conn.prepare(
-        &format!("SELECT {WS_COLUMNS} FROM workspace_skills WHERE skill_name = ?1")
-    ).map_err(|e| format!("get_workspace_skill_by_name: {}", e))?;
-    let mut rows = stmt.query_map(rusqlite::params![skill_name], row_to_workspace_skill)
+pub fn get_workspace_skill_by_name(
+    conn: &Connection,
+    skill_name: &str,
+) -> Result<Option<WorkspaceSkill>, String> {
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT {WS_COLUMNS} FROM workspace_skills WHERE skill_name = ?1"
+        ))
+        .map_err(|e| format!("get_workspace_skill_by_name: {}", e))?;
+    let mut rows = stmt
+        .query_map(rusqlite::params![skill_name], row_to_workspace_skill)
         .map_err(|e| format!("get_workspace_skill_by_name query: {}", e))?;
     match rows.next() {
-        Some(row) => Ok(Some(row.map_err(|e| format!("get_workspace_skill_by_name row: {}", e))?)),
+        Some(row) => {
+            Ok(Some(row.map_err(|e| {
+                format!("get_workspace_skill_by_name row: {}", e)
+            })?))
+        }
         None => Ok(None),
     }
 }
@@ -2688,14 +2900,24 @@ pub fn get_workspace_skill_by_name(conn: &Connection, skill_name: &str) -> Resul
 /// Look up a workspace skill by name and source registry URL.
 /// Returns only skills that were imported from the specified registry (marketplace_source_url = source_url).
 /// Used to avoid false-positive update notifications for bundled skills sharing a name with marketplace skills.
-pub fn get_workspace_skill_by_name_and_source(conn: &Connection, skill_name: &str, source_url: &str) -> Result<Option<WorkspaceSkill>, String> {
+pub fn get_workspace_skill_by_name_and_source(
+    conn: &Connection,
+    skill_name: &str,
+    source_url: &str,
+) -> Result<Option<WorkspaceSkill>, String> {
     let mut stmt = conn.prepare(
         &format!("SELECT {WS_COLUMNS} FROM workspace_skills WHERE skill_name = ?1 AND marketplace_source_url = ?2")
     ).map_err(|e| format!("get_workspace_skill_by_name_and_source: {}", e))?;
-    let mut rows = stmt.query_map(rusqlite::params![skill_name, source_url], row_to_workspace_skill)
+    let mut rows = stmt
+        .query_map(
+            rusqlite::params![skill_name, source_url],
+            row_to_workspace_skill,
+        )
         .map_err(|e| format!("get_workspace_skill_by_name_and_source query: {}", e))?;
     match rows.next() {
-        Some(row) => Ok(Some(row.map_err(|e| format!("get_workspace_skill_by_name_and_source row: {}", e))?)),
+        Some(row) => Ok(Some(row.map_err(|e| {
+            format!("get_workspace_skill_by_name_and_source row: {}", e)
+        })?)),
         None => Ok(None),
     }
 }
@@ -2706,9 +2928,12 @@ pub fn get_workspace_skill_by_purpose(
     conn: &Connection,
     purpose: &str,
 ) -> rusqlite::Result<Option<WorkspaceSkill>> {
-    let mut stmt = conn.prepare(
-        &format!("SELECT {WS_COLUMNS} FROM workspace_skills WHERE purpose = ?1 AND is_active = 1 LIMIT 1")
-    )?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {WS_COLUMNS} FROM workspace_skills
+             WHERE purpose = ?1 AND is_active = 1
+             ORDER BY imported_at DESC, skill_name ASC
+             LIMIT 1"
+    ))?;
     let mut rows = stmt.query_map(rusqlite::params![purpose], row_to_workspace_skill)?;
     match rows.next() {
         Some(row) => Ok(Some(row?)),
@@ -2717,47 +2942,75 @@ pub fn get_workspace_skill_by_purpose(
 }
 
 /// Update the content_hash for a workspace skill row identified by skill_name.
-pub fn set_workspace_skill_content_hash(conn: &Connection, skill_name: &str, hash: &str) -> Result<(), String> {
+pub fn set_workspace_skill_content_hash(
+    conn: &Connection,
+    skill_name: &str,
+    hash: &str,
+) -> Result<(), String> {
     conn.execute(
         "UPDATE workspace_skills SET content_hash = ?1 WHERE skill_name = ?2",
         rusqlite::params![hash, skill_name],
-    ).map_err(|e| format!("set_workspace_skill_content_hash: {}", e))?;
+    )
+    .map_err(|e| format!("set_workspace_skill_content_hash: {}", e))?;
     Ok(())
 }
 
 /// Update the content_hash for an imported skill row identified by skill_name.
-pub fn set_imported_skill_content_hash(conn: &Connection, skill_name: &str, hash: &str) -> Result<(), String> {
+pub fn set_imported_skill_content_hash(
+    conn: &Connection,
+    skill_name: &str,
+    hash: &str,
+) -> Result<(), String> {
     conn.execute(
         "UPDATE imported_skills SET content_hash = ?1 WHERE skill_name = ?2",
         rusqlite::params![hash, skill_name],
-    ).map_err(|e| format!("set_imported_skill_content_hash: {}", e))?;
+    )
+    .map_err(|e| format!("set_imported_skill_content_hash: {}", e))?;
     Ok(())
 }
 
 /// Read disk_path and content_hash for a workspace skill by name.
-pub fn get_workspace_skill_hash_info(conn: &Connection, skill_name: &str) -> Result<Option<(String, Option<String>)>, String> {
-    let mut stmt = conn.prepare(
-        "SELECT disk_path, content_hash FROM workspace_skills WHERE skill_name = ?1"
-    ).map_err(|e| format!("get_workspace_skill_hash_info: {}", e))?;
-    let mut rows = stmt.query_map(rusqlite::params![skill_name], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
-    }).map_err(|e| format!("get_workspace_skill_hash_info query: {}", e))?;
+pub fn get_workspace_skill_hash_info(
+    conn: &Connection,
+    skill_name: &str,
+) -> Result<Option<(String, Option<String>)>, String> {
+    let mut stmt = conn
+        .prepare("SELECT disk_path, content_hash FROM workspace_skills WHERE skill_name = ?1")
+        .map_err(|e| format!("get_workspace_skill_hash_info: {}", e))?;
+    let mut rows = stmt
+        .query_map(rusqlite::params![skill_name], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+        })
+        .map_err(|e| format!("get_workspace_skill_hash_info query: {}", e))?;
     match rows.next() {
-        Some(row) => Ok(Some(row.map_err(|e| format!("get_workspace_skill_hash_info row: {}", e))?)),
+        Some(row) => {
+            Ok(Some(row.map_err(|e| {
+                format!("get_workspace_skill_hash_info row: {}", e)
+            })?))
+        }
         None => Ok(None),
     }
 }
 
 /// Read disk_path and content_hash for an imported (marketplace/library) skill by name.
-pub fn get_imported_skill_hash_info(conn: &Connection, skill_name: &str) -> Result<Option<(String, Option<String>)>, String> {
-    let mut stmt = conn.prepare(
-        "SELECT disk_path, content_hash FROM imported_skills WHERE skill_name = ?1"
-    ).map_err(|e| format!("get_imported_skill_hash_info: {}", e))?;
-    let mut rows = stmt.query_map(rusqlite::params![skill_name], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
-    }).map_err(|e| format!("get_imported_skill_hash_info query: {}", e))?;
+pub fn get_imported_skill_hash_info(
+    conn: &Connection,
+    skill_name: &str,
+) -> Result<Option<(String, Option<String>)>, String> {
+    let mut stmt = conn
+        .prepare("SELECT disk_path, content_hash FROM imported_skills WHERE skill_name = ?1")
+        .map_err(|e| format!("get_imported_skill_hash_info: {}", e))?;
+    let mut rows = stmt
+        .query_map(rusqlite::params![skill_name], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+        })
+        .map_err(|e| format!("get_imported_skill_hash_info query: {}", e))?;
     match rows.next() {
-        Some(row) => Ok(Some(row.map_err(|e| format!("get_imported_skill_hash_info row: {}", e))?)),
+        Some(row) => {
+            Ok(Some(row.map_err(|e| {
+                format!("get_imported_skill_hash_info row: {}", e)
+            })?))
+        }
         None => Ok(None),
     }
 }
@@ -2765,7 +3018,11 @@ pub fn get_imported_skill_hash_info(conn: &Connection, skill_name: &str) -> Resu
 /// Look up an imported (library) skill by name and source registry URL.
 /// Returns only skills that were imported from the specified registry (marketplace_source_url = source_url).
 /// Used to avoid false-positive update notifications for bundled skills sharing a name with marketplace skills.
-pub fn get_imported_skill_by_name_and_source(conn: &Connection, skill_name: &str, source_url: &str) -> Result<Option<ImportedSkill>, String> {
+pub fn get_imported_skill_by_name_and_source(
+    conn: &Connection,
+    skill_name: &str,
+    source_url: &str,
+) -> Result<Option<ImportedSkill>, String> {
     let mut stmt = conn.prepare(
         "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
                 purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
@@ -2805,14 +3062,17 @@ pub fn get_imported_skill_by_name_and_source(conn: &Connection, skill_name: &str
 /// Combines workflow_runs (generated/marketplace skills), imported_skills (GitHub imports),
 /// and workspace_skills (Settings → Skills).
 pub fn get_all_installed_skill_names(conn: &Connection) -> Result<Vec<String>, String> {
-    let mut stmt = conn.prepare(
-        "SELECT skill_name FROM workflow_runs
+    let mut stmt = conn
+        .prepare(
+            "SELECT skill_name FROM workflow_runs
          UNION
          SELECT skill_name FROM imported_skills
          UNION
-         SELECT skill_name FROM workspace_skills"
-    ).map_err(|e| e.to_string())?;
-    let names = stmt.query_map([], |row| row.get::<_, String>(0))
+         SELECT skill_name FROM workspace_skills",
+        )
+        .map_err(|e| e.to_string())?;
+    let names = stmt
+        .query_map([], |row| row.get::<_, String>(0))
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
@@ -2822,9 +3082,11 @@ pub fn get_all_installed_skill_names(conn: &Connection) -> Result<Vec<String>, S
 /// Return names of all skills in the skills master table.
 /// Used by the skill-library (dashboard) path to check which skills are already installed.
 pub fn get_dashboard_skill_names(conn: &Connection) -> Result<Vec<String>, String> {
-    let mut stmt = conn.prepare("SELECT name FROM skills WHERE COALESCE(deleted_at, '') = ''")
+    let mut stmt = conn
+        .prepare("SELECT name FROM skills WHERE COALESCE(deleted_at, '') = ''")
         .map_err(|e| e.to_string())?;
-    let names = stmt.query_map([], |row| row.get::<_, String>(0))
+    let names = stmt
+        .query_map([], |row| row.get::<_, String>(0))
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
@@ -2910,10 +3172,7 @@ pub fn release_skill_lock(
     Ok(())
 }
 
-pub fn release_all_instance_locks(
-    conn: &Connection,
-    instance_id: &str,
-) -> Result<u32, String> {
+pub fn release_all_instance_locks(conn: &Connection, instance_id: &str) -> Result<u32, String> {
     let count = conn
         .execute(
             "DELETE FROM skill_locks WHERE instance_id = ?1",
@@ -2953,9 +3212,7 @@ pub fn get_skill_lock(
     }
 }
 
-pub fn get_all_skill_locks(
-    conn: &Connection,
-) -> Result<Vec<crate::types::SkillLock>, String> {
+pub fn get_all_skill_locks(conn: &Connection) -> Result<Vec<crate::types::SkillLock>, String> {
     let mut stmt = conn
         .prepare("SELECT skill_name, instance_id, pid, acquired_at FROM skill_locks")
         .map_err(|e| e.to_string())?;
@@ -3070,9 +3327,9 @@ pub fn has_active_session_with_live_pid(conn: &Connection, skill_name: &str) -> 
         _ => return false,
     };
 
-    let mut stmt = match conn.prepare(
-        "SELECT pid FROM workflow_sessions WHERE skill_id = ?1 AND ended_at IS NULL",
-    ) {
+    let mut stmt = match conn
+        .prepare("SELECT pid FROM workflow_sessions WHERE skill_id = ?1 AND ended_at IS NULL")
+    {
         Ok(s) => s,
         Err(_) => return false,
     };
@@ -3255,14 +3512,32 @@ fn run_rename_purpose_drop_domain_migration(conn: &Connection) -> Result<(), rus
     let has_skill_master_id = ws_cols.iter().any(|c| c == "skill_master_id");
 
     let extra_cols_def = [
-        if has_skill_master_id { ",\n            skill_master_id INTEGER REFERENCES skills(id)" } else { "" },
-        if has_content_hash { ",\n            content_hash TEXT" } else { "" },
-    ].concat();
+        if has_skill_master_id {
+            ",\n            skill_master_id INTEGER REFERENCES skills(id)"
+        } else {
+            ""
+        },
+        if has_content_hash {
+            ",\n            content_hash TEXT"
+        } else {
+            ""
+        },
+    ]
+    .concat();
 
     let extra_cols_list = [
-        if has_skill_master_id { ", skill_master_id" } else { "" },
-        if has_content_hash { ", content_hash" } else { "" },
-    ].concat();
+        if has_skill_master_id {
+            ", skill_master_id"
+        } else {
+            ""
+        },
+        if has_content_hash {
+            ", content_hash"
+        } else {
+            ""
+        },
+    ]
+    .concat();
 
     let sql = format!("
         CREATE TABLE workspace_skills_new (
@@ -3320,7 +3595,9 @@ fn run_marketplace_source_url_migration(conn: &Connection) -> Result<(), rusqlit
         altered = true;
     }
     if altered {
-        log::info!("migration 29: added marketplace_source_url to workspace_skills and imported_skills");
+        log::info!(
+            "migration 29: added marketplace_source_url to workspace_skills and imported_skills"
+        );
     }
     Ok(())
 }
@@ -3403,10 +3680,7 @@ mod tests {
 
         let loaded = read_settings(&conn).unwrap();
         assert_eq!(loaded.anthropic_api_key.as_deref(), Some("sk-test-key"));
-        assert_eq!(
-            loaded.workspace_path.as_deref(),
-            Some("/home/user/skills")
-        );
+        assert_eq!(loaded.workspace_path.as_deref(), Some("/home/user/skills"));
     }
 
     #[test]
@@ -3537,10 +3811,19 @@ mod tests {
         save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
 
         // Set author with avatar
-        set_skill_author(&conn, "test-skill", "testuser", Some("https://avatars.example.com/u/123")).unwrap();
+        set_skill_author(
+            &conn,
+            "test-skill",
+            "testuser",
+            Some("https://avatars.example.com/u/123"),
+        )
+        .unwrap();
         let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
         assert_eq!(run.author_login.as_deref(), Some("testuser"));
-        assert_eq!(run.author_avatar.as_deref(), Some("https://avatars.example.com/u/123"));
+        assert_eq!(
+            run.author_avatar.as_deref(),
+            Some("https://avatars.example.com/u/123")
+        );
     }
 
     #[test]
@@ -3708,7 +3991,6 @@ mod tests {
         let skills = list_all_skills(&conn).unwrap();
         let skill = skills.into_iter().find(|s| s.name == "mkt-skill").unwrap();
         assert_eq!(skill.skill_source, "marketplace");
-        
 
         // No workflow_runs row should be created
         let run = get_workflow_run(&conn, "mkt-skill").unwrap();
@@ -3724,7 +4006,6 @@ mod tests {
         let skills = list_all_skills(&conn).unwrap();
         let skill = skills.into_iter().find(|s| s.name == "my-skill").unwrap();
         assert_eq!(skill.skill_source, "skill-builder");
-        
     }
 
     #[test]
@@ -3772,14 +4053,22 @@ mod tests {
         .unwrap();
 
         let count_before: i64 = conn
-            .query_row("SELECT COUNT(*) FROM agent_runs WHERE skill_name = 'my-skill'", [], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM agent_runs WHERE skill_name = 'my-skill'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(count_before, 1);
 
         delete_workflow_run(&conn, "my-skill").unwrap();
 
         let count_after: i64 = conn
-            .query_row("SELECT COUNT(*) FROM agent_runs WHERE skill_name = 'my-skill'", [], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM agent_runs WHERE skill_name = 'my-skill'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(count_after, 1);
     }
@@ -3846,18 +4135,23 @@ mod tests {
 
         // Marketplace row should be removed from workflow_runs
         let run = get_workflow_run(&conn, "mkt-skill").unwrap();
-        assert!(run.is_none(), "marketplace rows should be removed from workflow_runs");
+        assert!(
+            run.is_none(),
+            "marketplace rows should be removed from workflow_runs"
+        );
 
         // Created skill should still have a workflow_runs row
         let run = get_workflow_run(&conn, "created-skill").unwrap();
         assert!(run.is_some());
 
         // workflow_runs should have skill_id FK populated
-        let skill_id: Option<i64> = conn.query_row(
-            "SELECT skill_id FROM workflow_runs WHERE skill_name = 'created-skill'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let skill_id: Option<i64> = conn
+            .query_row(
+                "SELECT skill_id FROM workflow_runs WHERE skill_name = 'created-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert!(skill_id.is_some());
         assert_eq!(skill_id.unwrap(), created.id);
     }
@@ -3868,8 +4162,16 @@ mod tests {
     fn test_set_and_get_tags() {
         let conn = create_test_db();
         upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
-        set_skill_tags(&conn, "my-skill", &["analytics".into(), "salesforce".into()]).unwrap();
-        let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()]).unwrap().remove("my-skill").unwrap_or_default();
+        set_skill_tags(
+            &conn,
+            "my-skill",
+            &["analytics".into(), "salesforce".into()],
+        )
+        .unwrap();
+        let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()])
+            .unwrap()
+            .remove("my-skill")
+            .unwrap_or_default();
         assert_eq!(tags, vec!["analytics", "salesforce"]);
     }
 
@@ -3883,7 +4185,10 @@ mod tests {
             &["  Analytics ".into(), "SALESFORCE".into(), "  ".into()],
         )
         .unwrap();
-        let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()]).unwrap().remove("my-skill").unwrap_or_default();
+        let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()])
+            .unwrap()
+            .remove("my-skill")
+            .unwrap_or_default();
         assert_eq!(tags, vec!["analytics", "salesforce"]);
     }
 
@@ -3897,7 +4202,10 @@ mod tests {
             &["analytics".into(), "analytics".into(), "Analytics".into()],
         )
         .unwrap();
-        let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()]).unwrap().remove("my-skill").unwrap_or_default();
+        let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()])
+            .unwrap()
+            .remove("my-skill")
+            .unwrap_or_default();
         assert_eq!(tags, vec!["analytics"]);
     }
 
@@ -3907,7 +4215,10 @@ mod tests {
         upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
         set_skill_tags(&conn, "my-skill", &["old-tag".into()]).unwrap();
         set_skill_tags(&conn, "my-skill", &["new-tag".into()]).unwrap();
-        let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()]).unwrap().remove("my-skill").unwrap_or_default();
+        let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()])
+            .unwrap()
+            .remove("my-skill")
+            .unwrap_or_default();
         assert_eq!(tags, vec!["new-tag"]);
     }
 
@@ -3948,7 +4259,10 @@ mod tests {
 
         delete_workflow_run(&conn, "my-skill").unwrap();
 
-        let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()]).unwrap().remove("my-skill").unwrap_or_default();
+        let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()])
+            .unwrap()
+            .remove("my-skill")
+            .unwrap_or_default();
         assert!(tags.is_empty());
     }
 
@@ -4046,8 +4360,9 @@ mod tests {
     fn test_wal_mode_enabled() {
         let conn = Connection::open_in_memory().unwrap();
         conn.pragma_update(None, "journal_mode", "WAL").unwrap();
-        let mode: String =
-            conn.pragma_query_value(None, "journal_mode", |row| row.get(0)).unwrap();
+        let mode: String = conn
+            .pragma_query_value(None, "journal_mode", |row| row.get(0))
+            .unwrap();
         // In-memory DBs use "memory" journal mode, but the pragma still succeeds
         assert!(mode == "wal" || mode == "memory");
     }
@@ -4056,8 +4371,9 @@ mod tests {
     fn test_busy_timeout_set() {
         let conn = Connection::open_in_memory().unwrap();
         conn.pragma_update(None, "busy_timeout", "5000").unwrap();
-        let timeout: i64 =
-            conn.pragma_query_value(None, "busy_timeout", |row| row.get(0)).unwrap();
+        let timeout: i64 = conn
+            .pragma_query_value(None, "busy_timeout", |row| row.get(0))
+            .unwrap();
         assert_eq!(timeout, 5000);
     }
 
@@ -4173,7 +4489,11 @@ mod tests {
             100,
             0.05,
             12345,
-            0, None, None, 0, 0,
+            0,
+            None,
+            None,
+            0,
+            0,
             Some("session-abc"),
             Some("wf-test-session"),
         )
@@ -4207,10 +4527,25 @@ mod tests {
     fn test_persist_agent_run_without_session_id() {
         let conn = create_test_db();
         persist_agent_run(
-            &conn, "agent-2", "my-skill", 1, "haiku", "completed",
-            500, 200, 0, 0, 0.01, 5000,
-            0, None, None, 0, 0,
-            None, None,
+            &conn,
+            "agent-2",
+            "my-skill",
+            1,
+            "haiku",
+            "completed",
+            500,
+            200,
+            0,
+            0,
+            0.01,
+            5000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            None,
         )
         .unwrap();
 
@@ -4226,19 +4561,32 @@ mod tests {
 
         // First persist as completed with real data
         persist_agent_run(
-            &conn, "agent-1", "my-skill", 0, "sonnet", "completed",
-            1000, 500, 200, 100, 0.15, 8000,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn,
+            "agent-1",
+            "my-skill",
+            0,
+            "sonnet",
+            "completed",
+            1000,
+            500,
+            200,
+            100,
+            0.15,
+            8000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
         )
         .unwrap();
 
         // Then attempt to overwrite with shutdown (partial/zero data)
         persist_agent_run(
-            &conn, "agent-1", "my-skill", 0, "sonnet", "shutdown",
-            0, 0, 0, 0, 0.0, 0,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn, "agent-1", "my-skill", 0, "sonnet", "shutdown", 0, 0, 0, 0, 0.0, 0, 0, None,
+            None, 0, 0, None, ws,
         )
         .unwrap();
 
@@ -4257,19 +4605,15 @@ mod tests {
 
         // First persist as running (agent start)
         persist_agent_run(
-            &conn, "agent-1", "my-skill", 0, "sonnet", "running",
-            0, 0, 0, 0, 0.0, 0,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn, "agent-1", "my-skill", 0, "sonnet", "running", 0, 0, 0, 0, 0.0, 0, 0, None,
+            None, 0, 0, None, ws,
         )
         .unwrap();
 
         // Then shutdown with partial data — should succeed
         persist_agent_run(
-            &conn, "agent-1", "my-skill", 0, "sonnet", "shutdown",
-            500, 200, 0, 0, 0.05, 3000,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn, "agent-1", "my-skill", 0, "sonnet", "shutdown", 500, 200, 0, 0, 0.05, 3000, 0,
+            None, None, 0, 0, None, ws,
         )
         .unwrap();
 
@@ -4285,25 +4629,53 @@ mod tests {
         let ws = Some("wf-session-1");
         create_workflow_session(&conn, "wf-session-1", "skill-a", 1000).unwrap();
         persist_agent_run(
-            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn,
+            "agent-1",
+            "skill-a",
+            1,
+            "sonnet",
+            "completed",
+            1000,
+            500,
+            0,
+            0,
+            0.10,
+            5000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
         )
         .unwrap();
         persist_agent_run(
-            &conn, "agent-2", "skill-a", 3, "opus", "completed",
-            2000, 1000, 0, 0, 0.30, 10000,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn,
+            "agent-2",
+            "skill-a",
+            3,
+            "opus",
+            "completed",
+            2000,
+            1000,
+            0,
+            0,
+            0.30,
+            10000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
         )
         .unwrap();
         // Running agents are included (toggle hides zero-cost sessions, not individual statuses)
         persist_agent_run(
-            &conn, "agent-3", "skill-a", 5, "sonnet", "running",
-            100, 50, 0, 0, 0.01, 0,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn, "agent-3", "skill-a", 5, "sonnet", "running", 100, 50, 0, 0, 0.01, 0, 0, None,
+            None, 0, 0, None, ws,
         )
         .unwrap();
 
@@ -4329,17 +4701,47 @@ mod tests {
         let ws = Some("wf-session-r");
         create_workflow_session(&conn, "wf-session-r", "skill-a", 1000).unwrap();
         persist_agent_run(
-            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn,
+            "agent-1",
+            "skill-a",
+            1,
+            "sonnet",
+            "completed",
+            1000,
+            500,
+            0,
+            0,
+            0.10,
+            5000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
         )
         .unwrap();
         persist_agent_run(
-            &conn, "agent-2", "skill-a", 3, "opus", "completed",
-            2000, 1000, 0, 0, 0.30, 10000,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn,
+            "agent-2",
+            "skill-a",
+            3,
+            "opus",
+            "completed",
+            2000,
+            1000,
+            0,
+            0,
+            0.30,
+            10000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
         )
         .unwrap();
 
@@ -4361,10 +4763,25 @@ mod tests {
         // New runs after reset should still be visible
         create_workflow_session(&conn, "wf-session-r2", "skill-b", 1000).unwrap();
         persist_agent_run(
-            &conn, "agent-3", "skill-b", 6, "sonnet", "completed",
-            500, 200, 0, 0, 0.05, 3000,
-            0, None, None, 0, 0,
-            None, Some("wf-session-r2"),
+            &conn,
+            "agent-3",
+            "skill-b",
+            6,
+            "sonnet",
+            "completed",
+            500,
+            200,
+            0,
+            0,
+            0.05,
+            3000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            Some("wf-session-r2"),
         )
         .unwrap();
 
@@ -4379,24 +4796,69 @@ mod tests {
         let ws = Some("wf-session-s");
         create_workflow_session(&conn, "wf-session-s", "skill-a", 1000).unwrap();
         persist_agent_run(
-            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn,
+            "agent-1",
+            "skill-a",
+            1,
+            "sonnet",
+            "completed",
+            1000,
+            500,
+            0,
+            0,
+            0.10,
+            5000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
         )
         .unwrap();
         persist_agent_run(
-            &conn, "agent-2", "skill-a", 1, "sonnet", "completed",
-            800, 400, 0, 0, 0.08, 4000,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn,
+            "agent-2",
+            "skill-a",
+            1,
+            "sonnet",
+            "completed",
+            800,
+            400,
+            0,
+            0,
+            0.08,
+            4000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
         )
         .unwrap();
         persist_agent_run(
-            &conn, "agent-3", "skill-a", 5, "sonnet", "completed",
-            2000, 1000, 0, 0, 0.25, 8000,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn,
+            "agent-3",
+            "skill-a",
+            5,
+            "sonnet",
+            "completed",
+            2000,
+            1000,
+            0,
+            0,
+            0.25,
+            8000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
         )
         .unwrap();
 
@@ -4421,24 +4883,69 @@ mod tests {
         let ws = Some("wf-session-m");
         create_workflow_session(&conn, "wf-session-m", "skill-a", 1000).unwrap();
         persist_agent_run(
-            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn,
+            "agent-1",
+            "skill-a",
+            1,
+            "sonnet",
+            "completed",
+            1000,
+            500,
+            0,
+            0,
+            0.10,
+            5000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
         )
         .unwrap();
         persist_agent_run(
-            &conn, "agent-2", "skill-a", 5, "opus", "completed",
-            2000, 1000, 0, 0, 0.50, 10000,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn,
+            "agent-2",
+            "skill-a",
+            5,
+            "opus",
+            "completed",
+            2000,
+            1000,
+            0,
+            0,
+            0.50,
+            10000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
         )
         .unwrap();
         persist_agent_run(
-            &conn, "agent-3", "skill-a", 3, "sonnet", "completed",
-            500, 200, 0, 0, 0.05, 3000,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn,
+            "agent-3",
+            "skill-a",
+            3,
+            "sonnet",
+            "completed",
+            500,
+            200,
+            0,
+            0,
+            0.05,
+            3000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
         )
         .unwrap();
 
@@ -4460,10 +4967,25 @@ mod tests {
         let conn = create_test_db();
 
         persist_agent_run(
-            &conn, "agent-r", "my-skill", -10, "sonnet", "completed",
-            1200, 300, 0, 0, 0.12, 3200,
-            0, None, None, 0, 0,
-            None, Some("synthetic:refine:my-skill:agent-r"),
+            &conn,
+            "agent-r",
+            "my-skill",
+            -10,
+            "sonnet",
+            "completed",
+            1200,
+            300,
+            0,
+            0,
+            0.12,
+            3200,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            Some("synthetic:refine:my-skill:agent-r"),
         )
         .unwrap();
 
@@ -4486,17 +5008,47 @@ mod tests {
         let conn = create_test_db();
 
         persist_agent_run(
-            &conn, "agent-refine", "skill-a", -10, "sonnet", "completed",
-            1000, 200, 0, 0, 0.10, 2000,
-            0, None, None, 0, 0,
-            None, Some("synthetic:refine:skill-a:agent-refine"),
+            &conn,
+            "agent-refine",
+            "skill-a",
+            -10,
+            "sonnet",
+            "completed",
+            1000,
+            200,
+            0,
+            0,
+            0.10,
+            2000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            Some("synthetic:refine:skill-a:agent-refine"),
         )
         .unwrap();
         persist_agent_run(
-            &conn, "agent-test", "skill-a", -11, "sonnet", "completed",
-            900, 180, 0, 0, 0.09, 1800,
-            0, None, None, 0, 0,
-            None, Some("synthetic:test:skill-a:agent-test"),
+            &conn,
+            "agent-test",
+            "skill-a",
+            -11,
+            "sonnet",
+            "completed",
+            900,
+            180,
+            0,
+            0,
+            0.09,
+            1800,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            Some("synthetic:test:skill-a:agent-test"),
         )
         .unwrap();
 
@@ -4511,10 +5063,25 @@ mod tests {
     fn test_reset_usage_excludes_from_by_step_and_by_model() {
         let conn = create_test_db();
         persist_agent_run(
-            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000,
-            0, None, None, 0, 0,
-            None, None,
+            &conn,
+            "agent-1",
+            "skill-a",
+            1,
+            "sonnet",
+            "completed",
+            1000,
+            500,
+            0,
+            0,
+            0.10,
+            5000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            None,
         )
         .unwrap();
 
@@ -4537,17 +5104,47 @@ mod tests {
 
         // Insert same agent_id with two different models (simulates sub-agent spawning)
         persist_agent_run(
-            &conn, "orchestrator-1", "skill-a", 1, "opus", "completed",
-            2000, 1000, 0, 0, 0.50, 10000,
-            3, Some("end_turn"), Some(8000), 5, 0,
-            Some("sess-1"), ws,
+            &conn,
+            "orchestrator-1",
+            "skill-a",
+            1,
+            "opus",
+            "completed",
+            2000,
+            1000,
+            0,
+            0,
+            0.50,
+            10000,
+            3,
+            Some("end_turn"),
+            Some(8000),
+            5,
+            0,
+            Some("sess-1"),
+            ws,
         )
         .unwrap();
         persist_agent_run(
-            &conn, "orchestrator-1", "skill-a", 1, "sonnet", "completed",
-            800, 400, 0, 0, 0.08, 4000,
-            2, Some("end_turn"), Some(3000), 3, 0,
-            Some("sess-1"), ws,
+            &conn,
+            "orchestrator-1",
+            "skill-a",
+            1,
+            "sonnet",
+            "completed",
+            800,
+            400,
+            0,
+            0,
+            0.08,
+            4000,
+            2,
+            Some("end_turn"),
+            Some(3000),
+            3,
+            0,
+            Some("sess-1"),
+            ws,
         )
         .unwrap();
 
@@ -4582,17 +5179,30 @@ mod tests {
 
         // Insert then update same agent_id + model — should replace, not duplicate
         persist_agent_run(
-            &conn, "agent-1", "skill-a", 1, "sonnet", "running",
-            0, 0, 0, 0, 0.0, 0,
-            0, None, None, 0, 0,
-            None, None,
+            &conn, "agent-1", "skill-a", 1, "sonnet", "running", 0, 0, 0, 0, 0.0, 0, 0, None, None,
+            0, 0, None, None,
         )
         .unwrap();
         persist_agent_run(
-            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000,
-            3, Some("end_turn"), Some(4000), 5, 1,
-            None, None,
+            &conn,
+            "agent-1",
+            "skill-a",
+            1,
+            "sonnet",
+            "completed",
+            1000,
+            500,
+            0,
+            0,
+            0.10,
+            5000,
+            3,
+            Some("end_turn"),
+            Some(4000),
+            5,
+            1,
+            None,
+            None,
         )
         .unwrap();
 
@@ -4628,26 +5238,71 @@ mod tests {
 
         // Same agent uses two models
         persist_agent_run(
-            &conn, "agent-1", "skill-a", 1, "opus", "completed",
-            2000, 1000, 0, 0, 0.50, 10000,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn,
+            "agent-1",
+            "skill-a",
+            1,
+            "opus",
+            "completed",
+            2000,
+            1000,
+            0,
+            0,
+            0.50,
+            10000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
         )
         .unwrap();
         persist_agent_run(
-            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            800, 400, 0, 0, 0.08, 4000,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn,
+            "agent-1",
+            "skill-a",
+            1,
+            "sonnet",
+            "completed",
+            800,
+            400,
+            0,
+            0,
+            0.08,
+            4000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
         )
         .unwrap();
 
         // Different agent, one model
         persist_agent_run(
-            &conn, "agent-2", "skill-a", 1, "sonnet", "completed",
-            500, 200, 0, 0, 0.05, 3000,
-            0, None, None, 0, 0,
-            None, ws,
+            &conn,
+            "agent-2",
+            "skill-a",
+            1,
+            "sonnet",
+            "completed",
+            500,
+            200,
+            0,
+            0,
+            0.05,
+            3000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
         )
         .unwrap();
 
@@ -4844,20 +5499,50 @@ mod tests {
         // Session with real cost
         create_workflow_session(&conn, "sess-cost", "skill-a", 1000).unwrap();
         persist_agent_run(
-            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 200, 100, 0.15, 8000,
-            0, None, None, 0, 0,
-            None, Some("sess-cost"),
+            &conn,
+            "agent-1",
+            "skill-a",
+            1,
+            "sonnet",
+            "completed",
+            1000,
+            500,
+            200,
+            100,
+            0.15,
+            8000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            Some("sess-cost"),
         )
         .unwrap();
 
         // Session with zero cost (cancelled)
         create_workflow_session(&conn, "sess-zero", "skill-b", 2000).unwrap();
         persist_agent_run(
-            &conn, "agent-2", "skill-b", 0, "sonnet", "shutdown",
-            0, 0, 0, 0, 0.0, 0,
-            0, None, None, 0, 0,
-            None, Some("sess-zero"),
+            &conn,
+            "agent-2",
+            "skill-b",
+            0,
+            "sonnet",
+            "shutdown",
+            0,
+            0,
+            0,
+            0,
+            0.0,
+            0,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            Some("sess-zero"),
         )
         .unwrap();
 
@@ -4873,20 +5558,50 @@ mod tests {
         // Session 1
         create_workflow_session(&conn, "sess-1", "skill-a", 1000).unwrap();
         persist_agent_run(
-            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 200, 100, 0.10, 5000,
-            0, None, None, 0, 0,
-            None, Some("sess-1"),
+            &conn,
+            "agent-1",
+            "skill-a",
+            1,
+            "sonnet",
+            "completed",
+            1000,
+            500,
+            200,
+            100,
+            0.10,
+            5000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            Some("sess-1"),
         )
         .unwrap();
 
         // Session 2
         create_workflow_session(&conn, "sess-2", "skill-b", 2000).unwrap();
         persist_agent_run(
-            &conn, "agent-2", "skill-b", 3, "opus", "completed",
-            2000, 1000, 400, 200, 0.30, 10000,
-            0, None, None, 0, 0,
-            None, Some("sess-2"),
+            &conn,
+            "agent-2",
+            "skill-b",
+            3,
+            "opus",
+            "completed",
+            2000,
+            1000,
+            400,
+            200,
+            0.30,
+            10000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            Some("sess-2"),
         )
         .unwrap();
 
@@ -4914,20 +5629,50 @@ mod tests {
         // Session with cost
         create_workflow_session(&conn, "sess-good", "skill-a", 1000).unwrap();
         persist_agent_run(
-            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000,
-            0, None, None, 0, 0,
-            None, Some("sess-good"),
+            &conn,
+            "agent-1",
+            "skill-a",
+            1,
+            "sonnet",
+            "completed",
+            1000,
+            500,
+            0,
+            0,
+            0.10,
+            5000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            Some("sess-good"),
         )
         .unwrap();
 
         // Session with zero cost
         create_workflow_session(&conn, "sess-cancelled", "skill-b", 2000).unwrap();
         persist_agent_run(
-            &conn, "agent-2", "skill-b", 0, "sonnet", "shutdown",
-            0, 0, 0, 0, 0.0, 0,
-            0, None, None, 0, 0,
-            None, Some("sess-cancelled"),
+            &conn,
+            "agent-2",
+            "skill-b",
+            0,
+            "sonnet",
+            "shutdown",
+            0,
+            0,
+            0,
+            0,
+            0.0,
+            0,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            Some("sess-cancelled"),
         )
         .unwrap();
 
@@ -4943,44 +5688,119 @@ mod tests {
         // Session 1: two agent runs
         create_workflow_session(&conn, "sess-1", "skill-a", 1000).unwrap();
         persist_agent_run(
-            &conn, "agent-1a", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000,
-            0, None, None, 0, 0,
-            None, Some("sess-1"),
+            &conn,
+            "agent-1a",
+            "skill-a",
+            1,
+            "sonnet",
+            "completed",
+            1000,
+            500,
+            0,
+            0,
+            0.10,
+            5000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            Some("sess-1"),
         )
         .unwrap();
         persist_agent_run(
-            &conn, "agent-1b", "skill-a", 3, "opus", "completed",
-            2000, 1000, 0, 0, 0.30, 10000,
-            0, None, None, 0, 0,
-            None, Some("sess-1"),
+            &conn,
+            "agent-1b",
+            "skill-a",
+            3,
+            "opus",
+            "completed",
+            2000,
+            1000,
+            0,
+            0,
+            0.30,
+            10000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            Some("sess-1"),
         )
         .unwrap();
 
         // Session 2: one agent run
         create_workflow_session(&conn, "sess-2", "skill-b", 2000).unwrap();
         persist_agent_run(
-            &conn, "agent-2a", "skill-b", 1, "sonnet", "completed",
-            500, 200, 0, 0, 0.05, 3000,
-            0, None, None, 0, 0,
-            None, Some("sess-2"),
+            &conn,
+            "agent-2a",
+            "skill-b",
+            1,
+            "sonnet",
+            "completed",
+            500,
+            200,
+            0,
+            0,
+            0.05,
+            3000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            Some("sess-2"),
         )
         .unwrap();
 
         // Session 3: two agent runs
         create_workflow_session(&conn, "sess-3", "skill-c", 3000).unwrap();
         persist_agent_run(
-            &conn, "agent-3a", "skill-c", 5, "opus", "completed",
-            3000, 1500, 0, 0, 0.50, 15000,
-            0, None, None, 0, 0,
-            None, Some("sess-3"),
+            &conn,
+            "agent-3a",
+            "skill-c",
+            5,
+            "opus",
+            "completed",
+            3000,
+            1500,
+            0,
+            0,
+            0.50,
+            15000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            Some("sess-3"),
         )
         .unwrap();
         persist_agent_run(
-            &conn, "agent-3b", "skill-c", 6, "sonnet", "completed",
-            800, 400, 0, 0, 0.08, 4000,
-            0, None, None, 0, 0,
-            None, Some("sess-3"),
+            &conn,
+            "agent-3b",
+            "skill-c",
+            6,
+            "sonnet",
+            "completed",
+            800,
+            400,
+            0,
+            0,
+            0.08,
+            4000,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            Some("sess-3"),
         )
         .unwrap();
 
@@ -5013,7 +5833,6 @@ mod tests {
         run_drop_trigger_description_migration(&conn).unwrap();
     }
 
-
     // --- Marketplace Migration tests (14-16) ---
 
     #[test]
@@ -5029,7 +5848,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(count, 1, "'source' column should exist exactly once in workflow_runs");
+        assert_eq!(
+            count, 1,
+            "'source' column should exist exactly once in workflow_runs"
+        );
     }
 
     #[test]
@@ -5143,11 +5965,13 @@ mod tests {
         // Skill 1: active (trigger comes from disk, not DB)
         let skill1 = ImportedSkill {
             skill_id: "imp-1".to_string(),
-            skill_name: "active-with-trigger".to_string(),            is_active: true,
+            skill_name: "active-with-trigger".to_string(),
+            is_active: true,
             disk_path: "/tmp/s1".to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,            version: None,
+            description: None,
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -5160,11 +5984,13 @@ mod tests {
         // Skill 2: active
         let skill2 = ImportedSkill {
             skill_id: "imp-2".to_string(),
-            skill_name: "active-no-trigger".to_string(),            is_active: true,
+            skill_name: "active-no-trigger".to_string(),
+            is_active: true,
             disk_path: "/tmp/s2".to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,            version: None,
+            description: None,
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -5177,11 +6003,13 @@ mod tests {
         // Skill 3: inactive
         let skill3 = ImportedSkill {
             skill_id: "imp-3".to_string(),
-            skill_name: "inactive-with-trigger".to_string(),            is_active: false,
+            skill_name: "inactive-with-trigger".to_string(),
+            is_active: false,
             disk_path: "/tmp/s3".to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,            version: None,
+            description: None,
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -5207,7 +6035,7 @@ mod tests {
         let skill = ImportedSkill {
             skill_id: "id-del".to_string(),
             skill_name: "delete-me".to_string(),
-            
+
             is_active: true,
             disk_path: "/tmp/delete-me".to_string(),
             imported_at: "2024-01-01".to_string(),
@@ -5273,30 +6101,40 @@ mod tests {
              WHERE is_bundled = 0
                AND skill_name NOT IN (SELECT name FROM skills WHERE COALESCE(deleted_at, '') = '')",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Orphaned non-bundled row should be gone
-        let orphan_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'orphan-skill'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
-        assert_eq!(orphan_count, 0, "Orphaned non-bundled row should be deleted");
+        let orphan_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'orphan-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            orphan_count, 0,
+            "Orphaned non-bundled row should be deleted"
+        );
 
         // Non-orphaned row should be preserved
-        let kept_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'kept-skill'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let kept_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'kept-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(kept_count, 1, "Non-orphaned row should be preserved");
 
         // Bundled row should be preserved (even without master row)
-        let bundled_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'bundled-skill'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let bundled_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'bundled-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(bundled_count, 1, "Bundled row should be preserved");
     }
 
@@ -5333,15 +6171,18 @@ mod tests {
             "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type)
              VALUES ('idempotent-skill', 'test-domain', 0, 'pending', 'domain')",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Run migration 21 a second time — must not error (idempotency guard).
         run_workflow_runs_id_migration(&conn).unwrap();
 
         // Verify the `id` column exists.
         let has_id: bool = conn
-            .prepare("PRAGMA table_info(workflow_runs)").unwrap()
-            .query_map([], |r| r.get::<_, String>(1)).unwrap()
+            .prepare("PRAGMA table_info(workflow_runs)")
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
             .any(|r| r.map(|n| n == "id").unwrap_or(false));
         assert!(has_id, "id column should exist after migration 21");
 
@@ -5351,7 +6192,10 @@ mod tests {
              VALUES ('idempotent-skill', 'other-domain', 0, 'pending', 'domain')",
             [],
         );
-        assert!(result.is_err(), "duplicate skill_name should violate UNIQUE constraint");
+        assert!(
+            result.is_err(),
+            "duplicate skill_name should violate UNIQUE constraint"
+        );
     }
 
     #[test]
@@ -5368,14 +6212,21 @@ mod tests {
         // Save a workflow step and verify workflow_run_id is populated.
         save_workflow_step(&conn, "fk-idempotent-skill", 1, "in_progress").unwrap();
 
-        let workflow_run_id: Option<i64> = conn.query_row(
-            "SELECT workflow_run_id FROM workflow_steps WHERE skill_name = ?1 AND step_id = ?2",
-            rusqlite::params!["fk-idempotent-skill", 1],
-            |row| row.get(0),
-        ).unwrap();
-        assert!(workflow_run_id.is_some(), "workflow_run_id must be non-NULL after save_workflow_step");
+        let workflow_run_id: Option<i64> = conn
+            .query_row(
+                "SELECT workflow_run_id FROM workflow_steps WHERE skill_name = ?1 AND step_id = ?2",
+                rusqlite::params!["fk-idempotent-skill", 1],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            workflow_run_id.is_some(),
+            "workflow_run_id must be non-NULL after save_workflow_step"
+        );
 
-        let expected_wr_id = get_workflow_run_id(&conn, "fk-idempotent-skill").unwrap().unwrap();
+        let expected_wr_id = get_workflow_run_id(&conn, "fk-idempotent-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(
             workflow_run_id.unwrap(),
             expected_wr_id,
@@ -5415,11 +6266,13 @@ mod tests {
             "INSERT INTO skills (name, skill_source, domain, skill_type) VALUES ('backfill-skill', 'skill-builder', 'test', 'domain')",
             [],
         ).unwrap();
-        let skill_master_id: i64 = conn.query_row(
-            "SELECT id FROM skills WHERE name = 'backfill-skill'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let skill_master_id: i64 = conn
+            .query_row(
+                "SELECT id FROM skills WHERE name = 'backfill-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         // Insert a workflow_runs row (without skill_id FK column — already present from migration 18,
         // but we set it anyway for the backfill to trace via skill_name).
@@ -5427,12 +6280,15 @@ mod tests {
             "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type)
              VALUES ('backfill-skill', 'test', 0, 'pending', 'domain')",
             [],
-        ).unwrap();
-        let wr_id: i64 = conn.query_row(
-            "SELECT id FROM workflow_runs WHERE skill_name = 'backfill-skill'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        )
+        .unwrap();
+        let wr_id: i64 = conn
+            .query_row(
+                "SELECT id FROM workflow_runs WHERE skill_name = 'backfill-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         // Insert into workflow_steps without workflow_run_id (column doesn't exist yet).
         conn.execute(
@@ -5444,7 +6300,8 @@ mod tests {
         conn.execute(
             "INSERT INTO skill_tags (skill_name, tag) VALUES ('backfill-skill', 'test-tag')",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Insert into skill_locks without skill_id.
         conn.execute(
@@ -5461,23 +6318,39 @@ mod tests {
             [],
             |row| row.get(0),
         ).unwrap();
-        assert_eq!(ws_wrid, Some(wr_id), "workflow_steps.workflow_run_id should be backfilled");
+        assert_eq!(
+            ws_wrid,
+            Some(wr_id),
+            "workflow_steps.workflow_run_id should be backfilled"
+        );
 
         // Verify skill_tags.skill_id was backfilled.
-        let tag_sid: Option<i64> = conn.query_row(
-            "SELECT skill_id FROM skill_tags WHERE skill_name = 'backfill-skill'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
-        assert_eq!(tag_sid, Some(skill_master_id), "skill_tags.skill_id should be backfilled");
+        let tag_sid: Option<i64> = conn
+            .query_row(
+                "SELECT skill_id FROM skill_tags WHERE skill_name = 'backfill-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            tag_sid,
+            Some(skill_master_id),
+            "skill_tags.skill_id should be backfilled"
+        );
 
         // Verify skill_locks.skill_id was backfilled.
-        let lock_sid: Option<i64> = conn.query_row(
-            "SELECT skill_id FROM skill_locks WHERE skill_name = 'backfill-skill'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
-        assert_eq!(lock_sid, Some(skill_master_id), "skill_locks.skill_id should be backfilled");
+        let lock_sid: Option<i64> = conn
+            .query_row(
+                "SELECT skill_id FROM skill_locks WHERE skill_name = 'backfill-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            lock_sid,
+            Some(skill_master_id),
+            "skill_locks.skill_id should be backfilled"
+        );
     }
 
     #[test]
@@ -5498,19 +6371,32 @@ mod tests {
             3,
             "sonnet",
             "completed",
-            100, 50, 0, 0, 0.01, 1000,
-            1, None, None, 0, 0,
+            100,
+            50,
+            0,
+            0,
+            0.01,
+            1000,
+            1,
+            None,
+            None,
+            0,
+            0,
             None,
             Some("session-1"),
-        ).unwrap();
+        )
+        .unwrap();
 
         // persist_agent_run does not populate workflow_run_id — backfill it here, mirroring
         // what run_fk_columns_migration does for pre-existing rows.
-        let wr_id = get_workflow_run_id(&conn, "step-test-skill").unwrap().unwrap();
+        let wr_id = get_workflow_run_id(&conn, "step-test-skill")
+            .unwrap()
+            .unwrap();
         conn.execute(
             "UPDATE agent_runs SET workflow_run_id = ?1 WHERE agent_id = 'agent-step-1'",
             rusqlite::params![wr_id],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Call get_step_agent_runs for the correct step — should return 1 run.
         let runs = get_step_agent_runs(&conn, "step-test-skill", 3).unwrap();
@@ -5523,7 +6409,10 @@ mod tests {
 
         // Nonexistent skill — should return empty (no workflow_run_id found).
         let no_skill = get_step_agent_runs(&conn, "nonexistent-skill", 3).unwrap();
-        assert!(no_skill.is_empty(), "nonexistent skill should return empty vec");
+        assert!(
+            no_skill.is_empty(),
+            "nonexistent skill should return empty vec"
+        );
     }
 
     #[test]
@@ -5571,11 +6460,13 @@ mod tests {
 
         let skill = WorkspaceSkill {
             skill_id: "ws-uuid-abc-123".to_string(),
-            skill_name: "my-ws-skill".to_string(),            description: None,
+            skill_name: "my-ws-skill".to_string(),
+            description: None,
             is_active: true,
             is_bundled: false,
             disk_path: "/tmp/ws-skill".to_string(),
-            imported_at: "2024-01-01T00:00:00Z".to_string(),            version: None,
+            imported_at: "2024-01-01T00:00:00Z".to_string(),
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -5590,15 +6481,22 @@ mod tests {
         // List workspace skills — the skill must be in the list.
         let skills = list_workspace_skills(&conn).unwrap();
         let found = skills.iter().find(|s| s.skill_id == "ws-uuid-abc-123");
-        assert!(found.is_some(), "inserted skill should appear in list_workspace_skills");
+        assert!(
+            found.is_some(),
+            "inserted skill should appear in list_workspace_skills"
+        );
         assert_eq!(found.unwrap().skill_name, "my-ws-skill");
         assert!(found.unwrap().is_active);
 
         // Toggle active (also updates disk_path).
-        update_workspace_skill_active(&conn, "ws-uuid-abc-123", false, "/tmp/ws-skill-updated").unwrap();
+        update_workspace_skill_active(&conn, "ws-uuid-abc-123", false, "/tmp/ws-skill-updated")
+            .unwrap();
 
         let skills_after = list_workspace_skills(&conn).unwrap();
-        let updated = skills_after.iter().find(|s| s.skill_id == "ws-uuid-abc-123").unwrap();
+        let updated = skills_after
+            .iter()
+            .find(|s| s.skill_id == "ws-uuid-abc-123")
+            .unwrap();
         assert!(!updated.is_active, "is_active should be false after update");
 
         // Delete the skill.
@@ -5606,18 +6504,30 @@ mod tests {
 
         // Verify it is gone.
         let skills_final = list_workspace_skills(&conn).unwrap();
-        let gone = skills_final.iter().find(|s| s.skill_id == "ws-uuid-abc-123");
-        assert!(gone.is_none(), "skill should not appear in list after deletion");
+        let gone = skills_final
+            .iter()
+            .find(|s| s.skill_id == "ws-uuid-abc-123");
+        assert!(
+            gone.is_none(),
+            "skill should not appear in list after deletion"
+        );
     }
 
-    fn make_ws_skill(skill_id: &str, skill_name: &str, purpose: Option<&str>, is_active: bool) -> WorkspaceSkill {
+    fn make_ws_skill(
+        skill_id: &str,
+        skill_name: &str,
+        purpose: Option<&str>,
+        is_active: bool,
+    ) -> WorkspaceSkill {
         WorkspaceSkill {
             skill_id: skill_id.to_string(),
-            skill_name: skill_name.to_string(),            description: None,
+            skill_name: skill_name.to_string(),
+            description: None,
             is_active,
             is_bundled: false,
             disk_path: format!("/tmp/{}", skill_name),
-            imported_at: "2025-01-01T00:00:00Z".to_string(),            version: None,
+            imported_at: "2025-01-01T00:00:00Z".to_string(),
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -5634,7 +6544,10 @@ mod tests {
         insert_workspace_skill(&conn, &skill).unwrap();
 
         let found = get_workspace_skill_by_purpose(&conn, "research").unwrap();
-        assert!(found.is_some(), "should find an active skill with purpose='research'");
+        assert!(
+            found.is_some(),
+            "should find an active skill with purpose='research'"
+        );
         assert_eq!(found.unwrap().skill_name, "research-skill");
     }
 
@@ -5643,7 +6556,10 @@ mod tests {
         let conn = create_test_db();
 
         let found = get_workspace_skill_by_purpose(&conn, "nonexistent-purpose").unwrap();
-        assert!(found.is_none(), "should return None for a purpose that has no matching skill");
+        assert!(
+            found.is_none(),
+            "should return None for a purpose that has no matching skill"
+        );
     }
 
     #[test]
@@ -5654,6 +6570,53 @@ mod tests {
         insert_workspace_skill(&conn, &skill).unwrap();
 
         let found = get_workspace_skill_by_purpose(&conn, "validate").unwrap();
-        assert!(found.is_none(), "should return None when the only matching skill is inactive");
+        assert!(
+            found.is_none(),
+            "should return None when the only matching skill is inactive"
+        );
+    }
+
+    #[test]
+    fn test_get_workspace_skill_by_purpose_prefers_latest_imported_at() {
+        let conn = create_test_db();
+        let older = WorkspaceSkill {
+            skill_id: "id-old".to_string(),
+            skill_name: "research-old".to_string(),
+            description: None,
+            is_active: true,
+            is_bundled: false,
+            disk_path: "/tmp/research-old".to_string(),
+            imported_at: "2025-01-01T00:00:00Z".to_string(),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: Some("research".to_string()),
+            marketplace_source_url: None,
+        };
+        let newer = WorkspaceSkill {
+            skill_id: "id-new".to_string(),
+            skill_name: "research-new".to_string(),
+            description: None,
+            is_active: true,
+            is_bundled: false,
+            disk_path: "/tmp/research-new".to_string(),
+            imported_at: "2025-02-01T00:00:00Z".to_string(),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: Some("research".to_string()),
+            marketplace_source_url: None,
+        };
+        insert_workspace_skill(&conn, &older).unwrap();
+        insert_workspace_skill(&conn, &newer).unwrap();
+
+        let found = get_workspace_skill_by_purpose(&conn, "research")
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.skill_name, "research-new");
     }
 }

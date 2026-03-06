@@ -145,7 +145,14 @@ describe("useImportedSkillsStore", () => {
 
   describe("toggleActive", () => {
     it("toggles skill active state", async () => {
-      mockInvokeCommands({ toggle_skill_active: undefined });
+      const refreshed = [
+        { ...sampleSkills[0], is_active: false },
+        sampleSkills[1],
+      ];
+      mockInvokeCommands({
+        toggle_skill_active: undefined,
+        list_workspace_skills: refreshed,
+      });
       useImportedSkillsStore.setState({ skills: sampleSkills });
 
       await useImportedSkillsStore.getState().toggleActive("id-1", false);
@@ -161,7 +168,14 @@ describe("useImportedSkillsStore", () => {
     });
 
     it("does not affect other skills", async () => {
-      mockInvokeCommands({ toggle_skill_active: undefined });
+      const refreshed = [
+        sampleSkills[0],
+        { ...sampleSkills[1], is_active: true },
+      ];
+      mockInvokeCommands({
+        toggle_skill_active: undefined,
+        list_workspace_skills: refreshed,
+      });
       useImportedSkillsStore.setState({ skills: sampleSkills });
 
       await useImportedSkillsStore.getState().toggleActive("id-2", true);
@@ -169,6 +183,29 @@ describe("useImportedSkillsStore", () => {
       const state = useImportedSkillsStore.getState();
       const other = state.skills.find((s) => s.skill_name === "sales-analytics");
       expect(other?.is_active).toBe(true); // unchanged
+    });
+  });
+
+  describe("setPurpose", () => {
+    it("refreshes skills from backend after purpose update", async () => {
+      const refreshed = [
+        { ...sampleSkills[0], purpose: "research" },
+        { ...sampleSkills[1], is_active: false, purpose: "research" },
+      ];
+      mockInvokeCommands({
+        set_workspace_skill_purpose: undefined,
+        list_workspace_skills: refreshed,
+      });
+      useImportedSkillsStore.setState({
+        skills: sampleSkills,
+        selectedSkill: sampleSkills[0],
+      });
+
+      await useImportedSkillsStore.getState().setPurpose("id-1", "research");
+
+      const state = useImportedSkillsStore.getState();
+      expect(state.skills[0].purpose).toBe("research");
+      expect(state.selectedSkill?.purpose).toBe("research");
     });
   });
 

@@ -7,7 +7,10 @@ use std::path::Path;
 /// Returns true if `marketplace` is strictly newer than `installed` by semver rules.
 /// Returns false if either value fails to parse (avoids false positives for non-standard version strings).
 fn semver_gt(marketplace: &str, installed: &str) -> bool {
-    match (semver::Version::parse(marketplace), semver::Version::parse(installed)) {
+    match (
+        semver::Version::parse(marketplace),
+        semver::Version::parse(installed),
+    ) {
         (Ok(mp), Ok(inst)) => mp > inst,
         _ => false,
     }
@@ -16,12 +19,24 @@ fn semver_gt(marketplace: &str, installed: &str) -> bool {
 /// Merge existing field values into a new `ImportedSkill`: each field on `skill`
 /// is left unchanged if already `Some`, otherwise falls back to the `existing` value.
 fn merge_imported_fields(skill: &mut ImportedSkill, existing: &ImportedSkill) {
-    if skill.purpose.is_none() { skill.purpose = existing.purpose.clone(); }
-    if skill.description.is_none() { skill.description = existing.description.clone(); }
-    if skill.model.is_none() { skill.model = existing.model.clone(); }
-    if skill.argument_hint.is_none() { skill.argument_hint = existing.argument_hint.clone(); }
-    if skill.user_invocable.is_none() { skill.user_invocable = existing.user_invocable; }
-    if skill.disable_model_invocation.is_none() { skill.disable_model_invocation = existing.disable_model_invocation; }
+    if skill.purpose.is_none() {
+        skill.purpose = existing.purpose.clone();
+    }
+    if skill.description.is_none() {
+        skill.description = existing.description.clone();
+    }
+    if skill.model.is_none() {
+        skill.model = existing.model.clone();
+    }
+    if skill.argument_hint.is_none() {
+        skill.argument_hint = existing.argument_hint.clone();
+    }
+    if skill.user_invocable.is_none() {
+        skill.user_invocable = existing.user_invocable;
+    }
+    if skill.disable_model_invocation.is_none() {
+        skill.disable_model_invocation = existing.disable_model_invocation;
+    }
 }
 
 /// Fetch the default branch name for a GitHub repo via the API.
@@ -102,10 +117,7 @@ pub(crate) fn build_github_client(token: Option<&str>) -> reqwest::Client {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("Accept", "application/vnd.github+json".parse().unwrap());
     headers.insert("User-Agent", "SkillBuilder".parse().unwrap());
-    headers.insert(
-        "X-GitHub-Api-Version",
-        "2022-11-28".parse().unwrap(),
-    );
+    headers.insert("X-GitHub-Api-Version", "2022-11-28".parse().unwrap());
     if let Some(tok) = token {
         if let Ok(val) = format!("Bearer {}", tok).parse() {
             headers.insert("Authorization", val);
@@ -283,7 +295,9 @@ pub async fn check_marketplace_url(
     );
     log::info!(
         "[check_marketplace_url] fetching marketplace.json from {}/{} branch={}",
-        owner, repo, resolved_branch
+        owner,
+        repo,
+        resolved_branch
     );
 
     let not_found_msg = format!(
@@ -291,38 +305,60 @@ pub async fn check_marketplace_url(
         manifest_path, owner, repo
     );
 
-    let response = client
-        .get(&raw_url)
-        .send()
-        .await
-        .map_err(|e| {
-            log::error!("[check_marketplace_url] failed to fetch marketplace.json for {}/{}: {}", owner, repo, e);
-            format!("Failed to reach {}/{}: {}", owner, repo, e)
-        })?;
+    let response = client.get(&raw_url).send().await.map_err(|e| {
+        log::error!(
+            "[check_marketplace_url] failed to fetch marketplace.json for {}/{}: {}",
+            owner,
+            repo,
+            e
+        );
+        format!("Failed to reach {}/{}: {}", owner, repo, e)
+    })?;
 
     if !response.status().is_success() {
         log::error!(
             "[check_marketplace_url] marketplace.json not found for {}/{}: HTTP {}",
-            owner, repo, response.status()
+            owner,
+            repo,
+            response.status()
         );
         return Err(not_found_msg);
     }
 
     let body = response.text().await.map_err(|e| {
-        log::error!("[check_marketplace_url] failed to read marketplace.json body for {}/{}: {}", owner, repo, e);
+        log::error!(
+            "[check_marketplace_url] failed to read marketplace.json body for {}/{}: {}",
+            owner,
+            repo,
+            e
+        );
         format!("Failed to read marketplace.json: {}", e)
     })?;
 
     let manifest = serde_json::from_str::<MarketplaceJson>(&body).map_err(|e| {
-        log::error!("[check_marketplace_url] marketplace.json is not valid JSON for {}/{}: {}", owner, repo, e);
-        format!("marketplace.json at {} in {}/{} is not valid JSON.", manifest_path, owner, repo)
+        log::error!(
+            "[check_marketplace_url] marketplace.json is not valid JSON for {}/{}: {}",
+            owner,
+            repo,
+            e
+        );
+        format!(
+            "marketplace.json at {} in {}/{} is not valid JSON.",
+            manifest_path, owner, repo
+        )
     })?;
 
-    let name = manifest.name
+    let name = manifest
+        .name
         .filter(|n| !n.trim().is_empty())
         .unwrap_or_else(|| format!("{}/{}", owner, repo));
 
-    log::info!("[check_marketplace_url] marketplace.json validated for {}/{} name={}", owner, repo, name);
+    log::info!(
+        "[check_marketplace_url] marketplace.json validated for {}/{} name={}",
+        owner,
+        repo,
+        name
+    );
     Ok(name)
 }
 
@@ -368,7 +404,8 @@ pub(crate) fn discover_skills_from_catalog(
                 let name = plugin.name.as_deref().unwrap_or("<unnamed>");
                 log::warn!(
                     "[discover_skills] skipping plugin '{}' — unsupported source type '{}'",
-                    name, source
+                    name,
+                    source
                 );
                 continue;
             }
@@ -439,12 +476,16 @@ pub(crate) fn discover_skills_from_catalog(
         if found == 0 {
             log::debug!(
                 "[discover_skills] plugin '{}' (source='{}') — no skills found under '{}'",
-                plugin_name, source_str, skills_prefix
+                plugin_name,
+                source_str,
+                skills_prefix
             );
         } else {
             log::debug!(
                 "[discover_skills] plugin '{}' — found {} skill(s) under '{}'",
-                plugin_name, found, skills_prefix
+                plugin_name,
+                found,
+                skills_prefix
             );
         }
     }
@@ -486,7 +527,13 @@ pub async fn list_github_skills(
     branch: String,
     subpath: Option<String>,
 ) -> Result<Vec<AvailableSkill>, String> {
-    log::info!("[list_github_skills] owner={} repo={} branch={} subpath={:?}", owner, repo, branch, subpath);
+    log::info!(
+        "[list_github_skills] owner={} repo={} branch={} subpath={:?}",
+        owner,
+        repo,
+        branch,
+        subpath
+    );
     // Read OAuth token if available
     let token = {
         let conn = db.0.lock().map_err(|e| {
@@ -497,8 +544,9 @@ pub async fn list_github_skills(
         settings.github_oauth_token.clone()
     };
 
-    let (_, skills) = list_github_skills_inner(&owner, &repo, &branch, subpath.as_deref(), token.as_deref())
-        .await?;
+    let (_, skills) =
+        list_github_skills_inner(&owner, &repo, &branch, subpath.as_deref(), token.as_deref())
+            .await?;
     Ok(skills)
 }
 
@@ -532,29 +580,31 @@ pub(crate) async fn list_github_skills_inner(
 
     log::info!(
         "[list_github_skills_inner] fetching marketplace.json from {}/{} branch={}",
-        owner, repo, resolved_branch
+        owner,
+        repo,
+        resolved_branch
     );
 
-    let response = client
-        .get(&raw_url)
-        .send()
-        .await
-        .map_err(|e| {
-            log::error!(
-                "[list_github_skills_inner] failed to fetch marketplace.json for {}/{}: {}",
-                owner, repo, e
-            );
-            format!(
-                "marketplace.json not found at {} in {}/{}. Ensure the repository has this file.",
-                manifest_path, owner, repo
-            )
-        })?;
+    let response = client.get(&raw_url).send().await.map_err(|e| {
+        log::error!(
+            "[list_github_skills_inner] failed to fetch marketplace.json for {}/{}: {}",
+            owner,
+            repo,
+            e
+        );
+        format!(
+            "marketplace.json not found at {} in {}/{}. Ensure the repository has this file.",
+            manifest_path, owner, repo
+        )
+    })?;
 
     let status = response.status();
     if !status.is_success() {
         log::error!(
             "[list_github_skills_inner] failed to fetch marketplace.json for {}/{}: HTTP {}",
-            owner, repo, status
+            owner,
+            repo,
+            status
         );
         return Err(format!(
             "marketplace.json not found at {} in {}/{}. Ensure the repository has this file.",
@@ -562,21 +612,22 @@ pub(crate) async fn list_github_skills_inner(
         ));
     }
 
-    let body = response
-        .text()
-        .await
-        .map_err(|e| {
-            log::error!(
-                "[list_github_skills_inner] failed to read marketplace.json body for {}/{}: {}",
-                owner, repo, e
-            );
-            format!("Failed to read marketplace.json: {}", e)
-        })?;
+    let body = response.text().await.map_err(|e| {
+        log::error!(
+            "[list_github_skills_inner] failed to read marketplace.json body for {}/{}: {}",
+            owner,
+            repo,
+            e
+        );
+        format!("Failed to read marketplace.json: {}", e)
+    })?;
 
     let marketplace: MarketplaceJson = serde_json::from_str(&body).map_err(|e| {
         log::error!(
             "[list_github_skills_inner] failed to parse marketplace.json for {}/{}: {}",
-            owner, repo, e
+            owner,
+            repo,
+            e
         );
         format!("Failed to parse marketplace.json: {}", e)
     })?;
@@ -596,12 +647,19 @@ pub(crate) async fn list_github_skills_inner(
         })
         .collect();
 
-    let plugin_root = marketplace.metadata.as_ref().and_then(|m| m.plugin_root.as_deref());
-    let skills = discover_skills_from_catalog(&marketplace.plugins, plugin_root, &skill_dirs, subpath);
+    let plugin_root = marketplace
+        .metadata
+        .as_ref()
+        .and_then(|m| m.plugin_root.as_deref());
+    let skills =
+        discover_skills_from_catalog(&marketplace.plugins, plugin_root, &skill_dirs, subpath);
 
     log::info!(
         "[list_github_skills_inner] found {} candidate skills from catalog in {}/{} (registry={})",
-        skills.len(), owner, repo, marketplace.name.as_deref().unwrap_or("unknown")
+        skills.len(),
+        owner,
+        repo,
+        marketplace.name.as_deref().unwrap_or("unknown")
     );
 
     // Fetch each skill's SKILL.md concurrently to populate version, purpose, and other frontmatter.
@@ -614,7 +672,8 @@ pub(crate) async fn list_github_skills_inner(
                 owner, repo, resolved_branch, skill.path
             );
             async move {
-                match client.get(&url)
+                match client
+                    .get(&url)
                     .header("Cache-Control", "no-cache")
                     .header("Pragma", "no-cache")
                     .send()
@@ -639,7 +698,9 @@ pub(crate) async fn list_github_skills_inner(
                 match fm.name {
                     Some(name) => {
                         skill.name = name;
-                        if let Some(desc) = fm.description { skill.description = Some(desc); }
+                        if let Some(desc) = fm.description {
+                            skill.description = Some(desc);
+                        }
                         skill.version = fm.version;
                         skill.model = fm.model;
                         skill.argument_hint = fm.argument_hint;
@@ -758,7 +819,11 @@ pub async fn import_github_skills(
 ) -> Result<Vec<ImportedSkill>, String> {
     log::info!(
         "[import_github_skills] owner={} repo={} branch={} count={} source_url={:?}",
-        owner, repo, branch, skill_requests.len(), source_url
+        owner,
+        repo,
+        branch,
+        skill_requests.len(),
+        source_url
     );
     // Read settings
     let (workspace_path, token) = {
@@ -841,27 +906,43 @@ pub async fn import_github_skills(
                     if !semver_gt(mp_ver, inst_ver) {
                         log::info!(
                             "[import_github_skills] {} already at version {:?}, skipping",
-                            skill.skill_name, skill.version
+                            skill.skill_name,
+                            skill.version
                         );
                         if let Err(e) = fs::remove_dir_all(&skill.disk_path) {
                             log::warn!(
                                 "[import_github_skills] cleanup failed for {}: {}",
-                                skill.disk_path, e
+                                skill.disk_path,
+                                e
                             );
                         }
                         skipped.push(skill.skill_name.clone());
                         continue;
                     }
                     // Different version — merge: new frontmatter wins if Some, else fall back to existing WorkspaceSkill
-                    if skill.purpose.is_none() { skill.purpose = existing_skill.purpose.clone(); }
-                    if skill.description.is_none() { skill.description = existing_skill.description.clone(); }
-                    if skill.model.is_none() { skill.model = existing_skill.model.clone(); }
-                    if skill.argument_hint.is_none() { skill.argument_hint = existing_skill.argument_hint.clone(); }
-                    if skill.user_invocable.is_none() { skill.user_invocable = existing_skill.user_invocable; }
-                    if skill.disable_model_invocation.is_none() { skill.disable_model_invocation = existing_skill.disable_model_invocation; }
+                    if skill.purpose.is_none() {
+                        skill.purpose = existing_skill.purpose.clone();
+                    }
+                    if skill.description.is_none() {
+                        skill.description = existing_skill.description.clone();
+                    }
+                    if skill.model.is_none() {
+                        skill.model = existing_skill.model.clone();
+                    }
+                    if skill.argument_hint.is_none() {
+                        skill.argument_hint = existing_skill.argument_hint.clone();
+                    }
+                    if skill.user_invocable.is_none() {
+                        skill.user_invocable = existing_skill.user_invocable;
+                    }
+                    if skill.disable_model_invocation.is_none() {
+                        skill.disable_model_invocation = existing_skill.disable_model_invocation;
+                    }
                     log::info!(
                         "[import_github_skills] upgrading {} from {:?} to {:?}",
-                        skill.skill_name, existing_skill.version, skill.version
+                        skill.skill_name,
+                        existing_skill.version,
+                        skill.version
                     );
                 }
 
@@ -875,6 +956,18 @@ pub async fn import_github_skills(
                     ws_skill.is_bundled = existing_skill.is_bundled;
                     ws_skill.skill_id = existing_skill.skill_id.clone();
                     ws_skill.imported_at = existing_skill.imported_at.clone();
+                    if ws_skill.is_active
+                        && super::imported_skills::is_exclusive_purpose(ws_skill.purpose.as_deref())
+                    {
+                        if let Some(ref p) = ws_skill.purpose {
+                            super::imported_skills::deactivate_active_siblings_for_purpose(
+                                &conn,
+                                &workspace_path,
+                                p,
+                                Some(&ws_skill.skill_id),
+                            )?;
+                        }
+                    }
                     if let Err(e) = crate::db::upsert_workspace_skill(&conn, &ws_skill) {
                         if let Err(cleanup_err) = fs::remove_dir_all(&skill.disk_path) {
                             log::warn!(
@@ -886,7 +979,11 @@ pub async fn import_github_skills(
                     } else {
                         // Compute and store the content hash as the new baseline
                         if let Some(hash) = compute_skill_content_hash(&skill.disk_path) {
-                            if let Err(e) = crate::db::set_workspace_skill_content_hash(&conn, &skill.skill_name, &hash) {
+                            if let Err(e) = crate::db::set_workspace_skill_content_hash(
+                                &conn,
+                                &skill.skill_name,
+                                &hash,
+                            ) {
                                 log::warn!("[import_github_skills] failed to set content_hash for '{}': {}", skill.skill_name, e);
                             }
                         }
@@ -897,11 +994,27 @@ pub async fn import_github_skills(
                         "[import_github_skills] inserting new workspace skill '{}'",
                         ws_skill.skill_name
                     );
+                    if ws_skill.is_active
+                        && super::imported_skills::is_exclusive_purpose(ws_skill.purpose.as_deref())
+                    {
+                        if let Some(ref p) = ws_skill.purpose {
+                            super::imported_skills::deactivate_active_siblings_for_purpose(
+                                &conn,
+                                &workspace_path,
+                                p,
+                                None,
+                            )?;
+                        }
+                    }
                     match crate::db::insert_workspace_skill(&conn, &ws_skill) {
                         Ok(()) => {
                             // Compute and store the content hash as the baseline
                             if let Some(hash) = compute_skill_content_hash(&ws_skill.disk_path) {
-                                if let Err(e) = crate::db::set_workspace_skill_content_hash(&conn, &ws_skill.skill_name, &hash) {
+                                if let Err(e) = crate::db::set_workspace_skill_content_hash(
+                                    &conn,
+                                    &ws_skill.skill_name,
+                                    &hash,
+                                ) {
                                     log::warn!("[import_github_skills] failed to set content_hash for '{}': {}", ws_skill.skill_name, e);
                                 }
                             }
@@ -911,7 +1024,8 @@ pub async fn import_github_skills(
                             if let Err(cleanup_err) = fs::remove_dir_all(&ws_skill.disk_path) {
                                 log::warn!(
                                     "Failed to clean up skill directory '{}' after DB error: {}",
-                                    ws_skill.disk_path, cleanup_err
+                                    ws_skill.disk_path,
+                                    cleanup_err
                                 );
                             }
                             errors.push(format!("{}: {}", skill.skill_name, e));
@@ -934,7 +1048,10 @@ pub async fn import_github_skills(
         log::warn!("Skill import error: {}", err);
     }
     for name in &skipped {
-        log::info!("[import_github_skills] skipped '{}': already at same or newer version", name);
+        log::info!(
+            "[import_github_skills] skipped '{}': already at same or newer version",
+            name
+        );
     }
 
     // Regenerate CLAUDE.md with imported skills section
@@ -955,7 +1072,10 @@ pub async fn import_github_skills(
 #[tauri::command]
 pub fn get_dashboard_skill_names(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
     log::info!("[get_dashboard_skill_names]");
-    let conn = db.0.lock().map_err(|e| { log::error!("[get_dashboard_skill_names] lock failed: {}", e); e.to_string() })?;
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_dashboard_skill_names] lock failed: {}", e);
+        e.to_string()
+    })?;
     crate::db::get_dashboard_skill_names(&conn)
 }
 
@@ -979,7 +1099,9 @@ pub async fn import_marketplace_to_library(
     db: tauri::State<'_, Db>,
     source_url: String,
     skill_paths: Vec<String>,
-    metadata_overrides: Option<std::collections::HashMap<String, crate::types::SkillMetadataOverride>>,
+    metadata_overrides: Option<
+        std::collections::HashMap<String, crate::types::SkillMetadataOverride>,
+    >,
 ) -> Result<Vec<MarketplaceImportResult>, String> {
     log::info!(
         "[import_marketplace_to_library] importing {} skills from {} (with_overrides={})",
@@ -991,11 +1113,17 @@ pub async fn import_marketplace_to_library(
     // Read settings
     let (workspace_path, skills_path, token) = {
         let conn = db.0.lock().map_err(|e| {
-            log::error!("[import_marketplace_to_library] failed to acquire DB lock: {}", e);
+            log::error!(
+                "[import_marketplace_to_library] failed to acquire DB lock: {}",
+                e
+            );
             e.to_string()
         })?;
         let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
-            log::error!("[import_marketplace_to_library] failed to read settings: {}", e);
+            log::error!(
+                "[import_marketplace_to_library] failed to read settings: {}",
+                e
+            );
             e
         })?;
         let wp = settings.workspace_path.ok_or_else(|| {
@@ -1013,28 +1141,57 @@ pub async fn import_marketplace_to_library(
 
     // Parse the registry URL into owner/repo/branch
     let repo_info = parse_github_url_inner(&source_url).map_err(|e| {
-        log::error!("[import_marketplace_to_library] failed to parse source_url '{}': {}", source_url, e);
+        log::error!(
+            "[import_marketplace_to_library] failed to parse source_url '{}': {}",
+            source_url,
+            e
+        );
         e
     })?;
     let owner = &repo_info.owner;
     let repo = &repo_info.repo;
 
     let client = build_github_client(token.as_deref());
-    let (branch, tree) = fetch_repo_tree(&client, owner, repo, &repo_info.branch).await.map_err(|e| {
-        log::error!("[import_marketplace_to_library] failed to fetch repo tree for {}/{}: {}", owner, repo, e);
-        e
-    })?;
+    let (branch, tree) = fetch_repo_tree(&client, owner, repo, &repo_info.branch)
+        .await
+        .map_err(|e| {
+            log::error!(
+                "[import_marketplace_to_library] failed to fetch repo tree for {}/{}: {}",
+                owner,
+                repo,
+                e
+            );
+            e
+        })?;
 
     let skills_dir = Path::new(&skills_path);
     let mut results: Vec<MarketplaceImportResult> = Vec::new();
 
     for skill_path in &skill_paths {
-        let override_ref = metadata_overrides.as_ref()
+        let override_ref = metadata_overrides
+            .as_ref()
             .and_then(|m| m.get(skill_path.as_str()));
-        match import_single_skill(&client, "https://raw.githubusercontent.com", owner, repo, &branch, skill_path, &tree, skills_dir, true, override_ref).await {
+        match import_single_skill(
+            &client,
+            "https://raw.githubusercontent.com",
+            owner,
+            repo,
+            &branch,
+            skill_path,
+            &tree,
+            skills_dir,
+            true,
+            override_ref,
+        )
+        .await
+        {
             Ok(mut skill) => {
                 let conn = db.0.lock().map_err(|e| {
-                    log::error!("[import_marketplace_to_library] failed to acquire DB lock for '{}': {}", skill_path, e);
+                    log::error!(
+                        "[import_marketplace_to_library] failed to acquire DB lock for '{}': {}",
+                        skill_path,
+                        e
+                    );
                     e.to_string()
                 })?;
 
@@ -1042,7 +1199,8 @@ pub async fn import_marketplace_to_library(
                 skill.marketplace_source_url = Some(source_url.clone());
 
                 // Fetch existing imported skill metadata (if any) for merging on upgrade
-                let existing_imported = crate::db::get_imported_skill(&conn, &skill.skill_name).unwrap_or(None);
+                let existing_imported =
+                    crate::db::get_imported_skill(&conn, &skill.skill_name).unwrap_or(None);
 
                 // Merge: new frontmatter value wins if Some, else fall back to existing installed value.
                 // Version and skill_name are intentionally NOT merged — keep the new values.
@@ -1053,8 +1211,9 @@ pub async fn import_marketplace_to_library(
                 // Insert into skills master first so that skills.id is available as a FK
                 // when inserting into imported_skills below.
                 let purpose_for_master = skill.purpose.as_deref().unwrap_or("domain");
-                if let Err(e) = crate::db::save_marketplace_skill(&conn, &skill.skill_name, purpose_for_master,
-                ) {
+                if let Err(e) =
+                    crate::db::save_marketplace_skill(&conn, &skill.skill_name, purpose_for_master)
+                {
                     log::warn!(
                         "[import_marketplace_to_library] failed to save marketplace skill for '{}': {}",
                         skill.skill_name, e
@@ -1072,7 +1231,8 @@ pub async fn import_marketplace_to_library(
                     if let Err(ce) = fs::remove_dir_all(&skill.disk_path) {
                         log::warn!(
                             "[import_marketplace_to_library] cleanup failed for '{}': {}",
-                            skill.disk_path, ce
+                            skill.disk_path,
+                            ce
                         );
                     }
                     results.push(MarketplaceImportResult {
@@ -1085,14 +1245,17 @@ pub async fn import_marketplace_to_library(
 
                 // Compute and store the content hash as the baseline for customization detection
                 if let Some(hash) = compute_skill_content_hash(&skill.disk_path) {
-                    if let Err(e) = crate::db::set_imported_skill_content_hash(&conn, &skill.skill_name, &hash) {
+                    if let Err(e) =
+                        crate::db::set_imported_skill_content_hash(&conn, &skill.skill_name, &hash)
+                    {
                         log::warn!("[import_marketplace_to_library] failed to set content_hash for '{}': {}", skill.skill_name, e);
                     }
                 }
 
                 log::info!(
                     "[import_marketplace_to_library] imported '{}' to '{}'",
-                    skill.skill_name, skill.disk_path
+                    skill.skill_name,
+                    skill.disk_path
                 );
                 results.push(MarketplaceImportResult {
                     skill_name: skill.skill_name,
@@ -1103,7 +1266,8 @@ pub async fn import_marketplace_to_library(
             Err(e) => {
                 log::error!(
                     "[import_marketplace_to_library] failed to import '{}': {}",
-                    skill_path, e
+                    skill_path,
+                    e
                 );
                 results.push(MarketplaceImportResult {
                     skill_name: skill_path.clone(),
@@ -1148,7 +1312,10 @@ fn yaml_quote(s: &str) -> String {
 }
 
 /// Rewrite the SKILL.md frontmatter block in the destination directory with values from `fm`.
-fn rewrite_skill_md(dest_dir: &Path, fm: &super::imported_skills::Frontmatter) -> Result<(), String> {
+fn rewrite_skill_md(
+    dest_dir: &Path,
+    fm: &super::imported_skills::Frontmatter,
+) -> Result<(), String> {
     let skill_md_path = dest_dir.join("SKILL.md");
     let existing = fs::read_to_string(&skill_md_path)
         .map_err(|e| format!("Failed to read SKILL.md for rewrite: {}", e))?;
@@ -1321,13 +1488,18 @@ pub(crate) async fn import_single_skill(
         fm.disable_model_invocation = ov.disable_model_invocation.or(fm.disable_model_invocation);
         log::debug!(
             "[import_single_skill] applied metadata override for '{}': name={:?} purpose={:?}",
-            dir_name, fm.name, override_purpose
+            dir_name,
+            fm.name,
+            override_purpose
         );
     }
 
     // Skill name MUST come from SKILL.md frontmatter `name:` field — no directory fallback.
     let skill_name = fm.name.clone().ok_or_else(|| {
-        format!("SKILL.md at '{}' is missing the 'name' frontmatter field", skill_path)
+        format!(
+            "SKILL.md at '{}' is missing the 'name' frontmatter field",
+            skill_path
+        )
     })?;
 
     if skill_name.is_empty() {
@@ -1337,13 +1509,11 @@ pub(crate) async fn import_single_skill(
     super::imported_skills::validate_skill_name(&skill_name)?;
 
     // Validate required frontmatter fields
-    let missing_required: Vec<&str> = [
-        ("description", fm.description.is_none()),
-    ]
-    .iter()
-    .filter(|(_, missing)| *missing)
-    .map(|(f, _)| *f)
-    .collect();
+    let missing_required: Vec<&str> = [("description", fm.description.is_none())]
+        .iter()
+        .filter(|(_, missing)| *missing)
+        .map(|(f, _)| *f)
+        .collect();
     if !missing_required.is_empty() {
         log::error!(
             "[import_single_skill] '{}' missing required frontmatter fields: {}",
@@ -1452,25 +1622,34 @@ pub(crate) async fn import_single_skill(
 
     // Rewrite SKILL.md with updated frontmatter if a metadata override was applied
     if metadata_override.is_some() {
-        log::info!("[import_single_skill] rewriting SKILL.md frontmatter for '{}'", skill_name);
+        log::info!(
+            "[import_single_skill] rewriting SKILL.md frontmatter for '{}'",
+            skill_name
+        );
         if let Err(e) = rewrite_skill_md(&dest_dir, &fm) {
-            log::error!("[import_single_skill] failed to rewrite SKILL.md for '{}': {}", skill_name, e);
+            log::error!(
+                "[import_single_skill] failed to rewrite SKILL.md for '{}': {}",
+                skill_name,
+                e
+            );
             // Clean up the disk directory to avoid leaving orphaned files
             if let Err(cleanup_err) = fs::remove_dir_all(&dest_dir) {
                 log::warn!(
                     "[import_single_skill] failed to clean up '{}' after rewrite failure: {}",
-                    dest_dir.display(), cleanup_err
+                    dest_dir.display(),
+                    cleanup_err
                 );
             }
             return Err(e);
         }
-        log::debug!("[import_single_skill] rewrote SKILL.md frontmatter for '{}'", skill_name);
+        log::debug!(
+            "[import_single_skill] rewrote SKILL.md frontmatter for '{}'",
+            skill_name
+        );
     }
 
     let skill_id = super::imported_skills::generate_skill_id(&skill_name);
-    let imported_at = chrono::Utc::now()
-        .format("%Y-%m-%d %H:%M:%S")
-        .to_string();
+    let imported_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
     Ok(ImportedSkill {
         skill_id,
@@ -1543,23 +1722,35 @@ pub async fn check_marketplace_updates(
 ) -> Result<MarketplaceUpdateResult, String> {
     log::info!(
         "[check_marketplace_updates] owner={} repo={} branch={} subpath={:?} source_url={}",
-        owner, repo, branch, subpath, source_url
+        owner,
+        repo,
+        branch,
+        subpath,
+        source_url
     );
 
     let token = {
         let conn = db.0.lock().map_err(|e| {
-            log::error!("[check_marketplace_updates] failed to acquire DB lock: {}", e);
+            log::error!(
+                "[check_marketplace_updates] failed to acquire DB lock: {}",
+                e
+            );
             e.to_string()
         })?;
         let settings = crate::db::read_settings_hydrated(&conn)?;
         settings.github_oauth_token.clone()
     };
 
-    let (registry_name, available) = list_github_skills_inner(&owner, &repo, &branch, subpath.as_deref(), token.as_deref()).await?;
+    let (registry_name, available) =
+        list_github_skills_inner(&owner, &repo, &branch, subpath.as_deref(), token.as_deref())
+            .await?;
 
     let result = {
         let conn = db.0.lock().map_err(|e| {
-            log::error!("[check_marketplace_updates] failed to acquire DB lock for DB reads: {}", e);
+            log::error!(
+                "[check_marketplace_updates] failed to acquire DB lock for DB reads: {}",
+                e
+            );
             e.to_string()
         })?;
 
@@ -1575,28 +1766,46 @@ pub async fn check_marketplace_updates(
             // Check workspace_skills: only match skills imported from this specific registry.
             // This prevents false-positive notifications for bundled skills that share a name
             // with a marketplace skill (bundled skills have marketplace_source_url = NULL).
-            if let Some(ws) = crate::db::get_workspace_skill_by_name_and_source(&conn, &skill.name, &source_url)? {
+            if let Some(ws) =
+                crate::db::get_workspace_skill_by_name_and_source(&conn, &skill.name, &source_url)?
+            {
                 let inst_ver = ws.version.as_deref().unwrap_or("");
                 if inst_ver.is_empty() || semver_gt(marketplace_ver, inst_ver) {
-                    workspace.push(SkillUpdateInfo { name: skill.name.clone(), path: skill.path.clone(), version: marketplace_ver.to_string() });
+                    workspace.push(SkillUpdateInfo {
+                        name: skill.name.clone(),
+                        path: skill.path.clone(),
+                        version: marketplace_ver.to_string(),
+                    });
                 }
             }
 
             // Check imported_skills: only match skills imported from this specific registry.
-            if let Some(imp) = crate::db::get_imported_skill_by_name_and_source(&conn, &skill.name, &source_url).unwrap_or(None) {
+            if let Some(imp) =
+                crate::db::get_imported_skill_by_name_and_source(&conn, &skill.name, &source_url)
+                    .unwrap_or(None)
+            {
                 let inst_ver = imp.version.as_deref().unwrap_or("");
                 if inst_ver.is_empty() || semver_gt(marketplace_ver, inst_ver) {
-                    library.push(SkillUpdateInfo { name: skill.name.clone(), path: skill.path.clone(), version: marketplace_ver.to_string() });
+                    library.push(SkillUpdateInfo {
+                        name: skill.name.clone(),
+                        path: skill.path.clone(),
+                        version: marketplace_ver.to_string(),
+                    });
                 }
             }
         }
 
-        MarketplaceUpdateResult { library, workspace, registry_name }
+        MarketplaceUpdateResult {
+            library,
+            workspace,
+            registry_name,
+        }
     };
 
     log::info!(
         "[check_marketplace_updates] found {} library updates, {} workspace updates",
-        result.library.len(), result.workspace.len()
+        result.library.len(),
+        result.workspace.len()
     );
 
     Ok(result)
@@ -1653,12 +1862,14 @@ pub fn check_skill_customized(
                 .unwrap_or(false)
         };
 
-        let workspace_root_ok = settings.workspace_path.as_ref().is_some_and(|wp| {
-            is_under_root(&Path::new(wp).join(".claude").join("skills"))
-        });
-        let skills_path_ok = settings.skills_path.as_ref().is_some_and(|sp| {
-            is_under_root(Path::new(sp))
-        });
+        let workspace_root_ok = settings
+            .workspace_path
+            .as_ref()
+            .is_some_and(|wp| is_under_root(&Path::new(wp).join(".claude").join("skills")));
+        let skills_path_ok = settings
+            .skills_path
+            .as_ref()
+            .is_some_and(|sp| is_under_root(Path::new(sp)));
 
         if !workspace_root_ok && !skills_path_ok {
             log::warn!(
@@ -1678,7 +1889,10 @@ pub fn check_skill_customized(
     let current = match compute_skill_content_hash(&disk_path) {
         Some(h) => h,
         None => {
-            log::debug!("[check_skill_customized] could not read SKILL.md for '{}'", skill_name);
+            log::debug!(
+                "[check_skill_customized] could not read SKILL.md for '{}'",
+                skill_name
+            );
             return Ok(false);
         }
     };
@@ -1720,8 +1934,7 @@ mod tests {
 
     #[test]
     fn test_parse_url_with_branch() {
-        let result =
-            parse_github_url_inner("https://github.com/acme/skills/tree/develop").unwrap();
+        let result = parse_github_url_inner("https://github.com/acme/skills/tree/develop").unwrap();
         assert_eq!(result.owner, "acme");
         assert_eq!(result.repo, "skills");
         assert_eq!(result.branch, "develop");
@@ -1730,10 +1943,9 @@ mod tests {
 
     #[test]
     fn test_parse_url_with_branch_and_subpath() {
-        let result = parse_github_url_inner(
-            "https://github.com/acme/skills/tree/main/packages/analytics",
-        )
-        .unwrap();
+        let result =
+            parse_github_url_inner("https://github.com/acme/skills/tree/main/packages/analytics")
+                .unwrap();
         assert_eq!(result.owner, "acme");
         assert_eq!(result.repo, "skills");
         assert_eq!(result.branch, "main");
@@ -1787,10 +1999,7 @@ mod tests {
         assert_eq!(result.owner, "acme");
         assert_eq!(result.repo, "mono");
         assert_eq!(result.branch, "v2");
-        assert_eq!(
-            result.subpath.as_deref(),
-            Some("packages/skills/analytics")
-        );
+        assert_eq!(result.subpath.as_deref(), Some("packages/skills/analytics"));
     }
 
     #[test]
@@ -1914,7 +2123,10 @@ mod tests {
             }
             _ => panic!("expected Path source"),
         }
-        assert_eq!(parsed.plugins[0].description.as_deref(), Some("Analytics skill"));
+        assert_eq!(
+            parsed.plugins[0].description.as_deref(),
+            Some("Analytics skill")
+        );
         assert_eq!(parsed.plugins[0].category.as_deref(), Some("data"));
 
         // Plugin without ./ prefix
@@ -2011,22 +2223,26 @@ mod tests {
 
         // Complete, valid frontmatter — name and description are the spec fields.
         // domain:, type:, purpose: and other unknown keys are silently ignored.
-        let complete = parse(
-            "---\nname: analytics\ndescription: Does analytics stuff\n---\n# Body",
-        );
+        let complete =
+            parse("---\nname: analytics\ndescription: Does analytics stuff\n---\n# Body");
         assert_eq!(complete.name.as_deref(), Some("analytics"));
-        assert_eq!(complete.description.as_deref(), Some("Does analytics stuff"));
+        assert_eq!(
+            complete.description.as_deref(),
+            Some("Does analytics stuff")
+        );
 
         // Whitespace-only values: trim_opt converts these to None.
-        let whitespace_name = parse(
-            "---\nname:    \ndescription: Desc\n---\n",
+        let whitespace_name = parse("---\nname:    \ndescription: Desc\n---\n");
+        assert!(
+            whitespace_name.name.is_none(),
+            "whitespace-only name must be None"
         );
-        assert!(whitespace_name.name.is_none(), "whitespace-only name must be None");
 
-        let whitespace_desc = parse(
-            "---\nname: reporting\ndescription:   \n---\n",
+        let whitespace_desc = parse("---\nname: reporting\ndescription:   \n---\n");
+        assert!(
+            whitespace_desc.description.is_none(),
+            "whitespace-only description must be None"
         );
-        assert!(whitespace_desc.description.is_none(), "whitespace-only description must be None");
 
         // No frontmatter at all — all fields None.
         let empty = parse("# Just a heading\nNo frontmatter here.");
@@ -2130,12 +2346,18 @@ mod tests {
         // Simulate get_default_branch succeeding with a different branch
         let resolved: Result<String, String> = Ok("master".to_string());
         let branch = resolved.unwrap_or_else(|_| parsed_branch.to_string());
-        assert_eq!(branch, "master", "Resolved branch should override parsed default");
+        assert_eq!(
+            branch, "master",
+            "Resolved branch should override parsed default"
+        );
 
         // Simulate get_default_branch failing — should fall back to parsed value
         let resolved_err: Result<String, String> = Err("network error".to_string());
         let branch_fallback = resolved_err.unwrap_or_else(|_| parsed_branch.to_string());
-        assert_eq!(branch_fallback, "main", "Fallback to parsed branch when resolution fails");
+        assert_eq!(
+            branch_fallback, "main",
+            "Fallback to parsed branch when resolution fails"
+        );
     }
 
     // --- yaml_quote tests ---
@@ -2205,7 +2427,11 @@ mod tests {
         let result = fs::read_to_string(&skill_md).unwrap();
 
         // Frontmatter values must be updated and quoted
-        assert!(result.contains("name: \"new-name\""), "name not rewritten: {}", result);
+        assert!(
+            result.contains("name: \"new-name\""),
+            "name not rewritten: {}",
+            result
+        );
         // domain no longer written to frontmatter
 
         // The body content AFTER the markdown HR must be preserved
@@ -2242,10 +2468,22 @@ mod tests {
         let result = fs::read_to_string(&skill_md).unwrap();
 
         // Should start with newly injected frontmatter
-        assert!(result.starts_with("---\n"), "missing opening ---: {}", result);
-        assert!(result.contains("name: \"my-skill\""), "name missing: {}", result);
+        assert!(
+            result.starts_with("---\n"),
+            "missing opening ---: {}",
+            result
+        );
+        assert!(
+            result.contains("name: \"my-skill\""),
+            "name missing: {}",
+            result
+        );
         // Original content should be preserved as body
-        assert!(result.contains("# Just a heading"), "original body lost: {}", result);
+        assert!(
+            result.contains("# Just a heading"),
+            "original body lost: {}",
+            result
+        );
     }
 
     #[test]
@@ -2317,10 +2555,22 @@ mod tests {
         rewrite_skill_md(tmp.path(), &fm).unwrap();
 
         let result = fs::read_to_string(tmp.path().join("SKILL.md")).unwrap();
-        assert!(result.contains("name: \"new-name\""), "name should be updated: {}", result);
+        assert!(
+            result.contains("name: \"new-name\""),
+            "name should be updated: {}",
+            result
+        );
         // domain no longer written to frontmatter
-        assert!(result.contains("# Skill Body"), "body should be preserved: {}", result);
-        assert!(result.contains("Some content here."), "body content should be preserved: {}", result);
+        assert!(
+            result.contains("# Skill Body"),
+            "body should be preserved: {}",
+            result
+        );
+        assert!(
+            result.contains("Some content here."),
+            "body content should be preserved: {}",
+            result
+        );
     }
 
     #[test]
@@ -2381,11 +2631,27 @@ mod tests {
 
             let result = fs::read_to_string(&skill_md).unwrap();
             // Frontmatter must be updated
-            assert!(result.contains("description: \"overridden desc\""), "description not updated: {}", result);
+            assert!(
+                result.contains("description: \"overridden desc\""),
+                "description not updated: {}",
+                result
+            );
             // Body content must be preserved verbatim
-            assert!(result.contains("# Instructions"), "body heading lost: {}", result);
-            assert!(result.contains("Do the thing."), "body line lost: {}", result);
-            assert!(result.contains("More body content here."), "second body line lost: {}", result);
+            assert!(
+                result.contains("# Instructions"),
+                "body heading lost: {}",
+                result
+            );
+            assert!(
+                result.contains("Do the thing."),
+                "body line lost: {}",
+                result
+            );
+            assert!(
+                result.contains("More body content here."),
+                "second body line lost: {}",
+                result
+            );
         }
 
         // --- Cleanup path: when rewrite_skill_md fails, dest_dir is cleaned up ---
@@ -2398,7 +2664,11 @@ mod tests {
             fs::create_dir_all(&dest_dir).unwrap();
 
             // Write some skill files as if download succeeded
-            fs::write(dest_dir.join("SKILL.md"), "---\nname: test-skill\n---\n# Body\n").unwrap();
+            fs::write(
+                dest_dir.join("SKILL.md"),
+                "---\nname: test-skill\n---\n# Body\n",
+            )
+            .unwrap();
             fs::write(dest_dir.join("references.md"), "Some references\n").unwrap();
 
             // Confirm files exist before simulated failure
@@ -2407,14 +2677,19 @@ mod tests {
 
             // Simulate what import_single_skill does on rewrite failure:
             // remove dest_dir to avoid leaving orphaned files.
-            let simulated_rewrite_err: Result<(), String> = Err("Failed to write updated SKILL.md: permission denied".to_string());
+            let simulated_rewrite_err: Result<(), String> =
+                Err("Failed to write updated SKILL.md: permission denied".to_string());
             if let Err(e) = simulated_rewrite_err {
                 // This is the exact cleanup block from import_single_skill
                 if let Err(cleanup_err) = fs::remove_dir_all(&dest_dir) {
                     panic!("Cleanup failed: {}", cleanup_err);
                 }
                 // Verify dest_dir no longer exists after cleanup
-                assert!(!dest_dir.exists(), "dest_dir should be removed after rewrite failure; error was: {}", e);
+                assert!(
+                    !dest_dir.exists(),
+                    "dest_dir should be removed after rewrite failure; error was: {}",
+                    e
+                );
             }
         }
     }
@@ -2444,15 +2719,35 @@ mod tests {
         let result = fs::read_to_string(&skill_md).unwrap();
 
         // Overridden fields must be updated
-        assert!(result.contains("name: \"overridden-name\""), "name not overridden: {}", result);
-        assert!(result.contains("description: \"overridden-desc\""), "description not overridden: {}", result);
+        assert!(
+            result.contains("name: \"overridden-name\""),
+            "name not overridden: {}",
+            result
+        );
+        assert!(
+            result.contains("description: \"overridden-desc\""),
+            "description not overridden: {}",
+            result
+        );
 
         // Non-overridden fields must be preserved from the original parse
-        assert!(result.contains("version: \"1.0.0\""), "version was lost: {}", result);
-        assert!(result.contains("model: \"claude-3-haiku\""), "model was lost: {}", result);
+        assert!(
+            result.contains("version: \"1.0.0\""),
+            "version was lost: {}",
+            result
+        );
+        assert!(
+            result.contains("model: \"claude-3-haiku\""),
+            "model was lost: {}",
+            result
+        );
 
         // Body must be preserved
-        assert!(result.contains("# Body content"), "body was lost: {}", result);
+        assert!(
+            result.contains("# Body content"),
+            "body was lost: {}",
+            result
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -2494,12 +2789,18 @@ mod tests {
     #[test]
     fn test_discover_nested_skills_normal() {
         let plugins = vec![make_plugin(Some("engineering"), "./engineering", None)];
-        let skill_dirs = dirs(&["engineering/skills/standup", "engineering/skills/code-review"]);
+        let skill_dirs = dirs(&[
+            "engineering/skills/standup",
+            "engineering/skills/code-review",
+        ]);
         let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
         assert_eq!(sorted_names(&skills), vec!["code-review", "standup"]);
         assert_eq!(
             sorted_paths(&skills),
-            vec!["engineering/skills/code-review", "engineering/skills/standup"]
+            vec![
+                "engineering/skills/code-review",
+                "engineering/skills/standup"
+            ]
         );
     }
 
@@ -2510,7 +2811,10 @@ mod tests {
         let skill_dirs = dirs(&["skills/standup", "skills/code-review"]);
         let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
         assert_eq!(sorted_names(&skills), vec!["code-review", "standup"]);
-        assert_eq!(sorted_paths(&skills), vec!["skills/code-review", "skills/standup"]);
+        assert_eq!(
+            sorted_paths(&skills),
+            vec!["skills/code-review", "skills/standup"]
+        );
     }
 
     /// Bare source with `pluginRoot`: `"engineering"` + `plugin_root="plugins"` →
@@ -2521,7 +2825,10 @@ mod tests {
         let skill_dirs = dirs(&["plugins/engineering/skills/standup"]);
         let skills = discover_skills_from_catalog(&plugins, Some("plugins"), &skill_dirs, None);
         assert_eq!(sorted_names(&skills), vec!["standup"]);
-        assert_eq!(sorted_paths(&skills), vec!["plugins/engineering/skills/standup"]);
+        assert_eq!(
+            sorted_paths(&skills),
+            vec!["plugins/engineering/skills/standup"]
+        );
     }
 
     /// Bare source without `pluginRoot` → treated as a path from repo root.
@@ -2547,7 +2854,10 @@ mod tests {
         ]);
         let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
         assert_eq!(skills.len(), 3);
-        assert_eq!(sorted_names(&skills), vec!["code-review", "literature-search", "standup"]);
+        assert_eq!(
+            sorted_names(&skills),
+            vec!["code-review", "literature-search", "standup"]
+        );
     }
 
     /// Plugin whose `skills/` directory is empty → contributes 0 skills.
@@ -2587,7 +2897,10 @@ mod tests {
         let skill_dirs = dirs(&["sub/engineering/skills/standup"]);
         let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, Some("sub"));
         assert_eq!(sorted_names(&skills), vec!["standup"]);
-        assert_eq!(sorted_paths(&skills), vec!["sub/engineering/skills/standup"]);
+        assert_eq!(
+            sorted_paths(&skills),
+            vec!["sub/engineering/skills/standup"]
+        );
     }
 
     /// Dirs more than one level below `skills/` are excluded (remainder contains `/`).
@@ -2621,7 +2934,11 @@ mod tests {
     /// Plugin `description` propagates to each skill discovered from that plugin.
     #[test]
     fn test_discover_description_propagated() {
-        let plugins = vec![make_plugin(Some("eng"), "./engineering", Some("Engineering skills"))];
+        let plugins = vec![make_plugin(
+            Some("eng"),
+            "./engineering",
+            Some("Engineering skills"),
+        )];
         let skill_dirs = dirs(&["engineering/skills/standup"]);
         let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
         assert_eq!(skills[0].description.as_deref(), Some("Engineering skills"));
@@ -2678,12 +2995,18 @@ mod tests {
 
     #[test]
     fn test_extract_plugin_path_normal() {
-        assert_eq!(extract_plugin_path("engineering/skills/standup"), "engineering");
+        assert_eq!(
+            extract_plugin_path("engineering/skills/standup"),
+            "engineering"
+        );
     }
 
     #[test]
     fn test_extract_plugin_path_nested_plugin() {
-        assert_eq!(extract_plugin_path("plugins/eng/skills/standup"), "plugins/eng");
+        assert_eq!(
+            extract_plugin_path("plugins/eng/skills/standup"),
+            "plugins/eng"
+        );
     }
 
     /// Root plugin: `skills/` is directly under the repo root → plugin_path = ""
@@ -2700,7 +3023,10 @@ mod tests {
 
     #[test]
     fn test_extract_plugin_path_deep_subpath() {
-        assert_eq!(extract_plugin_path("sub/engineering/skills/standup"), "sub/engineering");
+        assert_eq!(
+            extract_plugin_path("sub/engineering/skills/standup"),
+            "sub/engineering"
+        );
     }
 
     /// Path with no `/skills/` segment at all → returns ""
@@ -2759,7 +3085,10 @@ mod tests {
         )
         .await;
 
-        assert!(result.is_err(), "import must fail when name: is absent from frontmatter");
+        assert!(
+            result.is_err(),
+            "import must fail when name: is absent from frontmatter"
+        );
         let err = result.unwrap_err();
         assert!(
             err.contains("missing the 'name' frontmatter field"),
@@ -2775,7 +3104,9 @@ mod tests {
         let _mock = server
             .mock("GET", "/owner/repo/main/my-skill/SKILL.md")
             .with_status(200)
-            .with_body("---\ndescription: A description\npurpose: domain\nversion: 1.0.0\n---\n# Body\n")
+            .with_body(
+                "---\ndescription: A description\npurpose: domain\nversion: 1.0.0\n---\n# Body\n",
+            )
             .create_async()
             .await;
 
@@ -2801,8 +3132,15 @@ mod tests {
         )
         .await;
 
-        assert!(result.is_ok(), "import should succeed when override supplies a name; got: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "import should succeed when override supplies a name; got: {:?}",
+            result
+        );
         assert_eq!(result.unwrap().skill_name, "override-name");
-        assert!(tmp.path().join("override-name").exists(), "skill dir must be written to disk");
+        assert!(
+            tmp.path().join("override-name").exists(),
+            "skill dir must be written to disk"
+        );
     }
 }
