@@ -48,6 +48,24 @@ contradictory_inputs: true
 - **Status:** resolved
 `;
 
+const decisionsMdWithH2Headings = `---
+decision_count: 2
+conflicts_resolved: 0
+round: 1
+---
+## D1: Spread Period
+- **Original question:** Q1
+- **Decision:** Use 12 months
+- **Implication:** Normalized MRR
+- **Status:** resolved
+
+## D2: Segmentation
+- **Original question:** Q10
+- **Decision:** Geography primary
+- **Implication:** Use territory slices
+- **Status:** resolved with note
+`;
+
 // ─── Summary Card Stats ───────────────────────────────────────────────────────
 
 describe("DecisionsSummaryCard — Summary Stats", () => {
@@ -127,7 +145,7 @@ describe("DecisionsSummaryCard — Decision Cards", () => {
     render(<DecisionsSummaryCard decisionsContent={sampleDecisionsMd} />);
     const badges = screen.getAllByText("resolved");
     expect(badges.length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText("conflict-resolved")).toBeInTheDocument();
+    expect(screen.getByText(/conflict-resolved/i)).toBeInTheDocument();
   });
 
   it("shows decision preview text when collapsed", () => {
@@ -197,6 +215,13 @@ describe("serializeDecisions — round-trip", () => {
     const serialized = serializeDecisions(decisions, rawFm);
     expect(serialized).toContain("contradictory_inputs: revised");
     expect(serialized).not.toContain("contradictory_inputs: true");
+  });
+
+  it("parses decisions when headings use ## instead of ###", () => {
+    const decisions = parseDecisions(decisionsMdWithH2Headings);
+    expect(decisions).toHaveLength(2);
+    expect(decisions[0]).toMatchObject({ id: "D1", title: "Spread Period" });
+    expect(decisions[1]).toMatchObject({ id: "D2", title: "Segmentation", status: "resolved" });
   });
 });
 

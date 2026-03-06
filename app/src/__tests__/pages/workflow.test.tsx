@@ -744,10 +744,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       return Promise.reject("not found");
     });
 
-    let resolveGateAgentId: ((id: string) => void) | null = null;
-    vi.mocked(runAnswerEvaluator).mockImplementation(
-      () => new Promise<string>((resolve) => { resolveGateAgentId = resolve; })
-    );
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-1");
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -782,8 +779,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     expect(wf.currentStep).toBe(0);
     expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalledWith("test-skill", 1, "/test/workspace");
 
-    // Clean up pending promise to avoid leaking unresolved async work in the test process.
-    resolveGateAgentId?.("gate-agent-1");
   });
 
   it("skipToDecisions from step 0 skips to step 2 (Confirm Decisions)", async () => {

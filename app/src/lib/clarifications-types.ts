@@ -135,9 +135,8 @@ export function parseClarifications(content: string | null): ClarificationsFile 
 
     const rawSections = Array.isArray(raw.sections) ? raw.sections : [];
     const rawQuestionCount = rawSections.reduce((count, section) => {
-      const questions = Array.isArray((section as { questions?: unknown[] }).questions)
-        ? (section as { questions?: unknown[] }).questions
-        : [];
+      const sectionQuestions = (section as { questions?: unknown[] }).questions;
+      const questions = Array.isArray(sectionQuestions) ? sectionQuestions : [];
       return count + questions.length;
     }, 0);
     const legacyDimensions = Array.isArray(raw.dimensions)
