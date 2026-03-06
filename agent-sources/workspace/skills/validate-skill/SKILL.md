@@ -9,13 +9,23 @@ description: >
 
 # Validate Skill
 
-Read-only. Produces three inline text outputs (caller writes files):
+## Overview
+
+Read-only validator that produces three inline outputs:
 
 1. Validation log (`agent-validation-log.md`)
 2. Test results (`test-skill.md`)
-3. Companion skill recommendations (`companion-skills.md`)
+3. Companion recommendations (`companion-skills.md`)
 
----
+Do not modify skill files.
+
+## Quick Reference
+
+- Inventory skill references from `skill_output_dir/references`
+- Run three focused sub-agents using the spec files
+- Consolidate findings into the required three output sections
+- Keep findings concrete: file + section + specific fix
+- Require standards checks (structure, evaluations, anti-patterns)
 
 ## Inputs
 
@@ -27,65 +37,36 @@ Read-only. Produces three inline text outputs (caller writes files):
 | `skill_output_dir` | Path to skill output directory |
 | `workspace_dir` | Path to workspace directory |
 
----
-
 ## Step 1 — File Inventory
 
-Glob `references/` in `skill_output_dir` to collect all reference file paths.
-
----
+Glob `references/` in `skill_output_dir` and collect all reference paths.
 
 ## Step 2 — Sub-agents
 
-Check `{context_dir}/decisions.md` frontmatter. If `contradictory_inputs: revised`, the user has reviewed and accepted the decisions — omit `clarifications.json` from all sub-agent inputs and treat `decisions.md` as authoritative.
+Check `{context_dir}/decisions.md` frontmatter.
 
-Read the three spec files in `references/`. Spawn one sub-agent per spec with the spec content as instructions plus these paths.
+If `contradictory_inputs: revised`, treat decisions as authoritative and omit `clarifications.json` from all sub-agent inputs.
 
-**Quality checker** — `references/validate-quality-spec.md`:
+Read three spec files in `references/` and spawn one sub-agent per spec:
 
-- `decisions.md`: `{context_dir}/decisions.md`
-- `clarifications.json`: `{context_dir}/clarifications.json` _(omit if `contradictory_inputs: revised`)_
-- `SKILL.md`: `{skill_output_dir}/SKILL.md`
-- Reference files: all paths from Step 1 glob
-- Workspace directory: `{workspace_dir}`
-- Purpose: `{purpose}`
+- Quality checker: `references/validate-quality-spec.md`
+- Test evaluator: `references/test-skill-spec.md`
+- Companion recommender: `references/companion-recommender-spec.md`
 
-**Test evaluator** — `references/test-skill-spec.md`:
-
-- `decisions.md`: `{context_dir}/decisions.md`
-- `clarifications.json`: `{context_dir}/clarifications.json` _(omit if `contradictory_inputs: revised`)_
-- `SKILL.md`: `{skill_output_dir}/SKILL.md`
-- Reference files: all paths from Step 1 glob
-- Workspace directory: `{workspace_dir}`
-
-**Companion recommender** — `references/companion-recommender-spec.md`:
-
-- `SKILL.md`: `{skill_output_dir}/SKILL.md`
-- Reference files: all paths from Step 1 glob
-- `decisions.md`: `{context_dir}/decisions.md`
-- `research-plan.md`: `{context_dir}/research-plan.md`
-- Workspace directory: `{workspace_dir}`
-- Purpose: `{purpose}`
-
----
+Pass required input paths exactly as described in each spec.
 
 ## Step 3 — Consolidate and Report
 
-Consolidate sub-agent results into three output sections. Do not modify skill files.
+Combine sub-agent outputs into:
 
-**Validation findings** — All FAIL/MISSING items with file, section, and concrete suggested fix.
-
-**Boundary violations** — Each violation with file, section, and crossed dimension.
-
-**Prescriptiveness rewrites** — Original text and suggested informational rewrite.
-
-**Test gap analysis** — Uncovered topics, vague content, missing SKILL.md pointers, and 5-8 suggested test prompt categories.
-
----
+- Validation findings (FAIL/MISSING with concrete fixes)
+- Boundary violations
+- Prescriptiveness rewrites
+- Test gap analysis with 5-8 prompt categories
 
 ## Return Format
 
-Return inline text with three delimited sections. Delimiters must be exactly as shown:
+Return inline text with exact delimiters:
 
 ```text
 === VALIDATION LOG ===
@@ -96,29 +77,23 @@ Return inline text with three delimited sections. Delimiters must be exactly as 
 [full companion-skills.md content including YAML frontmatter]
 ```
 
-All three sections must be present.
-
----
+All three sections are required.
 
 ## Output Format
 
 ### `=== VALIDATION LOG ===`
 
-Summary (decisions covered X/Y, structural checks, content checks, auto-fixed count, manual review count), then:
-
-- Coverage results, Structural results, Content results, Boundary check, Prescriptiveness rewrites, Manual review items
+Include summary + coverage + structure + content + boundary + rewrites + manual review items.
 
 ### `=== TEST RESULTS ===`
 
-Summary (total/passed/partial/failed counts), then:
-
-- Test results (prompt, category, result, coverage, gap per test), Skill content issues, Suggested PM prompts
+Include summary + per-scenario outcomes + skill content gaps + suggested PM prompts.
 
 ### `=== COMPANION SKILLS ===`
 
-YAML frontmatter (for UI parsing) plus markdown body with reasoning per recommendation.
+Include YAML frontmatter with companion entries and markdown reasoning body.
 
-**YAML frontmatter schema:**
+YAML schema:
 
 ```yaml
 ---
@@ -135,31 +110,25 @@ companions:
 ---
 ```
 
-If no recommendations, use `companions: []`.
-
----
+If none, use `companions: []`.
 
 ## Success Criteria
 
 ### Validation
 
-- Every decision and answered clarification mapped to a file and section
-- All Skill Best Practices checks pass
-- Each content file scores 3+ on all Quality Dimensions
-- All auto-fixable issues fixed and verified
-- Standards skills have a Getting Started section
-- No process artifacts, stakeholder questions, or redundant discovery sections
+- Every decision and answered clarification mapped to file + section
+- Structural and best-practice checks pass
+- Content sections score >=3 on quality dimensions
+- Standards skills include Getting Started section
+- No process artifacts or stakeholder Q&A blocks in skill output
 
 ### Evaluations
 
-- `{context_dir}/evaluations.md` present with 3+ complete evaluation scenarios
-- Each scenario actually run against Claude with the skill active
-- Each result has PASS/PARTIAL/FAIL with specific evidence
-- Actionable gaps identified
+- `{context_dir}/evaluations.md` exists with 3+ complete scenarios
+- Scenarios include prompt, expected behavior, and pass criteria
+- Results include PASS/PARTIAL/FAIL evidence
 
 ### Testing
 
-- 5 test prompts covering all 6 categories
-- Each result has PASS/PARTIAL/FAIL with specific evidence
-- Report identifies actionable patterns
-- Suggested prompts target real gaps
+- At least 5 test prompts across required categories
+- Every result includes specific evidence and actionable next steps
