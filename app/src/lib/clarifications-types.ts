@@ -58,6 +58,14 @@ export interface Note {
   body: string;
 }
 
+interface LegacyDimension {
+  id?: string;
+  name?: string;
+  description?: string;
+  priority?: string;
+  questions?: string[];
+}
+
 // Derived helpers
 
 export type SectionStatus = "complete" | "partial" | "blocked";
@@ -115,7 +123,58 @@ function normalizeQuestion(q: Question): Question {
 export function parseClarifications(content: string | null): ClarificationsFile | null {
   if (!content) return null;
   try {
-    const raw = JSON.parse(content) as ClarificationsFile;
+    const raw = JSON.parse(content) as ClarificationsFile & {
+      dimensions?: LegacyDimension[];
+      metadata?: ClarificationsMetadata & {
+        domain?: string;
+        skill_name?: string;
+        scope_recommendation?: boolean;
+      };
+    };
+
+    // Back-compat: some older or non-canonical research flows write
+    // `dimensions[]` with string questions. Convert to canonical shape so
+    // Step 0/1 can still render and edit questions.
+    if ((!Array.isArray(raw.sections) || raw.sections.length === 0) && Array.isArray(raw.dimensions)) {
+      const convertedSections: Section[] = raw.dimensions.map((d, sectionIndex) => {
+        const sectionId = d.id || `S${sectionIndex + 1}`;
+        const sourceQuestions = Array.isArray(d.questions) ? d.questions : [];
+        return {
+          id: sectionId,
+          title: d.name || `Section ${sectionIndex + 1}`,
+          description: d.description,
+          questions: sourceQuestions.map((questionText, questionIndex) => ({
+            id: `${sectionId}.Q${questionIndex + 1}`,
+            title: questionText,
+            must_answer: false,
+            text: questionText,
+            choices: [],
+            recommendation: null,
+            answer_choice: null,
+            answer_text: null,
+            refinements: [],
+          })),
+        };
+      });
+
+      const questionCount = convertedSections.reduce((count, section) => count + section.questions.length, 0);
+      return {
+        version: "1",
+        metadata: {
+          title: raw.metadata?.domain || raw.metadata?.skill_name || "Clarifications",
+          question_count: questionCount,
+          section_count: convertedSections.length,
+          refinement_count: 0,
+          must_answer_count: 0,
+          priority_questions: [],
+          scope_recommendation: !!raw.metadata?.scope_recommendation,
+          duplicates_removed: 0,
+        },
+        sections: convertedSections,
+        notes: raw.notes ?? [],
+      };
+    }
+
     return {
       ...raw,
       metadata: {
