@@ -439,8 +439,10 @@ export default function WorkflowPage() {
   };
 
   const advanceToNextStep = useCallback(() => {
+    const { gateLoading: gateLoadingNow, disabledSteps: disabled } = useWorkflowStore.getState();
+    // Transition gate owns progression while answer analysis is running.
+    if (gateLoadingNow || gateAgentIdRef.current) return;
     if (currentStep >= steps.length - 1) return;
-    const { disabledSteps: disabled } = useWorkflowStore.getState();
     const nextStep = currentStep + 1;
 
     // Don't advance if the next step is disabled (scope too broad)
@@ -460,6 +462,7 @@ export default function WorkflowPage() {
     if (pendingAutoStartStep !== currentStep) return;
     if (!isAgentType) return;
     if (isRunning) return;
+    if (gateLoading || gateAgentIdRef.current) return;
     if (steps[currentStep]?.status !== "pending") {
       setPendingAutoStartStep(null);
       return;
@@ -467,7 +470,7 @@ export default function WorkflowPage() {
     setPendingAutoStartStep(null);
     handleStartAgentStep();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingAutoStartStep, currentStep, steps, isRunning, isAgentType]);
+  }, [pendingAutoStartStep, currentStep, steps, isRunning, isAgentType, gateLoading]);
 
   // Auto-start when switching from Review → Update mode on a pending agent step.
   // Does NOT fire on initial page load (new skills show a Start button per AC 1).
@@ -482,7 +485,7 @@ export default function WorkflowPage() {
     if (!workspacePath) return;
     const status = steps[currentStep]?.status;
     if (status && status !== "pending") return;
-    if (isRunning || pendingAutoStartStep !== null) return;
+    if (isRunning || pendingAutoStartStep !== null || gateLoading) return;
     console.log(`[workflow] Auto-starting step ${currentStep} (review→update toggle)`);
     setPendingAutoStartStep(currentStep);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -604,6 +607,10 @@ export default function WorkflowPage() {
       toast.error("Missing workspace path", { duration: Infinity });
       return;
     }
+    if (gateLoading || gateAgentIdRef.current) {
+      toast.info("Answer analysis is in progress. Please wait for results.");
+      return;
+    }
 
     try {
       clearRuns();
@@ -638,6 +645,8 @@ export default function WorkflowPage() {
   const runGateEvaluation = async () => {
     if (!workspacePath) return;
     console.log(`[workflow] Running answer evaluator gate for "${skillName}"`);
+    // Ensure no stale auto-start trigger can run another step during gate analysis.
+    setPendingAutoStartStep(null);
     setGateLoading(true);
 
     try {
@@ -656,6 +665,10 @@ export default function WorkflowPage() {
   };
 
   const runGateOrAdvance = () => {
+    const { gateLoading: gateLoadingNow } = useWorkflowStore.getState();
+    // Ignore duplicate clicks while evaluator is already running.
+    if (gateLoadingNow || gateAgentIdRef.current) return;
+
     // Gate 1: after step 0 (Research), evaluate answers before advancing to Detailed Research
     if (currentStep === 0 && workspacePath && !disabledSteps.includes(1)) {
       setGateContext("clarifications");
