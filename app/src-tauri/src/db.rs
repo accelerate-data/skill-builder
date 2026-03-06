@@ -3359,6 +3359,7 @@ mod tests {
         run_content_hash_migration(&conn).unwrap();
         run_backfill_null_versions_migration(&conn).unwrap();
         run_rename_purpose_drop_domain_migration(&conn).unwrap();
+        run_skills_soft_delete_migration(&conn).unwrap();
         run_marketplace_source_url_migration(&conn).unwrap();
         run_skills_soft_delete_migration(&conn).unwrap();
         run_backfill_synthetic_sessions_migration(&conn).unwrap();
@@ -3832,6 +3833,7 @@ mod tests {
         run_content_hash_migration(&conn).unwrap();
         run_backfill_null_versions_migration(&conn).unwrap();
         run_rename_purpose_drop_domain_migration(&conn).unwrap();
+        run_skills_soft_delete_migration(&conn).unwrap();
 
         // Verify skills master was populated
         let skills = list_all_skills(&conn).unwrap();

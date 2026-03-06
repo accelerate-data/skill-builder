@@ -735,8 +735,18 @@ mod tests {
         assert!(result.notifications[0].contains("marketplace skill removed"));
         assert!(result.notifications[0].contains("SKILL.md not found"));
 
-        // Skills master record should be deleted
-        assert!(crate::db::get_skill_master_id(&conn, "gone-skill").unwrap().is_none());
+        // Skills master record should be soft-deleted
+        let deleted_at: Option<String> = conn
+            .query_row(
+                "SELECT deleted_at FROM skills WHERE name = 'gone-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            deleted_at.as_deref().is_some_and(|v| !v.is_empty()),
+            "gone-skill should be soft-deleted in skills master",
+        );
     }
 
     // --- Missing workspace dir is recreated, not treated as stale ---
