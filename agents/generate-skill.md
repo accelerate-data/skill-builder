@@ -75,20 +75,19 @@ Adapt section themes based on what decisions.md actually contains.
 
 ## Phase 1: Plan the Skill Structure
 
-Read `decisions.md`. Design file layout per Skill Builder Practices.
+Read `decisions.md`. Then read the relevant Skill Builder Practices reference files:
+
+- **All skills**: read `skill-builder-practices/references/de-patterns.md` for stack conventions and Fabric anti-patterns
+- **Knowledge-capture skills**: also read `skill-builder-practices/references/ba-patterns.md` for domain decomposition, entity mapping, and metric extraction patterns
+
+Design file layout per Skill Builder Practices:
 
 - Each reference file covers a coherent topic area, not one file per decision
 - 3-8 reference files, descriptive kebab-case names (e.g., `entity-model.md`, `pipeline-metrics.md`)
 
 ## Phase 2: Write SKILL.md
 
-Follow Skill Builder Practices for structure, naming, and line limits.
-
-Skill writing rules:
-
-- Put all trigger conditions in frontmatter `description`, not body sections.
-- Keep body instructions imperative and concise; explain why where high-risk.
-- Move long details to reference files and keep pointers explicit.
+Follow the Skill Writing Guideline in Skill Builder Practices for structure, naming, line limits, description pattern, and writing style.
 
 **Frontmatter:**
 
@@ -105,13 +104,6 @@ modified: <today's date>
 ```
 
 `tools` is the only field the agent determines. All others come from user-context.md or the coordinator prompt.
-
-Context alignment rules:
-
-- Keep generated guidance aligned with purpose and user context first.
-- For `platform` purpose, enforce Lakehouse-first recommendations where technical behavior depends on endpoint/runtime constraints.
-- For non-platform purposes, include Lakehouse-specific detail only when it materially affects the skill's decisions, risks, or tests.
-- Avoid generic warehouse-first prescriptions that conflict with Fabric/Azure context.
 
 **Description** trigger pattern: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` If the user's description in user-context.md already matches, use as-is. If too short, expand from description + purpose + "What Claude Needs to Know".
 
@@ -151,6 +143,8 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 
 ### Output Example — Knowledge-Capture (Business Process)
 
+Section names are domain-specific — derive them from `decisions.md`, not from this example.
+
 ```yaml
 ---
 name: Procurement Analytics
@@ -163,7 +157,7 @@ modified: 2025-06-15
 ---
 ```
 
-Sections: Overview → Quick Reference → Metric Definitions → Materiality Thresholds → Segmentation Standards → Period Handling → Business Logic Decisions → Output Standards → Reference Files
+Sections (illustrative): Overview → Quick Reference → Metric Definitions → Materiality Thresholds → Segmentation Standards → Period Handling → Business Logic Decisions → Output Standards → Reference Files
 
 ### Output Example — Standards (Platform)
 
@@ -185,12 +179,6 @@ Sections: Overview → Quick Reference → **Getting Started** → **Decision De
 
 ## Success Criteria
 
-- Skill Builder Practices followed (structure, naming, line limits, content rules, anti-patterns)
-- SKILL.md has metadata, overview, trigger conditions, quick reference, and pointers
-- 3-8 self-contained reference files
-- Every decision from `decisions.md` addressed
-- Correct structure pattern for purpose (knowledge-capture vs standards)
-- Assertion limits respected (knowledge-capture: 0, standards: up to 5)
-- Delta rule followed
-- Standards skills: Getting Started (5-8 steps)
-- **Rewrite mode:** All original domain knowledge preserved
+- Every decision from `decisions.md` is addressed in at least one file
+- SKILL.md pointers match every reference file written
+- **Rewrite mode:** No domain knowledge dropped from original files
