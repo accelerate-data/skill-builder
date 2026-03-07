@@ -84,6 +84,12 @@ Read `decisions.md`. Design file layout per Skill Builder Practices.
 
 Follow Skill Builder Practices for structure, naming, and line limits.
 
+Skill writing rules:
+
+- Put all trigger conditions in frontmatter `description`, not body sections.
+- Keep body instructions imperative and concise; explain why where high-risk.
+- Move long details to reference files and keep pointers explicit.
+
 **Frontmatter:**
 
 ```yaml
@@ -116,8 +122,6 @@ Context alignment rules:
 ## Phase 3: Write Reference Files and Self-Review
 
 Write each reference file to `references/` per Skill Builder Practices. Keep files self-contained.
-
-**Always write `{context_dir}/evaluations.md`** — at least 3 scenarios covering distinct topic areas (see Skill Builder Practices for format).
 
 Self-review:
 
@@ -188,6 +192,5 @@ Sections: Overview → Quick Reference → **Getting Started** → **Decision De
 - Correct structure pattern for purpose (knowledge-capture vs standards)
 - Assertion limits respected (knowledge-capture: 0, standards: up to 5)
 - Delta rule followed
-- `{context_dir}/evaluations.md` with 3+ scenarios covering distinct topic areas
 - Standards skills: Getting Started (5-8 steps)
 - **Rewrite mode:** All original domain knowledge preserved

@@ -19,10 +19,12 @@ trigger: >
 Use this skill to keep generated skills concise, decision-oriented, and reusable.
 
 Audience:
+
 - Agents creating or updating data engineering skills
 - Agents validating skill quality and structure
 
 Core model:
+
 - Put trigger logic in frontmatter description
 - Keep SKILL.md concise and move details to references
 - Include only knowledge Claude is likely to get wrong without this skill
@@ -42,19 +44,17 @@ Core model:
 2. Define trigger behavior in frontmatter `description` using concrete usage phrases.
 3. Draft `Overview` and `Quick Reference` with only high-signal constraints.
 4. Map required sections from this skill and create reference files for long content.
-5. Write `context/evaluations.md` with at least 3 runnable scenarios before deep writing.
-6. Add only domain-specific guidance that Claude would likely miss without the skill.
-7. Validate against Actionability, Specificity, Domain Depth, and Self-Containment.
-8. Remove redundant explanations, process artifacts, and non-essential text before finalizing.
+5. Add only domain-specific guidance that Claude would likely miss without the skill.
+6. Validate against Actionability, Specificity, Domain Depth, and Self-Containment.
+7. Remove redundant explanations, process artifacts, and non-essential text before finalizing.
 
 ## Decision Dependency Map
 
 1. Purpose classification: standards vs knowledge-capture
 2. Structure pattern: decision-oriented vs question-oriented
 3. Section inventory: required sections and reference split
-4. Evaluation design: scenarios covering different failure modes
-5. Content detail level: enforce delta rule + degrees of freedom
-6. Final quality gate: score all dimensions, then trim for concision
+4. Content detail level: enforce delta rule + degrees of freedom
+5. Final quality gate: score all dimensions, then trim for concision
 
 ## Content Principles
 
@@ -81,15 +81,33 @@ Core model:
 - Knowledge-capture skills: no Getting Started, no dependency map
 - If content grows beyond a few paragraphs, extract it to `references/`
 
+### Skill Writing Guideline
+
+#### Frontmatter
+
+- Include `name` and `description` as required fields.
+- Keep "when to use" trigger language in `description`, not in body sections.
+- Use explicit trigger phrasing in description and avoid vague trigger terms.
+- Prefer trigger-complete descriptions over short generic summaries.
+
+#### Body
+
+- Use imperative guidance that explains what to do and why it matters.
+- Keep SKILL.md concise; move deep detail to `references/` with clear pointers.
+- Avoid repeating trigger guidance in body sections.
+- Include examples only where they reduce ambiguity for high-risk decisions.
+
 ## Purpose and Structure Patterns
 
 ### Knowledge-Capture Skills
 
 Purposes:
+
 - Business process knowledge
 - Source system customizations
 
 Pattern:
+
 - Question-oriented parallel sections
 - Zero pre-filled assertions
 - No dependency ordering sections
@@ -97,10 +115,12 @@ Pattern:
 ### Standards Skills
 
 Purposes:
+
 - Organization specific data engineering standards
 - Organization specific Azure or Fabric standards
 
 Pattern:
+
 - Decision-oriented sections with dependency ordering
 - Include Getting Started and Decision Dependency Map
 - Allow up to 5 pre-filled factual assertions where model priors are wrong
@@ -110,29 +130,17 @@ Pattern:
 Include only guidance Claude is likely to miss without this skill.
 If it is already reliable from Context7 or model priors, omit it.
 
-## Evaluations (mandatory)
-
-Create `context/evaluations.md` with at least 3 scenarios:
-
-```text
-### Scenario 1: [Short name]
-**Prompt**: [Exact prompt to send to Claude with this skill active]
-**Expected behavior**: [Specific, observable behavior]
-**Pass criteria**: [1-2 measurable signals]
-```
-
-Scenarios must be runnable, grounded, and observable.
-
 ## Output Separation
 
 Skill output directory contains only:
+
 - `SKILL.md`
 - `references/*.md`
 
 Context-only files in `context/`:
+
 - `clarifications.json`
 - `decisions.md`
-- `evaluations.md`
 - `research-plan.md`
 - validation/test logs
 
@@ -142,19 +150,6 @@ Context-only files in `context/`:
 - Specificity: concrete stack details, not generic advice
 - Domain Depth: real failure modes and non-obvious constraints
 - Self-Containment: usable without external doc hunting
-
-## Evaluation Methodology
-
-1. Identify baseline failures without the skill.
-2. Build evaluations that exercise those failures.
-3. Measure baseline behavior.
-4. Add minimal guidance required to pass.
-5. Re-test and refine.
-
-Cross-model checks:
-- Haiku: enough guidance?
-- Sonnet: concise and clear?
-- Opus: avoids over-explaining?
 
 ## Degrees of Freedom
 

@@ -51,6 +51,10 @@ Every agent must read `user-context.md` from the workspace directory and use it 
 
 ### Execution Defaults (All Agents)
 
+- Use fixed workflow stage mapping for routing in deterministic surfaces:
+  - `draft` -> Workflow (`Research`, `Confirm Decisions`, `Generate Skill`)
+  - `refine` -> Refine
+  - `evaluate` -> Validate Skill
 - Ask one focused clarification when ambiguity blocks a concrete recommendation.
 - Check existing artifacts/context first before generating new guidance.
 - Validate consistency before final output: recommendations must align with stated purpose, user context, and cited sources.
@@ -58,6 +62,7 @@ Every agent must read `user-context.md` from the workspace directory and use it 
 - Apply Lakehouse constraints strictly for `platform` purpose; apply them conditionally for other purposes.
 - Use Context7 (or user-provided sources) for current APIs/configuration; do not invent undocumented behavior.
 - Prefer concrete, actionable outputs over long explanations.
+- Calibrate jargon to user fluency. If confidence is low, define terms like `assertion`, `benchmark`, and `JSON` in one sentence.
 
 ### Workflow Guard (Workflow/Refine/Validate/Test Pipeline)
 
