@@ -10,7 +10,7 @@ import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useAuthStore } from "@/stores/auth-store";
-import { getSettings, saveSettings, reconcileStartup, parseGitHubUrl, checkMarketplaceUpdates, importGitHubSkills, importMarketplaceToLibrary, checkSkillCustomized } from "@/lib/tauri";
+import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, parseGitHubUrl, checkMarketplaceUpdates, importGitHubSkills, importMarketplaceToLibrary, checkSkillCustomized } from "@/lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelInfo } from "@/stores/settings-store";
 import type { AppSettings, DiscoveredSkill, OrphanSkill, SkillUpdateInfo } from "@/lib/types";
@@ -163,6 +163,8 @@ export function AppLayout() {
   const [reconNotifications, setReconNotifications] = useState<string[]>([]);
   const [reconDiscovered, setReconDiscovered] = useState<DiscoveredSkill[]>([]);
   const [ackDone, setAckDone] = useState(true);
+  const [reconRequiresApply, setReconRequiresApply] = useState(false);
+  const [reconApplying, setReconApplying] = useState(false);
 
   // Hydrate settings store from Tauri backend on app startup
   useEffect(() => {
@@ -228,22 +230,16 @@ export function AppLayout() {
 
     reconcileStartup()
       .then((result) => {
-        // Show toast for auto-cleaned skills (informational, not blocking)
-        if (result.auto_cleaned > 0) {
-          toast.info(
-            `Cleaned up ${result.auto_cleaned} incomplete skill${result.auto_cleaned !== 1 ? "s" : ""}`
-          );
-        }
-
-        // Block dashboard with ACK dialog if there are notifications or discovered skills
+        // Preview mode: block dashboard until user applies or skips.
         if (result.notifications.length > 0 || result.discovered_skills.length > 0) {
           console.warn(
-            "[app-layout] Reconciliation produced %d notifications, %d discovered skills",
+            "[app-layout] Reconciliation preview produced %d notifications, %d discovered skills",
             result.notifications.length,
             result.discovered_skills.length,
           );
           setReconNotifications(result.notifications);
           setReconDiscovered(result.discovered_skills);
+          setReconRequiresApply(true);
           setAckDone(false);
         }
 
@@ -315,11 +311,48 @@ export function AppLayout() {
         <ReconciliationAckDialog
           notifications={reconNotifications}
           discoveredSkills={reconDiscovered}
+          requireApply={reconRequiresApply}
+          applying={reconApplying}
           open
-          onAcknowledge={() => {
+          onApply={async () => {
+            if (!reconRequiresApply) {
+              setAckDone(true);
+              setReconNotifications([]);
+              setReconDiscovered([]);
+              return;
+            }
+            try {
+              setReconApplying(true);
+              const applied = await reconcileStartup(true);
+              if (applied.auto_cleaned > 0) {
+                toast.info(
+                  `Cleaned up ${applied.auto_cleaned} incomplete skill${applied.auto_cleaned !== 1 ? "s" : ""}`
+                );
+              }
+              if (applied.orphans.length > 0) {
+                setOrphans(applied.orphans);
+              }
+              setAckDone(true);
+              setReconNotifications([]);
+              setReconDiscovered([]);
+              setReconRequiresApply(false);
+            } catch (err) {
+              toast.error(
+                `Failed to apply startup reconciliation: ${err instanceof Error ? err.message : String(err)}`,
+                { duration: 8000 }
+              );
+            } finally {
+              setReconApplying(false);
+            }
+          }}
+          onCancel={() => {
+            recordReconciliationCancel(reconNotifications.length, reconDiscovered.length)
+              .catch(() => undefined);
+            toast.info("Startup reconciliation skipped. No automatic changes were applied.");
             setAckDone(true);
             setReconNotifications([]);
             setReconDiscovered([]);
+            setReconRequiresApply(false);
           }}
         />
       )}

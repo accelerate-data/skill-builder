@@ -232,8 +232,19 @@ export const endWorkflowSession = (sessionId: string) =>
 
 // --- Reconciliation ---
 
-export const reconcileStartup = () =>
-  invoke<ReconciliationResult>("reconcile_startup");
+export const reconcileStartup = (apply = false) =>
+  apply
+    ? invoke<ReconciliationResult>("reconcile_startup", { apply: true })
+    : invoke<ReconciliationResult>("reconcile_startup");
+
+export const recordReconciliationCancel = (
+  notificationCount: number,
+  discoveredCount: number,
+) =>
+  invoke<void>("record_reconciliation_cancel", {
+    notificationCount,
+    discoveredCount,
+  });
 
 export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
   invoke("resolve_orphan", { skillName, action });
