@@ -1149,10 +1149,9 @@ fn step_name(step_id: i32) -> String {
         -11 => "Test".to_string(),
         -10 => "Refine".to_string(),
         0 => "Research".to_string(),
-        1 => "Detailed Research".to_string(),
-        2 => "Confirm Decisions".to_string(),
-        3 => "Generate Skill".to_string(),
-        // Backward compatibility for legacy usage rows from older workflow step IDs.
+        1 => "Review".to_string(),
+        2 => "Detailed Research".to_string(),
+        3 => "Review".to_string(),
         4 => "Confirm Decisions".to_string(),
         5 => "Generate Skill".to_string(),
         _ => format!("Step {}", step_id),
@@ -1229,17 +1228,15 @@ pub fn persist_agent_run(
         }
     }
 
-    let workflow_run_id = get_workflow_run_id(conn, skill_name)?;
-
     conn.execute(
         "INSERT OR REPLACE INTO agent_runs
          (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
           cache_read_tokens, cache_write_tokens, total_cost, duration_ms,
           num_turns, stop_reason, duration_api_ms, tool_use_count, compaction_count,
-          session_id, workflow_session_id, workflow_run_id, started_at, completed_at)
+          session_id, workflow_session_id, started_at, completed_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
                  ?12, ?13, ?14, ?15, ?16,
-                 ?17, ?18, ?19,
+                 ?17, ?18,
                  COALESCE((SELECT started_at FROM agent_runs WHERE agent_id = ?1 AND model = ?4), datetime('now') || 'Z'),
                  datetime('now') || 'Z')",
         rusqlite::params![
@@ -1261,7 +1258,6 @@ pub fn persist_agent_run(
             compaction_count,
             session_id,
             workflow_session_id,
-            workflow_run_id,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -1386,6 +1382,83 @@ pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRe
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
+}
+
+pub fn get_agent_runs(
+    conn: &Connection,
+    hide_cancelled: bool,
+    start_date: Option<&str>,
+    skill_name: Option<&str>,
+    limit: usize,
+) -> Result<Vec<AgentRunRecord>, String> {
+    let cost_clause = if hide_cancelled { " AND total_cost > 0" } else { "" };
+    let mut p = 1usize;
+    let date_clause = if start_date.is_some() {
+        let s = format!(" AND started_at >= ?{p}");
+        p += 1;
+        s
+    } else {
+        String::new()
+    };
+    let skill_clause = if skill_name.is_some() {
+        let s = format!(" AND skill_name = ?{p}");
+        p += 1;
+        s
+    } else {
+        String::new()
+    };
+    let sql = format!(
+        "SELECT agent_id, skill_name, step_id, model, status,
+                COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
+                COALESCE(cache_read_tokens, 0), COALESCE(cache_write_tokens, 0),
+                COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
+                COALESCE(num_turns, 0), stop_reason, duration_api_ms,
+                COALESCE(tool_use_count, 0), COALESCE(compaction_count, 0),
+                session_id, started_at, completed_at
+         FROM agent_runs
+         WHERE reset_marker IS NULL
+           AND workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}
+         ORDER BY started_at DESC
+         LIMIT ?{p}"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let limit_i64 = limit as i64;
+    macro_rules! collect_rows {
+        ($params:expr) => {
+            stmt.query_map($params, |row| {
+                Ok(AgentRunRecord {
+                    agent_id: row.get(0)?,
+                    skill_name: row.get(1)?,
+                    step_id: row.get(2)?,
+                    model: row.get(3)?,
+                    status: row.get(4)?,
+                    input_tokens: row.get(5)?,
+                    output_tokens: row.get(6)?,
+                    cache_read_tokens: row.get(7)?,
+                    cache_write_tokens: row.get(8)?,
+                    total_cost: row.get(9)?,
+                    duration_ms: row.get(10)?,
+                    num_turns: row.get(11)?,
+                    stop_reason: row.get(12)?,
+                    duration_api_ms: row.get(13)?,
+                    tool_use_count: row.get(14)?,
+                    compaction_count: row.get(15)?,
+                    session_id: row.get(16)?,
+                    started_at: row.get(17)?,
+                    completed_at: row.get(18)?,
+                })
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+        };
+    }
+    match (start_date, skill_name) {
+        (Some(sd), Some(sn)) => collect_rows!(rusqlite::params![sd, sn, limit_i64]),
+        (Some(sd), None) => collect_rows!(rusqlite::params![sd, limit_i64]),
+        (None, Some(sn)) => collect_rows!(rusqlite::params![sn, limit_i64]),
+        (None, None) => collect_rows!(rusqlite::params![limit_i64]),
+    }
 }
 
 pub fn get_recent_workflow_sessions(
@@ -2212,14 +2285,6 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
     )
     .map_err(|e| e.to_string())?;
 
-    // Preserve usage history rows while removing workflow run state.
-    // agent_runs.workflow_run_id is an FK to workflow_runs(id), so detach first.
-    conn.execute(
-        "UPDATE agent_runs SET workflow_run_id = NULL WHERE workflow_run_id = ?1",
-        rusqlite::params![wr_id],
-    )
-    .map_err(|e| e.to_string())?;
-
     conn.execute(
         "DELETE FROM skill_locks WHERE skill_id = ?1",
         rusqlite::params![s_id],
@@ -2245,18 +2310,8 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
     )
     .map_err(|e| e.to_string())?;
 
-    // Keep skills master row when usage history references it (workflow_sessions.skill_id FK).
-    // This preserves historical usage/session records after workflow reset/deletion.
-    let usage_session_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM workflow_sessions WHERE skill_id = ?1",
-            rusqlite::params![s_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    if usage_session_count == 0 {
-        delete_skill(conn, skill_name)?;
-    }
+    // Also delete from skills master table
+    delete_skill(conn, skill_name)?;
     Ok(())
 }
 
@@ -4909,7 +4964,7 @@ mod tests {
         assert!((by_step[0].total_cost - 0.25).abs() < 1e-10);
 
         assert_eq!(by_step[1].step_id, 1);
-        assert_eq!(by_step[1].step_name, "Detailed Research");
+        assert_eq!(by_step[1].step_name, "Review");
         assert_eq!(by_step[1].run_count, 2);
         assert!((by_step[1].total_cost - 0.18).abs() < 1e-10);
     }
@@ -5354,9 +5409,9 @@ mod tests {
     #[test]
     fn test_step_name_mapping() {
         assert_eq!(step_name(0), "Research");
-        assert_eq!(step_name(1), "Detailed Research");
-        assert_eq!(step_name(2), "Confirm Decisions");
-        assert_eq!(step_name(3), "Generate Skill");
+        assert_eq!(step_name(1), "Review");
+        assert_eq!(step_name(2), "Detailed Research");
+        assert_eq!(step_name(3), "Review");
         assert_eq!(step_name(4), "Confirm Decisions");
         assert_eq!(step_name(5), "Generate Skill");
         assert_eq!(step_name(6), "Step 6");

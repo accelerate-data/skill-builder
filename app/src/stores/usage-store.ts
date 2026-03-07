@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import type { UsageSummary, WorkflowSessionRecord, UsageByStep, UsageByModel, UsageByDay } from "@/lib/types";
-import { getUsageSummary, getRecentWorkflowSessions, getUsageByStep, getUsageByModel, getUsageByDay, resetUsage, getWorkflowSkillNames } from "@/lib/tauri";
+import type { UsageSummary, WorkflowSessionRecord, UsageByStep, UsageByModel, UsageByDay, AgentRunRecord } from "@/lib/types";
+import { getUsageSummary, getRecentWorkflowSessions, getUsageByStep, getUsageByModel, getUsageByDay, resetUsage, getWorkflowSkillNames, getAgentRuns } from "@/lib/tauri";
 
 export type DateRange = "7d" | "14d" | "30d" | "90d" | "all";
 
@@ -14,6 +14,7 @@ function toStartDate(range: DateRange): string | null {
 interface UsageState {
   summary: UsageSummary | null;
   recentSessions: WorkflowSessionRecord[];
+  agentRuns: AgentRunRecord[];
   byStep: UsageByStep[];
   byModel: UsageByModel[];
   byDay: UsageByDay[];
@@ -35,6 +36,7 @@ interface UsageState {
 export const useUsageStore = create<UsageState>((set, get) => ({
   summary: null,
   recentSessions: [],
+  agentRuns: [],
   byStep: [],
   byModel: [],
   byDay: [],
@@ -50,14 +52,15 @@ export const useUsageStore = create<UsageState>((set, get) => ({
     const startDate = toStartDate(dateRange);
     set({ loading: true, error: null });
     try {
-      const [summary, recentSessions, byStep, byModel, byDay] = await Promise.all([
+      const [summary, recentSessions, agentRuns, byStep, byModel, byDay] = await Promise.all([
         getUsageSummary(hideCancelled, startDate, skillFilter),
         getRecentWorkflowSessions(50, hideCancelled, startDate, skillFilter),
+        getAgentRuns(hideCancelled, startDate, skillFilter),
         getUsageByStep(hideCancelled, startDate, skillFilter),
         getUsageByModel(hideCancelled, startDate, skillFilter),
         getUsageByDay(hideCancelled, startDate, skillFilter),
       ]);
-      set({ summary, recentSessions, byStep, byModel, byDay, loading: false });
+      set({ summary, recentSessions, agentRuns, byStep, byModel, byDay, loading: false });
     } catch (err) {
       set({ error: String(err), loading: false });
     }
@@ -78,14 +81,15 @@ export const useUsageStore = create<UsageState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       await resetUsage();
-      const [summary, recentSessions, byStep, byModel, byDay] = await Promise.all([
+      const [summary, recentSessions, agentRuns, byStep, byModel, byDay] = await Promise.all([
         getUsageSummary(hideCancelled, startDate, skillFilter),
         getRecentWorkflowSessions(50, hideCancelled, startDate, skillFilter),
+        getAgentRuns(hideCancelled, startDate, skillFilter),
         getUsageByStep(hideCancelled, startDate, skillFilter),
         getUsageByModel(hideCancelled, startDate, skillFilter),
         getUsageByDay(hideCancelled, startDate, skillFilter),
       ]);
-      set({ summary, recentSessions, byStep, byModel, byDay, loading: false, skillFilter: null, skillNames: [] });
+      set({ summary, recentSessions, agentRuns, byStep, byModel, byDay, loading: false, skillFilter: null, skillNames: [] });
     } catch (err) {
       set({ error: String(err), loading: false });
     }

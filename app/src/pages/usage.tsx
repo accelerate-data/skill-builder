@@ -1,16 +1,14 @@
-import { useEffect, useState } from "react"
-import { Loader2, DollarSign, Activity, TrendingUp, RotateCcw, ChevronDown, ChevronRight } from "lucide-react"
-import type { AgentRunRecord, UsageByDay } from "@/lib/types"
+import { useEffect, useState, useMemo } from "react"
+import { Loader2, DollarSign, Activity, TrendingUp, RotateCcw, ChevronUp, ChevronDown, CheckCircle2, XCircle } from "lucide-react"
+import type { UsageByDay } from "@/lib/types"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { getWorkflowStepLabel } from "@/lib/workflow-steps"
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,15 +21,27 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { useUsageStore, type DateRange } from "@/stores/usage-store"
-import { getSessionAgentRuns } from "@/lib/tauri"
 
-const STEP_COLORS: Record<string, string> = {
-  Test: "var(--color-navy)",
-  Refine: "var(--color-pacific)",
-  Research: "var(--color-pacific)",
-  "Detailed Research": "var(--color-arctic)",
-  "Confirm Decisions": "var(--color-ocean)",
-  "Generate Skill": "var(--color-seafoam)",
+const STEP_NAMES: Record<number, string> = {
+  [-11]: "Test",
+  [-10]: "Refine",
+  0: "Research",
+  1: "Review",
+  2: "Detailed Research",
+  3: "Review",
+  4: "Confirm Decisions",
+  5: "Generate Skill",
+}
+
+const STEP_COLORS: Record<number, string> = {
+  [-11]: "var(--color-navy)",
+  [-10]: "var(--color-pacific)",
+  0: "var(--color-pacific)",
+  1: "var(--color-ocean)",
+  2: "var(--color-arctic)",
+  3: "var(--color-ocean)",
+  4: "var(--color-seafoam)",
+  5: "var(--color-seafoam)",
 }
 
 const MODEL_COLORS: Record<string, string> = {
@@ -49,11 +59,11 @@ const DATE_RANGE_OPTIONS: { label: string; value: DateRange }[] = [
 ]
 
 function getStepName(stepId: number): string {
-  return getWorkflowStepLabel(stepId)
+  return STEP_NAMES[stepId] ?? `Step ${stepId}`
 }
 
 function getStepColor(stepId: number): string {
-  return STEP_COLORS[getStepName(stepId)] ?? "var(--color-muted-foreground)"
+  return STEP_COLORS[stepId] ?? "var(--color-muted-foreground)"
 }
 
 function getModelColor(model: string): string {
@@ -92,31 +102,19 @@ function formatDayLabel(dateStr: string): string {
   }
 }
 
-interface StepSummary {
-  stepId: number
-  name: string
-  model: string
-  cost: number
-  tokens: number
-}
-
-function groupByStep(agents: AgentRunRecord[]): StepSummary[] {
-  const map = new Map<string, StepSummary>()
-  for (const a of agents) {
-    const key = `${a.step_id}|${a.model}`
-    const entry = map.get(key) ?? { stepId: a.step_id, name: getStepName(a.step_id), model: a.model, cost: 0, tokens: 0 }
-    entry.cost += a.total_cost
-    entry.tokens += a.input_tokens + a.output_tokens
-    map.set(key, entry)
-  }
-  return Array.from(map.values())
-    .sort((a, b) => a.stepId !== b.stepId ? a.stepId - b.stepId : a.model.localeCompare(b.model))
-}
 
 function formatTokensShort(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
   return String(n)
+}
+
+function shortModelName(model: string): string {
+  const lower = model.toLowerCase()
+  if (lower.includes("haiku")) return "Haiku"
+  if (lower.includes("opus")) return "Opus"
+  if (lower.includes("sonnet")) return "Sonnet"
+  return model
 }
 
 function CostOverTimeChart({ data }: { data: UsageByDay[] }) {
@@ -202,18 +200,21 @@ function CostOverTimeChart({ data }: { data: UsageByDay[] }) {
   )
 }
 
+type SortCol = "date" | "skill" | "step" | "model" | "cost" | "tokens"
+
 export default function UsagePage() {
   const {
-    summary, recentSessions, byStep, byModel, byDay,
+    summary, agentRuns, byStep, byModel, byDay,
     loading, error, fetchUsage, resetCounter,
     hideCancelled, toggleHideCancelled,
     dateRange, setDateRange,
     skillFilter, skillNames, setSkillFilter, fetchSkillNames,
   } = useUsageStore()
   const [resetting, setResetting] = useState(false)
-  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set())
-  const [sessionAgents, setSessionAgents] = useState<Record<string, AgentRunRecord[]>>({})
-  const [loadingSessions, setLoadingSessions] = useState<Set<string>>(new Set())
+  const [stepFilter, setStepFilter] = useState<number | "all">("all")
+  const [modelFilter, setModelFilter] = useState<string>("all")
+  const [sortCol, setSortCol] = useState<SortCol>("date")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
 
   useEffect(() => {
     fetchUsage()
@@ -224,8 +225,6 @@ export default function UsagePage() {
     setResetting(true)
     try {
       await resetCounter()
-      setExpandedSessions(new Set())
-      setSessionAgents({})
       toast.success("Usage data reset")
     } catch (err) {
       console.error("usage: reset failed", err)
@@ -235,33 +234,38 @@ export default function UsagePage() {
     }
   }
 
-  const toggleSession = async (sessionId: string) => {
-    setExpandedSessions((prev) => {
-      const next = new Set(prev)
-      if (next.has(sessionId)) {
-        next.delete(sessionId)
-      } else {
-        next.add(sessionId)
-      }
-      return next
-    })
-
-    if (!sessionAgents[sessionId] && !loadingSessions.has(sessionId)) {
-      setLoadingSessions((prev) => new Set(prev).add(sessionId))
-      try {
-        const agents = await getSessionAgentRuns(sessionId)
-        setSessionAgents((prev) => ({ ...prev, [sessionId]: agents }))
-      } catch (err) {
-        console.error("Failed to load session agents:", err)
-      } finally {
-        setLoadingSessions((prev) => {
-          const next = new Set(prev)
-          next.delete(sessionId)
-          return next
-        })
-      }
+  const handleSort = (col: SortCol) => {
+    if (sortCol === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"))
+    } else {
+      setSortCol(col)
+      setSortDir("desc")
     }
   }
+
+  const availableModels = useMemo(() => {
+    const seen = new Set<string>()
+    agentRuns.forEach((r) => seen.add(shortModelName(r.model)))
+    return Array.from(seen).sort()
+  }, [agentRuns])
+
+  const filteredRuns = useMemo(() => {
+    let rows = agentRuns
+    if (stepFilter !== "all") rows = rows.filter((r) => r.step_id === stepFilter)
+    if (modelFilter !== "all") rows = rows.filter((r) => shortModelName(r.model) === modelFilter)
+    return [...rows].sort((a, b) => {
+      let cmp = 0
+      switch (sortCol) {
+        case "date": cmp = a.started_at.localeCompare(b.started_at); break
+        case "skill": cmp = a.skill_name.localeCompare(b.skill_name); break
+        case "step": cmp = getStepName(a.step_id).localeCompare(getStepName(b.step_id)); break
+        case "model": cmp = shortModelName(a.model).localeCompare(shortModelName(b.model)); break
+        case "cost": cmp = a.total_cost - b.total_cost; break
+        case "tokens": cmp = (a.input_tokens + a.output_tokens) - (b.input_tokens + b.output_tokens); break
+      }
+      return sortDir === "asc" ? cmp : -cmp
+    })
+  }, [agentRuns, stepFilter, modelFilter, sortCol, sortDir])
 
   if (loading) {
     return (
@@ -279,7 +283,7 @@ export default function UsagePage() {
     )
   }
 
-  const isEmpty = !summary || (summary.total_runs === 0 && recentSessions.length === 0)
+  const isEmpty = !summary || (summary.total_runs === 0 && agentRuns.length === 0)
 
   if (isEmpty) {
     return (
@@ -449,9 +453,6 @@ export default function UsagePage() {
         <Card>
           <CardHeader>
             <CardTitle>Cost by Step</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Includes workflow steps plus synthetic `Refine` and `Test` buckets from those surfaces.
-            </p>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             {byStep.length === 0 ? (
@@ -489,7 +490,7 @@ export default function UsagePage() {
               byModel.map((m) => (
                 <div key={m.model} className="flex flex-col gap-1">
                   <div className="flex items-center justify-between text-sm">
-                    <span>{m.model}</span>
+                    <span title={m.model}>{shortModelName(m.model)}</span>
                     <span className="text-muted-foreground">
                       {formatCost(m.total_cost)} ({m.run_count} agents)
                     </span>
@@ -517,76 +518,123 @@ export default function UsagePage() {
         </CardContent>
       </Card>
 
-      {/* Recent Workflow Sessions */}
+      {/* Step History Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Recent Workflow Runs</CardTitle>
+          <div className="flex items-center justify-between gap-4">
+            <CardTitle>Step History</CardTitle>
+            {/* Table-level filters */}
+            <div className="flex items-center gap-2">
+              <select
+                value={stepFilter === "all" ? "all" : String(stepFilter)}
+                onChange={(e) => setStepFilter(e.target.value === "all" ? "all" : Number(e.target.value))}
+                className="h-7 rounded-md bg-muted border-0 px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="all">All Steps</option>
+                {Object.entries(STEP_NAMES).map(([id, name]) => (
+                  <option key={id} value={id}>{name}</option>
+                ))}
+              </select>
+              {availableModels.length > 1 && (
+                <select
+                  value={modelFilter}
+                  onChange={(e) => setModelFilter(e.target.value)}
+                  className="h-7 rounded-md bg-muted border-0 px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="all">All Models</option>
+                  {availableModels.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              )}
+              {filteredRuns.length > 0 && (
+                <span className="text-xs text-muted-foreground">{filteredRuns.length} run{filteredRuns.length !== 1 ? "s" : ""}</span>
+              )}
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
-          {recentSessions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-8 text-center">
+        <CardContent className="p-0">
+          {filteredRuns.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed m-4 p-8 text-center">
               <p className="text-sm font-medium text-muted-foreground">No runs in this period</p>
-              <p className="text-xs text-muted-foreground/60">Try selecting a wider date range.</p>
+              <p className="text-xs text-muted-foreground/60">Try selecting a wider date range or clearing filters.</p>
             </div>
           ) : (
-            <div className="flex flex-col divide-y">
-              {recentSessions.map((session) => {
-                const isExpanded = expandedSessions.has(session.session_id)
-                const agents = sessionAgents[session.session_id]
-                const isLoading = loadingSessions.has(session.session_id)
-                return (
-                  <div key={session.session_id} className="py-2">
-                    <button
-                      onClick={() => toggleSession(session.session_id)}
-                      className="flex w-full items-center gap-3 text-sm hover:bg-muted/50 rounded-md px-2 py-1 transition-colors"
-                      aria-expanded={isExpanded}
-                      aria-label={`Toggle details for ${session.skill_name} workflow run`}
-                    >
-                      {isExpanded ? (
-                        <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-                      ) : (
-                        <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                      )}
-                      <span className="font-medium truncate">{session.skill_name}</span>
-                      <span className="text-muted-foreground text-xs shrink-0">{formatSessionTime(session.started_at)}</span>
-                      <span className="ml-auto shrink-0 font-mono">{formatCost(session.total_cost)}</span>
-                      <span className="shrink-0 text-muted-foreground font-mono text-xs">
-                        {formatTokens(session.total_input_tokens + session.total_output_tokens)} tokens
-                      </span>
-                    </button>
-
-                    {isExpanded && (
-                      <div className="ml-6 mt-1 flex flex-col gap-0.5" data-testid="step-table">
-                        {isLoading ? (
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Loader2 className="size-3 animate-spin" />
-                            Loading step details...
-                          </div>
-                        ) : agents && agents.length > 0 ? (
-                          groupByStep(agents).map((step) => (
-                            <div
-                              key={`${step.stepId}|${step.model}`}
-                              className="flex items-center justify-between py-1 px-2 hover:bg-muted/40 rounded text-xs"
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="w-36 truncate font-medium">{step.name}</span>
-                                <Badge variant="outline" className="shrink-0 text-xs">
-                                  {step.model}
-                                </Badge>
-                              </div>
-                              <div className="flex items-center gap-3 shrink-0 ml-4">
-                                <span className="font-mono w-16 text-right">{formatCost(step.cost)}</span>
-                                <span className="font-mono w-16 text-right text-muted-foreground">{formatTokens(step.tokens)}</span>
-                              </div>
-                            </div>
-                          ))
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+            <table className="w-full table-auto border-separate border-spacing-0" data-testid="step-table">
+              <thead>
+                <tr>
+                  {(["date", "skill", "step", "model"] as SortCol[]).map((col) => (
+                    <th key={col} scope="col" className="pl-4 py-2 text-left text-xs font-medium text-muted-foreground border-b border-border">
+                      <button
+                        type="button"
+                        onClick={() => handleSort(col)}
+                        className="flex items-center gap-1 hover:text-foreground transition-colors capitalize"
+                      >
+                        {col}
+                        {sortCol === col && (sortDir === "asc"
+                          ? <ChevronUp className="size-3" />
+                          : <ChevronDown className="size-3" />)}
+                      </button>
+                    </th>
+                  ))}
+                  <th scope="col" className="py-2 text-xs font-medium text-muted-foreground border-b border-border text-center">Status</th>
+                  {(["cost", "tokens"] as SortCol[]).map((col) => (
+                    <th key={col} scope="col" className="pr-4 py-2 text-right text-xs font-medium text-muted-foreground border-b border-border">
+                      <button
+                        type="button"
+                        onClick={() => handleSort(col)}
+                        className="flex items-center gap-1 ml-auto hover:text-foreground transition-colors capitalize"
+                      >
+                        {col}
+                        {sortCol === col && (sortDir === "asc"
+                          ? <ChevronUp className="size-3" />
+                          : <ChevronDown className="size-3" />)}
+                      </button>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRuns.map((run) => {
+                  const tokens = run.input_tokens + run.output_tokens
+                  const isComplete = run.status === "completed"
+                  const isCancelled = run.status === "cancelled" || run.total_cost === 0
+                  return (
+                    <tr key={run.agent_id} className="hover:bg-muted/40 transition-colors">
+                      <td className="pl-4 py-2 text-xs text-muted-foreground whitespace-nowrap border-b border-border/50">
+                        {formatSessionTime(run.started_at)}
+                      </td>
+                      <td className="pl-4 py-2 text-xs font-medium max-w-[140px] border-b border-border/50">
+                        <span className="block truncate" title={run.skill_name}>{run.skill_name}</span>
+                      </td>
+                      <td className="pl-4 py-2 text-xs border-b border-border/50">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className="size-1.5 rounded-full shrink-0"
+                            style={{ backgroundColor: getStepColor(run.step_id) }}
+                          />
+                          {getStepName(run.step_id)}
+                        </div>
+                      </td>
+                      <td className="pl-4 py-2 text-xs text-muted-foreground border-b border-border/50">
+                        {shortModelName(run.model)}
+                      </td>
+                      <td className="py-2 text-center border-b border-border/50">
+                        {isComplete && !isCancelled
+                          ? <CheckCircle2 className="size-3.5 mx-auto" style={{ color: "var(--color-seafoam)" }} />
+                          : <XCircle className="size-3.5 mx-auto text-muted-foreground/50" />}
+                      </td>
+                      <td className="pr-4 py-2 text-right text-xs font-mono border-b border-border/50">
+                        {formatCost(run.total_cost)}
+                      </td>
+                      <td className="pr-4 py-2 text-right text-xs font-mono text-muted-foreground border-b border-border/50">
+                        {formatTokensShort(tokens)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           )}
         </CardContent>
       </Card>

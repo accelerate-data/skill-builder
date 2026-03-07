@@ -141,6 +141,22 @@ pub fn get_session_agent_runs(
 }
 
 #[tauri::command]
+pub fn get_agent_runs(
+    db: tauri::State<'_, Db>,
+    hide_cancelled: bool,
+    start_date: Option<String>,
+    skill_name: Option<String>,
+    limit: usize,
+) -> Result<Vec<AgentRunRecord>, String> {
+    log::info!("[get_agent_runs] hide_cancelled={} start_date={:?} skill_name={:?} limit={}", hide_cancelled, start_date, skill_name, limit);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_agent_runs] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+    crate::db::get_agent_runs(&conn, hide_cancelled, start_date.as_deref(), skill_name.as_deref(), limit)
+}
+
+#[tauri::command]
 pub fn get_step_agent_runs(
     db: tauri::State<'_, Db>,
     skill_name: String,
