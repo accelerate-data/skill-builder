@@ -291,7 +291,7 @@ export default function UsagePage() {
             <select
               value={skillFilter ?? ""}
               onChange={(e) => setSkillFilter(e.target.value || null)}
-              className="h-8 rounded-lg bg-muted border-0 px-3 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+              className="h-7 rounded-md bg-muted border-0 px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="">All Skills</option>
               {skillNames.map((name) => (
@@ -308,7 +308,7 @@ export default function UsagePage() {
                 className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
                   dateRange === opt.value
                     ? "bg-background text-foreground shadow-sm"
-                    : "text-foreground/50 hover:text-foreground/80"
+                    : "text-foreground/65 hover:text-foreground"
                 }`}
               >
                 {opt.label}
@@ -338,7 +338,7 @@ export default function UsagePage() {
             <select
               value={skillFilter ?? ""}
               onChange={(e) => setSkillFilter(e.target.value || null)}
-              className="h-8 rounded-lg bg-muted border-0 px-3 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+              className="h-7 rounded-md bg-muted border-0 px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="">All Skills</option>
               {skillNames.map((name) => (
@@ -354,7 +354,7 @@ export default function UsagePage() {
                 className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
                   dateRange === opt.value
                     ? "bg-background text-foreground shadow-sm"
-                    : "text-foreground/50 hover:text-foreground/80"
+                    : "text-foreground/65 hover:text-foreground"
                 }`}
               >
                 {opt.label}
