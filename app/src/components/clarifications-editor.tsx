@@ -65,6 +65,8 @@ export function ClarificationsEditor({
   evaluating = false,
 }: ClarificationsEditorProps) {
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set(data.sections.map((section) => section.id)));
+  const [notesExpanded, setNotesExpanded] = useState(true);
   const [showUnansweredOnly, setShowUnansweredOnly] = useState(false);
   const { answered, total, mustUnanswered } = getTotalCounts(data);
   const canContinue = mustUnanswered === 0;
@@ -79,6 +81,29 @@ export function ClarificationsEditor({
       return next;
     });
   }, []);
+
+  const toggleSection = useCallback((sectionId: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) next.delete(sectionId);
+      else next.add(sectionId);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const section of data.sections) {
+        if (!next.has(section.id)) {
+          next.add(section.id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [data.sections]);
 
   const updateQuestion = useCallback(
     (questionId: string, updater: (q: Question) => Question) => {
@@ -179,13 +204,17 @@ export function ClarificationsEditor({
           All others refine quality but have reasonable defaults.
         </div>
 
-        {data.notes.length > 0 && <NotesBlock notes={data.notes} />}
+        {data.notes.length > 0 && (
+          <NotesBlock notes={data.notes} isExpanded={notesExpanded} onToggle={() => setNotesExpanded((prev) => !prev)} />
+        )}
 
         {visibleSections.map(({ section, visibleQuestions }) => (
           <SectionBlock
             key={section.id}
             section={section}
             visibleQuestions={visibleQuestions}
+            isExpanded={expandedSections.has(section.id)}
+            toggleSection={toggleSection}
             expandedCards={expandedCards}
             toggleCard={toggleCard}
             updateQuestion={updateQuestion}
@@ -269,10 +298,12 @@ function MetadataBlock({ data }: { data: ClarificationsFile }) {
 // ─── Section Band ─────────────────────────────────────────────────────────────
 
 function SectionBlock({
-  section, visibleQuestions, expandedCards, toggleCard, updateQuestion, readOnly,
+  section, visibleQuestions, isExpanded, toggleSection, expandedCards, toggleCard, updateQuestion, readOnly,
 }: {
   section: Section;
   visibleQuestions: Question[];
+  isExpanded: boolean;
+  toggleSection: (id: string) => void;
   expandedCards: Set<string>;
   toggleCard: (id: string) => void;
   updateQuestion: (id: string, updater: (q: Question) => Question) => void;
@@ -283,13 +314,22 @@ function SectionBlock({
 
   return (
     <div>
-      <div
-        className="sticky top-0 z-10 mt-6 flex items-center gap-3 px-6 py-2.5 backdrop-blur-sm"
+      <button
+        type="button"
+        className="sticky top-0 z-10 mt-6 flex w-full items-center gap-3 px-6 py-2.5 text-left backdrop-blur-sm transition-colors hover:bg-muted/50"
         style={{
           borderTop: "2px solid var(--color-pacific)",
           background: "color-mix(in oklch, var(--color-pacific), transparent 90%)",
         }}
+        onClick={() => toggleSection(section.id)}
+        aria-expanded={isExpanded}
+        aria-controls={`section-content-${section.id}`}
       >
+        <ChevronRight
+          className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150"
+          style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
+          aria-hidden="true"
+        />
         <span
           className="flex-1 text-sm font-semibold tracking-tight"
           style={{ color: "var(--color-pacific)" }}
@@ -297,24 +337,28 @@ function SectionBlock({
           {section.title}
         </span>
         <StatusChip status={status} answered={answered} total={total} />
-      </div>
+      </button>
 
-      {section.description && (
-        <div className="border-b bg-muted/30 px-6 py-2 text-xs text-muted-foreground italic leading-relaxed">
-          {section.description}
+      {isExpanded && (
+        <div id={`section-content-${section.id}`}>
+          {section.description && (
+            <div className="border-b bg-muted/30 px-6 py-2 text-xs text-muted-foreground italic leading-relaxed">
+              {section.description}
+            </div>
+          )}
+
+          {visibleQuestions.map((question) => (
+            <QuestionCard
+              key={question.id}
+              question={question}
+              isExpanded={expandedCards.has(question.id)}
+              toggleCard={toggleCard}
+              updateQuestion={updateQuestion}
+              readOnly={readOnly}
+            />
+          ))}
         </div>
       )}
-
-      {visibleQuestions.map((question) => (
-        <QuestionCard
-          key={question.id}
-          question={question}
-          isExpanded={expandedCards.has(question.id)}
-          toggleCard={toggleCard}
-          updateQuestion={updateQuestion}
-          readOnly={readOnly}
-        />
-      ))}
     </div>
   );
 }
@@ -705,16 +749,31 @@ function RefinementItem({
 
 // ─── Research Notes ───────────────────────────────────────────────────────────
 
-function NotesBlock({ notes }: { notes: Note[] }) {
+function NotesBlock({
+  notes, isExpanded, onToggle,
+}: {
+  notes: Note[];
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
   return (
     <div>
-      <div
-        className="mt-6 flex items-center gap-2.5 px-6 py-2.5"
+      <button
+        type="button"
+        className="mt-6 flex w-full items-center gap-2.5 px-6 py-2.5 text-left transition-colors hover:bg-muted/40"
         style={{
           borderTop: "2px solid var(--color-ocean)",
           background: "color-mix(in oklch, var(--color-ocean), transparent 90%)",
         }}
+        onClick={onToggle}
+        aria-expanded={isExpanded}
+        aria-controls="research-notes-content"
       >
+        <ChevronRight
+          className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150"
+          style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
+          aria-hidden="true"
+        />
         <Info className="size-4" style={{ color: "var(--color-ocean)" }} />
         <span
           className="flex-1 text-sm font-semibold tracking-tight"
@@ -723,10 +782,14 @@ function NotesBlock({ notes }: { notes: Note[] }) {
           Research Notes
         </span>
         <span className="text-[11px] text-muted-foreground">{notes.length} {notes.length === 1 ? "note" : "notes"}</span>
-      </div>
-      {notes.map((note, i) => (
-        <NoteCard key={i} note={note} />
-      ))}
+      </button>
+      {isExpanded && (
+        <div id="research-notes-content">
+          {notes.map((note, i) => (
+            <NoteCard key={i} note={note} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
