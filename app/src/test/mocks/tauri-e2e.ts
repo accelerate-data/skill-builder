@@ -29,9 +29,10 @@ const mockResponses: Record<string, unknown> = {
   check_startup_deps: {
     all_ok: true,
     checks: [
-      { name: "Node.js", ok: true, detail: "v20.11.0 (system)" },
-      { name: "Agent sidecar", ok: true, detail: "sidecar/dist/agent-runner.js" },
-      { name: "Claude SDK", ok: true, detail: "sidecar/dist/sdk/cli.js" },
+      { code: "node_runtime", name: "Node.js", ok: true, detail: "v20.11.0 (system)" },
+      { code: "agent_sidecar_bundle", name: "Agent sidecar", ok: true, detail: "sidecar/dist/agent-runner.js" },
+      { code: "claude_sdk_cli", name: "Claude SDK", ok: true, detail: "sidecar/dist/sdk/cli.js" },
+      { code: "git_binary", name: "Git", ok: true, detail: "git version 2.50.1" },
     ],
   },
   list_skills: [],
