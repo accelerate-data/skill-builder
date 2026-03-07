@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { mockInvoke } from "@/test/mocks/tauri";
 import { useUsageStore } from "@/stores/usage-store";
-import type { UsageSummary, WorkflowSessionRecord, UsageByStep, UsageByModel, UsageByDay } from "@/lib/types";
+import type { UsageSummary, WorkflowSessionRecord, UsageByStep, UsageByModel, UsageByDay, AgentRunRecord } from "@/lib/types";
 
 const mockSummary: UsageSummary = {
   total_cost: 1.25,
@@ -43,6 +43,30 @@ const mockByDay: UsageByDay[] = [
   { date: "2026-02-16", total_cost: 0.30, total_tokens: 36000, run_count: 2 },
 ];
 
+const mockAgentRuns: AgentRunRecord[] = [
+  {
+    agent_id: "run-1",
+    skill_name: "my-skill",
+    step_id: 0,
+    model: "claude-sonnet-4-6",
+    status: "completed",
+    input_tokens: 5000,
+    output_tokens: 1000,
+    cache_read_tokens: 2000,
+    cache_write_tokens: 500,
+    total_cost: 0.05,
+    duration_ms: 12000,
+    num_turns: 3,
+    stop_reason: "end_turn",
+    duration_api_ms: 11000,
+    tool_use_count: 2,
+    compaction_count: 0,
+    session_id: "sess-1",
+    started_at: "2026-02-15T10:00:00Z",
+    completed_at: "2026-02-15T10:00:12Z",
+  },
+];
+
 function setupInvokeMock() {
   mockInvoke.mockImplementation((cmd: string) => {
     switch (cmd) {
@@ -50,6 +74,8 @@ function setupInvokeMock() {
         return Promise.resolve(mockSummary);
       case "get_recent_workflow_sessions":
         return Promise.resolve(mockSessions);
+      case "get_agent_runs":
+        return Promise.resolve(mockAgentRuns);
       case "get_usage_by_step":
         return Promise.resolve(mockByStep);
       case "get_usage_by_model":
@@ -69,6 +95,7 @@ describe("useUsageStore", () => {
     useUsageStore.setState({
       summary: null,
       recentSessions: [],
+      agentRuns: [],
       byStep: [],
       byModel: [],
       byDay: [],
@@ -76,6 +103,7 @@ describe("useUsageStore", () => {
       error: null,
       dateRange: "all",
       skillFilter: null,
+      modelFamilyFilter: null,
       skillNames: [],
     });
     mockInvoke.mockReset();
@@ -112,12 +140,13 @@ describe("useUsageStore", () => {
       expect(state.error).toBeNull();
       expect(state.summary).toEqual(mockSummary);
       expect(state.recentSessions).toEqual(mockSessions);
+      expect(state.agentRuns).toEqual(mockAgentRuns);
       expect(state.byStep).toEqual(mockByStep);
       expect(state.byModel).toEqual(mockByModel);
       expect(state.byDay).toEqual(mockByDay);
     });
 
-    it("calls all five Tauri commands", async () => {
+    it("calls all six Tauri commands", async () => {
       setupInvokeMock();
 
       await useUsageStore.getState().fetchUsage();
@@ -125,6 +154,7 @@ describe("useUsageStore", () => {
       const calledCommands = mockInvoke.mock.calls.map((c) => c[0]);
       expect(calledCommands).toContain("get_usage_summary");
       expect(calledCommands).toContain("get_recent_workflow_sessions");
+      expect(calledCommands).toContain("get_agent_runs");
       expect(calledCommands).toContain("get_usage_by_step");
       expect(calledCommands).toContain("get_usage_by_model");
       expect(calledCommands).toContain("get_usage_by_day");
@@ -168,6 +198,7 @@ describe("useUsageStore", () => {
       const state = useUsageStore.getState();
       expect(state.summary).toEqual(mockSummary);
       expect(state.recentSessions).toEqual(mockSessions);
+      expect(state.agentRuns).toEqual(mockAgentRuns);
       expect(state.byStep).toEqual(mockByStep);
       expect(state.byModel).toEqual(mockByModel);
       expect(state.byDay).toEqual(mockByDay);

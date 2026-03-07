@@ -12,6 +12,18 @@ pub fn detect_furthest_step(
     skill_name: &str,
     skills_path: &str,
 ) -> Option<u32> {
+    detect_furthest_step_with_options(workspace_path, skill_name, skills_path, true)
+}
+
+/// Inspect files on disk to determine the furthest completed step for a skill.
+/// When `cleanup_partial` is false, this is a read-only check suitable for
+/// preview flows that must not mutate disk state.
+pub fn detect_furthest_step_with_options(
+    workspace_path: &str,
+    skill_name: &str,
+    skills_path: &str,
+    cleanup_partial: bool,
+) -> Option<u32> {
     log::debug!(
         "[detect_furthest_step] skill='{}': workspace={} skills_path={}",
         skill_name, workspace_path, skills_path
@@ -59,11 +71,13 @@ pub fn detect_furthest_step(
         } else {
             if has_any {
                 // Partial output — clean up orphaned files from this incomplete step
-                log::debug!(
-                    "[detect_furthest_step] skill='{}': step {} has partial output, cleaning up",
-                    skill_name, step_id
-                );
-                cleanup_step_files(workspace_path, skill_name, step_id, skills_path);
+                if cleanup_partial {
+                    log::debug!(
+                        "[detect_furthest_step] skill='{}': step {} has partial output, cleaning up",
+                        skill_name, step_id
+                    );
+                    cleanup_step_files(workspace_path, skill_name, step_id, skills_path);
+                }
             }
             // Stop at first incomplete step — later steps can't be valid
             // without earlier ones completing first. Clean up any files from

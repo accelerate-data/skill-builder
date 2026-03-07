@@ -1,5 +1,5 @@
 use crate::cleanup::cleanup_future_steps;
-use crate::fs_validation::{detect_furthest_step, has_skill_output};
+use crate::fs_validation::{detect_furthest_step, detect_furthest_step_with_options, has_skill_output};
 use crate::types::{DiscoveredSkill, ReconciliationResult};
 use std::collections::HashSet;
 use std::path::Path;
@@ -228,6 +228,149 @@ pub fn reconcile_on_startup(
         "[reconcile_on_startup] done: {} auto-cleaned, {} notifications, {} discovered",
         0, notifications.len(), discovered_skills.len()
     );
+
+    Ok(ReconciliationResult {
+        orphans: Vec::new(),
+        notifications,
+        auto_cleaned: 0,
+        discovered_skills,
+    })
+}
+
+/// Read-only startup reconciliation preview.
+///
+/// Returns the same notification/discovery shape as apply mode, but performs
+/// no DB writes or filesystem mutations.
+pub fn preview_reconcile_on_startup(
+    conn: &rusqlite::Connection,
+    workspace_path: &str,
+    skills_path: &str,
+) -> Result<ReconciliationResult, String> {
+    let mut notifications = Vec::new();
+    let mut discovered_skills = Vec::new();
+    let all_skills = crate::db::list_all_skills(conn)?;
+
+    for skill in &all_skills {
+        match skill.skill_source.as_str() {
+            "skill-builder" => {
+                if crate::db::has_active_session_with_live_pid(conn, &skill.name) {
+                    notifications.push(format!(
+                        "'{}' skipped — active session running in another instance",
+                        skill.name
+                    ));
+                    continue;
+                }
+
+                let maybe_run = crate::db::get_workflow_run(conn, &skill.name)?;
+                if maybe_run.is_none() {
+                    let disk_step = detect_furthest_step_with_options(
+                        workspace_path,
+                        &skill.name,
+                        skills_path,
+                        false,
+                    )
+                    .map(|s| s as i32)
+                    .unwrap_or(0);
+                    notifications.push(format!(
+                        "'{}' workflow record recreated at step {}",
+                        skill.name, disk_step
+                    ));
+                    continue;
+                }
+
+                let run = maybe_run.expect("checked above");
+                let maybe_disk_step =
+                    detect_furthest_step_with_options(workspace_path, &skill.name, skills_path, false);
+
+                if let Some(disk_step) = maybe_disk_step.map(|s| s as i32) {
+                    const DETECTABLE_STEPS: &[i32] = &[0, 2, 3];
+                    let last_expected_detectable = DETECTABLE_STEPS
+                        .iter()
+                        .copied()
+                        .filter(|&s| s <= run.current_step)
+                        .max();
+
+                    if run.current_step > disk_step {
+                        let db_valid = last_expected_detectable
+                            .map(|s| disk_step >= s)
+                            .unwrap_or(true);
+                        if !db_valid {
+                            notifications.push(format!(
+                                "'{}' was reset from step {} to step {} (disk state behind DB)",
+                                skill.name, run.current_step, disk_step
+                            ));
+                        }
+                    } else if disk_step > run.current_step {
+                        notifications.push(format!(
+                            "'{}' was advanced from step {} to step {} (disk state ahead of DB)",
+                            skill.name, run.current_step, disk_step
+                        ));
+                    }
+                } else if run.current_step > 0 {
+                    notifications.push(format!(
+                        "'{}' was reset from step {} to step 0 (no output files found)",
+                        skill.name, run.current_step
+                    ));
+                }
+            }
+            "marketplace" => {
+                let skill_md = Path::new(skills_path).join(&skill.name).join("SKILL.md");
+                if !skill_md.exists() {
+                    notifications.push(format!(
+                        "'{}' marketplace skill removed — SKILL.md not found on disk",
+                        skill.name
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Preview discovery (read-only)
+    let master_names: HashSet<String> = all_skills.iter().map(|s| s.name.clone()).collect();
+    let skills_dir = Path::new(skills_path);
+    if skills_dir.exists() {
+        for entry in std::fs::read_dir(skills_dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || master_names.contains(&name) {
+                continue;
+            }
+
+            let skill_md = path.join("SKILL.md");
+            if !skill_md.exists() {
+                notifications.push(format!("'{}' removed — no SKILL.md found on disk", name));
+                continue;
+            }
+
+            let skill_root = Path::new(skills_path).join(&name);
+            let has_step0 = skill_root.join("context/clarifications.json").exists()
+                && skill_root.join("context/research-plan.md").exists();
+            let has_step2 = skill_root.join("context/decisions.md").exists();
+            let has_step3 = skill_root.join("SKILL.md").exists();
+            let detected_step = if has_step0 && has_step2 && has_step3 {
+                3
+            } else if has_step0 && has_step2 {
+                2
+            } else if has_step0 {
+                0
+            } else {
+                -1
+            };
+            discovered_skills.push(DiscoveredSkill {
+                name,
+                detected_step,
+                scenario: if detected_step == 3 {
+                    "9b".to_string()
+                } else {
+                    "9c".to_string()
+                },
+            });
+        }
+    }
 
     Ok(ReconciliationResult {
         orphans: Vec::new(),
@@ -561,6 +704,44 @@ mod tests {
             }
             std::fs::write(&path, format!("# Step {} output", step_id)).unwrap();
         }
+    }
+
+    #[test]
+    fn test_preview_reconcile_reports_without_mutating_db() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        crate::db::save_workflow_run(&conn, "my-skill", 3, "pending", "domain").unwrap();
+        create_skill_dir(tmp.path(), "my-skill", "sales");
+        create_step_output(skills_tmp.path(), "my-skill", 0);
+
+        let preview = preview_reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+        assert_eq!(preview.notifications.len(), 1);
+        assert!(preview.notifications[0].contains("reset from step 3 to step 0"));
+
+        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        assert_eq!(run.current_step, 3);
+    }
+
+    #[test]
+    fn test_preview_reconcile_detects_discovered_skill() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        create_step_output(skills_tmp.path(), "complete-skill", 0);
+        create_step_output(skills_tmp.path(), "complete-skill", 2);
+        create_step_output(skills_tmp.path(), "complete-skill", 3);
+
+        let preview = preview_reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+        assert_eq!(preview.discovered_skills.len(), 1);
+        assert_eq!(preview.discovered_skills[0].name, "complete-skill");
+        assert_eq!(preview.discovered_skills[0].scenario, "9b");
     }
 
     // --- Scenario 10: Master row exists but no workflow_runs row ---

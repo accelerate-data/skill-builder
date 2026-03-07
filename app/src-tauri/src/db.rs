@@ -58,6 +58,8 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
         (29, run_marketplace_source_url_migration),
         (30, run_skills_soft_delete_migration),
         (31, run_backfill_synthetic_sessions_migration),
+        (32, run_normalize_model_names_migration),
+        (33, run_reconciliation_events_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -553,6 +555,54 @@ fn run_backfill_synthetic_sessions_migration(conn: &Connection) -> Result<(), ru
            AND ws.session_id IS NULL
          GROUP BY ar.workflow_session_id, ar.skill_name, s.id",
         [],
+    )?;
+    Ok(())
+}
+
+/// Migration 32: Normalize historical short-form model aliases in agent_runs to
+/// canonical full IDs so model filtering is deterministic.  Aliases that were stored
+/// as "sonnet"/"Sonnet", "haiku"/"Haiku", or "opus"/"Opus" are mapped to the
+/// current canonical ID for each family.
+fn run_normalize_model_names_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let mappings = [
+        ("haiku", "claude-haiku-4-5-20251001"),
+        ("Haiku", "claude-haiku-4-5-20251001"),
+        ("claude-haiku-4-5", "claude-haiku-4-5-20251001"),
+        ("sonnet", "claude-sonnet-4-6"),
+        ("Sonnet", "claude-sonnet-4-6"),
+        ("opus", "claude-opus-4-6"),
+        ("Opus", "claude-opus-4-6"),
+    ];
+    for (alias, canonical) in &mappings {
+        // If both the alias row and a canonical row exist for the same agent_id,
+        // the alias row is a duplicate. Delete it so the UPDATE doesn't hit the
+        // composite PK constraint (agent_id, model).
+        conn.execute(
+            "DELETE FROM agent_runs
+             WHERE model = ?1
+               AND agent_id IN (
+                 SELECT agent_id FROM agent_runs WHERE model = ?2
+               )",
+            rusqlite::params![alias, canonical],
+        )?;
+        conn.execute(
+            "UPDATE agent_runs SET model = ?1 WHERE model = ?2",
+            rusqlite::params![canonical, alias],
+        )?;
+    }
+    log::info!("migration 32: normalized agent_runs model name aliases to canonical IDs");
+    Ok(())
+}
+
+/// Migration 33: Record startup reconciliation actions in an auditable table.
+fn run_reconciliation_events_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS reconciliation_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,
+            details TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
+        );",
     )?;
     Ok(())
 }
@@ -1149,14 +1199,31 @@ fn step_name(step_id: i32) -> String {
         -11 => "Test".to_string(),
         -10 => "Refine".to_string(),
         0 => "Research".to_string(),
-        1 => "Detailed Research".to_string(),
-        2 => "Confirm Decisions".to_string(),
-        3 => "Generate Skill".to_string(),
-        // Backward compatibility for legacy usage rows from older workflow step IDs.
+        1 => "Review".to_string(),
+        2 => "Detailed Research".to_string(),
+        3 => "Review".to_string(),
         4 => "Confirm Decisions".to_string(),
         5 => "Generate Skill".to_string(),
         _ => format!("Step {}", step_id),
     }
+}
+
+/// Normalize model aliases to canonical full IDs so all storage is consistent.
+/// Short names ("sonnet", "Haiku") and bare partial IDs ("claude-haiku-4-5") are
+/// mapped to the current canonical ID for each model family.  Full IDs that are
+/// already canonical pass through unchanged.
+fn normalize_model_name(model: &str) -> String {
+    let lower = model.to_lowercase();
+    if lower == "haiku" || lower == "claude-haiku-4-5" {
+        return "claude-haiku-4-5-20251001".to_string();
+    }
+    if lower == "sonnet" || lower == "claude-sonnet-4-6" {
+        return "claude-sonnet-4-6".to_string();
+    }
+    if lower == "opus" || lower == "claude-opus-4-6" {
+        return "claude-opus-4-6".to_string();
+    }
+    model.to_string()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1181,6 +1248,9 @@ pub fn persist_agent_run(
     session_id: Option<&str>,
     workflow_session_id: Option<&str>,
 ) -> Result<(), String> {
+    let model_owned = normalize_model_name(model);
+    let model = model_owned.as_str();
+
     // Don't overwrite a completed/error run with shutdown status — the completed
     // data is more valuable than the partial shutdown snapshot.
     if status == "shutdown" {
@@ -1229,17 +1299,15 @@ pub fn persist_agent_run(
         }
     }
 
-    let workflow_run_id = get_workflow_run_id(conn, skill_name)?;
-
     conn.execute(
         "INSERT OR REPLACE INTO agent_runs
          (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
           cache_read_tokens, cache_write_tokens, total_cost, duration_ms,
           num_turns, stop_reason, duration_api_ms, tool_use_count, compaction_count,
-          session_id, workflow_session_id, workflow_run_id, started_at, completed_at)
+          session_id, workflow_session_id, started_at, completed_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
                  ?12, ?13, ?14, ?15, ?16,
-                 ?17, ?18, ?19,
+                 ?17, ?18,
                  COALESCE((SELECT started_at FROM agent_runs WHERE agent_id = ?1 AND model = ?4), datetime('now') || 'Z'),
                  datetime('now') || 'Z')",
         rusqlite::params![
@@ -1261,7 +1329,6 @@ pub fn persist_agent_run(
             compaction_count,
             session_id,
             workflow_session_id,
-            workflow_run_id,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -1386,6 +1453,101 @@ pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRe
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
+}
+
+pub fn get_agent_runs(
+    conn: &Connection,
+    hide_cancelled: bool,
+    start_date: Option<&str>,
+    skill_name: Option<&str>,
+    model_family: Option<&str>,
+    limit: usize,
+) -> Result<Vec<AgentRunRecord>, String> {
+    let cost_clause = if hide_cancelled { " AND total_cost > 0" } else { "" };
+    let mut p = 1usize;
+    let date_clause = if start_date.is_some() {
+        let s = format!(" AND started_at >= ?{p}");
+        p += 1;
+        s
+    } else {
+        String::new()
+    };
+    let skill_clause = if skill_name.is_some() {
+        let s = format!(" AND skill_name = ?{p}");
+        p += 1;
+        s
+    } else {
+        String::new()
+    };
+    let model_family_clause = if model_family.is_some() {
+        let s = format!(
+            " AND CASE \
+              WHEN lower(model) LIKE '%haiku%'  THEN 'Haiku' \
+              WHEN lower(model) LIKE '%opus%'   THEN 'Opus' \
+              WHEN lower(model) LIKE '%sonnet%' THEN 'Sonnet' \
+              ELSE model END = ?{p}"
+        );
+        p += 1;
+        s
+    } else {
+        String::new()
+    };
+    let sql = format!(
+        "SELECT agent_id, skill_name, step_id, model, status,
+                COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
+                COALESCE(cache_read_tokens, 0), COALESCE(cache_write_tokens, 0),
+                COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
+                COALESCE(num_turns, 0), stop_reason, duration_api_ms,
+                COALESCE(tool_use_count, 0), COALESCE(compaction_count, 0),
+                session_id, started_at, completed_at
+         FROM agent_runs
+         WHERE reset_marker IS NULL
+           AND workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}{model_family_clause}
+         ORDER BY started_at DESC
+         LIMIT ?{p}"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let limit_i64 = limit as i64;
+    macro_rules! collect_rows {
+        ($params:expr) => {
+            stmt.query_map($params, |row| {
+                Ok(AgentRunRecord {
+                    agent_id: row.get(0)?,
+                    skill_name: row.get(1)?,
+                    step_id: row.get(2)?,
+                    model: row.get(3)?,
+                    status: row.get(4)?,
+                    input_tokens: row.get(5)?,
+                    output_tokens: row.get(6)?,
+                    cache_read_tokens: row.get(7)?,
+                    cache_write_tokens: row.get(8)?,
+                    total_cost: row.get(9)?,
+                    duration_ms: row.get(10)?,
+                    num_turns: row.get(11)?,
+                    stop_reason: row.get(12)?,
+                    duration_api_ms: row.get(13)?,
+                    tool_use_count: row.get(14)?,
+                    compaction_count: row.get(15)?,
+                    session_id: row.get(16)?,
+                    started_at: row.get(17)?,
+                    completed_at: row.get(18)?,
+                })
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+        };
+    }
+    match (start_date, skill_name, model_family) {
+        (Some(sd), Some(sn), Some(mf)) => collect_rows!(rusqlite::params![sd, sn, mf, limit_i64]),
+        (Some(sd), Some(sn), None)     => collect_rows!(rusqlite::params![sd, sn, limit_i64]),
+        (Some(sd), None, Some(mf))     => collect_rows!(rusqlite::params![sd, mf, limit_i64]),
+        (Some(sd), None, None)         => collect_rows!(rusqlite::params![sd, limit_i64]),
+        (None, Some(sn), Some(mf))     => collect_rows!(rusqlite::params![sn, mf, limit_i64]),
+        (None, Some(sn), None)         => collect_rows!(rusqlite::params![sn, limit_i64]),
+        (None, None, Some(mf))         => collect_rows!(rusqlite::params![mf, limit_i64]),
+        (None, None, None)             => collect_rows!(rusqlite::params![limit_i64]),
+    }
 }
 
 pub fn get_recent_workflow_sessions(
@@ -1661,11 +1823,18 @@ pub fn get_usage_by_model(
         String::new()
     };
     let sql = format!(
-        "SELECT model, COALESCE(SUM(total_cost), 0.0), COUNT(*)
+        "SELECT
+           CASE
+             WHEN lower(model) LIKE '%haiku%' THEN 'Haiku'
+             WHEN lower(model) LIKE '%opus%'  THEN 'Opus'
+             WHEN lower(model) LIKE '%sonnet%' THEN 'Sonnet'
+             ELSE model
+           END AS model_family,
+           COALESCE(SUM(total_cost), 0.0), COUNT(*)
          FROM agent_runs
          WHERE reset_marker IS NULL
            AND workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}
-         GROUP BY model
+         GROUP BY model_family
          ORDER BY SUM(total_cost) DESC"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -2212,14 +2381,6 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
     )
     .map_err(|e| e.to_string())?;
 
-    // Preserve usage history rows while removing workflow run state.
-    // agent_runs.workflow_run_id is an FK to workflow_runs(id), so detach first.
-    conn.execute(
-        "UPDATE agent_runs SET workflow_run_id = NULL WHERE workflow_run_id = ?1",
-        rusqlite::params![wr_id],
-    )
-    .map_err(|e| e.to_string())?;
-
     conn.execute(
         "DELETE FROM skill_locks WHERE skill_id = ?1",
         rusqlite::params![s_id],
@@ -2245,18 +2406,8 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
     )
     .map_err(|e| e.to_string())?;
 
-    // Keep skills master row when usage history references it (workflow_sessions.skill_id FK).
-    // This preserves historical usage/session records after workflow reset/deletion.
-    let usage_session_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM workflow_sessions WHERE skill_id = ?1",
-            rusqlite::params![s_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    if usage_session_count == 0 {
-        delete_skill(conn, skill_name)?;
-    }
+    // Also delete from skills master table
+    delete_skill(conn, skill_name)?;
     Ok(())
 }
 
@@ -3337,6 +3488,19 @@ pub fn end_all_sessions_for_pid(conn: &Connection, pid: u32) -> Result<u32, Stri
         )
         .map_err(|e| e.to_string())?;
     Ok(count as u32)
+}
+
+pub fn record_reconciliation_event(
+    conn: &Connection,
+    event_type: &str,
+    details: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO reconciliation_events (event_type, details) VALUES (?1, ?2)",
+        rusqlite::params![event_type, details],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Returns true if the given skill has an active workflow session (ended_at IS NULL)
@@ -4542,7 +4706,7 @@ mod tests {
         assert_eq!(run.agent_id, "agent-1");
         assert_eq!(run.skill_name, "my-skill");
         assert_eq!(run.step_id, 3);
-        assert_eq!(run.model, "sonnet");
+        assert_eq!(run.model, "claude-sonnet-4-6");
         assert_eq!(run.status, "completed");
         assert_eq!(run.input_tokens, 1000);
         assert_eq!(run.output_tokens, 500);
@@ -4909,7 +5073,7 @@ mod tests {
         assert!((by_step[0].total_cost - 0.25).abs() < 1e-10);
 
         assert_eq!(by_step[1].step_id, 1);
-        assert_eq!(by_step[1].step_name, "Detailed Research");
+        assert_eq!(by_step[1].step_name, "Review");
         assert_eq!(by_step[1].run_count, 2);
         assert!((by_step[1].total_cost - 0.18).abs() < 1e-10);
     }
@@ -4989,14 +5153,104 @@ mod tests {
         let by_model = get_usage_by_model(&conn, false, None, None).unwrap();
         assert_eq!(by_model.len(), 2);
 
-        // Ordered by total_cost DESC: opus ($0.50) then sonnet ($0.15)
-        assert_eq!(by_model[0].model, "opus");
+        // Ordered by total_cost DESC: Opus ($0.50) then Sonnet ($0.15).
+        // The query now groups by family name so aliases normalize to "Opus"/"Sonnet".
+        assert_eq!(by_model[0].model, "Opus");
         assert_eq!(by_model[0].run_count, 1);
         assert!((by_model[0].total_cost - 0.50).abs() < 1e-10);
 
-        assert_eq!(by_model[1].model, "sonnet");
+        assert_eq!(by_model[1].model, "Sonnet");
         assert_eq!(by_model[1].run_count, 2);
         assert!((by_model[1].total_cost - 0.15).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_get_agent_runs_model_family_filter() {
+        // Verify the model_family CASE WHEN clause in get_agent_runs correctly
+        // includes only rows whose model matches the requested family.
+        let conn = create_test_db();
+        let ws = Some("wf-session-mf");
+        create_workflow_session(&conn, "wf-session-mf", "skill-a", 1000).unwrap();
+
+        persist_agent_run(&conn, "run-sonnet", "skill-a", 0, "claude-sonnet-4-6", "completed",
+            100, 50, 0, 0, 0.10, 1000, 1, None, None, 0, 0, None, ws).unwrap();
+        persist_agent_run(&conn, "run-opus", "skill-a", 4, "claude-opus-4-6", "completed",
+            200, 100, 0, 0, 0.50, 2000, 1, None, None, 0, 0, None, ws).unwrap();
+        persist_agent_run(&conn, "run-haiku", "skill-a", 1, "claude-haiku-4-5-20251001", "completed",
+            50, 25, 0, 0, 0.02, 500, 1, None, None, 0, 0, None, ws).unwrap();
+
+        // No filter: all three returned
+        let all = get_agent_runs(&conn, false, None, None, None, 100).unwrap();
+        assert_eq!(all.len(), 3);
+
+        // Filter Opus: only opus row
+        let opus = get_agent_runs(&conn, false, None, None, Some("Opus"), 100).unwrap();
+        assert_eq!(opus.len(), 1);
+        assert_eq!(opus[0].agent_id, "run-opus");
+
+        // Filter Sonnet: only sonnet row
+        let sonnet = get_agent_runs(&conn, false, None, None, Some("Sonnet"), 100).unwrap();
+        assert_eq!(sonnet.len(), 1);
+        assert_eq!(sonnet[0].agent_id, "run-sonnet");
+
+        // Filter Haiku: only haiku row
+        let haiku = get_agent_runs(&conn, false, None, None, Some("Haiku"), 100).unwrap();
+        assert_eq!(haiku.len(), 1);
+        assert_eq!(haiku[0].agent_id, "run-haiku");
+    }
+
+    #[test]
+    fn test_normalize_model_name_at_persist_time() {
+        // Short-form aliases stored via persist_agent_run must be normalized to
+        // canonical full IDs before they reach the DB.
+        let conn = create_test_db();
+        let ws = Some("wf-norm");
+        create_workflow_session(&conn, "wf-norm", "skill-x", 1000).unwrap();
+
+        persist_agent_run(&conn, "a-sonnet", "skill-x", 0, "sonnet", "completed",
+            10, 5, 0, 0, 0.01, 100, 1, None, None, 0, 0, None, ws).unwrap();
+        persist_agent_run(&conn, "a-haiku", "skill-x", 0, "Haiku", "completed",
+            10, 5, 0, 0, 0.01, 100, 1, None, None, 0, 0, None, ws).unwrap();
+        persist_agent_run(&conn, "a-opus", "skill-x", 0, "opus", "completed",
+            10, 5, 0, 0, 0.01, 100, 1, None, None, 0, 0, None, ws).unwrap();
+
+        let runs = get_agent_runs(&conn, false, None, None, None, 10).unwrap();
+        let models: std::collections::HashMap<&str, &str> =
+            runs.iter().map(|r| (r.agent_id.as_str(), r.model.as_str())).collect();
+
+        assert_eq!(models["a-sonnet"], "claude-sonnet-4-6");
+        assert_eq!(models["a-haiku"], "claude-haiku-4-5-20251001");
+        assert_eq!(models["a-opus"], "claude-opus-4-6");
+
+        // model family filter must also work on freshly-persisted canonical IDs
+        let opus = get_agent_runs(&conn, false, None, None, Some("Opus"), 10).unwrap();
+        assert_eq!(opus.len(), 1);
+        assert_eq!(opus[0].agent_id, "a-opus");
+    }
+
+    #[test]
+    fn test_migration_32_normalizes_short_aliases() {
+        // Insert short-form aliases directly (bypassing persist_agent_run normalization)
+        // then verify migration 32 normalizes them.
+        let conn = create_test_db();
+        create_workflow_session(&conn, "wf-mig32", "skill-y", 1000).unwrap();
+        conn.execute(
+            "INSERT INTO agent_runs (agent_id, skill_name, step_id, model, status, total_cost, workflow_session_id)
+             VALUES ('old-sonnet', 'skill-y', 0, 'Sonnet', 'completed', 0.10, 'wf-mig32'),
+                    ('old-haiku', 'skill-y', 0, 'haiku', 'completed', 0.02, 'wf-mig32'),
+                    ('old-opus', 'skill-y', 0, 'Opus', 'completed', 0.50, 'wf-mig32')",
+            [],
+        ).unwrap();
+
+        run_normalize_model_names_migration(&conn).unwrap();
+
+        let runs = get_agent_runs(&conn, false, None, None, None, 10).unwrap();
+        let models: std::collections::HashMap<&str, &str> =
+            runs.iter().map(|r| (r.agent_id.as_str(), r.model.as_str())).collect();
+
+        assert_eq!(models["old-sonnet"], "claude-sonnet-4-6");
+        assert_eq!(models["old-haiku"], "claude-haiku-4-5-20251001");
+        assert_eq!(models["old-opus"], "claude-opus-4-6");
     }
 
     #[test]
@@ -5189,23 +5443,23 @@ mod tests {
         let runs = get_session_agent_runs(&conn, "wf-session-cpk").unwrap();
         assert_eq!(runs.len(), 2);
 
-        // Verify distinct models
+        // Verify distinct canonical model IDs (aliases normalize at persist time)
         let models: Vec<&str> = runs.iter().map(|r| r.model.as_str()).collect();
-        assert!(models.contains(&"opus"));
-        assert!(models.contains(&"sonnet"));
+        assert!(models.contains(&"claude-opus-4-6"));
+        assert!(models.contains(&"claude-sonnet-4-6"));
 
         // Both should have the same agent_id
         assert!(runs.iter().all(|r| r.agent_id == "orchestrator-1"));
 
-        // get_usage_by_model should aggregate correctly
+        // get_usage_by_model groups by family name so both normalize to their family.
         let by_model = get_usage_by_model(&conn, false, None, None).unwrap();
         assert_eq!(by_model.len(), 2);
 
-        let opus = by_model.iter().find(|m| m.model == "opus").unwrap();
+        let opus = by_model.iter().find(|m| m.model == "Opus").unwrap();
         assert!((opus.total_cost - 0.50).abs() < 1e-10);
         assert_eq!(opus.run_count, 1);
 
-        let sonnet = by_model.iter().find(|m| m.model == "sonnet").unwrap();
+        let sonnet = by_model.iter().find(|m| m.model == "Sonnet").unwrap();
         assert!((sonnet.total_cost - 0.08).abs() < 1e-10);
         assert_eq!(sonnet.run_count, 1);
     }
@@ -5354,9 +5608,9 @@ mod tests {
     #[test]
     fn test_step_name_mapping() {
         assert_eq!(step_name(0), "Research");
-        assert_eq!(step_name(1), "Detailed Research");
-        assert_eq!(step_name(2), "Confirm Decisions");
-        assert_eq!(step_name(3), "Generate Skill");
+        assert_eq!(step_name(1), "Review");
+        assert_eq!(step_name(2), "Detailed Research");
+        assert_eq!(step_name(3), "Review");
         assert_eq!(step_name(4), "Confirm Decisions");
         assert_eq!(step_name(5), "Generate Skill");
         assert_eq!(step_name(6), "Step 6");

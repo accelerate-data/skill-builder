@@ -108,11 +108,12 @@ export const startAgent = (
   allowedTools?: string[],
   maxTurns?: number,
   permissionMode?: string,
+  sessionId?: string,
   skillName?: string,
   stepLabel?: string,
   agentName?: string,
   transcriptLogDir?: string,
-) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns, permissionMode: permissionMode ?? null, skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown", agentName: agentName ?? null, transcriptLogDir: transcriptLogDir ?? null });
+) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns, permissionMode: permissionMode ?? null, sessionId, skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown", agentName: agentName ?? null, transcriptLogDir: transcriptLogDir ?? null });
 
 // --- Workflow ---
 
@@ -231,8 +232,19 @@ export const endWorkflowSession = (sessionId: string) =>
 
 // --- Reconciliation ---
 
-export const reconcileStartup = () =>
-  invoke<ReconciliationResult>("reconcile_startup");
+export const reconcileStartup = (apply = false) =>
+  apply
+    ? invoke<ReconciliationResult>("reconcile_startup", { apply: true })
+    : invoke<ReconciliationResult>("reconcile_startup");
+
+export const recordReconciliationCancel = (
+  notificationCount: number,
+  discoveredCount: number,
+) =>
+  invoke<void>("record_reconciliation_cancel", {
+    notificationCount,
+    discoveredCount,
+  });
 
 export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
   invoke("resolve_orphan", { skillName, action });
@@ -342,6 +354,9 @@ export const getSessionAgentRuns = (sessionId: string) =>
 export const getStepAgentRuns = (skillName: string, stepId: number) =>
   invoke<AgentRunRecord[]>("get_step_agent_runs", { skillName, stepId });
 
+export const getAgentRuns = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null, modelFamily?: string | null, limit: number = 500) =>
+  invoke<AgentRunRecord[]>("get_agent_runs", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null, modelFamily: modelFamily ?? null, limit });
+
 export const getUsageByStep = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
   invoke<UsageByStep[]>("get_usage_by_step", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
 
@@ -442,8 +457,8 @@ export const sendRefineMessage = (
 export interface PerQuestionVerdict {
   question_id: string;
   verdict: "clear" | "needs_refinement" | "not_answered" | "vague" | "contradictory";
-  contradicts?: string;
   reason?: string;
+  contradicts?: string;
 }
 
 export interface AnswerEvaluation {
@@ -490,6 +505,21 @@ export const prepareSkillTest = (workspacePath: string, skillName: string) =>
 
 export const cleanupSkillTest = (testId: string) =>
   invoke<void>("cleanup_skill_test", { testId })
+
+export const buildTestPlanPrompt = (userPrompt: string) =>
+  invoke<string>("build_test_plan_prompt", { userPrompt })
+
+export const buildTestEvaluatorPrompt = (
+  userPrompt: string,
+  skillName: string,
+  withPlanText: string,
+  withoutPlanText: string,
+) => invoke<string>("build_test_evaluator_prompt", {
+  userPrompt,
+  skillName,
+  withPlanText,
+  withoutPlanText,
+})
 
 // --- File Import ---
 

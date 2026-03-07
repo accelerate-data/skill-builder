@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import type { UsageSummary, WorkflowSessionRecord, UsageByStep, UsageByModel, UsageByDay } from "@/lib/types";
-import { getUsageSummary, getRecentWorkflowSessions, getUsageByStep, getUsageByModel, getUsageByDay, resetUsage, getWorkflowSkillNames } from "@/lib/tauri";
+import type { UsageSummary, WorkflowSessionRecord, UsageByStep, UsageByModel, UsageByDay, AgentRunRecord } from "@/lib/types";
+import { getUsageSummary, getRecentWorkflowSessions, getUsageByStep, getUsageByModel, getUsageByDay, resetUsage, getWorkflowSkillNames, getAgentRuns } from "@/lib/tauri";
 
 export type DateRange = "7d" | "14d" | "30d" | "90d" | "all";
 
@@ -14,6 +14,7 @@ function toStartDate(range: DateRange): string | null {
 interface UsageState {
   summary: UsageSummary | null;
   recentSessions: WorkflowSessionRecord[];
+  agentRuns: AgentRunRecord[];
   byStep: UsageByStep[];
   byModel: UsageByModel[];
   byDay: UsageByDay[];
@@ -22,6 +23,7 @@ interface UsageState {
   hideCancelled: boolean;
   dateRange: DateRange;
   skillFilter: string | null;
+  modelFamilyFilter: string | null;
   skillNames: string[];
 
   fetchUsage: () => Promise<void>;
@@ -30,11 +32,13 @@ interface UsageState {
   toggleHideCancelled: () => void;
   setDateRange: (range: DateRange) => void;
   setSkillFilter: (skill: string | null) => void;
+  setModelFamilyFilter: (family: string | null) => void;
 }
 
 export const useUsageStore = create<UsageState>((set, get) => ({
   summary: null,
   recentSessions: [],
+  agentRuns: [],
   byStep: [],
   byModel: [],
   byDay: [],
@@ -43,21 +47,23 @@ export const useUsageStore = create<UsageState>((set, get) => ({
   hideCancelled: false,
   dateRange: "all",
   skillFilter: null,
+  modelFamilyFilter: null,
   skillNames: [],
 
   fetchUsage: async () => {
-    const { hideCancelled, dateRange, skillFilter } = get();
+    const { hideCancelled, dateRange, skillFilter, modelFamilyFilter } = get();
     const startDate = toStartDate(dateRange);
     set({ loading: true, error: null });
     try {
-      const [summary, recentSessions, byStep, byModel, byDay] = await Promise.all([
+      const [summary, recentSessions, agentRuns, byStep, byModel, byDay] = await Promise.all([
         getUsageSummary(hideCancelled, startDate, skillFilter),
         getRecentWorkflowSessions(50, hideCancelled, startDate, skillFilter),
+        getAgentRuns(hideCancelled, startDate, skillFilter, modelFamilyFilter),
         getUsageByStep(hideCancelled, startDate, skillFilter),
         getUsageByModel(hideCancelled, startDate, skillFilter),
         getUsageByDay(hideCancelled, startDate, skillFilter),
       ]);
-      set({ summary, recentSessions, byStep, byModel, byDay, loading: false });
+      set({ summary, recentSessions, agentRuns, byStep, byModel, byDay, loading: false });
     } catch (err) {
       set({ error: String(err), loading: false });
     }
@@ -73,19 +79,20 @@ export const useUsageStore = create<UsageState>((set, get) => ({
   },
 
   resetCounter: async () => {
-    const { hideCancelled, dateRange, skillFilter } = get();
+    const { hideCancelled, dateRange } = get();
     const startDate = toStartDate(dateRange);
     set({ loading: true, error: null });
     try {
       await resetUsage();
-      const [summary, recentSessions, byStep, byModel, byDay] = await Promise.all([
-        getUsageSummary(hideCancelled, startDate, skillFilter),
-        getRecentWorkflowSessions(50, hideCancelled, startDate, skillFilter),
-        getUsageByStep(hideCancelled, startDate, skillFilter),
-        getUsageByModel(hideCancelled, startDate, skillFilter),
-        getUsageByDay(hideCancelled, startDate, skillFilter),
+      const [summary, recentSessions, agentRuns, byStep, byModel, byDay] = await Promise.all([
+        getUsageSummary(hideCancelled, startDate, null),
+        getRecentWorkflowSessions(50, hideCancelled, startDate, null),
+        getAgentRuns(hideCancelled, startDate, null, null),
+        getUsageByStep(hideCancelled, startDate, null),
+        getUsageByModel(hideCancelled, startDate, null),
+        getUsageByDay(hideCancelled, startDate, null),
       ]);
-      set({ summary, recentSessions, byStep, byModel, byDay, loading: false, skillFilter: null, skillNames: [] });
+      set({ summary, recentSessions, agentRuns, byStep, byModel, byDay, loading: false, skillFilter: null, modelFamilyFilter: null, skillNames: [] });
     } catch (err) {
       set({ error: String(err), loading: false });
     }
@@ -103,6 +110,11 @@ export const useUsageStore = create<UsageState>((set, get) => ({
 
   setSkillFilter: (skill: string | null) => {
     set({ skillFilter: skill });
+    get().fetchUsage();
+  },
+
+  setModelFamilyFilter: (family: string | null) => {
+    set({ modelFamilyFilter: family });
     get().fetchUsage();
   },
 }));
