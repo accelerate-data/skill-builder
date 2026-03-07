@@ -70,16 +70,19 @@ Core model:
 
 - Gerund names, lowercase+hyphens, max 64 chars (example: `building-incremental-models`)
 - Description pattern: `[What it does]. Use when [triggers]. [How it works]. Also use when [more triggers].`
-- Description is third person and is the primary trigger surface
-- Keep trigger conditions in frontmatter description only
+- Description is the primary trigger surface — all "when to use" language goes here, none in the body
+- Make descriptions slightly pushy: Claude undertriggers skills by default, so cover edge cases and phrasing variants a user might use without naming the skill explicitly
 - For dbt skills, include layer-specific trigger terms
 
 ### SKILL.md Anatomy
+
+Skills load in three levels: frontmatter metadata (always in context) → SKILL.md body (loaded on trigger, keep under 500 lines) → reference files (loaded as needed). Design with this in mind — put what agents always need in the body, and what they occasionally need in references.
 
 - Required sections: Metadata | Overview | Quick Reference | Pointers to references
 - Standards skills: include Getting Started (5-8 steps) and Decision Dependency Map
 - Knowledge-capture skills: no Getting Started, no dependency map
 - If content grows beyond a few paragraphs, extract it to `references/`
+- Reference files over 300 lines should include a table of contents
 
 ### Skill Writing Guideline
 
@@ -96,6 +99,10 @@ Core model:
 - Keep SKILL.md concise; move deep detail to `references/` with clear pointers.
 - Avoid repeating trigger guidance in body sections.
 - Include examples only where they reduce ambiguity for high-risk decisions.
+
+#### Writing Style
+
+Explain the reasoning behind instructions rather than issuing rules. Claude follows guidance better when it understands the intent, not just the constraint. If you find yourself writing ALWAYS or NEVER in all caps, or rigid step-by-step rules, that's a signal to reframe: explain why the thing matters and trust the model to apply it correctly. Narrow, overfitted guidance fails on inputs you didn't anticipate. General principles grounded in reasoning generalize.
 
 ## Purpose and Structure Patterns
 
