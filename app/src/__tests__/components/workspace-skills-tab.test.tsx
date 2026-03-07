@@ -8,7 +8,7 @@ import {
 } from "@/test/mocks/tauri";
 import { open as mockOpen } from "@tauri-apps/plugin-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
-import { useImportedSkillsStore } from "@/stores/imported-skills-store";
+import { useWorkspaceSkillsStore } from "@/stores/workspace-skills-store";
 import type { WorkspaceSkill, AppSettings } from "@/lib/types";
 
 // Mock shadcn Select with a native <select> so onValueChange is testable in jsdom
@@ -74,7 +74,7 @@ vi.mock("remark-gfm", () => ({
   default: () => {},
 }));
 
-import { SkillsLibraryTab } from "@/components/skills-library-tab";
+import { WorkspaceSkillsTab } from "@/components/workspace-skills-tab";
 
 const defaultSettings: AppSettings = {
   anthropic_api_key: "sk-test",
@@ -141,11 +141,11 @@ function setupMocks(skills: WorkspaceSkill[] = sampleSkills) {
   });
 }
 
-describe("SkillsLibraryTab", () => {
+describe("WorkspaceSkillsTab", () => {
   beforeEach(() => {
     resetTauriMocks();
     useSettingsStore.getState().reset();
-    useImportedSkillsStore.setState({
+    useWorkspaceSkillsStore.setState({
       skills: [],
       isLoading: false,
       error: null,
@@ -161,7 +161,7 @@ describe("SkillsLibraryTab", () => {
       if (cmd === "list_workspace_skills") return new Promise(() => {}); // hang
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
-    render(<SkillsLibraryTab />);
+    render(<WorkspaceSkillsTab />);
 
     // Wait for list_workspace_skills to be called, which puts the store in loading state
     await waitFor(() => {
@@ -174,7 +174,7 @@ describe("SkillsLibraryTab", () => {
 
   it("renders import button", async () => {
     setupMocks();
-    render(<SkillsLibraryTab />);
+    render(<WorkspaceSkillsTab />);
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Import" })).toBeInTheDocument();
@@ -184,7 +184,7 @@ describe("SkillsLibraryTab", () => {
   it("Marketplace button is disabled when marketplace URL is not configured", async () => {
     // Store default: marketplaceUrl = null
     setupMocks();
-    render(<SkillsLibraryTab />);
+    render(<WorkspaceSkillsTab />);
 
     await waitFor(() => {
       const btn = screen.getByRole("button", { name: /Marketplace/i });
@@ -195,7 +195,7 @@ describe("SkillsLibraryTab", () => {
   it("Marketplace button is enabled when marketplace URL is configured", async () => {
     useSettingsStore.getState().setSettings({ marketplaceRegistries: [{ name: "Test", source_url: "https://github.com/owner/skills", enabled: true }] });
     setupMocks();
-    render(<SkillsLibraryTab />);
+    render(<WorkspaceSkillsTab />);
 
     await waitFor(() => {
       const btn = screen.getByRole("button", { name: /Marketplace/i });
@@ -205,7 +205,7 @@ describe("SkillsLibraryTab", () => {
 
   it("renders skill rows when skills exist", async () => {
     setupMocks();
-    render(<SkillsLibraryTab />);
+    render(<WorkspaceSkillsTab />);
 
     await waitFor(() => {
       expect(screen.getByText("sales-analytics")).toBeInTheDocument();
@@ -215,7 +215,7 @@ describe("SkillsLibraryTab", () => {
 
   it("shows empty state when no skills", async () => {
     setupMocks([]);
-    render(<SkillsLibraryTab />);
+    render(<WorkspaceSkillsTab />);
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("list_workspace_skills");
@@ -231,7 +231,7 @@ describe("SkillsLibraryTab", () => {
 
   it("shows description text on skill row", async () => {
     setupMocks();
-    render(<SkillsLibraryTab />);
+    render(<WorkspaceSkillsTab />);
 
     await waitFor(() => {
       expect(screen.getByText("Analytics skill for sales data")).toBeInTheDocument();
@@ -240,7 +240,7 @@ describe("SkillsLibraryTab", () => {
 
   it("renders active toggle switch for each skill", async () => {
     setupMocks();
-    render(<SkillsLibraryTab />);
+    render(<WorkspaceSkillsTab />);
 
     await waitFor(() => {
       expect(screen.getByRole("switch", { name: /Toggle sales-analytics/i })).toBeInTheDocument();
@@ -250,7 +250,7 @@ describe("SkillsLibraryTab", () => {
 
   it("renders delete button for non-bundled skills", async () => {
     setupMocks();
-    render(<SkillsLibraryTab />);
+    render(<WorkspaceSkillsTab />);
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Delete sales-analytics/i })).toBeInTheDocument();
@@ -266,7 +266,7 @@ describe("SkillsLibraryTab", () => {
       is_bundled: true,
     };
     setupMocks([bundledSkill]);
-    render(<SkillsLibraryTab />);
+    render(<WorkspaceSkillsTab />);
 
     await waitFor(() => {
       expect(screen.getByText("bundled-skill")).toBeInTheDocument();
@@ -311,7 +311,7 @@ describe("SkillsLibraryTab", () => {
     });
     (mockOpen as ReturnType<typeof vi.fn>).mockResolvedValue("/path/to/file.skill");
 
-    render(<SkillsLibraryTab />);
+    render(<WorkspaceSkillsTab />);
 
     await waitFor(() => {
       expect(screen.getByText("No workspace skills")).toBeInTheDocument();
@@ -345,7 +345,7 @@ describe("SkillsLibraryTab", () => {
     setupMocks([]);
     (mockOpen as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
-    render(<SkillsLibraryTab />);
+    render(<WorkspaceSkillsTab />);
 
     await waitFor(() => {
       expect(screen.getByText("No workspace skills")).toBeInTheDocument();
@@ -374,7 +374,7 @@ describe("SkillsLibraryTab", () => {
       is_bundled: false,
     };
     setupMocks([bundledSkill, nonBundledSkill]);
-    render(<SkillsLibraryTab />);
+    render(<WorkspaceSkillsTab />);
 
     await waitFor(() => {
       expect(screen.getByText("bundled-skill")).toBeInTheDocument();
@@ -404,7 +404,7 @@ describe("SkillsLibraryTab", () => {
       purpose: null,
     };
     setupMocks([skillWithPurpose, skillNoPurpose]);
-    render(<SkillsLibraryTab />);
+    render(<WorkspaceSkillsTab />);
 
     await waitFor(() => {
       expect(screen.getByText("research-skill")).toBeInTheDocument();
@@ -437,13 +437,13 @@ describe("SkillsLibraryTab", () => {
     };
 
     const setPurposeMock = vi.fn().mockResolvedValue(undefined);
-    useImportedSkillsStore.setState({
+    useWorkspaceSkillsStore.setState({
       skills: [skillNoPurpose],
       isLoading: false,
       error: null,
       selectedSkill: null,
       setPurpose: setPurposeMock,
-    } as unknown as Parameters<typeof useImportedSkillsStore.setState>[0]);
+    } as unknown as Parameters<typeof useWorkspaceSkillsStore.setState>[0]);
 
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
@@ -451,7 +451,7 @@ describe("SkillsLibraryTab", () => {
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
 
-    render(<SkillsLibraryTab />);
+    render(<WorkspaceSkillsTab />);
 
     await waitFor(() => {
       expect(screen.getByText("sales-analytics")).toBeInTheDocument();

@@ -60,6 +60,10 @@ fn build_refine_config(
     api_key: String,
     model: String,
     extended_thinking: bool,
+    interleaved_thinking_beta: bool,
+    sdk_effort: Option<String>,
+    fallback_model: Option<String>,
+    refine_prompt_suggestions: bool,
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
 
@@ -75,8 +79,12 @@ fn build_refine_config(
 
     let config = SidecarConfig {
         prompt,
-        betas: crate::commands::workflow::build_betas(thinking_budget, &model),
-        model: Some(model),
+        betas: crate::commands::workflow::build_betas(
+            thinking_budget,
+            &model,
+            interleaved_thinking_beta,
+        ),
+        model: None,
         api_key,
         cwd,
         allowed_tools: Some(REFINE_TOOLS.iter().map(|s| s.to_string()).collect()),
@@ -84,8 +92,16 @@ fn build_refine_config(
         // messages in this session (not per-message like the old one-shot mode).
         max_turns: Some(REFINE_STREAM_MAX_TURNS),
         permission_mode: None,
-        session_id: None,
-        max_thinking_tokens: thinking_budget,
+        thinking: thinking_budget.map(|budget| {
+            serde_json::json!({
+                "type": "enabled",
+                "budgetTokens": budget
+            })
+        }),
+        fallback_model,
+        effort: sdk_effort,
+        output_format: None,
+        prompt_suggestions: Some(refine_prompt_suggestions),
         path_to_claude_code_executable: None,
         agent_name: Some(REFINE_AGENT_NAME.to_string()),
         conversation_history: None,
@@ -517,7 +533,16 @@ pub async fn send_refine_message(
     if !stream_started {
         // ─── First message: start streaming session ───────────────────────
         // 2. Read settings, workflow run data, and write user-context.md
-        let (api_key, extended_thinking, model, skills_path) = {
+        let (
+            api_key,
+            extended_thinking,
+            interleaved_thinking_beta,
+            sdk_effort,
+            fallback_model,
+            refine_prompt_suggestions,
+            model,
+            skills_path,
+        ) = {
             let conn = db.0.lock().map_err(|e| {
                 log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
                 e.to_string()
@@ -560,7 +585,16 @@ pub async fn send_refine_message(
                 None, Some(purpose.as_str()), None, None, None, None, None,
             );
 
-            (key, settings.extended_thinking, model, skills_path)
+            (
+                key,
+                settings.extended_thinking,
+                settings.interleaved_thinking_beta,
+                settings.sdk_effort.clone(),
+                Some(model.clone()),
+                settings.refine_prompt_suggestions,
+                model,
+                skills_path,
+            )
         };
 
         // 3. Ensure the skill's workspace dir exists before building the prompt.
@@ -609,6 +643,10 @@ pub async fn send_refine_message(
             api_key,
             model,
             extended_thinking,
+            interleaved_thinking_beta,
+            sdk_effort,
+            fallback_model,
+            refine_prompt_suggestions,
         );
 
         // Resolve SDK cli.js path
@@ -998,6 +1036,10 @@ mod tests {
             "sk-test-key".to_string(),
             "sonnet".to_string(),
             false,
+            true,
+            None,
+            None,
+            true,
         )
     }
 
@@ -1045,6 +1087,10 @@ mod tests {
             "sk-key".to_string(),
             "sonnet".to_string(),
             false,
+            true,
+            None,
+            None,
+            true,
         );
         assert_eq!(config.cwd, "/home/user/.vibedata/skill-builder");
     }
@@ -1064,11 +1110,10 @@ mod tests {
     }
 
     #[test]
-    fn test_refine_config_session_id_is_none() {
-        // session_id must NOT be passed to the sidecar — the SDK would interpret
-        // it as a "resume" ID and fail with "No conversation found".
+    fn test_refine_config_omits_model_for_named_agent() {
+        // Agent frontmatter is authoritative for named refine agent calls.
         let (config, _) = base_refine_config("test");
-        assert!(config.session_id.is_none());
+        assert!(config.model.is_none());
     }
 
     #[test]
@@ -1088,14 +1133,24 @@ mod tests {
             "sk-key".to_string(),
             "sonnet".to_string(),
             true, // extended_thinking enabled
+            true,
+            None,
+            None,
+            true,
         );
-        assert_eq!(config.max_thinking_tokens, Some(16_000));
+        assert_eq!(
+            config.thinking,
+            Some(serde_json::json!({
+                "type": "enabled",
+                "budgetTokens": 16_000
+            }))
+        );
     }
 
     #[test]
     fn test_refine_config_no_thinking_when_disabled() {
         let (config, _) = base_refine_config("test");
-        assert!(config.max_thinking_tokens.is_none());
+        assert!(config.thinking.is_none());
     }
 
     #[test]

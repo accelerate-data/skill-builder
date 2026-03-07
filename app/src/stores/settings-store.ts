@@ -13,6 +13,10 @@ interface SettingsState {
   preferredModel: string | null;
   logLevel: string;
   extendedThinking: boolean;
+  interleavedThinkingBeta: boolean;
+  sdkEffort: string | null;
+  fallbackModel: string | null;
+  refinePromptSuggestions: boolean;
   githubOauthToken: string | null;
   githubUserLogin: string | null;
   githubUserAvatar: string | null;
@@ -26,9 +30,9 @@ interface SettingsState {
   autoUpdate: boolean;
   isConfigured: boolean;
   availableModels: ModelInfo[];
-  pendingUpgradeOpen: { mode: 'skill-library' | 'settings-skills'; skills: string[] } | null;
+  pendingUpgradeOpen: { mode: "dashboard-library" | "workspace-skills"; skills: string[] } | null;
   setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset" | "setPendingUpgradeOpen">>) => void;
-  setPendingUpgradeOpen: (value: { mode: 'skill-library' | 'settings-skills'; skills: string[] } | null) => void;
+  setPendingUpgradeOpen: (value: { mode: "dashboard-library" | "workspace-skills"; skills: string[] } | null) => void;
   reset: () => void;
 }
 
@@ -39,6 +43,10 @@ const initialState = {
   preferredModel: null,
   logLevel: "info",
   extendedThinking: false,
+  interleavedThinkingBeta: true,
+  sdkEffort: null,
+  fallbackModel: null,
+  refinePromptSuggestions: true,
   githubOauthToken: null,
   githubUserLogin: null,
   githubUserAvatar: null,
@@ -52,7 +60,7 @@ const initialState = {
   autoUpdate: false,
   isConfigured: false,
   availableModels: [] as ModelInfo[],
-  pendingUpgradeOpen: null as { mode: 'skill-library' | 'settings-skills'; skills: string[] } | null,
+  pendingUpgradeOpen: null as { mode: "dashboard-library" | "workspace-skills"; skills: string[] } | null,
 };
 
 export const useSettingsStore = create<SettingsState>((set) => ({

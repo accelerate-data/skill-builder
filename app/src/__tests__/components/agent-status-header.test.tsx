@@ -106,11 +106,14 @@ describe("AgentStatusHeader", () => {
     expect(timeBadge).toBeInTheDocument();
   });
 
-  it("shows Thinking badge when config has maxThinkingTokens", () => {
+  it("shows Thinking badge when config has thinking budget", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
     useAgentStore.getState().addMessage("test-agent", {
       type: "config",
-      raw: { type: "config", config: { maxThinkingTokens: 32000 } },
+      raw: {
+        type: "config",
+        config: { thinking: { type: "enabled", budgetTokens: 32000 } },
+      },
       timestamp: Date.now(),
     });
     render(<AgentStatusHeader agentId="test-agent" />);
@@ -118,7 +121,7 @@ describe("AgentStatusHeader", () => {
     expect(screen.getByText("Thinking")).toBeInTheDocument();
   });
 
-  it("does NOT show Thinking badge when config has no maxThinkingTokens", () => {
+  it("does NOT show Thinking badge when config has no thinking budget", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
     useAgentStore.getState().addMessage("test-agent", {
       type: "config",

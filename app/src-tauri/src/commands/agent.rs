@@ -15,7 +15,6 @@ pub async fn start_agent(
     allowed_tools: Option<Vec<String>>,
     max_turns: Option<u32>,
     permission_mode: Option<String>,
-    session_id: Option<String>,
     skill_name: String,
     _step_label: String,
     agent_name: Option<String>,
@@ -25,7 +24,7 @@ pub async fn start_agent(
         "[start_agent] agent_id={} model={} skill_name={} agent_name={:?}",
         agent_id, model, skill_name, agent_name
     );
-    let (api_key, extended_thinking) = {
+    let (api_key, extended_thinking, interleaved_thinking_beta, sdk_effort, fallback_model) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[start_agent] Failed to acquire DB lock: {}", e);
             e.to_string()
@@ -36,7 +35,17 @@ pub async fn start_agent(
             None => return Err("Anthropic API key not configured".to_string()),
         };
 
-        (key, settings.extended_thinking)
+        let preferred_model = settings
+            .preferred_model
+            .clone()
+            .unwrap_or_else(|| "sonnet".to_string());
+        (
+            key,
+            settings.extended_thinking,
+            settings.interleaved_thinking_beta,
+            settings.sdk_effort.clone(),
+            Some(preferred_model),
+        )
     };
 
     let thinking_budget: Option<u32> = if extended_thinking {
@@ -45,17 +54,63 @@ pub async fn start_agent(
         None
     };
 
+    let thinking = thinking_budget.map(|budget| {
+        serde_json::json!({
+            "type": "enabled",
+            "budgetTokens": budget
+        })
+    });
+
+    // Only apply outputFormat where the prompt enforces strict JSON output.
+    let output_format = if skill_name == "_feedback" {
+        Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["type", "title", "body", "labels"],
+                "properties": {
+                    "type": { "type": "string", "enum": ["bug", "feature"] },
+                    "title": { "type": "string" },
+                    "body": { "type": "string" },
+                    "labels": {
+                        "oneOf": [
+                            { "type": "string" },
+                            { "type": "array", "items": { "type": "string" } }
+                        ]
+                    }
+                },
+                "additionalProperties": true
+            }
+        }))
+    } else {
+        None
+    };
+
+    // Agent frontmatter model is authoritative when agent_name is provided.
+    let model_for_config = if agent_name.is_some() {
+        None
+    } else {
+        Some(model.clone())
+    };
+
     let config = SidecarConfig {
         prompt,
-        model: Some(model.clone()),
+        model: model_for_config,
         api_key,
         cwd,
         allowed_tools,
         max_turns,
         permission_mode,
-        session_id,
-        betas: crate::commands::workflow::build_betas(thinking_budget, &model),
-        max_thinking_tokens: thinking_budget,
+        betas: crate::commands::workflow::build_betas(
+            thinking_budget,
+            &model,
+            interleaved_thinking_beta,
+        ),
+        thinking,
+        fallback_model,
+        effort: sdk_effort,
+        output_format,
+        prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name,
         conversation_history: None,

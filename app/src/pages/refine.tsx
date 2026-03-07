@@ -353,7 +353,13 @@ export default function RefinePage() {
 
         // Register run in agent store (events may have already started streaming —
         // addMessage auto-creates runs, registerRun merges with the correct model)
-        useAgentStore.getState().registerRun(agentId, model, selectedSkill.name, "refine");
+        useAgentStore.getState().registerRun(
+          agentId,
+          model,
+          selectedSkill.name,
+          "refine",
+          `synthetic:refine:${selectedSkill.name}:${sessionId}`,
+        );
 
         // Add agent turn to chat
         store.addAgentTurn(agentId);

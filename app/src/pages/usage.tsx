@@ -449,6 +449,9 @@ export default function UsagePage() {
         <Card>
           <CardHeader>
             <CardTitle>Cost by Step</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Includes workflow steps plus synthetic `Refine` and `Test` buckets from those surfaces.
+            </p>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             {byStep.length === 0 ? (
@@ -562,7 +565,7 @@ export default function UsagePage() {
                         ) : agents && agents.length > 0 ? (
                           groupByStep(agents).map((step) => (
                             <div
-                              key={step.stepId}
+                              key={`${step.stepId}|${step.model}`}
                               className="flex items-center justify-between py-1 px-2 hover:bg-muted/40 rounded text-xs"
                             >
                               <div className="flex items-center gap-2 min-w-0">

@@ -167,6 +167,21 @@ describe("DecisionsSummaryCard — Decision Cards", () => {
     render(<DecisionsSummaryCard decisionsContent={contradictoryDecisionsMd} />);
     expect(screen.getByText("needs-review")).toBeInTheDocument();
   });
+
+  it("filters to only needs-review decisions when toggle is enabled", async () => {
+    const user = userEvent.setup();
+    render(<DecisionsSummaryCard decisionsContent={contradictoryDecisionsMd} />);
+
+    // Initially both decisions are visible
+    expect(screen.getByText("D1")).toBeInTheDocument();
+    expect(screen.getByText("D2")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Needs Review"));
+
+    // Filtered view keeps only needs-review card (D1)
+    expect(screen.getByText("D1")).toBeInTheDocument();
+    expect(screen.queryByText("D2")).not.toBeInTheDocument();
+  });
 });
 
 // ─── Serializer Round-trip ────────────────────────────────────────────────────

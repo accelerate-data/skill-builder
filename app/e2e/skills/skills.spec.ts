@@ -121,7 +121,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await page.addInitScript((skills) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
         list_workspace_skills: skills,
-        delete_imported_skill: undefined,
+        delete_workspace_skill: undefined,
       };
     }, nonBundled);
 

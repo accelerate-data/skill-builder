@@ -23,6 +23,10 @@ interface ResearchPlanData {
   selectedDimensions: string[];
 }
 
+function stripInlineMarkdown(text: string): string {
+  return text.replace(/[*_`~]/g, "").trim();
+}
+
 interface ResearchSummaryCardProps {
   researchPlan: string;
   clarificationsData: ClarificationsFile;
@@ -89,6 +93,49 @@ function parseResearchPlan(markdown: string): ResearchPlanData {
         result.selectedDimensions.push(cells[0]);
       }
     }
+  }
+
+  // Back-compat: older research-plan outputs may only contain a single top-level
+  // markdown table (Dimension | Score | Reasoning | Clarifications Needed),
+  // without frontmatter or a dedicated "Selected Dimensions" section.
+  if (result.dimensions.length === 0) {
+    const tableRows = markdown
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("|") && line.endsWith("|"));
+
+    for (const row of tableRows) {
+      const cells = row.split("|").map((c) => c.trim()).filter(Boolean);
+      if (cells.length < 2) continue;
+
+      const scoreMatch = cells[1].match(/\d+/);
+      const score = scoreMatch ? parseInt(scoreMatch[0], 10) : NaN;
+      if (!Number.isFinite(score)) continue;
+
+      result.dimensions.push({
+        name: stripInlineMarkdown(cells[0]),
+        score,
+        reason: cells[2] ?? "",
+        companion: cells[3] || undefined,
+      });
+    }
+  }
+
+  if (result.dimensionsEvaluated === 0 && result.dimensions.length > 0) {
+    result.dimensionsEvaluated = result.dimensions.length;
+  }
+
+  if (result.selectedDimensions.length === 0 && result.dimensions.length > 0) {
+    const inferred = result.dimensions
+      .filter((d) => d.score >= 4)
+      .map((d) => d.name);
+    result.selectedDimensions = inferred.length > 0
+      ? inferred
+      : result.dimensions.map((d) => d.name);
+  }
+
+  if (result.dimensionsSelected === 0 && result.selectedDimensions.length > 0) {
+    result.dimensionsSelected = result.selectedDimensions.length;
   }
 
   return result;

@@ -19,8 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useImportedSkillsStore } from "@/stores/imported-skills-store"
-import type { WorkspaceSkill } from "@/stores/imported-skills-store"
+import { useWorkspaceSkillsStore } from "@/stores/workspace-skills-store"
+import type { WorkspaceSkill } from "@/stores/workspace-skills-store"
 import { useSettingsStore } from "@/stores/settings-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
 import { ImportSkillDialog } from "@/components/import-skill-dialog"
@@ -29,7 +29,7 @@ import { parseSkillFile } from "@/lib/tauri"
 import type { SkillFileMeta } from "@/lib/types"
 import { PURPOSE_OPTIONS } from "@/lib/types"
 
-export function SkillsLibraryTab() {
+export function WorkspaceSkillsTab() {
   const {
     skills,
     isLoading,
@@ -38,7 +38,7 @@ export function SkillsLibraryTab() {
     toggleActive,
     deleteSkill,
     setPurpose,
-  } = useImportedSkillsStore()
+  } = useWorkspaceSkillsStore()
 
   const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
   const hasEnabledRegistry = marketplaceRegistries.some(r => r.enabled)
@@ -56,7 +56,7 @@ export function SkillsLibraryTab() {
   }, [fetchSkills])
 
   useEffect(() => {
-    if (pendingUpgrade?.mode === 'settings-skills') {
+    if (pendingUpgrade?.mode === "workspace-skills") {
       setShowGitHubImport(true)
       useSettingsStore.getState().setPendingUpgradeOpen(null)
     }
@@ -75,9 +75,9 @@ export function SkillsLibraryTab() {
       setWorkspaceImportMeta(meta)
       setWorkspaceImportOpen(true)
     } catch (err) {
-      console.error("[skills-library] parse failed:", err)
+      console.error("[workspace-skills] parse failed:", err)
       toast.error(
-        `Import failed: not a valid skill package.`,
+        "Import failed: not a valid skill package.",
         { duration: Infinity }
       )
     }
@@ -92,7 +92,7 @@ export function SkillsLibraryTab() {
           { duration: 1500 }
         )
       } catch (err) {
-        console.error("[skills-library] toggle failed:", err)
+        console.error("[workspace-skills] toggle failed:", err)
         toast.error(`Failed to toggle: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity })
       }
     },
@@ -106,7 +106,7 @@ export function SkillsLibraryTab() {
         await deleteSkill(skill.skill_id)
         toast.success(`Deleted "${skill.skill_name}"`, { id: toastId })
       } catch (err) {
-        console.error("[skills-library] delete failed:", err)
+        console.error("[workspace-skills] delete failed:", err)
         toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId, duration: Infinity })
       }
     },
@@ -136,7 +136,7 @@ export function SkillsLibraryTab() {
       try {
         await setPurpose(skillId, newPurpose)
       } catch (err) {
-        console.error("[skills-library] setPurpose failed:", err)
+        console.error("[workspace-skills] setPurpose failed:", err)
         toast.error(`Failed to update purpose: ${err instanceof Error ? err.message : String(err)}`)
       }
     },
@@ -263,7 +263,7 @@ export function SkillsLibraryTab() {
         open={showGitHubImport}
         onOpenChange={setShowGitHubImport}
         onImported={fetchSkills}
-        mode="settings-skills"
+        mode="workspace-skills"
         registries={marketplaceRegistries.filter(r => r.enabled)}
       />
 

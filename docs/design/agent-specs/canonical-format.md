@@ -279,7 +279,7 @@ decision_count: 0
 ---
 ## Scope Recommendation Active
 
-The research planner determined the skill scope is too broad. See `clarifications.md` for recommended narrower skills. No decisions were generated.
+The research planner determined the skill scope is too broad. See `clarifications.json` for recommended narrower skills. No decisions were generated.
 ```
 
 ---

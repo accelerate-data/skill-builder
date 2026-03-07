@@ -10,8 +10,8 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
-import { useImportedSkillsStore } from "@/stores/imported-skills-store"
-import type { WorkspaceSkill } from "@/stores/imported-skills-store"
+import { useWorkspaceSkillsStore } from "@/stores/workspace-skills-store"
+import type { WorkspaceSkill } from "@/stores/workspace-skills-store"
 
 interface SkillPreviewDialogProps {
   skill: WorkspaceSkill | null
@@ -27,7 +27,7 @@ export default function SkillPreviewDialog({
   const [content, setContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const getSkillContent = useImportedSkillsStore((s) => s.getSkillContent)
+  const getSkillContent = useWorkspaceSkillsStore((s) => s.getSkillContent)
 
   useEffect(() => {
     if (!open || !skill) {

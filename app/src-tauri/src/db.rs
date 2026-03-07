@@ -1229,15 +1229,17 @@ pub fn persist_agent_run(
         }
     }
 
+    let workflow_run_id = get_workflow_run_id(conn, skill_name)?;
+
     conn.execute(
         "INSERT OR REPLACE INTO agent_runs
          (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
           cache_read_tokens, cache_write_tokens, total_cost, duration_ms,
           num_turns, stop_reason, duration_api_ms, tool_use_count, compaction_count,
-          session_id, workflow_session_id, started_at, completed_at)
+          session_id, workflow_session_id, workflow_run_id, started_at, completed_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
                  ?12, ?13, ?14, ?15, ?16,
-                 ?17, ?18,
+                 ?17, ?18, ?19,
                  COALESCE((SELECT started_at FROM agent_runs WHERE agent_id = ?1 AND model = ?4), datetime('now') || 'Z'),
                  datetime('now') || 'Z')",
         rusqlite::params![
@@ -1259,6 +1261,7 @@ pub fn persist_agent_run(
             compaction_count,
             session_id,
             workflow_session_id,
+            workflow_run_id,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -3662,6 +3665,10 @@ mod tests {
             log_level: "info".to_string(),
             extended_context: false,
             extended_thinking: false,
+            interleaved_thinking_beta: true,
+            sdk_effort: None,
+            fallback_model: None,
+            refine_prompt_suggestions: true,
             splash_shown: false,
             github_oauth_token: None,
             github_user_login: None,
@@ -3695,6 +3702,10 @@ mod tests {
             log_level: "info".to_string(),
             extended_context: false,
             extended_thinking: false,
+            interleaved_thinking_beta: true,
+            sdk_effort: None,
+            fallback_model: None,
+            refine_prompt_suggestions: true,
             splash_shown: false,
             github_oauth_token: None,
             github_user_login: None,
@@ -3727,6 +3738,10 @@ mod tests {
             log_level: "info".to_string(),
             extended_context: false,
             extended_thinking: false,
+            interleaved_thinking_beta: true,
+            sdk_effort: None,
+            fallback_model: None,
+            refine_prompt_suggestions: true,
             splash_shown: false,
             github_oauth_token: None,
             github_user_login: None,
@@ -3752,6 +3767,10 @@ mod tests {
             log_level: "info".to_string(),
             extended_context: false,
             extended_thinking: false,
+            interleaved_thinking_beta: true,
+            sdk_effort: None,
+            fallback_model: None,
+            refine_prompt_suggestions: true,
             splash_shown: false,
             github_oauth_token: None,
             github_user_login: None,

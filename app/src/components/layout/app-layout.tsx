@@ -95,7 +95,7 @@ async function handleAutoUpdate(
       <div className="space-y-1">
         <p className="font-medium">Auto-updated {total} skill{total !== 1 ? "s" : ""}</p>
         {libFiltered.length > 0 && (
-          <p>• Skills Library: {libFiltered.map((s) => s.name).join(", ")}</p>
+          <p>• Dashboard: {libFiltered.map((s) => s.name).join(", ")}</p>
         )}
         {wsFiltered.length > 0 && (
           <p>• Workspace: {wsFiltered.map((s) => s.name).join(", ")}</p>
@@ -117,13 +117,13 @@ function showManualUpdateToasts(
   if (library.length > 0) {
     const names = library.map((s) => qualify(s.name));
     toast.info(
-      `Skills Library: update available for ${library.length} skill${library.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
+      `Dashboard: update available for ${library.length} skill${library.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
       {
         duration: Infinity,
         action: {
           label: "Upgrade",
           onClick: () => {
-            useSettingsStore.getState().setPendingUpgradeOpen({ mode: "skill-library", skills: names });
+            useSettingsStore.getState().setPendingUpgradeOpen({ mode: "dashboard-library", skills: names });
             router.navigate({ to: "/" });
           },
         },
@@ -139,7 +139,7 @@ function showManualUpdateToasts(
         action: {
           label: "Upgrade",
           onClick: () => {
-            useSettingsStore.getState().setPendingUpgradeOpen({ mode: "settings-skills", skills: names });
+            useSettingsStore.getState().setPendingUpgradeOpen({ mode: "workspace-skills", skills: names });
             router.navigate({ to: "/settings" });
           },
         },

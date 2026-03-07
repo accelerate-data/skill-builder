@@ -67,6 +67,24 @@ Purpose-aware implication rules:
 
 **Writing `decisions.md`**: Write from scratch each time — clean snapshot, not a log. Use YAML frontmatter with `decision_count`, `conflicts_resolved`, and `round` fields. For contradictions, pick the most reasonable option and document reasoning in `**Implication**` — the user can override. Status values: `resolved`, `conflict-resolved`, `needs-review`.
 
+`decisions.md` must be canonical:
+
+- YAML frontmatter includes required fields:
+  - `decision_count` (integer)
+  - `conflicts_resolved` (integer)
+  - `round` (integer)
+- Optional flags only when applicable:
+  - `contradictory_inputs: true` (or `revised` after user edits)
+  - `scope_recommendation: true` (scope stub path only)
+- Body contains sequential `### D{N}: ...` entries
+- Every decision entry includes all four required lines:
+  - `- **Original question:** ...`
+  - `- **Decision:** ...`
+  - `- **Implication:** ...`
+  - `- **Status:** resolved|conflict-resolved|needs-review`
+
+Do not emit alternative formats (tables, prose-only summaries, or missing status/implication lines).
+
 **`contradictory_inputs` flag**: Set `contradictory_inputs: true` when answers are logically incompatible — you cannot build a coherent data model satisfying both (e.g., "track monthly revenue" vs "don't track revenue at all"). When answers merely disagree on approach, pick the more reasonable option and document the trade-off — do not flag.
 
 Example frontmatter:

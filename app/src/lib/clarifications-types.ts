@@ -149,7 +149,11 @@ export function parseClarifications(content: string | null): ClarificationsFile 
     if (rawQuestionCount === 0 && legacyDimensions.length > 0) {
       const convertedSections: Section[] = legacyDimensions.map((d, sectionIndex) => {
         const sectionId = d.id || `S${sectionIndex + 1}`;
-        const sourceQuestions = Array.isArray(d.questions) ? d.questions : [];
+        const sourceQuestions = Array.isArray(d.questions)
+          ? d.questions
+          : (Array.isArray((d as { clarifications_needed?: string[] }).clarifications_needed)
+              ? (d as { clarifications_needed?: string[] }).clarifications_needed ?? []
+              : []);
         return {
           id: sectionId,
           title: d.name || `Section ${sectionIndex + 1}`,

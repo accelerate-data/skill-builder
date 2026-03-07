@@ -175,7 +175,7 @@ describe("GitHubImportDialog", () => {
 
     it("shows description in edit form when edit button is clicked", async () => {
       const user = userEvent.setup();
-      renderDialog({ mode: "skill-library" });
+      renderDialog({ mode: "dashboard-library" });
 
       await waitFor(() => {
         expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
@@ -193,7 +193,7 @@ describe("GitHubImportDialog", () => {
       expect(screen.getByDisplayValue("Analyze your sales pipeline")).toBeInTheDocument();
     });
 
-    it("does not show skills filtered out by typeFilter in skill-library mode", async () => {
+    it("does not show skills filtered out by typeFilter in dashboard-library mode", async () => {
       const mixed: AvailableSkill[] = [
         { path: "skills/a", name: "Skill A", plugin_name: null, description: null, purpose: "skill-builder", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
         { path: "skills/b", name: "Skill B", plugin_name: null, description: null, purpose: "domain", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
@@ -207,8 +207,8 @@ describe("GitHubImportDialog", () => {
         list_skills: [],
       });
 
-      // typeFilter only applies in skill-library mode
-      renderDialog({ mode: "skill-library", typeFilter: ["skill-builder"] });
+      // typeFilter only applies in dashboard-library mode
+      renderDialog({ mode: "dashboard-library", typeFilter: ["skill-builder"] });
 
       await waitFor(() => {
         expect(screen.getByText("Skill A")).toBeInTheDocument();
@@ -217,21 +217,21 @@ describe("GitHubImportDialog", () => {
       expect(screen.queryByText("Skill C")).not.toBeInTheDocument();
     });
 
-    it("shows edit (pencil) buttons for each skill in settings-skills mode", async () => {
+    it("shows edit (pencil) buttons for each skill in workspace-skills mode", async () => {
       renderDialog();
 
       await waitFor(() => {
         expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
       });
 
-      // In settings-skills mode, each idle skill row has a pencil icon button
+      // In workspace-skills mode, each idle skill row has a pencil icon button
       const allButtons = screen.getAllByRole("button") as HTMLElement[];
       const editButtons = allButtons.filter((btn) => !btn.textContent?.trim());
       expect(editButtons).toHaveLength(2);
     });
 
     it("pre-marks skills that are already installed as 'Up to date' when same version", async () => {
-      // In settings-skills mode, duplicate detection uses list_workspace_skills by name
+      // In workspace-skills mode, duplicate detection uses list_workspace_skills by name
       const installedWs: WorkspaceSkill = {
         skill_id: "ws-1",
         skill_name: "Sales Analytics",
@@ -271,7 +271,7 @@ describe("GitHubImportDialog", () => {
     });
   });
 
-  describe("Import — skill-library mode", () => {
+  describe("Import — dashboard-library mode", () => {
     const onImported = vi.fn(() => Promise.resolve());
 
     beforeEach(() => {
@@ -286,7 +286,7 @@ describe("GitHubImportDialog", () => {
     });
 
     // Helper: wait for skills to load and return all skill-row icon edit buttons.
-    // In skill-library mode buttons are icon-only (SVG only, no text). The Radix Dialog
+    // In dashboard-library mode buttons are icon-only (SVG only, no text). The Radix Dialog
     // close button has sr-only text "Close", so filtering by empty textContent identifies
     // the skill edit buttons.
     async function waitForSkillEditButtons(): Promise<HTMLElement[]> {
@@ -297,8 +297,8 @@ describe("GitHubImportDialog", () => {
       return allButtons.filter((btn) => !btn.textContent?.trim());
     }
 
-    it("shows an edit button for each skill in skill-library mode", async () => {
-      renderDialog({ mode: "skill-library", onImported });
+    it("shows an edit button for each skill in dashboard-library mode", async () => {
+      renderDialog({ mode: "dashboard-library", onImported });
 
       const editButtons = await waitForSkillEditButtons();
       expect(editButtons).toHaveLength(2);
@@ -306,7 +306,7 @@ describe("GitHubImportDialog", () => {
 
     it("opens edit form when skill edit button is clicked", async () => {
       const user = userEvent.setup();
-      renderDialog({ mode: "skill-library", onImported });
+      renderDialog({ mode: "dashboard-library", onImported });
 
       const editButtons = await waitForSkillEditButtons();
 
@@ -328,7 +328,7 @@ describe("GitHubImportDialog", () => {
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
       });
 
-      renderDialog({ mode: "skill-library", onImported });
+      renderDialog({ mode: "dashboard-library", onImported });
 
       const editButtons = await waitForSkillEditButtons();
       await user.click(editButtons[0]);
@@ -361,7 +361,7 @@ describe("GitHubImportDialog", () => {
         return Promise.reject(new Error(`Unmocked command: ${cmd}`));
       });
 
-      renderDialog({ mode: "skill-library", onImported });
+      renderDialog({ mode: "dashboard-library", onImported });
 
       const editButtons = await waitForSkillEditButtons();
       await user.click(editButtons[0]);
@@ -391,7 +391,7 @@ describe("GitHubImportDialog", () => {
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
       });
 
-      renderDialog({ mode: "skill-library", onImported });
+      renderDialog({ mode: "dashboard-library", onImported });
 
       const editButtons = await waitForSkillEditButtons();
       await user.click(editButtons[0]);
@@ -419,7 +419,7 @@ describe("GitHubImportDialog", () => {
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: false, error: "already exists" }],
       });
 
-      renderDialog({ mode: "skill-library", onImported });
+      renderDialog({ mode: "dashboard-library", onImported });
 
       const editButtons = await waitForSkillEditButtons();
       await user.click(editButtons[0]);
@@ -448,7 +448,7 @@ describe("GitHubImportDialog", () => {
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
       });
 
-      renderDialog({ mode: "skill-library", onImported });
+      renderDialog({ mode: "dashboard-library", onImported });
 
       const editButtons = await waitForSkillEditButtons();
       await user.click(editButtons[0]);
@@ -473,7 +473,7 @@ describe("GitHubImportDialog", () => {
 
     it("closes edit form without importing when Cancel is clicked", async () => {
       const user = userEvent.setup();
-      renderDialog({ mode: "skill-library", onImported });
+      renderDialog({ mode: "dashboard-library", onImported });
 
       const editButtons = await waitForSkillEditButtons();
       await user.click(editButtons[0]);
@@ -491,7 +491,7 @@ describe("GitHubImportDialog", () => {
     });
   });
 
-  describe("Import — settings-skills mode", () => {
+  describe("Import — workspace-skills mode", () => {
     const onImported = vi.fn(() => Promise.resolve());
 
     beforeEach(() => {
@@ -517,7 +517,7 @@ describe("GitHubImportDialog", () => {
         import_github_skills: undefined,
       });
 
-      renderDialog({ mode: "settings-skills", onImported });
+      renderDialog({ mode: "workspace-skills", onImported });
 
       await waitFor(() => {
         expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
@@ -554,7 +554,7 @@ describe("GitHubImportDialog", () => {
         import_github_skills: undefined,
       });
 
-      renderDialog({ mode: "settings-skills", onImported });
+      renderDialog({ mode: "workspace-skills", onImported });
 
       await waitFor(() => {
         expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
@@ -599,7 +599,7 @@ describe("GitHubImportDialog", () => {
         return Promise.reject(new Error(`Unmocked command: ${cmd}`));
       });
 
-      renderDialog({ mode: "skill-library", onImported });
+      renderDialog({ mode: "dashboard-library", onImported });
 
       await waitFor(() => {
         expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
@@ -633,7 +633,7 @@ describe("GitHubImportDialog", () => {
   });
 
   // Test D — Version guard: "Update available" and "Up to date" states
-  describe("Version guard — settings-skills mode", () => {
+  describe("Version guard — workspace-skills mode", () => {
     const availableSkillVersioned: AvailableSkill = {
       path: "skills/my-skill",
       name: "my-skill",
@@ -671,7 +671,7 @@ describe("GitHubImportDialog", () => {
         check_skill_customized: false,
       });
 
-      renderDialog({ mode: "settings-skills" });
+      renderDialog({ mode: "workspace-skills" });
 
       await waitFor(() => {
         expect(screen.getByText("my-skill")).toBeInTheDocument();
@@ -710,7 +710,7 @@ describe("GitHubImportDialog", () => {
         list_workspace_skills: [installedWs],
       });
 
-      renderDialog({ mode: "settings-skills" });
+      renderDialog({ mode: "workspace-skills" });
 
       await waitFor(() => {
         expect(screen.getByText("my-skill")).toBeInTheDocument();
@@ -726,8 +726,8 @@ describe("GitHubImportDialog", () => {
     });
   });
 
-  // Test D2 — Version guard: skill-library mode
-  describe("Version guard — skill-library mode", () => {
+  // Test D2 — Version guard: dashboard-library mode
+  describe("Version guard — dashboard-library mode", () => {
     const makeLibrarySkill = (name: string, version: string | null): AvailableSkill => ({
       path: `skills/${name}`,
       name,
@@ -760,7 +760,7 @@ describe("GitHubImportDialog", () => {
         return Promise.resolve(undefined);
       });
 
-      renderDialog({ mode: "skill-library", workspacePath: "/workspace" });
+      renderDialog({ mode: "dashboard-library", workspacePath: "/workspace" });
 
       await waitFor(() => {
         expect(screen.getByText("skill-a")).toBeInTheDocument();
@@ -797,7 +797,7 @@ describe("GitHubImportDialog", () => {
       });
 
       // Render with empty workspacePath — simulates dialog opening before settings async load
-      renderDialog({ mode: "skill-library", workspacePath: "" });
+      renderDialog({ mode: "dashboard-library", workspacePath: "" });
 
       await waitFor(() => {
         expect(screen.getByText("skill-a")).toBeInTheDocument();
@@ -812,8 +812,8 @@ describe("GitHubImportDialog", () => {
     });
   });
 
-  // Test E — Import dialog opens after clicking pencil button in settings-skills mode
-  describe("Import dialog — settings-skills mode", () => {
+  // Test E — Import dialog opens after clicking pencil button in workspace-skills mode
+  describe("Import dialog — workspace-skills mode", () => {
     it("shows import dialog with purpose field after clicking edit button", async () => {
       const user = userEvent.setup();
       mockInvokeCommands({
@@ -823,7 +823,7 @@ describe("GitHubImportDialog", () => {
         check_skill_customized: false,
       });
 
-      renderDialog({ mode: "settings-skills" });
+      renderDialog({ mode: "workspace-skills" });
 
       await waitFor(() => {
         expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
@@ -842,8 +842,8 @@ describe("GitHubImportDialog", () => {
     });
   });
 
-  // Test F — Purpose conflicts no longer block import in settings-skills mode
-  describe("Purpose conflict behavior — settings-skills mode", () => {
+  // Test F — Purpose conflicts no longer block import in workspace-skills mode
+  describe("Purpose conflict behavior — workspace-skills mode", () => {
     it("keeps import enabled when pre-populated purpose is already occupied", async () => {
       const user = userEvent.setup();
 
@@ -897,7 +897,7 @@ describe("GitHubImportDialog", () => {
         check_skill_customized: false,
       });
 
-      renderDialog({ mode: "settings-skills" });
+      renderDialog({ mode: "workspace-skills" });
 
       await waitFor(() => {
         expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
@@ -1071,7 +1071,7 @@ describe("GitHubImportDialog", () => {
             onOpenChange={setOpen}
             onImported={onImported}
             registries={DEFAULT_REGISTRIES}
-            mode="skill-library"
+            mode="dashboard-library"
           />
         );
       }

@@ -119,8 +119,8 @@ describe("SkillListRow — created skill", () => {
   });
 
   it("shows progress based on current_step", () => {
-    renderRow(createdIncomplete); // step 2 → "Step 2/5"
-    expect(screen.getAllByText("Step 2/5").length).toBeGreaterThan(0);
+    renderRow(createdIncomplete); // step 2 → "Step 2/4"
+    expect(screen.getAllByText("Step 2/4").length).toBeGreaterThan(0);
   });
 
   it("shows Completed when complete", () => {

@@ -71,6 +71,14 @@ pub struct AppSettings {
     pub extended_context: bool,
     #[serde(default)]
     pub extended_thinking: bool,
+    #[serde(default = "default_true")]
+    pub interleaved_thinking_beta: bool,
+    #[serde(default)]
+    pub sdk_effort: Option<String>,
+    #[serde(default)]
+    pub fallback_model: Option<String>,
+    #[serde(default = "default_true")]
+    pub refine_prompt_suggestions: bool,
     #[serde(default)]
     pub splash_shown: bool,
     #[serde(default)]
@@ -113,6 +121,10 @@ impl std::fmt::Debug for AppSettings {
             .field("log_level", &self.log_level)
             .field("extended_context", &self.extended_context)
             .field("extended_thinking", &self.extended_thinking)
+            .field("interleaved_thinking_beta", &self.interleaved_thinking_beta)
+            .field("sdk_effort", &self.sdk_effort)
+            .field("fallback_model", &self.fallback_model)
+            .field("refine_prompt_suggestions", &self.refine_prompt_suggestions)
             .field("splash_shown", &self.splash_shown)
             .field("github_oauth_token", &"[REDACTED]")
             .field("github_user_login", &self.github_user_login)
@@ -141,6 +153,10 @@ impl Default for AppSettings {
             log_level: "info".to_string(),
             extended_context: false,
             extended_thinking: false,
+            interleaved_thinking_beta: true,
+            sdk_effort: None,
+            fallback_model: None,
+            refine_prompt_suggestions: true,
             splash_shown: false,
             github_oauth_token: None,
             github_user_login: None,
@@ -277,6 +293,10 @@ fn default_log_level() -> String {
 
 fn default_max_dimensions() -> u32 {
     5
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_purpose() -> String {
@@ -806,6 +826,10 @@ mod tests {
             log_level: "info".to_string(),
             extended_context: false,
             extended_thinking: true,
+            interleaved_thinking_beta: true,
+            sdk_effort: None,
+            fallback_model: None,
+            refine_prompt_suggestions: true,
             splash_shown: false,
             github_oauth_token: Some("test-github-token".to_string()),
             github_user_login: Some("testuser".to_string()),
@@ -897,9 +921,12 @@ mod tests {
             allowed_tools: Some(vec!["Read".to_string(), "Write".to_string()]),
             max_turns: Some(10),
             permission_mode: Some("bypassPermissions".to_string()),
-            session_id: None,
             betas: None,
-            max_thinking_tokens: None,
+            thinking: None,
+            fallback_model: None,
+            effort: None,
+            output_format: None,
+            prompt_suggestions: None,
             path_to_claude_code_executable: None,
             agent_name: Some("research-entities".to_string()),
             conversation_history: None,
@@ -911,11 +938,9 @@ mod tests {
         assert!(json.contains("\"permissionMode\""));
         assert!(json.contains("\"agentName\""));
         assert!(json.contains("\"model\""));
-        // session_id is None with skip_serializing_if, so should not appear
-        assert!(!json.contains("\"sessionId\""));
         // betas is None with skip_serializing_if, so should not appear
         assert!(!json.contains("\"betas\""));
-        // max_thinking_tokens is None with skip_serializing_if, so should not appear
-        assert!(!json.contains("\"maxThinkingTokens\""));
+        // thinking is None with skip_serializing_if, so should not appear
+        assert!(!json.contains("\"thinking\""));
     }
 }
