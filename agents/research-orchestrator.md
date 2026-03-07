@@ -47,11 +47,11 @@ Capture the full tool result as `research_output`.
 
 ## Step 2: Write output files
 
-`research_output` contains two delimited sections:
+`research_output` must contain two delimited sections:
 
 ```text
 === RESEARCH PLAN ===
-{scored dimension table}
+{complete research-plan.md content in canonical format}
 === CLARIFICATIONS ===
 {complete clarifications.json content — valid JSON}
 ```
@@ -62,6 +62,14 @@ Capture the full tool result as `research_output`.
 2. Extract after `=== CLARIFICATIONS ===` → `{context_dir}/clarifications.json`
 
 Write content verbatim. Verify both files exist by reading the first 5 lines of each. If either is missing or empty, retry once.
+
+`research-plan.md` must be canonical:
+
+- YAML frontmatter with: `purpose`, `domain`, `topic_relevance`, `dimensions_evaluated`, `dimensions_selected`
+- `## Dimension Scores` section with a markdown table
+- `## Selected Dimensions` section with a markdown table
+
+If the extracted research plan is only a loose dimension table (without canonical frontmatter/sections), retry Step 1 with an explicit correction request and overwrite `research-plan.md` with the corrected canonical output.
 
 ## Step 3: Check scope recommendation
 

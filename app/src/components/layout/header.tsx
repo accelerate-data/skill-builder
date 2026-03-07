@@ -8,7 +8,7 @@ import { getHelpUrl, getWorkflowStepUrl } from "@/lib/help-urls";
 import { useWorkflowStore } from "@/stores/workflow-store";
 
 function getPageTitle(path: string): string {
-  if (path === "/") return "Skill Library";
+  if (path === "/") return "Dashboard";
   if (path === "/settings") return "Settings";
   if (path === "/usage") return "Usage";
   if (path === "/refine") return "Refine";

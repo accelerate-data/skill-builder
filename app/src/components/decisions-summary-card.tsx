@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { CheckCircle2, Clock, DollarSign, GitBranch, Shield, AlertTriangle, ChevronRight, ChevronDown } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -137,6 +138,7 @@ export function DecisionsSummaryCard({
 
   const [decisions, setDecisions] = useState<Decision[]>(() => parseDecisions(decisionsContent));
   const [summaryExpanded, setSummaryExpanded] = useState(true);
+  const [showNeedsReviewOnly, setShowNeedsReviewOnly] = useState(false);
   // Track whether the user has made any edit this session — used to show revised banner immediately
   const [wasEdited, setWasEdited] = useState(false);
 
@@ -148,6 +150,9 @@ export function DecisionsSummaryCard({
   const resolvedCount = decisions.filter((d) => d.status === "resolved").length;
   const conflictResolvedCount = decisions.filter((d) => d.status === "conflict-resolved").length;
   const needsReviewCount = decisions.filter((d) => d.status === "needs-review").length;
+  const visibleDecisions = showNeedsReviewOnly
+    ? decisions.filter((d) => d.status === "needs-review")
+    : decisions;
 
   // Effective contradictory state: upgrade true → "revised" once the user edits
   const effectiveContradictory = wasEdited && fm.contradictory_inputs === true
@@ -293,8 +298,21 @@ export function DecisionsSummaryCard({
         </div>}
       </div>
 
+      {/* Decision filter */}
+      {needsReviewCount > 0 && (
+        <div className="flex items-center justify-end gap-2 px-1">
+          <span className="text-xs text-muted-foreground">Needs Review</span>
+          <Switch
+            size="sm"
+            aria-label="Needs Review"
+            checked={showNeedsReviewOnly}
+            onCheckedChange={setShowNeedsReviewOnly}
+          />
+        </div>
+      )}
+
       {/* Decision Cards */}
-      {decisions.map((d) => (
+      {visibleDecisions.map((d) => (
         <DecisionCard
           key={d.id}
           decision={d}
@@ -302,6 +320,11 @@ export function DecisionsSummaryCard({
           onChange={handleDecisionChange}
         />
       ))}
+      {showNeedsReviewOnly && visibleDecisions.length === 0 && (
+        <div className="rounded-md border border-dashed px-4 py-3 text-sm text-muted-foreground">
+          No decisions need review.
+        </div>
+      )}
     </div>
   );
 }

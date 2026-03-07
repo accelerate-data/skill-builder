@@ -382,7 +382,7 @@ describe("AppLayout", () => {
 
       await waitFor(() => {
         expect(toast.info).toHaveBeenCalledWith(
-          "Skills Library: update available for 1 skill: sales-skill",
+          "Dashboard: update available for 1 skill: sales-skill",
           expect.objectContaining({ duration: Infinity })
         );
       });

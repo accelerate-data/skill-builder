@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useBlocker, useNavigate } from "@tanstack/react-router";
 import { type SaveStatus } from "@/components/clarifications-editor";
-import { type ClarificationsFile, parseClarifications } from "@/lib/clarifications-types";
+import { type ClarificationsFile, type Note, parseClarifications } from "@/lib/clarifications-types";
 import {
   Play,
   AlertCircle,
@@ -730,6 +730,30 @@ export default function WorkflowPage() {
         return;
       }
 
+      // Refresh clarifications notes with evaluator feedback so "Let Me Answer"
+      // returns the user to actionable guidance in the editor UI.
+      if (skillsPath) {
+        const clarificationsPath = `${skillsPath}/${skillName}/context/clarifications.json`;
+        try {
+          const clarificationsRaw = await readFile(clarificationsPath);
+          const parsed = parseClarifications(clarificationsRaw);
+          if (parsed) {
+            const next: ClarificationsFile = {
+              ...parsed,
+              notes: buildGateFeedbackNotes(evaluation),
+            };
+            const serialized = JSON.stringify(next, null, 2);
+            await writeFile(clarificationsPath, serialized);
+            setClarificationsData(next);
+            setReviewContent(serialized);
+            setEditorDirty(false);
+            setSaveStatus("idle");
+          }
+        } catch (err) {
+          console.warn("[workflow] Could not update clarifications notes from gate evaluation:", err);
+        }
+      }
+
       // Write gate result to .vibedata/skill-builder (internal files) so it appears in Rust
       // [write_file] logs and persists for debugging.
       if (workspacePath) {
@@ -747,6 +771,29 @@ export default function WorkflowPage() {
       proceedNormally();
     }
   };
+
+  function buildGateFeedbackNotes(evaluation: AnswerEvaluation): Note[] {
+    const perQuestion = evaluation.per_question ?? [];
+    return perQuestion
+      .filter((q) => q.verdict === "vague" || q.verdict === "contradictory")
+      .map((q) => {
+        if (q.verdict === "contradictory") {
+          const fallback = q.contradicts
+            ? `This answer conflicts with ${q.contradicts}.`
+            : "This answer conflicts with another answer.";
+          return {
+            type: "answer_feedback",
+            title: `Contradictory answer: ${q.question_id}`,
+            body: q.reason?.trim() || fallback,
+          };
+        }
+        return {
+          type: "answer_feedback",
+          title: `Vague answer: ${q.question_id}`,
+          body: q.reason?.trim() || "Answer is too general and needs specific details.",
+        };
+      });
+  }
 
   const closeGateDialog = () => {
     setShowGateDialog(false);
@@ -808,6 +855,17 @@ export default function WorkflowPage() {
   const handleGateLetMeAnswer = () => {
     logGateAction("let_me_answer");
     closeGateDialog();
+    // Ensure evaluator-generated notes are visible immediately in the editor.
+    if (skillsPath) {
+      readFile(`${skillsPath}/${skillName}/context/clarifications.json`)
+        .then((content) => {
+          setReviewContent(content ?? null);
+          setClarificationsData(parseClarifications(content ?? null));
+          setEditorDirty(false);
+          setSaveStatus("idle");
+        })
+        .catch(() => {});
+    }
   };
 
   /** Full reset for the current step: end session, clear disk artifacts, revert store, auto-start. */

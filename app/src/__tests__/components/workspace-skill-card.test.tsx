@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import WorkspaceSkillCard from "@/components/imported-skill-card";
-import type { WorkspaceSkill } from "@/stores/imported-skills-store";
+import WorkspaceSkillCard from "@/components/workspace-skill-card";
+import type { WorkspaceSkill } from "@/stores/workspace-skills-store";
 
 const baseSkill: WorkspaceSkill = {
   skill_id: "id-1",

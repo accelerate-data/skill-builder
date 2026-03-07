@@ -1,0 +1,23 @@
+Task prompt:
+"""
+{{user_prompt}}
+"""
+
+Plan A (with skill "{{skill_name}}" loaded):
+"""
+{{with_plan_text}}
+"""
+
+Plan B (no skill loaded):
+"""
+{{without_plan_text}}
+"""
+
+Use the Evaluation Rubric from your context to compare the two plans.
+
+First, output bullet points (one per line) using:
+- ↑ if Plan A (with skill) is meaningfully better on this dimension
+- ↓ if Plan B (no skill) is meaningfully better on this dimension
+- → if both plans are similar, weak, or neither is clearly better
+
+Then output a "## Recommendations" section with 2-4 specific, actionable suggestions for how to improve the skill based on the evaluation. Focus on gaps where Plan A underperformed or where the skill could have provided more guidance.

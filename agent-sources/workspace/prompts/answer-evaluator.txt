@@ -1,0 +1,1 @@
+The workspace directory is: {{workspace_dir}}. The context directory is: {{context_dir}}. All directories already exist — do not create any directories. Read {{workspace_dir}}/user-context.md for purpose, description, and all user context. Use it to evaluate answers in the user's specific domain.

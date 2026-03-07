@@ -216,6 +216,48 @@ describe("useAgentStore", () => {
     expect(args.stepId).toBe(-11);
   });
 
+  it("uses provided refine usageSessionId for usage grouping", () => {
+    mockInvoke.mockReset().mockResolvedValue(undefined);
+
+    useAgentStore.getState().registerRun(
+      "refine-session-agent",
+      "sonnet",
+      "my-skill",
+      "refine",
+      "synthetic:refine:my-skill:session-123",
+    );
+    useAgentStore.getState().completeRun("refine-session-agent", true);
+
+    const persistCalls = (mockInvoke.mock.calls as [string, Record<string, unknown>][]).filter(
+      ([cmd]) => cmd === "persist_agent_run",
+    );
+    expect(persistCalls).toHaveLength(1);
+    const args = persistCalls[0][1] as Record<string, unknown>;
+    expect(args.stepId).toBe(-10);
+    expect(args.workflowSessionId).toBe("synthetic:refine:my-skill:session-123");
+  });
+
+  it("uses provided test usageSessionId for usage grouping", () => {
+    mockInvoke.mockReset().mockResolvedValue(undefined);
+
+    useAgentStore.getState().registerRun(
+      "test-session-agent",
+      "sonnet",
+      "my-skill",
+      "test",
+      "synthetic:test:my-skill:test-456",
+    );
+    useAgentStore.getState().completeRun("test-session-agent", true);
+
+    const persistCalls = (mockInvoke.mock.calls as [string, Record<string, unknown>][]).filter(
+      ([cmd]) => cmd === "persist_agent_run",
+    );
+    expect(persistCalls).toHaveLength(1);
+    const args = persistCalls[0][1] as Record<string, unknown>;
+    expect(args.stepId).toBe(-11);
+    expect(args.workflowSessionId).toBe("synthetic:test:my-skill:test-456");
+  });
+
   it("clearRuns empties everything", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
     useAgentStore.getState().startRun("agent-2", "opus");

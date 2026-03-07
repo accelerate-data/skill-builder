@@ -27,7 +27,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
 import { FeedbackDialog } from "@/components/feedback-dialog"
-import { SkillsLibraryTab } from "@/components/skills-library-tab"
+import { WorkspaceSkillsTab } from "@/components/workspace-skills-tab"
 
 /** Must match DEFAULT_MARKETPLACE_URL in app/src-tauri/src/commands/settings.rs */
 const DEFAULT_MARKETPLACE_URL = "hbanerjee74/skills"
@@ -61,6 +61,9 @@ export default function SettingsPage() {
   const [preferredModel, setPreferredModel] = useState<string>("sonnet")
   const [logLevel, setLogLevel] = useState("info")
   const [extendedThinking, setExtendedThinking] = useState(false)
+  const [interleavedThinkingBeta, setInterleavedThinkingBeta] = useState(true)
+  const [sdkEffort, setSdkEffort] = useState<string>("")
+  const [refinePromptSuggestions, setRefinePromptSuggestions] = useState(true)
   const [maxDimensions, setMaxDimensions] = useState(5)
   const [industry, setIndustry] = useState("")
   const [functionRole, setFunctionRole] = useState("")
@@ -85,9 +88,9 @@ export default function SettingsPage() {
   const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const { user, isLoggedIn, isLoading: isAuthLoading, lastCheckedAt, logout } = useAuthStore()
 
-  // Auto-navigate to the skills section when a pending upgrade targets settings-skills
+  // Auto-navigate to the skills section when a pending upgrade targets workspace-skills
   useEffect(() => {
-    if (pendingUpgrade?.mode === "settings-skills") {
+    if (pendingUpgrade?.mode === "workspace-skills") {
       setActiveSection("skills")
     }
   }, [pendingUpgrade])
@@ -106,6 +109,9 @@ export default function SettingsPage() {
             setPreferredModel(result.preferred_model || "sonnet")
             setLogLevel(result.log_level ?? "info")
             setExtendedThinking(result.extended_thinking ?? false)
+            setInterleavedThinkingBeta(result.interleaved_thinking_beta ?? true)
+            setSdkEffort(result.sdk_effort ?? "")
+            setRefinePromptSuggestions(result.refine_prompt_suggestions ?? true)
             setMaxDimensions(result.max_dimensions ?? 5)
             setIndustry(result.industry ?? "")
             setFunctionRole(result.function_role ?? "")
@@ -158,6 +164,9 @@ export default function SettingsPage() {
     preferredModel: string;
     logLevel: string;
     extendedThinking: boolean;
+    interleavedThinkingBeta: boolean;
+    sdkEffort: string | null;
+    refinePromptSuggestions: boolean;
     maxDimensions: number;
     marketplaceRegistries?: MarketplaceRegistry[];
     industry: string | null;
@@ -172,6 +181,11 @@ export default function SettingsPage() {
       log_level: overrides.logLevel !== undefined ? overrides.logLevel : logLevel,
       extended_context: false,
       extended_thinking: overrides.extendedThinking !== undefined ? overrides.extendedThinking : extendedThinking,
+      interleaved_thinking_beta: overrides.interleavedThinkingBeta !== undefined ? overrides.interleavedThinkingBeta : interleavedThinkingBeta,
+      sdk_effort: overrides.sdkEffort !== undefined ? overrides.sdkEffort : (sdkEffort || null),
+      // Fallback model follows the selected Skill Building model.
+      fallback_model: overrides.preferredModel !== undefined ? overrides.preferredModel : preferredModel,
+      refine_prompt_suggestions: overrides.refinePromptSuggestions !== undefined ? overrides.refinePromptSuggestions : refinePromptSuggestions,
       max_dimensions: overrides.maxDimensions !== undefined ? overrides.maxDimensions : maxDimensions,
       splash_shown: false,
       // Preserve OAuth fields — these are managed by the auth flow, not settings
@@ -196,6 +210,9 @@ export default function SettingsPage() {
         preferredModel: settings.preferred_model,
         logLevel: settings.log_level,
         extendedThinking: settings.extended_thinking,
+        interleavedThinkingBeta: settings.interleaved_thinking_beta,
+        sdkEffort: settings.sdk_effort,
+        refinePromptSuggestions: settings.refine_prompt_suggestions,
         maxDimensions: settings.max_dimensions,
         marketplaceRegistries: settings.marketplace_registries,
         industry: settings.industry,
@@ -480,6 +497,50 @@ export default function SettingsPage() {
                     onCheckedChange={(checked) => { setExtendedThinking(checked); autoSave({ extendedThinking: checked }); }}
                   />
                 </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-0.5">
+                    <Label htmlFor="interleaved-thinking-beta">Interleaved thinking beta</Label>
+                    <span className="text-sm text-muted-foreground">Enable interleaved thinking beta when thinking is enabled on supported non-Opus models.</span>
+                  </div>
+                  <Switch
+                    id="interleaved-thinking-beta"
+                    checked={interleavedThinkingBeta}
+                    onCheckedChange={(checked) => { setInterleavedThinkingBeta(checked); autoSave({ interleavedThinkingBeta: checked }); }}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="sdk-effort">Reasoning effort</Label>
+                  <select
+                    id="sdk-effort"
+                    value={sdkEffort}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setSdkEffort(value)
+                      autoSave({ sdkEffort: value || null })
+                    }}
+                    className="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="">Default</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="max">Max</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-0.5">
+                    <Label htmlFor="refine-prompt-suggestions">Refine prompt suggestions</Label>
+                    <span className="text-sm text-muted-foreground">Enable SDK prompt suggestions during refine chat sessions.</span>
+                  </div>
+                  <Switch
+                    id="refine-prompt-suggestions"
+                    checked={refinePromptSuggestions}
+                    onCheckedChange={(checked) => { setRefinePromptSuggestions(checked); autoSave({ refinePromptSuggestions: checked }); }}
+                  />
+                </div>
               </CardContent>
             </Card>
 
@@ -517,7 +578,7 @@ export default function SettingsPage() {
 
           {activeSection === "skills" && (
           <div className="space-y-6 p-6">
-            <SkillsLibraryTab />
+            <WorkspaceSkillsTab />
           </div>
           )}
 

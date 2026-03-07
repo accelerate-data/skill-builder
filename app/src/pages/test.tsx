@@ -592,7 +592,13 @@ export default function TestPage() {
     }
 
     const evalModel = useSettingsStore.getState().preferredModel ?? "sonnet";
-    useAgentStore.getState().registerRun(evalId, evalModel, "__test_baseline__", "test");
+    useAgentStore.getState().registerRun(
+      evalId,
+      evalModel,
+      state.selectedSkill.name,
+      "test",
+      `synthetic:test:${state.selectedSkill.name}:${state.testId ?? "unknown"}`,
+    );
     startAgent(
       evalId,
       evalPrompt,
@@ -601,7 +607,6 @@ export default function TestPage() {
       [],
       15,
       "plan",
-      undefined,
       "__test_baseline__",
       "test-eval",
       "test-evaluator",
@@ -720,10 +725,16 @@ export default function TestPage() {
         transcriptLogDir: prepared.transcript_log_dir,
       }));
 
+      const syntheticTestSessionId = `synthetic:test:${skillName}:${prepared.test_id}`;
+
       // Register runs in agent store
       const testModel = useSettingsStore.getState().preferredModel ?? "sonnet";
-      useAgentStore.getState().registerRun(withId, testModel, skillName, "test");
-      useAgentStore.getState().registerRun(withoutId, testModel, "__test_baseline__", "test");
+      useAgentStore
+        .getState()
+        .registerRun(withId, testModel, skillName, "test", syntheticTestSessionId);
+      useAgentStore
+        .getState()
+        .registerRun(withoutId, testModel, skillName, "test", syntheticTestSessionId);
 
       // Wrap the prompt so plan agents know the domain context
       const wrappedPrompt = `You are a data engineer and the user is trying to do the following task:\n\n${s.prompt}`;
@@ -738,7 +749,6 @@ export default function TestPage() {
           [],
           15,
           "plan",
-          undefined,
           skillName,
           "test-with",
           "test-plan-with",
@@ -752,7 +762,6 @@ export default function TestPage() {
           [],
           15,
           "plan",
-          undefined,
           "__test_baseline__",
           "test-without",
           "test-plan-without",
@@ -910,7 +919,7 @@ export default function TestPage() {
               phase={state.phase}
               label="Agent Plan"
               badgeText="with skill"
-              badgeClass="bg-[#2D7A35]/15 text-[#5D9B62]"
+              badgeClass="bg-[color-mix(in_oklch,var(--color-seafoam),transparent_85%)] text-[var(--color-seafoam)]"
               idlePlaceholder="Run a test to see the with-skill plan"
               cost={withCost}
             />
@@ -935,7 +944,7 @@ export default function TestPage() {
               phase={state.phase}
               label="Agent Plan"
               badgeText="no skill"
-              badgeClass="bg-[#A85A33]/15 text-[#D4916E]"
+              badgeClass="bg-[color-mix(in_oklch,var(--color-ocean),transparent_85%)] text-[var(--color-ocean)]"
               idlePlaceholder="Run a test to see the no-skill plan"
               cost={withoutCost}
             />
