@@ -2212,6 +2212,14 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
     )
     .map_err(|e| e.to_string())?;
 
+    // Preserve usage history rows while removing workflow run state.
+    // agent_runs.workflow_run_id is an FK to workflow_runs(id), so detach first.
+    conn.execute(
+        "UPDATE agent_runs SET workflow_run_id = NULL WHERE workflow_run_id = ?1",
+        rusqlite::params![wr_id],
+    )
+    .map_err(|e| e.to_string())?;
+
     conn.execute(
         "DELETE FROM skill_locks WHERE skill_id = ?1",
         rusqlite::params![s_id],
@@ -2237,8 +2245,18 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
     )
     .map_err(|e| e.to_string())?;
 
-    // Also delete from skills master table
-    delete_skill(conn, skill_name)?;
+    // Keep skills master row when usage history references it (workflow_sessions.skill_id FK).
+    // This preserves historical usage/session records after workflow reset/deletion.
+    let usage_session_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM workflow_sessions WHERE skill_id = ?1",
+            rusqlite::params![s_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if usage_session_count == 0 {
+        delete_skill(conn, skill_name)?;
+    }
     Ok(())
 }
 
