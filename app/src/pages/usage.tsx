@@ -245,14 +245,14 @@ export default function UsagePage() {
 
   const availableModels = useMemo(() => {
     const seen = new Set<string>()
-    agentRuns.forEach((r) => seen.add(shortModelName(r.model)))
-    return Array.from(seen).sort()
+    agentRuns.forEach((r) => seen.add(r.model))
+    return Array.from(seen).sort((a, b) => shortModelName(a).localeCompare(shortModelName(b)))
   }, [agentRuns])
 
   const filteredRuns = useMemo(() => {
     let rows = agentRuns
     if (stepFilter !== "all") rows = rows.filter((r) => r.step_id === stepFilter)
-    if (modelFilter !== "all") rows = rows.filter((r) => shortModelName(r.model) === modelFilter)
+    if (modelFilter !== "all") rows = rows.filter((r) => r.model === modelFilter)
     return [...rows].sort((a, b) => {
       let cmp = 0
       switch (sortCol) {
@@ -542,8 +542,8 @@ export default function UsagePage() {
                   className="h-7 rounded-md bg-muted border-0 px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
                 >
                   <option value="all">All Models</option>
-                  {availableModels.map((m) => (
-                    <option key={m} value={m}>{m}</option>
+                  {availableModels.map((fullName) => (
+                    <option key={fullName} value={fullName}>{shortModelName(fullName)}</option>
                   ))}
                 </select>
               )}
