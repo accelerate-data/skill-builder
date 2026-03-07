@@ -62,16 +62,9 @@ contradictory_inputs: true
 The user's answers contain unresolvable contradictions. See `decisions.md` for details. Resolve the contradictions before generating the skill.
 ```
 
-**User-revised contradictions** — if `contradictory_inputs: revised` in decisions.md, the user has reviewed the flagged decisions and edited them directly. Treat `decisions.md` as the authoritative resolved source and generate the skill normally. Do not write a stub.
-
 ## Structure Pattern
 
-Determine the pattern from the purpose in user-context.md (per Skill Builder Practices):
-
-- **Knowledge-capture** (Business process knowledge, Source system customizations): question-oriented parallel sections, zero pre-filled assertions
-- **Standards** (Data engineering standards, Azure/Fabric standards): decision-oriented sections with Getting Started checklist and dependency map, up to 5 pre-filled assertions
-
-Adapt section themes based on what decisions.md actually contains.
+Determine the structure pattern from the purpose in user-context.md — see the **Purpose and Structure Patterns** section in Skill Builder Practices. Adapt section themes based on what `decisions.md` actually contains.
 
 ## Phase 1: Plan the Skill Structure
 
