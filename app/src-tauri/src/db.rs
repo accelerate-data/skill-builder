@@ -59,6 +59,7 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
         (30, run_skills_soft_delete_migration),
         (31, run_backfill_synthetic_sessions_migration),
         (32, run_normalize_model_names_migration),
+        (33, run_reconciliation_events_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -590,6 +591,19 @@ fn run_normalize_model_names_migration(conn: &Connection) -> Result<(), rusqlite
         )?;
     }
     log::info!("migration 32: normalized agent_runs model name aliases to canonical IDs");
+    Ok(())
+}
+
+/// Migration 33: Record startup reconciliation actions in an auditable table.
+fn run_reconciliation_events_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS reconciliation_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,
+            details TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
+        );",
+    )?;
     Ok(())
 }
 
@@ -3474,6 +3488,19 @@ pub fn end_all_sessions_for_pid(conn: &Connection, pid: u32) -> Result<u32, Stri
         )
         .map_err(|e| e.to_string())?;
     Ok(count as u32)
+}
+
+pub fn record_reconciliation_event(
+    conn: &Connection,
+    event_type: &str,
+    details: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO reconciliation_events (event_type, details) VALUES (?1, ?2)",
+        rusqlite::params![event_type, details],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Returns true if the given skill has an active workflow session (ended_at IS NULL)

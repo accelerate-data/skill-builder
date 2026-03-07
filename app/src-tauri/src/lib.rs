@@ -207,6 +207,7 @@ pub fn run() {
             commands::workspace::get_workspace_path,
             commands::workspace::clear_workspace,
             commands::workspace::reconcile_startup,
+            commands::workspace::record_reconciliation_cancel,
             commands::workspace::resolve_orphan,
             commands::workspace::resolve_discovery,
             commands::workspace::create_workflow_session,

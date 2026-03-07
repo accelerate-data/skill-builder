@@ -80,6 +80,7 @@ const mockResponses: Record<string, unknown> = {
   cleanup_skill_sidecar: undefined,
   // Reconciliation
   reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0, discovered_skills: [] },
+  record_reconciliation_cancel: undefined,
   // Skill locks
   acquire_lock: undefined,
   release_lock: undefined,

@@ -194,8 +194,13 @@ pub fn clear_workspace(
 }
 
 #[tauri::command]
-pub fn reconcile_startup(_app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Result<ReconciliationResult, String> {
-    log::info!("[reconcile_startup]");
+pub fn reconcile_startup(
+    _app: tauri::AppHandle,
+    db: tauri::State<'_, Db>,
+    apply: Option<bool>,
+) -> Result<ReconciliationResult, String> {
+    let apply = apply.unwrap_or(false);
+    log::info!("[reconcile_startup] mode={}", if apply { "apply" } else { "preview" });
     let conn = db.0.lock().map_err(|e| {
         log::error!("[reconcile_startup] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -208,40 +213,84 @@ pub fn reconcile_startup(_app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Re
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
     log::debug!("[reconcile_startup] workspace={} skills_path={}", workspace_path, skills_path);
 
-    // Reconcile orphaned workflow sessions from crashed instances
-    match crate::db::reconcile_orphaned_sessions(&conn) {
-        Ok(count) if count > 0 => {
-            log::info!("Reconciled {} orphaned workflow session(s)", count);
-        }
-        Err(e) => {
-            log::warn!("Failed to reconcile orphaned sessions: {}", e);
-        }
-        _ => {}
-    }
-
-    let result = crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
-
-    // Auto-commit new skill folders added while offline.
-    // This is non-fatal: log warnings but don't block startup.
-    let output_path = Path::new(&skills_path);
-
-    if output_path.exists() {
-        // Commit untracked skill folders to git
-        match crate::git::get_untracked_dirs(output_path) {
-            Ok(untracked) if !untracked.is_empty() => {
-                let msg = format!("auto-commit new skill folders: {}", untracked.join(", "));
-                match crate::git::commit_all(output_path, &msg) {
-                    Ok(Some(_)) => log::info!("[reconcile_startup] {}", msg),
-                    Ok(None) => log::debug!("[reconcile_startup] No changes after staging untracked folders"),
-                    Err(e) => log::warn!("[reconcile_startup] Failed to commit untracked folders: {}", e),
-                }
+    let result = if apply {
+        // Reconcile orphaned workflow sessions from crashed instances
+        match crate::db::reconcile_orphaned_sessions(&conn) {
+            Ok(count) if count > 0 => {
+                log::info!("Reconciled {} orphaned workflow session(s)", count);
             }
-            Err(e) => log::warn!("[reconcile_startup] Failed to detect untracked folders: {}", e),
+            Err(e) => {
+                log::warn!("Failed to reconcile orphaned sessions: {}", e);
+            }
             _ => {}
+        }
+
+        let result = crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
+
+        // Auto-commit new skill folders added while offline.
+        // This is non-fatal: log warnings but don't block startup.
+        let output_path = Path::new(&skills_path);
+        if output_path.exists() {
+            match crate::git::get_untracked_dirs(output_path) {
+                Ok(untracked) if !untracked.is_empty() => {
+                    let msg = format!("auto-commit new skill folders: {}", untracked.join(", "));
+                    match crate::git::commit_all(output_path, &msg) {
+                        Ok(Some(_)) => log::info!("[reconcile_startup] {}", msg),
+                        Ok(None) => {
+                            log::debug!("[reconcile_startup] No changes after staging untracked folders")
+                        }
+                        Err(e) => {
+                            log::warn!("[reconcile_startup] Failed to commit untracked folders: {}", e)
+                        }
+                    }
+                }
+                Err(e) => log::warn!("[reconcile_startup] Failed to detect untracked folders: {}", e),
+                _ => {}
+            }
+        }
+
+        let details = serde_json::to_string(&serde_json::json!({
+            "notifications": result.notifications,
+            "discovered_skills": result.discovered_skills,
+            "auto_cleaned": result.auto_cleaned,
+        }))
+        .unwrap_or_else(|_| "{\"error\":\"failed_to_serialize\"}".to_string());
+        if let Err(e) = crate::db::record_reconciliation_event(&conn, "applied", &details) {
+            log::warn!("[reconcile_startup] failed to record reconciliation event: {}", e);
+        }
+
+        result
+    } else {
+        crate::reconciliation::preview_reconcile_on_startup(&conn, &workspace_path, &skills_path)?
+    };
+
+    if !apply {
+        let details = serde_json::to_string(&serde_json::json!({
+            "notifications": result.notifications.len(),
+            "discovered_skills": result.discovered_skills.len(),
+        }))
+        .unwrap_or_else(|_| "{\"error\":\"failed_to_serialize\"}".to_string());
+        if let Err(e) = crate::db::record_reconciliation_event(&conn, "previewed", &details) {
+            log::warn!("[reconcile_startup] failed to record preview event: {}", e);
         }
     }
 
     Ok(result)
+}
+
+#[tauri::command]
+pub fn record_reconciliation_cancel(
+    db: tauri::State<'_, Db>,
+    notification_count: Option<usize>,
+    discovered_count: Option<usize>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let details = serde_json::to_string(&serde_json::json!({
+        "notifications": notification_count.unwrap_or(0),
+        "discovered_skills": discovered_count.unwrap_or(0),
+    }))
+    .unwrap_or_else(|_| "{\"error\":\"failed_to_serialize\"}".to_string());
+    crate::db::record_reconciliation_event(&conn, "cancelled", &details)
 }
 
 #[tauri::command]

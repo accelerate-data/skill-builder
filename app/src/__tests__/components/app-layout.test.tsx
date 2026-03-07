@@ -171,33 +171,71 @@ describe("AppLayout", () => {
     });
   });
 
-  it("shows info toast when auto_cleaned > 0", async () => {
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 3, discovered_skills: [] },
+  it("shows info toast when auto_cleaned > 0 after apply", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup" && args?.apply === true) {
+        return Promise.resolve({
+          orphans: [],
+          notifications: ["'my-skill' was reset from step 3 to step 0"],
+          auto_cleaned: 3,
+          discovered_skills: [],
+        });
+      }
+      if (cmd === "reconcile_startup") {
+        return Promise.resolve({
+          orphans: [],
+          notifications: ["'my-skill' was reset from step 3 to step 0"],
+          auto_cleaned: 0,
+          discovered_skills: [],
+        });
+      }
+      if (cmd === "list_models") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
 
     render(<AppLayout />);
-
     await waitFor(() => {
-      expect(toast.info).toHaveBeenCalledWith(
-        "Cleaned up 3 incomplete skills"
-      );
+      expect(screen.getByText("Startup Reconciliation")).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /Apply Reconciliation/i }));
+    await waitFor(() => {
+      expect(toast.info).toHaveBeenCalledWith("Cleaned up 3 incomplete skills");
     });
   });
 
-  it("shows singular text when auto_cleaned is 1", async () => {
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 1, discovered_skills: [] },
+  it("shows singular text when auto_cleaned is 1 after apply", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup" && args?.apply === true) {
+        return Promise.resolve({
+          orphans: [],
+          notifications: ["'my-skill' was reset from step 3 to step 0"],
+          auto_cleaned: 1,
+          discovered_skills: [],
+        });
+      }
+      if (cmd === "reconcile_startup") {
+        return Promise.resolve({
+          orphans: [],
+          notifications: ["'my-skill' was reset from step 3 to step 0"],
+          auto_cleaned: 0,
+          discovered_skills: [],
+        });
+      }
+      if (cmd === "list_models") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
 
     render(<AppLayout />);
-
     await waitFor(() => {
-      expect(toast.info).toHaveBeenCalledWith(
-        "Cleaned up 1 incomplete skill"
-      );
+      expect(screen.getByText("Startup Reconciliation")).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /Apply Reconciliation/i }));
+    await waitFor(() => {
+      expect(toast.info).toHaveBeenCalledWith("Cleaned up 1 incomplete skill");
     });
   });
 
@@ -230,17 +268,21 @@ describe("AppLayout", () => {
     expect(toast.warning).not.toHaveBeenCalled();
   });
 
-  it("renders content after acknowledging reconciliation dialog", async () => {
+  it("renders content after applying reconciliation dialog", async () => {
     const user = userEvent.setup();
-
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: {
-        orphans: [],
-        notifications: ["'my-skill' was reset from step 3 to step 0"],
-        auto_cleaned: 0,
-        discovered_skills: [],
-      },
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup" && args?.apply === true) return Promise.resolve(emptyReconciliation);
+      if (cmd === "reconcile_startup") {
+        return Promise.resolve({
+          orphans: [],
+          notifications: ["'my-skill' was reset from step 3 to step 0"],
+          auto_cleaned: 0,
+          discovered_skills: [],
+        });
+      }
+      if (cmd === "list_models") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
 
     render(<AppLayout />);
@@ -250,13 +292,44 @@ describe("AppLayout", () => {
       expect(screen.getByText("Startup Reconciliation")).toBeInTheDocument();
     });
 
-    // Click the Acknowledge button
-    await user.click(screen.getByRole("button", { name: /Acknowledge/i }));
+    // Click the apply button
+    await user.click(screen.getByRole("button", { name: /Apply Reconciliation/i }));
 
     // Content should now render
     await waitFor(() => {
       expect(screen.getByTestId("outlet")).toBeInTheDocument();
     });
+  });
+
+  it("continues without changes when reconciliation is cancelled", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup") {
+        return Promise.resolve({
+          orphans: [],
+          notifications: ["'my-skill' was reset from step 3 to step 0"],
+          auto_cleaned: 0,
+          discovered_skills: [],
+        });
+      }
+      if (cmd === "record_reconciliation_cancel") return Promise.resolve(undefined);
+      if (cmd === "list_models") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
+    });
+
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(screen.getByText("Startup Reconciliation")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Continue Without Applying/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("outlet")).toBeInTheDocument();
+    });
+    expect(toast.info).toHaveBeenCalledWith(
+      "Startup reconciliation skipped. No automatic changes were applied."
+    );
   });
 
   it("shows orphan resolution dialog when orphans exist", async () => {
