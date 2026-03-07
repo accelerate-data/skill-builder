@@ -414,7 +414,12 @@ pub fn create_workflow_session(
         log::error!("[create_workflow_session] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::create_workflow_session(&conn, &session_id, &skill_name, instance.pid)
+    crate::commands::workflow_lifecycle::start_session(
+        &conn,
+        &session_id,
+        &skill_name,
+        instance.pid,
+    )
 }
 
 #[tauri::command]
@@ -427,7 +432,7 @@ pub fn end_workflow_session(
         log::error!("[end_workflow_session] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::end_workflow_session(&conn, &session_id)
+    crate::commands::workflow_lifecycle::cancel_session(&conn, &session_id)
 }
 
 #[cfg(test)]

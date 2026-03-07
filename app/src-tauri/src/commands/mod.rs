@@ -17,4 +17,5 @@ pub mod skill_test;
 pub mod test_utils;
 pub mod usage;
 pub mod workflow;
+pub mod workflow_lifecycle;
 pub mod workspace;
