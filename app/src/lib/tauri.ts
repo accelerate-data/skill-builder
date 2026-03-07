@@ -446,6 +446,7 @@ export const sendRefineMessage = (
 export interface PerQuestionVerdict {
   question_id: string;
   verdict: "clear" | "needs_refinement" | "not_answered" | "vague" | "contradictory";
+  reason?: string;
   contradicts?: string;
 }
 
