@@ -58,6 +58,33 @@ function makeClarifications(questions: Question[]): ClarificationsFile {
   };
 }
 
+function makeClarificationsWithSections(): ClarificationsFile {
+  return {
+    version: "1",
+    metadata: {
+      title: "Test Clarifications",
+      question_count: 2,
+      section_count: 2,
+      refinement_count: 0,
+      must_answer_count: 0,
+      priority_questions: [],
+    },
+    sections: [
+      {
+        id: "S1",
+        title: "Section One",
+        questions: [makeQuestion({ id: "Q1", title: "Question One" })],
+      },
+      {
+        id: "S2",
+        title: "Section Two",
+        questions: [makeQuestion({ id: "Q2", title: "Question Two" })],
+      },
+    ],
+    notes: [],
+  };
+}
+
 /** Expand a question card by clicking its header button */
 async function expandCard(user: ReturnType<typeof userEvent.setup>, titleText: string) {
   const button = screen.getByRole("button", { name: new RegExp(titleText) });
@@ -286,5 +313,62 @@ describe("Unanswered filter toggle", () => {
 
     expect(screen.queryByText("Answered Question")).not.toBeInTheDocument();
     expect(screen.getByText("Unanswered Question")).toBeInTheDocument();
+  });
+});
+
+describe("Collapsible research notes", () => {
+  it("toggles research notes visibility", async () => {
+    const user = userEvent.setup();
+    const data = makeClarifications([makeQuestion()]);
+    data.notes = [{ type: "general", title: "Context", body: "Helpful implementation context." }];
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+
+    const notesToggle = screen.getByRole("button", { name: /Research Notes/i });
+    expect(notesToggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Helpful implementation context.")).toBeInTheDocument();
+
+    await user.click(notesToggle);
+    expect(notesToggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Helpful implementation context.")).not.toBeInTheDocument();
+
+    await user.click(notesToggle);
+    expect(notesToggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Helpful implementation context.")).toBeInTheDocument();
+  });
+});
+
+describe("Collapsible sections", () => {
+  it("collapses sections independently", async () => {
+    const user = userEvent.setup();
+    const data = makeClarificationsWithSections();
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+
+    expect(screen.getByText("Question One")).toBeInTheDocument();
+    expect(screen.getByText("Question Two")).toBeInTheDocument();
+
+    const sectionOneToggle = screen.getByRole("button", { name: /Section One/i });
+    const sectionTwoToggle = screen.getByRole("button", { name: /Section Two/i });
+
+    await user.click(sectionOneToggle);
+    expect(sectionOneToggle).toHaveAttribute("aria-expanded", "false");
+    expect(sectionTwoToggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByText("Question One")).not.toBeInTheDocument();
+    expect(screen.getByText("Question Two")).toBeInTheDocument();
+  });
+
+  it("supports keyboard toggle on section headers", async () => {
+    const user = userEvent.setup();
+    const data = makeClarificationsWithSections();
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+
+    const sectionOneToggle = screen.getByRole("button", { name: /Section One/i });
+    sectionOneToggle.focus();
+    await user.keyboard("{Enter}");
+
+    expect(sectionOneToggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Question One")).not.toBeInTheDocument();
   });
 });
