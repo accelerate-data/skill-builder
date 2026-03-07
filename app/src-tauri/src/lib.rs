@@ -215,7 +215,7 @@ pub fn run() {
             commands::imported_skills::list_workspace_skills,
             commands::imported_skills::toggle_skill_active,
             commands::imported_skills::set_workspace_skill_purpose,
-            commands::imported_skills::delete_imported_skill,
+            commands::imported_skills::delete_workspace_skill,
             commands::imported_skills::get_skill_content,
             commands::imported_skills::export_skill,
             commands::feedback::create_github_issue,
@@ -254,8 +254,6 @@ pub fn run() {
             commands::refine::close_refine_session,
             commands::skill_test::prepare_skill_test,
             commands::skill_test::cleanup_skill_test,
-            commands::skill_test::build_test_plan_prompt,
-            commands::skill_test::build_test_evaluator_prompt,
             commands::imported_skills::parse_skill_file,
             commands::imported_skills::import_skill_from_file,
         ])
