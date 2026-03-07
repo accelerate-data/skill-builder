@@ -133,9 +133,12 @@ export interface NodeStatus {
 }
 
 export interface DepStatus {
+  code?: string | null
+  failure_kind?: string | null
   name: string
   ok: boolean
   detail: string
+  remediation?: string | null
 }
 
 export interface StartupDeps {

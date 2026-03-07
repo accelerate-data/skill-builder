@@ -58,8 +58,26 @@ function showNodeLink(errorType: string): boolean {
   return errorType === "node_missing" || errorType === "node_incompatible";
 }
 
+function getFailureClass(errorType: string): {
+  label: string;
+  description: string;
+} {
+  if (errorType === "node_missing" || errorType === "node_incompatible") {
+    return {
+      label: "Compatibility issue",
+      description: "This is an environment compatibility problem and usually requires installing or updating Node.js.",
+    };
+  }
+
+  return {
+    label: "Transient startup issue",
+    description: "This is usually temporary. Retry the workflow step after applying the fix hint if needed.",
+  };
+}
+
 export function RuntimeErrorDialog({ error, onDismiss }: RuntimeErrorDialogProps) {
   if (!error) return null;
+  const failureClass = getFailureClass(error.error_type);
 
   return (
     <Dialog open={!!error} onOpenChange={(open) => { if (!open) onDismiss(); }}>
@@ -71,6 +89,10 @@ export function RuntimeErrorDialog({ error, onDismiss }: RuntimeErrorDialogProps
           </DialogTitle>
           <DialogDescription asChild>
             <div className="space-y-3">
+              <div className="rounded-md border border-border bg-muted/50 p-3">
+                <p className="text-sm font-medium text-foreground">{failureClass.label}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{failureClass.description}</p>
+              </div>
               <p>{error.message}</p>
               <div className="rounded-md border border-border bg-muted/50 p-3">
                 <p className="text-sm font-medium text-foreground">How to fix:</p>
