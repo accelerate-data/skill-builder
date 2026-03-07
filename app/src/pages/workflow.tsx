@@ -775,7 +775,13 @@ export default function WorkflowPage() {
   function buildGateFeedbackNotes(evaluation: AnswerEvaluation): Note[] {
     const perQuestion = evaluation.per_question ?? [];
     return perQuestion
-      .filter((q) => q.verdict === "vague" || q.verdict === "contradictory")
+    .filter(
+      (q) =>
+        q.verdict === "vague" ||
+        q.verdict === "contradictory" ||
+        q.verdict === "not_answered" ||
+        q.verdict === "needs_refinement"
+    )
       .map((q) => {
         if (q.verdict === "contradictory") {
           const fallback = q.contradicts
@@ -787,6 +793,24 @@ export default function WorkflowPage() {
             body: q.reason?.trim() || fallback,
           };
         }
+      if (q.verdict === "not_answered") {
+        return {
+          type: "answer_feedback",
+          title: `Not answered: ${q.question_id}`,
+          body:
+            q.reason?.trim() ||
+            "This question is still unanswered. Add a concrete answer before continuing.",
+        };
+      }
+      if (q.verdict === "needs_refinement") {
+        return {
+          type: "answer_feedback",
+          title: `Needs refinement: ${q.question_id}`,
+          body:
+            q.reason?.trim() ||
+            "Answer has useful direction but needs more concrete detail and constraints.",
+        };
+      }
         return {
           type: "answer_feedback",
           title: `Vague answer: ${q.question_id}`,
@@ -855,17 +879,36 @@ export default function WorkflowPage() {
   const handleGateLetMeAnswer = () => {
     logGateAction("let_me_answer");
     closeGateDialog();
+    toast.info("Refreshing evaluator feedback...");
     // Ensure evaluator-generated notes are visible immediately in the editor.
-    if (skillsPath) {
-      readFile(`${skillsPath}/${skillName}/context/clarifications.json`)
-        .then((content) => {
-          setReviewContent(content ?? null);
-          setClarificationsData(parseClarifications(content ?? null));
-          setEditorDirty(false);
-          setSaveStatus("idle");
-        })
-        .catch(() => {});
+    if (!skillsPath) {
+      toast.warning("Skills path is missing in settings. Could not refresh feedback from disk.");
+      return;
     }
+
+    const prevNoteCount = clarificationsData?.notes.length ?? 0;
+    readFile(`${skillsPath}/${skillName}/context/clarifications.json`)
+      .then((content) => {
+        const parsed = parseClarifications(content ?? null);
+        if (!parsed) {
+          toast.warning("Feedback file could not be parsed. You can still answer manually.");
+          return;
+        }
+        setReviewContent(content ?? null);
+        setClarificationsData(parsed);
+        setEditorDirty(false);
+        setSaveStatus("idle");
+
+        const addedNotes = Math.max(0, (parsed.notes?.length ?? 0) - prevNoteCount);
+        if (addedNotes > 0) {
+          toast.success(`Loaded ${addedNotes} feedback note${addedNotes === 1 ? "" : "s"} for review.`);
+        } else {
+          toast.success("Feedback refreshed. You can update your answers now.");
+        }
+      })
+      .catch(() => {
+        toast.warning("Could not refresh feedback from disk. You can still answer manually.");
+      });
   };
 
   /** Full reset for the current step: end session, clear disk artifacts, revert store, auto-start. */
