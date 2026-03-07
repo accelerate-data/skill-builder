@@ -53,6 +53,7 @@ impl RefineSessionManager {
 
 /// Build a SidecarConfig for the first refine message (stream_start).
 /// Extracted for testability — `send_refine_message` calls this then sends stream_start.
+#[allow(clippy::too_many_arguments)]
 fn build_refine_config(
     prompt: String,
     skill_name: &str,
