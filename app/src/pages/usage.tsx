@@ -209,10 +209,10 @@ export default function UsagePage() {
     hideCancelled, toggleHideCancelled,
     dateRange, setDateRange,
     skillFilter, skillNames, setSkillFilter, fetchSkillNames,
+    modelFamilyFilter, setModelFamilyFilter,
   } = useUsageStore()
   const [resetting, setResetting] = useState(false)
   const [stepFilter, setStepFilter] = useState<number | "all">("all")
-  const [modelFilter, setModelFilter] = useState<string>("all")
   const [sortCol, setSortCol] = useState<SortCol>("date")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
 
@@ -243,16 +243,13 @@ export default function UsagePage() {
     }
   }
 
-  const availableModels = useMemo(() => {
-    const seen = new Set<string>()
-    agentRuns.forEach((r) => seen.add(shortModelName(r.model)))
-    return Array.from(seen).sort()
-  }, [agentRuns])
+  // availableModels derived from byModel which already uses family names ("Sonnet", "Opus", "Haiku")
+  const availableModels = useMemo(() => byModel.map((m) => m.model).sort(), [byModel])
 
   const filteredRuns = useMemo(() => {
     let rows = agentRuns
     if (stepFilter !== "all") rows = rows.filter((r) => r.step_id === stepFilter)
-    if (modelFilter !== "all") rows = rows.filter((r) => shortModelName(r.model) === modelFilter)
+    // model family filtering is applied at the DB level via modelFamilyFilter in the store
     return [...rows].sort((a, b) => {
       let cmp = 0
       switch (sortCol) {
@@ -265,7 +262,7 @@ export default function UsagePage() {
       }
       return sortDir === "asc" ? cmp : -cmp
     })
-  }, [agentRuns, stepFilter, modelFilter, sortCol, sortDir])
+  }, [agentRuns, stepFilter, sortCol, sortDir])
 
   if (loading) {
     return (
@@ -537,8 +534,8 @@ export default function UsagePage() {
               </select>
               {availableModels.length > 1 && (
                 <select
-                  value={modelFilter}
-                  onChange={(e) => setModelFilter(e.target.value)}
+                  value={modelFamilyFilter ?? "all"}
+                  onChange={(e) => setModelFamilyFilter(e.target.value === "all" ? null : e.target.value)}
                   className="h-7 rounded-md bg-muted border-0 px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
                 >
                   <option value="all">All Models</option>

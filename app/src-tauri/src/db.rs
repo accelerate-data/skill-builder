@@ -1446,6 +1446,7 @@ pub fn get_agent_runs(
     hide_cancelled: bool,
     start_date: Option<&str>,
     skill_name: Option<&str>,
+    model_family: Option<&str>,
     limit: usize,
 ) -> Result<Vec<AgentRunRecord>, String> {
     let cost_clause = if hide_cancelled { " AND total_cost > 0" } else { "" };
@@ -1464,6 +1465,19 @@ pub fn get_agent_runs(
     } else {
         String::new()
     };
+    let model_family_clause = if model_family.is_some() {
+        let s = format!(
+            " AND CASE \
+              WHEN lower(model) LIKE '%haiku%'  THEN 'Haiku' \
+              WHEN lower(model) LIKE '%opus%'   THEN 'Opus' \
+              WHEN lower(model) LIKE '%sonnet%' THEN 'Sonnet' \
+              ELSE model END = ?{p}"
+        );
+        p += 1;
+        s
+    } else {
+        String::new()
+    };
     let sql = format!(
         "SELECT agent_id, skill_name, step_id, model, status,
                 COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
@@ -1474,7 +1488,7 @@ pub fn get_agent_runs(
                 session_id, started_at, completed_at
          FROM agent_runs
          WHERE reset_marker IS NULL
-           AND workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}
+           AND workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}{model_family_clause}
          ORDER BY started_at DESC
          LIMIT ?{p}"
     );
@@ -1510,11 +1524,15 @@ pub fn get_agent_runs(
             .map_err(|e| e.to_string())
         };
     }
-    match (start_date, skill_name) {
-        (Some(sd), Some(sn)) => collect_rows!(rusqlite::params![sd, sn, limit_i64]),
-        (Some(sd), None) => collect_rows!(rusqlite::params![sd, limit_i64]),
-        (None, Some(sn)) => collect_rows!(rusqlite::params![sn, limit_i64]),
-        (None, None) => collect_rows!(rusqlite::params![limit_i64]),
+    match (start_date, skill_name, model_family) {
+        (Some(sd), Some(sn), Some(mf)) => collect_rows!(rusqlite::params![sd, sn, mf, limit_i64]),
+        (Some(sd), Some(sn), None)     => collect_rows!(rusqlite::params![sd, sn, limit_i64]),
+        (Some(sd), None, Some(mf))     => collect_rows!(rusqlite::params![sd, mf, limit_i64]),
+        (Some(sd), None, None)         => collect_rows!(rusqlite::params![sd, limit_i64]),
+        (None, Some(sn), Some(mf))     => collect_rows!(rusqlite::params![sn, mf, limit_i64]),
+        (None, Some(sn), None)         => collect_rows!(rusqlite::params![sn, limit_i64]),
+        (None, None, Some(mf))         => collect_rows!(rusqlite::params![mf, limit_i64]),
+        (None, None, None)             => collect_rows!(rusqlite::params![limit_i64]),
     }
 }
 

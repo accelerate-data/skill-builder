@@ -343,8 +343,8 @@ export const getSessionAgentRuns = (sessionId: string) =>
 export const getStepAgentRuns = (skillName: string, stepId: number) =>
   invoke<AgentRunRecord[]>("get_step_agent_runs", { skillName, stepId });
 
-export const getAgentRuns = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null, limit: number = 500) =>
-  invoke<AgentRunRecord[]>("get_agent_runs", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null, limit });
+export const getAgentRuns = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null, modelFamily?: string | null, limit: number = 500) =>
+  invoke<AgentRunRecord[]>("get_agent_runs", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null, modelFamily: modelFamily ?? null, limit });
 
 export const getUsageByStep = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
   invoke<UsageByStep[]>("get_usage_by_step", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
