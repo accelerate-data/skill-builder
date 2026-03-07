@@ -36,7 +36,7 @@ Only read `user-context.md` from the workspace directory.
   - `draft` → Workflow (`Research`, `Confirm Decisions`, `Generate Skill`)
   - `refine` → Refine
   - `evaluate` → Validate Skill
-- Ask one focused clarification when ambiguity blocks a concrete recommendation.
+- Ask focused clarification when ambiguity blocks a concrete recommendation.
 - Check existing artifacts before generating new guidance.
 - Use Context7 (or user-provided sources) for current APIs; do not invent undocumented behavior.
 - Prefer concrete, actionable outputs over long explanations.
@@ -52,14 +52,6 @@ Use the lightest option that fits:
 
 1. **Inline** — trivial: single-file read, direct answer, one-liner computation
 2. **Task sub-agents** — independent workstreams with no mid-task coordination
-
-#### Model Tiers
-
-| Tier | Model | When |
-|---|---|---|
-| Reasoning | sonnet | Planning, scoring, consolidation |
-| Generation | default | Research, writing, analysis |
-| Lightweight | haiku | Counting, metadata extraction, simple classification |
 
 #### Sub-agent Rules
 
