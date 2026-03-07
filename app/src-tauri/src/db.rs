@@ -573,6 +573,17 @@ fn run_normalize_model_names_migration(conn: &Connection) -> Result<(), rusqlite
         ("Opus", "claude-opus-4-6"),
     ];
     for (alias, canonical) in &mappings {
+        // If both the alias row and a canonical row exist for the same agent_id,
+        // the alias row is a duplicate. Delete it so the UPDATE doesn't hit the
+        // composite PK constraint (agent_id, model).
+        conn.execute(
+            "DELETE FROM agent_runs
+             WHERE model = ?1
+               AND agent_id IN (
+                 SELECT agent_id FROM agent_runs WHERE model = ?2
+               )",
+            rusqlite::params![alias, canonical],
+        )?;
         conn.execute(
             "UPDATE agent_runs SET model = ?1 WHERE model = ?2",
             rusqlite::params![canonical, alias],
