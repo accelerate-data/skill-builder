@@ -3,6 +3,7 @@ import { Loader2, DollarSign, Activity, TrendingUp, RotateCcw, ChevronDown, Chev
 import type { AgentRunRecord, UsageByDay } from "@/lib/types"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { getWorkflowStepLabel } from "@/lib/workflow-steps"
 import {
   Card,
   CardContent,
@@ -24,26 +25,13 @@ import {
 import { useUsageStore, type DateRange } from "@/stores/usage-store"
 import { getSessionAgentRuns } from "@/lib/tauri"
 
-const STEP_NAMES: Record<number, string> = {
-  [-11]: "Test",
-  [-10]: "Refine",
-  0: "Research",
-  1: "Review",
-  2: "Detailed Research",
-  3: "Review",
-  4: "Confirm Decisions",
-  5: "Generate Skill",
-}
-
-const STEP_COLORS: Record<number, string> = {
-  [-11]: "var(--color-navy)",
-  [-10]: "var(--color-pacific)",
-  0: "var(--color-pacific)",
-  1: "var(--color-ocean)",
-  2: "var(--color-arctic)",
-  3: "var(--color-ocean)",
-  4: "var(--color-seafoam)",
-  5: "var(--color-seafoam)",
+const STEP_COLORS: Record<string, string> = {
+  Test: "var(--color-navy)",
+  Refine: "var(--color-pacific)",
+  Research: "var(--color-pacific)",
+  "Detailed Research": "var(--color-arctic)",
+  "Confirm Decisions": "var(--color-ocean)",
+  "Generate Skill": "var(--color-seafoam)",
 }
 
 const MODEL_COLORS: Record<string, string> = {
@@ -61,11 +49,11 @@ const DATE_RANGE_OPTIONS: { label: string; value: DateRange }[] = [
 ]
 
 function getStepName(stepId: number): string {
-  return STEP_NAMES[stepId] ?? `Step ${stepId}`
+  return getWorkflowStepLabel(stepId)
 }
 
 function getStepColor(stepId: number): string {
-  return STEP_COLORS[stepId] ?? "var(--color-muted-foreground)"
+  return STEP_COLORS[getStepName(stepId)] ?? "var(--color-muted-foreground)"
 }
 
 function getModelColor(model: string): string {
