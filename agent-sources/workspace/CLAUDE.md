@@ -53,16 +53,6 @@ Use the lightest option that fits:
 1. **Inline** — trivial: single-file read, direct answer, one-liner computation
 2. **Task sub-agents** — independent workstreams with no mid-task coordination
 
-#### Sub-agent Rules
-
-- Launch ALL Task calls in the **same turn** so they run in parallel.
-- Sub-agents return text, not files — the orchestrator writes all output to disk.
-- Include this directive in every sub-agent prompt:
-  > Return your complete output as text. Do not write files. List outcomes, not process.
-- Scoped prompts with clear deliverables — tell the sub-agent exactly what to produce.
-- If a sub-agent fails, note the failure in the output and continue with available results.
-
----
 
 ## Output Paths
 
