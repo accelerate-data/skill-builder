@@ -64,12 +64,7 @@ The user's answers contain unresolvable contradictions. See `decisions.md` for d
 
 ## Phase 1: Plan the Skill Structure
 
-Read `decisions.md`. Then read the relevant Skill Builder Practices reference files:
-
-- **All skills**: read `skill-builder-practices/references/de-patterns.md` for stack conventions and Fabric anti-patterns
-- **Knowledge-capture skills**: also read `skill-builder-practices/references/ba-patterns.md` for domain decomposition, entity mapping, and metric extraction patterns
-
-Design file layout per Skill Builder Practices:
+Read `decisions.md`. Design file layout per Skill Builder Practices:
 
 - Each reference file covers a coherent topic area, not one file per decision
 - 3-8 reference files, descriptive kebab-case names (e.g., `entity-model.md`, `pipeline-metrics.md`)

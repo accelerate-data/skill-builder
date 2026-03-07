@@ -190,5 +190,5 @@ Use templates for output shape and examples for quality-critical behaviors.
 
 ## Reference Files
 
-- [references/ba-patterns.md](references/ba-patterns.md): domain decomposition and mapping patterns
-- [references/de-patterns.md](references/de-patterns.md): stack conventions and anti-patterns
+- [references/ba-patterns.md](references/ba-patterns.md): domain decomposition and mapping patterns — read when generating or validating a knowledge-capture skill (business process or source system)
+- [references/de-patterns.md](references/de-patterns.md): stack conventions and anti-patterns — read for any skill that touches dbt, dlt, elementary, or Fabric
