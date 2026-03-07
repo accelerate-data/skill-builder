@@ -591,6 +591,9 @@ fn run_normalize_model_names_migration(conn: &Connection) -> Result<(), rusqlite
         )?;
     }
     log::info!("migration 32: normalized agent_runs model name aliases to canonical IDs");
+    Ok(())
+}
+
 /// Migration 33: Record startup reconciliation actions in an auditable table.
 fn run_reconciliation_events_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
