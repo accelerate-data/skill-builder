@@ -62,10 +62,6 @@ contradictory_inputs: true
 The user's answers contain unresolvable contradictions. See `decisions.md` for details. Resolve the contradictions before generating the skill.
 ```
 
-## Structure Pattern
-
-Determine the structure pattern from the purpose in user-context.md — see the **Purpose and Structure Patterns** section in Skill Builder Practices. Adapt section themes based on what `decisions.md` actually contains.
-
 ## Phase 1: Plan the Skill Structure
 
 Read `decisions.md`. Then read the relevant Skill Builder Practices reference files:
