@@ -5138,6 +5138,95 @@ mod tests {
     }
 
     #[test]
+    fn test_get_agent_runs_model_family_filter() {
+        // Verify the model_family CASE WHEN clause in get_agent_runs correctly
+        // includes only rows whose model matches the requested family.
+        let conn = create_test_db();
+        let ws = Some("wf-session-mf");
+        create_workflow_session(&conn, "wf-session-mf", "skill-a", 1000).unwrap();
+
+        persist_agent_run(&conn, "run-sonnet", "skill-a", 0, "claude-sonnet-4-6", "completed",
+            100, 50, 0, 0, 0.10, 1000, 1, None, None, 0, 0, None, ws).unwrap();
+        persist_agent_run(&conn, "run-opus", "skill-a", 4, "claude-opus-4-6", "completed",
+            200, 100, 0, 0, 0.50, 2000, 1, None, None, 0, 0, None, ws).unwrap();
+        persist_agent_run(&conn, "run-haiku", "skill-a", 1, "claude-haiku-4-5-20251001", "completed",
+            50, 25, 0, 0, 0.02, 500, 1, None, None, 0, 0, None, ws).unwrap();
+
+        // No filter: all three returned
+        let all = get_agent_runs(&conn, false, None, None, None, 100).unwrap();
+        assert_eq!(all.len(), 3);
+
+        // Filter Opus: only opus row
+        let opus = get_agent_runs(&conn, false, None, None, Some("Opus"), 100).unwrap();
+        assert_eq!(opus.len(), 1);
+        assert_eq!(opus[0].agent_id, "run-opus");
+
+        // Filter Sonnet: only sonnet row
+        let sonnet = get_agent_runs(&conn, false, None, None, Some("Sonnet"), 100).unwrap();
+        assert_eq!(sonnet.len(), 1);
+        assert_eq!(sonnet[0].agent_id, "run-sonnet");
+
+        // Filter Haiku: only haiku row
+        let haiku = get_agent_runs(&conn, false, None, None, Some("Haiku"), 100).unwrap();
+        assert_eq!(haiku.len(), 1);
+        assert_eq!(haiku[0].agent_id, "run-haiku");
+    }
+
+    #[test]
+    fn test_normalize_model_name_at_persist_time() {
+        // Short-form aliases stored via persist_agent_run must be normalized to
+        // canonical full IDs before they reach the DB.
+        let conn = create_test_db();
+        let ws = Some("wf-norm");
+        create_workflow_session(&conn, "wf-norm", "skill-x", 1000).unwrap();
+
+        persist_agent_run(&conn, "a-sonnet", "skill-x", 0, "sonnet", "completed",
+            10, 5, 0, 0, 0.01, 100, 1, None, None, 0, 0, None, ws).unwrap();
+        persist_agent_run(&conn, "a-haiku", "skill-x", 0, "Haiku", "completed",
+            10, 5, 0, 0, 0.01, 100, 1, None, None, 0, 0, None, ws).unwrap();
+        persist_agent_run(&conn, "a-opus", "skill-x", 0, "opus", "completed",
+            10, 5, 0, 0, 0.01, 100, 1, None, None, 0, 0, None, ws).unwrap();
+
+        let runs = get_agent_runs(&conn, false, None, None, None, 10).unwrap();
+        let models: std::collections::HashMap<&str, &str> =
+            runs.iter().map(|r| (r.agent_id.as_str(), r.model.as_str())).collect();
+
+        assert_eq!(models["a-sonnet"], "claude-sonnet-4-6");
+        assert_eq!(models["a-haiku"], "claude-haiku-4-5-20251001");
+        assert_eq!(models["a-opus"], "claude-opus-4-6");
+
+        // model family filter must also work on freshly-persisted canonical IDs
+        let opus = get_agent_runs(&conn, false, None, None, Some("Opus"), 10).unwrap();
+        assert_eq!(opus.len(), 1);
+        assert_eq!(opus[0].agent_id, "a-opus");
+    }
+
+    #[test]
+    fn test_migration_32_normalizes_short_aliases() {
+        // Insert short-form aliases directly (bypassing persist_agent_run normalization)
+        // then verify migration 32 normalizes them.
+        let conn = create_test_db();
+        create_workflow_session(&conn, "wf-mig32", "skill-y", 1000).unwrap();
+        conn.execute(
+            "INSERT INTO agent_runs (agent_id, skill_name, step_id, model, status, total_cost, workflow_session_id)
+             VALUES ('old-sonnet', 'skill-y', 0, 'Sonnet', 'completed', 0.10, 'wf-mig32'),
+                    ('old-haiku', 'skill-y', 0, 'haiku', 'completed', 0.02, 'wf-mig32'),
+                    ('old-opus', 'skill-y', 0, 'Opus', 'completed', 0.50, 'wf-mig32')",
+            [],
+        ).unwrap();
+
+        run_normalize_model_names_migration(&conn).unwrap();
+
+        let runs = get_agent_runs(&conn, false, None, None, None, 10).unwrap();
+        let models: std::collections::HashMap<&str, &str> =
+            runs.iter().map(|r| (r.agent_id.as_str(), r.model.as_str())).collect();
+
+        assert_eq!(models["old-sonnet"], "claude-sonnet-4-6");
+        assert_eq!(models["old-haiku"], "claude-haiku-4-5-20251001");
+        assert_eq!(models["old-opus"], "claude-opus-4-6");
+    }
+
+    #[test]
     fn test_persist_agent_run_auto_creates_workflow_session_for_synthetic_ids() {
         let conn = create_test_db();
 
