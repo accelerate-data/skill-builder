@@ -22,7 +22,10 @@ function DepRow({ dep }: { dep: DepStatus }) {
   return (
     <div className="flex items-start gap-2 text-left text-sm">
       {dep.ok ? (
-        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+        <CheckCircle2
+          className="mt-0.5 size-4 shrink-0"
+          style={{ color: "var(--color-seafoam)" }}
+        />
       ) : (
         <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
       )}
