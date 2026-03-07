@@ -9,6 +9,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -364,15 +366,16 @@ export default function UsagePage() {
         </div>
 
         <div className="flex items-center gap-4">
-          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-            <input
-              type="checkbox"
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="hide-cancelled"
               checked={hideCancelled}
-              onChange={toggleHideCancelled}
-              className="rounded border-muted-foreground/40"
+              onCheckedChange={toggleHideCancelled}
             />
-            Hide cancelled runs
-          </label>
+            <Label htmlFor="hide-cancelled" className="text-sm text-muted-foreground cursor-pointer font-normal">
+              Hide cancelled runs
+            </Label>
+          </div>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" size="sm" className="text-destructive hover:text-destructive">
@@ -409,7 +412,7 @@ export default function UsagePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold" data-testid="total-cost">
+            <p className="text-2xl font-semibold" data-testid="total-cost">
               ${(summary?.total_cost ?? 0).toFixed(2)}
             </p>
           </CardContent>
@@ -423,7 +426,7 @@ export default function UsagePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold" data-testid="total-runs">
+            <p className="text-2xl font-semibold" data-testid="total-runs">
               {summary?.total_runs ?? 0}
             </p>
           </CardContent>
@@ -437,7 +440,7 @@ export default function UsagePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold" data-testid="avg-cost">
+            <p className="text-2xl font-semibold" data-testid="avg-cost">
               {formatCost(summary?.avg_cost_per_run ?? 0)}
             </p>
           </CardContent>
@@ -595,7 +598,7 @@ export default function UsagePage() {
                 {filteredRuns.map((run) => {
                   const tokens = run.input_tokens + run.output_tokens
                   const isComplete = run.status === "completed"
-                  const isCancelled = run.status === "cancelled" || run.total_cost === 0
+                  const isCancelled = run.status === "cancelled"
                   return (
                     <tr key={run.agent_id} className="hover:bg-muted/40 transition-colors">
                       <td className="pl-4 py-2 text-xs text-muted-foreground whitespace-nowrap border-b border-border/50">
@@ -607,7 +610,7 @@ export default function UsagePage() {
                       <td className="pl-4 py-2 text-xs border-b border-border/50">
                         <div className="flex items-center gap-1.5">
                           <span
-                            className="size-1.5 rounded-full shrink-0"
+                            className="size-2 rounded-full shrink-0"
                             style={{ backgroundColor: getStepColor(run.step_id) }}
                           />
                           {getStepName(run.step_id)}
@@ -617,9 +620,11 @@ export default function UsagePage() {
                         {shortModelName(run.model)}
                       </td>
                       <td className="py-2 text-center border-b border-border/50">
-                        {isComplete && !isCancelled
+                        {isComplete
                           ? <CheckCircle2 className="size-3.5 mx-auto" style={{ color: "var(--color-seafoam)" }} />
-                          : <XCircle className="size-3.5 mx-auto text-muted-foreground/50" />}
+                          : isCancelled
+                            ? <XCircle className="size-3.5 mx-auto text-muted-foreground/50" />
+                            : <XCircle className="size-3.5 mx-auto text-destructive" />}
                       </td>
                       <td className="pr-4 py-2 text-right text-xs font-mono border-b border-border/50">
                         {formatCost(run.total_cost)}
