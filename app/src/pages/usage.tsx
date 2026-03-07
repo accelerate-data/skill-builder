@@ -293,7 +293,7 @@ export default function UsagePage() {
             <select
               value={skillFilter ?? ""}
               onChange={(e) => setSkillFilter(e.target.value || null)}
-              className="h-7 rounded-md bg-muted border-0 px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+              className="h-7 rounded-md bg-background border border-border/60 shadow-sm px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="">All Skills</option>
               {skillNames.map((name) => (
@@ -340,7 +340,7 @@ export default function UsagePage() {
             <select
               value={skillFilter ?? ""}
               onChange={(e) => setSkillFilter(e.target.value || null)}
-              className="h-7 rounded-md bg-muted border-0 px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+              className="h-7 rounded-md bg-background border border-border/60 shadow-sm px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="">All Skills</option>
               {skillNames.map((name) => (
@@ -528,7 +528,7 @@ export default function UsagePage() {
               <select
                 value={stepFilter === "all" ? "all" : String(stepFilter)}
                 onChange={(e) => setStepFilter(e.target.value === "all" ? "all" : Number(e.target.value))}
-                className="h-7 rounded-md bg-muted border-0 px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+                className="h-7 rounded-md bg-background border border-border/60 shadow-sm px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
               >
                 <option value="all">All Steps</option>
                 {Object.entries(STEP_NAMES).map(([id, name]) => (
@@ -539,7 +539,7 @@ export default function UsagePage() {
                 <select
                   value={modelFamilyFilter ?? "all"}
                   onChange={(e) => setModelFamilyFilter(e.target.value === "all" ? null : e.target.value)}
-                  className="h-7 rounded-md bg-muted border-0 px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+                  className="h-7 rounded-md bg-background border border-border/60 shadow-sm px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
                 >
                   <option value="all">All Models</option>
                   {availableModels.map((m) => (
