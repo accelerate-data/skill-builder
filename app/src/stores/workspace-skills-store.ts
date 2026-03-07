@@ -17,7 +17,7 @@ export interface UploadSkillParams {
   forceOverwrite: boolean;
 }
 
-interface ImportedSkillsState {
+interface WorkspaceSkillsState {
   skills: WorkspaceSkill[];
   isLoading: boolean;
   error: string | null;
@@ -32,7 +32,7 @@ interface ImportedSkillsState {
   setPurpose: (skillId: string, purpose: string | null) => Promise<void>;
 }
 
-export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
+export const useWorkspaceSkillsStore = create<WorkspaceSkillsState>((set) => ({
   skills: [],
   isLoading: false,
   error: null,
@@ -86,7 +86,7 @@ export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
   },
 
   deleteSkill: async (skillId: string) => {
-    await invoke("delete_imported_skill", { skillId });
+    await invoke("delete_workspace_skill", { skillId });
     set((state) => ({
       skills: state.skills.filter((s) => s.skill_id !== skillId),
       selectedSkill:

@@ -72,17 +72,17 @@ interface GitHubImportDialogProps {
   /** The marketplace registries to browse (from settings). */
   registries: MarketplaceRegistry[]
   /**
-   * When set, only skills whose purpose is in this list are shown (skill-library mode only).
-   * In settings-skills mode this filter is ignored — all skills with a name are shown.
+   * When set, only skills whose purpose is in this list are shown (dashboard-library mode only).
+   * In workspace-skills mode this filter is ignored — all skills with a name are shown.
    */
   typeFilter?: string[]
   /**
-   * 'skill-library': calls importMarketplaceToLibrary (creates workflow_runs rows with source='marketplace')
-   * 'settings-skills': calls importGitHubSkills (creates imported_skills rows)
-   * Defaults to 'settings-skills' for backward compatibility.
+   * 'dashboard-library': calls importMarketplaceToLibrary (creates workflow_runs rows with source='marketplace')
+   * 'workspace-skills': calls importGitHubSkills (creates workspace_skills rows)
+   * Defaults to 'workspace-skills'.
    */
-  mode?: 'skill-library' | 'settings-skills'
-  /** Workspace path — required for skill-library mode to look up installed skill metadata. */
+  mode?: "dashboard-library" | "workspace-skills"
+  /** Workspace path — required for dashboard-library mode to look up installed skill metadata. */
   workspacePath?: string
 }
 
@@ -99,11 +99,11 @@ interface EditFormState {
   argument_hint: string
   user_invocable: boolean
   disable_model_invocation: boolean
-  /** settings-skills only — purpose slot to assign on import */
+  /** workspace-skills only — purpose slot to assign on import */
   settings_purpose: string | null
 }
 
-/** Renders a version upgrade banner when upgrading a settings-skills skill. */
+/** Renders a version upgrade banner when upgrading a workspace-skills skill. */
 function UpgradeBanner({
   editingSkill,
   editForm,
@@ -145,7 +145,7 @@ export default function GitHubImportDialog({
   onImported,
   registries,
   typeFilter,
-  mode = 'settings-skills',
+  mode = "workspace-skills",
   workspacePath,
 }: GitHubImportDialogProps) {
   const [tabStates, setTabStates] = useState<Record<string, TabState>>({})
@@ -157,12 +157,12 @@ export default function GitHubImportDialog({
   const [editingSkill, setEditingSkill] = useState<AvailableSkill | null>(null)
   const [editForm, setEditForm] = useState<EditFormState | null>(null)
 
-  // Workspace skills for version comparison and purpose conflict detection (settings-skills only)
+  // Workspace skills for version comparison and purpose conflict detection (workspace-skills only)
   const [workspaceSkills, setWorkspaceSkills] = useState<WorkspaceSkill[]>([])
-  // Installed library skills for edit form pre-population fallback (skill-library only)
+  // Installed library skills for edit form pre-population fallback (dashboard-library only)
   const [installedLibrarySkills, setInstalledLibrarySkills] = useState<Map<string, SkillSummary>>(new Map())
 
-  // Customization warning state (settings-skills upgrade path)
+  // Customization warning state (workspace-skills upgrade path)
   const [pendingUpgradeSkill, setPendingUpgradeSkill] = useState<AvailableSkill | null>(null)
   const [showCustomizationWarning, setShowCustomizationWarning] = useState(false)
 
@@ -233,18 +233,18 @@ export default function GitHubImportDialog({
         info.branch,
         info.subpath ?? undefined,
       )
-      if (mode === 'skill-library' && typeFilter && typeFilter.length > 0) {
+      if (mode === "dashboard-library" && typeFilter && typeFilter.length > 0) {
         available = available.filter(
           (s) => s.purpose != null && typeFilter.includes(s.purpose)
         )
       }
-      if (mode === 'settings-skills') {
+      if (mode === "workspace-skills") {
         available = available.filter((s) => !!s.name)
       }
 
       const preStates = new Map<string, SkillState>()
 
-      if (mode === 'skill-library') {
+      if (mode === "dashboard-library") {
         const dashboardNames = await getDashboardSkillNames()
         const dashboardSet = new Set(dashboardNames)
         const summaries = await listSkills(workspacePath ?? '')
@@ -306,12 +306,12 @@ export default function GitHubImportDialog({
     // Priority: remote skill frontmatter → existing installed version (for upgrade/exists)
     const state = skillStates.get(skill.path)
     const isUpgradeOrExists = state === 'upgrade' || state === 'exists'
-    // settings-skills mode: fall back to workspace_skills row
+    // workspace-skills mode: fall back to workspace_skills row
     const ws = isUpgradeOrExists
       ? workspaceSkills.find((w) => w.skill_name === skill.name)
       : undefined
-    // skill-library mode: fall back to installed SkillSummary for description/domain
-    const lib = mode === 'skill-library' && isUpgradeOrExists
+    // dashboard-library mode: fall back to installed SkillSummary for description/domain
+    const lib = mode === "dashboard-library" && isUpgradeOrExists
       ? installedLibrarySkills.get(skill.name)
       : undefined
     setEditForm({
@@ -343,7 +343,7 @@ export default function GitHubImportDialog({
     return false
   }
 
-  /** skill-library: edit metadata then import immediately via importMarketplaceToLibrary */
+  /** dashboard-library: edit metadata then import immediately via importMarketplaceToLibrary */
   const handleImportWithMetadata = useCallback(async (skill: AvailableSkill, form: EditFormState) => {
     const skillName = form.name || skill.name
     console.log(`[github-import] importing "${skillName}" from marketplace (path=${skill.path})`)
@@ -374,7 +374,7 @@ export default function GitHubImportDialog({
     }
   }, [onImported])
 
-  /** settings-skills: import with all metadata + purpose via importGitHubSkills */
+  /** workspace-skills: import with all metadata + purpose via importGitHubSkills */
   const handleSettingsImport = useCallback(async () => {
     if (!editingSkill || !editForm || !repoInfo) return
     const skillPath = editingSkill.path
@@ -515,7 +515,7 @@ export default function GitHubImportDialog({
                               disabled={isImporting}
                               aria-label={isUpgrade ? `Update ${skill.name}` : `Install ${skill.name}`}
                               onClick={async () => {
-                                if (isUpgrade && mode === 'settings-skills') {
+                                if (isUpgrade && mode === "workspace-skills") {
                                   // Check for customization before opening edit form
                                   try {
                                     const isCustomized = await checkSkillCustomized(skill.name)
@@ -586,8 +586,8 @@ export default function GitHubImportDialog({
         </DialogContent>
       </Dialog>
 
-      {/* skill-library: edit & import dialog */}
-      <Dialog open={mode === 'skill-library' && editingSkill !== null} onOpenChange={(isOpen) => { if (!isOpen) closeEditForm() }}>
+      {/* dashboard-library: edit & import dialog */}
+      <Dialog open={mode === "dashboard-library" && editingSkill !== null} onOpenChange={(isOpen) => { if (!isOpen) closeEditForm() }}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit &amp; Import Skill</DialogTitle>
@@ -717,8 +717,8 @@ export default function GitHubImportDialog({
         </DialogContent>
       </Dialog>
 
-      {/* settings-skills: dedicated import dialog with all metadata + purpose */}
-      <Dialog open={mode === 'settings-skills' && editingSkill !== null} onOpenChange={(isOpen) => { if (!isOpen) closeEditForm() }}>
+      {/* workspace-skills: dedicated import dialog with all metadata + purpose */}
+      <Dialog open={mode === "workspace-skills" && editingSkill !== null} onOpenChange={(isOpen) => { if (!isOpen) closeEditForm() }}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>

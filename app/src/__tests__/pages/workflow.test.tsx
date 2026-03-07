@@ -781,6 +781,224 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
   });
 
+  it("writes vague/contradictory evaluator feedback into clarifications notes", async () => {
+    const jsonData = makeClarificationsJson();
+    const evaluation = {
+      verdict: "mixed",
+      answered_count: 2,
+      empty_count: 0,
+      vague_count: 1,
+      contradictory_count: 1,
+      total_count: 2,
+      reasoning: "One vague and one contradictory answer.",
+      per_question: [
+        { question_id: "Q1", verdict: "vague", reason: "Uses non-specific wording." },
+        { question_id: "Q2", verdict: "contradictory", contradicts: "Q1", reason: "Conflicts with Q1 response." },
+      ],
+    };
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      if (path.includes("research-plan.md")) {
+        return Promise.resolve("# Research Plan\nTest content");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-1");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    expect(typeof props?.onClarificationsContinue).toBe("function");
+
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    // Complete gate evaluator agent and trigger finishGateEvaluation.
+    act(() => {
+      useAgentStore.getState().startRun("gate-agent-1", "haiku");
+      useAgentStore.getState().completeRun("gate-agent-1", true);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+    });
+
+    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
+      ([path]) => path === "/test/skills/test-skill/context/clarifications.json"
+    );
+    expect(writeCalls.length).toBeGreaterThan(0);
+    const serialized = writeCalls[writeCalls.length - 1][1];
+    const parsed = JSON.parse(serialized);
+    expect(Array.isArray(parsed.notes)).toBe(true);
+    expect(parsed.notes.some((n: { title: string }) => n.title === "Vague answer: Q1")).toBe(true);
+    expect(parsed.notes.some((n: { title: string }) => n.title === "Contradictory answer: Q2")).toBe(true);
+  });
+
+  it("writes evaluator feedback notes after Detailed Research continue (step 1 gate)", async () => {
+    const jsonData = makeClarificationsJson();
+    const evaluation = {
+      verdict: "mixed",
+      answered_count: 3,
+      empty_count: 0,
+      vague_count: 1,
+      contradictory_count: 0,
+      total_count: 3,
+      reasoning: "One vague answer.",
+      per_question: [
+        { question_id: "Q3", verdict: "vague", reason: "Missing concrete thresholds." },
+      ],
+    };
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      if (path.includes("research-plan.md")) {
+        return Promise.resolve("# Research Plan\nTest content");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-2");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    expect(typeof props?.onClarificationsContinue).toBe("function");
+
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    act(() => {
+      useAgentStore.getState().startRun("gate-agent-2", "haiku");
+      useAgentStore.getState().completeRun("gate-agent-2", true);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+    });
+
+    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
+      ([path]) => path === "/test/skills/test-skill/context/clarifications.json"
+    );
+    expect(writeCalls.length).toBeGreaterThan(0);
+    const serialized = writeCalls[writeCalls.length - 1][1];
+    const parsed = JSON.parse(serialized);
+    expect(parsed.notes.some((n: { title: string }) => n.title === "Vague answer: Q3")).toBe(true);
+  });
+
+  it("reloads clarifications from disk when clicking Let Me Answer", async () => {
+    const baseData = makeClarificationsJson();
+    const reloadedData = makeClarificationsJson({
+      notes: [
+        {
+          type: "answer_feedback",
+          title: "Vague answer: Q1",
+          body: "Needs concrete metrics.",
+        },
+      ],
+    });
+    const evaluation = {
+      verdict: "mixed",
+      answered_count: 1,
+      empty_count: 0,
+      vague_count: 1,
+      contradictory_count: 0,
+      total_count: 1,
+      reasoning: "One answer is vague.",
+      per_question: [
+        { question_id: "Q1", verdict: "vague", reason: "Needs concrete metrics." },
+      ],
+    };
+
+    let clarificationsReadCount = 0;
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        clarificationsReadCount += 1;
+        const payload = clarificationsReadCount > 1 ? reloadedData : baseData;
+        return Promise.resolve(JSON.stringify(payload));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      if (path.includes("research-plan.md")) {
+        return Promise.resolve("# Research Plan\nTest content");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-3");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    expect(typeof props?.onClarificationsContinue).toBe("function");
+
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    act(() => {
+      useAgentStore.getState().startRun("gate-agent-3", "haiku");
+      useAgentStore.getState().completeRun("gate-agent-3", true);
+    });
+
+    const letMeAnswerButton = await screen.findByRole("button", { name: "Let Me Answer" });
+    await act(async () => {
+      letMeAnswerButton.click();
+    });
+
+    await waitFor(() => {
+      expect(clarificationsReadCount).toBeGreaterThanOrEqual(2);
+    });
+
+    await waitFor(() => {
+      const lastProps = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+      const notes = (lastProps?.clarificationsData as { notes?: Array<{ title: string }> } | undefined)?.notes ?? [];
+      expect(notes.some((n) => n.title === "Vague answer: Q1")).toBe(true);
+    });
+  });
+
   it("skipToDecisions from step 0 skips to step 2 (Confirm Decisions)", async () => {
     // Set up step 0 completed
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");

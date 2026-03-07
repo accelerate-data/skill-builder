@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { RuntimeError } from "@/components/runtime-error-dialog";
 import { createWorkflowSession } from "@/lib/tauri";
+import { WORKFLOW_STEP_DEFINITIONS } from "@/lib/workflow-steps";
 
 export interface WorkflowStep {
   id: number;
@@ -61,32 +62,10 @@ interface WorkflowState {
   reset: () => void;
 }
 
-const defaultSteps: WorkflowStep[] = [
-  {
-    id: 0,
-    name: "Research",
-    description: "Research key concepts, terminology, and frameworks for the domain",
-    status: "pending",
-  },
-  {
-    id: 1,
-    name: "Detailed Research",
-    description: "Research detailed patterns, implementation, and data modeling",
-    status: "pending",
-  },
-  {
-    id: 2,
-    name: "Confirm Decisions",
-    description: "Analyze responses for implications, gaps, and contradictions",
-    status: "pending",
-  },
-  {
-    id: 3,
-    name: "Generate Skill",
-    description: "Generate skill files from decisions",
-    status: "pending",
-  },
-];
+const defaultSteps: WorkflowStep[] = WORKFLOW_STEP_DEFINITIONS.map((step) => ({
+  ...step,
+  status: "pending",
+}));
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   skillName: null,

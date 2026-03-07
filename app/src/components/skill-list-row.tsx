@@ -51,7 +51,7 @@ function getStatusLabel(skill: SkillSummary): string {
     return "Completed"
   }
   const match = skill.current_step?.match(/step\s*(\d+)/i)
-  if (match) return `Step ${match[1]}/5`
+  if (match) return `Step ${match[1]}/4`
   return "In Progress"
 }
 

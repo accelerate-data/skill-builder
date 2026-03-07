@@ -14,12 +14,18 @@ pub struct SidecarConfig {
     pub max_turns: Option<u32>,
     #[serde(rename = "permissionMode", skip_serializing_if = "Option::is_none")]
     pub permission_mode: Option<String>,
-    #[serde(rename = "sessionId", skip_serializing_if = "Option::is_none")]
-    pub session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub betas: Option<Vec<String>>,
-    #[serde(rename = "maxThinkingTokens", skip_serializing_if = "Option::is_none")]
-    pub max_thinking_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<serde_json::Value>,
+    #[serde(rename = "fallbackModel", skip_serializing_if = "Option::is_none")]
+    pub fallback_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    #[serde(rename = "outputFormat", skip_serializing_if = "Option::is_none")]
+    pub output_format: Option<serde_json::Value>,
+    #[serde(rename = "promptSuggestions", skip_serializing_if = "Option::is_none")]
+    pub prompt_suggestions: Option<bool>,
     #[serde(
         rename = "pathToClaudeCodeExecutable",
         skip_serializing_if = "Option::is_none"
@@ -44,9 +50,12 @@ impl std::fmt::Debug for SidecarConfig {
             .field("allowed_tools", &self.allowed_tools)
             .field("max_turns", &self.max_turns)
             .field("permission_mode", &self.permission_mode)
-            .field("session_id", &"[REDACTED]")
             .field("betas", &self.betas)
-            .field("max_thinking_tokens", &self.max_thinking_tokens)
+            .field("thinking", &self.thinking)
+            .field("fallback_model", &self.fallback_model)
+            .field("effort", &self.effort)
+            .field("output_format", &self.output_format)
+            .field("prompt_suggestions", &self.prompt_suggestions)
             .field("agent_name", &self.agent_name)
             .finish()
     }
@@ -141,9 +150,12 @@ mod tests {
             allowed_tools: Some(vec!["Read".to_string(), "Glob".to_string()]),
             max_turns: Some(25),
             permission_mode: Some("bypassPermissions".to_string()),
-            session_id: None,
             betas: None,
-            max_thinking_tokens: None,
+            thinking: None,
+            fallback_model: None,
+            effort: None,
+            output_format: None,
+            prompt_suggestions: None,
             path_to_claude_code_executable: None,
             agent_name: Some("research-entities".to_string()),
             conversation_history: None,
@@ -159,12 +171,10 @@ mod tests {
         assert_eq!(parsed["permissionMode"], "bypassPermissions");
         assert_eq!(parsed["model"], "sonnet");
         assert_eq!(parsed["agentName"], "research-entities");
-        // session_id is None + skip_serializing_if — should be absent
-        assert!(parsed.get("sessionId").is_none());
         // betas is None + skip_serializing_if — should be absent
         assert!(parsed.get("betas").is_none());
-        // max_thinking_tokens is None + skip_serializing_if — should be absent
-        assert!(parsed.get("maxThinkingTokens").is_none());
+        // thinking is None + skip_serializing_if — should be absent
+        assert!(parsed.get("thinking").is_none());
     }
 
     #[test]
@@ -177,9 +187,15 @@ mod tests {
             allowed_tools: None,
             max_turns: None,
             permission_mode: None,
-            session_id: None,
             betas: None,
-            max_thinking_tokens: Some(32000),
+            thinking: Some(serde_json::json!({
+                "type": "enabled",
+                "budgetTokens": 32000
+            })),
+            fallback_model: None,
+            effort: None,
+            output_format: None,
+            prompt_suggestions: None,
             path_to_claude_code_executable: None,
             agent_name: None,
             conversation_history: None,
@@ -188,7 +204,8 @@ mod tests {
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(parsed["maxThinkingTokens"], 32000);
+        assert_eq!(parsed["thinking"]["type"], "enabled");
+        assert_eq!(parsed["thinking"]["budgetTokens"], 32000);
     }
 
 }

@@ -15,9 +15,35 @@ All output files live under `<skills_path>/<skill_name>/`. Steps 0–2 write int
 
 ---
 
+## Usage Step Semantics (All UI Surfaces)
+
+Usage tracking uses one shared step taxonomy across Workflow, Refine, and Test.
+
+| Surface | Persisted step ID | Usage label | Session grouping key |
+|---|---:|---|---|
+| Workflow page | `0` | `Research` | `workflowSessionId` from `useWorkflowStore` |
+| Workflow page | `1` | `Detailed Research` | `workflowSessionId` from `useWorkflowStore` |
+| Workflow page | `2` | `Confirm Decisions` | `workflowSessionId` from `useWorkflowStore` |
+| Workflow page | `3` | `Generate Skill` | `workflowSessionId` from `useWorkflowStore` |
+| Refine page | `-10` | `Refine` | `synthetic:refine:<skill>:<refine-session-id>` |
+| Test page | `-11` | `Test` | `synthetic:test:<skill>:<test-id>` |
+
+Legacy workflow rows with step IDs `4` and `5` are mapped to `Confirm Decisions` and `Generate Skill` for backward compatibility in usage surfaces.
+
+---
+
+## Cross-Surface Usage Rules
+
+- Usage charts and session details always render labels from the canonical step mapping.
+- Refine runs are grouped per refine session (not per streamed agent turn).
+- Test runs (with-skill, without-skill, evaluator) are grouped into one synthetic test session for the selected skill.
+- Usage "Cost by Step" includes both workflow steps and synthetic `Refine`/`Test` buckets.
+
+---
+
 ## Step States
 
-```
+```text
           start
 pending ─────────► in_progress ──── success ───► completed
                         │                             │

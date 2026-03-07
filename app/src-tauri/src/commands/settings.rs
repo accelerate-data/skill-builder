@@ -172,6 +172,10 @@ fn diff_settings(old: &AppSettings, new: &AppSettings) -> Vec<String> {
     cmp_val!(log_level, "log_level");
     cmp_bool!(extended_context, "extended_context");
     cmp_bool!(extended_thinking, "extended_thinking");
+    cmp_bool!(interleaved_thinking_beta, "interleaved_thinking_beta");
+    cmp_opt!(sdk_effort, "sdk_effort");
+    cmp_opt!(fallback_model, "fallback_model");
+    cmp_bool!(refine_prompt_suggestions, "refine_prompt_suggestions");
     cmp_opt!(marketplace_url, "marketplace_url");
     if old.marketplace_registries.len() != new.marketplace_registries.len() {
         changes.push(format!("marketplace_registries={} entries", new.marketplace_registries.len()));

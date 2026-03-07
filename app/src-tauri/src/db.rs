@@ -1149,9 +1149,10 @@ fn step_name(step_id: i32) -> String {
         -11 => "Test".to_string(),
         -10 => "Refine".to_string(),
         0 => "Research".to_string(),
-        1 => "Review".to_string(),
-        2 => "Detailed Research".to_string(),
-        3 => "Review".to_string(),
+        1 => "Detailed Research".to_string(),
+        2 => "Confirm Decisions".to_string(),
+        3 => "Generate Skill".to_string(),
+        // Backward compatibility for legacy usage rows from older workflow step IDs.
         4 => "Confirm Decisions".to_string(),
         5 => "Generate Skill".to_string(),
         _ => format!("Step {}", step_id),
@@ -1228,15 +1229,17 @@ pub fn persist_agent_run(
         }
     }
 
+    let workflow_run_id = get_workflow_run_id(conn, skill_name)?;
+
     conn.execute(
         "INSERT OR REPLACE INTO agent_runs
          (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
           cache_read_tokens, cache_write_tokens, total_cost, duration_ms,
           num_turns, stop_reason, duration_api_ms, tool_use_count, compaction_count,
-          session_id, workflow_session_id, started_at, completed_at)
+          session_id, workflow_session_id, workflow_run_id, started_at, completed_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
                  ?12, ?13, ?14, ?15, ?16,
-                 ?17, ?18,
+                 ?17, ?18, ?19,
                  COALESCE((SELECT started_at FROM agent_runs WHERE agent_id = ?1 AND model = ?4), datetime('now') || 'Z'),
                  datetime('now') || 'Z')",
         rusqlite::params![
@@ -1258,6 +1261,7 @@ pub fn persist_agent_run(
             compaction_count,
             session_id,
             workflow_session_id,
+            workflow_run_id,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -2208,6 +2212,14 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
     )
     .map_err(|e| e.to_string())?;
 
+    // Preserve usage history rows while removing workflow run state.
+    // agent_runs.workflow_run_id is an FK to workflow_runs(id), so detach first.
+    conn.execute(
+        "UPDATE agent_runs SET workflow_run_id = NULL WHERE workflow_run_id = ?1",
+        rusqlite::params![wr_id],
+    )
+    .map_err(|e| e.to_string())?;
+
     conn.execute(
         "DELETE FROM skill_locks WHERE skill_id = ?1",
         rusqlite::params![s_id],
@@ -2233,8 +2245,18 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
     )
     .map_err(|e| e.to_string())?;
 
-    // Also delete from skills master table
-    delete_skill(conn, skill_name)?;
+    // Keep skills master row when usage history references it (workflow_sessions.skill_id FK).
+    // This preserves historical usage/session records after workflow reset/deletion.
+    let usage_session_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM workflow_sessions WHERE skill_id = ?1",
+            rusqlite::params![s_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if usage_session_count == 0 {
+        delete_skill(conn, skill_name)?;
+    }
     Ok(())
 }
 
@@ -3661,6 +3683,10 @@ mod tests {
             log_level: "info".to_string(),
             extended_context: false,
             extended_thinking: false,
+            interleaved_thinking_beta: true,
+            sdk_effort: None,
+            fallback_model: None,
+            refine_prompt_suggestions: true,
             splash_shown: false,
             github_oauth_token: None,
             github_user_login: None,
@@ -3694,6 +3720,10 @@ mod tests {
             log_level: "info".to_string(),
             extended_context: false,
             extended_thinking: false,
+            interleaved_thinking_beta: true,
+            sdk_effort: None,
+            fallback_model: None,
+            refine_prompt_suggestions: true,
             splash_shown: false,
             github_oauth_token: None,
             github_user_login: None,
@@ -3726,6 +3756,10 @@ mod tests {
             log_level: "info".to_string(),
             extended_context: false,
             extended_thinking: false,
+            interleaved_thinking_beta: true,
+            sdk_effort: None,
+            fallback_model: None,
+            refine_prompt_suggestions: true,
             splash_shown: false,
             github_oauth_token: None,
             github_user_login: None,
@@ -3751,6 +3785,10 @@ mod tests {
             log_level: "info".to_string(),
             extended_context: false,
             extended_thinking: false,
+            interleaved_thinking_beta: true,
+            sdk_effort: None,
+            fallback_model: None,
+            refine_prompt_suggestions: true,
             splash_shown: false,
             github_oauth_token: None,
             github_user_login: None,
@@ -4871,7 +4909,7 @@ mod tests {
         assert!((by_step[0].total_cost - 0.25).abs() < 1e-10);
 
         assert_eq!(by_step[1].step_id, 1);
-        assert_eq!(by_step[1].step_name, "Review");
+        assert_eq!(by_step[1].step_name, "Detailed Research");
         assert_eq!(by_step[1].run_count, 2);
         assert!((by_step[1].total_cost - 0.18).abs() < 1e-10);
     }
@@ -5316,9 +5354,9 @@ mod tests {
     #[test]
     fn test_step_name_mapping() {
         assert_eq!(step_name(0), "Research");
-        assert_eq!(step_name(1), "Review");
-        assert_eq!(step_name(2), "Detailed Research");
-        assert_eq!(step_name(3), "Review");
+        assert_eq!(step_name(1), "Detailed Research");
+        assert_eq!(step_name(2), "Confirm Decisions");
+        assert_eq!(step_name(3), "Generate Skill");
         assert_eq!(step_name(4), "Confirm Decisions");
         assert_eq!(step_name(5), "Generate Skill");
         assert_eq!(step_name(6), "Step 6");

@@ -13,7 +13,7 @@ description: >
 
 Given a `purpose` and `domain`, produce two inline-text outputs:
 
-1. A scored dimension table (becomes `research-plan.md`)
+1. A complete canonical `research-plan.md` document
 2. Complete `clarifications.json` content in canonical JSON format
 
 Pure computation. Read inputs and references, return inline output, write nothing to disk.
@@ -108,12 +108,28 @@ Return inline text with exactly these delimiters:
 
 ```text
 === RESEARCH PLAN ===
-[content]
+[complete canonical research-plan.md]
 === CLARIFICATIONS ===
 [valid JSON]
 ```
 
 Both sections are required.
+
+### Canonical `research-plan.md` requirements
+
+The `=== RESEARCH PLAN ===` section must include:
+
+1. YAML frontmatter:
+   - `purpose`
+   - `domain`
+   - `topic_relevance`
+   - `dimensions_evaluated`
+   - `dimensions_selected`
+2. `# Research Plan`
+3. `## Dimension Scores` markdown table
+4. `## Selected Dimensions` markdown table
+
+Do not return a table-only research plan.
 
 ## Error Handling
 
@@ -125,6 +141,7 @@ Both sections are required.
 
 - Both required delimited sections present
 - Clarifications section is valid JSON
+- Research plan section includes canonical frontmatter + required headings/tables
 - `metadata` counts are accurate
 - Each question includes 2-4 choices plus `Other (please specify)` with `is_other: true`
 - `recommendation` present on every question

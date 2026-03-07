@@ -74,4 +74,30 @@ describe("parseClarifications", () => {
     expect(parsed?.sections[0]?.questions[0]?.text).toBe("What are the pipeline stages?");
     expect(parsed?.sections[0]?.questions[0]?.must_answer).toBe(false);
   });
+
+  it("converts legacy clarifications_needed arrays into canonical questions", () => {
+    const input = JSON.stringify({
+      metadata: {
+        skill_name: "sales-pipeline",
+        question_count: 3,
+      },
+      dimensions: [
+        {
+          id: "D1",
+          name: "Deal Structure",
+          clarifications_needed: [
+            "How do you classify PS vs MS?",
+            "Do hybrid deals exist?",
+          ],
+        },
+      ],
+    });
+
+    const parsed = parseClarifications(input);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.sections).toHaveLength(1);
+    expect(parsed?.sections[0]?.questions).toHaveLength(2);
+    expect(parsed?.sections[0]?.questions[0]?.text).toBe("How do you classify PS vs MS?");
+    expect(parsed?.metadata.question_count).toBe(2);
+  });
 });

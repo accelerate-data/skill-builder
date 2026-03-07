@@ -43,8 +43,8 @@ vi.mock("@/components/github-login-dialog", () => ({
   GitHubLoginDialog: () => null,
 }));
 
-vi.mock("@/components/skills-library-tab", () => ({
-  SkillsLibraryTab: () => <div data-testid="skills-page">Skills Library Content</div>,
+vi.mock("@/components/workspace-skills-tab", () => ({
+  WorkspaceSkillsTab: () => <div data-testid="skills-page">Workspace Skills Content</div>,
 }));
 
 vi.mock("@/components/feedback-dialog", () => ({
@@ -689,7 +689,7 @@ describe("SettingsPage", () => {
     expect(screen.queryByText("Not connected")).not.toBeInTheDocument();
   });
 
-  it("auto-switches to skills section when pendingUpgradeOpen targets settings-skills", async () => {
+  it("auto-switches to skills section when pendingUpgradeOpen targets workspace-skills", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
@@ -701,7 +701,7 @@ describe("SettingsPage", () => {
     expect(screen.queryByTestId("skills-page")).not.toBeInTheDocument();
 
     act(() => {
-      useSettingsStore.getState().setPendingUpgradeOpen({ mode: "settings-skills", skills: ["my-skill"] });
+      useSettingsStore.getState().setPendingUpgradeOpen({ mode: "workspace-skills", skills: ["my-skill"] });
     });
 
     // Settings page should auto-switch to Skills section
@@ -710,7 +710,7 @@ describe("SettingsPage", () => {
     });
   });
 
-  it("does not auto-switch section for skill-library mode", async () => {
+  it("does not auto-switch section for dashboard-library mode", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
@@ -719,7 +719,7 @@ describe("SettingsPage", () => {
     });
 
     act(() => {
-      useSettingsStore.getState().setPendingUpgradeOpen({ mode: "skill-library", skills: ["my-skill"] });
+      useSettingsStore.getState().setPendingUpgradeOpen({ mode: "dashboard-library", skills: ["my-skill"] });
     });
 
     // General section should remain — skills content not visible

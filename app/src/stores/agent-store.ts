@@ -180,6 +180,8 @@ interface AgentRun {
   durationApiMs?: number | null;
   modelUsageBreakdown?: ModelUsageBreakdown[];
   runSource?: "workflow" | "refine" | "test";
+  /** Optional synthetic session key used for non-workflow usage grouping. */
+  usageSessionId?: string;
 }
 
 interface AgentState {
@@ -189,7 +191,13 @@ interface AgentState {
   /** Register a run for streaming without setting activeAgentId.
    *  Used by refine page which manages its own agent lifecycle.
    *  Pass skillName so usage data is attributed correctly (otherwise defaults to workflow store). */
-  registerRun: (agentId: string, model: string, skillName?: string, runSource?: "refine" | "test") => void;
+  registerRun: (
+    agentId: string,
+    model: string,
+    skillName?: string,
+    runSource?: "refine" | "test",
+    usageSessionId?: string,
+  ) => void;
   addMessage: (agentId: string, message: AgentMessage) => void;
   completeRun: (agentId: string, success: boolean) => void;
   shutdownRun: (agentId: string) => void;
@@ -264,11 +272,24 @@ function resolvePersistenceContext(
   workflowSessionId: string | null,
   currentStep: number,
 ): { stepId: number; workflowSessionId?: string } {
+  const runSourceStepId = run?.runSource === "refine"
+    ? -10
+    : run?.runSource === "test"
+      ? -11
+      : -1;
+
   if (workflowSessionId) {
     return { stepId: currentStep, workflowSessionId };
   }
 
   if (!run) return { stepId: -1 };
+
+  if (runSourceStepId !== -1 && run.usageSessionId) {
+    return {
+      stepId: runSourceStepId,
+      workflowSessionId: run.usageSessionId,
+    };
+  }
 
   if (run.runSource === "refine") {
     return {
@@ -340,14 +361,21 @@ export const useAgentStore = create<AgentState>((set) => ({
     drainPendingTerminal(agentId);
   },
 
-  registerRun: (agentId, model, skillName?, runSource = "refine") => {
+  registerRun: (agentId, model, skillName?, runSource = "refine", usageSessionId?) => {
     set((state) => {
       const existing = state.runs[agentId];
       return {
         runs: {
           ...state.runs,
           [agentId]: existing
-            ? { ...existing, model, skillName: skillName ?? existing.skillName, status: "running" as const, runSource }
+            ? {
+                ...existing,
+                model,
+                skillName: skillName ?? existing.skillName,
+                status: "running" as const,
+                runSource,
+                usageSessionId: usageSessionId ?? existing.usageSessionId,
+              }
             : {
                 agentId,
                 model,
@@ -360,6 +388,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 compactionEvents: [],
                 thinkingEnabled: false,
                 runSource,
+                usageSessionId,
               },
         },
         // Do NOT set activeAgentId — callers manage their own lifecycle
@@ -653,9 +682,13 @@ export const useAgentStore = create<AgentState>((set) => ({
         let agentName = run.agentName;
         if (message.type === "config") {
           const configObj = (raw as Record<string, unknown>).config as
-            | { maxThinkingTokens?: number; agentName?: string }
+            | { thinking?: { type?: string; budgetTokens?: number }; agentName?: string }
             | undefined;
-          if (configObj?.maxThinkingTokens && configObj.maxThinkingTokens > 0) {
+          if (
+            configObj?.thinking?.type === "enabled"
+            && typeof configObj.thinking.budgetTokens === "number"
+            && configObj.thinking.budgetTokens > 0
+          ) {
             thinkingEnabled = true;
           }
           if (configObj?.agentName) {

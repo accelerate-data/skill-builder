@@ -79,7 +79,7 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 | `upload_skill` | Extract ZIP and register in `workspace_skills` |
 | `list_workspace_skills` | All `workspace_skills` entries hydrated with SKILL.md |
 | `toggle_skill_active` | Set active/inactive flag |
-| `delete_imported_skill` | Remove from `workspace_skills` |
+| `delete_workspace_skill` | Remove from `workspace_skills` |
 | `get_skill_content` | Read SKILL.md content |
 | `export_skill` | Package a skill as a ZIP for download |
 

@@ -37,7 +37,7 @@ describe("buildQueryOptions", () => {
     expect(opts).toHaveProperty("settingSources", ["project"]);
   });
 
-  it("passes both agent + model when both agentName and model are present (model overrides front-matter)", () => {
+  it("passes only agent when both agentName and model are present", () => {
     const config = makeConfig({
       agentName: "my-agent",
       model: "claude-sonnet-4-20250514",
@@ -47,7 +47,7 @@ describe("buildQueryOptions", () => {
 
     expect(opts).toHaveProperty("agent", "my-agent");
     expect(opts).toHaveProperty("settingSources", ["project"]);
-    expect(opts).toHaveProperty("model", "claude-sonnet-4-20250514");
+    expect(opts).not.toHaveProperty("model");
   });
 
   it("defaults maxTurns to 50 when not specified", () => {
@@ -76,19 +76,6 @@ describe("buildQueryOptions", () => {
     expect(opts.permissionMode).toBe("acceptEdits");
   });
 
-  it("includes sessionId as resume when present", () => {
-    const opts = buildQueryOptions(
-      makeConfig({ sessionId: "sess-123" }),
-      new AbortController()
-    );
-    expect(opts).toHaveProperty("resume", "sess-123");
-  });
-
-  it("excludes resume when sessionId is absent", () => {
-    const opts = buildQueryOptions(makeConfig(), new AbortController());
-    expect(opts).not.toHaveProperty("resume");
-  });
-
   it("includes betas when present", () => {
     const opts = buildQueryOptions(
       makeConfig({ betas: ["beta-1", "beta-2"] }),
@@ -100,6 +87,56 @@ describe("buildQueryOptions", () => {
   it("excludes betas when absent", () => {
     const opts = buildQueryOptions(makeConfig(), new AbortController());
     expect(opts).not.toHaveProperty("betas");
+  });
+
+  it("includes thinking when present", () => {
+    const opts = buildQueryOptions(
+      makeConfig({ thinking: { type: "enabled", budgetTokens: 16000 } }),
+      new AbortController()
+    );
+    expect(opts).toHaveProperty("thinking");
+  });
+
+  it("excludes thinking when absent", () => {
+    const opts = buildQueryOptions(makeConfig(), new AbortController());
+    expect(opts).not.toHaveProperty("thinking");
+  });
+
+  it("includes effort when present", () => {
+    const opts = buildQueryOptions(
+      makeConfig({ effort: "high" }),
+      new AbortController()
+    );
+    expect(opts).toHaveProperty("effort", "high");
+  });
+
+  it("includes fallbackModel when present", () => {
+    const opts = buildQueryOptions(
+      makeConfig({ fallbackModel: "claude-sonnet-4-6" }),
+      new AbortController()
+    );
+    expect(opts).toHaveProperty("fallbackModel", "claude-sonnet-4-6");
+  });
+
+  it("includes outputFormat when present", () => {
+    const opts = buildQueryOptions(
+      makeConfig({
+        outputFormat: {
+          type: "json_schema",
+          schema: { type: "object", properties: { ok: { type: "boolean" } } },
+        },
+      }),
+      new AbortController()
+    );
+    expect(opts).toHaveProperty("outputFormat");
+  });
+
+  it("includes promptSuggestions when explicitly set", () => {
+    const opts = buildQueryOptions(
+      makeConfig({ promptSuggestions: true }),
+      new AbortController()
+    );
+    expect(opts).toHaveProperty("promptSuggestions", true);
   });
 
   it("includes pathToClaudeCodeExecutable when present", () => {

@@ -734,10 +734,10 @@ fn do_set_workspace_skill_purpose(
 }
 
 #[tauri::command]
-pub fn delete_imported_skill(skill_id: String, db: tauri::State<'_, Db>) -> Result<(), String> {
-    log::info!("[delete_imported_skill] skill_id={}", skill_id);
+pub fn delete_workspace_skill(skill_id: String, db: tauri::State<'_, Db>) -> Result<(), String> {
+    log::info!("[delete_workspace_skill] skill_id={}", skill_id);
     let conn = db.0.lock().map_err(|e| {
-        log::error!("[delete_imported_skill] Failed to acquire DB lock: {}", e);
+        log::error!("[delete_workspace_skill] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
     let settings = crate::db::read_settings(&conn)?;
@@ -750,7 +750,7 @@ pub fn delete_imported_skill(skill_id: String, db: tauri::State<'_, Db>) -> Resu
         .ok_or_else(|| format!("Workspace skill with id '{}' not found", skill_id))?;
     let skill_name = skill.skill_name.clone();
 
-    delete_imported_skill_inner(&skill_id, &skill_name, &workspace_path, &conn)?;
+    delete_workspace_skill_inner(&skill_id, &skill_name, &workspace_path, &conn)?;
 
     // Regenerate CLAUDE.md without the deleted skill
     if let Err(e) = super::workflow::update_skills_section(&workspace_path, &conn) {
@@ -760,7 +760,7 @@ pub fn delete_imported_skill(skill_id: String, db: tauri::State<'_, Db>) -> Resu
     Ok(())
 }
 
-fn delete_imported_skill_inner(
+fn delete_workspace_skill_inner(
     skill_id: &str,
     skill_name: &str,
     workspace_path: &str,
@@ -1958,7 +1958,7 @@ description: A skill
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
-        delete_imported_skill_inner("id1", "del-skill", workspace_path, &conn).unwrap();
+        delete_workspace_skill_inner("id1", "del-skill", workspace_path, &conn).unwrap();
 
         // Directory gone
         assert!(!skill_dir.exists());
@@ -1998,7 +1998,7 @@ description: A skill
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
-        delete_imported_skill_inner("id1", "del-skill", workspace_path, &conn).unwrap();
+        delete_workspace_skill_inner("id1", "del-skill", workspace_path, &conn).unwrap();
 
         assert!(!inactive_path.exists());
         assert!(crate::db::get_workspace_skill_by_name(&conn, "del-skill")
@@ -2368,7 +2368,7 @@ description: A skill
 
         // Attempt to delete — should fail
         let result =
-            delete_imported_skill_inner("bundled-test-id", "bundled-skill", workspace_path, &conn);
+            delete_workspace_skill_inner("bundled-test-id", "bundled-skill", workspace_path, &conn);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
@@ -2418,7 +2418,7 @@ description: A skill
 
         // Delete should succeed
         let result =
-            delete_imported_skill_inner("regular-test-id", "regular-skill", workspace_path, &conn);
+            delete_workspace_skill_inner("regular-test-id", "regular-skill", workspace_path, &conn);
         assert!(result.is_ok());
         assert!(!skill_dir.exists());
         assert!(
@@ -2749,7 +2749,7 @@ description: A skill
 
         // Attempt to delete — should fail with bundled guard
         let result =
-            delete_imported_skill_inner("bundled-research", "research", workspace_path, &conn);
+            delete_workspace_skill_inner("bundled-research", "research", workspace_path, &conn);
         assert!(
             result.is_err(),
             "Deleting bundled research skill should fail"
@@ -2866,7 +2866,7 @@ description: A skill
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
-        let result = delete_imported_skill_inner(
+        let result = delete_workspace_skill_inner(
             "bundled-validate-skill",
             "validate-skill",
             workspace_path,

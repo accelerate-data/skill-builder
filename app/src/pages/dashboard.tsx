@@ -64,7 +64,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [workspacePath, setWorkspacePath] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
-  const [skillLibraryMarketplaceOpen, setSkillLibraryMarketplaceOpen] = useState(false)
+  const [dashboardLibraryMarketplaceOpen, setDashboardLibraryMarketplaceOpen] = useState(false)
   const [importState, setImportState] = useState<{ filePath: string; meta: SkillFileMeta } | null>(null)
   const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
@@ -141,8 +141,8 @@ export default function DashboardPage() {
   }, [loadSettings])
 
   useEffect(() => {
-    if (pendingUpgrade?.mode === 'skill-library') {
-      setSkillLibraryMarketplaceOpen(true)
+    if (pendingUpgrade?.mode === "dashboard-library") {
+      setDashboardLibraryMarketplaceOpen(true)
       useSettingsStore.getState().setPendingUpgradeOpen(null)
     }
   }, [pendingUpgrade])
@@ -488,7 +488,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-end gap-2">
           <Button
             variant="outline"
-            onClick={() => setSkillLibraryMarketplaceOpen(true)}
+            onClick={() => setDashboardLibraryMarketplaceOpen(true)}
             disabled={!hasEnabledRegistry}
             title={!hasEnabledRegistry ? "Enable a marketplace registry in Settings → Marketplace" : undefined}
           >
@@ -706,10 +706,10 @@ export default function DashboardPage() {
       />
 
       <GitHubImportDialog
-        open={skillLibraryMarketplaceOpen}
-        onOpenChange={setSkillLibraryMarketplaceOpen}
+        open={dashboardLibraryMarketplaceOpen}
+        onOpenChange={setDashboardLibraryMarketplaceOpen}
         onImported={async () => { await Promise.all([loadSkills(), loadTags()]); }}
-        mode="skill-library"
+        mode="dashboard-library"
         registries={marketplaceRegistries.filter(r => r.enabled)}
         workspacePath={workspacePath}
       />

@@ -14,10 +14,10 @@ import {
 } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { exportSkill } from "@/lib/tauri"
-import type { WorkspaceSkill } from "@/stores/imported-skills-store"
+import type { WorkspaceSkill } from "@/stores/workspace-skills-store"
 import { cn } from "@/lib/utils"
 
-interface ImportedSkillCardProps {
+interface WorkspaceSkillCardProps {
   skill: WorkspaceSkill
   onToggleActive: (skillName: string, active: boolean) => void
   onDelete: (skill: WorkspaceSkill) => void
@@ -43,12 +43,12 @@ function formatRelativeTime(dateString: string): string {
   }
 }
 
-export default function ImportedSkillCard({
+export default function WorkspaceSkillCard({
   skill,
   onToggleActive,
   onDelete,
   onPreview,
-}: ImportedSkillCardProps) {
+}: WorkspaceSkillCardProps) {
   const [deleteConfirm, setDeleteConfirm] = useState(false)
 
   const handleDelete = () => {

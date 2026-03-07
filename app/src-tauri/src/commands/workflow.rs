@@ -124,15 +124,27 @@ fn deploy_skill_for_workflow(
     let dest_skills_dir = std::path::Path::new(workspace_path)
         .join(".claude")
         .join("skills");
+    let dest = dest_skills_dir.join(skill_name);
 
     // Try purpose-based resolution first
     let source_dir: std::path::PathBuf = match crate::db::get_workspace_skill_by_purpose(conn, purpose) {
         Ok(Some(ws)) => {
-            log::debug!(
-                "[deploy_skill_for_workflow] purpose='{}' → using workspace skill '{}' from {}",
-                purpose, ws.skill_name, ws.disk_path
-            );
-            std::path::PathBuf::from(&ws.disk_path)
+            // Bundled skills should always be copied from bundled sources.
+            // Using ws.disk_path for bundled rows can point to the destination
+            // itself and result in destructive self-overwrite.
+            if ws.is_bundled {
+                log::debug!(
+                    "[deploy_skill_for_workflow] purpose='{}' → using bundled source for '{}' (workspace row is bundled)",
+                    purpose, skill_name
+                );
+                bundled_skills_dir.join(skill_name)
+            } else {
+                log::debug!(
+                    "[deploy_skill_for_workflow] purpose='{}' → using workspace skill '{}' from {}",
+                    purpose, ws.skill_name, ws.disk_path
+                );
+                std::path::PathBuf::from(&ws.disk_path)
+            }
         }
         Ok(None) => {
             log::debug!(
@@ -158,7 +170,15 @@ fn deploy_skill_for_workflow(
         return;
     }
 
-    let dest = dest_skills_dir.join(skill_name);
+    if source_dir == dest {
+        log::warn!(
+            "[deploy_skill_for_workflow] source and destination are identical for '{}': {}; skipping copy to avoid self-overwrite",
+            skill_name,
+            source_dir.display()
+        );
+        return;
+    }
+
     // Remove existing copy so we always get a fresh deployment
     if dest.exists() {
         let _ = std::fs::remove_dir_all(&dest);
@@ -773,9 +793,13 @@ fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
     }
 }
 
-pub fn build_betas(thinking_budget: Option<u32>, model: &str) -> Option<Vec<String>> {
+pub fn build_betas(
+    thinking_budget: Option<u32>,
+    model: &str,
+    interleaved_thinking_beta: bool,
+) -> Option<Vec<String>> {
     let mut betas = Vec::new();
-    if thinking_budget.is_some() && !model.contains("opus") {
+    if interleaved_thinking_beta && thinking_budget.is_some() && !model.contains("opus") {
         betas.push("interleaved-thinking-2025-05-14".to_string());
     }
     if betas.is_empty() { None } else { Some(betas) }
@@ -821,6 +845,9 @@ struct WorkflowSettings {
     api_key: String,
     preferred_model: String,
     extended_thinking: bool,
+    interleaved_thinking_beta: bool,
+    sdk_effort: Option<String>,
+    fallback_model: Option<String>,
     purpose: String,
     tags: Vec<String>,
     author_login: Option<String>,
@@ -858,6 +885,9 @@ fn read_workflow_settings(
         settings.preferred_model.as_deref().unwrap_or("sonnet")
     );
     let extended_thinking = settings.extended_thinking;
+    let interleaved_thinking_beta = settings.interleaved_thinking_beta;
+    let sdk_effort = settings.sdk_effort.clone();
+    let fallback_model = Some(preferred_model.clone());
     let max_dimensions = settings.max_dimensions;
     let industry = settings.industry;
     let function_role = settings.function_role;
@@ -893,6 +923,9 @@ fn read_workflow_settings(
         api_key,
         preferred_model,
         extended_thinking,
+        interleaved_thinking_beta,
+        sdk_effort,
+        fallback_model,
         purpose,
         tags,
         author_login,
@@ -962,15 +995,27 @@ async fn run_workflow_step_inner(
 
     let config = SidecarConfig {
         prompt,
-        model: Some(settings.preferred_model.clone()),
+        model: None,
         api_key: settings.api_key.clone(),
         cwd: workspace_path.to_string(),
         allowed_tools: Some(step.allowed_tools),
         max_turns: Some(step.max_turns),
         permission_mode: Some("bypassPermissions".to_string()),
-        session_id: None,
-        betas: build_betas(thinking_budget, &settings.preferred_model),
-        max_thinking_tokens: thinking_budget,
+        betas: build_betas(
+            thinking_budget,
+            &settings.preferred_model,
+            settings.interleaved_thinking_beta,
+        ),
+        thinking: thinking_budget.map(|budget| {
+            serde_json::json!({
+                "type": "enabled",
+                "budgetTokens": budget
+            })
+        }),
+        fallback_model: settings.fallback_model.clone(),
+        effort: settings.sdk_effort.clone(),
+        output_format: None,
+        prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name),
         conversation_history: None,
@@ -1451,15 +1496,18 @@ pub async fn run_answer_evaluator(
 
     let config = SidecarConfig {
         prompt,
-        model: Some(preferred_model),
+        model: None,
         api_key,
         cwd: workspace_path.clone(),
         allowed_tools: Some(vec!["Read".to_string(), "Write".to_string()]),
         max_turns: Some(20),
         permission_mode: Some("bypassPermissions".to_string()),
-        session_id: None,
         betas: None,
-        max_thinking_tokens: None,
+        thinking: None,
+        fallback_model: None,
+        effort: None,
+        output_format: None,
+        prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name: Some("answer-evaluator".to_string()),
         conversation_history: None,
@@ -2635,20 +2683,20 @@ mod tests {
 
     #[test]
     fn test_build_betas_thinking_non_opus() {
-        let betas = build_betas(Some(32000), "claude-sonnet-4-5-20250929");
+        let betas = build_betas(Some(32000), "claude-sonnet-4-5-20250929", true);
         assert_eq!(betas, Some(vec!["interleaved-thinking-2025-05-14".to_string()]));
     }
 
     #[test]
     fn test_build_betas_thinking_opus() {
         // Opus natively supports thinking — no interleaved-thinking beta needed
-        let betas = build_betas(Some(32000), "claude-opus-4-6");
+        let betas = build_betas(Some(32000), "claude-opus-4-6", true);
         assert_eq!(betas, None);
     }
 
     #[test]
     fn test_build_betas_none() {
-        let betas = build_betas(None, "claude-sonnet-4-5-20250929");
+        let betas = build_betas(None, "claude-sonnet-4-5-20250929", true);
         assert_eq!(betas, None);
     }
 
@@ -3346,6 +3394,64 @@ mod tests {
         // MUST contain description
         assert!(section.contains("Skill description here."), "section must include description");
         assert!(section.contains("### /my-skill"), "section must include skill heading");
+    }
+
+    #[test]
+    fn test_deploy_skill_for_workflow_uses_bundled_source_for_bundled_rows() {
+        let conn = super::super::test_utils::create_test_db();
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let bundled_tmp = tempfile::tempdir().unwrap();
+
+        let workspace_path = workspace_tmp.path().to_string_lossy().to_string();
+        let bundled_skills_dir = bundled_tmp.path();
+
+        let bundled_research_dir = bundled_skills_dir.join("research");
+        std::fs::create_dir_all(&bundled_research_dir).unwrap();
+        std::fs::write(
+            bundled_research_dir.join("SKILL.md"),
+            "---\nname: research\ndescription: bundled\n---\n# Bundled Research",
+        ).unwrap();
+
+        let deployed_research_dir = workspace_tmp
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("research");
+        std::fs::create_dir_all(&deployed_research_dir).unwrap();
+        std::fs::write(
+            deployed_research_dir.join("SKILL.md"),
+            "---\nname: research\ndescription: stale\n---\n# Stale Research",
+        ).unwrap();
+
+        let ws = crate::types::WorkspaceSkill {
+            skill_id: "bundled-research".to_string(),
+            skill_name: "research".to_string(),
+            is_active: true,
+            disk_path: deployed_research_dir.to_string_lossy().to_string(),
+            imported_at: "2000-01-01T00:00:00Z".to_string(),
+            is_bundled: true,
+            description: Some("research".to_string()),
+            version: Some("1.0.0".to_string()),
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: Some("research".to_string()),
+            marketplace_source_url: None,
+        };
+        crate::db::insert_workspace_skill(&conn, &ws).unwrap();
+
+        deploy_skill_for_workflow(
+            &conn,
+            &workspace_path,
+            bundled_skills_dir,
+            "research",
+            "research",
+        );
+
+        let content = std::fs::read_to_string(deployed_research_dir.join("SKILL.md")).unwrap();
+        assert!(content.contains("Bundled Research"));
+        assert!(!content.contains("Stale Research"));
     }
 
 }
