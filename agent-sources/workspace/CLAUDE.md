@@ -46,12 +46,6 @@ Only read `user-context.md` from the workspace directory.
 
 If `scope_recommendation: true` in `clarifications.json` or `decisions.md`: write any required stub output (see agent instructions), then return immediately. Do not generate output.
 
-### Delegation Policy
-
-Use the lightest option that fits:
-
-1. **Inline** — trivial: single-file read, direct answer, one-liner computation
-2. **Task sub-agents** — independent workstreams with no mid-task coordination
 
 
 ## Output Paths
