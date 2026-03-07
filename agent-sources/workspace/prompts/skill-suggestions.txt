@@ -1,0 +1,8 @@
+{{framing}}
+
+Given a Claude skill named "{{readable_name}}" of type "{{purpose}}".{{context}}{{detail_context}}
+
+Suggest brief values for these fields. Be specific and practical, not generic.
+
+Respond in exactly this JSON format (no markdown, no extra text):
+{{json_schema}}
