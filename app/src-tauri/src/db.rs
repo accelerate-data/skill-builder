@@ -58,6 +58,7 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
         (29, run_marketplace_source_url_migration),
         (30, run_skills_soft_delete_migration),
         (31, run_backfill_synthetic_sessions_migration),
+        (32, run_normalize_model_names_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -554,6 +555,30 @@ fn run_backfill_synthetic_sessions_migration(conn: &Connection) -> Result<(), ru
          GROUP BY ar.workflow_session_id, ar.skill_name, s.id",
         [],
     )?;
+    Ok(())
+}
+
+/// Migration 32: Normalize historical short-form model aliases in agent_runs to
+/// canonical full IDs so model filtering is deterministic.  Aliases that were stored
+/// as "sonnet"/"Sonnet", "haiku"/"Haiku", or "opus"/"Opus" are mapped to the
+/// current canonical ID for each family.
+fn run_normalize_model_names_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let mappings = [
+        ("haiku", "claude-haiku-4-5-20251001"),
+        ("Haiku", "claude-haiku-4-5-20251001"),
+        ("claude-haiku-4-5", "claude-haiku-4-5-20251001"),
+        ("sonnet", "claude-sonnet-4-6"),
+        ("Sonnet", "claude-sonnet-4-6"),
+        ("opus", "claude-opus-4-6"),
+        ("Opus", "claude-opus-4-6"),
+    ];
+    for (alias, canonical) in &mappings {
+        conn.execute(
+            "UPDATE agent_runs SET model = ?1 WHERE model = ?2",
+            rusqlite::params![canonical, alias],
+        )?;
+    }
+    log::info!("migration 32: normalized agent_runs model name aliases to canonical IDs");
     Ok(())
 }
 
@@ -1158,6 +1183,24 @@ fn step_name(step_id: i32) -> String {
     }
 }
 
+/// Normalize model aliases to canonical full IDs so all storage is consistent.
+/// Short names ("sonnet", "Haiku") and bare partial IDs ("claude-haiku-4-5") are
+/// mapped to the current canonical ID for each model family.  Full IDs that are
+/// already canonical pass through unchanged.
+fn normalize_model_name(model: &str) -> String {
+    let lower = model.to_lowercase();
+    if lower == "haiku" || lower == "claude-haiku-4-5" {
+        return "claude-haiku-4-5-20251001".to_string();
+    }
+    if lower == "sonnet" || lower == "claude-sonnet-4-6" {
+        return "claude-sonnet-4-6".to_string();
+    }
+    if lower == "opus" || lower == "claude-opus-4-6" {
+        return "claude-opus-4-6".to_string();
+    }
+    model.to_string()
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn persist_agent_run(
     conn: &Connection,
@@ -1180,6 +1223,9 @@ pub fn persist_agent_run(
     session_id: Option<&str>,
     workflow_session_id: Option<&str>,
 ) -> Result<(), String> {
+    let model_owned = normalize_model_name(model);
+    let model = model_owned.as_str();
+
     // Don't overwrite a completed/error run with shutdown status — the completed
     // data is more valuable than the partial shutdown snapshot.
     if status == "shutdown" {
@@ -1734,11 +1780,18 @@ pub fn get_usage_by_model(
         String::new()
     };
     let sql = format!(
-        "SELECT model, COALESCE(SUM(total_cost), 0.0), COUNT(*)
+        "SELECT
+           CASE
+             WHEN lower(model) LIKE '%haiku%' THEN 'Haiku'
+             WHEN lower(model) LIKE '%opus%'  THEN 'Opus'
+             WHEN lower(model) LIKE '%sonnet%' THEN 'Sonnet'
+             ELSE model
+           END AS model_family,
+           COALESCE(SUM(total_cost), 0.0), COUNT(*)
          FROM agent_runs
          WHERE reset_marker IS NULL
            AND workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}
-         GROUP BY model
+         GROUP BY model_family
          ORDER BY SUM(total_cost) DESC"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -4597,7 +4650,7 @@ mod tests {
         assert_eq!(run.agent_id, "agent-1");
         assert_eq!(run.skill_name, "my-skill");
         assert_eq!(run.step_id, 3);
-        assert_eq!(run.model, "sonnet");
+        assert_eq!(run.model, "claude-sonnet-4-6");
         assert_eq!(run.status, "completed");
         assert_eq!(run.input_tokens, 1000);
         assert_eq!(run.output_tokens, 500);
@@ -5044,12 +5097,13 @@ mod tests {
         let by_model = get_usage_by_model(&conn, false, None, None).unwrap();
         assert_eq!(by_model.len(), 2);
 
-        // Ordered by total_cost DESC: opus ($0.50) then sonnet ($0.15)
-        assert_eq!(by_model[0].model, "opus");
+        // Ordered by total_cost DESC: Opus ($0.50) then Sonnet ($0.15).
+        // The query now groups by family name so aliases normalize to "Opus"/"Sonnet".
+        assert_eq!(by_model[0].model, "Opus");
         assert_eq!(by_model[0].run_count, 1);
         assert!((by_model[0].total_cost - 0.50).abs() < 1e-10);
 
-        assert_eq!(by_model[1].model, "sonnet");
+        assert_eq!(by_model[1].model, "Sonnet");
         assert_eq!(by_model[1].run_count, 2);
         assert!((by_model[1].total_cost - 0.15).abs() < 1e-10);
     }
@@ -5244,23 +5298,23 @@ mod tests {
         let runs = get_session_agent_runs(&conn, "wf-session-cpk").unwrap();
         assert_eq!(runs.len(), 2);
 
-        // Verify distinct models
+        // Verify distinct canonical model IDs (aliases normalize at persist time)
         let models: Vec<&str> = runs.iter().map(|r| r.model.as_str()).collect();
-        assert!(models.contains(&"opus"));
-        assert!(models.contains(&"sonnet"));
+        assert!(models.contains(&"claude-opus-4-6"));
+        assert!(models.contains(&"claude-sonnet-4-6"));
 
         // Both should have the same agent_id
         assert!(runs.iter().all(|r| r.agent_id == "orchestrator-1"));
 
-        // get_usage_by_model should aggregate correctly
+        // get_usage_by_model groups by family name so both normalize to their family.
         let by_model = get_usage_by_model(&conn, false, None, None).unwrap();
         assert_eq!(by_model.len(), 2);
 
-        let opus = by_model.iter().find(|m| m.model == "opus").unwrap();
+        let opus = by_model.iter().find(|m| m.model == "Opus").unwrap();
         assert!((opus.total_cost - 0.50).abs() < 1e-10);
         assert_eq!(opus.run_count, 1);
 
-        let sonnet = by_model.iter().find(|m| m.model == "sonnet").unwrap();
+        let sonnet = by_model.iter().find(|m| m.model == "Sonnet").unwrap();
         assert!((sonnet.total_cost - 0.08).abs() < 1e-10);
         assert_eq!(sonnet.run_count, 1);
     }
