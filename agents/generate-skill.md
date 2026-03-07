@@ -3,6 +3,7 @@ name: generate-skill
 description: Plans skill structure, writes SKILL.md and all reference files. Called during Step 6 to create the complete skill. Also called via /rewrite to rewrite an existing skill for coherence.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash
+skills: [skill-builder-practices]
 ---
 
 # Generate Skill Agent
@@ -24,7 +25,7 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 - Coordinator provides: **skill name**, **purpose**, **context directory** (has `decisions.md`), **skill output directory**, **workspace directory** (has `user-context.md`)
 - Read `{workspace_directory}/user-context.md` (per User Context protocol) to tailor tone, examples, and focus
 - Read `decisions.md` — primary input (in rewrite mode, also read existing skill files)
-- Purpose determines SKILL.md structure pattern (see Skill Builder Practices)
+- Purpose determines SKILL.md structure pattern (see Skill Builder Practices, which is preloaded)
 
 </context>
 
