@@ -395,12 +395,15 @@ export async function getDashboardSkillNames(): Promise<string[]> {
   return invoke<string[]>("get_dashboard_skill_names")
 }
 
-export async function listSkills(workspacePath: string): Promise<SkillSummary[]> {
-  return invoke<SkillSummary[]>("list_skills", { workspacePath })
+export async function listSkills(workspacePath: string, sourceUrl?: string | null): Promise<SkillSummary[]> {
+  return invoke<SkillSummary[]>("list_skills", {
+    workspacePath,
+    sourceUrl: sourceUrl ?? null,
+  })
 }
 
-export const listWorkspaceSkills = () =>
-  invoke<WorkspaceSkill[]>("list_workspace_skills")
+export const listWorkspaceSkills = (sourceUrl?: string | null) =>
+  invoke<WorkspaceSkill[]>("list_workspace_skills", { sourceUrl: sourceUrl ?? null })
 
 // --- GitHub Import ---
 
@@ -425,14 +428,8 @@ export const setWorkspaceSkillPurpose = (skillId: string, purpose: string | null
 export const importMarketplaceToLibrary = (skillPaths: string[], sourceUrl: string, metadataOverrides?: Record<string, SkillMetadataOverride>) =>
   invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { sourceUrl, skillPaths, metadataOverrides: metadataOverrides ?? null })
 
-export const checkMarketplaceUpdates = (
-  owner: string,
-  repo: string,
-  branch: string,
-  subpath: string | undefined,
-  sourceUrl: string,
-): Promise<MarketplaceUpdateResult> =>
-  invoke<MarketplaceUpdateResult>("check_marketplace_updates", { owner, repo, branch, subpath: subpath ?? null, sourceUrl })
+export const checkMarketplaceUpdates = (): Promise<MarketplaceUpdateResult> =>
+  invoke<MarketplaceUpdateResult>("check_marketplace_updates")
 
 export const checkSkillCustomized = (skillName: string): Promise<boolean> =>
   invoke<boolean>("check_skill_customized", { skillName })

@@ -1,6 +1,7 @@
 use crate::db::Db;
 use crate::types::{AvailableSkill, GitHubRepoInfo, ImportedSkill, MarketplaceJson};
 use sha2::Digest;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
@@ -1694,6 +1695,15 @@ pub struct SkillUpdateInfo {
     pub path: String,
     /// The marketplace version that triggered this update entry.
     pub version: String,
+    /// Source registry URL this update came from.
+    pub source_url: String,
+}
+
+/// Registry name discovered from marketplace.json for a source URL.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct RegistryNameInfo {
+    pub source_url: String,
+    pub registry_name: String,
 }
 
 /// Separate update lists for each registry source.
@@ -1703,33 +1713,96 @@ pub struct MarketplaceUpdateResult {
     pub library: Vec<SkillUpdateInfo>,
     /// Skills with updates in workspace_skills (Settings → Skills).
     pub workspace: Vec<SkillUpdateInfo>,
-    /// Registry name read from marketplace.json (used to refresh the stored registry name).
+    /// Backward-compatible field for older callers; now always None.
     pub registry_name: Option<String>,
+    /// Registry names discovered per source URL (used to refresh stored names).
+    pub registry_names: Vec<RegistryNameInfo>,
+}
+
+#[derive(Debug, Clone)]
+struct InstalledMarketplaceSkill {
+    name: String,
+    version: Option<String>,
+    source_url: String,
+}
+
+fn load_installed_marketplace_skills(
+    conn: &rusqlite::Connection,
+) -> Result<(Vec<InstalledMarketplaceSkill>, Vec<InstalledMarketplaceSkill>), String> {
+    let mut lib_stmt = conn
+        .prepare(
+            "SELECT skill_name, version, marketplace_source_url
+             FROM imported_skills
+             WHERE marketplace_source_url IS NOT NULL",
+        )
+        .map_err(|e| format!("load_installed_marketplace_skills library prepare: {e}"))?;
+    let library = lib_stmt
+        .query_map([], |row| {
+            Ok(InstalledMarketplaceSkill {
+                name: row.get(0)?,
+                version: row.get(1)?,
+                source_url: row.get(2)?,
+            })
+        })
+        .map_err(|e| format!("load_installed_marketplace_skills library query: {e}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("load_installed_marketplace_skills library collect: {e}"))?;
+
+    let mut ws_stmt = conn
+        .prepare(
+            "SELECT skill_name, version, marketplace_source_url
+             FROM workspace_skills
+             WHERE marketplace_source_url IS NOT NULL",
+        )
+        .map_err(|e| format!("load_installed_marketplace_skills workspace prepare: {e}"))?;
+    let workspace = ws_stmt
+        .query_map([], |row| {
+            Ok(InstalledMarketplaceSkill {
+                name: row.get(0)?,
+                version: row.get(1)?,
+                source_url: row.get(2)?,
+            })
+        })
+        .map_err(|e| format!("load_installed_marketplace_skills workspace query: {e}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("load_installed_marketplace_skills workspace collect: {e}"))?;
+
+    Ok((library, workspace))
+}
+
+fn collect_updates_for_installed(
+    installed: &[InstalledMarketplaceSkill],
+    available_by_name: &HashMap<String, &AvailableSkill>,
+    source_url: &str,
+) -> Vec<SkillUpdateInfo> {
+    let mut updates = Vec::new();
+    for row in installed {
+        if let Some(skill) = available_by_name.get(&row.name) {
+            let marketplace_ver = skill.version.as_deref().unwrap_or("");
+            if marketplace_ver.is_empty() {
+                continue;
+            }
+            let inst_ver = row.version.as_deref().unwrap_or("");
+            if inst_ver.is_empty() || semver_gt(marketplace_ver, inst_ver) {
+                updates.push(SkillUpdateInfo {
+                    name: row.name.clone(),
+                    path: skill.path.clone(),
+                    version: marketplace_ver.to_string(),
+                    source_url: source_url.to_string(),
+                });
+            }
+        }
+    }
+    updates
 }
 
 /// Check the marketplace for skills that have a newer version than those installed.
-/// Returns separate lists for library (imported_skills) and workspace (workspace_skills) skills.
-/// Only reports updates for skills that were imported from this specific registry (source_url),
-/// preventing false positives when bundled skills share a name with marketplace skills.
+/// This command is DB-driven and handles all enabled registries in one pass.
 #[tauri::command]
-pub async fn check_marketplace_updates(
-    db: tauri::State<'_, Db>,
-    owner: String,
-    repo: String,
-    branch: String,
-    subpath: Option<String>,
-    source_url: String,
-) -> Result<MarketplaceUpdateResult, String> {
-    log::info!(
-        "[check_marketplace_updates] owner={} repo={} branch={} subpath={:?} source_url={}",
-        owner,
-        repo,
-        branch,
-        subpath,
-        source_url
-    );
+pub async fn check_marketplace_updates(db: tauri::State<'_, Db>) -> Result<MarketplaceUpdateResult, String> {
+    log::info!("[check_marketplace_updates] checking all enabled registries");
 
-    let token = {
+    let (token, enabled_sources, library_rows, workspace_rows) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!(
                 "[check_marketplace_updates] failed to acquire DB lock: {}",
@@ -1738,68 +1811,110 @@ pub async fn check_marketplace_updates(
             e.to_string()
         })?;
         let settings = crate::db::read_settings_hydrated(&conn)?;
-        settings.github_oauth_token.clone()
+        let enabled_sources: HashSet<String> = settings
+            .marketplace_registries
+            .into_iter()
+            .filter(|r| r.enabled)
+            .map(|r| r.source_url)
+            .collect();
+        let (library_rows, workspace_rows) = load_installed_marketplace_skills(&conn)?;
+        (
+            settings.github_oauth_token.clone(),
+            enabled_sources,
+            library_rows,
+            workspace_rows,
+        )
     };
 
-    let (registry_name, available) =
-        list_github_skills_inner(&owner, &repo, &branch, subpath.as_deref(), token.as_deref())
-            .await?;
+    let mut by_source_library: HashMap<String, Vec<InstalledMarketplaceSkill>> = HashMap::new();
+    for row in library_rows {
+        if enabled_sources.contains(&row.source_url) {
+            by_source_library
+                .entry(row.source_url.clone())
+                .or_default()
+                .push(row);
+        }
+    }
+    let mut by_source_workspace: HashMap<String, Vec<InstalledMarketplaceSkill>> = HashMap::new();
+    for row in workspace_rows {
+        if enabled_sources.contains(&row.source_url) {
+            by_source_workspace
+                .entry(row.source_url.clone())
+                .or_default()
+                .push(row);
+        }
+    }
 
-    let result = {
-        let conn = db.0.lock().map_err(|e| {
-            log::error!(
-                "[check_marketplace_updates] failed to acquire DB lock for DB reads: {}",
-                e
-            );
-            e.to_string()
-        })?;
+    let mut all_sources: HashSet<String> = HashSet::new();
+    all_sources.extend(by_source_library.keys().cloned());
+    all_sources.extend(by_source_workspace.keys().cloned());
 
-        let mut library = Vec::new();
-        let mut workspace = Vec::new();
+    let mut library = Vec::new();
+    let mut workspace = Vec::new();
+    let mut registry_names = Vec::new();
 
-        for skill in &available {
-            let marketplace_ver = skill.version.as_deref().unwrap_or("");
-            if marketplace_ver.is_empty() {
+    for source_url in all_sources {
+        let repo_info = match parse_github_url_inner(&source_url) {
+            Ok(info) => info,
+            Err(err) => {
+                log::warn!(
+                    "[check_marketplace_updates] skipping source '{}' due to parse error: {}",
+                    source_url,
+                    err
+                );
                 continue;
             }
-
-            // Check workspace_skills: only match skills imported from this specific registry.
-            // This prevents false-positive notifications for bundled skills that share a name
-            // with a marketplace skill (bundled skills have marketplace_source_url = NULL).
-            if let Some(ws) =
-                crate::db::get_workspace_skill_by_name_and_source(&conn, &skill.name, &source_url)?
-            {
-                let inst_ver = ws.version.as_deref().unwrap_or("");
-                if inst_ver.is_empty() || semver_gt(marketplace_ver, inst_ver) {
-                    workspace.push(SkillUpdateInfo {
-                        name: skill.name.clone(),
-                        path: skill.path.clone(),
-                        version: marketplace_ver.to_string(),
-                    });
-                }
+        };
+        let list_result = list_github_skills_inner(
+            &repo_info.owner,
+            &repo_info.repo,
+            &repo_info.branch,
+            repo_info.subpath.as_deref(),
+            token.as_deref(),
+        )
+        .await;
+        let (registry_name, available) = match list_result {
+            Ok(v) => v,
+            Err(err) => {
+                log::warn!(
+                    "[check_marketplace_updates] skipping source '{}' due to fetch error: {}",
+                    source_url,
+                    err
+                );
+                continue;
             }
-
-            // Check imported_skills: only match skills imported from this specific registry.
-            if let Some(imp) =
-                crate::db::get_imported_skill_by_name_and_source(&conn, &skill.name, &source_url)
-                    .unwrap_or(None)
-            {
-                let inst_ver = imp.version.as_deref().unwrap_or("");
-                if inst_ver.is_empty() || semver_gt(marketplace_ver, inst_ver) {
-                    library.push(SkillUpdateInfo {
-                        name: skill.name.clone(),
-                        path: skill.path.clone(),
-                        version: marketplace_ver.to_string(),
-                    });
-                }
-            }
+        };
+        if let Some(name) = registry_name {
+            registry_names.push(RegistryNameInfo {
+                source_url: source_url.clone(),
+                registry_name: name,
+            });
         }
 
-        MarketplaceUpdateResult {
-            library,
-            workspace,
-            registry_name,
+        let available_by_name: HashMap<String, &AvailableSkill> =
+            available.iter().map(|s| (s.name.clone(), s)).collect();
+
+        if let Some(rows) = by_source_library.get(&source_url) {
+            library.extend(collect_updates_for_installed(
+                rows,
+                &available_by_name,
+                &source_url,
+            ));
         }
+        if let Some(rows) = by_source_workspace.get(&source_url) {
+            workspace.extend(collect_updates_for_installed(
+                rows,
+                &available_by_name,
+                &source_url,
+            ));
+        }
+    }
+
+    let result = MarketplaceUpdateResult {
+        library,
+        workspace,
+        registry_name: None,
+        registry_names,
     };
 
     log::info!(
@@ -1907,6 +2022,76 @@ pub fn check_skill_customized(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn available(name: &str, version: Option<&str>) -> AvailableSkill {
+        AvailableSkill {
+            path: format!("skills/{name}"),
+            name: name.to_string(),
+            plugin_name: None,
+            description: None,
+            purpose: None,
+            version: version.map(str::to_string),
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+        }
+    }
+
+    #[test]
+    fn test_collect_updates_for_installed_semver_and_missing_manifest_behavior() {
+        let installed = vec![
+            InstalledMarketplaceSkill {
+                name: "newer".to_string(),
+                version: Some("1.0.0".to_string()),
+                source_url: "https://github.com/acme/skills".to_string(),
+            },
+            InstalledMarketplaceSkill {
+                name: "same".to_string(),
+                version: Some("1.0.0".to_string()),
+                source_url: "https://github.com/acme/skills".to_string(),
+            },
+            InstalledMarketplaceSkill {
+                name: "missing".to_string(),
+                version: Some("1.0.0".to_string()),
+                source_url: "https://github.com/acme/skills".to_string(),
+            },
+        ];
+        let listed = vec![
+            available("newer", Some("1.1.0")),
+            available("same", Some("1.0.0")),
+        ];
+        let by_name: HashMap<String, &AvailableSkill> =
+            listed.iter().map(|s| (s.name.clone(), s)).collect();
+
+        let updates = collect_updates_for_installed(
+            &installed,
+            &by_name,
+            "https://github.com/acme/skills",
+        );
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0].name, "newer");
+        assert_eq!(updates[0].version, "1.1.0");
+    }
+
+    #[test]
+    fn test_collect_updates_for_installed_ignores_empty_marketplace_version() {
+        let installed = vec![InstalledMarketplaceSkill {
+            name: "tooling".to_string(),
+            version: Some("0.1.0".to_string()),
+            source_url: "https://github.com/acme/skills".to_string(),
+        }];
+        let listed = vec![available("tooling", None)];
+        let by_name: HashMap<String, &AvailableSkill> =
+            listed.iter().map(|s| (s.name.clone(), s)).collect();
+
+        let updates = collect_updates_for_installed(
+            &installed,
+            &by_name,
+            "https://github.com/acme/skills",
+        );
+        assert!(updates.is_empty());
+    }
 
     // --- parse_github_url tests ---
 

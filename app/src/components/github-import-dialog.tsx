@@ -243,29 +243,31 @@ export default function GitHubImportDialog({
       }
 
       const preStates = new Map<string, SkillState>()
+      const availableByName = new Map(available.map((s) => [s.name, s]))
 
       if (mode === "dashboard-library") {
-        const dashboardNames = await getDashboardSkillNames()
+        const [dashboardNames, summaries] = await Promise.all([
+          getDashboardSkillNames(),
+          listSkills(workspacePath ?? '', registry.source_url),
+        ])
         const dashboardSet = new Set(dashboardNames)
-        const summaries = await listSkills(workspacePath ?? '')
         const newSummaryMap = new Map(summaries.map((s) => [s.name, s]))
         setInstalledLibrarySkills(newSummaryMap)
-        for (const skill of available) {
-          if (dashboardSet.has(skill.name)) {
-            const installedSummary = newSummaryMap.get(skill.name)
-            const isUpgrade = semverGt(skill.version, installedSummary?.version)
-            preStates.set(skill.path, isUpgrade ? "upgrade" : "same-version")
-          }
+        for (const [installedName, installedSummary] of newSummaryMap) {
+          if (!dashboardSet.has(installedName)) continue
+          const listed = availableByName.get(installedName)
+          if (!listed) continue
+          const isUpgrade = semverGt(listed.version, installedSummary?.version)
+          preStates.set(listed.path, isUpgrade ? "upgrade" : "same-version")
         }
       } else {
-        const installedSkills = await listWorkspaceSkills()
+        const installedSkills = await listWorkspaceSkills(registry.source_url)
         setWorkspaceSkills(installedSkills)
-        const installedVersionMap = new Map(installedSkills.map((s) => [s.skill_name, s.version]))
-        for (const skill of available) {
-          if (installedVersionMap.has(skill.name)) {
-            const isUpgrade = semverGt(skill.version, installedVersionMap.get(skill.name))
-            preStates.set(skill.path, isUpgrade ? "upgrade" : "same-version")
-          }
+        for (const installed of installedSkills) {
+          const listed = availableByName.get(installed.skill_name)
+          if (!listed) continue
+          const isUpgrade = semverGt(listed.version, installed.version)
+          preStates.set(listed.path, isUpgrade ? "upgrade" : "same-version")
         }
       }
 
