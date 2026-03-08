@@ -5,7 +5,7 @@ The marketplace is a **one-way import layer**: skills flow in from GitHub reposi
 | | **Settings → Skills** | **Skill Library** |
 |---|---|---|
 | **Purpose** | Skills used by Skill Builder agents to build, refine, and test skills | Domain knowledge — skills users create, import, and refine |
-| **Examples** | `research`, `validate-skill`, `skill-builder-practices` | Sales Pipeline Analytics, dbt Incremental Silver |
+| **Examples** | `research`, `validate-skill`, `skill-creator` | Sales Pipeline Analytics, dbt Incremental Silver |
 | **After import** | Wired into the agent workspace — active on every agent run | Appears in the dashboard as a completed skill, ready to refine. Download skill file to use with Vibedata.|
 
 ---
@@ -28,7 +28,7 @@ hbanerjee74/skills/
       skills/
         building-skills/
           SKILL.md
-    skill-builder-practices/
+    skill-creator/
       .claude-plugin/
         plugin.json
       skills/ ...
@@ -62,7 +62,7 @@ Its `marketplace.json` (conforms to the [official Claude Code plugin marketplace
   },
   "plugins": [
     { "name": "skill-builder",           "source": "./plugins/skill-builder",           "description": "Multi-agent workflow for creating domain-specific Claude skills" },
-    { "name": "skill-builder-practices", "source": "./plugins/skill-builder-practices", "description": "Content guidelines and patterns for skill structure" },
+    { "name": "skill-creator",          "source": "./plugins/skill-creator",          "description": "Create, evaluate, and improve skills with iterative testing" },
     { "name": "skill-builder-research",  "source": "./plugins/skill-builder-research",  "description": "Research skill for dimension scoring and parallel research" },
     { "name": "skill-builder-validate",  "source": "./plugins/skill-builder-validate",  "description": "Validate skill for quality checking and companion recommendations" },
     { "name": "vibedata",                "source": "./",                                "description": "Practitioner-level data and analytics engineering skills for Claude" }
@@ -94,7 +94,7 @@ For the default registry:
 | `source` | `plugin_path` | Skills at |
 |---|---|---|
 | `"./plugins/skill-builder"` | `plugins/skill-builder` | `plugins/skill-builder/skills/*/SKILL.md` |
-| `"./plugins/skill-builder-practices"` | `plugins/skill-builder-practices` | `plugins/skill-builder-practices/skills/*/SKILL.md` |
+| `"./plugins/skill-creator"` | `plugins/skill-creator` | `plugins/skill-creator/skills/*/SKILL.md` |
 | `"./plugins/skill-builder-research"` | `plugins/skill-builder-research` | `plugins/skill-builder-research/skills/*/SKILL.md` |
 | `"./plugins/skill-builder-validate"` | `plugins/skill-builder-validate` | `plugins/skill-builder-validate/skills/*/SKILL.md` |
 | `"./"` | `""` (root) | `skills/*/SKILL.md` |

@@ -64,6 +64,7 @@ Purpose-aware implication rules:
 - Keep decisions grounded in the selected purpose and user context.
 - If purpose is `platform`, include explicit Lakehouse compatibility implications when technical choices depend on endpoint behavior.
 - For other purposes, include Lakehouse implications only when they materially change architecture, risk, or validation outcomes.
+- Prefer implications that map to implementable artifacts (model grain, layer placement, tests, constraints), not conceptual restatements.
 
 **Writing `decisions.md`**: Write from scratch each time — clean snapshot, not a log. Use YAML frontmatter with `decision_count`, `conflicts_resolved`, and `round` fields. For contradictions, pick the most reasonable option and document reasoning in `**Implication**` — the user can override. Status values: `resolved`, `conflict-resolved`, `needs-review`.
 

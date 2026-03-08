@@ -71,6 +71,8 @@ Invoke with: skill_name, purpose, context_dir, skill_output_dir, workspace_dir.
 
 Include the full `user-context.md` content under a `## User Context` heading in the Task prompt.
 
+Before scoring quality, read `plugins/skill-creator/agents/grader.md` and use its evidence-based grading style as a calibration input for quality checks.
+
 Validation alignment rule:
 
 - For `platform` purpose, treat missing Lakehouse-critical constraints as validation failures.

@@ -100,7 +100,7 @@ Summarize: which files changed, what changed in each, how it addresses the reque
 2. Rewrite targeted files — preserve domain knowledge, improve clarity
 3. Update SKILL.md pointers if scope changed
 4. Update `modified` date
-5. Follow Skill Builder Practices
+5. Follow the vendored `plugins/skill-creator/SKILL.md` writing guidance
 
 **`/validate`** — Spawn `validate-skill`. Pass: skill name, context directory, skill output directory, workspace directory. Mode: `bypassPermissions`.
 

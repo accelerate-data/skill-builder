@@ -112,7 +112,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(page.getByLabel("Delete data-analytics")).toBeVisible();
 
     // Bundled skills must NOT have a delete button
-    await expect(page.getByLabel("Delete skill-builder-practices")).not.toBeVisible();
+    await expect(page.getByLabel("Delete skill-creator")).not.toBeVisible();
   });
 
   test("can delete a non-bundled skill", async ({ page }) => {

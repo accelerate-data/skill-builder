@@ -221,7 +221,7 @@ describe("WorkspaceSkillCard", () => {
     const bundledSkill: WorkspaceSkill = {
       ...baseSkill,
       skill_id: "bundled-1",
-      skill_name: "skill-builder-practices",
+      skill_name: "skill-creator",
       is_bundled: true,
       argument_hint: null,
     };
@@ -277,7 +277,7 @@ describe("WorkspaceSkillCard", () => {
       const toggle = screen.getByRole("switch");
       expect(toggle).toBeInTheDocument();
       await user.click(toggle);
-      expect(onToggleActive).toHaveBeenCalledWith("skill-builder-practices", false);
+      expect(onToggleActive).toHaveBeenCalledWith("skill-creator", false);
     });
   });
 

@@ -20,12 +20,12 @@
     "is_bundled": false
   },
   {
-    "skill_id": "bundled-skill-builder-practices",
-    "skill_name": "skill-builder-practices",
-    "description": "Skill structure rules, content principles, quality dimensions...",
+    "skill_id": "bundled-skill-creator",
+    "skill_name": "skill-creator",
+    "description": "Create, evaluate, and improve skills with iterative testing.",
     "is_active": true,
-    "disk_path": "/tmp/skills/skill-builder-practices",
-    "argument_hint": "When working on any skill generation, validation, or refinement task...",
+    "disk_path": "/tmp/skills/skill-creator",
+    "argument_hint": "Use when creating, modifying, or evaluating a skill.",
     "imported_at": "2000-01-01T00:00:00Z",
     "is_bundled": true
   }

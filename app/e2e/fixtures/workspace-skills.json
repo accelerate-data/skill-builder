@@ -30,10 +30,10 @@
     "marketplace_source_url": null
   },
   {
-    "skill_id": "bundled-skill-builder-practices",
-    "skill_name": "skill-builder-practices",
+    "skill_id": "bundled-skill-creator",
+    "skill_name": "skill-creator",
     "is_active": true,
-    "disk_path": "/tmp/skills/skill-builder-practices",
+    "disk_path": "/tmp/skills/skill-creator",
     "imported_at": "2000-01-01T00:00:00Z",
     "is_bundled": true,
     "purpose": "skill-building",
