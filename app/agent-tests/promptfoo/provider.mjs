@@ -318,9 +318,43 @@ Run the full research-orchestrator flow and write canonical outputs to:
 - ${dir}/${skillName}/context/research-plan.md
 - ${dir}/${skillName}/context/clarifications.json
 
+The clarifications JSON MUST use the canonical schema (not legacy dimension/clarifications arrays):
+{
+  "version": "1",
+  "metadata": {
+    "title": "<string>",
+    "question_count": <number>,
+    "section_count": <number>,
+    "refinement_count": <number>,
+    "must_answer_count": <number>,
+    "priority_questions": ["Q1"]
+  },
+  "sections": [
+    {
+      "id": "S1",
+      "title": "<string>",
+      "questions": [
+        {
+          "id": "Q1",
+          "title": "<string>",
+          "must_answer": <boolean>,
+          "text": "<string>",
+          "choices": [{"id":"A","text":"<string>","is_other":false}],
+          "recommendation": "A",
+          "answer_choice": null,
+          "answer_text": null,
+          "refinements": []
+        }
+      ]
+    }
+  ],
+  "notes": []
+}
+
 Return JSON only:
 {
   "status": "research_complete",
+  "dimensions_selected": <number>,
   "question_count": <number>
 }`;
 
@@ -363,7 +397,21 @@ ${workspaceContext}
 </agent-instructions>
 
 Read the clarification file at: ${dir}/${skillName}/context/clarifications.json
-Write your evaluation to: ${dir}/.vibedata/skill-builder/${skillName}/answer-evaluation.json`;
+Write your evaluation to: ${dir}/.vibedata/skill-builder/${skillName}/answer-evaluation.json
+
+The JSON must contain exactly these fields:
+{
+  "total_count": <number>,
+  "answered_count": <number>,
+  "empty_count": <number>,
+  "vague_count": <number>,
+  "contradictory_count": <number>,
+  "verdict": "sufficient" | "mixed" | "insufficient",
+  "per_question": [ ... ],
+  "reasoning": "<brief explanation>"
+}
+
+Return: the evaluation JSON contents.`;
 
   runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
   const outputPath = path.join(
@@ -422,7 +470,16 @@ ${workspaceContext}
 </agent-instructions>
 
 Read the answered clarifications at: ${dir}/${skillName}/context/clarifications.json
-Write your decisions to: ${dir}/${skillName}/context/decisions.md`;
+Synthesize the answers into concrete design decisions for the skill.
+Write your decisions to: ${dir}/${skillName}/context/decisions.md
+
+Use canonical decisions format with YAML frontmatter and D-numbered headings (for example: ### D1:) containing:
+- **Original question:**
+- **Decision:**
+- **Implication:**
+- **Status:** resolved|conflict-resolved|needs-review
+
+Return: path to decisions.md and a one-line summary of key decisions.`;
 
   runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
   const decisionsPath = path.join(dir, skillName, "context", "decisions.md");
