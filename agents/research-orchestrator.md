@@ -29,6 +29,7 @@ Spawn a Task sub-agent with this prompt:
 Use the research skill to research dimensions and produce clarifications for:
 
 - purpose: {purpose value from user-context.md}
+- skill_name: {skill/workspace name from coordinator input}
 
 Purpose-aware lens:
 
@@ -40,6 +41,18 @@ Purpose-aware lens:
 ## User Context
 
 {full user-context.md content from Step 0 — pass the complete file content here}
+
+Preflight scope guard requirements:
+
+- Run a deterministic preflight check before any dimension scoring or sub-agent fan-out.
+- Preflight inputs must include the selected purpose, `skill_name`, and the full user context above.
+- If preflight detects explicit throwaway/test intent or clearly insufficient placeholder context, return immediately with:
+  - `topic_relevance: not_relevant`
+  - `dimensions_evaluated: 0`
+  - `dimensions_selected: 0`
+  - `clarifications_json.metadata.scope_recommendation: true`
+  - concise reason fields in metadata and/or notes for UI display
+- When the preflight guard triggers, do NOT spawn any dimension research sub-agents.
 
 ---
 

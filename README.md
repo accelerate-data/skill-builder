@@ -76,6 +76,17 @@ See [`app/tests/README.md`](app/tests/README.md) for all test levels.
 
 Start with [`CLAUDE.md`](CLAUDE.md) for architecture, dev commands, testing strategy, and code style.
 
+### Local Anthropic Key (Claude Code)
+
+Use `.claude/settings.local.json` for your local `ANTHROPIC_API_KEY`.
+
+```bash
+# One-time per clone/worktree to activate shared hooks
+git config core.hooksPath .githooks
+```
+
+The pre-commit hook blocks commits that contain Anthropic API keys and prevents committing a real key in `.claude/settings.local.json`.
+
 ## License
 
 See [LICENSE](LICENSE) for details.

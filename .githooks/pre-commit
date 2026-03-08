@@ -1,0 +1,30 @@
+#!/bin/sh
+# Prevent committing secrets from local Claude settings.
+
+set -eu
+
+# Block Anthropic API keys in staged files
+ANT_KEY_PAT="sk-ant"
+ANT_KEY_PAT="${ANT_KEY_PAT}-"
+staged_files="$(git diff --cached --name-only)"
+
+if [ -n "$staged_files" ] && echo "$staged_files" | xargs grep -l "$ANT_KEY_PAT" 2>/dev/null | grep -q .; then
+  echo "ERROR: Anthropic API key detected in staged files." >&2
+  echo "Remove the key before committing." >&2
+  echo "$staged_files" | xargs grep -l "$ANT_KEY_PAT" 2>/dev/null | while read -r f; do
+    echo "  $f" >&2
+  done
+  exit 1
+fi
+
+# Block real key in committed .claude/settings.local.json
+if echo "$staged_files" | grep -q "^\.claude/settings\.local\.json$"; then
+  key=$(git show :0:.claude/settings.local.json \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('env',{}).get('ANTHROPIC_API_KEY',''))" \
+    2>/dev/null || true)
+  if [ -n "$key" ] && [ "$key" != "YOUR_API_KEY_HERE" ]; then
+    echo "ERROR: .claude/settings.local.json contains a real ANTHROPIC_API_KEY." >&2
+    echo "Reset it to YOUR_API_KEY_HERE before committing." >&2
+    exit 1
+  fi
+fi

@@ -75,6 +75,31 @@ describe("parseClarifications", () => {
     expect(parsed?.sections[0]?.questions[0]?.must_answer).toBe(false);
   });
 
+  it("preserves scope recommendation reason metadata fields", () => {
+    const input = JSON.stringify({
+      version: "1",
+      metadata: {
+        title: "Clarifications: Test Scope",
+        question_count: 0,
+        section_count: 0,
+        refinement_count: 0,
+        must_answer_count: 0,
+        priority_questions: [],
+        scope_recommendation: true,
+        scope_reason: "Explicit throwaway intent detected in user context.",
+        scope_next_action: "Provide a concrete production domain and rerun research.",
+      },
+      sections: [],
+      notes: [],
+    });
+
+    const parsed = parseClarifications(input);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.metadata.scope_recommendation).toBe(true);
+    expect(parsed?.metadata.scope_reason).toContain("throwaway");
+    expect(parsed?.metadata.scope_next_action).toContain("production domain");
+  });
+
   it("converts legacy clarifications_needed arrays into canonical questions", () => {
     const input = JSON.stringify({
       metadata: {

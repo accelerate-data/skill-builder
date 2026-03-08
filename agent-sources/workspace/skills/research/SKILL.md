@@ -20,6 +20,7 @@ Pure computation. Read inputs and references, return inline output, write nothin
 ## Quick Reference
 
 - Resolve `purpose` to one dimension set from `references/dimension-sets.md`
+- Run deterministic preflight scope guard using `skill_name` + full `user_context`
 - Score all candidate dimensions using `references/scoring-rubric.md`
 - Select top 3-5 dimensions (or one fallback when all scores are low)
 - Run parallel sub-agent research for selected dimensions
@@ -48,7 +49,37 @@ Pure computation. Read inputs and references, return inline output, write nothin
 
 Read `references/dimension-sets.md` and select the matching section.
 
-## Step 2 — Score and Select
+## Step 2 — Preflight Scope Guard
+
+Run this check before scoring or spawning any sub-agents.
+
+Evaluate explicit throwaway/test intent from `skill_name` and `user_context` using deterministic phrase matches. Include these examples and close variants:
+
+- `testing`
+- `throwaway`
+- `ui test`
+- `just testing`
+- `nothing really`
+- `it's a test`
+
+Also treat the topic as out of scope when explicit test intent is paired with placeholder or clearly insufficient domain context.
+
+Purpose-aware false-positive guard:
+
+- For legitimate short domains with concrete business/platform substance, do not trigger the throwaway guard solely due to brevity.
+- If uncertain, continue with normal scoring.
+
+If the preflight guard triggers, return immediately with canonical minimal outputs:
+
+- `topic_relevance: not_relevant`
+- `dimensions_evaluated: 0`
+- `dimensions_selected: 0`
+- `clarifications_json.metadata.scope_recommendation: true`
+- Add concise reason fields to metadata and/or notes for UI display.
+
+When this guard triggers, skip dimension scoring, fallback dimension selection, and all dimension sub-agent fan-out.
+
+## Step 3 — Score and Select
 
 Read `references/scoring-rubric.md`.
 
@@ -63,8 +94,9 @@ If domain is not relevant to the purpose, return `topic_relevance: not_relevant`
 - Select top 3-5 dimensions by score.
 - Prefer coverage quality over exact count.
 - If every score is <=2, select one highest-scoring dimension (minimum 2).
+- Do not apply fallback dimension selection when Step 2 preflight guard matched.
 
-## Step 3 — Parallel Dimension Research
+## Step 4 — Parallel Dimension Research
 
 For each selected dimension:
 
@@ -75,7 +107,7 @@ For each selected dimension:
 
 Wait for all tasks before consolidation.
 
-## Step 4 — Consolidate
+## Step 5 — Consolidate
 
 Read `references/consolidation-handoff.md` and produce canonical `clarifications.json`.
 
@@ -137,9 +169,10 @@ Do not return a table-only research plan.
 
 ## Error Handling
 
-- Topic not relevant: emit empty selected dimensions + minimal clarifications JSON with `scope_recommendation: true`.
+- Topic not relevant or throwaway/test preflight: emit empty selected dimensions + minimal clarifications JSON with `scope_recommendation: true`.
 - Dimension task failure: score failed dimensions as `0`, reason `Research task failed`, continue with available results.
 - No dimensions selected: force-select one fallback dimension as above.
+- Fallback is disabled when throwaway/test preflight guard matched.
 
 ## Output Checklist
 
