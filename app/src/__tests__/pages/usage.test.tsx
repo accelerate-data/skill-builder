@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { resetTauriMocks } from "@/test/mocks/tauri";
 import { useUsageStore } from "@/stores/usage-store";
-import type { UsageSummary, WorkflowSessionRecord, UsageByStep, UsageByModel } from "@/lib/types";
+import type { UsageSummary, UsageByStep, UsageByModel, AgentRunRecord } from "@/lib/types";
 
 // Mock sonner toast
 vi.mock("sonner", () => ({
@@ -44,44 +44,54 @@ const mockByModel: UsageByModel[] = [
   { model: "claude-opus-4-20250514", total_cost: 7.0, run_count: 12 },
 ];
 
-const mockRecentSessions: WorkflowSessionRecord[] = [
+const mockAgentRuns: AgentRunRecord[] = [
   {
-    session_id: "ws-1",
+    agent_id: "run-1",
     skill_name: "my-skill",
-    min_step: 0,
-    max_step: 2,
-    steps_csv: "0,1,2",
-    agent_count: 3,
+    step_id: 0,
+    model: "sonnet",
+    status: "completed",
+    input_tokens: 10000,
+    output_tokens: 2000,
+    cache_read_tokens: 0,
+    cache_write_tokens: 0,
     total_cost: 0.15,
-    total_input_tokens: 15000,
-    total_output_tokens: 3000,
-    total_cache_read: 8000,
-    total_cache_write: 1500,
-    total_duration_ms: 36000,
-    started_at: new Date(Date.now() - 120000).toISOString(), // 2 min ago
-    completed_at: new Date(Date.now() - 84000).toISOString(),
+    duration_ms: 36000,
+    num_turns: 4,
+    stop_reason: "end_turn",
+    duration_api_ms: 30000,
+    tool_use_count: 2,
+    compaction_count: 0,
+    session_id: "ws-1",
+    started_at: "2025-02-15T07:30:00.000Z",
+    completed_at: "2025-02-15T07:31:00.000Z",
   },
   {
-    session_id: "ws-2",
+    agent_id: "run-2",
     skill_name: "another-skill",
-    min_step: 5,
-    max_step: 5,
-    steps_csv: "5",
-    agent_count: 1,
+    step_id: 4,
+    model: "opus",
+    status: "completed",
+    input_tokens: 5000,
+    output_tokens: 1000,
+    cache_read_tokens: 0,
+    cache_write_tokens: 0,
     total_cost: 1.2345,
-    total_input_tokens: 50000,
-    total_output_tokens: 8000,
-    total_cache_read: 20000,
-    total_cache_write: 3000,
-    total_duration_ms: 180000,
-    started_at: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-    completed_at: new Date(Date.now() - 3420000).toISOString(),
+    duration_ms: 180000,
+    num_turns: 3,
+    stop_reason: "end_turn",
+    duration_api_ms: 140000,
+    tool_use_count: 1,
+    compaction_count: 0,
+    session_id: "ws-2",
+    started_at: "2025-02-15T08:00:00.000Z",
+    completed_at: "2025-02-15T08:03:00.000Z",
   },
 ];
 
 function setStoreData(overrides?: {
   summary?: UsageSummary | null;
-  recentSessions?: WorkflowSessionRecord[];
+  agentRuns?: AgentRunRecord[];
   byStep?: UsageByStep[];
   byModel?: UsageByModel[];
   loading?: boolean;
@@ -89,13 +99,25 @@ function setStoreData(overrides?: {
 }) {
   useUsageStore.setState({
     summary: overrides?.summary !== undefined ? overrides.summary : mockSummary,
-    recentSessions: overrides?.recentSessions ?? mockRecentSessions,
+    recentSessions: [],
+    agentRuns: overrides?.agentRuns ?? mockAgentRuns,
+    byDay: [],
+    hideCancelled: false,
+    dateRange: "all",
+    skillFilter: null,
+    modelFamilyFilter: null,
+    skillNames: [],
     byStep: overrides?.byStep ?? mockByStep,
     byModel: overrides?.byModel ?? mockByModel,
     loading: overrides?.loading ?? false,
     error: overrides?.error ?? null,
     fetchUsage: vi.fn(() => Promise.resolve()),
     resetCounter: vi.fn(() => Promise.resolve()),
+    fetchSkillNames: vi.fn(() => Promise.resolve()),
+    toggleHideCancelled: vi.fn(),
+    setDateRange: vi.fn(),
+    setSkillFilter: vi.fn(),
+    setModelFamilyFilter: vi.fn(),
   });
 }
 
@@ -140,228 +162,67 @@ describe("UsagePage", () => {
     expect(screen.getByText(/\$7\.00 \(12 agents\)/)).toBeInTheDocument();
   });
 
-  it("renders recent workflow sessions list", () => {
+  it("renders step history table with runs", () => {
     render(<UsagePage />);
 
-    expect(screen.getByText("Recent Workflow Runs")).toBeInTheDocument();
+    expect(screen.getByText("Step History")).toBeInTheDocument();
     expect(screen.getByText("my-skill")).toBeInTheDocument();
     expect(screen.getByText("another-skill")).toBeInTheDocument();
-    // Session header shows total tokens
-    expect(screen.getByText("18,000 tokens")).toBeInTheDocument(); // 15000 + 3000
-    expect(screen.getByText("58,000 tokens")).toBeInTheDocument(); // 50000 + 8000
+    expect(screen.getByText("12.0K")).toBeInTheDocument();
+    expect(screen.getByText("6.0K")).toBeInTheDocument();
   });
 
-  it("renders session start time in accordion header", () => {
-    // Use a fixed started_at so the formatted output is deterministic
+  it("renders run start time in step history table", () => {
     const fixedDate = "2025-02-15T07:30:00.000Z";
-    const formatted = new Date(fixedDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })
-      + " " + new Date(fixedDate).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    const formatted = new Date(fixedDate).toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
+      " " + new Date(fixedDate).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 
-    setStoreData({
-      recentSessions: [
-        {
-          ...mockRecentSessions[0],
-          started_at: fixedDate,
-        },
-      ],
-    });
+    setStoreData({ agentRuns: [{ ...mockAgentRuns[0], started_at: fixedDate }] });
     render(<UsagePage />);
 
     expect(screen.getByText(formatted)).toBeInTheDocument();
   });
 
-  it("expanding a session shows step table", async () => {
-    const { getSessionAgentRuns } = await import("@/lib/tauri");
-    vi.mocked(getSessionAgentRuns).mockResolvedValueOnce([
-      {
-        agent_id: "a1",
-        skill_name: "my-skill",
-        step_id: 0,
-        model: "sonnet",
-        status: "completed",
-        input_tokens: 10000,
-        output_tokens: 2000,
-        cache_read_tokens: 0,
-        cache_write_tokens: 0,
-        total_cost: 0.05,
-        duration_ms: 10000,
-        num_turns: 5,
-        stop_reason: "end_turn",
-        duration_api_ms: 8000,
-        tool_use_count: 10,
-        compaction_count: 0,
-        session_id: "ws-1",
-        started_at: new Date().toISOString(),
-        completed_at: new Date().toISOString(),
-      },
-      {
-        agent_id: "a2",
-        skill_name: "my-skill",
-        step_id: 4,
-        model: "opus",
-        status: "completed",
-        input_tokens: 5000,
-        output_tokens: 1000,
-        cache_read_tokens: 0,
-        cache_write_tokens: 0,
-        total_cost: 0.10,
-        duration_ms: 20000,
-        num_turns: 3,
-        stop_reason: "end_turn",
-        duration_api_ms: 15000,
-        tool_use_count: 5,
-        compaction_count: 0,
-        session_id: "ws-1",
-        started_at: new Date().toISOString(),
-        completed_at: new Date().toISOString(),
-      },
-    ]);
-
-    const user = userEvent.setup();
+  it("renders step history table columns", async () => {
     render(<UsagePage />);
-
-    const expandButton = screen.getByLabelText(/Toggle details for my-skill workflow run/);
-    expect(expandButton).toHaveAttribute("aria-expanded", "false");
-
-    await user.click(expandButton);
-
-    expect(expandButton).toHaveAttribute("aria-expanded", "true");
-
-    // Step table should render with grouped data
-    await waitFor(() => {
-      const table = screen.getByTestId("step-table");
-      expect(table).toBeInTheDocument();
-      // Step names appear in both the breakdown chart and step table
-      expect(screen.getAllByText("Research").length).toBeGreaterThanOrEqual(2);
-      expect(screen.getAllByText("Confirm Decisions").length).toBeGreaterThanOrEqual(2);
-      // Model names appear only in the step table
-      expect(table.textContent).toContain("sonnet");
-      expect(table.textContent).toContain("opus");
-    });
+    const table = await screen.findByTestId("step-table");
+    expect(table).toBeInTheDocument();
+    expect(table.textContent).toContain("Research");
+    expect(table.textContent).toContain("Confirm Decisions");
+    expect(table.textContent).toContain("Sonnet");
+    expect(table.textContent).toContain("Opus");
   });
 
-  it("maps canonical and synthetic step ids to stable labels in session details", async () => {
-    const { getSessionAgentRuns } = await import("@/lib/tauri");
-    vi.mocked(getSessionAgentRuns).mockResolvedValueOnce([
-      {
-        agent_id: "review-agent",
-        skill_name: "my-skill",
-        step_id: 2,
-        model: "sonnet",
-        status: "completed",
-        input_tokens: 4000,
-        output_tokens: 700,
-        cache_read_tokens: 0,
-        cache_write_tokens: 0,
-        total_cost: 0.03,
-        duration_ms: 5000,
-        num_turns: 2,
-        stop_reason: "end_turn",
-        duration_api_ms: 4800,
-        tool_use_count: 1,
-        compaction_count: 0,
-        session_id: "ws-1",
-        started_at: new Date().toISOString(),
-        completed_at: new Date().toISOString(),
-      },
-      {
-        agent_id: "test-agent",
-        skill_name: "my-skill",
-        step_id: -11,
-        model: "haiku",
-        status: "completed",
-        input_tokens: 2500,
-        output_tokens: 350,
-        cache_read_tokens: 0,
-        cache_write_tokens: 0,
-        total_cost: 0.01,
-        duration_ms: 4000,
-        num_turns: 1,
-        stop_reason: "end_turn",
-        duration_api_ms: 3900,
-        tool_use_count: 0,
-        compaction_count: 0,
-        session_id: "ws-1",
-        started_at: new Date().toISOString(),
-        completed_at: new Date().toISOString(),
-      },
-    ]);
-
-    const user = userEvent.setup();
+  it("maps canonical and synthetic step ids to stable labels in step history", async () => {
+    setStoreData({
+      agentRuns: [
+        { ...mockAgentRuns[0], step_id: 2, agent_id: "run-3" },
+        { ...mockAgentRuns[0], step_id: -11, agent_id: "run-4" },
+      ],
+    });
     render(<UsagePage />);
 
-    await user.click(screen.getByLabelText(/Toggle details for my-skill workflow run/));
-
-    await waitFor(() => {
-      const table = screen.getByTestId("step-table");
-      expect(table).toBeInTheDocument();
-      expect(table.textContent).toContain("Confirm Decisions");
-      expect(table.textContent).toContain("Test");
-      expect(table.textContent).not.toContain("Step 2");
-      expect(table.textContent).not.toContain("Step -11");
-    });
+    const table = await screen.findByTestId("step-table");
+    expect(table.textContent).toContain("Detailed Research");
+    expect(table.textContent).toContain("Test");
+    expect(table.textContent).not.toContain("Step 2");
+    expect(table.textContent).not.toContain("Step -11");
   });
 
   it("maps legacy step ids 4 and 5 to canonical labels", async () => {
-    const { getSessionAgentRuns } = await import("@/lib/tauri");
-    vi.mocked(getSessionAgentRuns).mockResolvedValueOnce([
-      {
-        agent_id: "legacy-decisions",
-        skill_name: "my-skill",
-        step_id: 4,
-        model: "sonnet",
-        status: "completed",
-        input_tokens: 2200,
-        output_tokens: 400,
-        cache_read_tokens: 0,
-        cache_write_tokens: 0,
-        total_cost: 0.02,
-        duration_ms: 4000,
-        num_turns: 1,
-        stop_reason: "end_turn",
-        duration_api_ms: 3900,
-        tool_use_count: 0,
-        compaction_count: 0,
-        session_id: "ws-1",
-        started_at: new Date().toISOString(),
-        completed_at: new Date().toISOString(),
-      },
-      {
-        agent_id: "legacy-generate",
-        skill_name: "my-skill",
-        step_id: 5,
-        model: "sonnet",
-        status: "completed",
-        input_tokens: 2800,
-        output_tokens: 500,
-        cache_read_tokens: 0,
-        cache_write_tokens: 0,
-        total_cost: 0.03,
-        duration_ms: 4500,
-        num_turns: 1,
-        stop_reason: "end_turn",
-        duration_api_ms: 4300,
-        tool_use_count: 0,
-        compaction_count: 0,
-        session_id: "ws-1",
-        started_at: new Date().toISOString(),
-        completed_at: new Date().toISOString(),
-      },
-    ]);
-
-    const user = userEvent.setup();
+    setStoreData({
+      agentRuns: [
+        { ...mockAgentRuns[0], step_id: 4, agent_id: "run-5" },
+        { ...mockAgentRuns[0], step_id: 5, agent_id: "run-6" },
+      ],
+    });
     render(<UsagePage />);
 
-    await user.click(screen.getByLabelText(/Toggle details for my-skill workflow run/));
-
-    await waitFor(() => {
-      const table = screen.getByTestId("step-table");
-      expect(table).toBeInTheDocument();
-      expect(table.textContent).toContain("Confirm Decisions");
-      expect(table.textContent).toContain("Generate Skill");
-      expect(table.textContent).not.toContain("Step 4");
-      expect(table.textContent).not.toContain("Step 5");
-    });
+    const table = await screen.findByTestId("step-table");
+    expect(table.textContent).toContain("Confirm Decisions");
+    expect(table.textContent).toContain("Generate Skill");
+    expect(table.textContent).not.toContain("Step 4");
+    expect(table.textContent).not.toContain("Step 5");
   });
 
   it("reset button shows confirmation dialog", async () => {
@@ -403,7 +264,7 @@ describe("UsagePage", () => {
   it("empty state shows when no data", () => {
     setStoreData({
       summary: { total_cost: 0, total_runs: 0, avg_cost_per_run: 0 },
-      recentSessions: [],
+      agentRuns: [],
       byStep: [],
       byModel: [],
     });
@@ -439,55 +300,21 @@ describe("UsagePage", () => {
     expect(mockFetchUsage).toHaveBeenCalled();
   });
 
-  it("collapsing an expanded session hides details", async () => {
-    const { getSessionAgentRuns } = await import("@/lib/tauri");
-    vi.mocked(getSessionAgentRuns).mockResolvedValueOnce([
-      {
-        agent_id: "a1",
-        skill_name: "my-skill",
-        step_id: 0,
-        model: "sonnet",
-        status: "completed",
-        input_tokens: 10000,
-        output_tokens: 2000,
-        cache_read_tokens: 0,
-        cache_write_tokens: 0,
-        total_cost: 0.05,
-        duration_ms: 10000,
-        num_turns: 5,
-        stop_reason: "end_turn",
-        duration_api_ms: 8000,
-        tool_use_count: 10,
-        compaction_count: 0,
-        session_id: "ws-1",
-        started_at: new Date().toISOString(),
-        completed_at: new Date().toISOString(),
-      },
-    ]);
-
+  it("sorting by date toggles direction and keeps rows visible", async () => {
     const user = userEvent.setup();
     render(<UsagePage />);
 
-    const expandButton = screen.getByLabelText(/Toggle details for my-skill workflow run/);
-
-    // Expand
-    await user.click(expandButton);
-    await waitFor(() => {
-      expect(screen.getByTestId("step-table")).toBeInTheDocument();
-    });
-
-    // Collapse
-    await user.click(expandButton);
-    await waitFor(() => {
-      expect(screen.queryByTestId("step-table")).not.toBeInTheDocument();
-    });
-    expect(expandButton).toHaveAttribute("aria-expanded", "false");
+    const dateHeader = screen.getByRole("button", { name: /^date/i });
+    await user.click(dateHeader);
+    await user.click(dateHeader);
+    expect(screen.getByTestId("step-table")).toBeInTheDocument();
+    expect(screen.getAllByText("my-skill").length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows null summary as zero values", () => {
     setStoreData({
       summary: null,
-      recentSessions: [],
+      agentRuns: [],
     });
     render(<UsagePage />);
 
