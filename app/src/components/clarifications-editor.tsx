@@ -841,6 +841,30 @@ function ReviewFeedbackCallout({ feedback, compact = false }: { feedback: Review
     contradictory: "Contradictory",
     needs_refinement: "Needs refinement",
   };
+  const chipStyles: Record<ReviewStatus, { bg: string; text: string; border: string; className?: string }> = {
+    not_answered: {
+      bg: "var(--destructive)",
+      text: "var(--destructive)",
+      border: "color-mix(in oklch, var(--destructive), transparent 55%)",
+    },
+    contradictory: {
+      bg: "var(--destructive)",
+      text: "var(--destructive)",
+      border: "color-mix(in oklch, var(--destructive), transparent 55%)",
+    },
+    vague: {
+      bg: "",
+      text: "",
+      border: "",
+      className: "border-amber-500/40 bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
+    },
+    needs_refinement: {
+      bg: "var(--color-pacific)",
+      text: "var(--color-pacific)",
+      border: "color-mix(in oklch, var(--color-pacific), transparent 55%)",
+    },
+  };
+  const statusChip = chipStyles[feedback.status];
 
   return (
     <div
@@ -856,13 +880,16 @@ function ReviewFeedbackCallout({ feedback, compact = false }: { feedback: Review
     >
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <span
-          className="rounded-full px-2 py-0.5 text-[11px] font-medium"
-          style={{
-            color: feedback.status === "contradictory" ? "var(--destructive)" : "var(--color-pacific)",
-            background: feedback.status === "contradictory"
-              ? "color-mix(in oklch, var(--destructive), transparent 88%)"
-              : "color-mix(in oklch, var(--color-pacific), transparent 88%)",
-          }}
+          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+            statusChip.className ?? ""
+          }`}
+          style={statusChip.className
+            ? undefined
+            : {
+              color: statusChip.text,
+              background: `color-mix(in oklch, ${statusChip.bg}, transparent 88%)`,
+              border: `1px solid ${statusChip.border}`,
+            }}
         >
           Need Review: {statusLabel[feedback.status]}
         </span>
