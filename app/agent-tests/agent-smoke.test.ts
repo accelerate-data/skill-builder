@@ -216,7 +216,7 @@ describe.skipIf(!HAS_API_KEY)("refine-skill: frontmatter description edits", () 
 
     const skillDir = path.join(refineDir, SKILL_NAME);
     const contextDir = path.join(refineDir, SKILL_NAME, "context");
-    const workspaceDir = path.join(refineDir, ".vibedata", SKILL_NAME);
+    const workspaceDir = path.join(refineDir, ".vibedata", "skill-builder", SKILL_NAME);
 
     const prompt = `You are the refine-skill agent for the skill-builder plugin.
 
