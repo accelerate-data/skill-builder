@@ -134,7 +134,7 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 
 **Phase 3:** Rewrite references in a staged, demand-driven order. Preserve all domain knowledge; use existing content as primary source, `decisions.md` as supplement. Before finalizing, perform a full preservation sweep to confirm no original domain knowledge was dropped; if coverage is incomplete, read additional references and close gaps.
 
-**Error handling:** If `decisions.md` is missing, proceed using existing skill content only.
+**Error handling (rewrite-only override):** If `decisions.md` is missing, proceed using existing skill content only.
 
 </instructions>
 
