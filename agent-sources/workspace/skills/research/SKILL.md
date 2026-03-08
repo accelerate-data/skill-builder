@@ -3,8 +3,7 @@ name: research
 description: >
   Runs the research phase for a skill. Use when researching dimensions and producing
   clarifications for a purpose and domain. Returns a scored dimension table and
-  complete clarifications.json content as inline text with === RESEARCH PLAN === and
-  === CLARIFICATIONS === delimiters.
+  complete clarifications content as a structured JSON payload.
 ---
 
 # Research Skill
@@ -25,7 +24,7 @@ Pure computation. Read inputs and references, return inline output, write nothin
 - Select top 3-5 dimensions (or one fallback when all scores are low)
 - Run parallel sub-agent research for selected dimensions
 - Consolidate using `references/consolidation-handoff.md`
-- Return exactly two sections: `=== RESEARCH PLAN ===` and `=== CLARIFICATIONS ===`
+- Return one JSON object with `research_plan_markdown` and `clarifications_json`
 
 ## Inputs
 
@@ -104,20 +103,25 @@ Do not emit alternative JSON structures.
 
 ## Return Format
 
-Return inline text with exactly these delimiters:
+Return JSON only with this shape:
 
-```text
-=== RESEARCH PLAN ===
-[complete canonical research-plan.md]
-=== CLARIFICATIONS ===
-[valid JSON]
+```json
+{
+  "research_plan_markdown": "[complete canonical research-plan.md]",
+  "clarifications_json": {
+    "version": "1",
+    "metadata": {},
+    "sections": [],
+    "notes": []
+  }
+}
 ```
 
-Both sections are required.
+Both keys are required.
 
 ### Canonical `research-plan.md` requirements
 
-The `=== RESEARCH PLAN ===` section must include:
+The `research_plan_markdown` value must include:
 
 1. YAML frontmatter:
    - `purpose`
@@ -139,9 +143,9 @@ Do not return a table-only research plan.
 
 ## Output Checklist
 
-- Both required delimited sections present
-- Clarifications section is valid JSON
-- Research plan section includes canonical frontmatter + required headings/tables
+- Both required JSON keys are present
+- `clarifications_json` is valid JSON object
+- `research_plan_markdown` includes canonical frontmatter + required headings/tables
 - `metadata` counts are accurate
 - Each question includes 2-4 choices plus `Other (please specify)` with `is_other: true`
 - `recommendation` present on every question

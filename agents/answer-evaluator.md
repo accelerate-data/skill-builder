@@ -62,7 +62,9 @@ Aggregates:
 
 ### Step 4: Write output
 
-Write `{workspace_directory}/answer-evaluation.json`. Output ONLY valid JSON:
+Build a single JSON object that matches the schema below. Write that exact JSON object to `{workspace_directory}/answer-evaluation.json`.
+
+Output ONLY valid JSON:
 
 ```json
 {
@@ -92,3 +94,7 @@ Field rules:
 - `verdict`: one of `"sufficient"`, `"mixed"`, `"insufficient"`
 - `reasoning`: single sentence explaining the verdict
 - `per_question`: one entry per question in document order, with `question_id` and `verdict` (`clear` / `needs_refinement` / `not_answered` / `vague` / `contradictory`). Entries with verdict `contradictory` must include a `contradicts` field (string, question ID of the conflicting answer).
+
+### Step 5: Return the same JSON object
+
+After writing the file, return the exact same JSON object as your final response (JSON only, no markdown or explanation).

@@ -567,6 +567,96 @@ fn derive_agent_name(workspace_path: &str, _purpose: &str, prompt_template: &str
     phase.to_string()
 }
 
+fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Value> {
+    match agent_name {
+        "research-orchestrator" => Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status", "dimensions_selected", "question_count"],
+                "properties": {
+                    "status": { "type": "string", "const": "research_complete" },
+                    "dimensions_selected": { "type": "integer", "minimum": 0 },
+                    "question_count": { "type": "integer", "minimum": 0 }
+                },
+                "additionalProperties": false
+            }
+        })),
+        "detailed-research" => Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status", "refinement_count", "section_count"],
+                "properties": {
+                    "status": { "type": "string", "const": "detailed_research_complete" },
+                    "refinement_count": { "type": "integer", "minimum": 0 },
+                    "section_count": { "type": "integer", "minimum": 0 }
+                },
+                "additionalProperties": false
+            }
+        })),
+        _ => None,
+    }
+}
+
+fn answer_evaluator_output_format() -> serde_json::Value {
+    serde_json::json!({
+        "type": "json_schema",
+        "schema": {
+            "type": "object",
+            "required": [
+                "verdict",
+                "answered_count",
+                "empty_count",
+                "vague_count",
+                "contradictory_count",
+                "total_count",
+                "reasoning",
+                "per_question"
+            ],
+            "properties": {
+                "verdict": {
+                    "type": "string",
+                    "enum": ["sufficient", "mixed", "insufficient"]
+                },
+                "answered_count": { "type": "integer", "minimum": 0 },
+                "empty_count": { "type": "integer", "minimum": 0 },
+                "vague_count": { "type": "integer", "minimum": 0 },
+                "contradictory_count": { "type": "integer", "minimum": 0 },
+                "total_count": { "type": "integer", "minimum": 0 },
+                "reasoning": { "type": "string", "minLength": 1 },
+                "per_question": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["question_id", "verdict"],
+                        "properties": {
+                            "question_id": { "type": "string", "minLength": 1 },
+                            "verdict": {
+                                "type": "string",
+                                "enum": ["clear", "needs_refinement", "not_answered", "vague", "contradictory"]
+                            },
+                            "reason": { "type": "string" },
+                            "contradicts": { "type": "string" }
+                        },
+                        "additionalProperties": false,
+                        "allOf": [
+                            {
+                                "if": {
+                                    "properties": { "verdict": { "const": "contradictory" } },
+                                    "required": ["verdict"]
+                                },
+                                "then": { "required": ["contradicts"] }
+                            }
+                        ]
+                    }
+                }
+            },
+            "additionalProperties": false
+        }
+    })
+}
+
 /// Write `user-context.md` to the context directory so that sub-agents
 /// Format user context fields into a `## User Context` markdown block.
 ///
@@ -1014,7 +1104,7 @@ async fn run_workflow_step_inner(
         }),
         fallback_model: settings.fallback_model.clone(),
         effort: settings.sdk_effort.clone(),
-        output_format: None,
+        output_format: workflow_output_format_for_agent(&agent_name),
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name),
@@ -1511,7 +1601,7 @@ pub async fn run_answer_evaluator(
         thinking: None,
         fallback_model: None,
         effort: None,
-        output_format: None,
+        output_format: Some(answer_evaluator_output_format()),
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name: Some("answer-evaluator".to_string()),
@@ -1966,6 +2056,26 @@ mod tests {
         assert!(files.is_empty());
         let files = get_step_output_files(99);
         assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_workflow_output_format_for_in_scope_agents() {
+        assert!(workflow_output_format_for_agent("research-orchestrator").is_some());
+        assert!(workflow_output_format_for_agent("detailed-research").is_some());
+        assert!(workflow_output_format_for_agent("confirm-decisions").is_none());
+    }
+
+    #[test]
+    fn test_answer_evaluator_output_format_has_required_contract_keys() {
+        let format = answer_evaluator_output_format();
+        let schema = &format["schema"];
+        let required = schema["required"].as_array().expect("required array");
+        assert!(required.iter().any(|v| v == "per_question"));
+        assert!(required.iter().any(|v| v == "verdict"));
+        assert_eq!(
+            schema["properties"]["verdict"]["enum"],
+            serde_json::json!(["sufficient", "mixed", "insufficient"])
+        );
     }
 
     #[test]

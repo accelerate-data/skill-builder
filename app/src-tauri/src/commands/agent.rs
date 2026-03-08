@@ -2,6 +2,57 @@ use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
 
+fn output_format_for_agent(
+    skill_name: &str,
+    agent_name: Option<&str>,
+) -> Option<serde_json::Value> {
+    if skill_name == "_feedback" {
+        return Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["type", "title", "body", "labels"],
+                "properties": {
+                    "type": { "type": "string", "enum": ["bug", "feature"] },
+                    "title": { "type": "string" },
+                    "body": { "type": "string" },
+                    "labels": {
+                        "oneOf": [
+                            { "type": "string" },
+                            { "type": "array", "items": { "type": "string" } }
+                        ]
+                    }
+                },
+                "additionalProperties": true
+            }
+        }));
+    }
+
+    if agent_name == Some("validate-skill") {
+        return Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": [
+                    "status",
+                    "validation_log_markdown",
+                    "test_results_markdown",
+                    "companion_skills_markdown"
+                ],
+                "properties": {
+                    "status": { "type": "string", "const": "validation_complete" },
+                    "validation_log_markdown": { "type": "string", "minLength": 1 },
+                    "test_results_markdown": { "type": "string", "minLength": 1 },
+                    "companion_skills_markdown": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": false
+            }
+        }));
+    }
+
+    None
+}
+
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn start_agent(
@@ -61,30 +112,8 @@ pub async fn start_agent(
         })
     });
 
-    // Only apply outputFormat where the prompt enforces strict JSON output.
-    let output_format = if skill_name == "_feedback" {
-        Some(serde_json::json!({
-            "type": "json_schema",
-            "schema": {
-                "type": "object",
-                "required": ["type", "title", "body", "labels"],
-                "properties": {
-                    "type": { "type": "string", "enum": ["bug", "feature"] },
-                    "title": { "type": "string" },
-                    "body": { "type": "string" },
-                    "labels": {
-                        "oneOf": [
-                            { "type": "string" },
-                            { "type": "array", "items": { "type": "string" } }
-                        ]
-                    }
-                },
-                "additionalProperties": true
-            }
-        }))
-    } else {
-        None
-    };
+    // Apply outputFormat only where agents are expected to return strict JSON.
+    let output_format = output_format_for_agent(&skill_name, agent_name.as_deref());
 
     // Agent frontmatter model is authoritative when agent_name is provided.
     let model_for_config = if agent_name.is_some() {
@@ -127,4 +156,27 @@ pub async fn start_agent(
     .await?;
 
     Ok(agent_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::output_format_for_agent;
+
+    #[test]
+    fn test_output_format_for_feedback() {
+        assert!(output_format_for_agent("_feedback", None).is_some());
+    }
+
+    #[test]
+    fn test_output_format_for_validate_skill_agent() {
+        let fmt = output_format_for_agent("my-skill", Some("validate-skill"));
+        assert!(fmt.is_some());
+        let schema = fmt.expect("schema");
+        assert_eq!(schema["schema"]["properties"]["status"]["const"], "validation_complete");
+    }
+
+    #[test]
+    fn test_output_format_for_unscoped_agents_is_none() {
+        assert!(output_format_for_agent("my-skill", Some("confirm-decisions")).is_none());
+    }
 }

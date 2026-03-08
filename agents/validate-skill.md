@@ -78,19 +78,33 @@ Validation alignment rule:
 
 ## Step 2: Write output files
 
-The skill returns three delimited sections:
+The validate-skill sub-agent returns one JSON object with this shape:
 
-```text
-=== VALIDATION LOG ===
-{full agent-validation-log.md content}
-=== TEST RESULTS ===
-{full test-skill.md content}
-=== COMPANION SKILLS ===
-{full companion-skills.md content including YAML frontmatter}
+```json
+{
+  "validation_log_markdown": "<full agent-validation-log.md content>",
+  "test_results_markdown": "<full test-skill.md content>",
+  "companion_skills_markdown": "<full companion-skills.md content including YAML frontmatter>"
+}
 ```
 
-Extract each section and write verbatim to:
+Write each property verbatim to:
 
-1. `=== VALIDATION LOG ===` → `{context_dir}/agent-validation-log.md`
-2. `=== TEST RESULTS ===` → `{context_dir}/test-skill.md`
-3. `=== COMPANION SKILLS ===` → `{context_dir}/companion-skills.md`
+1. `validation_log_markdown` → `{context_dir}/agent-validation-log.md`
+2. `test_results_markdown` → `{context_dir}/test-skill.md`
+3. `companion_skills_markdown` → `{context_dir}/companion-skills.md`
+
+Verify all three files exist and are non-empty.
+
+## Step 3: Return
+
+Return JSON only (no markdown) with this shape:
+
+```json
+{
+  "status": "validation_complete",
+  "validation_log_markdown": "<same content written to agent-validation-log.md>",
+  "test_results_markdown": "<same content written to test-skill.md>",
+  "companion_skills_markdown": "<same content written to companion-skills.md>"
+}
+```

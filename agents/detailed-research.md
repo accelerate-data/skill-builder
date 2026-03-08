@@ -41,7 +41,15 @@ Read answer-evaluation verdicts, then orchestrate targeted refinements for non-c
 
 ### Scope Recommendation Guard
 
-Check `clarifications.json` per the Scope Recommendation Guard protocol. If detected, return: "Scope recommendation detected. Detailed research skipped — no refinements needed."
+Check `clarifications.json` per the Scope Recommendation Guard protocol. If detected, return:
+
+```json
+{
+  "status": "detailed_research_complete",
+  "refinement_count": 0,
+  "section_count": 0
+}
+```
 
 ## Phase 1: Load Evaluation Verdicts
 
@@ -116,23 +124,32 @@ Follow the format example below. Return ONLY a JSON array of refinement objects 
 ## Phase 3: Merge Refinements into clarifications.json
 
 1. Read the current `clarifications.json`. Parse the JSON.
-2. For each question with refinements from sub-agents: parse the sub-agent's JSON array and merge each refinement object into the parent question's `refinements[]` array.
+2. For each question with refinements from sub-agents: parse the sub-agent's JSON array and validate each refinement object before merge. Reject objects that do not match this contract:
+   - Required keys: `id`, `parent_question_id`, `title`, `text`, `choices`, `recommendation`, `must_answer`, `answer_choice`, `answer_text`, `refinements`
+   - `choices` is an array of objects with required keys `id`, `text`, `is_other`
+   - `recommendation` is a single uppercase choice ID string (for example `"A"`)
+   - `must_answer` is boolean, `answer_choice`/`answer_text` are null, `refinements` is an array
+   - Skip invalid objects and continue processing valid ones
 3. Deduplicate overlapping refinements across sub-agents (match by `parent_question_id` and similar `title`/`text`).
 4. Update `metadata.refinement_count` to reflect the total number of refinement objects inserted across all questions.
 5. Write the updated JSON back to `clarifications.json` in a single Write call. **Do not echo or repeat the file contents in your response.**
 
 ## Phase 4: Return
 
-Return **one sentence only** — do not include file contents, JSON, or any other output:
+Return JSON only (no markdown) with this shape:
 
-```text
-Detailed research complete: {refinement_count} refinements added across {section_count} sections.
+```json
+{
+  "status": "detailed_research_complete",
+  "refinement_count": 0,
+  "section_count": 0
+}
 ```
 
 ## Error Handling
 
-- **`clarifications.json` missing or has no answers:** Report to coordinator — detailed research requires first-round answers.
-- **All questions are `clear`:** Skip Phase 2. Report that no refinements are needed.
+- **`clarifications.json` missing or has no answers:** return JSON with `status: "detailed_research_complete"` and zero counts.
+- **All questions are `clear`:** Skip Phase 2 and return JSON with zero counts.
 - **`answer-evaluation.json` missing:** Fall back to reading `clarifications.json` directly. Treat questions with null `answer_choice` and empty/null `answer_text` as non-clear. Log a warning.
 - **Sub-agent fails:** Re-spawn once. If it fails again, proceed with available output.
 

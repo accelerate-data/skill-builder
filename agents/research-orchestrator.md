@@ -47,21 +47,21 @@ Capture the full tool result as `research_output`.
 
 ## Step 2: Write output files
 
-`research_output` must contain two delimited sections:
+`research_output` must be a single JSON object with this shape:
 
-```text
-=== RESEARCH PLAN ===
-{complete research-plan.md content in canonical format}
-=== CLARIFICATIONS ===
-{complete clarifications.json content — valid JSON}
+```json
+{
+  "research_plan_markdown": "<complete canonical research-plan.md content>",
+  "clarifications_json": { "...": "valid clarifications object" }
+}
 ```
 
 **Your only actions are two Write calls. Do not echo or repeat the file contents in your response.**
 
-1. Extract between `=== RESEARCH PLAN ===` and `=== CLARIFICATIONS ===` → `{context_dir}/research-plan.md`
-2. Extract after `=== CLARIFICATIONS ===` → `{context_dir}/clarifications.json`
+1. Write `research_plan_markdown` verbatim → `{context_dir}/research-plan.md`
+2. Serialize `clarifications_json` as pretty JSON (`2` spaces) → `{context_dir}/clarifications.json`
 
-Write content verbatim. Verify both files exist by reading the first 5 lines of each. If either is missing or empty, retry once.
+Verify both files exist by reading the first 5 lines of each. If either is missing or empty, retry once.
 
 `research-plan.md` must be canonical:
 
@@ -75,16 +75,22 @@ If the extracted research plan is only a loose dimension table (without canonica
 
 Read `{context_dir}/clarifications.json`. If `metadata.scope_recommendation` is `true`, stop and return:
 
-```text
-Scope issue: this skill is not suitable as a {purpose label} skill.
-Reason: {one sentence from clarifications.json}
-Suggested action: {narrow the domain, choose a different skill type, or split into multiple skills}
+```json
+{
+  "status": "research_complete",
+  "dimensions_selected": 0,
+  "question_count": 0
+}
 ```
 
 ## Step 4: Return
 
-Return **one sentence only** — do not include file contents, JSON, or any other output:
+Return JSON only (no markdown) with this shape:
 
-```text
-Research complete: {n} dimensions selected, {question_count} clarification questions written.
+```json
+{
+  "status": "research_complete",
+  "dimensions_selected": 0,
+  "question_count": 0
+}
 ```

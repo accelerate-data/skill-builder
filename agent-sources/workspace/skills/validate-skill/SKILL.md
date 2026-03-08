@@ -3,8 +3,7 @@ name: validate-skill
 description: >
   Validates a completed skill against its decisions and clarifications. Use when
   validating a skill for a domain and purpose. Returns a validation log, test
-  results, and companion recommendations as inline text with === VALIDATION LOG ===,
-  === TEST RESULTS ===, and === COMPANION SKILLS === delimiters.
+  results, and companion recommendations as a structured JSON payload.
 ---
 
 # Validate Skill
@@ -66,30 +65,29 @@ Combine sub-agent outputs into:
 
 ## Return Format
 
-Return inline text with exact delimiters:
+Return JSON only with this shape:
 
-```text
-=== VALIDATION LOG ===
-[full agent-validation-log.md content]
-=== TEST RESULTS ===
-[full test-skill.md content]
-=== COMPANION SKILLS ===
-[full companion-skills.md content including YAML frontmatter]
+```json
+{
+  "validation_log_markdown": "[full agent-validation-log.md content]",
+  "test_results_markdown": "[full test-skill.md content]",
+  "companion_skills_markdown": "[full companion-skills.md content including YAML frontmatter]"
+}
 ```
 
-All three sections are required.
+All three keys are required.
 
 ## Output Format
 
-### `=== VALIDATION LOG ===`
+### `validation_log_markdown`
 
 Include summary + coverage + structure + content + boundary + rewrites + manual review items.
 
-### `=== TEST RESULTS ===`
+### `test_results_markdown`
 
 Include summary + per-scenario outcomes + skill content gaps + suggested PM prompts.
 
-### `=== COMPANION SKILLS ===`
+### `companion_skills_markdown`
 
 Include YAML frontmatter with companion entries and markdown reasoning body.
 
