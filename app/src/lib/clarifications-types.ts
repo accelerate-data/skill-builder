@@ -5,7 +5,8 @@ export interface ClarificationsFile {
   version: "1";
   metadata: ClarificationsMetadata;
   sections: Section[];
-  notes: Note[];
+  notes: Note[]; // research notes from research/detailed-research
+  answer_evaluator_notes?: Note[]; // gate feedback notes from answer-evaluator
 }
 
 export interface ClarificationsMetadata {
@@ -131,7 +132,16 @@ export function parseClarifications(content: string | null): ClarificationsFile 
         skill_name?: string;
         scope_recommendation?: boolean;
       };
+      answer_evaluator_notes?: Note[];
     };
+    const rawNotes = raw.notes ?? [];
+    const explicitEvaluatorNotes = Array.isArray(raw.answer_evaluator_notes)
+      ? raw.answer_evaluator_notes
+      : [];
+    const migratedEvaluatorNotes = explicitEvaluatorNotes.length > 0
+      ? explicitEvaluatorNotes
+      : rawNotes.filter((note) => note.type === "answer_feedback");
+    const researchNotes = rawNotes.filter((note) => note.type !== "answer_feedback");
 
     const rawSections = Array.isArray(raw.sections) ? raw.sections : [];
     const rawQuestionCount = rawSections.reduce((count, section) => {
@@ -186,7 +196,8 @@ export function parseClarifications(content: string | null): ClarificationsFile 
           duplicates_removed: 0,
         },
         sections: convertedSections,
-        notes: raw.notes ?? [],
+        notes: researchNotes,
+        answer_evaluator_notes: migratedEvaluatorNotes,
       };
     }
 
@@ -200,7 +211,8 @@ export function parseClarifications(content: string | null): ClarificationsFile 
         ...s,
         questions: (s.questions ?? []).map(normalizeQuestion),
       })),
-      notes: raw.notes ?? [],
+      notes: researchNotes,
+      answer_evaluator_notes: migratedEvaluatorNotes,
     };
   } catch {
     return null;

@@ -122,7 +122,10 @@ export function ClarificationsEditor({
   const [notesExpanded, setNotesExpanded] = useState(true);
   const [showNeedsReviewOnly, setShowNeedsReviewOnly] = useState(false);
   const { answered, total, mustUnanswered } = getTotalCounts(data);
-  const reviewFeedbackByQuestion = useMemo(() => getReviewFeedbackMap(data.notes), [data.notes]);
+  const reviewFeedbackByQuestion = useMemo(
+    () => getReviewFeedbackMap(data.answer_evaluator_notes ?? []),
+    [data.answer_evaluator_notes],
+  );
   const needsReviewCount = reviewFeedbackByQuestion.size;
   const canContinue = mustUnanswered === 0;
   const progressPct = total > 0 ? Math.round((answered / total) * 100) : 0;

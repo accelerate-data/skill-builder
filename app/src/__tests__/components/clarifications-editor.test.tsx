@@ -55,6 +55,7 @@ function makeClarifications(questions: Question[]): ClarificationsFile {
     },
     sections: [{ id: "S1", title: "Test Section", questions }],
     notes: [],
+    answer_evaluator_notes: [],
   };
 }
 
@@ -82,6 +83,7 @@ function makeClarificationsWithSections(): ClarificationsFile {
       },
     ],
     notes: [],
+    answer_evaluator_notes: [],
   };
 }
 
@@ -304,7 +306,7 @@ describe("Need Review filter toggle", () => {
       makeQuestion({ id: "Q1", title: "Answered Question", answer_choice: "A", answer_text: "Choice A" }),
       makeQuestion({ id: "Q2", title: "Unanswered Question", answer_choice: null, answer_text: null }),
     ]);
-    data.notes = [
+    data.answer_evaluator_notes = [
       {
         type: "answer_feedback",
         title: "Not answered: Q2",
@@ -327,7 +329,7 @@ describe("Inline evaluator feedback", () => {
   it("shows reason inline with the flagged question in context", async () => {
     const user = userEvent.setup();
     const data = makeClarifications([makeQuestion({ id: "Q1", title: "Flagged Question" })]);
-    data.notes = [
+    data.answer_evaluator_notes = [
       {
         type: "answer_feedback",
         title: "Vague answer: Q1",

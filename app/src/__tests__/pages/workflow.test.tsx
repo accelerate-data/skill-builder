@@ -139,6 +139,7 @@ function makeClarificationsJson(overrides?: Partial<ClarificationsFile>): Clarif
       },
     ],
     notes: [],
+    answer_evaluator_notes: [],
     ...overrides,
   };
 }
@@ -846,9 +847,9 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     expect(writeCalls.length).toBeGreaterThan(0);
     const serialized = writeCalls[writeCalls.length - 1][1];
     const parsed = JSON.parse(serialized);
-    expect(Array.isArray(parsed.notes)).toBe(true);
-    expect(parsed.notes.some((n: { title: string }) => n.title === "Vague answer: Q1")).toBe(true);
-    expect(parsed.notes.some((n: { title: string }) => n.title === "Contradictory answer: Q2")).toBe(true);
+    expect(Array.isArray(parsed.answer_evaluator_notes)).toBe(true);
+    expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Vague answer: Q1")).toBe(true);
+    expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Contradictory answer: Q2")).toBe(true);
   });
 
   it("writes evaluator feedback notes after Detailed Research continue (step 1 gate)", async () => {
@@ -915,7 +916,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     expect(writeCalls.length).toBeGreaterThan(0);
     const serialized = writeCalls[writeCalls.length - 1][1];
     const parsed = JSON.parse(serialized);
-    expect(parsed.notes.some((n: { title: string }) => n.title === "Vague answer: Q3")).toBe(true);
+    expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Vague answer: Q3")).toBe(true);
   });
 
   it("writes notes for not_answered and needs_refinement verdicts", async () => {
@@ -982,14 +983,14 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     expect(writeCalls.length).toBeGreaterThan(0);
     const serialized = writeCalls[writeCalls.length - 1][1];
     const parsed = JSON.parse(serialized);
-    expect(parsed.notes.some((n: { title: string }) => n.title === "Not answered: Q1")).toBe(true);
-    expect(parsed.notes.some((n: { title: string }) => n.title === "Needs refinement: Q2")).toBe(true);
+    expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Not answered: Q1")).toBe(true);
+    expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Needs refinement: Q2")).toBe(true);
   });
 
   it("reloads clarifications from disk when clicking Let Me Answer", async () => {
     const baseData = makeClarificationsJson();
     const reloadedData = makeClarificationsJson({
-      notes: [
+      answer_evaluator_notes: [
         {
           type: "answer_feedback",
           title: "Vague answer: Q1",
@@ -1062,7 +1063,9 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
     await waitFor(() => {
       const lastProps = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
-      const notes = (lastProps?.clarificationsData as { notes?: Array<{ title: string }> } | undefined)?.notes ?? [];
+      const notes = (
+        lastProps?.clarificationsData as { answer_evaluator_notes?: Array<{ title: string }> } | undefined
+      )?.answer_evaluator_notes ?? [];
       expect(notes.some((n) => n.title === "Vague answer: Q1")).toBe(true);
     });
   });

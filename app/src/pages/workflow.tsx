@@ -730,8 +730,8 @@ export default function WorkflowPage() {
         return;
       }
 
-      // Refresh clarifications notes with evaluator feedback so "Let Me Answer"
-      // returns the user to actionable guidance in the editor UI.
+      // Refresh only the evaluator feedback section so research notes stay intact
+      // while "Let Me Answer" returns users to actionable guidance in the editor UI.
       if (skillsPath) {
         const clarificationsPath = `${skillsPath}/${skillName}/context/clarifications.json`;
         try {
@@ -740,7 +740,7 @@ export default function WorkflowPage() {
           if (parsed) {
             const next: ClarificationsFile = {
               ...parsed,
-              notes: buildGateFeedbackNotes(evaluation),
+              answer_evaluator_notes: buildGateFeedbackNotes(evaluation),
             };
             const serialized = JSON.stringify(next, null, 2);
             await writeFile(clarificationsPath, serialized);
@@ -889,7 +889,7 @@ export default function WorkflowPage() {
       return;
     }
 
-    const prevNoteCount = clarificationsData?.notes.length ?? 0;
+    const prevNoteCount = clarificationsData?.answer_evaluator_notes?.length ?? 0;
     readFile(`${skillsPath}/${skillName}/context/clarifications.json`)
       .then((content) => {
         const parsed = parseClarifications(content ?? null);
@@ -902,7 +902,7 @@ export default function WorkflowPage() {
         setEditorDirty(false);
         setSaveStatus("idle");
 
-        const addedNotes = Math.max(0, (parsed.notes?.length ?? 0) - prevNoteCount);
+        const addedNotes = Math.max(0, (parsed.answer_evaluator_notes?.length ?? 0) - prevNoteCount);
         if (addedNotes > 0) {
           toast.success(`Loaded ${addedNotes} feedback note${addedNotes === 1 ? "" : "s"} for review.`);
         } else {
