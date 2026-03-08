@@ -783,7 +783,7 @@ export default function WorkflowPage() {
       const hasStructuredObject = !!structuredOutput
         && typeof structuredOutput === "object"
         && !Array.isArray(structuredOutput);
-      if (hasStructuredObject) {
+      if (hasStructuredObject && workspacePath) {
         await materializeAnswerEvaluationOutput(skillName, workspacePath, structuredOutput);
       } else {
         console.warn("[workflow] Missing structured gate output; falling back to existing answer-evaluation.json");
