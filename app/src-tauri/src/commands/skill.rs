@@ -2048,7 +2048,8 @@ mod tests {
         assert!(err.contains("already exists"), "Error should mention collision: {}", err);
 
         // Original skill should be untouched
-        let row = crate::db::get_workflow_run(&conn, "skill-a").unwrap().unwrap();
+        let row = crate::db::get_workflow_run(&conn, "skill-a").unwrap();
+        assert!(row.is_some(), "skill-a workflow row should still exist");
         
     }
 

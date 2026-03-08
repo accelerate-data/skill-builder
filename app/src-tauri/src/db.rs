@@ -4128,6 +4128,8 @@ mod tests {
 
         let skills = list_all_skills(&conn).unwrap();
         let skill = skills.into_iter().find(|s| s.name == "my-skill").unwrap();
+        assert_eq!(skill.purpose.as_deref(), Some("platform"));
+        assert_eq!(skill.skill_source, "skill-builder");
     }
 
     #[test]
