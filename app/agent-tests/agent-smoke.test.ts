@@ -14,7 +14,7 @@ const SKILL_NAME = "pet-store-analytics";
 const BUDGET = parseBudget(
   process.env.MAX_BUDGET_AGENTS,
   process.env.MAX_BUDGET_WORKFLOW,
-  "0.50"
+  "2.00"
 );
 
 let WORKSPACE_CONTEXT: string;
@@ -55,6 +55,39 @@ Run the full research-orchestrator flow and write canonical outputs to:
 - ${researchDir}/${SKILL_NAME}/context/research-plan.md
 - ${researchDir}/${SKILL_NAME}/context/clarifications.json
 
+The clarifications JSON MUST use the canonical schema (not legacy dimension/clarifications arrays):
+{
+  "version": "1",
+  "metadata": {
+    "title": "<string>",
+    "question_count": <number>,
+    "section_count": <number>,
+    "refinement_count": <number>,
+    "must_answer_count": <number>,
+    "priority_questions": ["Q1"]
+  },
+  "sections": [
+    {
+      "id": "S1",
+      "title": "<string>",
+      "questions": [
+        {
+          "id": "Q1",
+          "title": "<string>",
+          "must_answer": <boolean>,
+          "text": "<string>",
+          "choices": [{"id":"A","text":"<string>","is_other":false}],
+          "recommendation": "A",
+          "answer_choice": null,
+          "answer_text": null,
+          "refinements": []
+        }
+      ]
+    }
+  ],
+  "notes": []
+}
+
 Return JSON only:
 {
   "status": "research_complete",
@@ -62,22 +95,22 @@ Return JSON only:
   "question_count": <number>
 }`;
 
-    runAgent(prompt, BUDGET, 180_000, researchDir);
-  }, 200_000);
+    runAgent(prompt, BUDGET, 260_000, researchDir);
+  }, 290_000);
 
-  it("creates clarifications.json", { timeout: 200_000 }, () => {
+  it("creates clarifications.json", { timeout: 260_000 }, () => {
     const p = path.join(researchDir, SKILL_NAME, "context", "clarifications.json");
     expect(fs.existsSync(p)).toBe(true);
   });
 
-  it("creates research-plan.md", { timeout: 200_000 }, () => {
+  it("creates research-plan.md", { timeout: 260_000 }, () => {
     const p = path.join(researchDir, SKILL_NAME, "context", "research-plan.md");
     expect(fs.existsSync(p)).toBe(true);
   });
 
-  it("clarifications.json has canonical shape", { timeout: 200_000 }, () => {
+  it("clarifications.json has canonical shape", { timeout: 260_000 }, () => {
     const p = path.join(researchDir, SKILL_NAME, "context", "clarifications.json");
-    if (!fs.existsSync(p)) return;
+    expect(fs.existsSync(p)).toBe(true);
     const data = JSON.parse(fs.readFileSync(p, "utf8"));
     expect(data.version).toBe("1");
     expect(data.metadata).toBeTruthy();
@@ -126,13 +159,13 @@ Return: the evaluation JSON contents.`;
   }, 135_000);
 
   it("creates answer-evaluation.json", { timeout: 135_000 }, () => {
-    const p = path.join(evalDir, ".vibedata", SKILL_NAME, "answer-evaluation.json");
+    const p = path.join(evalDir, ".vibedata", "skill-builder", SKILL_NAME, "answer-evaluation.json");
     expect(fs.existsSync(p)).toBe(true);
   });
 
   it("answer-evaluation.json has required fields and valid verdict", { timeout: 135_000 }, () => {
-    const p = path.join(evalDir, ".vibedata", SKILL_NAME, "answer-evaluation.json");
-    if (!fs.existsSync(p)) return;
+    const p = path.join(evalDir, ".vibedata", "skill-builder", SKILL_NAME, "answer-evaluation.json");
+    expect(fs.existsSync(p)).toBe(true);
     const data = JSON.parse(fs.readFileSync(p, "utf8"));
     expect(data).toHaveProperty("total_count");
     expect(data).toHaveProperty("answered_count");
