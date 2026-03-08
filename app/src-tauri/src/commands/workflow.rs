@@ -3044,6 +3044,57 @@ mod tests {
     }
 
     #[test]
+    fn test_materialize_step2_rejects_null_payload() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let err = super::materialize_workflow_step_output_value(&skill_root, 2, &serde_json::json!(null))
+            .unwrap_err();
+        assert!(err.contains("structured_output must be a JSON object"));
+    }
+
+    #[test]
+    fn test_materialize_step2_rejects_wrong_status() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "generated",
+            "decisions_markdown": "# decisions"
+        });
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap_err();
+        assert!(err.contains("structured_output.status must be 'decisions_complete'"));
+    }
+
+    #[test]
+    fn test_materialize_step2_rejects_missing_or_invalid_decisions_markdown() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+
+        let missing = serde_json::json!({
+            "status": "decisions_complete"
+        });
+        let err_missing =
+            super::materialize_workflow_step_output_value(&skill_root, 2, &missing).unwrap_err();
+        assert!(err_missing.contains("structured_output.decisions_markdown must be a string"));
+
+        let non_string = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": 42
+        });
+        let err_non_string =
+            super::materialize_workflow_step_output_value(&skill_root, 2, &non_string).unwrap_err();
+        assert!(err_non_string.contains("structured_output.decisions_markdown must be a string"));
+
+        let empty = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": "  "
+        });
+        let err_empty =
+            super::materialize_workflow_step_output_value(&skill_root, 2, &empty).unwrap_err();
+        assert!(err_empty.contains("structured_output.decisions_markdown must not be empty"));
+    }
+
+    #[test]
     fn test_materialize_step3_writes_evaluations() {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
@@ -3053,6 +3104,48 @@ mod tests {
         });
         super::materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
         assert!(skill_root.join("context/evaluations.md").exists());
+    }
+
+    #[test]
+    fn test_materialize_step3_rejects_wrong_status() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "decisions_complete",
+            "evaluations_markdown": "## Scenario 1\n- input\n- expected output\n"
+        });
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+        assert!(err.contains("structured_output.status must be 'generated'"));
+    }
+
+    #[test]
+    fn test_materialize_step3_rejects_missing_or_invalid_evaluations_markdown() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+
+        let missing = serde_json::json!({
+            "status": "generated"
+        });
+        let err_missing =
+            super::materialize_workflow_step_output_value(&skill_root, 3, &missing).unwrap_err();
+        assert!(err_missing.contains("structured_output.evaluations_markdown must be a string"));
+
+        let non_string = serde_json::json!({
+            "status": "generated",
+            "evaluations_markdown": ["not", "markdown"]
+        });
+        let err_non_string =
+            super::materialize_workflow_step_output_value(&skill_root, 3, &non_string).unwrap_err();
+        assert!(err_non_string.contains("structured_output.evaluations_markdown must be a string"));
+
+        let empty = serde_json::json!({
+            "status": "generated",
+            "evaluations_markdown": ""
+        });
+        let err_empty =
+            super::materialize_workflow_step_output_value(&skill_root, 3, &empty).unwrap_err();
+        assert!(err_empty.contains("structured_output.evaluations_markdown must not be empty"));
     }
 
     #[test]

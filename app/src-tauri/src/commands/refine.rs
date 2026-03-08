@@ -1307,6 +1307,48 @@ mod tests {
         assert!(err.contains("structured_output.test_results_markdown must be a string"));
     }
 
+    #[test]
+    fn test_materialize_refine_validation_output_rejects_null_payload() {
+        let tmp = tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let err = super::materialize_refine_validation_output_value(
+            &skill_root,
+            &serde_json::json!(null),
+        )
+        .unwrap_err();
+        assert!(err.contains("structured_output must be a JSON object"));
+    }
+
+    #[test]
+    fn test_materialize_refine_validation_output_rejects_wrong_status() {
+        let tmp = tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "generated",
+            "validation_log_markdown": "## Validation\nok",
+            "test_results_markdown": "## Testing\nok",
+            "companion_skills_markdown": "---\ncompanions: []\n---\n## Companion\nok"
+        });
+        let err =
+            super::materialize_refine_validation_output_value(&skill_root, &payload).unwrap_err();
+        assert!(err.contains("structured_output.status must be 'validation_complete'"));
+    }
+
+    #[test]
+    fn test_materialize_refine_validation_output_rejects_empty_markdown_fields() {
+        let tmp = tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "validation_complete",
+            "validation_log_markdown": "  ",
+            "test_results_markdown": "## Testing\nok",
+            "companion_skills_markdown": "---\ncompanions: []\n---\n## Companion\nok"
+        });
+        let err =
+            super::materialize_refine_validation_output_value(&skill_root, &payload).unwrap_err();
+        assert!(err.contains("structured_output.validation_log_markdown must not be empty"));
+    }
+
     // ===== build_refine_prompt tests =====
 
     #[test]
