@@ -6,11 +6,22 @@ Four-pass quality assessment of a completed skill: coverage & structure, content
 
 ## Inputs
 
-- Paths to `decisions.md`, `clarifications.json`, `SKILL.md`, and all `references/` files
+- Paths to `decisions.md`, `clarifications.json`, `SKILL.md`, and `references/` files
 - The **purpose** (`domain`, `data-engineering`, `platform`, or `source`)
 - The **workspace directory** path (contains `user-context.md`)
 
-Read all provided files and `user-context.md` from the workspace directory.
+Read `decisions.md` first, then check its frontmatter:
+
+- If `contradictory_inputs: revised`, treat decisions as authoritative and skip `clarifications.json`.
+- Otherwise, read `clarifications.json` in full before quality checks.
+
+After that, use progressive discovery for skill content:
+
+- Read `SKILL.md`, then read only the reference files needed for each finding.
+- Expand reads when a claim cannot be evidenced.
+- Before final output, run a completeness sweep to verify every decision and every answered clarification is either COVERED (with file+section evidence) or MISSING.
+
+Read `user-context.md` from the workspace directory.
 
 ## Pass 1: Coverage & Structure
 

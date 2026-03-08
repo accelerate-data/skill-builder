@@ -54,6 +54,12 @@ Read three spec files in `references/` and spawn one sub-agent per spec:
 
 Pass required input paths exactly as described in each spec.
 
+Sub-agent read policy:
+
+- Use progressive discovery for `SKILL.md` and `references/` content; do not require blanket up-front full-file ingestion.
+- Preserve current guard behavior: read `decisions.md` first and read `clarifications.json` in full unless `contradictory_inputs: revised`.
+- Require evidence-backed completeness before each sub-agent returns (expand reads when coverage is insufficient).
+
 ## Step 3 — Consolidate and Report
 
 Combine sub-agent outputs into:

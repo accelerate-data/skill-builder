@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
-import { AGENTS_DIR } from "./helpers";
+import { AGENTS_DIR, REPO_ROOT } from "./helpers";
 
 const EXPECTED_AGENTS = [
   "answer-evaluator",
@@ -84,5 +84,89 @@ describe("canonical format compliance", () => {
       "utf8"
     );
     expect(content).not.toMatch(pattern);
+  });
+});
+
+// ── Read-directive compliance ───────────────────────────────────────────────
+
+describe("read directive compliance", () => {
+  const TARGET_FILES = [
+    path.join(AGENTS_DIR, "generate-skill.md"),
+    path.join(
+      REPO_ROOT,
+      "agent-sources/workspace/skills/validate-skill/SKILL.md"
+    ),
+    path.join(
+      REPO_ROOT,
+      "agent-sources/workspace/skills/validate-skill/references/validate-quality-spec.md"
+    ),
+    path.join(
+      REPO_ROOT,
+      "agent-sources/workspace/skills/validate-skill/references/test-skill-spec.md"
+    ),
+    path.join(
+      REPO_ROOT,
+      "agent-sources/workspace/skills/validate-skill/references/companion-recommender-spec.md"
+    ),
+  ];
+
+  const bannedPatterns: Array<[string, RegExp]> = [
+    ["blanket 'Read all files' directive", /\bRead all files\b/i],
+    [
+      "blanket 'Read all provided files' directive",
+      /\bRead all provided files\b/i,
+    ],
+    [
+      "up-front all references ingestion",
+      /\ball\s+`?references\/?`?\s+files\b/i,
+    ],
+  ];
+
+  it.each(
+    TARGET_FILES.flatMap((file) =>
+      bannedPatterns.map(([label, pattern]) => [file, label, pattern] as const)
+    )
+  )("%s: avoids %s", (file, _label, pattern) => {
+    const content = fs.readFileSync(file, "utf8");
+    expect(content).not.toMatch(pattern);
+  });
+
+  it.each(TARGET_FILES)("%s: requires progressive discovery language", (file) => {
+    const content = fs.readFileSync(file, "utf8");
+    expect(content).toMatch(/progressive|staged|demand-driven/i);
+  });
+
+  it("validate specs preserve full clarifications behavior with revised guard", () => {
+    const qualitySpec = fs.readFileSync(
+      path.join(
+        REPO_ROOT,
+        "agent-sources/workspace/skills/validate-skill/references/validate-quality-spec.md"
+      ),
+      "utf8"
+    );
+    const testSpec = fs.readFileSync(
+      path.join(
+        REPO_ROOT,
+        "agent-sources/workspace/skills/validate-skill/references/test-skill-spec.md"
+      ),
+      "utf8"
+    );
+    const companionSpec = fs.readFileSync(
+      path.join(
+        REPO_ROOT,
+        "agent-sources/workspace/skills/validate-skill/references/companion-recommender-spec.md"
+      ),
+      "utf8"
+    );
+
+    for (const content of [qualitySpec, testSpec, companionSpec]) {
+      expect(content).toMatch(/contradictory_inputs:\s*revised/i);
+      expect(content).toMatch(
+        /\bread\b[^\n]{0,120}\bclarifications\.json\b[^\n]{0,120}\bin full\b/i
+      );
+      expect(content).not.toMatch(
+        /\b(do not|don't|skip)\b[^\n]{0,120}\bclarifications\.json\b[^\n]{0,120}\bin full\b/i
+      );
+    }
   });
 });
