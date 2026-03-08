@@ -3137,6 +3137,7 @@ pub fn get_workspace_skill_by_name(
 /// Look up a workspace skill by name and source registry URL.
 /// Returns only skills that were imported from the specified registry (marketplace_source_url = source_url).
 /// Used to avoid false-positive update notifications for bundled skills sharing a name with marketplace skills.
+#[allow(dead_code)]
 pub fn get_workspace_skill_by_name_and_source(
     conn: &Connection,
     skill_name: &str,
@@ -3254,6 +3255,7 @@ pub fn get_imported_skill_hash_info(
 /// Look up an imported (library) skill by name and source registry URL.
 /// Returns only skills that were imported from the specified registry (marketplace_source_url = source_url).
 /// Used to avoid false-positive update notifications for bundled skills sharing a name with marketplace skills.
+#[allow(dead_code)]
 pub fn get_imported_skill_by_name_and_source(
     conn: &Connection,
     skill_name: &str,
