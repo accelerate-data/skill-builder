@@ -375,6 +375,42 @@ function finalizeScenario(scenario, contracts, invocationExpected = [], invocati
   };
 }
 
+function materializeDecisionsFromResponse(dir, skillName, response) {
+  const decisionsMarkdown = response?.decisions_markdown;
+  if (typeof decisionsMarkdown !== "string" || decisionsMarkdown.trim().length === 0) return false;
+  const decisionsPath = path.join(dir, "workspace", skillName, "context", "decisions.md");
+  writeFile(decisionsPath, decisionsMarkdown);
+  return true;
+}
+
+function materializeEvaluationsFromResponse(dir, skillName, response) {
+  const evaluationsMarkdown = response?.evaluations_markdown;
+  if (typeof evaluationsMarkdown !== "string" || evaluationsMarkdown.trim().length === 0) return false;
+  const evaluationsPath = path.join(dir, "workspace", skillName, "context", "evaluations.md");
+  writeFile(evaluationsPath, evaluationsMarkdown);
+  return true;
+}
+
+function materializeValidationFromResponse(dir, skillName, response) {
+  const validation = response?.validation_log_markdown;
+  const tests = response?.test_results_markdown;
+  const companions = response?.companion_skills_markdown;
+  if (
+    typeof validation !== "string"
+    || typeof tests !== "string"
+    || typeof companions !== "string"
+    || validation.trim().length === 0
+    || tests.trim().length === 0
+    || companions.trim().length === 0
+  ) {
+    return false;
+  }
+  writeFile(path.join(dir, "workspace", skillName, "context", "agent-validation-log.md"), validation);
+  writeFile(path.join(dir, "workspace", skillName, "context", "test-skill.md"), tests);
+  writeFile(path.join(dir, "workspace", skillName, "context", "companion-skills.md"), companions);
+  return true;
+}
+
 function runResearchOrchestrator({ budgetUsd }) {
   const dir = makeTempDir("research");
   const skillName = DEFAULT_SKILL_NAME;
@@ -565,21 +601,18 @@ ${agentInstructions}
 
 Read the answered clarifications at: ${dir}/workspace/${skillName}/context/clarifications.json
 Synthesize the answers into concrete design decisions for the skill.
-Write your decisions to: ${dir}/workspace/${skillName}/context/decisions.md
-
-Use canonical decisions format with YAML frontmatter and D-numbered headings (for example: ### D1:) containing:
-- **Original question:**
-- **Decision:**
-- **Implication:**
-- **Status:** resolved|conflict-resolved|needs-review
-
-Return: path to decisions.md and a one-line summary of key decisions.`;
+Return JSON only with:
+{
+  "status": "decisions_complete",
+  "decisions_markdown": "<canonical decisions.md>",
+  "call_trace": ["..."]
+}`;
 
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
-  const decisionsPath = path.join(dir, "workspace", skillName, "context", "decisions.md");
-  const decisionsExists = fs.existsSync(decisionsPath);
-  const content = decisionsExists ? fs.readFileSync(decisionsPath, "utf8") : "";
   const response = parseAgentJsonOutput(stdout);
+  const decisionsExists = materializeDecisionsFromResponse(dir, skillName, response);
+  const decisionsPath = path.join(dir, "workspace", skillName, "context", "decisions.md");
+  const content = decisionsExists ? fs.readFileSync(decisionsPath, "utf8") : "";
   return finalizeScenario(
     "confirm-decisions",
     {
@@ -602,8 +635,12 @@ Context directory: ${dir}/workspace/${skillName}/context
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>`;
-  runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
-  const content = fs.readFileSync(path.join(dir, "workspace", skillName, "context", "decisions.md"), "utf8");
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
+  const response = parseAgentJsonOutput(stdout);
+  const decisionsExists = materializeDecisionsFromResponse(dir, skillName, response);
+  const content = decisionsExists
+    ? fs.readFileSync(path.join(dir, "workspace", skillName, "context", "decisions.md"), "utf8")
+    : "";
   const fm = parseFrontmatter(content);
   return finalizeScenario("confirm-decisions-scope-guard", {
     hasScopeRecommendationFlag: fm.scope_recommendation === "true",
@@ -656,8 +693,12 @@ Context directory: ${dir}/workspace/${skillName}/context
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>`;
-  runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
-  const content = fs.readFileSync(path.join(dir, "workspace", skillName, "context", "decisions.md"), "utf8");
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
+  const response = parseAgentJsonOutput(stdout);
+  const decisionsExists = materializeDecisionsFromResponse(dir, skillName, response);
+  const content = decisionsExists
+    ? fs.readFileSync(path.join(dir, "workspace", skillName, "context", "decisions.md"), "utf8")
+    : "";
   const fm = parseFrontmatter(content);
   return finalizeScenario("confirm-decisions-contradictory", {
     contradictoryFlagSet: fm.contradictory_inputs === "true",
@@ -676,8 +717,12 @@ Context directory: ${dir}/workspace/${skillName}/context
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>`;
-  runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
-  const content = fs.readFileSync(path.join(dir, "workspace", skillName, "context", "decisions.md"), "utf8");
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
+  const response = parseAgentJsonOutput(stdout);
+  const decisionsExists = materializeDecisionsFromResponse(dir, skillName, response);
+  const content = decisionsExists
+    ? fs.readFileSync(path.join(dir, "workspace", skillName, "context", "decisions.md"), "utf8")
+    : "";
   const fm = parseFrontmatter(content);
   return finalizeScenario("confirm-decisions-resolvable-conflict", {
     noContradictoryFlag: !Object.prototype.hasOwnProperty.call(fm, "contradictory_inputs"),
@@ -717,9 +762,10 @@ Skill output directory: ${dir}/${skillName}
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"generated" and "call_trace".`;
+Return JSON only with "status":"generated", "evaluations_markdown", and "call_trace".`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
+  materializeEvaluationsFromResponse(dir, skillName, response);
   const skillMdPath = path.join(dir, skillName, "SKILL.md");
   const evaluationsPath = path.join(dir, "workspace", skillName, "context", "evaluations.md");
   return finalizeScenario(
@@ -920,10 +966,18 @@ Skill output directory: ${dir}/${skillName}
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>`;
-  runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
-  const validation = fs.readFileSync(path.join(dir, "workspace", skillName, "context", "agent-validation-log.md"), "utf8");
-  const tests = fs.readFileSync(path.join(dir, "workspace", skillName, "context", "test-skill.md"), "utf8");
-  const companions = fs.readFileSync(path.join(dir, "workspace", skillName, "context", "companion-skills.md"), "utf8");
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
+  const response = parseAgentJsonOutput(stdout);
+  const validationExists = materializeValidationFromResponse(dir, skillName, response);
+  const validation = validationExists
+    ? fs.readFileSync(path.join(dir, "workspace", skillName, "context", "agent-validation-log.md"), "utf8")
+    : "";
+  const tests = validationExists
+    ? fs.readFileSync(path.join(dir, "workspace", skillName, "context", "test-skill.md"), "utf8")
+    : "";
+  const companions = validationExists
+    ? fs.readFileSync(path.join(dir, "workspace", skillName, "context", "companion-skills.md"), "utf8")
+    : "";
   return finalizeScenario("validate-skill-scope-guard", {
     validationStub: /## Validation Skipped/.test(validation),
     testStub: /## Testing Skipped/.test(tests),

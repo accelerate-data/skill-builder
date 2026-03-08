@@ -54,7 +54,11 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             name: "Confirm Decisions".to_string(),
             prompt_template: "confirm-decisions.md".to_string(),
             output_file: "context/decisions.md".to_string(),
-            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
+            // Step 2 returns decisions payload; backend materializes decisions.md.
+            allowed_tools: CONTRACT_NO_WRITE_TOOLS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             max_turns: 100,
         }),
         3 => Ok(StepConfig {
@@ -614,7 +618,7 @@ fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Valu
                     "research_plan_markdown": { "type": "string", "minLength": 1 },
                     "clarifications_json": { "type": "object" }
                 },
-                "additionalProperties": false
+                "additionalProperties": true
             }
         })),
         "detailed-research" => Some(serde_json::json!({
@@ -632,6 +636,38 @@ fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Valu
                     "refinement_count": { "type": "integer", "minimum": 0 },
                     "section_count": { "type": "integer", "minimum": 0 },
                     "clarifications_json": { "type": "object" }
+                },
+                "additionalProperties": true
+            }
+        })),
+        "confirm-decisions" => Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status", "decisions_markdown"],
+                "properties": {
+                    "status": { "type": "string", "const": "decisions_complete" },
+                    "decisions_markdown": { "type": "string", "minLength": 1 },
+                    "call_trace": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    }
+                },
+                "additionalProperties": false
+            }
+        })),
+        "generate-skill" => Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status", "evaluations_markdown"],
+                "properties": {
+                    "status": { "type": "string", "const": "generated" },
+                    "evaluations_markdown": { "type": "string", "minLength": 1 },
+                    "call_trace": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    }
                 },
                 "additionalProperties": false
             }
@@ -829,14 +865,6 @@ fn materialize_workflow_step_output_value(
         Ok(())
     };
 
-    let clarifications = payload
-        .get("clarifications_json")
-        .ok_or_else(|| "structured_output.clarifications_json is required".to_string())?;
-    validate_clarifications_json(clarifications)
-        .map_err(|e| format!("Invalid clarifications_json: {}", e))?;
-    let clarifications_pretty = serde_json::to_string_pretty(clarifications)
-        .map_err(|e| format!("Failed to serialize clarifications_json: {}", e))?;
-
     let context_dir = skill_root.join("context");
     std::fs::create_dir_all(&context_dir).map_err(|e| {
         format!(
@@ -851,6 +879,13 @@ fn materialize_workflow_step_output_value(
             require_const_status("research_complete")?;
             let _ = require_int("dimensions_selected")?;
             let _ = require_int("question_count")?;
+            let clarifications = payload
+                .get("clarifications_json")
+                .ok_or_else(|| "structured_output.clarifications_json is required".to_string())?;
+            validate_clarifications_json(clarifications)
+                .map_err(|e| format!("Invalid clarifications_json: {}", e))?;
+            let clarifications_pretty = serde_json::to_string_pretty(clarifications)
+                .map_err(|e| format!("Failed to serialize clarifications_json: {}", e))?;
 
             let research_plan_markdown = payload
                 .get("research_plan_markdown")
@@ -886,6 +921,13 @@ fn materialize_workflow_step_output_value(
             require_const_status("detailed_research_complete")?;
             let _ = require_int("refinement_count")?;
             let _ = require_int("section_count")?;
+            let clarifications = payload
+                .get("clarifications_json")
+                .ok_or_else(|| "structured_output.clarifications_json is required".to_string())?;
+            validate_clarifications_json(clarifications)
+                .map_err(|e| format!("Invalid clarifications_json: {}", e))?;
+            let clarifications_pretty = serde_json::to_string_pretty(clarifications)
+                .map_err(|e| format!("Failed to serialize clarifications_json: {}", e))?;
 
             let clarifications_path = context_dir.join("clarifications.json");
             std::fs::write(&clarifications_path, clarifications_pretty).map_err(|e| {
@@ -897,8 +939,48 @@ fn materialize_workflow_step_output_value(
             })?;
             Ok(())
         }
+        2 => {
+            require_const_status("decisions_complete")?;
+            let decisions_markdown = payload
+                .get("decisions_markdown")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "structured_output.decisions_markdown must be a string".to_string())?;
+            if decisions_markdown.trim().is_empty() {
+                return Err("structured_output.decisions_markdown must not be empty".to_string());
+            }
+            let decisions_path = context_dir.join("decisions.md");
+            std::fs::write(&decisions_path, decisions_markdown).map_err(|e| {
+                format!(
+                    "Failed to write decisions '{}': {}",
+                    decisions_path.display(),
+                    e
+                )
+            })?;
+            Ok(())
+        }
+        3 => {
+            require_const_status("generated")?;
+            let evaluations_markdown = payload
+                .get("evaluations_markdown")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    "structured_output.evaluations_markdown must be a string".to_string()
+                })?;
+            if evaluations_markdown.trim().is_empty() {
+                return Err("structured_output.evaluations_markdown must not be empty".to_string());
+            }
+            let evaluations_path = context_dir.join("evaluations.md");
+            std::fs::write(&evaluations_path, evaluations_markdown).map_err(|e| {
+                format!(
+                    "Failed to write evaluations '{}': {}",
+                    evaluations_path.display(),
+                    e
+                )
+            })?;
+            Ok(())
+        }
         _ => Err(format!(
-            "materialize_workflow_step_output supports only step 0 and 1; got {}",
+            "materialize_workflow_step_output supports only steps 0-3; got {}",
             step_id
         )),
     }
@@ -2755,6 +2837,8 @@ mod tests {
     fn test_workflow_output_format_is_set_for_json_contract_workflow_agents() {
         assert!(workflow_output_format_for_agent("research-orchestrator").is_some());
         assert!(workflow_output_format_for_agent("detailed-research").is_some());
+        assert!(workflow_output_format_for_agent("confirm-decisions").is_some());
+        assert!(workflow_output_format_for_agent("generate-skill").is_some());
     }
 
     #[test]
@@ -2777,9 +2861,8 @@ mod tests {
     }
 
     #[test]
-    fn test_workflow_output_format_is_unset_for_non_contract_workflow_agents() {
-        assert!(workflow_output_format_for_agent("confirm-decisions").is_none());
-        assert!(workflow_output_format_for_agent("generate-skill").is_none());
+    fn test_workflow_output_format_is_unset_for_unknown_agents() {
+        assert!(workflow_output_format_for_agent("unknown-agent").is_none());
     }
 
     #[test]
@@ -2946,6 +3029,30 @@ mod tests {
         super::materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap();
         assert!(skill_root.join("context/clarifications.json").exists());
         assert!(!skill_root.join("context/research-plan.md").exists());
+    }
+
+    #[test]
+    fn test_materialize_step2_writes_decisions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": "---\ndecision_count: 1\nconflicts_resolved: 0\nround: 1\n---\n### D1: Capability\n- **Original question:** Q\n- **Decision:** A\n- **Implication:** I\n- **Status:** resolved\n"
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
+        assert!(skill_root.join("context/decisions.md").exists());
+    }
+
+    #[test]
+    fn test_materialize_step3_writes_evaluations() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "generated",
+            "evaluations_markdown": "## Scenario 1\n- input\n- expected output\n"
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
+        assert!(skill_root.join("context/evaluations.md").exists());
     }
 
     #[test]

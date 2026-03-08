@@ -374,6 +374,7 @@ pub fn run() {
             commands::refine::start_refine_session,
             commands::refine::send_refine_message,
             commands::refine::close_refine_session,
+            commands::refine::materialize_refine_validation_output,
             commands::skill_test::prepare_skill_test,
             commands::skill_test::cleanup_skill_test,
             commands::imported_skills::parse_skill_file,

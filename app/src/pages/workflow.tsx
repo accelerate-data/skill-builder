@@ -572,9 +572,9 @@ export default function WorkflowPage() {
       setActiveAgent(null);
 
       const finish = async () => {
-        // Backend-owned writes: step 0/1 return canonical artifact payload in
-        // structured output; Rust validates and writes context files.
-        if ((step === 0 || step === 1) && completedAgentId) {
+        // Backend-owned context writes: workflow steps return canonical payloads
+        // and Rust materializes context files.
+        if ((step === 0 || step === 1 || step === 2 || step === 3) && completedAgentId) {
           const structuredOutput = extractStructuredResultPayload(completedAgentId);
           const hasStructuredObject = !!structuredOutput
             && typeof structuredOutput === "object"
@@ -595,14 +595,14 @@ export default function WorkflowPage() {
             if (step === 1) {
               updateStepStatus(step, "error");
               setRunning(false);
-              toast.error("Step 2 requires structured clarifications output from the agent", {
+              toast.error(`Step ${step + 1} requires structured output from the agent`, {
                 duration: Infinity,
               });
               return;
             }
-            // Backward-compat fallback for legacy/mocked step 0 transcripts that do
-            // not carry structured payloads.
-            console.warn("[workflow] Missing structured output payload for step 0; skipping backend materialization");
+            // Backward-compat fallback for legacy/mocked transcripts that do not
+            // carry structured payloads.
+            console.warn(`[workflow] Missing structured output payload for step ${step}; skipping backend materialization`);
           }
         }
 

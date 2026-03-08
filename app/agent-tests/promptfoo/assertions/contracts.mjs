@@ -101,6 +101,7 @@ export function assessInvocationContracts(expected, observed) {
     if (lower.includes("write:skill.md") || lower.includes("write-skill-md")) return "write-skill";
     if (lower.includes("write references") || lower.includes("write:references/")) return "write-references";
     if (lower.includes("write-evaluations") || lower.includes("evaluations.md")) return "write-evaluations";
+    if (lower.includes("return-evaluations-markdown")) return "write-evaluations";
     return lower
       .replace(/[/.]/g, "-")
       .replace(/\s+/g, "-")

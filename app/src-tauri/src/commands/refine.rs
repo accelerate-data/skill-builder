@@ -779,6 +779,88 @@ pub async fn close_refine_session(
     Ok(())
 }
 
+fn materialize_refine_validation_output_value(
+    skill_root: &Path,
+    structured_output: &serde_json::Value,
+) -> Result<(), String> {
+    let payload = structured_output
+        .as_object()
+        .ok_or_else(|| "structured_output must be a JSON object".to_string())?;
+
+    let status = payload
+        .get("status")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "structured_output.status must be a string".to_string())?;
+    if status != "validation_complete" {
+        return Err(format!(
+            "structured_output.status must be 'validation_complete' but got '{}'",
+            status
+        ));
+    }
+
+    let require_markdown = |field: &str| -> Result<&str, String> {
+        let value = payload
+            .get(field)
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| format!("structured_output.{} must be a string", field))?;
+        if value.trim().is_empty() {
+            return Err(format!("structured_output.{} must not be empty", field));
+        }
+        Ok(value)
+    };
+
+    let validation_log = require_markdown("validation_log_markdown")?;
+    let test_results = require_markdown("test_results_markdown")?;
+    let companion_skills = require_markdown("companion_skills_markdown")?;
+
+    let context_dir = skill_root.join("context");
+    std::fs::create_dir_all(&context_dir).map_err(|e| {
+        format!(
+            "Failed to create context directory '{}': {}",
+            context_dir.display(),
+            e
+        )
+    })?;
+
+    let validation_path = context_dir.join("agent-validation-log.md");
+    std::fs::write(&validation_path, validation_log).map_err(|e| {
+        format!(
+            "Failed to write validation log '{}': {}",
+            validation_path.display(),
+            e
+        )
+    })?;
+
+    let test_path = context_dir.join("test-skill.md");
+    std::fs::write(&test_path, test_results)
+        .map_err(|e| format!("Failed to write test results '{}': {}", test_path.display(), e))?;
+
+    let companion_path = context_dir.join("companion-skills.md");
+    std::fs::write(&companion_path, companion_skills).map_err(|e| {
+        format!(
+            "Failed to write companion skills '{}': {}",
+            companion_path.display(),
+            e
+        )
+    })?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn materialize_refine_validation_output(
+    skill_name: String,
+    workspace_path: String,
+    structured_output: serde_json::Value,
+) -> Result<(), String> {
+    log::info!(
+        "[materialize_refine_validation_output] skill={}",
+        skill_name
+    );
+    let skill_root = Path::new(&workspace_path).join(&skill_name);
+    materialize_refine_validation_output_value(&skill_root, &structured_output)
+}
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1192,6 +1274,37 @@ mod tests {
         assert!(parsed.get("conversationHistory").is_none());
         assert!(parsed.get("maxThinkingTokens").is_none());
         assert!(parsed.get("permissionMode").is_none());
+    }
+
+    #[test]
+    fn test_materialize_refine_validation_output_writes_context_files() {
+        let tmp = tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "validation_complete",
+            "validation_log_markdown": "## Validation\nok",
+            "test_results_markdown": "## Testing\nok",
+            "companion_skills_markdown": "---\ncompanions: []\n---\n## Companion\nok"
+        });
+
+        super::materialize_refine_validation_output_value(&skill_root, &payload).unwrap();
+        assert!(skill_root.join("context/agent-validation-log.md").exists());
+        assert!(skill_root.join("context/test-skill.md").exists());
+        assert!(skill_root.join("context/companion-skills.md").exists());
+    }
+
+    #[test]
+    fn test_materialize_refine_validation_output_rejects_missing_payload_fields() {
+        let tmp = tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "validation_complete",
+            "validation_log_markdown": "## Validation\nok"
+        });
+
+        let err =
+            super::materialize_refine_validation_output_value(&skill_root, &payload).unwrap_err();
+        assert!(err.contains("structured_output.test_results_markdown must be a string"));
     }
 
     // ===== build_refine_prompt tests =====

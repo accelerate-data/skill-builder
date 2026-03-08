@@ -94,6 +94,12 @@ Summarize: which files changed, what changed in each, how it addresses the reque
 
 **`/rewrite`** — Spawn `generate-skill` with `/rewrite` flag, then `validate-skill`. Pass: skill name, context directory, skill output directory, workspace directory. Mode: `bypassPermissions`.
 
+- If `validate-skill` returns structured validation payloads, include them in your final JSON response using:
+  - `status: "validation_complete"`
+  - `validation_log_markdown`
+  - `test_results_markdown`
+  - `companion_skills_markdown`
+
 **`/rewrite @file1 @file2 ...`** — Scoped rewrite (no generate-skill):
 
 1. Read `SKILL.md` and targeted files
@@ -103,6 +109,8 @@ Summarize: which files changed, what changed in each, how it addresses the reque
 5. Follow the vendored `plugins/skill-creator/SKILL.md` writing guidance
 
 **`/validate`** — Spawn `validate-skill`. Pass: skill name, context directory, skill output directory, workspace directory. Mode: `bypassPermissions`.
+
+- Return validation payload JSON from `validate-skill` unchanged so the backend can materialize context files.
 
 ## Error Handling
 
@@ -119,13 +127,13 @@ Summarize: which files changed, what changed in each, how it addresses the reque
 
 Modified 2 files:
 
-**SKILL.md**
+- `SKILL.md`
 
 - Updated the "Quick Reference" section to include the new SLA threshold (99.5% uptime)
 - Added a pointer to the new `references/sla-policies.md` file in the Reference Files section
 - Updated `modified` date to 2025-07-10
 
-**references/sla-policies.md** (new file)
+- `references/sla-policies.md` (new file)
 
 - Created reference file covering SLA tier definitions, escalation rules, and penalty calculations based on your request
 
