@@ -2900,6 +2900,18 @@ mod tests {
     }
 
     #[test]
+    fn test_scope_recommendation_true_with_reason_fields() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write as _;
+        write!(
+            f,
+            r#"{{"metadata":{{"scope_recommendation":true,"scope_reason":"Throwaway intent detected","scope_next_action":"Provide concrete domain"}},"sections":[],"notes":[{{"type":"blocked","title":"Scope Recommendation","body":"Narrow the scope"}}]}}"#
+        )
+        .unwrap();
+        assert!(parse_scope_recommendation(f.path()));
+    }
+
+    #[test]
     fn test_scope_recommendation_false() {
         let mut f = tempfile::NamedTempFile::new().unwrap();
         use std::io::Write as _;

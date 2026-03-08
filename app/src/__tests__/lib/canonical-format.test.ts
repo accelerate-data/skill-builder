@@ -217,6 +217,43 @@ describe("Canonical format: clarifications.json structure", () => {
       });
     });
   }
+
+  it("accepts canonical minimal scope recommendation output with reason fields", () => {
+    const minimal = {
+      version: "1",
+      metadata: {
+        title: "Scope Recommendation",
+        question_count: 0,
+        section_count: 0,
+        refinement_count: 0,
+        must_answer_count: 0,
+        priority_questions: [],
+        scope_recommendation: true,
+        scope_reason: "Explicit throwaway intent detected.",
+        scope_next_action: "Provide a concrete domain and rerun research.",
+      },
+      sections: [],
+      notes: [
+        {
+          type: "blocked",
+          title: "Scope Recommendation Active",
+          body: "Narrow the skill scope to a meaningful production topic.",
+        },
+      ],
+    };
+
+    expect(minimal.version).toBe("1");
+    expect(minimal.metadata.scope_recommendation).toBe(true);
+    expect(minimal.metadata.question_count).toBe(0);
+    expect(minimal.metadata.section_count).toBe(0);
+    expect(minimal.metadata.refinement_count).toBe(0);
+    expect(minimal.metadata.must_answer_count).toBe(0);
+    expect(Array.isArray(minimal.metadata.priority_questions)).toBe(true);
+    expect(Array.isArray(minimal.sections)).toBe(true);
+    expect(minimal.sections).toHaveLength(0);
+    expect(Array.isArray(minimal.notes)).toBe(true);
+    expect(minimal.notes[0]?.type).toBe("blocked");
+  });
 });
 
 // ---------------------------------------------------------------------------

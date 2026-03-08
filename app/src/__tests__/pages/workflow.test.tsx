@@ -87,7 +87,7 @@ vi.mock("@/components/workflow-step-complete", () => ({
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
-import { getWorkflowState, saveWorkflowState, writeFile, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar, endWorkflowSession, previewStepReset, runAnswerEvaluator } from "@/lib/tauri";
+import { getWorkflowState, saveWorkflowState, writeFile, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar, endWorkflowSession, previewStepReset, runAnswerEvaluator, getDisabledSteps } from "@/lib/tauri";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import type { ClarificationsFile } from "@/lib/clarifications-types";
@@ -313,6 +313,30 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       const step0 = stepStatuses.find((s) => s.step_id === 0);
       expect(step0?.status).toBe("completed");
     }
+  });
+
+  it("restores disabled downstream steps when scope recommendation is active", async () => {
+    vi.mocked(getDisabledSteps).mockResolvedValueOnce([1, 2, 3]);
+    vi.mocked(getWorkflowState).mockResolvedValueOnce({
+      run: {
+        skill_name: "test-skill",
+        current_step: 0,
+        status: "completed",
+        purpose: "domain",
+        created_at: "",
+        updated_at: "",
+      },
+      steps: [
+        { skill_name: "test-skill", step_id: 0, status: "completed", started_at: null, completed_at: null },
+      ],
+    });
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().hydrated).toBe(true);
+      expect(useWorkflowStore.getState().disabledSteps).toEqual([1, 2, 3]);
+    });
   });
 
   it("does not complete a step that is not in_progress", async () => {
