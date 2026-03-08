@@ -2059,10 +2059,15 @@ mod tests {
     }
 
     #[test]
-    fn test_workflow_output_format_for_in_scope_agents() {
+    fn test_workflow_output_format_is_set_for_json_contract_workflow_agents() {
         assert!(workflow_output_format_for_agent("research-orchestrator").is_some());
         assert!(workflow_output_format_for_agent("detailed-research").is_some());
+    }
+
+    #[test]
+    fn test_workflow_output_format_is_unset_for_non_contract_workflow_agents() {
         assert!(workflow_output_format_for_agent("confirm-decisions").is_none());
+        assert!(workflow_output_format_for_agent("generate-skill").is_none());
     }
 
     #[test]

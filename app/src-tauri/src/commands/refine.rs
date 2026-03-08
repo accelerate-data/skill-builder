@@ -1155,6 +1155,12 @@ mod tests {
     }
 
     #[test]
+    fn test_refine_config_output_format_is_intentionally_unset_for_chat_flow() {
+        let (config, _) = base_refine_config("test");
+        assert!(config.output_format.is_none());
+    }
+
+    #[test]
     fn test_refine_config_serialization_matches_sidecar_schema() {
         // End-to-end: build config, serialize to JSON, verify the sidecar sees correct fields
         let (config, _) = base_refine_config("full prompt here");
