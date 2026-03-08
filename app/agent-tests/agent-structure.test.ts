@@ -170,3 +170,42 @@ describe("read directive compliance", () => {
     }
   });
 });
+
+describe("VU-448 preflight scope guard prompts", () => {
+  it("research orchestrator requires preflight before fan-out", () => {
+    const content = fs.readFileSync(
+      path.join(AGENTS_DIR, "research-orchestrator.md"),
+      "utf8"
+    );
+    expect(content).toMatch(/Preflight scope guard requirements:/);
+    expect(content).toMatch(/before any dimension scoring or sub-agent fan-out/i);
+    expect(content).toMatch(/do NOT spawn any dimension research sub-agents/i);
+  });
+
+  it("research skill codifies throwaway phrases and fallback bypass", () => {
+    const content = fs.readFileSync(
+      path.join(REPO_ROOT, "agent-sources/workspace/skills/research/SKILL.md"),
+      "utf8"
+    );
+    expect(content).toMatch(/## Step 2 — Preflight Scope Guard/);
+    expect(content).toMatch(/`testing`/);
+    expect(content).toMatch(/`throwaway`/);
+    expect(content).toMatch(/`ui test`/);
+    expect(content).toMatch(/`just testing`/);
+    expect(content).toMatch(/`nothing really`/);
+    expect(content).toMatch(/Do not apply fallback dimension selection when Step 2 preflight guard matched/);
+  });
+
+  it("scoring rubric enforces preflight precedence and early return contract", () => {
+    const content = fs.readFileSync(
+      path.join(
+        REPO_ROOT,
+        "agent-sources/workspace/skills/research/references/scoring-rubric.md"
+      ),
+      "utf8"
+    );
+    expect(content).toMatch(/Throwaway\/Test Intent Preflight \(runs before relevance scoring\)/);
+    expect(content).toMatch(/Stop immediately \(no dimension scoring, no fallback dimension selection, no fan-out\)/);
+    expect(content).toMatch(/Set `metadata\.scope_recommendation: true`/);
+  });
+});

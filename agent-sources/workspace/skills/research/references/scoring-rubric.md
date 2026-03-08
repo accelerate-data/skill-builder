@@ -26,6 +26,38 @@ Score only on the **delta** — customer-specific and domain-specific knowledge 
 
 Before scoring, decide whether the domain is legitimate for the given purpose.
 
+### Throwaway/Test Intent Preflight (runs before relevance scoring)
+
+Apply a deterministic preflight check using `skill_name` plus full user context.
+
+Trigger the guard when explicit test intent appears, including phrases like:
+
+- `testing`
+- `throwaway`
+- `ui test`
+- `just testing`
+- `nothing really`
+- `it's a test`
+
+and close variants indicating non-production or throwaway goals.
+
+Also trigger when explicit test intent is paired with clearly placeholder or insufficient domain context.
+
+False-positive protection:
+
+- Do not trigger solely because domain text is short.
+- If short text still contains concrete purpose-aligned domain content, continue to normal relevance/scoring.
+- If uncertain, continue to normal relevance/scoring.
+
+When triggered:
+
+- Set `topic_relevance: not_relevant`
+- Set `dimensions_evaluated: 0`
+- Set `dimensions_selected: 0`
+- Set `metadata.scope_recommendation: true`
+- Add concise reason text for UI display in metadata and/or notes
+- Stop immediately (no dimension scoring, no fallback dimension selection, no fan-out)
+
 **Not relevant** (e.g., "pizza-jokes" for a data engineering skill):
 
 - `topic_relevance: not_relevant`, `dimensions_evaluated: 0`, `dimensions_selected: 0`
@@ -49,6 +81,8 @@ For each of the 5–6 candidate dimensions from the type-scoped set:
 ### 2. Select top dimensions
 
 Pick the top 3–5 scoring dimensions. Prefer quality of coverage over exact count.
+
+If all scores are <=2, select one fallback highest-scoring dimension (minimum score 2) only when the throwaway/test preflight did not trigger.
 
 ### 3. Return the scored dimension table
 

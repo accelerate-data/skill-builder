@@ -18,6 +18,8 @@ export interface ClarificationsMetadata {
   priority_questions: string[];
   duplicates_removed?: number;
   scope_recommendation?: boolean;
+  scope_reason?: string;
+  scope_next_action?: string;
 }
 
 export interface Section {
@@ -131,6 +133,8 @@ export function parseClarifications(content: string | null): ClarificationsFile 
         domain?: string;
         skill_name?: string;
         scope_recommendation?: boolean;
+        scope_reason?: string;
+        scope_next_action?: string;
       };
       answer_evaluator_notes?: Note[];
     };
