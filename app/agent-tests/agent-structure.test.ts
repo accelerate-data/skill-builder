@@ -207,5 +207,7 @@ describe("VU-448 preflight scope guard prompts", () => {
     expect(content).toMatch(/Throwaway\/Test Intent Preflight \(runs before relevance scoring\)/);
     expect(content).toMatch(/Stop immediately \(no dimension scoring, no fallback dimension selection, no fan-out\)/);
     expect(content).toMatch(/Set `metadata\.scope_recommendation: true`/);
+    expect(content).toMatch(/Do not trigger solely because domain text is short/);
+    expect(content).toMatch(/If uncertain, continue to normal relevance\/scoring/);
   });
 });
