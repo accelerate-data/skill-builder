@@ -24,9 +24,6 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 - Coordinator provides: **skill name**, **purpose**, **context directory** (has `decisions.md`), **skill output directory**, **workspace directory** (has `user-context.md`)
 - Read `{workspace_directory}/user-context.md` (per User Context protocol) to tailor tone, examples, and focus
 - Read `decisions.md` — primary input (in rewrite mode, also read existing skill files)
-- Read the vendored Anthropic writing methodology:
-  - `plugins/skill-creator/SKILL.md` (writing guide + improvement philosophy)
-  - `plugins/skill-creator/agents/grader.md` (quality bar for objective checks)
 
 </context>
 
@@ -68,7 +65,8 @@ The user's answers contain unresolvable contradictions. See `decisions.md` for d
 
 ## Phase 1: Plan the Skill Structure
 
-Read `decisions.md` and design a concise file layout that follows the vendored writing guide.
+Read `decisions.md` and plan a concise skill structure.
+The vendored `skill-creator` guidance should trigger naturally from this planning step; use it when triggered, but do not require pre-loading it into context.
 
 - Each reference file covers a coherent topic area, not one file per decision
 - Prefer 3-8 reference files with descriptive kebab-case names (e.g., `entity-model.md`, `pipeline-metrics.md`)
