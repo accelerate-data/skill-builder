@@ -196,7 +196,7 @@ describe("SettingsPage", () => {
     expect(apiKeyInput).toHaveValue("sk-ant-existing-key");
   });
 
-  it("shows 'Not initialized' when no workspace path", async () => {
+  it("shows 'Not configured' when no skills folder path", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
@@ -205,7 +205,7 @@ describe("SettingsPage", () => {
     });
 
     await switchToSection(/Advanced/i);
-    expect(screen.getByText("Not initialized")).toBeInTheDocument();
+    expect(screen.getByText("Not configured")).toBeInTheDocument();
   });
 
   it("calls invoke with test_api_key when Test button is clicked", async () => {
@@ -371,7 +371,7 @@ describe("SettingsPage", () => {
     expect(screen.getByText("/home/user/my-skills")).toBeInTheDocument();
   });
 
-  it("renders Clear button in Storage card for Workspace Folder", async () => {
+  it("does not render workspace folder controls in Storage card", async () => {
     setupDefaultMocks(populatedSettings);
     render(<SettingsPage />);
 
@@ -382,11 +382,11 @@ describe("SettingsPage", () => {
     await switchToSection(/Advanced/i);
 
     expect(screen.getByText("Storage")).toBeInTheDocument();
-    expect(screen.getByText("Workspace Folder")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Clear/i })).toBeInTheDocument();
+    expect(screen.queryByText("Workspace Folder")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Clear/i })).not.toBeInTheDocument();
   });
 
-  it("disables Clear button when workspace path is not set", async () => {
+  it("does not render Clear button when workspace path is not set", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
@@ -396,8 +396,7 @@ describe("SettingsPage", () => {
 
     await switchToSection(/Advanced/i);
 
-    const clearButton = screen.getByRole("button", { name: /Clear/i });
-    expect(clearButton).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Clear/i })).not.toBeInTheDocument();
   });
 
   it("includes skills_path in auto-save payload when browsing", async () => {
@@ -573,7 +572,7 @@ describe("SettingsPage", () => {
     });
   });
 
-  it("renders log file path in Logging card", async () => {
+  it("renders logging helper text in Logging card", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
@@ -584,16 +583,13 @@ describe("SettingsPage", () => {
     await switchToSection(/Advanced/i);
 
     expect(screen.getByText("Logging")).toBeInTheDocument();
-    expect(screen.getByText("/tmp/com.skillbuilder.app/skill-builder.log")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Chat transcripts \(JSONL\) are always captured regardless of level\./i)
+    ).toBeInTheDocument();
   });
 
-  it("shows 'Not available' when log file path is not set", async () => {
-    // Override invoke so get_log_file_path rejects
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
-      if (cmd === "get_log_file_path") return Promise.reject(new Error("not available"));
-      return Promise.resolve(undefined);
-    });
+  it("does not show a log file path fallback message", async () => {
+    setupDefaultMocks();
     render(<SettingsPage />);
 
     await waitFor(() => {
@@ -602,7 +598,7 @@ describe("SettingsPage", () => {
 
     await switchToSection(/Advanced/i);
 
-    expect(screen.getByText("Not available")).toBeInTheDocument();
+    expect(screen.queryByText("Not available")).not.toBeInTheDocument();
   });
 
   it("renders Appearance card with theme buttons", async () => {
