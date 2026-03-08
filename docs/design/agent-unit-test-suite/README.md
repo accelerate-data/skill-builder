@@ -25,6 +25,7 @@ This keeps fast feedback cheap and continuous while preserving real behavior cov
 |---|---|
 | `app/agent-tests/promptfoo/promptfooconfig.yaml` | Scenario catalog and assertions |
 | `app/agent-tests/promptfoo/provider.mjs` | Custom Promptfoo provider; fixture setup + Claude CLI invocation + output validation |
+| `app/agent-tests/promptfoo/assertions/contracts.mjs` | Reusable contract helpers: schema checks, frontmatter parsing, invocation contract checks |
 | `app/package.json` (`test:agents:smoke`) | Canonical smoke entrypoint and artifact output paths |
 | `app/test-results/promptfoo-results.json` | Machine-readable eval result |
 | `app/test-results/promptfoo-results.html` | Human-readable eval report |
@@ -41,9 +42,28 @@ This keeps fast feedback cheap and continuous while preserving real behavior cov
 ### Existing scenarios
 
 - `research-orchestrator`
+- `research-orchestrator-scope-guard`
 - `answer-evaluator`
 - `confirm-decisions`
+- `confirm-decisions-scope-guard`
+- `confirm-decisions-contradictory`
+- `confirm-decisions-resolvable-conflict`
+- `generate-skill`
+- `generate-skill-scope-guard`
+- `generate-skill-contradictory`
+- `generate-skill-revised`
 - `refine-skill`
+- `refine-skill-scope-guard`
+- `validate-skill-scope-guard`
+- `validate-skill-missing-skill-md`
+- `skill-test-contract`
+
+Scenario outputs should use normalized contract payloads from the provider:
+
+- `ok` (boolean)
+- `contracts` (named checks)
+- `invocations` (`expected`, `observed`, `unexpectedCalls`, `missingCalls`)
+- `failures` (array of failed contract keys)
 
 ## Running Tests
 
@@ -75,7 +95,16 @@ cd app
 promptfoo eval -c agent-tests/promptfoo/promptfooconfig.yaml --filter-pattern "^research-orchestrator$"
 ```
 
-Swap `research-orchestrator` with `answer-evaluator`, `confirm-decisions`, or `refine-skill`.
+Swap `research-orchestrator` with any scenario id from the list above.
+
+### Run Promptfoo smoke with forced plugin mode
+
+```bash
+cd app
+FORCE_PLUGIN_TESTS=1 npm run test:agents:smoke
+```
+
+Use this when API credentials are intentionally bypassed for local contract runs.
 
 ## Agent Autonomy Policy (for coding agents)
 
