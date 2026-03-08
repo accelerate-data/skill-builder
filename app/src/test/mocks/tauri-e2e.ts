@@ -183,19 +183,50 @@ const mockResponses: Record<string, unknown> = {
   verify_step_output: true,
 };
 
+function resolveReadFileMock(
+  value: unknown,
+  args?: Record<string, unknown>,
+): unknown {
+  // Back-compat: direct string payload.
+  if (typeof value === "string") return value;
+
+  // Path-keyed map payload:
+  // {
+  //   "/abs/path/to/file": "content",
+  //   "*": "fallback content"
+  // }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const pathArg = typeof args?.filePath === "string"
+      ? args.filePath
+      : (typeof args?.path === "string" ? args.path : null);
+    const map = value as Record<string, unknown>;
+    if (pathArg && pathArg in map) return map[pathArg];
+    if ("*" in map) return map["*"];
+  }
+
+  return value;
+}
+
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   // Allow tests to override via window
   const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as
     | Record<string, unknown>
     | undefined;
   if (overrides && cmd in overrides) {
-    const val = overrides[cmd];
+    let val = overrides[cmd];
+    if (cmd === "read_file") {
+      val = resolveReadFileMock(val, args);
+    }
     if (val instanceof Error) throw val;
     return val as T;
   }
 
   if (cmd in mockResponses) {
-    return mockResponses[cmd] as T;
+    let val = mockResponses[cmd];
+    if (cmd === "read_file") {
+      val = resolveReadFileMock(val, args);
+    }
+    return val as T;
   }
 
   console.warn(`[tauri-e2e-mock] Unhandled invoke: ${cmd}`, args);

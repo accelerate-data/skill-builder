@@ -355,8 +355,11 @@ describe("Canonical format: answer-evaluation.json structure", () => {
       expect(typeof data.reasoning).toBe("string");
     });
 
-    it("counts add up: answered + empty + vague == total", () => {
-      expect(data.answered_count + data.empty_count + data.vague_count).toBe(
+    it("counts add up: answered + empty + vague + contradictory == total", () => {
+      const contradictoryCount = typeof data.contradictory_count === "number"
+        ? data.contradictory_count
+        : 0;
+      expect(data.answered_count + data.empty_count + data.vague_count + contradictoryCount).toBe(
         data.total_count,
       );
     });
@@ -372,7 +375,7 @@ describe("Canonical format: answer-evaluation.json structure", () => {
     it("per_question entries have question_id and verdict", () => {
       for (const entry of data.per_question) {
         expect(entry.question_id).toMatch(/^(Q\d+|R\d+\.\d+[a-z]?)$/);
-        expect(["clear", "needs_refinement", "not_answered", "vague"]).toContain(entry.verdict);
+        expect(["clear", "needs_refinement", "not_answered", "vague", "contradictory"]).toContain(entry.verdict);
       }
     });
 
@@ -389,9 +392,15 @@ describe("Canonical format: answer-evaluation.json structure", () => {
       const vague = data.per_question.filter(
         (e: { verdict: string }) => e.verdict === "vague",
       ).length;
+      const contradictory = data.per_question.filter(
+        (e: { verdict: string }) => e.verdict === "contradictory",
+      ).length;
       expect(clear + needsRefinement).toBe(data.answered_count);
       expect(notAnswered).toBe(data.empty_count);
       expect(vague).toBe(data.vague_count);
+      if (typeof data.contradictory_count === "number") {
+        expect(contradictory).toBe(data.contradictory_count);
+      }
     });
   }
 });

@@ -918,6 +918,74 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     expect(parsed.notes.some((n: { title: string }) => n.title === "Vague answer: Q3")).toBe(true);
   });
 
+  it("writes notes for not_answered and needs_refinement verdicts", async () => {
+    const jsonData = makeClarificationsJson();
+    const evaluation = {
+      verdict: "mixed",
+      answered_count: 1,
+      empty_count: 1,
+      vague_count: 0,
+      contradictory_count: 0,
+      total_count: 2,
+      reasoning: "One unanswered and one needs refinement.",
+      per_question: [
+        { question_id: "Q1", verdict: "not_answered", reason: "No answer provided." },
+        { question_id: "Q2", verdict: "needs_refinement", reason: "Clarify thresholds and conditions." },
+      ],
+    };
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      if (path.includes("research-plan.md")) {
+        return Promise.resolve("# Research Plan\nTest content");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-4");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    expect(typeof props?.onClarificationsContinue).toBe("function");
+
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    act(() => {
+      useAgentStore.getState().startRun("gate-agent-4", "haiku");
+      useAgentStore.getState().completeRun("gate-agent-4", true);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+    });
+
+    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
+      ([path]) => path === "/test/skills/test-skill/context/clarifications.json"
+    );
+    expect(writeCalls.length).toBeGreaterThan(0);
+    const serialized = writeCalls[writeCalls.length - 1][1];
+    const parsed = JSON.parse(serialized);
+    expect(parsed.notes.some((n: { title: string }) => n.title === "Not answered: Q1")).toBe(true);
+    expect(parsed.notes.some((n: { title: string }) => n.title === "Needs refinement: Q2")).toBe(true);
+  });
+
   it("reloads clarifications from disk when clicking Let Me Answer", async () => {
     const baseData = makeClarificationsJson();
     const reloadedData = makeClarificationsJson({

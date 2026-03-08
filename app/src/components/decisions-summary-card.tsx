@@ -364,12 +364,35 @@ function AutoResizeTextarea({
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
+  const syncHeight = () => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
+  };
+
+  useEffect(() => {
+    syncHeight();
   }, [value]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    // Recalculate height when container width changes (pane resize/sidebar toggle).
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => {
+        syncHeight();
+      });
+      observer.observe(el);
+      return () => observer.disconnect();
+    }
+
+    // Fallback for environments without ResizeObserver support.
+    const onResize = () => syncHeight();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   return (
     <textarea

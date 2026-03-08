@@ -1,9 +1,10 @@
 /**
  * E2E tests for the post-review transition gate (answer evaluator).
  *
- * After completing step 2 (Review), the workflow dispatches a Haiku
- * evaluator agent. Based on the verdict, a dialog offers to skip
- * detailed research or auto-fill missing answers.
+ * In the current 4-step workflow, step completion uses a clarifications
+ * "Continue" action that can trigger the answer-evaluator gate:
+ * - Gate 1: after Research (step 0), before Detailed Research (step 1)
+ * - Gate 2: after Detailed Research (step 1), before Confirm Decisions (step 2)
  */
 import { test, expect } from "@playwright/test";
 import {
@@ -14,27 +15,103 @@ import {
   WORKFLOW_OVERRIDES,
   navigateToWorkflowUpdateMode,
 } from "../helpers/workflow-helpers";
-import { readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const RESEARCH_PLAN_CONTENT = `# Research Plan
 
-const REVIEW_CONTENT = readFileSync(
-  resolve(__dirname, "../fixtures/agent-responses/review-content.md"),
-  "utf-8",
-);
+## Domain
+- Scope this skill around domain workflows.
+`;
+
+const WORKSPACE_EVAL_PATH = "/tmp/test-workspace/test-skill/answer-evaluation.json";
+const SKILLS_CLARIFICATIONS_PATH = "/tmp/test-skills/test-skill/context/clarifications.json";
+const SKILLS_RESEARCH_PLAN_PATH = "/tmp/test-skills/test-skill/context/research-plan.md";
+
+const CLARIFICATIONS_BASE = JSON.stringify({
+  version: "1",
+  metadata: {
+    title: "Clarifications",
+    question_count: 3,
+    section_count: 1,
+    refinement_count: 0,
+    must_answer_count: 0,
+    priority_questions: [],
+  },
+  sections: [
+    {
+      id: "S1",
+      title: "General",
+      questions: [
+        {
+          id: "Q1",
+          title: "Question 1",
+          must_answer: false,
+          text: "What matters most?",
+          choices: [],
+          recommendation: null,
+          answer_choice: "custom",
+          answer_text: "Consistency and observability.",
+          refinements: [],
+        },
+        {
+          id: "Q2",
+          title: "Question 2",
+          must_answer: false,
+          text: "How should this run?",
+          choices: [],
+          recommendation: null,
+          answer_choice: "custom",
+          answer_text: "Use default.",
+          refinements: [],
+        },
+        {
+          id: "Q3",
+          title: "Question 3",
+          must_answer: false,
+          text: "What are the rollout constraints?",
+          choices: [],
+          recommendation: null,
+          answer_choice: "custom",
+          answer_text: "Avoid disruptive UX changes.",
+          refinements: [],
+        },
+      ],
+    },
+  ],
+  notes: [],
+});
 
 // --- Override presets ---
 
-/** Step 0 completed, on human review step 1. run_answer_evaluator returns a gate agent ID. */
-const GATE_OVERRIDES: Record<string, unknown> = {
+/** Gate 1 context: step 0 completed, continue from Research summary. */
+const GATE1_OVERRIDES: Record<string, unknown> = {
+  ...WORKFLOW_OVERRIDES,
+  get_workflow_state: {
+    run: { current_step: 0, purpose: "domain" },
+    steps: [{ step_id: 0, status: "completed" }],
+  },
+  read_file: {
+    [SKILLS_CLARIFICATIONS_PATH]: CLARIFICATIONS_BASE,
+    [SKILLS_RESEARCH_PLAN_PATH]: RESEARCH_PLAN_CONTENT,
+    "*": RESEARCH_PLAN_CONTENT,
+  },
+  run_answer_evaluator: "gate-agent-001",
+  autofill_clarifications: 3,
+};
+
+/** Gate 2 context: step 1 completed, continue from Detailed Research clarifications. */
+const GATE2_OVERRIDES: Record<string, unknown> = {
   ...WORKFLOW_OVERRIDES,
   get_workflow_state: {
     run: { current_step: 1, purpose: "domain" },
-    steps: [{ step_id: 0, status: "completed" }],
+    steps: [
+      { step_id: 0, status: "completed" },
+      { step_id: 1, status: "completed" },
+    ],
   },
-  read_file: REVIEW_CONTENT,
+  read_file: {
+    [SKILLS_CLARIFICATIONS_PATH]: CLARIFICATIONS_BASE,
+    "*": RESEARCH_PLAN_CONTENT,
+  },
   run_answer_evaluator: "gate-agent-001",
   autofill_clarifications: 3,
 };
@@ -104,21 +181,42 @@ async function setReadFileToEvaluation(
     }),
   };
 
-  await page.evaluate(
-    ({ json }) => {
-      const overrides = (window as unknown as Record<string, unknown>)
-        .__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
-      overrides.read_file = json;
-    },
-    { json: evaluations[verdict] },
-  );
+  await page.evaluate(({ evalPath, json }) => {
+    const overrides = (window as unknown as Record<string, unknown>)
+      .__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
+    const current = overrides.read_file;
+    const next =
+      current && typeof current === "object" && !Array.isArray(current)
+        ? { ...(current as Record<string, unknown>) }
+        : { "*": String(current ?? "") };
+    next[evalPath] = json;
+    overrides.read_file = next;
+  }, { evalPath: WORKSPACE_EVAL_PATH, json: evaluations[verdict] });
+}
+
+async function setClarificationsReadback(
+  page: import("@playwright/test").Page,
+  clarificationsJson: string,
+) {
+  await page.evaluate(({ clarificationsPath, json }) => {
+    const overrides = (window as unknown as Record<string, unknown>)
+      .__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
+    const current = overrides.read_file;
+    const next =
+      current && typeof current === "object" && !Array.isArray(current)
+        ? { ...(current as Record<string, unknown>) }
+        : { "*": String(current ?? "") };
+    next[clarificationsPath] = json;
+    overrides.read_file = next;
+  }, { clarificationsPath: SKILLS_CLARIFICATIONS_PATH, json: clarificationsJson });
 }
 
 /** Click Complete Step on the review page, triggering the gate evaluation. */
 async function clickCompleteStep(page: import("@playwright/test").Page) {
-  const completeBtn = page.getByRole("button", { name: "Complete Step" });
-  await expect(completeBtn).toBeVisible({ timeout: 5_000 });
-  await completeBtn.click();
+  const continueBtn = page.getByRole("button", { name: "Continue" }).first();
+  await expect(continueBtn).toBeVisible({ timeout: 5_000 });
+  await expect(continueBtn).toBeEnabled({ timeout: 5_000 });
+  await continueBtn.click();
   await page.waitForTimeout(200);
 }
 
@@ -143,9 +241,9 @@ async function simulateGateCompletion(
 }
 
 test.describe("Transition Gate", { tag: "@workflow" }, () => {
-  test("sufficient verdict shows skip dialog, skip advances to step 5", async ({ page }) => {
-    await navigateToWorkflowUpdateMode(page, GATE_OVERRIDES);
-    await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
+  test("gate 1 sufficient: skip dialog allows jumping to decisions", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
 
     await clickCompleteStep(page);
     await simulateGateCompletion(page, "sufficient");
@@ -161,13 +259,13 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
     await page.getByRole("button", { name: "Skip to Decisions" }).click();
     await page.waitForTimeout(500);
 
-    // Should advance to step 5 (Confirm Decisions)
-    await expect(page.getByText("Step 5: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
+    // Should advance to step 3 (Confirm Decisions)
+    await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("sufficient verdict research button advances to step 3", async ({ page }) => {
-    await navigateToWorkflowUpdateMode(page, GATE_OVERRIDES);
-    await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
+  test("gate 1 sufficient: research anyway advances to detailed research", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
 
     await clickCompleteStep(page);
     await simulateGateCompletion(page, "sufficient");
@@ -180,95 +278,128 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
     await page.getByRole("button", { name: "Run Research Anyway" }).click();
     await page.waitForTimeout(500);
 
-    // Should advance to step 3 (Detailed Research) normally
-    await expect(page.getByText("Step 3: Detailed Research")).toBeVisible({ timeout: 5_000 });
+    // Should advance to step 2 (Detailed Research) normally
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("mixed verdict shows auto-fill dialog, auto-fill advances to step 3", async ({ page }) => {
-    await navigateToWorkflowUpdateMode(page, GATE_OVERRIDES);
-    await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
+  test("gate 1 mixed: quality review dialog and continue anyway advances", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
 
     await clickCompleteStep(page);
     await simulateGateCompletion(page, "mixed");
 
-    // Dialog should appear with mixed verdict
+    // Gate 1 mixed with missing/vague answers uses generic quality-review dialog
     await expect(
-      page.getByRole("heading", { name: "Auto-fill Missing Answers?" }),
+      page.getByRole("heading", { name: "Review Answer Quality" }),
     ).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByRole("button", { name: "Auto-fill & Research" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continue Anyway" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Let Me Answer" })).toBeVisible();
 
-    // Click Auto-fill & Research
-    await page.getByRole("button", { name: "Auto-fill & Research" }).click();
+    // Click Continue Anyway
+    await page.getByRole("button", { name: "Continue Anyway" }).click();
     await page.waitForTimeout(500);
 
-    // Should advance to step 3 (Detailed Research)
-    await expect(page.getByText("Step 3: Detailed Research")).toBeVisible({ timeout: 5_000 });
+    // Gate 1 continue advances to Detailed Research
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("mixed verdict let-me-answer button stays on review step", async ({ page }) => {
-    await navigateToWorkflowUpdateMode(page, GATE_OVERRIDES);
-    await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
+  test("gate 2 insufficient: continue anyway advances to decisions", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, GATE2_OVERRIDES);
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+
+    await clickCompleteStep(page);
+    await simulateGateCompletion(page, "insufficient");
+
+    await expect(
+      page.getByRole("heading", { name: "Refinements Need Attention" }),
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("button", { name: "Continue Anyway" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Let Me Answer" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Continue Anyway" }).click();
+    await page.waitForTimeout(500);
+
+    await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("gate 2 mixed: let-me-answer stays and refreshes feedback notes", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, GATE2_OVERRIDES);
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
 
     await clickCompleteStep(page);
     await simulateGateCompletion(page, "mixed");
 
     await expect(
-      page.getByRole("heading", { name: "Auto-fill Missing Answers?" }),
+      page.getByRole("heading", { name: "Some Refinements Unanswered" }),
+    ).toBeVisible({ timeout: 5_000 });
+
+    const withFeedback = JSON.stringify({
+      ...JSON.parse(CLARIFICATIONS_BASE),
+      notes: [
+        {
+          type: "answer_feedback",
+          title: "Not answered: Q7",
+          body: "This question is still unanswered.",
+        },
+      ],
+    });
+    await setClarificationsReadback(page, withFeedback);
+
+    // Click Let Me Answer
+    await page.getByRole("button", { name: "Let Me Answer" }).click();
+    await expect(page.getByText("Refreshing evaluator feedback...")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/feedback (loaded|refreshed)/i)).toBeVisible({ timeout: 5_000 });
+
+    // Should stay on step 2 (Detailed Research) — dialog closes, user answers manually
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Not answered: Q7")).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("gate 1 insufficient: quality review dialog and let-me-answer stays", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
+
+    await clickCompleteStep(page);
+    await simulateGateCompletion(page, "insufficient");
+
+    // Gate 1 insufficient uses generic quality-review dialog
+    await expect(
+      page.getByRole("heading", { name: "Review Answer Quality" }),
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("button", { name: "Continue Anyway" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Let Me Answer" })).toBeVisible();
+
+    // Click Let Me Answer
+    await page.getByRole("button", { name: "Let Me Answer" }).click();
+    await page.waitForTimeout(500);
+
+    // Should remain on step 1
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("gate 2 insufficient: let-me-answer stays on detailed research", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, GATE2_OVERRIDES);
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+
+    await clickCompleteStep(page);
+    await simulateGateCompletion(page, "insufficient");
+
+    await expect(
+      page.getByRole("heading", { name: "Refinements Need Attention" }),
     ).toBeVisible({ timeout: 5_000 });
 
     // Click Let Me Answer
     await page.getByRole("button", { name: "Let Me Answer" }).click();
     await page.waitForTimeout(500);
 
-    // Should stay on step 2 (Review) — dialog closes, user answers manually
-    await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
+    // Should stay on step 2 — dialog closes, user answers manually
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("insufficient verdict shows autofill dialog, auto-fill advances to step 5", async ({ page }) => {
-    await navigateToWorkflowUpdateMode(page, GATE_OVERRIDES);
-    await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
-
-    await clickCompleteStep(page);
-    await simulateGateCompletion(page, "insufficient");
-
-    // Dialog should appear with insufficient verdict
-    await expect(
-      page.getByRole("heading", { name: "Use Recommended Answers?" }),
-    ).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByRole("button", { name: "Auto-fill & Skip" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Let Me Answer" })).toBeVisible();
-
-    // Click Auto-fill & Skip
-    await page.getByRole("button", { name: "Auto-fill & Skip" }).click();
-    await page.waitForTimeout(500);
-
-    // Should advance to step 5 (Confirm Decisions)
-    await expect(page.getByText("Step 5: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
-  });
-
-  test("insufficient verdict let-me-answer button stays on review step", async ({ page }) => {
-    await navigateToWorkflowUpdateMode(page, GATE_OVERRIDES);
-    await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
-
-    await clickCompleteStep(page);
-    await simulateGateCompletion(page, "insufficient");
-
-    await expect(
-      page.getByRole("heading", { name: "Use Recommended Answers?" }),
-    ).toBeVisible({ timeout: 5_000 });
-
-    // Click Let Me Answer
-    await page.getByRole("button", { name: "Let Me Answer" }).click();
-    await page.waitForTimeout(500);
-
-    // Should stay on step 2 (Review) — dialog closes, user answers manually
-    await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
-  });
-
-  test("gate agent error fails open and advances to step 3", async ({ page }) => {
-    await navigateToWorkflowUpdateMode(page, GATE_OVERRIDES);
-    await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
+  test("gate agent error fails open and advances normally", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
 
     await clickCompleteStep(page);
 
@@ -287,9 +418,39 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
     await page.waitForTimeout(500);
 
     // Should fail-open: no dialog, advance to step 3
-    await expect(
-      page.getByRole("heading", { name: "Skip Detailed Research?" }),
-    ).not.toBeVisible();
-    await expect(page.getByText("Step 3: Detailed Research")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("heading", { name: "Skip Detailed Research?" })).not.toBeVisible();
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("stress: repeated gate 2 mixed cycles with Let Me Answer never advance", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, GATE2_OVERRIDES);
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+
+    for (let i = 0; i < 3; i += 1) {
+      await clickCompleteStep(page);
+      await simulateGateCompletion(page, "mixed");
+      await expect(
+        page.getByRole("heading", { name: "Some Refinements Unanswered" }),
+      ).toBeVisible({ timeout: 5_000 });
+
+      await setClarificationsReadback(
+        page,
+        JSON.stringify({
+          ...JSON.parse(CLARIFICATIONS_BASE),
+          notes: [
+            {
+              type: "answer_feedback",
+              title: `Needs refinement: Q${i + 1}`,
+              body: "Add concrete thresholds.",
+            },
+          ],
+        }),
+      );
+
+      await page.getByRole("button", { name: "Let Me Answer" }).click();
+      await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByText(`Needs refinement: Q${i + 1}`)).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByText("Step 3: Confirm Decisions")).not.toBeVisible();
+    }
   });
 });

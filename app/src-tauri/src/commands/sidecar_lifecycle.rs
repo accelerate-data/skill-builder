@@ -37,7 +37,10 @@ pub async fn graceful_shutdown(
             // 2. Release all skill locks and end workflow sessions for this instance
             if let Ok(conn) = db.0.lock() {
                 let _ = crate::db::release_all_instance_locks(&conn, &instance.id);
-                let _ = crate::db::end_all_sessions_for_pid(&conn, instance.pid);
+                let _ = crate::commands::workflow_lifecycle::shutdown_sessions_for_pid(
+                    &conn,
+                    instance.pid,
+                );
                 log::info!("[graceful_shutdown] locks released, sessions ended");
             }
         },

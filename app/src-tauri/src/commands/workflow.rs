@@ -1045,6 +1045,11 @@ pub async fn run_workflow_step(
     workspace_path: String,
 ) -> Result<String, String> {
     log::info!("[run_workflow_step] skill={} step={}", skill_name, step_id);
+    crate::commands::workflow_lifecycle::validate_run_request(
+        &skill_name,
+        step_id,
+        &workspace_path,
+    )?;
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
