@@ -46,6 +46,7 @@ vi.mock("@/lib/tauri", () => ({
   endWorkflowSession: vi.fn(() => Promise.resolve()),
   verifyStepOutput: vi.fn(() => Promise.resolve(true)),
   materializeWorkflowStepOutput: vi.fn(() => Promise.resolve()),
+  materializeAnswerEvaluationOutput: vi.fn(() => Promise.resolve()),
   previewStepReset: vi.fn(() => Promise.resolve([])),
   getDisabledSteps: vi.fn(() => Promise.resolve([])),
   runAnswerEvaluator: vi.fn(() => Promise.reject("not available")),

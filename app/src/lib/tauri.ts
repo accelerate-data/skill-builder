@@ -497,6 +497,16 @@ export const runAnswerEvaluator = (
   workspacePath: string,
 ) => invoke<string>("run_answer_evaluator", { skillName, workspacePath });
 
+export const materializeAnswerEvaluationOutput = (
+  skillName: string,
+  workspacePath: string,
+  structuredOutput: unknown,
+) => invoke<void>("materialize_answer_evaluation_output", {
+  skillName,
+  workspacePath,
+  structuredOutput,
+});
+
 export const autofillClarifications = (
   skillName: string,
 ) => invoke<number>("autofill_clarifications", { skillName });

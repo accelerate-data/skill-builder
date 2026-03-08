@@ -397,68 +397,62 @@ ${workspaceContext}
 ${agentInstructions}
 </agent-instructions>
 
-Run the full research-orchestrator flow and write canonical outputs to:
-- ${dir}/${skillName}/context/research-plan.md
-- ${dir}/${skillName}/context/clarifications.json
-
-The clarifications JSON MUST use the canonical schema (not legacy dimension/clarifications arrays):
-{
-  "version": "1",
-  "metadata": {
-    "title": "<string>",
-    "question_count": <number>,
-    "section_count": <number>,
-    "refinement_count": <number>,
-    "must_answer_count": <number>,
-    "priority_questions": ["Q1"]
-  },
-  "sections": [
-    {
-      "id": "S1",
-      "title": "<string>",
-      "questions": [
-        {
-          "id": "Q1",
-          "title": "<string>",
-          "must_answer": <boolean>,
-          "text": "<string>",
-          "choices": [{"id":"A","text":"<string>","is_other":false}],
-          "recommendation": "A",
-          "answer_choice": null,
-          "answer_text": null,
-          "refinements": []
-        }
-      ]
-    }
-  ],
-  "notes": []
-}
-
 Return JSON only:
 {
   "status": "research_complete",
   "dimensions_selected": <number>,
   "question_count": <number>,
-  "call_trace": ["read-user-context", "invoke-research-skill", "write-research-plan", "write-clarifications"]
+  "research_plan_markdown": "<canonical markdown>",
+  "clarifications_json": {
+    "version": "1",
+    "metadata": {
+      "title": "<string>",
+      "question_count": <number>,
+      "section_count": <number>,
+      "refinement_count": <number>,
+      "must_answer_count": <number>,
+      "priority_questions": ["Q1"]
+    },
+    "sections": [
+      {
+        "id": "S1",
+        "title": "<string>",
+        "questions": [
+          {
+            "id": "Q1",
+            "title": "<string>",
+            "must_answer": <boolean>,
+            "text": "<string>",
+            "choices": [{"id":"A","text":"<string>","is_other":false}],
+            "recommendation": "A",
+            "answer_choice": null,
+            "answer_text": null,
+            "refinements": []
+          }
+        ]
+      }
+    ],
+    "notes": []
+  }
 }`;
 
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 260_000, cwd: dir });
-  const clarificationsPath = path.join(dir, skillName, "context", "clarifications.json");
-  const researchPlanPath = path.join(dir, skillName, "context", "research-plan.md");
-  const clarificationsExists = fs.existsSync(clarificationsPath);
-  const researchPlanExists = fs.existsSync(researchPlanPath);
-  const clarifications = clarificationsExists ? readJson(clarificationsPath) : {};
-  const schema = assessClarificationsSchema(clarifications);
   const response = parseAgentJsonOutput(stdout);
+  const clarifications = response?.clarifications_json ?? null;
+  const schema = assessClarificationsSchema(clarifications);
+  const hasResearchPlanMarkdown =
+    typeof response?.research_plan_markdown === "string"
+    && response.research_plan_markdown.trim().length > 0;
   return finalizeScenario(
     "research-orchestrator",
     {
-      clarificationsExists,
-      researchPlanExists,
+      structuredResponseObject: Boolean(response && typeof response === "object"),
+      returnsResearchPlanMarkdown: hasResearchPlanMarkdown,
+      returnsClarificationsJson: Boolean(clarifications && typeof clarifications === "object"),
       ...schema,
     },
-    ["read-user-context", "invoke-research-skill", "write-research-plan", "write-clarifications"],
-    response?.call_trace ?? [],
+    [],
+    [],
   );
 }
 
@@ -487,10 +481,10 @@ ${workspaceContext}
 <agent-instructions>
 ${agentInstructions}
 </agent-instructions>
-Return JSON only with status, dimensions_selected, question_count, call_trace.`;
+Return JSON only with status, dimensions_selected, question_count, research_plan_markdown, and clarifications_json.`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 260_000, cwd: dir });
-  const clarifications = readJson(path.join(dir, skillName, "context", "clarifications.json"));
   const response = parseAgentJsonOutput(stdout);
+  const clarifications = response?.clarifications_json ?? {};
   return finalizeScenario(
     "research-orchestrator-scope-guard",
     {
@@ -499,7 +493,7 @@ Return JSON only with status, dimensions_selected, question_count, call_trace.`;
       zeroQuestions: Number(response?.question_count ?? -1) === 0,
     },
     [],
-    response?.call_trace ?? [],
+    [],
   );
 }
 
@@ -523,9 +517,7 @@ ${agentInstructions}
 </agent-instructions>
 
 Read the clarification file at: ${dir}/${skillName}/context/clarifications.json
-Write your evaluation to: ${dir}/.vibedata/skill-builder/${skillName}/answer-evaluation.json
-
-The JSON must contain exactly these fields:
+Return JSON only with these fields:
 {
   "total_count": <number>,
   "answered_count": <number>,
@@ -537,20 +529,12 @@ The JSON must contain exactly these fields:
   "reasoning": "<brief explanation>"
 }
 
-Return: the evaluation JSON contents.`;
+Return only the evaluation object (no markdown).`;
 
-  runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
-  const outputPath = path.join(
-    dir,
-    ".vibedata",
-    "skill-builder",
-    skillName,
-    "answer-evaluation.json"
-  );
-  const outputExists = fs.existsSync(outputPath);
-  const evaluation = outputExists ? readJson(outputPath) : {};
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
+  const evaluation = parseAgentJsonOutput(stdout) ?? {};
   const contracts = {
-    answerEvaluationExists: outputExists,
+    structuredResponseObject: typeof evaluation === "object" && !Array.isArray(evaluation),
     ...assessAnswerEvaluationSchema(evaluation),
   };
   return finalizeScenario("answer-evaluator", contracts);

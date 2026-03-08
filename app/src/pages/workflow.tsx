@@ -45,6 +45,7 @@ import {
   getDisabledSteps,
   runAnswerEvaluator,
   logGateDecision,
+  materializeAnswerEvaluationOutput,
   materializeWorkflowStepOutput,
   type AnswerEvaluation,
 } from "@/lib/tauri";
@@ -531,11 +532,12 @@ export default function WorkflowPage() {
     if (gateAgentIdRef.current !== activeAgentId) return; // not the gate agent
 
     if (activeRunStatus === "completed" || activeRunStatus === "error") {
+      const completedGateAgentId = activeAgentId;
       gateAgentIdRef.current = null;
       setActiveAgent(null);
-      clearRuns();
 
       if (activeRunStatus === "error") {
+        clearRuns();
         console.warn("[workflow] Gate evaluation failed — proceeding normally");
         setGateLoading(false);
         updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
@@ -543,10 +545,12 @@ export default function WorkflowPage() {
         return;
       }
 
-      // Read the evaluation result
-      finishGateEvaluation();
+      // Materialize gate evaluation output before clearing run messages.
+      const structuredOutput = extractStructuredResultPayload(completedGateAgentId);
+      clearRuns();
+      finishGateEvaluation(structuredOutput);
     }
-  }, [activeRunStatus, activeAgentId]);
+  }, [activeRunStatus, activeAgentId, extractStructuredResultPayload]);
 
   useEffect(() => {
     if (!activeRunStatus || !activeAgentId) return;
@@ -763,7 +767,7 @@ export default function WorkflowPage() {
     runGateOrAdvance();
   };
 
-  const finishGateEvaluation = async () => {
+  const finishGateEvaluation = async (structuredOutput?: unknown) => {
     const proceedNormally = () => {
       setGateLoading(false);
       updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
@@ -776,6 +780,15 @@ export default function WorkflowPage() {
     }
 
     try {
+      const hasStructuredObject = !!structuredOutput
+        && typeof structuredOutput === "object"
+        && !Array.isArray(structuredOutput);
+      if (hasStructuredObject) {
+        await materializeAnswerEvaluationOutput(skillName, workspacePath, structuredOutput);
+      } else {
+        console.warn("[workflow] Missing structured gate output; falling back to existing answer-evaluation.json");
+      }
+
       const evalPath = `${workspacePath}/${skillName}/answer-evaluation.json`;
       const raw = await readFile(evalPath);
       const evaluation: AnswerEvaluation = JSON.parse(raw);

@@ -16,13 +16,13 @@ tests:
       - type: contains
         value: '"scenario":"research-orchestrator"'
       - type: contains
-        value: '"clarificationsExists":true'
+        value: '"structuredResponseObject":true'
       - type: contains
-        value: '"researchPlanExists":true'
+        value: '"returnsResearchPlanMarkdown":true'
       - type: contains
-        value: '"invocationPresence":true'
+        value: '"returnsClarificationsJson":true'
       - type: contains
-        value: '"invocationOrder":true'
+        value: '"sectionCountNumber":true'
       - type: contains
         value: '"failures":[]'
   - description: research-orchestrator-scope-guard
@@ -48,7 +48,7 @@ tests:
       - type: contains
         value: '"scenario":"answer-evaluator"'
       - type: contains
-        value: '"answerEvaluationExists":true'
+        value: '"structuredResponseObject":true'
       - type: contains
         value: '"hasRequiredFields":true'
       - type: contains

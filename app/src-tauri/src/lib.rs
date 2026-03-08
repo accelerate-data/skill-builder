@@ -8,8 +8,8 @@ mod logging;
 mod reconciliation;
 mod types;
 
-pub use types::*;
 use std::path::PathBuf;
+pub use types::*;
 
 #[derive(Clone)]
 pub struct InstanceInfo {
@@ -197,6 +197,7 @@ pub fn run() {
             commands::workflow::verify_step_output,
             commands::workflow::get_disabled_steps,
             commands::workflow::run_answer_evaluator,
+            commands::workflow::materialize_answer_evaluation_output,
             commands::workflow::autofill_clarifications,
             commands::workflow::autofill_refinements,
             commands::workflow::log_gate_decision,
