@@ -65,11 +65,10 @@ The user's answers contain unresolvable contradictions. See `decisions.md` for d
 
 ## Phase 1: Plan the Skill Structure
 
-Read `decisions.md` and plan a concise skill structure.
-The vendored `skill-creator` guidance should trigger naturally from this planning step; use it when triggered, but do not require pre-loading it into context.
+Read `decisions.md` and plan a concise skill structure for the new skill.
 
 - Each reference file covers a coherent topic area, not one file per decision
-- Prefer 3-8 reference files with descriptive kebab-case names (e.g., `entity-model.md`, `pipeline-metrics.md`)
+- Use only as many reference files as needed for clarity; avoid rigid file-count targets or naming templates
 - Avoid rigid section templates and numeric straitjackets; choose structure based on what the decisions require
 
 ## Phase 2: Write SKILL.md
