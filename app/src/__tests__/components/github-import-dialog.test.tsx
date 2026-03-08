@@ -1044,6 +1044,113 @@ describe("GitHubImportDialog", () => {
       renderDialog({ registries: [] });
       expect(screen.getAllByText(/No enabled registries/i).length).toBeGreaterThan(0);
     });
+
+    it("loads dashboard names and skill summaries in parallel", async () => {
+      let dashboardResolved = false;
+      let sawDashboardRequest = false;
+      let sawListSkillsBeforeDashboardResolved = false;
+      let resolveDashboard!: (value: string[]) => void;
+      mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+        if (cmd === "parse_github_url") return Promise.resolve(DEFAULT_REPO_INFO);
+        if (cmd === "list_github_skills") return Promise.resolve(sampleSkills);
+        if (cmd === "get_dashboard_skill_names") {
+          sawDashboardRequest = true;
+          return new Promise<string[]>((resolve) => {
+            resolveDashboard = resolve;
+          });
+        }
+        if (cmd === "list_skills") {
+          if (!dashboardResolved) sawListSkillsBeforeDashboardResolved = true;
+          expect(args).toMatchObject({ workspacePath: "/workspace", sourceUrl: "https://github.com/acme/skills" });
+          return Promise.resolve([]);
+        }
+        return Promise.reject(new Error(`Unmocked command: ${cmd}`));
+      });
+
+      renderDialog({ mode: "dashboard-library", workspacePath: "/workspace" });
+
+      await waitFor(() => {
+        expect(sawDashboardRequest).toBe(true);
+      });
+      expect(sawListSkillsBeforeDashboardResolved).toBe(true);
+
+      dashboardResolved = true;
+      resolveDashboard([]);
+      await waitFor(() => {
+        expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
+      });
+    });
+
+    it("does not re-fetch when switching back to a cached registry tab", async () => {
+      const user = userEvent.setup();
+      const registries = [
+        { name: "Registry A", source_url: "https://github.com/a/skills", enabled: true },
+        { name: "Registry B", source_url: "https://github.com/b/skills", enabled: true },
+      ];
+      mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+        if (cmd === "parse_github_url") {
+          if (args?.url === registries[0].source_url) {
+            return Promise.resolve({ owner: "a", repo: "skills", branch: "main", subpath: null });
+          }
+          return Promise.resolve({ owner: "b", repo: "skills", branch: "main", subpath: null });
+        }
+        if (cmd === "list_github_skills") return Promise.resolve(sampleSkills);
+        if (cmd === "list_workspace_skills") return Promise.resolve([]);
+        return Promise.reject(new Error(`Unmocked command: ${cmd}`));
+      });
+
+      renderDialog({ mode: "workspace-skills", registries });
+      await waitFor(() => {
+        expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole("tab", { name: "Registry B" }));
+      let listGitHubCalls = 0;
+      await waitFor(() => {
+        listGitHubCalls = mockInvoke.mock.calls.filter(([name]) => name === "list_github_skills").length;
+        expect(listGitHubCalls).toBeGreaterThan(0);
+      });
+
+      await user.click(screen.getByRole("tab", { name: "Registry A" }));
+      await new Promise((r) => setTimeout(r, 10));
+      expect(mockInvoke.mock.calls.filter(([name]) => name === "list_github_skills")).toHaveLength(listGitHubCalls);
+    });
+
+    it("does not mark registry A skills as installed when browsing registry B", async () => {
+      const user = userEvent.setup();
+      const registries = [
+        { name: "Registry A", source_url: "https://github.com/a/skills", enabled: true },
+        { name: "Registry B", source_url: "https://github.com/b/skills", enabled: true },
+      ];
+      mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+        if (cmd === "parse_github_url") {
+          if (args?.url === registries[0].source_url) {
+            return Promise.resolve({ owner: "a", repo: "skills", branch: "main", subpath: null });
+          }
+          return Promise.resolve({ owner: "b", repo: "skills", branch: "main", subpath: null });
+        }
+        if (cmd === "list_github_skills") return Promise.resolve(sampleSkills);
+        if (cmd === "get_dashboard_skill_names") return Promise.resolve(["Sales Analytics"]);
+        if (cmd === "list_skills") {
+          if (args?.sourceUrl === registries[0].source_url) {
+            return Promise.resolve([{ name: "Sales Analytics", version: null }]);
+          }
+          return Promise.resolve([]);
+        }
+        return Promise.reject(new Error(`Unmocked command: ${cmd}`));
+      });
+
+      renderDialog({ mode: "dashboard-library", registries, workspacePath: "/workspace" });
+
+      await waitFor(() => {
+        expect(screen.getByText("Up to date")).toBeInTheDocument();
+      });
+      await user.click(screen.getByRole("tab", { name: "Registry B" }));
+      await waitFor(() => {
+        expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
+      });
+      expect(screen.queryByText("Up to date")).not.toBeInTheDocument();
+    });
   });
 
   describe("Dialog close", () => {

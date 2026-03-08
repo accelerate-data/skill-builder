@@ -3031,6 +3031,25 @@ pub fn list_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, S
     Ok(skills)
 }
 
+pub fn list_workspace_skills_by_source(
+    conn: &Connection,
+    source_url: &str,
+) -> Result<Vec<WorkspaceSkill>, String> {
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT {WS_COLUMNS} FROM workspace_skills
+             WHERE marketplace_source_url = ?1
+             ORDER BY imported_at DESC"
+        ))
+        .map_err(|e| format!("list_workspace_skills_by_source: {}", e))?;
+    let skills = stmt
+        .query_map(rusqlite::params![source_url], row_to_workspace_skill)
+        .map_err(|e| format!("list_workspace_skills_by_source query: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("list_workspace_skills_by_source collect: {}", e))?;
+    Ok(skills)
+}
+
 pub fn list_active_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, String> {
     let mut stmt = conn
         .prepare(&format!(
@@ -3118,6 +3137,7 @@ pub fn get_workspace_skill_by_name(
 /// Look up a workspace skill by name and source registry URL.
 /// Returns only skills that were imported from the specified registry (marketplace_source_url = source_url).
 /// Used to avoid false-positive update notifications for bundled skills sharing a name with marketplace skills.
+#[allow(dead_code)]
 pub fn get_workspace_skill_by_name_and_source(
     conn: &Connection,
     skill_name: &str,
@@ -3235,6 +3255,7 @@ pub fn get_imported_skill_hash_info(
 /// Look up an imported (library) skill by name and source registry URL.
 /// Returns only skills that were imported from the specified registry (marketplace_source_url = source_url).
 /// Used to avoid false-positive update notifications for bundled skills sharing a name with marketplace skills.
+#[allow(dead_code)]
 pub fn get_imported_skill_by_name_and_source(
     conn: &Connection,
     skill_name: &str,
@@ -6929,5 +6950,67 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(found.skill_name, "research-new");
+    }
+
+    #[test]
+    fn test_get_workspace_skill_by_name_and_source_respects_source_filter() {
+        let conn = create_test_db();
+        let mut row = make_ws_skill("id-ws-src", "market-skill", Some("research"), true);
+        row.marketplace_source_url = Some("https://github.com/acme/skills-a".to_string());
+        insert_workspace_skill(&conn, &row).unwrap();
+
+        let found = get_workspace_skill_by_name_and_source(
+            &conn,
+            "market-skill",
+            "https://github.com/acme/skills-a",
+        )
+        .unwrap();
+        assert!(found.is_some());
+
+        let not_found = get_workspace_skill_by_name_and_source(
+            &conn,
+            "market-skill",
+            "https://github.com/acme/skills-b",
+        )
+        .unwrap();
+        assert!(not_found.is_none());
+    }
+
+    #[test]
+    fn test_get_imported_skill_by_name_and_source_respects_source_filter() {
+        let conn = create_test_db();
+        let imported = ImportedSkill {
+            skill_id: "imp-market-skill".to_string(),
+            skill_name: "market-skill".to_string(),
+            is_active: true,
+            disk_path: "/tmp/market-skill".to_string(),
+            imported_at: "2025-01-01T00:00:00Z".to_string(),
+            is_bundled: false,
+            description: Some("test".to_string()),
+            purpose: Some("skill-builder".to_string()),
+            version: Some("1.0.0".to_string()),
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            marketplace_source_url: Some("https://github.com/acme/skills-a".to_string()),
+        };
+        insert_imported_skill(&conn, &imported).unwrap();
+
+        let found = get_imported_skill_by_name_and_source(
+            &conn,
+            "market-skill",
+            "https://github.com/acme/skills-a",
+        )
+        .unwrap();
+        assert!(found.is_some());
+
+        let not_found = get_imported_skill_by_name_and_source(
+            &conn,
+            "market-skill",
+            "https://github.com/acme/skills-b",
+        )
+        .unwrap();
+        assert!(not_found.is_none());
     }
 }
