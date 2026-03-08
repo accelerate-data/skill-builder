@@ -59,6 +59,13 @@ Examine answers holistically across first-round questions and refinements. For e
 - Dependencies — answers that imply other requirements
 - Ambiguities — note the ambiguity and its design implications
 
+Mandatory user-editable decisions:
+
+- Always include a decision for: `What should this skill enable Claude to do?`
+- Always include a decision for: `When should this skill trigger? (what user phrases/contexts)`
+- Mark both of these decisions with `- **Status:** needs-review` so the user can directly edit/confirm them.
+- If either question is missing from clarifications, infer a best-effort draft from user-context + answered questions and still emit the decision as `needs-review`.
+
 Purpose-aware implication rules:
 
 - Keep decisions grounded in the selected purpose and user context.
@@ -128,6 +135,7 @@ If `decisions.md` is malformed, start fresh from current clarification answers. 
 ## Success Criteria
 
 - Every answered question (first-round and refinements) has at least one decision with an implication
+- The two mandatory decisions (capability + trigger) are always present and marked `needs-review`
 - Contradictions are resolved with documented reasoning
 - `decisions.md` has YAML frontmatter with correct counts and all decisions have status fields
 - Scope recommendation path: `decisions.md` written with `scope_recommendation: true` and `decision_count: 0`
