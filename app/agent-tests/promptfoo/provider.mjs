@@ -375,42 +375,6 @@ function finalizeScenario(scenario, contracts, invocationExpected = [], invocati
   };
 }
 
-function materializeDecisionsFromResponse(dir, skillName, response) {
-  const decisionsMarkdown = response?.decisions_markdown;
-  if (typeof decisionsMarkdown !== "string" || decisionsMarkdown.trim().length === 0) return false;
-  const decisionsPath = path.join(dir, "workspace", skillName, "context", "decisions.md");
-  writeFile(decisionsPath, decisionsMarkdown);
-  return true;
-}
-
-function materializeEvaluationsFromResponse(dir, skillName, response) {
-  const evaluationsMarkdown = response?.evaluations_markdown;
-  if (typeof evaluationsMarkdown !== "string" || evaluationsMarkdown.trim().length === 0) return false;
-  const evaluationsPath = path.join(dir, "workspace", skillName, "context", "evaluations.md");
-  writeFile(evaluationsPath, evaluationsMarkdown);
-  return true;
-}
-
-function materializeValidationFromResponse(dir, skillName, response) {
-  const validation = response?.validation_log_markdown;
-  const tests = response?.test_results_markdown;
-  const companions = response?.companion_skills_markdown;
-  if (
-    typeof validation !== "string"
-    || typeof tests !== "string"
-    || typeof companions !== "string"
-    || validation.trim().length === 0
-    || tests.trim().length === 0
-    || companions.trim().length === 0
-  ) {
-    return false;
-  }
-  writeFile(path.join(dir, "workspace", skillName, "context", "agent-validation-log.md"), validation);
-  writeFile(path.join(dir, "workspace", skillName, "context", "test-skill.md"), tests);
-  writeFile(path.join(dir, "workspace", skillName, "context", "companion-skills.md"), companions);
-  return true;
-}
-
 function runResearchOrchestrator({ budgetUsd }) {
   const dir = makeTempDir("research");
   const skillName = DEFAULT_SKILL_NAME;
@@ -610,14 +574,13 @@ Return JSON only with:
 
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
-  const decisionsExists = materializeDecisionsFromResponse(dir, skillName, response);
-  const decisionsPath = path.join(dir, "workspace", skillName, "context", "decisions.md");
-  const content = decisionsExists ? fs.readFileSync(decisionsPath, "utf8") : "";
+  const decisionsMarkdown = response?.decisions_markdown ?? "";
   return finalizeScenario(
     "confirm-decisions",
     {
-      decisionsExists,
-      ...assessDecisionsCanonical(content),
+      decisionsPayloadExists:
+        typeof decisionsMarkdown === "string" && decisionsMarkdown.trim().length > 0,
+      ...assessDecisionsCanonical(decisionsMarkdown),
     },
     [],
     response?.call_trace ?? [],
@@ -634,18 +597,18 @@ function runConfirmDecisionsScopeGuard({ budgetUsd }) {
 Context directory: ${dir}/workspace/${skillName}/context
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
-<agent-instructions>${agentInstructions}</agent-instructions>`;
+<agent-instructions>${agentInstructions}</agent-instructions>
+Return JSON only with "status":"decisions_complete" and "decisions_markdown".`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
-  const decisionsExists = materializeDecisionsFromResponse(dir, skillName, response);
-  const content = decisionsExists
-    ? fs.readFileSync(path.join(dir, "workspace", skillName, "context", "decisions.md"), "utf8")
-    : "";
-  const fm = parseFrontmatter(content);
+  const decisionsMarkdown = response?.decisions_markdown ?? "";
+  const fm = parseFrontmatter(decisionsMarkdown);
   return finalizeScenario("confirm-decisions-scope-guard", {
+    decisionsPayloadExists:
+      typeof decisionsMarkdown === "string" && decisionsMarkdown.trim().length > 0,
     hasScopeRecommendationFlag: fm.scope_recommendation === "true",
     hasZeroDecisionCount: fm.decision_count === "0",
-    hasStubHeading: /## Scope Recommendation Active/.test(content),
+    hasStubHeading: /## Scope Recommendation Active/.test(decisionsMarkdown),
   });
 }
 
@@ -692,17 +655,17 @@ function runConfirmDecisionsContradictory({ budgetUsd }) {
 Context directory: ${dir}/workspace/${skillName}/context
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
-<agent-instructions>${agentInstructions}</agent-instructions>`;
+<agent-instructions>${agentInstructions}</agent-instructions>
+Return JSON only with "status":"decisions_complete" and "decisions_markdown".`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
-  const decisionsExists = materializeDecisionsFromResponse(dir, skillName, response);
-  const content = decisionsExists
-    ? fs.readFileSync(path.join(dir, "workspace", skillName, "context", "decisions.md"), "utf8")
-    : "";
-  const fm = parseFrontmatter(content);
+  const decisionsMarkdown = response?.decisions_markdown ?? "";
+  const fm = parseFrontmatter(decisionsMarkdown);
   return finalizeScenario("confirm-decisions-contradictory", {
+    decisionsPayloadExists:
+      typeof decisionsMarkdown === "string" && decisionsMarkdown.trim().length > 0,
     contradictoryFlagSet: fm.contradictory_inputs === "true",
-    canonicalShape: allTrue(assessDecisionsCanonical(content)),
+    canonicalShape: allTrue(assessDecisionsCanonical(decisionsMarkdown)),
   });
 }
 
@@ -716,17 +679,19 @@ function runConfirmDecisionsResolvableConflict({ budgetUsd }) {
 Context directory: ${dir}/workspace/${skillName}/context
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
-<agent-instructions>${agentInstructions}</agent-instructions>`;
+<agent-instructions>${agentInstructions}</agent-instructions>
+Return JSON only with "status":"decisions_complete" and "decisions_markdown".`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
-  const decisionsExists = materializeDecisionsFromResponse(dir, skillName, response);
-  const content = decisionsExists
-    ? fs.readFileSync(path.join(dir, "workspace", skillName, "context", "decisions.md"), "utf8")
-    : "";
-  const fm = parseFrontmatter(content);
+  const decisionsMarkdown = response?.decisions_markdown ?? "";
+  const fm = parseFrontmatter(decisionsMarkdown);
   return finalizeScenario("confirm-decisions-resolvable-conflict", {
+    decisionsPayloadExists:
+      typeof decisionsMarkdown === "string" && decisionsMarkdown.trim().length > 0,
     noContradictoryFlag: !Object.prototype.hasOwnProperty.call(fm, "contradictory_inputs"),
-    hasConflictResolvedOrResolved: /\*\*Status:\*\* (resolved|conflict-resolved)/.test(content),
+    hasConflictResolvedOrResolved: /\*\*Status:\*\* (resolved|conflict-resolved)/.test(
+      decisionsMarkdown
+    ),
   });
 }
 
@@ -765,15 +730,15 @@ Workspace directory: ${dir}/workspace/${skillName}
 Return JSON only with "status":"generated", "evaluations_markdown", and "call_trace".`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
-  materializeEvaluationsFromResponse(dir, skillName, response);
   const skillMdPath = path.join(dir, skillName, "SKILL.md");
-  const evaluationsPath = path.join(dir, "workspace", skillName, "context", "evaluations.md");
+  const evaluationsMarkdown = response?.evaluations_markdown ?? "";
   return finalizeScenario(
     "generate-skill",
     {
       skillMdExists: fs.existsSync(skillMdPath),
       hasReferencesDir: fs.existsSync(path.join(dir, skillName, "references")),
-      evaluationsExists: fs.existsSync(evaluationsPath),
+      evaluationsPayloadExists:
+        typeof evaluationsMarkdown === "string" && evaluationsMarkdown.trim().length > 0,
     },
     ["read-user-context", "read-decisions", "write-skill", "write-references", "write-evaluations"],
     response?.call_trace ?? [],
@@ -798,10 +763,15 @@ Context directory: ${dir}/workspace/${skillName}/context
 Skill output directory: ${dir}/${skillName}
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
-<agent-instructions>${agentInstructions}</agent-instructions>`;
-  runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
+<agent-instructions>${agentInstructions}</agent-instructions>
+Return JSON only with "status":"generated", "evaluations_markdown", and "call_trace".`;
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
+  const response = parseAgentJsonOutput(stdout);
   const content = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
   return finalizeScenario("generate-skill-scope-guard", {
+    structuredResponseObject: Boolean(response && typeof response === "object"),
+    evaluationsPayloadExists:
+      typeof response?.evaluations_markdown === "string" && response.evaluations_markdown.trim().length > 0,
     scopeStubWritten: /scope_recommendation:\s*true/.test(content),
     scopeStubHeading: /## Scope Recommendation Active/.test(content),
   });
@@ -825,10 +795,15 @@ Context directory: ${dir}/workspace/${skillName}/context
 Skill output directory: ${dir}/${skillName}
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
-<agent-instructions>${agentInstructions}</agent-instructions>`;
-  runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
+<agent-instructions>${agentInstructions}</agent-instructions>
+Return JSON only with "status":"generated", "evaluations_markdown", and "call_trace".`;
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
+  const response = parseAgentJsonOutput(stdout);
   const content = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
   return finalizeScenario("generate-skill-contradictory", {
+    structuredResponseObject: Boolean(response && typeof response === "object"),
+    evaluationsPayloadExists:
+      typeof response?.evaluations_markdown === "string" && response.evaluations_markdown.trim().length > 0,
     contradictionStubWritten: /contradictory_inputs:\s*true/.test(content),
     contradictionStubHeading: /## Contradictory Inputs Detected/.test(content),
   });
@@ -965,20 +940,18 @@ Context directory: ${dir}/workspace/${skillName}/context
 Skill output directory: ${dir}/${skillName}
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
-<agent-instructions>${agentInstructions}</agent-instructions>`;
+<agent-instructions>${agentInstructions}</agent-instructions>
+Return JSON only with "status":"validation_complete", "validation_log_markdown", "test_results_markdown", and "companion_skills_markdown".`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
-  const validationExists = materializeValidationFromResponse(dir, skillName, response);
-  const validation = validationExists
-    ? fs.readFileSync(path.join(dir, "workspace", skillName, "context", "agent-validation-log.md"), "utf8")
-    : "";
-  const tests = validationExists
-    ? fs.readFileSync(path.join(dir, "workspace", skillName, "context", "test-skill.md"), "utf8")
-    : "";
-  const companions = validationExists
-    ? fs.readFileSync(path.join(dir, "workspace", skillName, "context", "companion-skills.md"), "utf8")
-    : "";
+  const validation = response?.validation_log_markdown ?? "";
+  const tests = response?.test_results_markdown ?? "";
+  const companions = response?.companion_skills_markdown ?? "";
   return finalizeScenario("validate-skill-scope-guard", {
+    structuredResponseObject: Boolean(response && typeof response === "object"),
+    validationPayloadExists: typeof validation === "string" && validation.trim().length > 0,
+    testPayloadExists: typeof tests === "string" && tests.trim().length > 0,
+    companionPayloadExists: typeof companions === "string" && companions.trim().length > 0,
     validationStub: /## Validation Skipped/.test(validation),
     testStub: /## Testing Skipped/.test(tests),
     companionStub: /## Companion Recommendations Skipped/.test(companions),
