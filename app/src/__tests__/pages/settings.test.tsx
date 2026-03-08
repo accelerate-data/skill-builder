@@ -105,7 +105,7 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
     get_settings: settings,
     save_settings: undefined,
     test_api_key: true,
-    get_log_file_path: "/tmp/com.skillbuilder.app/skill-builder.log",
+    get_log_file_path: "/tmp/com.vibedata.skill-builder/skill-builder.log",
     set_log_level: undefined,
   });
 }

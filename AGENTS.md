@@ -32,9 +32,9 @@ Adapter files must not duplicate canonical policy unless they are adding agent-s
 
 **Key directories:**
 
-- Workspace (`~/.vibedata/skill-builder/` default, configurable): agent prompts, skill context, logs
+- Workspace (derived from Tauri `app_local_data_dir()` as `<app_local_data_dir>/workspace`, not user-configurable): agent prompts, per-skill scratch data, logs
 - Skill output (`~/skill-builder/` default): SKILL.md, references, git-managed
-- App database: `~/Library/Application Support/com.skillbuilder.app/skill-builder.db` (macOS)
+- App database: `~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db` (macOS)
 - Full layout: [`docs/design/agent-specs/storage.md`](docs/design/agent-specs/storage.md)
 
 ## Repository Folder Map

@@ -5,7 +5,13 @@ import { markdownComponents } from "@/components/markdown-link";
 import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2, MessageSquare, AlertTriangle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { readFile, writeFile, listSkillFiles, getStepAgentRuns } from "@/lib/tauri";
+import {
+  readFile,
+  listSkillFiles,
+  getStepAgentRuns,
+  getContextFileContent,
+  saveDecisionsContent,
+} from "@/lib/tauri";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
@@ -175,7 +181,17 @@ export function WorkflowStepComplete({
             ? relativePath.slice("skill/".length)
             : relativePath;
 
-          if (skillsPath) {
+          if (relativePath.startsWith("context/") && workspacePath) {
+            try {
+              content = await getContextFileContent(
+                skillName,
+                workspacePath,
+                relativePath.slice("context/".length),
+              );
+            } catch {
+              // not found in workspace context
+            }
+          } else if (skillsPath) {
             try {
               content = await readFile(`${skillsPath}/${skillName}/${skillsRelative}`);
             } catch {
@@ -215,11 +231,11 @@ export function WorkflowStepComplete({
   const [decisionsSaveStatus, setDecisionsSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
 
   useEffect(() => {
-    if (!decisionsEditorDirty || !decisionsEditContent || !skillsPath || !skillName || reviewMode) return;
+    if (!decisionsEditorDirty || !decisionsEditContent || !workspacePath || !skillName || reviewMode) return;
     setDecisionsSaveStatus("saving");
     const timer = setTimeout(async () => {
       try {
-        await writeFile(`${skillsPath}/${skillName}/context/decisions.md`, decisionsEditContent);
+        await saveDecisionsContent(skillName, workspacePath, decisionsEditContent);
         setDecisionsEditorDirty(false);
         setDecisionsSaveStatus("saved");
       } catch (err) {
@@ -227,7 +243,7 @@ export function WorkflowStepComplete({
       }
     }, 1500);
     return () => clearTimeout(timer);
-  }, [decisionsEditContent, decisionsEditorDirty, skillsPath, skillName, reviewMode]);
+  }, [decisionsEditContent, decisionsEditorDirty, workspacePath, skillName, reviewMode]);
 
   // Loading spinner — shown while files are being fetched (initial or re-fetch)
   if (loadingFiles) {

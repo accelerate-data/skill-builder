@@ -12,7 +12,14 @@ pub struct Db(pub Mutex<Connection>);
 
 pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
     fs::create_dir_all(data_dir)?;
-    let conn = Connection::open(data_dir.join("skill-builder.db"))?;
+    let db_dir = data_dir.join("db");
+    fs::create_dir_all(&db_dir)?;
+
+    let legacy_db_path = data_dir.join("skill-builder.db");
+    let db_path = db_dir.join("skill-builder.db");
+    migrate_legacy_db_path(&legacy_db_path, &db_path)?;
+
+    let conn = Connection::open(db_path)?;
     conn.pragma_update(None, "journal_mode", "WAL")
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     conn.pragma_update(None, "busy_timeout", "5000")
@@ -80,6 +87,44 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     Ok(Db(Mutex::new(conn)))
+}
+
+fn migrate_legacy_db_path(legacy_path: &Path, new_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    if new_path.exists() || !legacy_path.exists() {
+        return Ok(());
+    }
+
+    if let Some(parent) = new_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    match fs::rename(legacy_path, new_path) {
+        Ok(()) => {
+            log::info!(
+                "[init_db] migrated legacy database path from {} to {}",
+                legacy_path.display(),
+                new_path.display()
+            );
+            Ok(())
+        }
+        Err(rename_err) => {
+            log::warn!(
+                "[init_db] failed to rename legacy db path ({} -> {}): {}; trying copy fallback",
+                legacy_path.display(),
+                new_path.display(),
+                rename_err
+            );
+            fs::copy(legacy_path, new_path)?;
+            if let Err(remove_err) = fs::remove_file(legacy_path) {
+                log::warn!(
+                    "[init_db] copied legacy db but could not remove old file {}: {}",
+                    legacy_path.display(),
+                    remove_err
+                );
+            }
+            Ok(())
+        }
+    }
 }
 
 fn ensure_migration_table(conn: &Connection) -> Result<(), rusqlite::Error> {

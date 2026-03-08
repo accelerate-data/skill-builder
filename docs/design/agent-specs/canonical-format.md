@@ -397,7 +397,7 @@ companions:
 
 # Canonical `user-context.md` Format
 
-Generated at runtime by Rust (desktop app) or by the plugin coordinator's Scoping phase, written to the workspace directory (`~/.vibedata/{skill-name}/`) so agents can read it. Source data: user settings and intake/scoping answers.
+Generated at runtime by Rust (desktop app) or by the plugin coordinator's Scoping phase, written to the per-skill workspace directory (`app_local_data_dir()/workspace/{skill-name}/`) so agents can read it. Source data: user settings and intake/scoping answers.
 
 ## Structure
 

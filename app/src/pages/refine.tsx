@@ -213,7 +213,7 @@ export default function RefinePage() {
       store.setLoadingFiles(true);
 
       if (workspacePath) {
-        // Start backend refine session — pass workspacePath (.vibedata/skill-builder),
+        // Start backend refine session — pass workspacePath (app-managed workspace dir),
         // Rust resolves skills_path from DB for file lookups.
         try {
           const session = await startRefineSession(skill.name, workspacePath);

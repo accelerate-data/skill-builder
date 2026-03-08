@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const REVIEW_CONTENT = readFileSync(
-  resolve(__dirname, "../fixtures/agent-responses/review-content.md"),
+  resolve(__dirname, "../fixtures/agent-responses/review-content.json"),
   "utf-8",
 );
 
@@ -105,7 +105,7 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
 
     // Should show completion screen with output file names
     await expect(page.getByText("context/research-plan.md")).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("context/clarifications.md")).toBeVisible();
+    await expect(page.getByText("context/clarifications.json")).toBeVisible();
   });
 
   test("review mode hides action buttons on completed step", async ({ page }) => {
@@ -260,12 +260,12 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
         {
           step_id: 0,
           step_name: "Research",
-          files: ["context/research-plan.md", "context/clarifications.md"],
+          files: ["context/research-plan.md", "context/clarifications.json"],
         },
         {
           step_id: 1,
           step_name: "Review",
-          files: ["context/clarifications.md"],
+          files: ["context/clarifications.json"],
         },
       ],
     });

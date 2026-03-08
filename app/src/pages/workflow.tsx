@@ -37,6 +37,8 @@ import {
   saveWorkflowState,
   readFile,
   writeFile,
+  getClarificationsContent,
+  saveClarificationsContent,
   cleanupSkillSidecar,
   acquireLock,
   releaseLock,
@@ -405,15 +407,15 @@ export default function WorkflowPage() {
   }, [steps, currentStep, skillName, purpose, hydrated]);
 
   // Load clarifications file when viewing a completed clarifications-editable step.
-  // skills_path is required — no workspace fallback.
+  // Context files are backend-owned under workspace path.
   useEffect(() => {
     const currentStepStatus = steps[currentStep]?.status;
-    if (!stepConfig?.clarificationsEditable || currentStepStatus !== "completed" || !skillsPath) {
+    if (!stepConfig?.clarificationsEditable || currentStepStatus !== "completed" || !workspacePath) {
       setReviewContent(null);
       return;
     }
 
-    readFile(`${skillsPath}/${skillName}/context/clarifications.json`)
+    getClarificationsContent(skillName, workspacePath)
       .then((content) => {
         setReviewContent(content ?? null);
         setClarificationsData(parseClarifications(content ?? null));
@@ -425,7 +427,7 @@ export default function WorkflowPage() {
       .finally(() => {
         setEditorDirty(false);
       });
-  }, [currentStep, steps, stepConfig?.clarificationsEditable, skillsPath, skillName]);
+  }, [currentStep, steps, stepConfig?.clarificationsEditable, workspacePath, skillName]);
 
   // Advance to next step helper
   const [pendingAutoStartStep, setPendingAutoStartStep] = useState<number | null>(null);
@@ -749,13 +751,13 @@ export default function WorkflowPage() {
   };
 
   const handleReviewContinue = async () => {
-    // Save the editor content to skills path (required — no workspace fallback)
-    if (stepConfig?.clarificationsEditable && reviewContent !== null && skillsPath) {
+    // Save the editor content via backend-owned context commands.
+    if (stepConfig?.clarificationsEditable && reviewContent !== null && workspacePath) {
       try {
         const content = clarificationsData
           ? JSON.stringify(clarificationsData, null, 2)
           : (reviewContent ?? "");
-        await writeFile(`${skillsPath}/${skillName}/context/clarifications.json`, content);
+        await saveClarificationsContent(skillName, workspacePath, content);
         setReviewContent(content);
         setEditorDirty(false);
       } catch (err) {
@@ -802,10 +804,9 @@ export default function WorkflowPage() {
 
       // Refresh only the evaluator feedback section so research notes stay intact
       // while "Let Me Answer" returns users to actionable guidance in the editor UI.
-      if (skillsPath) {
-        const clarificationsPath = `${skillsPath}/${skillName}/context/clarifications.json`;
+      if (workspacePath) {
         try {
-          const clarificationsRaw = await readFile(clarificationsPath);
+          const clarificationsRaw = await getClarificationsContent(skillName, workspacePath);
           const parsed = parseClarifications(clarificationsRaw);
           if (parsed) {
             const next: ClarificationsFile = {
@@ -813,7 +814,7 @@ export default function WorkflowPage() {
               answer_evaluator_notes: buildGateFeedbackNotes(evaluation),
             };
             const serialized = JSON.stringify(next, null, 2);
-            await writeFile(clarificationsPath, serialized);
+            await saveClarificationsContent(skillName, workspacePath, serialized);
             setClarificationsData(next);
             setReviewContent(serialized);
             setEditorDirty(false);
@@ -824,7 +825,7 @@ export default function WorkflowPage() {
         }
       }
 
-      // Write gate result to .vibedata/skill-builder (internal files) so it appears in Rust
+      // Write gate result to the app-managed workspace directory so it appears in Rust
       // [write_file] logs and persists for debugging.
       if (workspacePath) {
         const gateLog = JSON.stringify({ ...evaluation, action: "show_dialog", timestamp: new Date().toISOString() });
@@ -913,7 +914,7 @@ export default function WorkflowPage() {
     toast.success(message);
   };
 
-  /** Write the user's gate decision to .vibedata/skill-builder so it appears in Rust [write_file] logs. */
+  /** Write the user's gate decision to the app-managed workspace so it appears in Rust [write_file] logs. */
   const logGateAction = (decision: string) => {
     if (!workspacePath) return;
     const entry = JSON.stringify({ decision, verdict: gateVerdict, timestamp: new Date().toISOString() });
@@ -954,13 +955,13 @@ export default function WorkflowPage() {
     closeGateDialog();
     toast.info("Refreshing evaluator feedback...", { duration: 5000 });
     // Ensure evaluator-generated notes are visible immediately in the editor.
-    if (!skillsPath) {
-      toast.warning("Skills path is missing in settings. Could not refresh feedback from disk.", { duration: Infinity });
+    if (!workspacePath) {
+      toast.warning("Workspace path is missing in settings. Could not refresh feedback from disk.", { duration: Infinity });
       return;
     }
 
     const prevNoteCount = clarificationsData?.answer_evaluator_notes?.length ?? 0;
-    readFile(`${skillsPath}/${skillName}/context/clarifications.json`)
+    getClarificationsContent(skillName, workspacePath)
       .then((content) => {
         const parsed = parseClarifications(content ?? null);
         if (!parsed) {
@@ -1007,16 +1008,16 @@ export default function WorkflowPage() {
     if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
   }, []);
 
-  // Save editor content to skills path (required — no workspace fallback).
+  // Save editor content through backend domain command.
   // Returns true on success, false if the write failed.
   const handleSave = useCallback(async (silent = false): Promise<boolean> => {
-    if (!stepConfig?.clarificationsEditable || !skillsPath) return false;
+    if (!stepConfig?.clarificationsEditable || !workspacePath) return false;
     setSaveStatus("saving");
     try {
       const content = clarificationsData
         ? JSON.stringify(clarificationsData, null, 2)
         : (reviewContent ?? "");
-      await writeFile(`${skillsPath}/${skillName}/context/clarifications.json`, content);
+      await saveClarificationsContent(skillName, workspacePath, content);
       setReviewContent(content);
       setEditorDirty(false);
       setSaveStatus("saved");
@@ -1030,7 +1031,7 @@ export default function WorkflowPage() {
       toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
       return false;
     }
-  }, [stepConfig?.clarificationsEditable, skillsPath, reviewContent, clarificationsData, skillName]);
+  }, [stepConfig?.clarificationsEditable, workspacePath, reviewContent, clarificationsData, skillName]);
 
   const currentStepDef = steps[currentStep];
 

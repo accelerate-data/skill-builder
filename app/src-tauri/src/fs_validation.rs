@@ -35,9 +35,11 @@ pub fn detect_furthest_step_with_options(
     }
 
     let mut furthest: Option<u32> = None;
+    let workspace_root = Path::new(workspace_path).join(skill_name);
+    let legacy_root = Path::new(skills_path).join(skill_name);
 
-    // Detectable steps: those that write unique output files to skills_path.
-    // Steps 0, 2 write context files to skills_path/skill_name/context/.
+    // Detectable steps: those that write unique output files.
+    // Steps 0, 2 write context files to workspace_path/skill_name/context/.
     // Step 3 writes SKILL.md to skills_path/skill_name/.
     // Step 1 edits clarifications.json in-place (no unique artifact) — non-detectable.
     for step_id in [0u32, 2, 3] {
@@ -51,19 +53,21 @@ pub fn detect_furthest_step_with_options(
             );
             (exists, exists)
         } else {
-            // Steps 0, 2: context files live in skills_path/skill_name/
-            let target_dir = Path::new(skills_path).join(skill_name);
-            let all = files.iter().all(|f| {
-                let p = target_dir.join(f);
+            // Steps 0, 2: context files live in workspace_path/skill_name/context/*.
+            // During migration we also recognize legacy skills_path/skill_name/context/*.
+            let all_workspace = files.iter().all(|f| {
+                let p = workspace_root.join(f);
                 let e = p.exists();
                 log::debug!(
-                    "[detect_furthest_step] skill='{}': step={} checking {} exists={}",
+                    "[detect_furthest_step] skill='{}': step={} checking workspace {} exists={}",
                     skill_name, step_id, p.display(), e
                 );
                 e
             });
-            let any = files.iter().any(|f| target_dir.join(f).exists());
-            (all, any)
+            let all_legacy = files.iter().all(|f| legacy_root.join(f).exists());
+            let any_workspace = files.iter().any(|f| workspace_root.join(f).exists());
+            let any_legacy = files.iter().any(|f| legacy_root.join(f).exists());
+            (all_workspace || all_legacy, any_workspace || any_legacy)
         };
 
         if has_all {
@@ -91,8 +95,7 @@ pub fn detect_furthest_step_with_options(
 }
 
 /// Check if a skill has ANY output files in the skills_path directory.
-/// This includes build output (SKILL.md, references/) and context files
-/// (clarifications.json, decisions) that are written directly to skills_path.
+/// This includes build output (SKILL.md, references/) in skills_path.
 pub fn has_skill_output(skill_name: &str, skills_path: &str) -> bool {
     log::debug!(
         "[has_skill_output] skill='{}': skills_path={}",
@@ -100,8 +103,7 @@ pub fn has_skill_output(skill_name: &str, skills_path: &str) -> bool {
     );
     let output_dir = Path::new(skills_path).join(skill_name);
     let result = output_dir.join("SKILL.md").exists()
-        || output_dir.join("references").is_dir()
-        || output_dir.join("context").is_dir();
+        || output_dir.join("references").is_dir();
     log::debug!("[has_skill_output] skill='{}': result={}", skill_name, result);
     result
 }
@@ -291,7 +293,7 @@ mod tests {
         let output_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(output_dir.join("context")).unwrap();
 
-        assert!(has_skill_output(
+        assert!(!has_skill_output(
             "my-skill",
             tmp.path().to_str().unwrap()
         ));

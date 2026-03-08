@@ -57,6 +57,109 @@ fn migrate_workspace_layout(workspace_path: &str) {
     }
 }
 
+fn migrate_context_from_skills_path(workspace_path: &str, skills_path: &str) {
+    let skills_root = Path::new(skills_path);
+    if !skills_root.is_dir() {
+        return;
+    }
+
+    let entries = match fs::read_dir(skills_root) {
+        Ok(entries) => entries,
+        Err(e) => {
+            log::warn!(
+                "[init_workspace] failed to read skills_path for context migration {}: {}",
+                skills_root.display(),
+                e
+            );
+            return;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let skill_name = file_name.to_string_lossy();
+        if skill_name.starts_with('.') {
+            continue;
+        }
+        let skill_dir = entry.path();
+        if !skill_dir.is_dir() {
+            continue;
+        }
+
+        let legacy_context = skill_dir.join("context");
+        if !legacy_context.is_dir() {
+            continue;
+        }
+
+        let workspace_skill_dir = Path::new(workspace_path).join(skill_name.as_ref());
+        let target_context = workspace_skill_dir.join("context");
+        if let Err(e) = fs::create_dir_all(&target_context) {
+            log::warn!(
+                "[init_workspace] failed to create workspace context dir {}: {}",
+                target_context.display(),
+                e
+            );
+            continue;
+        }
+
+        let target_has_content = fs::read_dir(&target_context)
+            .map(|mut d| d.next().is_some())
+            .unwrap_or(false);
+        if target_has_content {
+            continue;
+        }
+
+        let legacy_entries = match fs::read_dir(&legacy_context) {
+            Ok(entries) => entries,
+            Err(e) => {
+                log::warn!(
+                    "[init_workspace] failed to read legacy context dir {}: {}",
+                    legacy_context.display(),
+                    e
+                );
+                continue;
+            }
+        };
+
+        for legacy_entry in legacy_entries.flatten() {
+            let src = legacy_entry.path();
+            let dst = target_context.join(legacy_entry.file_name());
+            if dst.exists() {
+                continue;
+            }
+            if let Err(rename_err) = fs::rename(&src, &dst) {
+                if src.is_file() {
+                    if let Err(copy_err) = fs::copy(&src, &dst) {
+                        log::warn!(
+                            "[init_workspace] failed to migrate context file {} -> {}: {} ({})",
+                            src.display(),
+                            dst.display(),
+                            rename_err,
+                            copy_err
+                        );
+                        continue;
+                    }
+                    let _ = fs::remove_file(&src);
+                } else {
+                    log::warn!(
+                        "[init_workspace] failed to migrate context entry {} -> {}: {}",
+                        src.display(),
+                        dst.display(),
+                        rename_err
+                    );
+                }
+            }
+        }
+
+        let legacy_empty = fs::read_dir(&legacy_context)
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(false);
+        if legacy_empty {
+            let _ = fs::remove_dir(&legacy_context);
+        }
+    }
+}
+
 /// Initialize the workspace directory on app startup.
 /// Creates `<data_dir>/workspace` if it doesn't exist, updates settings,
 /// and deploys bundled agents to `.claude/`.
@@ -118,6 +221,7 @@ pub fn init_workspace(
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         if let Ok(settings) = crate::db::read_settings(&conn) {
             if let Some(ref sp) = settings.skills_path {
+                migrate_context_from_skills_path(&workspace_path, sp);
                 let sp_path = Path::new(sp);
                 if sp_path.exists() && !sp_path.join(".git").exists() {
                     log::info!("One-time git upgrade: initializing repo at {}", sp);
@@ -371,11 +475,11 @@ pub fn resolve_discovery(
         "add-imported" => {
             // Add as imported, clear context folder — force skill_source to "imported"
             crate::db::upsert_skill_with_source(&conn, &skill_name, "imported", "domain")?;
-            // Validate skills_path before touching filesystem
-            let sp = Path::new(&skills_path);
-            validate_path_within(sp, &skill_name, "skills_path")?;
+            // Validate workspace_path before touching context filesystem
+            let wp = Path::new(&workspace_path);
+            validate_path_within(wp, &skill_name, "workspace_path")?;
             // Clear context folder
-            let context_dir = sp.join(&skill_name).join("context");
+            let context_dir = wp.join(&skill_name).join("context");
             if context_dir.exists() {
                 let _ = fs::remove_dir_all(&context_dir);
                 log::info!("[resolve_discovery] '{}': cleared context folder", skill_name);

@@ -10,11 +10,11 @@ For artifact file formats, see [canonical-format.md](canonical-format.md).
 
 | Location | Path | Purpose | Lifecycle |
 |---|---|---|---|
-| **Database** | Tauri app data dir (`app_data_dir()`) + `skill-builder.db` — macOS: `~/Library/Application Support/com.skillbuilder.app/skill-builder.db`, Linux: `~/.local/share/com.skillbuilder.app/skill-builder.db` | All workflow state, settings, agent runs — single source of truth after reconciliation | Persists permanently; never in the workspace |
-| **Workspace** | `{home}/.vibedata/skill-builder/` | Transient working directory: agent infrastructure, per-skill scratch dirs, logs | Recreated on startup if missing |
+| **Database** | Tauri app data dir (`app_data_dir()`) + `skill-builder.db` — macOS: `~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db`, Linux: `~/.local/share/com.vibedata.skill-builder/skill-builder.db` | All workflow state, settings, agent runs — single source of truth after reconciliation | Persists permanently; never in the workspace |
+| **Workspace** | `app_local_data_dir()/workspace/` | Transient working directory: agent infrastructure, per-skill scratch dirs, logs | Recreated on startup if missing |
 | **Skills path** | User-configured, default `~/skill-builder/` | Permanent skill output: context files, SKILL.md, references | Persists across app restarts; git-tracked |
 
-The workspace lives at `~/.vibedata/skill-builder/`. The constants `WORKSPACE_PARENT` (`.vibedata`) and `WORKSPACE_SUBDIR` (`skill-builder`) are defined in `workspace.rs`. The parent is `dirs::home_dir()` — it follows the user's home directory, not a fixed absolute path. On first launch after upgrading from an older version, the app automatically migrates `~/.vibedata` to `~/.vibedata/skill-builder`.
+The workspace path is resolved from Tauri `app_local_data_dir()` with `workspace/` appended (see `app/src-tauri/src/lib.rs` and `app/src-tauri/src/commands/workspace.rs`). Legacy `~/.vibedata` handling exists only as best-effort cleanup for older builds.
 
 The skills path defaults to `~/skill-builder/` but is set by the user on first launch. It can be changed in Settings; the app moves the directory and preserves git history.
 
@@ -22,11 +22,11 @@ The skills path defaults to `~/skill-builder/` but is set by the user on first l
 
 ## Directory Layout
 
-### Workspace (`{home}/.vibedata/skill-builder/`)
+### Workspace (`app_local_data_dir()/workspace/`)
 
 ```text
-~/.vibedata/
-└── skill-builder/
+<app_local_data_dir>/
+└── workspace/
     ├── .claude/
     │   ├── CLAUDE.md                 # Rebuilt on startup: base + active skills + user customization
     │   ├── agents/                   # Bundled agent prompts, copied from agents/ on startup
@@ -90,7 +90,7 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
 
 ## Agent Working Directory
 
-Agents run with `cwd = {workspace}` (i.e., `~/.vibedata/skill-builder/`). The app passes the following paths explicitly in the agent prompt:
+Agents run with `cwd = {workspace}` (i.e., `app_local_data_dir()/workspace/`). The app passes the following paths explicitly in the agent prompt:
 
 | Prompt variable | Resolved path | Purpose |
 |---|---|---|
@@ -106,13 +106,13 @@ Agents are told to read only specific named files and never create directories �
 
 On every launch, `lib.rs` calls `init_workspace()` followed by `reconcile_startup()`.
 
-### 1. Migrate workspace path (one-time, first launch after upgrade)
+### 1. Cleanup legacy workspace folder (best effort)
 
-If `~/.vibedata` exists and contains data but `~/.vibedata/skill-builder` does not yet exist, the app moves the old workspace into the new location using a three-step atomic rename. Safe to run on every startup — skips if already migrated or if the old directory is absent.
+If `~/.vibedata` exists from pre-DataDir builds, the app attempts best-effort cleanup. This is safe to run on startup and ignored when the legacy folder is absent or not removable.
 
 ### 2. Resolve workspace path
 
-`dirs::home_dir()` + `.vibedata/skill-builder` → absolute path. Create directory if missing.
+`app_local_data_dir()` + `workspace` → absolute path. Create directory if missing.
 
 ### 3. Deploy agent infrastructure
 

@@ -35,6 +35,8 @@ vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: vi.fn(),
   readFile: vi.fn(() => Promise.reject("not found")),
   writeFile: vi.fn(() => Promise.resolve()),
+  getClarificationsContent: vi.fn(() => Promise.reject("not found")),
+  saveClarificationsContent: vi.fn(() => Promise.resolve()),
   getWorkflowState: vi.fn(() => Promise.reject("not found")),
   saveWorkflowState: vi.fn(() => Promise.resolve()),
   resetWorkflowStep: vi.fn(() => Promise.resolve()),
@@ -89,10 +91,34 @@ vi.mock("@/components/workflow-step-complete", () => ({
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
-import { getWorkflowState, saveWorkflowState, writeFile, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar, endWorkflowSession, previewStepReset, runAnswerEvaluator, getDisabledSteps, materializeWorkflowStepOutput, materializeAnswerEvaluationOutput } from "@/lib/tauri";
+import {
+  getWorkflowState,
+  saveWorkflowState,
+  writeFile,
+  readFile,
+  getClarificationsContent,
+  saveClarificationsContent,
+  runWorkflowStep,
+  resetWorkflowStep,
+  cleanupSkillSidecar,
+  endWorkflowSession,
+  previewStepReset,
+  runAnswerEvaluator,
+  getDisabledSteps,
+  materializeWorkflowStepOutput,
+  materializeAnswerEvaluationOutput,
+} from "@/lib/tauri";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import type { ClarificationsFile } from "@/lib/clarifications-types";
+
+// Bridge new domain context commands to existing read/write path-based assertions.
+vi.mocked(getClarificationsContent).mockImplementation((skillName: string) =>
+  vi.mocked(readFile)(`/test/skills/${skillName}/context/clarifications.json`)
+);
+vi.mocked(saveClarificationsContent).mockImplementation((skillName: string, _workspacePath: string, content: string) =>
+  vi.mocked(writeFile)(`/test/skills/${skillName}/context/clarifications.json`, content)
+);
 
 /** Minimal valid ClarificationsFile for tests */
 function makeClarificationsJson(overrides?: Partial<ClarificationsFile>): ClarificationsFile {

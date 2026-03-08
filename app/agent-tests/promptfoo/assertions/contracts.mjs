@@ -81,16 +81,25 @@ export function assessInvocationContracts(expected, observed) {
   const normalize = (value) => {
     const lower = String(value ?? "").toLowerCase().trim();
     if (!lower) return "";
+    // New call_trace variants from smoke provider include colon-prefixed file paths.
+    // Normalize both legacy semantic labels and current file-oriented labels.
     if (lower.includes("read user-context")) return "read-user-context";
     if (lower.includes("read-user-context")) return "read-user-context";
+    if (lower.includes("read:user-context.md")) return "read-user-context";
+    if (lower.includes("read:session-json") || lower.includes("read session json")) return "read-session-json";
+    if (lower.includes("read-existing-skill-md") || lower.includes("read:skil")) return "read-existing-skill";
     if (lower.includes("read decisions")) return "read-decisions";
+    if (lower.includes("read:decisions.md")) return "read-decisions";
+    if (lower.includes("read-decisions-md")) return "read-decisions";
     if (lower.includes("skip-clarifications-read")) return "skip-clarifications-read";
     if (lower.includes("read clarifications")) return "read-clarifications";
+    if (lower.includes("read:clarifications.json")) return "read-clarifications";
     if (lower.includes("invoke-research-skill")) return "invoke-research-skill";
     if (lower.includes("write-research-plan")) return "write-research-plan";
     if (lower.includes("write-clarifications")) return "write-clarifications";
     if (lower.includes("write skill") || lower.includes("write-skill")) return "write-skill";
-    if (lower.includes("write references")) return "write-references";
+    if (lower.includes("write:skill.md") || lower.includes("write-skill-md")) return "write-skill";
+    if (lower.includes("write references") || lower.includes("write:references/")) return "write-references";
     if (lower.includes("write-evaluations") || lower.includes("evaluations.md")) return "write-evaluations";
     return lower
       .replace(/[/.]/g, "-")

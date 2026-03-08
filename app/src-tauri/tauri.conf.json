@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Skill Builder",
   "version": "0.1.0",
-  "identifier": "com.skillbuilder.app",
+  "identifier": "com.vibedata.skill-builder",
   "build": {
     "beforeDevCommand": "npm run dev:frontend",
     "devUrl": "http://localhost:1420",

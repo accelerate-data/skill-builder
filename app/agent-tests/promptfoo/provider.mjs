@@ -79,7 +79,7 @@ function readJson(filePath) {
 
 function writeSessionJson(dir, skillName, phase) {
   writeFile(
-    path.join(dir, ".vibedata", "skill-builder", skillName, "session.json"),
+    path.join(dir, "workspace", skillName, "session.json"),
     JSON.stringify(
       {
         skill_name: skillName,
@@ -103,13 +103,13 @@ function writeSessionJson(dir, skillName, phase) {
 }
 
 function makeSkillDirs(dir, skillName) {
-  fs.mkdirSync(path.join(dir, skillName, "context"), { recursive: true });
+  fs.mkdirSync(path.join(dir, "workspace", skillName, "context"), { recursive: true });
   fs.mkdirSync(path.join(dir, skillName, "references"), { recursive: true });
 }
 
 function writeUserContext(dir, skillName) {
   writeFile(
-    path.join(dir, ".vibedata", "skill-builder", skillName, "user-context.md"),
+    path.join(dir, "workspace", skillName, "user-context.md"),
     `# User Context
 
 - **Industry**: Retail / E-commerce
@@ -134,7 +134,7 @@ function createFixtureClarification(dir, skillName) {
   writeUserContext(dir, skillName);
   makeSkillDirs(dir, skillName);
   writeFile(
-    path.join(dir, skillName, "context", "clarifications.json"),
+    path.join(dir, "workspace", skillName, "context", "clarifications.json"),
     JSON.stringify(
       {
         version: "1",
@@ -223,7 +223,7 @@ function createFixtureDecisionWorkspace(dir, skillName, { scopeRecommendation = 
   writeUserContext(dir, skillName);
   makeSkillDirs(dir, skillName);
   writeFile(
-    path.join(dir, skillName, "context", "clarifications.json"),
+    path.join(dir, "workspace", skillName, "context", "clarifications.json"),
     JSON.stringify(
       {
         version: "1",
@@ -295,7 +295,7 @@ modified: 2026-01-15
 
 function writeDecisionsFile(dir, skillName, frontmatter, body) {
   writeFile(
-    path.join(dir, skillName, "context", "decisions.md"),
+    path.join(dir, "workspace", skillName, "context", "decisions.md"),
     `---
 ${frontmatter.join("\n")}
 ---
@@ -306,7 +306,7 @@ ${body}
 
 function writeClarificationsFile(dir, skillName, payload) {
   writeFile(
-    path.join(dir, skillName, "context", "clarifications.json"),
+    path.join(dir, "workspace", skillName, "context", "clarifications.json"),
     JSON.stringify(payload, null, 2),
   );
 }
@@ -387,8 +387,8 @@ function runResearchOrchestrator({ budgetUsd }) {
 Skill type: domain
 Domain: Pet Store Analytics
 Skill name: ${skillName}
-Context directory: ${dir}/${skillName}/context
-Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
+Context directory: ${dir}/workspace/${skillName}/context
+Workspace directory: ${dir}/workspace/${skillName}
 
 <workspace-instructions>
 ${workspaceContext}
@@ -473,8 +473,8 @@ function runResearchOrchestratorScopeGuard({ budgetUsd }) {
   const prompt = `You are the research-orchestrator agent for the skill-builder plugin.
 Skill type: domain
 Skill name: ${skillName}
-Context directory: ${dir}/${skillName}/context
-Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
+Context directory: ${dir}/workspace/${skillName}/context
+Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>
 ${workspaceContext}
 </workspace-instructions>
@@ -506,8 +506,8 @@ function runAnswerEvaluator({ budgetUsd }) {
 
   const prompt = `You are the answer-evaluator agent for the skill-builder plugin.
 
-Context directory: ${dir}/${skillName}/context
-Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
+Context directory: ${dir}/workspace/${skillName}/context
+Workspace directory: ${dir}/workspace/${skillName}
 
 <workspace-instructions>
 ${workspaceContext}
@@ -516,7 +516,7 @@ ${workspaceContext}
 ${agentInstructions}
 </agent-instructions>
 
-Read the clarification file at: ${dir}/${skillName}/context/clarifications.json
+Read the clarification file at: ${dir}/workspace/${skillName}/context/clarifications.json
 Return JSON only with these fields:
 {
   "total_count": <number>,
@@ -552,9 +552,9 @@ function runConfirmDecisions({ budgetUsd }) {
 Skill type: domain
 Domain: Pet Store Analytics
 Skill name: ${skillName}
-Context directory: ${dir}/${skillName}/context
+Context directory: ${dir}/workspace/${skillName}/context
 Skill directory: ${dir}/${skillName}
-Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
+Workspace directory: ${dir}/workspace/${skillName}
 
 <workspace-instructions>
 ${workspaceContext}
@@ -563,9 +563,9 @@ ${workspaceContext}
 ${agentInstructions}
 </agent-instructions>
 
-Read the answered clarifications at: ${dir}/${skillName}/context/clarifications.json
+Read the answered clarifications at: ${dir}/workspace/${skillName}/context/clarifications.json
 Synthesize the answers into concrete design decisions for the skill.
-Write your decisions to: ${dir}/${skillName}/context/decisions.md
+Write your decisions to: ${dir}/workspace/${skillName}/context/decisions.md
 
 Use canonical decisions format with YAML frontmatter and D-numbered headings (for example: ### D1:) containing:
 - **Original question:**
@@ -576,7 +576,7 @@ Use canonical decisions format with YAML frontmatter and D-numbered headings (fo
 Return: path to decisions.md and a one-line summary of key decisions.`;
 
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
-  const decisionsPath = path.join(dir, skillName, "context", "decisions.md");
+  const decisionsPath = path.join(dir, "workspace", skillName, "context", "decisions.md");
   const decisionsExists = fs.existsSync(decisionsPath);
   const content = decisionsExists ? fs.readFileSync(decisionsPath, "utf8") : "";
   const response = parseAgentJsonOutput(stdout);
@@ -598,12 +598,12 @@ function runConfirmDecisionsScopeGuard({ budgetUsd }) {
   const workspaceContext = loadWorkspaceContext();
   const agentInstructions = loadAgentInstructions("confirm-decisions");
   const prompt = `You are the confirm-decisions agent.
-Context directory: ${dir}/${skillName}/context
-Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
+Context directory: ${dir}/workspace/${skillName}/context
+Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>`;
   runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
-  const content = fs.readFileSync(path.join(dir, skillName, "context", "decisions.md"), "utf8");
+  const content = fs.readFileSync(path.join(dir, "workspace", skillName, "context", "decisions.md"), "utf8");
   const fm = parseFrontmatter(content);
   return finalizeScenario("confirm-decisions-scope-guard", {
     hasScopeRecommendationFlag: fm.scope_recommendation === "true",
@@ -616,7 +616,7 @@ function runConfirmDecisionsContradictory({ budgetUsd }) {
   const dir = makeTempDir("decisions-contradictory");
   const skillName = DEFAULT_SKILL_NAME;
   createFixtureDecisionWorkspace(dir, skillName);
-  const clarificationsPath = path.join(dir, skillName, "context", "clarifications.json");
+  const clarificationsPath = path.join(dir, "workspace", skillName, "context", "clarifications.json");
   const clarifications = readJson(clarificationsPath);
   clarifications.sections[0].questions.push({
     id: "Q9",
@@ -652,12 +652,12 @@ function runConfirmDecisionsContradictory({ budgetUsd }) {
   const workspaceContext = loadWorkspaceContext();
   const agentInstructions = loadAgentInstructions("confirm-decisions");
   const prompt = `You are confirm-decisions.
-Context directory: ${dir}/${skillName}/context
-Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
+Context directory: ${dir}/workspace/${skillName}/context
+Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>`;
   runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
-  const content = fs.readFileSync(path.join(dir, skillName, "context", "decisions.md"), "utf8");
+  const content = fs.readFileSync(path.join(dir, "workspace", skillName, "context", "decisions.md"), "utf8");
   const fm = parseFrontmatter(content);
   return finalizeScenario("confirm-decisions-contradictory", {
     contradictoryFlagSet: fm.contradictory_inputs === "true",
@@ -672,12 +672,12 @@ function runConfirmDecisionsResolvableConflict({ budgetUsd }) {
   const workspaceContext = loadWorkspaceContext();
   const agentInstructions = loadAgentInstructions("confirm-decisions");
   const prompt = `You are confirm-decisions.
-Context directory: ${dir}/${skillName}/context
-Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
+Context directory: ${dir}/workspace/${skillName}/context
+Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>`;
   runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
-  const content = fs.readFileSync(path.join(dir, skillName, "context", "decisions.md"), "utf8");
+  const content = fs.readFileSync(path.join(dir, "workspace", skillName, "context", "decisions.md"), "utf8");
   const fm = parseFrontmatter(content);
   return finalizeScenario("confirm-decisions-resolvable-conflict", {
     noContradictoryFlag: !Object.prototype.hasOwnProperty.call(fm, "contradictory_inputs"),
@@ -712,16 +712,16 @@ function runGenerateSkill({ budgetUsd }) {
   const prompt = `You are generate-skill.
 Skill name: ${skillName}
 Purpose: Business process knowledge
-Context directory: ${dir}/${skillName}/context
+Context directory: ${dir}/workspace/${skillName}/context
 Skill output directory: ${dir}/${skillName}
-Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
+Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>
 Return JSON only with "status":"generated" and "call_trace".`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
   const skillMdPath = path.join(dir, skillName, "SKILL.md");
-  const evaluationsPath = path.join(dir, skillName, "context", "evaluations.md");
+  const evaluationsPath = path.join(dir, "workspace", skillName, "context", "evaluations.md");
   return finalizeScenario(
     "generate-skill",
     {
@@ -748,9 +748,9 @@ function runGenerateSkillScopeGuard({ budgetUsd }) {
   const workspaceContext = loadWorkspaceContext();
   const agentInstructions = loadAgentInstructions("generate-skill");
   const prompt = `You are generate-skill.
-Context directory: ${dir}/${skillName}/context
+Context directory: ${dir}/workspace/${skillName}/context
 Skill output directory: ${dir}/${skillName}
-Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
+Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>`;
   runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
@@ -775,9 +775,9 @@ function runGenerateSkillContradictory({ budgetUsd }) {
   const workspaceContext = loadWorkspaceContext();
   const agentInstructions = loadAgentInstructions("generate-skill");
   const prompt = `You are generate-skill.
-Context directory: ${dir}/${skillName}/context
+Context directory: ${dir}/workspace/${skillName}/context
 Skill output directory: ${dir}/${skillName}
-Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
+Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>`;
   runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
@@ -807,9 +807,9 @@ function runGenerateSkillRevised({ budgetUsd }) {
   const workspaceContext = loadWorkspaceContext();
   const agentInstructions = loadAgentInstructions("generate-skill");
   const prompt = `You are generate-skill.
-Context directory: ${dir}/${skillName}/context
+Context directory: ${dir}/workspace/${skillName}/context
 Skill output directory: ${dir}/${skillName}
-Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
+Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>
 Return JSON with call_trace including "skip-clarifications-read" when revised mode is used.`;
@@ -838,8 +838,8 @@ function runRefineSkill({ budgetUsd }) {
   const prompt = `You are the refine-skill agent for the skill-builder plugin.
 
 Skill directory: ${dir}/${skillName}
-Context directory: ${dir}/${skillName}/context
-Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
+Context directory: ${dir}/workspace/${skillName}/context
+Workspace directory: ${dir}/workspace/${skillName}
 Skill type: domain
 Command: refine
 
@@ -886,8 +886,8 @@ function runRefineSkillScopeGuard({ budgetUsd }) {
   const before = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
   const prompt = `You are refine-skill.
 Skill directory: ${dir}/${skillName}
-Context directory: ${dir}/${skillName}/context
-Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
+Context directory: ${dir}/workspace/${skillName}/context
+Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${refineInstructions}</agent-instructions>
 Current user message: update description`;
@@ -915,15 +915,15 @@ function runValidateSkillScopeGuard({ budgetUsd }) {
   const prompt = `You are validate-skill.
 Skill name: ${skillName}
 Purpose: Business process knowledge
-Context directory: ${dir}/${skillName}/context
+Context directory: ${dir}/workspace/${skillName}/context
 Skill output directory: ${dir}/${skillName}
-Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
+Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>`;
   runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
-  const validation = fs.readFileSync(path.join(dir, skillName, "context", "agent-validation-log.md"), "utf8");
-  const tests = fs.readFileSync(path.join(dir, skillName, "context", "test-skill.md"), "utf8");
-  const companions = fs.readFileSync(path.join(dir, skillName, "context", "companion-skills.md"), "utf8");
+  const validation = fs.readFileSync(path.join(dir, "workspace", skillName, "context", "agent-validation-log.md"), "utf8");
+  const tests = fs.readFileSync(path.join(dir, "workspace", skillName, "context", "test-skill.md"), "utf8");
+  const companions = fs.readFileSync(path.join(dir, "workspace", skillName, "context", "companion-skills.md"), "utf8");
   return finalizeScenario("validate-skill-scope-guard", {
     validationStub: /## Validation Skipped/.test(validation),
     testStub: /## Testing Skipped/.test(tests),
@@ -940,15 +940,15 @@ function runValidateSkillMissingSkillMd({ budgetUsd }) {
   const prompt = `You are validate-skill.
 Skill name: ${skillName}
 Purpose: Business process knowledge
-Context directory: ${dir}/${skillName}/context
+Context directory: ${dir}/workspace/${skillName}/context
 Skill output directory: ${dir}/${skillName}
-Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
+Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
   return finalizeScenario("validate-skill-missing-skill-md", {
     guardMessage: /Cannot validate: no SKILL\.md found/.test(stdout),
-    noValidationFile: !fs.existsSync(path.join(dir, skillName, "context", "agent-validation-log.md")),
+    noValidationFile: !fs.existsSync(path.join(dir, "workspace", skillName, "context", "agent-validation-log.md")),
   });
 }
 

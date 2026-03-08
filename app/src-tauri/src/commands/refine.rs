@@ -159,7 +159,7 @@ fn build_refine_prompt(
     command: Option<&str>,
 ) -> String {
     let skill_dir = Path::new(skills_path).join(skill_name);
-    let context_dir = Path::new(skills_path).join(skill_name).join("context");
+    let context_dir = Path::new(workspace_path).join(skill_name).join("context");
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
     let context_dir_str = context_dir.to_string_lossy().replace('\\', "/");
@@ -1202,7 +1202,7 @@ mod tests {
             "Add metrics section", None, None,
         );
         assert!(prompt.contains("The skill directory is: /home/user/skills/my-skill"));
-        assert!(prompt.contains("The context directory is: /home/user/skills/my-skill/context"));
+        assert!(prompt.contains("The context directory is: /home/user/.vibedata/skill-builder/my-skill/context"));
         assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
     }
 
