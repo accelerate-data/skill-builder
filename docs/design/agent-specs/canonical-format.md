@@ -44,195 +44,98 @@ Scenarios currently covering the behavior contract:
 
 ---
 
-# Canonical `clarifications.md` Format
+# Canonical `clarifications.json` Format
 
-Written by the research skill (via `research-orchestrator`, Step 0). Updated in-place by `detailed-research` (Step 3). Read by `answer-evaluator`, `detailed-research`, and `confirm-decisions`.
+Written by the research skill (via `research-orchestrator`, Step 0). Updated in-place by `detailed-research` (Step 1). Read by `answer-evaluator`, `detailed-research`, `confirm-decisions`, and guard logic in downstream agents.
 
 ---
 
-## YAML Frontmatter
+## JSON Schema
 
-```yaml
----
-question_count: 26        # required — total Q-level questions
-sections: 6               # required — number of ## sections
-duplicates_removed: 17    # required — consolidation stat
-refinement_count: 16      # required — total R-level items (0 for step 0)
-status: pending           # optional — workflow status
-priority_questions: [Q1, Q2, Q3]  # optional — IDs of questions under ### Required sub-headings
-scope_recommendation: true        # optional — set by scope advisor, checked by downstream agents
----
+```json
+{
+  "version": "1",
+  "metadata": {
+    "title": "Clarifications: {Domain Name}",
+    "question_count": 26,
+    "section_count": 6,
+    "refinement_count": 0,
+    "must_answer_count": 3,
+    "priority_questions": ["Q1", "Q2", "Q3"],
+    "duplicates_removed": 17,
+    "scope_recommendation": false
+  },
+  "sections": [
+    {
+      "id": "S1",
+      "title": "Section Name",
+      "description": "Brief section summary.",
+      "questions": [
+        {
+          "id": "Q1",
+          "title": "Short title",
+          "must_answer": true,
+          "text": "Full question text...",
+          "consolidated_from": ["Metrics Research", "Business Rules"],
+          "choices": [
+            {"id": "A", "text": "Choice A", "is_other": false},
+            {"id": "B", "text": "Choice B", "is_other": false},
+            {"id": "C", "text": "Choice C", "is_other": false},
+            {"id": "D", "text": "Other (please specify)", "is_other": true}
+          ],
+          "recommendation": "A — rationale",
+          "answer_choice": null,
+          "answer_text": null,
+          "refinements": []
+        }
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "type": "inconsistency",
+      "title": "Contradiction title",
+      "body": "What is inconsistent and why it matters."
+    }
+  ]
+}
 ```
-
-### Required fields
-
-| Field | Type | Description |
-|---|---|---|
-| `question_count` | integer | Total number of top-level Q-questions |
-| `sections` | integer | Number of `##` section headings |
-| `duplicates_removed` | integer | Number of duplicates eliminated during consolidation |
-| `refinement_count` | integer | Total R-level refinement items (0 before Step 3) |
-
-### Optional fields
-
-| Field | Type | Description |
-|---|---|---|
-| `status` | string | Workflow status (e.g. `pending`, `answered`) |
-| `priority_questions` | list | IDs of questions under `### Required` sub-headings |
-| `scope_recommendation` | boolean | Set by scope advisor; checked by Scope Recommendation Guard |
-
----
-
-## Heading Hierarchy
-
-```text
-# Research Clarifications          ← document title (H1)
-## Section Name                    ← topic section (H2)
-### Required                       ← required question group (H3, conditional)
-### Q1: Short Title                ← question (H3)
-### Optional                       ← optional question group (H3, conditional)
-### Q3: Short Title                ← question (H3)
-#### Refinements                   ← refinement container (H4)
-##### R3.1: Refinement Title       ← refinement question (H5)
-##### R3.1a: Sub-refinement Title  ← sub-refinement (H5, letter suffix)
-```
-
-Each section may have only `### Required`, only `### Optional`, or both. These sub-headings are conditional.
-
-Each level nests under the previous. The `#### Refinements` heading appears only when a question has refinements.
-
----
-
-## Question Template
-
-```markdown
-### Q1: MRR Definition by Service Type
-How is MRR calculated across your three service categories?
-
-A. Managed Services MRR = recurring monthly fee. PS <12mo = TCV / engagement months.
-B. Managed Services MRR = monthly fee. PS <12mo treated as one-time (excluded).
-C. MRR applies only to Managed Services. All PS deals tracked as TCV.
-D. Other (please specify)
-
-_Consolidated from: Metrics Q1, Segmentation Q2, Business Rules Q5_
-
-**Recommendation:** A — Use recurring fee for MS; spread TCV for PS.
-
-**Answer:**
-```
-
-### Field-by-field spec
-
-| Field | Format | Required | Notes |
-|---|---|---|---|
-| Heading | `### Q{n}: Short Title` | yes | No inline tags. Required vs optional is indicated by the preceding `### Required` / `### Optional` sub-heading |
-| Body text | Plain text on next line(s) | yes | The full question; heading is just a short title |
-| Choices | `A. Choice text` | yes | 2-4 choices + `D. Other (please specify)`. Lettered with period, no label needed |
-| Consolidated from | `_Consolidated from: ..._` | optional | Italicized, only on first-round consolidated questions |
-| Recommendation | `**Recommendation:** Full sentence.` | yes | Between choices and answer. Colon inside bold |
-| Answer | `**Answer:**` | yes | Colon inside bold. Empty until user fills in. Followed by a blank line |
 
 ### Rules
 
-- No `**Choices**:` label. The `A.` / `B.` / `C.` pattern is self-evident.
-- No checkbox syntax (`- [ ]`, `- [x]`). Just `A. text`.
-- No `**(recommended)**` inline markers on choices. Recommendations go in the `**Recommendation:**` field.
-- No `**Question:**` label. The question body is plain text after the heading.
-- Every question ends with `**Answer:**` followed by a blank line (even if unanswered).
+- `version` is fixed to `"1"`.
+- `question_count` must equal total `sections[].questions[]` length.
+- `section_count` must equal total `sections[]` length.
+- `must_answer_count` must equal questions where `must_answer: true`.
+- `priority_questions` must list all question IDs where `must_answer: true`.
+- `refinement_count` is `0` at step 0; incremented by `detailed-research`.
+- Every question must include 2-4 concrete choices plus final `"Other (please specify)"`.
+- `answer_choice` and `answer_text` start as `null`.
+- `refinements` starts as `[]` and is populated in step 1 for targeted follow-up.
 
----
+### Refinement object schema (added by `detailed-research`)
 
-## Refinement Template
-
-Refinements appear under a `#### Refinements` heading within their parent question block.
-
-```markdown
-#### Refinements
-
-##### R1.1: Why TCV/10 for PS Projects Under 12 Months
-Rationale for why this matters given the answer above...
-
-A. 10 is a fixed company-wide assumption for average PS engagement length
-B. 10 approximates billable months after excluding ramp/close
-C. It varies — divisor is negotiated or set at deal level
-D. Other (please specify)
-
-**Recommendation:** A — Fixed assumption simplifies the formula.
-
-**Answer:**
-
-##### R1.2: Definition of "Year 1 Value" for PS Projects Over 12 Months
-For PS projects longer than 12 months, how is "Year 1 value" defined?
-
-A. First 12 months of contracted revenue
-B. Annual contract value (ACV) regardless of term length
-C. Other (please specify)
-
-**Recommendation:** A — First 12 months is the most common convention.
-
-**Answer:**
+```json
+{
+  "id": "R6.1",
+  "parent_question_id": "Q6",
+  "title": "Refinement title",
+  "text": "Why this follow-up is needed.",
+  "choices": [
+    {"id": "A", "text": "Choice A", "is_other": false},
+    {"id": "B", "text": "Choice B", "is_other": false},
+    {"id": "C", "text": "Choice C", "is_other": false},
+    {"id": "D", "text": "Other (please specify)", "is_other": true}
+  ],
+  "recommendation": "B",
+  "must_answer": false,
+  "answer_choice": null,
+  "answer_text": null,
+  "refinements": []
+}
 ```
 
-### Refinement ID scheme
-
-| Level | Format | Example | Who creates it |
-|---|---|---|---|
-| Top-level question | `Q{n}` | `Q1`, `Q12` | research skill (Step 0) |
-| Refinement | `R{n}.{m}` | `R1.1`, `R12.2` | detailed-research (Step 3) |
-| Sub-refinement | `R{n}.{m}{a}` | `R12.1a`, `R12.2b` | detailed-research (Step 3) |
-
-The parent is always embedded in the ID:
-
-- `R1.1` → refinement 1 of **Q1**
-- `R12.2b` → sub-refinement (b) of **R12.2**, which itself refines **Q12**
-
----
-
-## Sub-refinement Template
-
-Sub-refinements use the same `#####` heading level and follow the same format. They are generated when a refinement answer opens another gap.
-
-```markdown
-##### R12.1: Stage Threshold for Committed Pipeline
-What pipeline stage marks "committed"?
-
-A. Specific named stage (e.g. Proposal Sent, Negotiation)
-B. Any stage after qualification
-C. Forecast flag, not stage-based
-D. Other (please specify)
-
-**Recommendation:** A — Named stage gives the clearest threshold.
-
-**Answer:** A (specific named stage)
-
-##### R12.1a: Which Named Stage Is the Committed Pipeline Threshold?
-The PM confirmed named stage — but which one?
-
-A. Proposal Sent
-B. Negotiation
-C. Verbal Commit
-D. Other (please specify)
-
-**Recommendation:** A — Proposal Sent is the most common threshold.
-
-**Answer:**
-```
-
----
-
-## `## Needs Clarification` Section
-
-Appears at the end of the file when contradictions or critical gaps are found.
-
-```markdown
-## Needs Clarification
-
-### Contradiction: Pipeline Entry vs. Committed Stage
-Q2 says stage beyond "Prospecting" enters pipeline. Q12 says "Proposal Sent" is the committed threshold. These may be compatible (entry != commitment) but the PM should confirm.
-
-### Critical Gap: Win Rate Definition
-Q17 is a required question (listed in priority_questions) but has no answer. This is required for skill generation.
-```
+Refinement IDs follow `R{parent}.{n}` (for example `R6.1`, `R6.2`) and must keep `parent_question_id` aligned.
 
 ---
 
