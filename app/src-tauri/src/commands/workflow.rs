@@ -3032,6 +3032,36 @@ mod tests {
     }
 
     #[test]
+    fn test_materialize_step0_scope_recommendation_triggers_scope_guard_parser() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 0,
+            "question_count": 0,
+            "research_plan_markdown": "---\npurpose: domain\n---\n## Scope Recommendation Active\n",
+            "clarifications_json": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 0,
+                    "section_count": 0,
+                    "refinement_count": 0,
+                    "must_answer_count": 0,
+                    "priority_questions": [],
+                    "scope_recommendation": true
+                },
+                "sections": [],
+                "notes": []
+            }
+        });
+
+        super::materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap();
+        assert!(parse_scope_recommendation(
+            &skill_root.join("context/clarifications.json")
+        ));
+    }
+
+    #[test]
     fn test_materialize_step2_writes_decisions() {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
@@ -3041,6 +3071,44 @@ mod tests {
         });
         super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
         assert!(skill_root.join("context/decisions.md").exists());
+    }
+
+    #[test]
+    fn test_materialize_step2_writes_scope_guard_stub_decisions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": "---\nscope_recommendation: true\ndecision_count: 0\n---\n## Scope Recommendation Active\n"
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
+        let content = std::fs::read_to_string(skill_root.join("context/decisions.md")).unwrap();
+        assert!(content.contains("scope_recommendation: true"));
+        assert!(content.contains("## Scope Recommendation Active"));
+    }
+
+    #[test]
+    fn test_materialize_step2_conflict_decisions_trigger_conflict_guard() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": "---\ndecision_count: 2\nconflicts_resolved: 0\nround: 1\ncontradictory_inputs: true\n---\n### D1: Conflict\n- **Original question:** Q\n- **Decision:** A\n- **Implication:** I\n- **Status:** conflict-resolved\n"
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
+        assert!(parse_decisions_guard(&skill_root.join("context/decisions.md")));
+    }
+
+    #[test]
+    fn test_materialize_step2_revised_conflict_decisions_do_not_trigger_guard() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": "---\ndecision_count: 2\nconflicts_resolved: 1\nround: 2\ncontradictory_inputs: revised\n---\n### D1: Conflict\n- **Original question:** Q\n- **Decision:** A\n- **Implication:** I\n- **Status:** conflict-resolved\n"
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
+        assert!(!parse_decisions_guard(&skill_root.join("context/decisions.md")));
     }
 
     #[test]
