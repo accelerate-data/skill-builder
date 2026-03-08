@@ -13,5 +13,6 @@
 | [branding/](branding/ad-brand.md) | Brand and visual identity |
 | [release/](release/README.md) | Release pipeline: CI/CD workflows, desktop app build, credentials |
 | [sdk-agent-options/](sdk-agent-options/README.md) | Claude Agent SDK option wiring: source trace for each option from UI/backend/hardcoded paths |
+| [agent-unit-test-suite/](agent-unit-test-suite/README.md) | Agent test stack and Promptfoo scenario operations: maintenance, single-scenario runs, and autonomous agent test policy |
 | [startup-recon/](startup-recon/README.md) | Startup reconciliation: three-pass state machine, discovery scenarios, ACK dialog |
 | [workflow-state/](workflow-state/README.md) | Workflow step state machine: transitions, file deletion cascade, reset vs navigate-back, disabled-step guards |

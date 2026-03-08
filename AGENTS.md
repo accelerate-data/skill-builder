@@ -102,6 +102,20 @@ Determine what you changed, then pick the right runner:
 | Mock templates or E2E fixtures | — | `npm run test:unit` |
 | Shared infrastructure (`src/lib/tauri.ts`, test mocks) | — | `app/tests/run.sh` (all levels) |
 
+### Autonomous test triggers (coding agents)
+
+When changed files match these patterns, run the mapped tests automatically before reporting completion:
+
+| Changed files | Run |
+|---|---|
+| `agents/*.md` | `cd app && npm run test:agents:structural` |
+| `agent-sources/workspace/**` | `cd app && npm run test:agents:structural` |
+| `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` |
+| `app/sidecar/mock-templates/**` | `cd app && npm run test:unit` |
+| `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` |
+
+`test:agents:smoke` (Promptfoo) is manual by default because it makes live API calls.
+
 **Artifact format changes** (agent output format + app parser + mock templates): run `cd app && npm run test:agents:structural` and `npm run test:unit`, then tell the user to run `cd app && npm run test:agents:smoke` (Promptfoo evals) manually. The `canonical-format.test.ts` suite is the canary for format drift across the boundary.
 
 **Unsure?** `app/tests/run.sh` runs everything.

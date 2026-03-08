@@ -7,7 +7,8 @@ providers:
   - file://./provider.mjs
 
 tests:
-  - vars:
+  - description: research-orchestrator
+    vars:
       scenario: research-orchestrator
     assert:
       - type: contains
@@ -24,7 +25,8 @@ tests:
         value: '"questionCountNumber":true'
       - type: contains
         value: '"sectionsArray":true'
-  - vars:
+  - description: answer-evaluator
+    vars:
       scenario: answer-evaluator
     assert:
       - type: contains
@@ -39,7 +41,8 @@ tests:
         value: '"verdictValid":true'
       - type: contains
         value: '"perQuestionArray":true'
-  - vars:
+  - description: confirm-decisions
+    vars:
       scenario: confirm-decisions
     assert:
       - type: contains
@@ -54,7 +57,8 @@ tests:
         value: '"heading":true'
       - type: contains
         value: '"status":true'
-  - vars:
+  - description: refine-skill
+    vars:
       scenario: refine-skill
     assert:
       - type: contains
