@@ -7,10 +7,22 @@ Run the evaluation scenarios from `evaluations.md` against the skill content. Sc
 ## Inputs
 
 - `{context_dir}/evaluations.md` — test scenarios written by generate-skill
-- `SKILL.md` and all `references/` files — the skill content to evaluate
+- `{context_dir}/decisions.md` and `{context_dir}/clarifications.json` — decision and clarification context
+- `SKILL.md` and `references/` files — the skill content to evaluate
 - `{workspace_dir}/user-context.md` — user context (per User Context protocol)
 
-Read all files.
+Read `{context_dir}/decisions.md` first to determine clarification handling:
+
+- If `contradictory_inputs: revised`, skip `clarifications.json`.
+- Otherwise, read `{context_dir}/clarifications.json` in full before scenario evaluation.
+
+Then evaluate with progressive discovery:
+
+- Read `evaluations.md` and `SKILL.md` first.
+- For each scenario, read only the reference files needed to assess expected behavior and pass criteria.
+- If evidence is insufficient, expand reads until the scenario can be scored with concrete support.
+
+Read `user-context.md` from the workspace directory.
 
 ## Evaluation
 

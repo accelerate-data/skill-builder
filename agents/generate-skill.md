@@ -133,11 +133,11 @@ Missing or malformed `decisions.md`: report to coordinator, do not build.
 
 When the prompt contains `/rewrite`, all phases still apply with these additions:
 
-**Phase 1:** Read existing `SKILL.md` and ALL `references/` files alongside `decisions.md`. Identify inconsistencies, redundancies, stale cross-references. Catalog domain knowledge to preserve.
+**Phase 1:** Read existing `SKILL.md` and inventory `references/` files alongside `decisions.md`. Identify inconsistencies, redundancies, stale cross-references. Build a rewrite plan, then read reference files progressively as each section needs evidence.
 
 **Phase 2:** Update `modified` to today. Preserve original `created` and `author`.
 
-**Phase 3:** Read each existing reference file first. Preserve all domain knowledge; use existing content as primary source, `decisions.md` as supplement. After self-review, verify no domain knowledge was dropped.
+**Phase 3:** Rewrite references in a staged, demand-driven order. Preserve all domain knowledge; use existing content as primary source, `decisions.md` as supplement. Before finalizing, perform a full preservation sweep to confirm no original domain knowledge was dropped; if coverage is incomplete, read additional references and close gaps.
 
 **Error handling:** If `decisions.md` is missing, proceed using existing skill content only.
 
