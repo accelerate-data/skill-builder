@@ -929,8 +929,8 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       total_count: 2,
       reasoning: "One unanswered and one needs refinement.",
       per_question: [
-        { question_id: "Q1", verdict: "not_answered", reason: "No answer provided." },
-        { question_id: "Q2", verdict: "needs_refinement", reason: "Clarify thresholds and conditions." },
+        { question_id: "Q1", verdict: "not_answered" },
+        { question_id: "Q2", verdict: "needs_refinement" },
       ],
     };
 

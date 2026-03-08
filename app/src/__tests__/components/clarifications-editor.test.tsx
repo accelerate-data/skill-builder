@@ -297,22 +297,49 @@ describe("Main question answer field visibility", () => {
   });
 });
 
-describe("Unanswered filter toggle", () => {
-  it("shows only unanswered top-level questions when enabled", async () => {
+describe("Need Review filter toggle", () => {
+  it("shows only questions marked by evaluator feedback when enabled", async () => {
     const user = userEvent.setup();
     const data = makeClarifications([
       makeQuestion({ id: "Q1", title: "Answered Question", answer_choice: "A", answer_text: "Choice A" }),
       makeQuestion({ id: "Q2", title: "Unanswered Question", answer_choice: null, answer_text: null }),
     ]);
+    data.notes = [
+      {
+        type: "answer_feedback",
+        title: "Not answered: Q2",
+        body: "This question is still unanswered.",
+      },
+    ];
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
     expect(screen.getByText("Answered Question")).toBeInTheDocument();
     expect(screen.getByText("Unanswered Question")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("switch", { name: "Not Answered" }));
+    await user.click(screen.getByRole("switch", { name: "Need Review" }));
 
     expect(screen.queryByText("Answered Question")).not.toBeInTheDocument();
     expect(screen.getByText("Unanswered Question")).toBeInTheDocument();
+  });
+});
+
+describe("Inline evaluator feedback", () => {
+  it("shows reason inline with the flagged question in context", async () => {
+    const user = userEvent.setup();
+    const data = makeClarifications([makeQuestion({ id: "Q1", title: "Flagged Question" })]);
+    data.notes = [
+      {
+        type: "answer_feedback",
+        title: "Vague answer: Q1",
+        body: "Missing concrete thresholds.",
+      },
+    ];
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+    await expandCard(user, "Flagged Question");
+
+    expect(screen.getByText("Need Review: Vague")).toBeInTheDocument();
+    expect(screen.getByText("Why flagged: Missing concrete thresholds.")).toBeInTheDocument();
   });
 });
 

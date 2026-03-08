@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { ChevronRight, AlertTriangle, Info, RotateCcw, Check, Loader2, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -35,6 +35,59 @@ function resolveNoteIcon(type: string): typeof AlertTriangle {
   return Info;
 }
 
+type ReviewStatus = "not_answered" | "vague" | "contradictory" | "needs_refinement";
+
+interface ReviewFeedback {
+  status: ReviewStatus;
+  questionId: string;
+  reason: string;
+  contradicts?: string;
+}
+
+function parseAnswerFeedback(note: Note): ReviewFeedback | null {
+  if (note.type !== "answer_feedback") return null;
+
+  const title = note.title.trim();
+  const reason = note.body.trim();
+  const contradictoryMatch = /^Contradictory answer:\s*(.+)$/i.exec(title);
+  if (contradictoryMatch) {
+    const contradictsMatch = /conflicts with\s+([A-Za-z]\d+(?:\.\d+[a-z]?)?)/i.exec(reason);
+    return {
+      status: "contradictory",
+      questionId: contradictoryMatch[1].trim(),
+      reason,
+      contradicts: contradictsMatch?.[1],
+    };
+  }
+
+  const vagueMatch = /^Vague answer:\s*(.+)$/i.exec(title);
+  if (vagueMatch) {
+    return { status: "vague", questionId: vagueMatch[1].trim(), reason };
+  }
+
+  const unansweredMatch = /^Not answered:\s*(.+)$/i.exec(title);
+  if (unansweredMatch) {
+    return { status: "not_answered", questionId: unansweredMatch[1].trim(), reason };
+  }
+
+  const needsRefinementMatch = /^Needs refinement:\s*(.+)$/i.exec(title);
+  if (needsRefinementMatch) {
+    return { status: "needs_refinement", questionId: needsRefinementMatch[1].trim(), reason };
+  }
+
+  return null;
+}
+
+function getReviewFeedbackMap(notes: Note[]): Map<string, ReviewFeedback> {
+  const map = new Map<string, ReviewFeedback>();
+  for (const note of notes) {
+    const feedback = parseAnswerFeedback(note);
+    if (!feedback) continue;
+    map.set(feedback.questionId, feedback);
+  }
+  return map;
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 export type SaveStatus = "idle" | "dirty" | "saving" | "saved";
@@ -67,8 +120,10 @@ export function ClarificationsEditor({
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set(data.sections.map((section) => section.id)));
   const [notesExpanded, setNotesExpanded] = useState(true);
-  const [showUnansweredOnly, setShowUnansweredOnly] = useState(false);
+  const [showNeedsReviewOnly, setShowNeedsReviewOnly] = useState(false);
   const { answered, total, mustUnanswered } = getTotalCounts(data);
+  const reviewFeedbackByQuestion = useMemo(() => getReviewFeedbackMap(data.notes), [data.notes]);
+  const needsReviewCount = reviewFeedbackByQuestion.size;
   const canContinue = mustUnanswered === 0;
   const progressPct = total > 0 ? Math.round((answered / total) * 100) : 0;
   const isComplete = answered === total;
@@ -128,16 +183,16 @@ export function ClarificationsEditor({
     [data, onChange],
   );
 
-  const hasUnansweredInTree = useCallback((q: Question): boolean => {
-    if (!isQuestionAnswered(q)) return true;
-    return q.refinements.some(hasUnansweredInTree);
-  }, []);
+  const hasNeedsReviewInTree = (q: Question): boolean => {
+    if (reviewFeedbackByQuestion.has(q.id)) return true;
+    return q.refinements.some(hasNeedsReviewInTree);
+  };
 
   const visibleSections = data.sections
     .map((section) => ({
       section,
-      visibleQuestions: showUnansweredOnly
-        ? section.questions.filter(hasUnansweredInTree)
+      visibleQuestions: showNeedsReviewOnly
+        ? section.questions.filter(hasNeedsReviewInTree)
         : section.questions,
     }))
     .filter(({ visibleQuestions }) => visibleQuestions.length > 0);
@@ -175,12 +230,12 @@ export function ClarificationsEditor({
           <span className="text-[11px] font-mono text-muted-foreground">{filePath}</span>
         )}
         <div className="ml-1 flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Not Answered</span>
+          <span className="text-xs text-muted-foreground">Need Review</span>
           <Switch
             size="sm"
-            aria-label="Not Answered"
-            checked={showUnansweredOnly}
-            onCheckedChange={setShowUnansweredOnly}
+            aria-label="Need Review"
+            checked={showNeedsReviewOnly}
+            onCheckedChange={setShowNeedsReviewOnly}
           />
         </div>
       </div>
@@ -203,6 +258,18 @@ export function ClarificationsEditor({
           Questions marked <strong className="font-semibold">MUST ANSWER</strong> block skill generation.
           All others refine quality but have reasonable defaults.
         </div>
+        {needsReviewCount > 0 && (
+          <div
+            className="mx-6 mt-2 rounded-md border px-3 py-2 text-xs leading-relaxed"
+            style={{
+              borderColor: "color-mix(in oklch, var(--destructive), transparent 70%)",
+              background: "color-mix(in oklch, var(--destructive), transparent 93%)",
+              color: "var(--destructive)",
+            }}
+          >
+            {needsReviewCount} question{needsReviewCount === 1 ? "" : "s"} currently marked for review by the answer evaluator.
+          </div>
+        )}
 
         {data.notes.length > 0 && (
           <NotesBlock notes={data.notes} isExpanded={notesExpanded} onToggle={() => setNotesExpanded((prev) => !prev)} />
@@ -219,11 +286,12 @@ export function ClarificationsEditor({
             toggleCard={toggleCard}
             updateQuestion={updateQuestion}
             readOnly={readOnly}
+            reviewFeedbackByQuestion={reviewFeedbackByQuestion}
           />
         ))}
         {visibleSections.length === 0 && (
           <div className="mx-6 mt-6 rounded-md border border-dashed px-4 py-3 text-sm text-muted-foreground">
-            No unanswered questions in the current filter.
+            No questions currently need review.
           </div>
         )}
       </div>
@@ -298,7 +366,7 @@ function MetadataBlock({ data }: { data: ClarificationsFile }) {
 // ─── Section Band ─────────────────────────────────────────────────────────────
 
 function SectionBlock({
-  section, visibleQuestions, isExpanded, toggleSection, expandedCards, toggleCard, updateQuestion, readOnly,
+  section, visibleQuestions, isExpanded, toggleSection, expandedCards, toggleCard, updateQuestion, readOnly, reviewFeedbackByQuestion,
 }: {
   section: Section;
   visibleQuestions: Question[];
@@ -308,6 +376,7 @@ function SectionBlock({
   toggleCard: (id: string) => void;
   updateQuestion: (id: string, updater: (q: Question) => Question) => void;
   readOnly: boolean;
+  reviewFeedbackByQuestion: Map<string, ReviewFeedback>;
 }) {
   const status = getSectionStatus(section);
   const { answered, total } = getSectionCounts(section);
@@ -355,6 +424,8 @@ function SectionBlock({
               toggleCard={toggleCard}
               updateQuestion={updateQuestion}
               readOnly={readOnly}
+              reviewFeedback={reviewFeedbackByQuestion.get(question.id)}
+              reviewFeedbackByQuestion={reviewFeedbackByQuestion}
             />
           ))}
         </div>
@@ -398,13 +469,15 @@ function StatusChip({ status, answered, total }: { status: SectionStatus; answer
 // ─── Question Card ────────────────────────────────────────────────────────────
 
 function QuestionCard({
-  question, isExpanded, toggleCard, updateQuestion, readOnly,
+  question, isExpanded, toggleCard, updateQuestion, readOnly, reviewFeedback, reviewFeedbackByQuestion,
 }: {
   question: Question;
   isExpanded: boolean;
   toggleCard: (id: string) => void;
   updateQuestion: (id: string, updater: (q: Question) => Question) => void;
   readOnly: boolean;
+  reviewFeedback?: ReviewFeedback;
+  reviewFeedbackByQuestion: Map<string, ReviewFeedback>;
 }) {
   const answered = isQuestionAnswered(question);
   const refCount = question.refinements.length;
@@ -464,6 +537,7 @@ function QuestionCard({
           <p className="mb-3 text-sm leading-relaxed text-foreground/90">
             {question.text}
           </p>
+          {reviewFeedback && <ReviewFeedbackCallout feedback={reviewFeedback} />}
 
           {question.choices.length > 0 && (
             <ChoiceList
@@ -503,6 +577,7 @@ function QuestionCard({
               refinements={question.refinements}
               updateQuestion={updateQuestion}
               readOnly={readOnly}
+              reviewFeedbackByQuestion={reviewFeedbackByQuestion}
             />
           )}
         </div>
@@ -655,11 +730,12 @@ function AnswerField({
 // ─── Refinements Block ────────────────────────────────────────────────────────
 
 function RefinementsBlock({
-  refinements, updateQuestion, readOnly,
+  refinements, updateQuestion, readOnly, reviewFeedbackByQuestion,
 }: {
   refinements: Question[];
   updateQuestion: (id: string, updater: (q: Question) => Question) => void;
   readOnly: boolean;
+  reviewFeedbackByQuestion: Map<string, ReviewFeedback>;
 }) {
   return (
     <div
@@ -679,18 +755,25 @@ function RefinementsBlock({
         Refinements
       </div>
       {refinements.map((ref) => (
-        <RefinementItem key={ref.id} refinement={ref} updateQuestion={updateQuestion} readOnly={readOnly} />
+        <RefinementItem
+          key={ref.id}
+          refinement={ref}
+          updateQuestion={updateQuestion}
+          readOnly={readOnly}
+          reviewFeedback={reviewFeedbackByQuestion.get(ref.id)}
+        />
       ))}
     </div>
   );
 }
 
 function RefinementItem({
-  refinement, updateQuestion, readOnly,
+  refinement, updateQuestion, readOnly, reviewFeedback,
 }: {
   refinement: Question;
   updateQuestion: (id: string, updater: (q: Question) => Question) => void;
   readOnly: boolean;
+  reviewFeedback?: ReviewFeedback;
 }) {
   const answered = isQuestionAnswered(refinement);
 
@@ -717,6 +800,7 @@ function RefinementItem({
           </span>
         )}
       </div>
+      {reviewFeedback && <ReviewFeedbackCallout feedback={reviewFeedback} compact />}
       {refinement.choices.length > 0 && (
         <ChoiceList
           choices={refinement.choices}
@@ -743,6 +827,49 @@ function RefinementItem({
           compact
         />
       )}
+    </div>
+  );
+}
+
+function ReviewFeedbackCallout({ feedback, compact = false }: { feedback: ReviewFeedback; compact?: boolean }) {
+  const statusLabel: Record<ReviewStatus, string> = {
+    not_answered: "Not answered",
+    vague: "Vague",
+    contradictory: "Contradictory",
+    needs_refinement: "Needs refinement",
+  };
+
+  return (
+    <div
+      className={`mb-3 rounded-md border px-3 ${compact ? "py-2" : "py-2.5"} text-xs leading-relaxed`}
+      style={{
+        borderColor: feedback.status === "contradictory"
+          ? "color-mix(in oklch, var(--destructive), transparent 55%)"
+          : "color-mix(in oklch, var(--color-pacific), transparent 60%)",
+        background: feedback.status === "contradictory"
+          ? "color-mix(in oklch, var(--destructive), transparent 92%)"
+          : "color-mix(in oklch, var(--color-pacific), transparent 92%)",
+      }}
+    >
+      <div className="mb-1 flex flex-wrap items-center gap-2">
+        <span
+          className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+          style={{
+            color: feedback.status === "contradictory" ? "var(--destructive)" : "var(--color-pacific)",
+            background: feedback.status === "contradictory"
+              ? "color-mix(in oklch, var(--destructive), transparent 88%)"
+              : "color-mix(in oklch, var(--color-pacific), transparent 88%)",
+          }}
+        >
+          Need Review: {statusLabel[feedback.status]}
+        </span>
+        {feedback.contradicts && (
+          <span className="rounded-full border px-2 py-0.5 text-[11px] font-medium text-destructive">
+            Conflicts with {feedback.contradicts}
+          </span>
+        )}
+      </div>
+      <p className="text-muted-foreground">Why flagged: {feedback.reason}</p>
     </div>
   );
 }

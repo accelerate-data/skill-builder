@@ -774,6 +774,11 @@ export default function WorkflowPage() {
 
   function buildGateFeedbackNotes(evaluation: AnswerEvaluation): Note[] {
     const perQuestion = evaluation.per_question ?? [];
+    const optionalReason = (q: (typeof perQuestion)[number]): string | null =>
+      "reason" in q && typeof q.reason === "string" && q.reason.trim().length > 0
+        ? q.reason.trim()
+        : null;
+
     return perQuestion
     .filter(
       (q) =>
@@ -784,13 +789,11 @@ export default function WorkflowPage() {
     )
       .map((q) => {
         if (q.verdict === "contradictory") {
-          const fallback = q.contradicts
-            ? `This answer conflicts with ${q.contradicts}.`
-            : "This answer conflicts with another answer.";
+          const fallback = `This answer conflicts with ${q.contradicts}.`;
           return {
             type: "answer_feedback",
             title: `Contradictory answer: ${q.question_id}`,
-            body: q.reason?.trim() || fallback,
+            body: optionalReason(q) || fallback,
           };
         }
       if (q.verdict === "not_answered") {
@@ -798,7 +801,7 @@ export default function WorkflowPage() {
           type: "answer_feedback",
           title: `Not answered: ${q.question_id}`,
           body:
-            q.reason?.trim() ||
+            optionalReason(q) ||
             "This question is still unanswered. Add a concrete answer before continuing.",
         };
       }
@@ -807,14 +810,14 @@ export default function WorkflowPage() {
           type: "answer_feedback",
           title: `Needs refinement: ${q.question_id}`,
           body:
-            q.reason?.trim() ||
+            optionalReason(q) ||
             "Answer has useful direction but needs more concrete detail and constraints.",
         };
       }
         return {
           type: "answer_feedback",
           title: `Vague answer: ${q.question_id}`,
-          body: q.reason?.trim() || "Answer is too general and needs specific details.",
+          body: optionalReason(q) || "Answer is too general and needs specific details.",
         };
       });
   }

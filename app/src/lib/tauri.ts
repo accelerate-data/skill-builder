@@ -454,12 +454,22 @@ export const sendRefineMessage = (
 
 // --- Answer Evaluation (Transition Gate) ---
 
-export interface PerQuestionVerdict {
-  question_id: string;
-  verdict: "clear" | "needs_refinement" | "not_answered" | "vague" | "contradictory";
-  reason?: string;
-  contradicts?: string;
-}
+export type PerQuestionVerdict =
+  | {
+    question_id: string;
+    verdict: "clear" | "needs_refinement" | "not_answered";
+  }
+  | {
+    question_id: string;
+    verdict: "vague";
+    reason: string;
+  }
+  | {
+    question_id: string;
+    verdict: "contradictory";
+    reason: string;
+    contradicts: string;
+  };
 
 export interface AnswerEvaluation {
   verdict: "sufficient" | "mixed" | "insufficient";

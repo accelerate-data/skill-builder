@@ -42,15 +42,15 @@ const onlyRefinementEval = makeEvaluation("mixed", [
 const mixedEval = makeEvaluation("mixed", [
   { question_id: "Q1", verdict: "clear" },
   { question_id: "Q2", verdict: "not_answered" },
-  { question_id: "Q3", verdict: "vague" },
+  { question_id: "Q3", verdict: "vague", reason: "Missing concrete thresholds." },
   { question_id: "Q4", verdict: "clear" },
 ]);
 
 const insufficientEval = makeEvaluation("insufficient", [
   { question_id: "Q1", verdict: "not_answered" },
   { question_id: "Q2", verdict: "not_answered" },
-  { question_id: "Q3", verdict: "vague" },
-  { question_id: "Q4", verdict: "vague" },
+  { question_id: "Q3", verdict: "vague", reason: "Too generic." },
+  { question_id: "Q4", verdict: "vague", reason: "No measurable target." },
   { question_id: "Q5", verdict: "clear" },
 ]);
 
@@ -277,9 +277,9 @@ describe("Contradictory answers block forward progress", () => {
 
   const contradictoryEval = makeEvaluation("mixed", [
     { question_id: "Q1", verdict: "clear" },
-    { question_id: "Q2", verdict: "contradictory", contradicts: "Q3" },
+    { question_id: "Q2", verdict: "contradictory", contradicts: "Q3", reason: "Conflicts with Q3 timeline." },
     { question_id: "Q3", verdict: "clear" },
-    { question_id: "Q4", verdict: "vague" },
+    { question_id: "Q4", verdict: "vague", reason: "Missing specific scope." },
   ]);
 
   it("shows Contradictory Answers title", () => {
@@ -304,7 +304,7 @@ describe("Contradictory answers block forward progress", () => {
     render(<TransitionGateDialog {...props} verdict="mixed" evaluation={contradictoryEval} />);
     const breakdown = screen.getByTestId("question-breakdown");
     expect(breakdown).toHaveTextContent(/Contradictory:/);
-    expect(breakdown).toHaveTextContent("Q2 (conflicts with Q3)");
+    expect(breakdown).toHaveTextContent("Q2: Conflicts with Q3 timeline. (conflicts with Q3)");
   });
 
   it("blocks on gate 2 (refinements) as well", () => {
@@ -321,22 +321,22 @@ describe("EvaluationBreakdown", () => {
 
   it("shows contradictory category with conflict info", () => {
     const eval_ = makeEvaluation("mixed", [
-      { question_id: "Q1", verdict: "contradictory", contradicts: "Q3" },
+      { question_id: "Q1", verdict: "contradictory", contradicts: "Q3", reason: "Conflicts with Q3 budget policy." },
       { question_id: "Q2", verdict: "clear" },
       { question_id: "Q3", verdict: "clear" },
     ]);
     render(<TransitionGateDialog {...props} verdict="mixed" evaluation={eval_} />);
     const breakdown = screen.getByTestId("question-breakdown");
     expect(breakdown).toHaveTextContent(/Contradictory:/);
-    expect(breakdown).toHaveTextContent("Q1 (conflicts with Q3)");
+    expect(breakdown).toHaveTextContent("Q1: Conflicts with Q3 budget policy. (conflicts with Q3)");
   });
 
   it("shows all five categories when all present", () => {
     const eval_ = makeEvaluation("mixed", [
       { question_id: "Q1", verdict: "clear" },
       { question_id: "Q2", verdict: "not_answered" },
-      { question_id: "Q3", verdict: "vague" },
-      { question_id: "Q4", verdict: "contradictory", contradicts: "Q1" },
+      { question_id: "Q3", verdict: "vague", reason: "Needs concrete metrics." },
+      { question_id: "Q4", verdict: "contradictory", contradicts: "Q1", reason: "Conflicts with Q1 assumptions." },
       { question_id: "Q5", verdict: "needs_refinement" },
     ]);
     render(<TransitionGateDialog {...props} verdict="mixed" evaluation={eval_} />);

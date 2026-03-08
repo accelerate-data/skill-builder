@@ -16,8 +16,8 @@
     { "question_id": "Q7", "verdict": "clear" },
     { "question_id": "Q8", "verdict": "clear" },
     { "question_id": "Q9", "verdict": "clear" },
-    { "question_id": "R1.1", "verdict": "not_answered", "reason": "Refinement answer is blank." },
-    { "question_id": "R2.1", "verdict": "not_answered", "reason": "Refinement answer is blank." },
+    { "question_id": "R1.1", "verdict": "not_answered" },
+    { "question_id": "R2.1", "verdict": "not_answered" },
     { "question_id": "R5.1", "verdict": "clear" }
   ]
 }

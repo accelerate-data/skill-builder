@@ -35,6 +35,7 @@ function EvaluationBreakdown({ evaluation }: { evaluation: AnswerEvaluation }) {
   const vague = pq.filter(q => q.verdict === "vague");
   const contradictory = pq.filter(q => q.verdict === "contradictory");
   const needsRefinement = pq.filter(q => q.verdict === "needs_refinement");
+  const formatDetail = (questionId: string, reason: string) => `${questionId}: ${reason}`;
 
   return (
     <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1.5" data-testid="question-breakdown">
@@ -56,7 +57,9 @@ function EvaluationBreakdown({ evaluation }: { evaluation: AnswerEvaluation }) {
         <div className="flex items-start gap-2">
           <AlertCircle className="size-3 mt-0.5 text-amber-600 dark:text-amber-400" />
           <span className="text-amber-600 dark:text-amber-400 font-medium">Vague:</span>
-          <span className="text-muted-foreground">{vague.map(q => q.question_id).join(", ")}</span>
+          <span className="text-muted-foreground">
+            {vague.map(q => formatDetail(q.question_id, q.reason)).join("; ")}
+          </span>
         </div>
       )}
       {contradictory.length > 0 && (
@@ -64,7 +67,9 @@ function EvaluationBreakdown({ evaluation }: { evaluation: AnswerEvaluation }) {
           <XCircle className="size-3 mt-0.5 text-destructive" />
           <span className="text-destructive font-medium">Contradictory:</span>
           <span className="text-muted-foreground">
-            {contradictory.map(q => `${q.question_id}${q.contradicts ? ` (conflicts with ${q.contradicts})` : ""}`).join(", ")}
+            {contradictory
+              .map(q => `${formatDetail(q.question_id, q.reason)} (conflicts with ${q.contradicts})`)
+              .join("; ")}
           </span>
         </div>
       )}

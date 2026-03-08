@@ -79,8 +79,8 @@ Output ONLY valid JSON:
     { "question_id": "Q1", "verdict": "needs_refinement" },
     { "question_id": "Q2", "verdict": "clear" },
     { "question_id": "Q3", "verdict": "not_answered" },
-    { "question_id": "Q4", "verdict": "vague" },
-    { "question_id": "Q5", "verdict": "contradictory", "contradicts": "Q4" },
+    { "question_id": "Q4", "verdict": "vague", "reason": "Answer is too general and does not include concrete thresholds." },
+    { "question_id": "Q5", "verdict": "contradictory", "contradicts": "Q4", "reason": "Conflicts with Q4 because this answer defines the opposite threshold." },
     { "question_id": "Q6", "verdict": "clear" },
     { "question_id": "Q7", "verdict": "clear" },
     { "question_id": "Q8", "verdict": "clear" },
@@ -93,7 +93,11 @@ Field rules:
 
 - `verdict`: one of `"sufficient"`, `"mixed"`, `"insufficient"`
 - `reasoning`: single sentence explaining the verdict
-- `per_question`: one entry per question in document order, with `question_id` and `verdict` (`clear` / `needs_refinement` / `not_answered` / `vague` / `contradictory`). Entries with verdict `contradictory` must include a `contradicts` field (string, question ID of the conflicting answer).
+- `per_question`: one entry per question in document order, with `question_id` and `verdict` (`clear` / `needs_refinement` / `not_answered` / `vague` / `contradictory`).
+- Entries with verdict `vague` must include a `reason` string.
+- Entries with verdict `contradictory` must include:
+  - `contradicts` (string question ID of the conflicting answer)
+  - `reason` (string) that explicitly references the conflicting ID (for example, `Conflicts with Q4 because ...`).
 
 ### Step 5: Return the same JSON object
 

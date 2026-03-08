@@ -501,11 +501,14 @@ Written by `answer-evaluator`. Runs at two gates: after Step 2 (Q-level answers)
   "answered_count": 8,
   "empty_count": 0,
   "vague_count": 0,
+  "contradictory_count": 0,
   "total_count": 8,
   "reasoning": "All 8 questions have detailed, specific answers.",
   "per_question": [
     { "question_id": "Q1", "verdict": "needs_refinement" },
-    { "question_id": "Q2", "verdict": "clear" }
+    { "question_id": "Q2", "verdict": "clear" },
+    { "question_id": "Q3", "verdict": "vague", "reason": "Missing concrete thresholds and examples." },
+    { "question_id": "Q4", "verdict": "contradictory", "contradicts": "Q2", "reason": "Conflicts with Q2 because this answer picks the opposite source of truth." }
   ]
 }
 ```
@@ -518,14 +521,19 @@ Written by `answer-evaluator`. Runs at two gates: after Step 2 (Q-level answers)
 | `answered_count` | integer | yes | Count of substantive answers (`clear` + `needs_refinement`) |
 | `empty_count` | integer | yes | Count of empty/whitespace answers |
 | `vague_count` | integer | yes | Count of vague answers (<5 words, "TBD", etc.) |
+| `contradictory_count` | integer | no | Count of contradictory answers |
 | `total_count` | integer | yes | Total question count |
 | `reasoning` | string | yes | Single sentence explaining the verdict |
-| `per_question` | array | yes | Array of `{ question_id: string, verdict: string }` objects. Verdict values: `"clear"`, `"needs_refinement"`, `"not_answered"`, `"vague"` |
+| `per_question` | array | yes | Array of per-question verdict entries. Required keys always: `question_id`, `verdict` |
 
 ### Rules
 
 - `answered_count + empty_count + vague_count == total_count` (where `answered_count` includes both `clear` and `needs_refinement`)
+- If present, `answered_count + empty_count + vague_count + contradictory_count == total_count`
 - `verdict` logic: `sufficient` when all answered, `insufficient` when none answered, `mixed` otherwise
+- Per-question verdict values: `"clear"`, `"needs_refinement"`, `"not_answered"`, `"vague"`, `"contradictory"`
+- `vague` entries must include non-empty `reason`
+- `contradictory` entries must include non-empty `reason` and `contradicts` (question ID); reason text should reference the conflicting ID
 - Output must be valid JSON with no markdown fences or extra text
 
 ---
