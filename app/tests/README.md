@@ -71,16 +71,17 @@ Full browser tests via Playwright. The app runs with `TAURI_E2E=true`, which swa
 
 ### Level 4: Agent Tests
 
-Structural checks for agent prompts in Vitest. Run without an API key — no LLM calls are made.
+Structural checks for agent prompts in Vitest plus Promptfoo behavior evals for regression coverage. Structural checks run without an API key; Promptfoo smoke evals require API access.
 
 | Suite | What | Cost | npm script |
 |---|---|---|---|
 | structural | Agent files, format checks, anti-patterns | Free | `test:agents:structural` |
-| smoke | Individual agent output via API | ~$0.50 | `test:agents:smoke` |
+| smoke | Promptfoo behavior regressions via API | Variable (model dependent) | `test:agents:smoke` |
 
 ```bash
 ./tests/run.sh agents              # Structural agent tests (free)
 npm run test:agents:structural     # Structural only (free, no API key needed)
+npm run test:agents:smoke          # Promptfoo evals, writes JSON+HTML to test-results/
 ```
 
 ### Self-Tests
@@ -145,7 +146,9 @@ Available tags: `@dashboard`, `@navigation`, `@settings`, `@skills`, `@usage`, `
 app/
   agent-tests/
     agent-structure.test.ts  # Agent file structure, format checks, anti-patterns (free)
-    agent-smoke.test.ts      # Agent smoke tests via API (~$0.50)
+    promptfoo/               # Promptfoo harness for behavior regressions
+      promptfooconfig.yaml   # Promptfoo eval matrix
+      provider.mjs           # Custom provider invoking Claude CLI
     helpers.ts               # Shared helpers
     fixtures.ts              # Fixture factories
   tests/

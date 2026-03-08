@@ -25,9 +25,9 @@
     "test:e2e:skills": "playwright test --grep @skills",
     "test:e2e:usage": "playwright test --grep @usage",
     "test:changed": "vitest run --changed HEAD~1",
-    "test:agents": "vitest run --config vitest.config.agent.ts",
+    "test:agents": "npm run test:agents:structural && npm run test:agents:smoke",
     "test:agents:structural": "vitest run --config vitest.config.agent.ts agent-tests/agent-structure.test.ts",
-    "test:agents:smoke": "vitest run --config vitest.config.agent.ts --reporter=verbose agent-tests/agent-smoke.test.ts",
+    "test:agents:smoke": "mkdir -p test-results && promptfoo eval -c agent-tests/promptfoo/promptfooconfig.yaml -o test-results/promptfoo-results.json -o test-results/promptfoo-results.html",
     "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e"
   },
   "dependencies": {
@@ -69,6 +69,7 @@
     "@vitejs/plugin-react": "^4.6.0",
     "autoprefixer": "^10.4.24",
     "jsdom": "^28.0.0",
+    "promptfoo": "^0.120.27",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",

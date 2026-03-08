@@ -1,0 +1,69 @@
+description: Skill Builder agent behavior regressions via Promptfoo.
+
+prompts:
+  - "{{scenario}}"
+
+providers:
+  - file://./provider.mjs
+
+tests:
+  - vars:
+      scenario: research-orchestrator
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"scenario":"research-orchestrator"'
+      - type: contains
+        value: '"clarifications":true'
+      - type: contains
+        value: '"researchPlan":true'
+      - type: contains
+        value: '"version":true'
+      - type: contains
+        value: '"questionCountNumber":true'
+      - type: contains
+        value: '"sectionsArray":true'
+  - vars:
+      scenario: answer-evaluator
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"scenario":"answer-evaluator"'
+      - type: contains
+        value: '"answerEvaluation":true'
+      - type: contains
+        value: '"hasRequiredFields":true'
+      - type: contains
+        value: '"verdictValid":true'
+      - type: contains
+        value: '"perQuestionArray":true'
+  - vars:
+      scenario: confirm-decisions
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"scenario":"confirm-decisions"'
+      - type: contains
+        value: '"decisions":true'
+      - type: contains
+        value: '"frontmatter":true'
+      - type: contains
+        value: '"heading":true'
+      - type: contains
+        value: '"status":true'
+  - vars:
+      scenario: refine-skill
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"scenario":"refine-skill"'
+      - type: contains
+        value: '"descriptionUpdated":true'
+      - type: contains
+        value: '"descriptionPreserved":true'
+      - type: contains
+        value: '"modifiedUpdated":true'
