@@ -443,7 +443,11 @@ mod tests {
     fn test_resolve_workspace_path() {
         let tmp = tempfile::tempdir().unwrap();
         let path = resolve_workspace_path(tmp.path()).unwrap();
-        assert!(path.ends_with("/workspace"), "expected path ending in /workspace, got {}", path);
+        assert!(
+            std::path::Path::new(&path).ends_with("workspace"),
+            "expected path ending in workspace, got {}",
+            path
+        );
     }
 
     #[test]
