@@ -2,7 +2,7 @@
 
 **Date**: 2026-03-07
 **Status**: Draft
-**Scope**: What Anthropic's skill-creator does differently in evaluation, tuning, and creation — and what VibeData's Skill Builder should adopt.
+**Scope**: What [Anthropic's skill-creator](https://github.com/anthropics/skills/blob/main/skills/skill-creator/SKILL.md) does differently in evaluation, tuning, and creation — and what VibeData's Skill Builder should adopt.
 
 ---
 
