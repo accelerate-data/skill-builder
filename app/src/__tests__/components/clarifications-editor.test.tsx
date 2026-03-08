@@ -326,6 +326,20 @@ describe("Need Review filter toggle", () => {
 });
 
 describe("Inline evaluator feedback", () => {
+  it("shows a status badge on collapsed flagged question cards", () => {
+    const data = makeClarifications([makeQuestion({ id: "Q1", title: "Flagged Question" })]);
+    data.answer_evaluator_notes = [
+      {
+        type: "answer_feedback",
+        title: "Vague answer: Q1",
+        body: "Missing concrete thresholds.",
+      },
+    ];
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+    expect(screen.getByText("Vague")).toBeInTheDocument();
+  });
+
   it("shows reason inline with the flagged question in context", async () => {
     const user = userEvent.setup();
     const data = makeClarifications([makeQuestion({ id: "Q1", title: "Flagged Question" })]);

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, type CSSProperties } from "react";
 import { ChevronRight, AlertTriangle, Info, RotateCcw, Check, Loader2, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -43,6 +43,13 @@ interface ReviewFeedback {
   reason: string;
   contradicts?: string;
 }
+
+const REVIEW_STATUS_LABEL: Record<ReviewStatus, string> = {
+  not_answered: "Not answered",
+  vague: "Vague",
+  contradictory: "Contradictory",
+  needs_refinement: "Needs refinement",
+};
 
 function parseAnswerFeedback(note: Note): ReviewFeedback | null {
   if (note.type !== "answer_feedback") return null;
@@ -483,6 +490,15 @@ function QuestionCard({
   reviewFeedbackByQuestion: Map<string, ReviewFeedback>;
 }) {
   const answered = isQuestionAnswered(question);
+  const accentColorByStatus: Record<ReviewStatus, string> = {
+    not_answered: "var(--destructive)",
+    contradictory: "var(--destructive)",
+    vague: "oklch(0.769 0.188 70.08)",
+    needs_refinement: "var(--color-pacific)",
+  };
+  const cardAccentColor = reviewFeedback
+    ? accentColorByStatus[reviewFeedback.status]
+    : (answered ? "var(--color-pacific)" : "var(--border)");
   const refCount = question.refinements.length;
   const refUnanswered = refCount > 0
     ? question.refinements.filter((r) => !isQuestionAnswered(r)).length
@@ -493,7 +509,7 @@ function QuestionCard({
       className="mx-6 mt-3 overflow-hidden rounded-lg border shadow-sm transition-shadow duration-150 hover:shadow"
       style={{
         borderLeftWidth: "3px",
-        borderLeftColor: answered ? "var(--color-pacific)" : "var(--border)",
+        borderLeftColor: cardAccentColor,
       }}
     >
       {/* Header */}
@@ -508,6 +524,7 @@ function QuestionCard({
         <span className="flex-1 text-sm font-semibold leading-snug tracking-tight text-foreground">
           {question.title}
         </span>
+        {reviewFeedback && <ReviewStatusBadge status={reviewFeedback.status} />}
         {refCount > 0 && <RefinementBadge count={refCount} unanswered={refUnanswered} />}
         {question.must_answer && <MustBadge />}
         <ChevronRight
@@ -835,12 +852,6 @@ function RefinementItem({
 }
 
 function ReviewFeedbackCallout({ feedback, compact = false }: { feedback: ReviewFeedback; compact?: boolean }) {
-  const statusLabel: Record<ReviewStatus, string> = {
-    not_answered: "Not answered",
-    vague: "Vague",
-    contradictory: "Contradictory",
-    needs_refinement: "Needs refinement",
-  };
   const chipStyles: Record<ReviewStatus, { bg: string; text: string; border: string; className?: string }> = {
     not_answered: {
       bg: "var(--destructive)",
@@ -891,7 +902,7 @@ function ReviewFeedbackCallout({ feedback, compact = false }: { feedback: Review
               border: `1px solid ${statusChip.border}`,
             }}
         >
-          Need Review: {statusLabel[feedback.status]}
+          Need Review: {REVIEW_STATUS_LABEL[feedback.status]}
         </span>
         {feedback.contradicts && (
           <span className="rounded-full border px-2 py-0.5 text-[11px] font-medium text-destructive">
@@ -901,6 +912,45 @@ function ReviewFeedbackCallout({ feedback, compact = false }: { feedback: Review
       </div>
       <p className="text-muted-foreground">Why flagged: {feedback.reason}</p>
     </div>
+  );
+}
+
+function ReviewStatusBadge({ status }: { status: ReviewStatus }) {
+  const statusStyles: Record<ReviewStatus, { className?: string; style?: CSSProperties }> = {
+    not_answered: {
+      style: {
+        color: "var(--destructive)",
+        border: "1px solid color-mix(in oklch, var(--destructive), transparent 50%)",
+        background: "color-mix(in oklch, var(--destructive), transparent 88%)",
+      },
+    },
+    contradictory: {
+      style: {
+        color: "var(--destructive)",
+        border: "1px solid color-mix(in oklch, var(--destructive), transparent 50%)",
+        background: "color-mix(in oklch, var(--destructive), transparent 88%)",
+      },
+    },
+    vague: {
+      className: "border-amber-500/40 bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
+    },
+    needs_refinement: {
+      style: {
+        color: "var(--color-pacific)",
+        border: "1px solid color-mix(in oklch, var(--color-pacific), transparent 50%)",
+        background: "color-mix(in oklch, var(--color-pacific), transparent 88%)",
+      },
+    },
+  };
+  const s = statusStyles[status];
+
+  return (
+    <span
+      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${s.className ?? ""}`}
+      style={s.style}
+    >
+      {REVIEW_STATUS_LABEL[status]}
+    </span>
   );
 }
 
