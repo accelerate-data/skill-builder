@@ -20,6 +20,7 @@ test.describe("Usage Page", { tag: "@usage" }, () => {
     }, {
       get_usage_summary: usageData.summary,
       get_recent_workflow_sessions: usageData.sessions,
+      get_agent_runs: usageData.agentRuns,
       get_usage_by_step: usageData.byStep,
       get_usage_by_model: usageData.byModel,
     });
@@ -39,6 +40,7 @@ test.describe("Usage Page", { tag: "@usage" }, () => {
     }, {
       get_usage_summary: usageData.summary,
       get_recent_workflow_sessions: usageData.sessions,
+      get_agent_runs: usageData.agentRuns,
       get_usage_by_step: usageData.byStep,
       get_usage_by_model: usageData.byModel,
     });
@@ -47,10 +49,10 @@ test.describe("Usage Page", { tag: "@usage" }, () => {
     await waitForAppReady(page);
 
     // Verify step names appear (use exact match to avoid conflicts)
-    await expect(page.getByText("Research", { exact: true })).toBeVisible();
-    await expect(page.getByText("Detailed Research")).toBeVisible();
-    await expect(page.getByText("Confirm Decisions")).toBeVisible();
-    await expect(page.getByText("Generate Skill")).toBeVisible();
+    await expect(page.getByText("Research", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Detailed Research").first()).toBeVisible();
+    await expect(page.getByText("Confirm Decisions").first()).toBeVisible();
+    await expect(page.getByText("Generate Skill").first()).toBeVisible();
   });
 
   test("shows cost by model breakdown", async ({ page }) => {
@@ -59,6 +61,7 @@ test.describe("Usage Page", { tag: "@usage" }, () => {
     }, {
       get_usage_summary: usageData.summary,
       get_recent_workflow_sessions: usageData.sessions,
+      get_agent_runs: usageData.agentRuns,
       get_usage_by_step: usageData.byStep,
       get_usage_by_model: usageData.byModel,
     });
@@ -66,43 +69,34 @@ test.describe("Usage Page", { tag: "@usage" }, () => {
     await page.goto("/usage");
     await waitForAppReady(page);
 
-    // Verify model names appear
-    await expect(page.getByText("sonnet")).toBeVisible();
-    await expect(page.getByText("opus")).toBeVisible();
-    await expect(page.getByText("haiku")).toBeVisible();
+    // Verify model names appear (usage page renders family labels)
+    await expect(page.getByText("Sonnet").first()).toBeVisible();
+    await expect(page.getByText("Opus").first()).toBeVisible();
+    await expect(page.getByText("Haiku").first()).toBeVisible();
   });
 
-  test("expands session to show agent run details", async ({ page }) => {
+  test("renders step history table with agent run details", async ({ page }) => {
     await page.addInitScript((overrides) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = overrides;
     }, {
       get_usage_summary: usageData.summary,
       get_recent_workflow_sessions: usageData.sessions,
+      get_agent_runs: usageData.agentRuns,
       get_usage_by_step: usageData.byStep,
       get_usage_by_model: usageData.byModel,
-      get_session_agent_runs: usageData.agentRuns,
     });
 
     await page.goto("/usage");
     await waitForAppReady(page);
 
-    // Find and click the session row for "data-analytics"
-    const sessionButton = page.getByRole("button", { name: /Toggle details for data-analytics workflow run/ });
-    await expect(sessionButton).toBeVisible();
-    await expect(sessionButton).toHaveAttribute("aria-expanded", "false");
-
-    await sessionButton.click();
-
-    // Session should now be expanded
-    await expect(sessionButton).toHaveAttribute("aria-expanded", "true");
-
-    // Step table should appear with agent run details
+    // Step history table should appear with agent run details
     const stepTable = page.getByTestId("step-table");
     await expect(stepTable).toBeVisible();
 
     // Verify step details appear
     await expect(stepTable.getByText("Research")).toBeVisible();
     await expect(stepTable.getByText("Confirm Decisions")).toBeVisible();
+    await expect(stepTable.getByText("data-analytics").first()).toBeVisible();
   });
 
   test("toggles hide cancelled runs checkbox", async ({ page }) => {
@@ -111,6 +105,7 @@ test.describe("Usage Page", { tag: "@usage" }, () => {
     }, {
       get_usage_summary: usageData.summary,
       get_recent_workflow_sessions: usageData.sessions,
+      get_agent_runs: usageData.agentRuns,
       get_usage_by_step: usageData.byStep,
       get_usage_by_model: usageData.byModel,
     });
@@ -119,7 +114,7 @@ test.describe("Usage Page", { tag: "@usage" }, () => {
     await waitForAppReady(page);
 
     // Find and check the "Hide cancelled runs" checkbox
-    const checkbox = page.locator('input[type="checkbox"]');
+    const checkbox = page.getByLabel("Hide cancelled runs");
     await expect(checkbox).not.toBeChecked();
 
     await checkbox.check();
@@ -135,6 +130,7 @@ test.describe("Usage Page", { tag: "@usage" }, () => {
     }, {
       get_usage_summary: usageData.summary,
       get_recent_workflow_sessions: usageData.sessions,
+      get_agent_runs: usageData.agentRuns,
       get_usage_by_step: usageData.byStep,
       get_usage_by_model: usageData.byModel,
       reset_usage: undefined,
@@ -165,6 +161,7 @@ test.describe("Usage Page", { tag: "@usage" }, () => {
     }, {
       get_usage_summary: usageData.summary,
       get_recent_workflow_sessions: usageData.sessions,
+      get_agent_runs: usageData.agentRuns,
       get_usage_by_step: usageData.byStep,
       get_usage_by_model: usageData.byModel,
     });
