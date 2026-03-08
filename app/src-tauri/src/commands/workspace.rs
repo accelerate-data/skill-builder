@@ -620,4 +620,122 @@ mod tests {
         cleanup_legacy_vibedata(home.path());
         assert!(!home.path().join(".vibedata").exists(), "absent legacy path should remain absent");
     }
+
+    #[test]
+    fn test_migrate_context_from_skills_path_moves_legacy_context_into_workspace() {
+        let workspace_root = tempfile::tempdir().unwrap();
+        let skills_root = tempfile::tempdir().unwrap();
+
+        let legacy_context = skills_root.path().join("skill-a").join("context");
+        fs::create_dir_all(&legacy_context).unwrap();
+        fs::write(legacy_context.join("clarifications.json"), r#"{"ok":true}"#).unwrap();
+        fs::write(legacy_context.join("research-plan.md"), "legacy plan").unwrap();
+
+        migrate_context_from_skills_path(
+            &workspace_root.path().to_string_lossy(),
+            &skills_root.path().to_string_lossy(),
+        );
+
+        let target_context = workspace_root.path().join("skill-a").join("context");
+        assert_eq!(
+            fs::read_to_string(target_context.join("clarifications.json")).unwrap(),
+            r#"{"ok":true}"#
+        );
+        assert_eq!(
+            fs::read_to_string(target_context.join("research-plan.md")).unwrap(),
+            "legacy plan"
+        );
+        assert!(
+            !legacy_context.exists(),
+            "legacy context dir should be removed after successful move"
+        );
+    }
+
+    #[test]
+    fn test_migrate_context_from_skills_path_skips_when_target_has_content() {
+        let workspace_root = tempfile::tempdir().unwrap();
+        let skills_root = tempfile::tempdir().unwrap();
+
+        let legacy_context = skills_root.path().join("skill-a").join("context");
+        fs::create_dir_all(&legacy_context).unwrap();
+        fs::write(legacy_context.join("clarifications.json"), "legacy").unwrap();
+
+        let target_context = workspace_root.path().join("skill-a").join("context");
+        fs::create_dir_all(&target_context).unwrap();
+        fs::write(target_context.join("existing.md"), "keep-me").unwrap();
+
+        migrate_context_from_skills_path(
+            &workspace_root.path().to_string_lossy(),
+            &skills_root.path().to_string_lossy(),
+        );
+
+        assert_eq!(
+            fs::read_to_string(target_context.join("existing.md")).unwrap(),
+            "keep-me"
+        );
+        assert!(
+            !target_context.join("clarifications.json").exists(),
+            "migration should skip this skill when target context is already non-empty"
+        );
+        assert_eq!(
+            fs::read_to_string(legacy_context.join("clarifications.json")).unwrap(),
+            "legacy",
+            "legacy content should remain untouched when target already has content"
+        );
+    }
+
+    #[test]
+    fn test_migrate_context_from_skills_path_does_not_overwrite_destination_files() {
+        let workspace_root = tempfile::tempdir().unwrap();
+        let skills_root = tempfile::tempdir().unwrap();
+
+        let legacy_context = skills_root.path().join("skill-a").join("context");
+        fs::create_dir_all(&legacy_context).unwrap();
+        fs::write(legacy_context.join("decisions.md"), "legacy-decisions").unwrap();
+
+        let target_context = workspace_root.path().join("skill-a").join("context");
+        fs::create_dir_all(&target_context).unwrap();
+        fs::write(target_context.join("decisions.md"), "newer-decisions").unwrap();
+
+        migrate_context_from_skills_path(
+            &workspace_root.path().to_string_lossy(),
+            &skills_root.path().to_string_lossy(),
+        );
+
+        assert_eq!(
+            fs::read_to_string(target_context.join("decisions.md")).unwrap(),
+            "newer-decisions",
+            "destination file should not be overwritten by legacy content"
+        );
+        assert_eq!(
+            fs::read_to_string(legacy_context.join("decisions.md")).unwrap(),
+            "legacy-decisions"
+        );
+    }
+
+    #[test]
+    fn test_migrate_context_from_skills_path_is_idempotent_on_rerun() {
+        let workspace_root = tempfile::tempdir().unwrap();
+        let skills_root = tempfile::tempdir().unwrap();
+
+        let legacy_context = skills_root.path().join("skill-a").join("context");
+        fs::create_dir_all(&legacy_context).unwrap();
+        fs::write(legacy_context.join("clarifications.json"), r#"{"first":"run"}"#).unwrap();
+
+        let workspace_path = workspace_root.path().to_string_lossy().to_string();
+        let skills_path = skills_root.path().to_string_lossy().to_string();
+        migrate_context_from_skills_path(&workspace_path, &skills_path);
+        migrate_context_from_skills_path(&workspace_path, &skills_path);
+
+        let target_file = workspace_root
+            .path()
+            .join("skill-a")
+            .join("context")
+            .join("clarifications.json");
+        assert_eq!(fs::read_to_string(target_file).unwrap(), r#"{"first":"run"}"#);
+        assert!(
+            !legacy_context.exists(),
+            "legacy context should stay removed after repeated migration"
+        );
+    }
 }
