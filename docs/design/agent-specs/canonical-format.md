@@ -4,6 +4,46 @@ Authoritative format spec for all artifacts produced and consumed during the ski
 
 ---
 
+## Contract Enforcement
+
+This spec is normative. If examples and implementation diverge, treat this document as the source of truth and update prompts/parsers/tests in the same change.
+
+### Required test gates for contract changes
+
+When changing any format in this file, run all applicable checks before merge:
+
+| Changed area | Required checks |
+|---|---|
+| Agent prompts in `agents/*.md` | `cd app && npm run test:agents:structural` |
+| Workspace agent instructions in `agent-sources/workspace/**` | `cd app && npm run test:agents:structural` |
+| Parser-facing artifacts (`app/sidecar/mock-templates/**`, `app/e2e/fixtures/agent-responses/**`) | `cd app && npm run test:unit` |
+| Rust parser logic (`app/src-tauri/src/commands/workflow.rs`) | `cd app && cargo test --manifest-path src-tauri/Cargo.toml commands::workflow` |
+| Agent behavior contract changes | `cd app && FORCE_PLUGIN_TESTS=1 npm run test:agents:smoke` |
+
+### Enforcement layers
+
+| Layer | What it guarantees | Command |
+|---|---|---|
+| Structural (static) | Prompt inventory, frontmatter/model tiers, anti-pattern bans, and key policy-text invariants | `cd app && npm run test:agents:structural` |
+| Unit parser checks | App-side parsing stays compatible with canonical artifacts | `cd app && npm run test:unit` |
+| Promptfoo smoke (live) | End-to-end behavior still produces contract-compliant outputs in representative scenarios | `cd app && FORCE_PLUGIN_TESTS=1 npm run test:agents:smoke` |
+
+### Promptfoo scenario ownership
+
+Promptfoo smoke scenarios are defined in:
+
+- `app/agent-tests/promptfoo/promptfooconfig.yaml` (scenario matrix + assertions)
+- `app/agent-tests/promptfoo/provider.mjs` (fixture setup + agent invocation + schema-level validations)
+
+Scenarios currently covering the behavior contract:
+
+- `research-orchestrator`
+- `answer-evaluator`
+- `confirm-decisions`
+- `refine-skill`
+
+---
+
 # Canonical `clarifications.md` Format
 
 Written by the research skill (via `research-orchestrator`, Step 0). Updated in-place by `detailed-research` (Step 3). Read by `answer-evaluator`, `detailed-research`, and `confirm-decisions`.
