@@ -65,16 +65,16 @@ The user's answers contain unresolvable contradictions. See `decisions.md` for d
 
 ## Phase 1: Plan the Skill Structure
 
-Read `decisions.md` and plan a concise skill structure for the new skill.
+Plan a concise skill structure for the new skill from the decisions. 
 
 - Each reference file covers a coherent topic area, not one file per decision
 - Avoid rigid section templates and numeric straitjackets; choose structure based on skill development best practices. 
 
 ## Phase 2: Write SKILL.md
 
-Follow the skill writing guide to create the skill and keep Skill Builder-specific fields/guards below.
+Follow the skill writing guide to create the skill and include the Skill Builder-specific fields/guards.
 
-**Frontmatter:**
+### Frontmatter
 
 ```yaml
 ---
@@ -90,15 +90,16 @@ modified: <today's date>
 
 `tools` is the only field the agent determines. All others come from user-context.md or the coordinator prompt and must be preserved in rewrite mode (except `modified`).
 
-Context alignment rules:
+### Context alignment rules:
 
 - Keep generated guidance aligned with purpose and user context first.
 - For `platform` purpose, enforce Lakehouse-first recommendations where technical behavior depends on endpoint/runtime constraints.
 - For non-platform purposes, include Lakehouse-specific detail only when it materially affects the skill's decisions, risks, or tests.
 - Avoid generic warehouse-first prescriptions that conflict with Fabric/Azure context.
 
-Description guidance:
+### Description guidance:
 
+- Follow the description best practices when writing the description for the new skill. This will be the primary triggering mechanism when this skill is used in Vibedata.
 - Use a trigger-rich description in frontmatter (what it does + when to use it).
 - Keep "when to use" trigger conditions in the frontmatter description, not scattered in body sections.
 - Build the description draft from the capability + trigger decisions in `decisions.md` first (including any `needs-review` items), then refine with user-context wording.
@@ -117,6 +118,7 @@ Self-review:
 - Verify SKILL.md pointers match each reference file
 - Remove any 'Questions for your stakeholder', 'Open questions', or 'Pending clarifications' blocks
 - Remove over-constrained formatting rules that are not justified by the task
+- Ensure the skill does not refer to decisions by name (for example, "Decision: We convert all PS to MRR") or by number (for example, D13).
 
 ## Error Handling
 
@@ -140,8 +142,8 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 
 - Vendored skill-creator writing methodology applied
 - SKILL.md has metadata, overview, trigger conditions, quick reference, and pointers
-- 3-8 self-contained reference files
-- Every decision from `decisions.md` addressed
+- Self-contained reference files
+- Every decision from `decisions.md` addressed in the skill.
 - Purpose-appropriate structure chosen without rigid templates
 - `{context_dir}/evaluations.md` with 3+ scenarios covering distinct topic areas
 - **Rewrite mode:** All original domain knowledge preserved
