@@ -45,6 +45,7 @@ import {
   getDisabledSteps,
   runAnswerEvaluator,
   logGateDecision,
+  materializeWorkflowStepOutput,
   type AnswerEvaluation,
 } from "@/lib/tauri";
 import { TransitionGateDialog, type GateVerdict } from "@/components/transition-gate-dialog";
@@ -512,6 +513,18 @@ export default function WorkflowPage() {
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
   const activeRunStatus = activeRun?.status;
 
+  const extractStructuredResultPayload = useCallback((agentId: string): unknown | null => {
+    const run = useAgentStore.getState().runs[agentId];
+    if (!run) return null;
+    for (let i = run.messages.length - 1; i >= 0; i -= 1) {
+      const msg = run.messages[i];
+      if (msg.type !== "result") continue;
+      const raw = msg.raw as Record<string, unknown>;
+      if ("result" in raw) return raw.result ?? null;
+    }
+    return null;
+  }, []);
+
   // Watch for gate agent (answer evaluator) completion — separate from workflow step agents
   useEffect(() => {
     if (!activeRunStatus || !activeAgentId) return;
@@ -544,14 +557,49 @@ export default function WorkflowPage() {
     if (currentSteps[step]?.status !== "in_progress") return;
 
     if (activeRunStatus === "completed") {
+      const completedAgentId = activeAgentId;
       // Capture cost before clearing activeAgent — after setActiveAgent(null),
       // activeRun becomes null so activeRun?.totalCost would be undefined.
-      lastCompletedCostRef.current = activeAgentId
-        ? useAgentStore.getState().runs[activeAgentId]?.totalCost
+      lastCompletedCostRef.current = completedAgentId
+        ? useAgentStore.getState().runs[completedAgentId]?.totalCost
         : undefined;
       setActiveAgent(null);
 
       const finish = async () => {
+        // Backend-owned writes: step 0/1 return canonical artifact payload in
+        // structured output; Rust validates and writes context files.
+        if ((step === 0 || step === 1) && completedAgentId) {
+          const structuredOutput = extractStructuredResultPayload(completedAgentId);
+          const hasStructuredObject = !!structuredOutput
+            && typeof structuredOutput === "object"
+            && !Array.isArray(structuredOutput);
+          if (hasStructuredObject) {
+            try {
+              await materializeWorkflowStepOutput(skillName, step, structuredOutput);
+            } catch (err) {
+              updateStepStatus(step, "error");
+              setRunning(false);
+              toast.error(
+                `Step ${step + 1} output validation failed: ${err instanceof Error ? err.message : String(err)}`,
+                { duration: Infinity },
+              );
+              return;
+            }
+          } else {
+            if (step === 1) {
+              updateStepStatus(step, "error");
+              setRunning(false);
+              toast.error("Step 2 requires structured clarifications output from the agent", {
+                duration: Infinity,
+              });
+              return;
+            }
+            // Backward-compat fallback for legacy/mocked step 0 transcripts that do
+            // not carry structured payloads.
+            console.warn("[workflow] Missing structured output payload for step 0; skipping backend materialization");
+          }
+        }
+
         // Verify the agent actually produced output files before marking complete
         if (workspacePath && skillName) {
           try {
@@ -598,7 +646,16 @@ export default function WorkflowPage() {
       }
       toast.error(`Step ${step + 1} failed`, { duration: Infinity });
     }
-  }, [activeRunStatus, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, advanceToNextStep]);
+  }, [
+    activeRunStatus,
+    updateStepStatus,
+    setRunning,
+    setActiveAgent,
+    skillName,
+    workspacePath,
+    advanceToNextStep,
+    extractStructuredResultPayload,
+  ]);
 
   // --- Step handlers ---
 

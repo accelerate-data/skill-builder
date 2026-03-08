@@ -45,6 +45,7 @@ vi.mock("@/lib/tauri", () => ({
   createWorkflowSession: vi.fn(() => Promise.resolve()),
   endWorkflowSession: vi.fn(() => Promise.resolve()),
   verifyStepOutput: vi.fn(() => Promise.resolve(true)),
+  materializeWorkflowStepOutput: vi.fn(() => Promise.resolve()),
   previewStepReset: vi.fn(() => Promise.resolve([])),
   getDisabledSteps: vi.fn(() => Promise.resolve([])),
   runAnswerEvaluator: vi.fn(() => Promise.reject("not available")),
@@ -705,6 +706,33 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     useAgentStore.getState().startRun("agent-2", "sonnet");
 
     render(<WorkflowPage />);
+
+    act(() => {
+      useAgentStore.getState().addMessage("agent-2", {
+        type: "result",
+        content: undefined,
+        raw: {
+          result: {
+            status: "detailed_research_complete",
+            refinement_count: 1,
+            section_count: 1,
+            clarifications_json: {
+              version: "1",
+              metadata: {
+                question_count: 0,
+                section_count: 0,
+                refinement_count: 0,
+                must_answer_count: 0,
+                priority_questions: [],
+              },
+              sections: [],
+              notes: [],
+            },
+          },
+        },
+        timestamp: Date.now(),
+      });
+    });
 
     // Agent completes step 1
     act(() => {

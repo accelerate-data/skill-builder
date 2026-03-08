@@ -179,6 +179,7 @@ const mockResponses: Record<string, unknown> = {
   log_gate_decision: undefined,
   // Workflow extras
   write_file: undefined,
+  materialize_workflow_step_output: undefined,
   get_disabled_steps: [],
   end_workflow_session: undefined,
   preview_step_reset: [],

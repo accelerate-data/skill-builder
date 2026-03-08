@@ -13,6 +13,7 @@ use crate::types::{
 };
 
 const FULL_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task", "Skill"];
+const CONTRACT_NO_WRITE_TOOLS: &[&str] = &["Read", "Glob", "Grep", "Task", "Skill"];
 
 pub fn resolve_model_id(shorthand: &str) -> String {
     match shorthand {
@@ -30,7 +31,8 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             name: "Research".to_string(),
             prompt_template: "research-orchestrator.md".to_string(),
             output_file: "context/clarifications.json".to_string(),
-            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
+            // Step 0 must return canonical artifacts via structured output only.
+            allowed_tools: CONTRACT_NO_WRITE_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
         }),
         1 => Ok(StepConfig {
@@ -38,7 +40,8 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             name: "Detailed Research".to_string(),
             prompt_template: "detailed-research.md".to_string(),
             output_file: "context/clarifications.json".to_string(),
-            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
+            // Step 1 must return canonical artifacts via structured output only.
+            allowed_tools: CONTRACT_NO_WRITE_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
         }),
         2 => Ok(StepConfig {
@@ -573,11 +576,19 @@ fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Valu
             "type": "json_schema",
             "schema": {
                 "type": "object",
-                "required": ["status", "dimensions_selected", "question_count"],
+                "required": [
+                    "status",
+                    "dimensions_selected",
+                    "question_count",
+                    "research_plan_markdown",
+                    "clarifications_json"
+                ],
                 "properties": {
                     "status": { "type": "string", "const": "research_complete" },
                     "dimensions_selected": { "type": "integer", "minimum": 0 },
-                    "question_count": { "type": "integer", "minimum": 0 }
+                    "question_count": { "type": "integer", "minimum": 0 },
+                    "research_plan_markdown": { "type": "string", "minLength": 1 },
+                    "clarifications_json": { "type": "object" }
                 },
                 "additionalProperties": false
             }
@@ -586,17 +597,272 @@ fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Valu
             "type": "json_schema",
             "schema": {
                 "type": "object",
-                "required": ["status", "refinement_count", "section_count"],
+                "required": [
+                    "status",
+                    "refinement_count",
+                    "section_count",
+                    "clarifications_json"
+                ],
                 "properties": {
                     "status": { "type": "string", "const": "detailed_research_complete" },
                     "refinement_count": { "type": "integer", "minimum": 0 },
-                    "section_count": { "type": "integer", "minimum": 0 }
+                    "section_count": { "type": "integer", "minimum": 0 },
+                    "clarifications_json": { "type": "object" }
                 },
                 "additionalProperties": false
             }
         })),
         _ => None,
     }
+}
+
+fn validate_clarifications_json(clarifications: &serde_json::Value) -> Result<(), String> {
+    let root = clarifications
+        .as_object()
+        .ok_or_else(|| "clarifications_json must be a JSON object".to_string())?;
+
+    let version = root
+        .get("version")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "clarifications_json.version must be a string".to_string())?;
+    if version.trim().is_empty() {
+        return Err("clarifications_json.version must not be empty".to_string());
+    }
+
+    let metadata = root
+        .get("metadata")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| "clarifications_json.metadata must be an object".to_string())?;
+    for field in [
+        "question_count",
+        "section_count",
+        "refinement_count",
+        "must_answer_count",
+    ] {
+        if metadata.get(field).and_then(|v| v.as_i64()).is_none() {
+            return Err(format!("clarifications_json.metadata.{} must be an integer", field));
+        }
+    }
+    if metadata
+        .get("priority_questions")
+        .and_then(|v| v.as_array())
+        .is_none()
+    {
+        return Err("clarifications_json.metadata.priority_questions must be an array".to_string());
+    }
+
+    let sections = root
+        .get("sections")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "clarifications_json.sections must be an array".to_string())?;
+    for (section_idx, section) in sections.iter().enumerate() {
+        let section_obj = section
+            .as_object()
+            .ok_or_else(|| format!("clarifications_json.sections[{}] must be an object", section_idx))?;
+        if section_obj.get("id").and_then(|v| v.as_str()).is_none() {
+            return Err(format!("clarifications_json.sections[{}].id must be a string", section_idx));
+        }
+        if section_obj.get("title").and_then(|v| v.as_str()).is_none() {
+            return Err(format!("clarifications_json.sections[{}].title must be a string", section_idx));
+        }
+        let questions = section_obj
+            .get("questions")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| format!("clarifications_json.sections[{}].questions must be an array", section_idx))?;
+
+        for (question_idx, question) in questions.iter().enumerate() {
+            let question_obj = question.as_object().ok_or_else(|| {
+                format!(
+                    "clarifications_json.sections[{}].questions[{}] must be an object",
+                    section_idx, question_idx
+                )
+            })?;
+            for field in ["id", "title", "text"] {
+                if question_obj.get(field).and_then(|v| v.as_str()).is_none() {
+                    return Err(format!(
+                        "clarifications_json.sections[{}].questions[{}].{} must be a string",
+                        section_idx, question_idx, field
+                    ));
+                }
+            }
+            if question_obj
+                .get("must_answer")
+                .and_then(|v| v.as_bool())
+                .is_none()
+            {
+                return Err(format!(
+                    "clarifications_json.sections[{}].questions[{}].must_answer must be a boolean",
+                    section_idx, question_idx
+                ));
+            }
+            let choices = question_obj
+                .get("choices")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| {
+                    format!(
+                        "clarifications_json.sections[{}].questions[{}].choices must be an array",
+                        section_idx, question_idx
+                    )
+                })?;
+            for (choice_idx, choice) in choices.iter().enumerate() {
+                let choice_obj = choice.as_object().ok_or_else(|| {
+                    format!(
+                        "clarifications_json.sections[{}].questions[{}].choices[{}] must be an object",
+                        section_idx, question_idx, choice_idx
+                    )
+                })?;
+                for field in ["id", "text"] {
+                    if choice_obj.get(field).and_then(|v| v.as_str()).is_none() {
+                        return Err(format!(
+                            "clarifications_json.sections[{}].questions[{}].choices[{}].{} must be a string",
+                            section_idx, question_idx, choice_idx, field
+                        ));
+                    }
+                }
+                if choice_obj.get("is_other").and_then(|v| v.as_bool()).is_none() {
+                    return Err(format!(
+                        "clarifications_json.sections[{}].questions[{}].choices[{}].is_other must be a boolean",
+                        section_idx, question_idx, choice_idx
+                    ));
+                }
+            }
+            if question_obj
+                .get("refinements")
+                .and_then(|v| v.as_array())
+                .is_none()
+            {
+                return Err(format!(
+                    "clarifications_json.sections[{}].questions[{}].refinements must be an array",
+                    section_idx, question_idx
+                ));
+            }
+        }
+    }
+
+    if root.get("notes").and_then(|v| v.as_array()).is_none() {
+        return Err("clarifications_json.notes must be an array".to_string());
+    }
+    if let Some(value) = root.get("answer_evaluator_notes") {
+        if value.as_array().is_none() {
+            return Err("clarifications_json.answer_evaluator_notes must be an array when present".to_string());
+        }
+    }
+
+    Ok(())
+}
+
+fn materialize_workflow_step_output_value(
+    skill_root: &Path,
+    step_id: u32,
+    structured_output: &serde_json::Value,
+) -> Result<(), String> {
+    let payload = structured_output
+        .as_object()
+        .ok_or_else(|| "structured_output must be a JSON object".to_string())?;
+
+    let require_int = |field: &str| -> Result<i64, String> {
+        payload
+            .get(field)
+            .and_then(|v| v.as_i64())
+            .ok_or_else(|| format!("structured_output.{} must be an integer", field))
+    };
+
+    let require_const_status = |expected: &str| -> Result<(), String> {
+        let actual = payload
+            .get("status")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "structured_output.status must be a string".to_string())?;
+        if actual != expected {
+            return Err(format!(
+                "structured_output.status must be '{}' but got '{}'",
+                expected, actual
+            ));
+        }
+        Ok(())
+    };
+
+    let clarifications = payload
+        .get("clarifications_json")
+        .ok_or_else(|| "structured_output.clarifications_json is required".to_string())?;
+    validate_clarifications_json(clarifications)
+        .map_err(|e| format!("Invalid clarifications_json: {}", e))?;
+    let clarifications_pretty = serde_json::to_string_pretty(clarifications)
+        .map_err(|e| format!("Failed to serialize clarifications_json: {}", e))?;
+
+    let context_dir = skill_root.join("context");
+    std::fs::create_dir_all(&context_dir)
+        .map_err(|e| format!("Failed to create context directory '{}': {}", context_dir.display(), e))?;
+
+    match step_id {
+        0 => {
+            require_const_status("research_complete")?;
+            let _ = require_int("dimensions_selected")?;
+            let _ = require_int("question_count")?;
+
+            let research_plan_markdown = payload
+                .get("research_plan_markdown")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "structured_output.research_plan_markdown must be a string".to_string())?;
+            if research_plan_markdown.trim().is_empty() {
+                return Err("structured_output.research_plan_markdown must not be empty".to_string());
+            }
+
+            let research_plan_path = context_dir.join("research-plan.md");
+            let clarifications_path = context_dir.join("clarifications.json");
+            std::fs::write(&research_plan_path, research_plan_markdown).map_err(|e| {
+                format!(
+                    "Failed to write research plan '{}': {}",
+                    research_plan_path.display(),
+                    e
+                )
+            })?;
+            std::fs::write(&clarifications_path, clarifications_pretty).map_err(|e| {
+                format!(
+                    "Failed to write clarifications '{}': {}",
+                    clarifications_path.display(),
+                    e
+                )
+            })?;
+            Ok(())
+        }
+        1 => {
+            require_const_status("detailed_research_complete")?;
+            let _ = require_int("refinement_count")?;
+            let _ = require_int("section_count")?;
+
+            let clarifications_path = context_dir.join("clarifications.json");
+            std::fs::write(&clarifications_path, clarifications_pretty).map_err(|e| {
+                format!(
+                    "Failed to write clarifications '{}': {}",
+                    clarifications_path.display(),
+                    e
+                )
+            })?;
+            Ok(())
+        }
+        _ => Err(format!(
+            "materialize_workflow_step_output supports only step 0 and 1; got {}",
+            step_id
+        )),
+    }
+}
+
+#[tauri::command]
+pub fn materialize_workflow_step_output(
+    skill_name: String,
+    step_id: u32,
+    structured_output: serde_json::Value,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    log::info!(
+        "[materialize_workflow_step_output] skill={} step={}",
+        skill_name,
+        step_id
+    );
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
+    let skill_root = Path::new(&skills_path).join(&skill_name);
+    materialize_workflow_step_output_value(&skill_root, step_id, &structured_output)
 }
 
 fn answer_evaluator_output_format() -> serde_json::Value {
@@ -2065,6 +2331,21 @@ mod tests {
     }
 
     #[test]
+    fn test_research_output_format_requires_artifact_fields() {
+        let format = workflow_output_format_for_agent("research-orchestrator").unwrap();
+        let required = format["schema"]["required"].as_array().expect("required array");
+        assert!(required.iter().any(|v| v == "research_plan_markdown"));
+        assert!(required.iter().any(|v| v == "clarifications_json"));
+    }
+
+    #[test]
+    fn test_detailed_research_output_format_requires_clarifications_payload() {
+        let format = workflow_output_format_for_agent("detailed-research").unwrap();
+        let required = format["schema"]["required"].as_array().expect("required array");
+        assert!(required.iter().any(|v| v == "clarifications_json"));
+    }
+
+    #[test]
     fn test_workflow_output_format_is_unset_for_non_contract_workflow_agents() {
         assert!(workflow_output_format_for_agent("confirm-decisions").is_none());
         assert!(workflow_output_format_for_agent("generate-skill").is_none());
@@ -2081,6 +2362,113 @@ mod tests {
             schema["properties"]["verdict"]["enum"],
             serde_json::json!(["sufficient", "mixed", "insufficient"])
         );
+    }
+
+    #[test]
+    fn test_materialize_step0_writes_research_and_clarifications() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 2,
+            "question_count": 5,
+            "research_plan_markdown": "---\npurpose: domain\n---\n## Dimension Scores\n",
+            "clarifications_json": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 0,
+                    "section_count": 0,
+                    "refinement_count": 0,
+                    "must_answer_count": 0,
+                    "priority_questions": []
+                },
+                "sections": [],
+                "notes": []
+            }
+        });
+
+        super::materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap();
+        assert!(skill_root.join("context/research-plan.md").exists());
+        assert!(skill_root.join("context/clarifications.json").exists());
+    }
+
+    #[test]
+    fn test_materialize_step0_validation_failure_keeps_existing_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let context_dir = skill_root.join("context");
+        std::fs::create_dir_all(&context_dir).unwrap();
+        std::fs::write(context_dir.join("research-plan.md"), "old-plan").unwrap();
+        std::fs::write(context_dir.join("clarifications.json"), "{\"old\":true}").unwrap();
+
+        let invalid_payload = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 2,
+            "question_count": 5,
+            "research_plan_markdown": "---\npurpose: domain\n---\n## Dimension Scores\n",
+            "clarifications_json": {
+                "version": "1",
+                "metadata": {},
+                "sections": [],
+                "notes": []
+            }
+        });
+
+        let err = super::materialize_workflow_step_output_value(&skill_root, 0, &invalid_payload)
+            .unwrap_err();
+        assert!(err.contains("Invalid clarifications_json"));
+        assert_eq!(
+            std::fs::read_to_string(context_dir.join("research-plan.md")).unwrap(),
+            "old-plan"
+        );
+        assert_eq!(
+            std::fs::read_to_string(context_dir.join("clarifications.json")).unwrap(),
+            "{\"old\":true}"
+        );
+    }
+
+    #[test]
+    fn test_materialize_step1_writes_clarifications_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "detailed_research_complete",
+            "refinement_count": 1,
+            "section_count": 1,
+            "clarifications_json": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 1,
+                    "section_count": 1,
+                    "refinement_count": 1,
+                    "must_answer_count": 0,
+                    "priority_questions": []
+                },
+                "sections": [
+                    {
+                        "id": "S1",
+                        "title": "Section",
+                        "questions": [
+                            {
+                                "id": "Q1",
+                                "title": "Question",
+                                "must_answer": false,
+                                "text": "Question text",
+                                "choices": [
+                                    {"id":"A","text":"Choice","is_other":false}
+                                ],
+                                "refinements": []
+                            }
+                        ]
+                    }
+                ],
+                "notes": []
+            }
+        });
+
+        super::materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap();
+        assert!(skill_root.join("context/clarifications.json").exists());
+        assert!(!skill_root.join("context/research-plan.md").exists());
     }
 
     #[test]

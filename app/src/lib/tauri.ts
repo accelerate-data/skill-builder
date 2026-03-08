@@ -123,6 +123,16 @@ export const runWorkflowStep = (
   workspacePath: string,
 ) => invoke<string>("run_workflow_step", { skillName, stepId, workspacePath });
 
+export const materializeWorkflowStepOutput = (
+  skillName: string,
+  stepId: number,
+  structuredOutput: unknown,
+) => invoke<void>("materialize_workflow_step_output", {
+  skillName,
+  stepId,
+  structuredOutput,
+});
+
 export const packageSkill = (
   skillName: string,
   workspacePath: string,

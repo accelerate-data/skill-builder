@@ -188,6 +188,7 @@ pub fn run() {
             commands::files::read_file_as_base64,
             commands::files::write_base64_to_temp_file,
             commands::workflow::run_workflow_step,
+            commands::workflow::materialize_workflow_step_output,
             commands::workflow::package_skill,
             commands::workflow::reset_workflow_step,
             commands::workflow::preview_step_reset,
