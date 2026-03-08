@@ -57,6 +57,7 @@ export function createFixtureFresh(_dir: string) {
 // scoping: session.json only
 export function createFixtureScoping(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "scoping");
+  writeUserContextMd(dir, skillName);
   makeSkillDirs(dir, skillName);
 }
 
@@ -130,61 +131,124 @@ export function createFixtureClarification(dir: string, skillName: string) {
   writeUserContextMd(dir, skillName);
   makeSkillDirs(dir, skillName);
   fs.writeFileSync(
-    path.join(dir, skillName, "context", "clarifications.md"),
-    `## Core Entities
-
-### Q1: Primary entities
-What are the primary business entities in pet store analytics?
-A. Products, Customers, Transactions
-B. Products, Customers, Transactions, Inventory
-C. Other (please specify)
-**Recommendation:** B
-**Answer:** B — We track all four: Products, Customers, Transactions, Inventory
-
-### Q2: Customer segmentation
-How do you segment customers?
-A. By purchase frequency (one-time, repeat, loyal)
-B. By pet type (dog, cat, exotic, multi-pet)
-C. Both dimensions
-**Recommendation:** C
-**Answer:** C — Both purchase frequency and pet type are important
-
-## Business Patterns
-
-### Q3: Seasonal patterns
-Does the business have strong seasonal patterns?
-A. Yes, holiday-driven (Christmas, adoption events)
-B. Yes, weather-driven (flea/tick season)
-C. Both
-**Recommendation:** C
-**Answer:** C — Both holiday and seasonal patterns apply
-
-### Q4: Return policy
-What is the return model for different product types?
-A. Full refund within 30 days for all products
-B. Exchange-only for live animals, refund for products
-C. Custom policy by category
-**Recommendation:** B
-**Answer:**
-
-## Data Modeling
-
-### Q5: Source systems
-What are the primary source systems?
-A. Single POS system
-B. POS + inventory management
-C. POS + inventory + e-commerce
-**Recommendation:** B
-**Answer:**
-
-### Q6: Multi-location
-Is this single store or multi-location?
-A. Single location
-B. 2-5 locations
-C. 5+ locations
-**Recommendation:** B
-**Answer:**
-`
+    path.join(dir, skillName, "context", "clarifications.json"),
+    JSON.stringify({
+      version: "1",
+      metadata: {
+        title: "Pet Store Analytics Clarifications",
+        question_count: 6,
+        section_count: 2,
+        refinement_count: 0,
+        must_answer_count: 2,
+        priority_questions: ["Q1", "Q4"],
+        scope_recommendation: false,
+      },
+      sections: [
+        {
+          id: "S1",
+          title: "Core Entities",
+          questions: [
+            {
+              id: "Q1",
+              title: "Primary entities",
+              must_answer: true,
+              text: "What are the primary business entities in pet store analytics?",
+              choices: [
+                { id: "A", text: "Products, Customers, Transactions", is_other: false },
+                { id: "B", text: "Products, Customers, Transactions, Inventory", is_other: false },
+                { id: "C", text: "Other (please specify)", is_other: true },
+              ],
+              recommendation: "B",
+              answer_choice: "B",
+              answer_text: "We track all four entities in the core model.",
+              refinements: [],
+            },
+            {
+              id: "Q2",
+              title: "Customer segmentation",
+              must_answer: false,
+              text: "How do you segment customers?",
+              choices: [
+                { id: "A", text: "Purchase frequency", is_other: false },
+                { id: "B", text: "Pet type", is_other: false },
+                { id: "C", text: "Both dimensions", is_other: false },
+              ],
+              recommendation: "C",
+              answer_choice: "C",
+              answer_text: "Both frequency and pet type are required.",
+              refinements: [],
+            },
+            {
+              id: "Q3",
+              title: "Seasonal patterns",
+              must_answer: false,
+              text: "Does the business have strong seasonal patterns?",
+              choices: [
+                { id: "A", text: "Holiday-driven", is_other: false },
+                { id: "B", text: "Weather-driven", is_other: false },
+                { id: "C", text: "Both", is_other: false },
+              ],
+              recommendation: "C",
+              answer_choice: "C",
+              answer_text: "Both holiday and weather seasonality matter.",
+              refinements: [],
+            },
+          ],
+        },
+        {
+          id: "S2",
+          title: "Data Modeling",
+          questions: [
+            {
+              id: "Q4",
+              title: "Return policy",
+              must_answer: true,
+              text: "What is the return model for different product types?",
+              choices: [
+                { id: "A", text: "30-day refund for all products", is_other: false },
+                { id: "B", text: "Exchange-only for live animals", is_other: false },
+                { id: "C", text: "Custom by category", is_other: false },
+              ],
+              recommendation: "B",
+              answer_choice: null,
+              answer_text: null,
+              refinements: [],
+            },
+            {
+              id: "Q5",
+              title: "Source systems",
+              must_answer: false,
+              text: "What are the primary source systems?",
+              choices: [
+                { id: "A", text: "Single POS", is_other: false },
+                { id: "B", text: "POS + inventory", is_other: false },
+                { id: "C", text: "POS + inventory + e-commerce", is_other: false },
+              ],
+              recommendation: "C",
+              answer_choice: null,
+              answer_text: null,
+              refinements: [],
+            },
+            {
+              id: "Q6",
+              title: "Multi-location",
+              must_answer: false,
+              text: "Is this single store or multi-location?",
+              choices: [
+                { id: "A", text: "Single location", is_other: false },
+                { id: "B", text: "2-5 locations", is_other: false },
+                { id: "C", text: "5+ locations", is_other: false },
+              ],
+              recommendation: "B",
+              answer_choice: null,
+              answer_text: null,
+              refinements: [],
+            },
+          ],
+        },
+      ],
+      notes: [],
+    }, null, 2)
   );
 }
 
@@ -361,62 +425,128 @@ export function createFixtureValidation(dir: string, skillName: string) {
 // Agent smoke fixture: fully answered clarifications for confirm-decisions tests
 export function createFixtureT4Workspace(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "clarification");
+  writeUserContextMd(dir, skillName);
   makeSkillDirs(dir, skillName);
   fs.writeFileSync(
-    path.join(dir, skillName, "context", "clarifications.md"),
-    `## Core Entities
-
-### Q1: Primary entities
-What are the primary business entities in pet store analytics?
-A. Products, Customers, Transactions
-B. Products, Customers, Transactions, Inventory
-C. Other (please specify)
-**Recommendation:** B
-**Answer:** B — We track all four: Products, Customers, Transactions, and Inventory
-
-### Q2: Customer segmentation
-How do you segment customers?
-A. By purchase frequency (one-time, repeat, loyal)
-B. By pet type (dog, cat, exotic, multi-pet)
-C. Both dimensions
-**Recommendation:** C
-**Answer:** C — Both purchase frequency and pet type are important segmentation dimensions
-
-### Q3: Product hierarchy
-How deep is the product hierarchy?
-A. Two levels (category, product)
-B. Three levels (department, category, product)
-C. Four+ levels (department, category, subcategory, product)
-**Recommendation:** B
-**Answer:** B — Department > Category > Product
-
-## Business Patterns
-
-### Q4: Seasonal patterns
-Does the business have strong seasonal patterns?
-A. Yes, holiday-driven (Christmas, adoption events)
-B. Yes, weather-driven (flea/tick season, winter supplies)
-C. Both holiday and weather seasonality
-D. Minimal seasonality
-**Recommendation:** C
-**Answer:** C — Both holiday gifting peaks and seasonal health/weather product cycles
-
-### Q5: Return and exchange policy
-What is the return model for different product types?
-A. Full refund within 30 days for all products
-B. Exchange-only for live animals, refund for products
-C. Custom policy by category
-**Recommendation:** B
-**Answer:** B — Live animals are exchange-only with health guarantee; products have 30-day returns
-
-### Q6: Loyalty program structure
-What does the loyalty program look like?
-A. Points-based (earn per dollar, redeem for discounts)
-B. Tier-based (bronze, silver, gold with escalating benefits)
-C. Subscription model (monthly delivery with discounts)
-D. No formal loyalty program
-**Recommendation:** A
-**Answer:** A — Points-based: 1 point per dollar, 100 points = $5 discount
-`
+    path.join(dir, skillName, "context", "clarifications.json"),
+    JSON.stringify({
+      version: "1",
+      metadata: {
+        title: "Pet Store Analytics Clarifications",
+        question_count: 6,
+        section_count: 2,
+        refinement_count: 0,
+        must_answer_count: 2,
+        priority_questions: ["Q1", "Q4"],
+        scope_recommendation: false,
+      },
+      sections: [
+        {
+          id: "S1",
+          title: "Core Entities",
+          questions: [
+            {
+              id: "Q1",
+              title: "Primary entities",
+              must_answer: true,
+              text: "What are the primary business entities?",
+              choices: [
+                { id: "A", text: "Products, Customers, Transactions", is_other: false },
+                { id: "B", text: "Products, Customers, Transactions, Inventory", is_other: false },
+                { id: "C", text: "Other (please specify)", is_other: true },
+              ],
+              recommendation: "B",
+              answer_choice: "B",
+              answer_text: "Track products, customers, transactions, and inventory.",
+              refinements: [],
+            },
+            {
+              id: "Q2",
+              title: "Customer segmentation",
+              must_answer: false,
+              text: "How do you segment customers?",
+              choices: [
+                { id: "A", text: "Purchase frequency", is_other: false },
+                { id: "B", text: "Pet type", is_other: false },
+                { id: "C", text: "Both", is_other: false },
+              ],
+              recommendation: "C",
+              answer_choice: "C",
+              answer_text: "Use both frequency and pet type segments.",
+              refinements: [],
+            },
+            {
+              id: "Q3",
+              title: "Product hierarchy",
+              must_answer: false,
+              text: "How deep is the product hierarchy?",
+              choices: [
+                { id: "A", text: "2 levels", is_other: false },
+                { id: "B", text: "3 levels", is_other: false },
+                { id: "C", text: "4+ levels", is_other: false },
+              ],
+              recommendation: "B",
+              answer_choice: "B",
+              answer_text: "Department > Category > Product.",
+              refinements: [],
+            },
+          ],
+        },
+        {
+          id: "S2",
+          title: "Business Patterns",
+          questions: [
+            {
+              id: "Q4",
+              title: "Seasonal patterns",
+              must_answer: true,
+              text: "Does the business have strong seasonal patterns?",
+              choices: [
+                { id: "A", text: "Holiday-driven", is_other: false },
+                { id: "B", text: "Weather-driven", is_other: false },
+                { id: "C", text: "Both", is_other: false },
+                { id: "D", text: "Minimal", is_other: false },
+              ],
+              recommendation: "C",
+              answer_choice: "C",
+              answer_text: "Both holiday and weather demand patterns exist.",
+              refinements: [],
+            },
+            {
+              id: "Q5",
+              title: "Return policy",
+              must_answer: false,
+              text: "What is the return model?",
+              choices: [
+                { id: "A", text: "30-day refund all", is_other: false },
+                { id: "B", text: "Exchange-only for live animals", is_other: false },
+                { id: "C", text: "Custom by category", is_other: false },
+              ],
+              recommendation: "B",
+              answer_choice: "B",
+              answer_text: "Live animals exchange-only; products 30-day returns.",
+              refinements: [],
+            },
+            {
+              id: "Q6",
+              title: "Loyalty program",
+              must_answer: false,
+              text: "What does the loyalty program look like?",
+              choices: [
+                { id: "A", text: "Points-based", is_other: false },
+                { id: "B", text: "Tier-based", is_other: false },
+                { id: "C", text: "Subscription", is_other: false },
+                { id: "D", text: "No formal loyalty", is_other: false },
+              ],
+              recommendation: "A",
+              answer_choice: "A",
+              answer_text: "Points-based loyalty with redemption thresholds.",
+              refinements: [],
+            },
+          ],
+        },
+      ],
+      notes: [],
+    }, null, 2)
   );
 }
