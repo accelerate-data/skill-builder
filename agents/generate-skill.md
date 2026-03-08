@@ -103,6 +103,7 @@ Description guidance:
 - Keep "when to use" trigger conditions in the frontmatter description, not scattered in body sections.
 - Build the description draft from the capability + trigger decisions in `decisions.md` first (including any `needs-review` items), then refine with user-context wording.
 - If user-provided description text exists, treat it as input to incorporate and improve, not an automatic final value.
+- To reduce undertriggering, prefer explicit trigger phrasing that is slightly assertive about when to invoke the skill.
 
 ## Phase 3: Write Reference Files and Self-Review
 
