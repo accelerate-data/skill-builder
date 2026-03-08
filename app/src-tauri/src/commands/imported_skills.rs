@@ -2609,7 +2609,7 @@ description: A skill
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
 
-        // Create two bundled skill dirs (simulating research + skill-builder-practices)
+        // Create two bundled skill dirs (simulating research + skill-creator)
         let bundled_dir = tempdir().unwrap();
 
         let skill_a = bundled_dir.path().join("skill-a");

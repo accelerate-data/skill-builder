@@ -12,6 +12,12 @@ Claude knows standard business rules at textbook level. The delta is the custome
 
 Research should surface: conditional business logic, regulatory requirements, and exception handling rules. Focus on decisions that change skill content.
 
+Quality checks:
+
+- Separate business-rule logic from data-quality checks; do not conflate the two.
+- Map each critical rule to where it should land (for example, transform layer vs test layer).
+- Prefer explicit thresholds and named exceptions over generic "follow policy" guidance.
+
 ## Questions to Research
 
 1. Which business rules in this domain have exceptions, conditional logic, or threshold values that vary by segment, deal type, or context?

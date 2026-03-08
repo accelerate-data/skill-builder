@@ -1150,7 +1150,7 @@ pub async fn run_workflow_step(
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         deploy_skill_for_workflow(&conn, &workspace_path, &bundled_skills_dir, "research", "research");
         deploy_skill_for_workflow(&conn, &workspace_path, &bundled_skills_dir, "validate-skill", "validate");
-        deploy_skill_for_workflow(&conn, &workspace_path, &bundled_skills_dir, "skill-builder-practices", "skill-building");
+        deploy_skill_for_workflow(&conn, &workspace_path, &bundled_skills_dir, "skill-creator", "skill-building");
     }
 
     let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;

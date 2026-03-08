@@ -12,6 +12,12 @@ Claude knows standard entity models (Salesforce objects, Kimball star schema, db
 
 Research should surface: which entities to model, relationship depth, key cardinality decisions, and departures from textbook models. Focus on decisions that change skill content.
 
+Quality checks:
+
+- Capture an explicit grain statement for each primary entity.
+- Capture key strategy (natural key vs surrogate key) and expected row-level uniqueness.
+- Call out where domain language must map to concrete model artifacts instead of staying conceptual.
+
 ## Questions to Research
 
 1. Which entities in this domain require custom objects or managed package extensions beyond the standard model, and what relationships do they introduce?

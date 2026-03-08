@@ -13,7 +13,7 @@ Each bundled skill has a **purpose** — a slot identifier that controls which s
 | Skill | Purpose |
 |---|---|
 | `research` | `research` |
-| `skill-builder-practices` | `skill-building` |
+| `skill-creator` | `skill-building` |
 | `skill-test` | `test-context` |
 | `validate-skill` | `validate` |
 

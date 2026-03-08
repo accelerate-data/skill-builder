@@ -24,7 +24,6 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 - Coordinator provides: **skill name**, **purpose**, **context directory** (has `decisions.md`), **skill output directory**, **workspace directory** (has `user-context.md`)
 - Read `{workspace_directory}/user-context.md` (per User Context protocol) to tailor tone, examples, and focus
 - Read `decisions.md` — primary input (in rewrite mode, also read existing skill files)
-- Purpose determines SKILL.md structure pattern (see Skill Builder Practices)
 
 </context>
 
@@ -64,25 +63,18 @@ The user's answers contain unresolvable contradictions. See `decisions.md` for d
 
 **User-revised contradictions** — if `contradictory_inputs: revised` in decisions.md, the user has reviewed the flagged decisions and edited them directly. Treat `decisions.md` as the authoritative resolved source and generate the skill normally. Do not write a stub.
 
-## Structure Pattern
-
-Determine the pattern from the purpose in user-context.md (per Skill Builder Practices):
-
-- **Knowledge-capture** (Business process knowledge, Source system customizations): question-oriented parallel sections, zero pre-filled assertions
-- **Standards** (Data engineering standards, Azure/Fabric standards): decision-oriented sections with Getting Started checklist and dependency map, up to 5 pre-filled assertions
-
-Adapt section themes based on what decisions.md actually contains.
-
 ## Phase 1: Plan the Skill Structure
 
-Read `decisions.md`. Design file layout per Skill Builder Practices.
+Read `decisions.md` and plan a concise skill structure.
+The vendored `skill-creator` guidance should trigger naturally from this planning step; use it when triggered, but do not require pre-loading it into context.
 
 - Each reference file covers a coherent topic area, not one file per decision
-- 3-8 reference files, descriptive kebab-case names (e.g., `entity-model.md`, `pipeline-metrics.md`)
+- Prefer 3-8 reference files with descriptive kebab-case names (e.g., `entity-model.md`, `pipeline-metrics.md`)
+- Avoid rigid section templates and numeric straitjackets; choose structure based on what the decisions require
 
 ## Phase 2: Write SKILL.md
 
-Follow Skill Builder Practices for structure, naming, and line limits.
+Follow the vendored writing guide and keep Skill Builder-specific fields/guards below.
 
 **Frontmatter:**
 
@@ -98,7 +90,7 @@ modified: <today's date>
 ---
 ```
 
-`tools` is the only field the agent determines. All others come from user-context.md or the coordinator prompt.
+`tools` is the only field the agent determines. All others come from user-context.md or the coordinator prompt and must be preserved in rewrite mode (except `modified`).
 
 Context alignment rules:
 
@@ -107,23 +99,24 @@ Context alignment rules:
 - For non-platform purposes, include Lakehouse-specific detail only when it materially affects the skill's decisions, risks, or tests.
 - Avoid generic warehouse-first prescriptions that conflict with Fabric/Azure context.
 
-**Description** trigger pattern: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` If the user's description in user-context.md already matches, use as-is. If too short, expand from description + purpose + "What Claude Needs to Know".
+Description guidance:
 
-**Sections (all skills):** Metadata → Overview → Quick Reference → Purpose-specific sections → Reference Files (pointers with description and when to read).
-
-**Standards skills additionally:** Getting Started (5-8 steps) after Quick Reference, then Decision Dependency Map.
+- Use a trigger-rich description in frontmatter (what it does + when to use it).
+- Keep "when to use" trigger conditions in the frontmatter description, not scattered in body sections.
+- Reuse the user's provided description if it already satisfies trigger clarity.
 
 ## Phase 3: Write Reference Files and Self-Review
 
-Write each reference file to `references/` per Skill Builder Practices. Keep files self-contained.
+Write each reference file to `references/`. Keep files self-contained and reference them explicitly from SKILL.md with "when to read" guidance.
 
-**Always write `{context_dir}/evaluations.md`** — at least 3 scenarios covering distinct topic areas (see Skill Builder Practices for format).
+**Always write `{context_dir}/evaluations.md`** — at least 3 realistic scenarios covering distinct topic areas.
 
 Self-review:
 
 - Re-read `decisions.md` — verify every decision is addressed in at least one file
 - Verify SKILL.md pointers match each reference file
 - Remove any 'Questions for your stakeholder', 'Open questions', or 'Pending clarifications' blocks
+- Remove over-constrained formatting rules that are not justified by the task
 
 ## Error Handling
 
@@ -143,51 +136,12 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 
 </instructions>
 
-<output_format>
-
-### Output Example — Knowledge-Capture (Business Process)
-
-```yaml
----
-name: Procurement Analytics
-description: Domain knowledge for procurement spend analysis. Use when building procurement dashboards, analyzing supplier performance, or modeling purchase order lifecycle. Covers metric definitions, segmentation standards, and period handling specific to the customer's procurement organization. Also use when questions arise about spend classification or approval workflow impact on metrics.
-tools: Read, Write, Edit, Glob, Grep, Bash
-version: 1.0.0
-author: octocat
-created: 2025-06-15
-modified: 2025-06-15
----
-```
-
-Sections: Overview → Quick Reference → Metric Definitions → Materiality Thresholds → Segmentation Standards → Period Handling → Business Logic Decisions → Output Standards → Reference Files
-
-### Output Example — Standards (Platform)
-
-```yaml
----
-name: dbt on Fabric
-description: Implementation decisions for running dbt projects on Microsoft Fabric. Use when configuring materializations, choosing incremental strategies, or optimizing CU consumption on Fabric. Covers decision dependencies between target architecture, materialization, and Direct Lake compatibility. Also use when troubleshooting Fabric-specific dbt adapter behaviors.
-tools: Read, Write, Edit, Glob, Grep, Bash
-version: 1.0.0
-author: octocat
-created: 2025-06-15
-modified: 2025-06-15
----
-```
-
-Sections: Overview → Quick Reference → **Getting Started** → **Decision Dependency Map** → Target Architecture → Materialization Matrix → Incremental Strategy → Platform Constraints → Capacity & Cost → Testing & Deployment → Reference Files
-
-</output_format>
-
 ## Success Criteria
 
-- Skill Builder Practices followed (structure, naming, line limits, content rules, anti-patterns)
+- Vendored skill-creator writing methodology applied
 - SKILL.md has metadata, overview, trigger conditions, quick reference, and pointers
 - 3-8 self-contained reference files
 - Every decision from `decisions.md` addressed
-- Correct structure pattern for purpose (knowledge-capture vs standards)
-- Assertion limits respected (knowledge-capture: 0, standards: up to 5)
-- Delta rule followed
+- Purpose-appropriate structure chosen without rigid templates
 - `{context_dir}/evaluations.md` with 3+ scenarios covering distinct topic areas
-- Standards skills: Getting Started (5-8 steps)
 - **Rewrite mode:** All original domain knowledge preserved
