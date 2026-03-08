@@ -230,7 +230,7 @@ export default function UsagePage() {
       toast.success("Usage data reset")
     } catch (err) {
       console.error("usage: reset failed", err)
-      toast.error(`Failed to reset usage: ${err instanceof Error ? err.message : String(err)}`)
+      toast.error(`Failed to reset usage: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity })
     } finally {
       setResetting(false)
     }

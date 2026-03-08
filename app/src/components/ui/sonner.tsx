@@ -31,7 +31,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
         } as React.CSSProperties
       }
       closeButton
-      duration={1500}
+      duration={5000}
       {...props}
     />
   )

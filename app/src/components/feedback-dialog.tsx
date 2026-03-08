@@ -185,11 +185,11 @@ export function FeedbackDialog() {
           setEnriched(parsed)
           setStep("review")
         } else {
-          toast.error("Failed to parse enrichment response")
+          toast.error("Failed to parse enrichment response", { duration: Infinity })
           setStep("input")
         }
       } else {
-        toast.error("Failed to analyze feedback", { duration: 5000 })
+        toast.error("Failed to analyze feedback", { duration: Infinity })
         setStep("input")
       }
       setPendingAgentId(null)
@@ -229,7 +229,7 @@ export function FeedbackDialog() {
     } catch (err) {
       toast.error(
         `Failed to analyze feedback: ${err instanceof Error ? err.message : String(err)}`,
-        { duration: 5000 },
+        { duration: Infinity },
       )
       setStep("input")
     }
@@ -266,7 +266,7 @@ export function FeedbackDialog() {
     } catch (err) {
       toast.error(
         `Failed to submit: ${err instanceof Error ? err.message : String(err)}`,
-        { duration: 5000 },
+        { duration: Infinity },
       )
       setStep("review")
     }

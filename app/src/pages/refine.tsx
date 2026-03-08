@@ -196,7 +196,7 @@ export default function RefinePage() {
         console.log("[refine] acquireLock: %s", skill.name);
       } catch (err) {
         console.error("[refine] acquireLock failed: %s", skill.name, err);
-        toast.error(`Cannot select skill: ${err instanceof Error ? err.message : String(err)}`);
+        toast.error(`Cannot select skill: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
         return;
       }
 
@@ -220,7 +220,7 @@ export default function RefinePage() {
           useRefineStore.setState({ sessionId: session.session_id });
         } catch (err) {
           console.error("[refine] Failed to start refine session:", err);
-          toast.error("Failed to start refine session");
+          toast.error("Failed to start refine session", { duration: Infinity });
           store.setLoadingFiles(false);
           return;
         }
@@ -233,7 +233,7 @@ export default function RefinePage() {
           }
         } else {
           store.setLoadingFiles(false);
-          toast.error("Could not load skill files");
+          toast.error("Could not load skill files", { duration: Infinity });
         }
       } else {
         store.setLoadingFiles(false);
@@ -278,7 +278,7 @@ export default function RefinePage() {
       if (hasExhausted) {
         console.warn("[refine] session exhausted for agent %s", activeAgentId);
         useRefineStore.getState().setSessionExhausted(true);
-        toast.info("This refine session has reached its limit. Please start a new session to continue.");
+        toast.info("This refine session has reached its limit. Please start a new session to continue.", { duration: 5000 });
       }
     }
 
@@ -368,7 +368,7 @@ export default function RefinePage() {
         console.error("[refine] Failed to send refine message:", err);
         store.setRunning(false);
         store.setActiveAgentId(null);
-        toast.error("Failed to start agent");
+        toast.error("Failed to start agent", { duration: Infinity });
       }
     },
     [selectedSkill, workspacePath, preferredModel, isRunning],

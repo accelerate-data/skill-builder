@@ -327,7 +327,7 @@ export default function DashboardPage() {
     } catch (err) {
       console.error("[dashboard] parseSkillFile failed:", err)
       const msg = err instanceof Error ? err.message : String(err)
-      toast.error(`Import failed: ${msg}`)
+      toast.error(`Import failed: ${msg}`, { duration: Infinity })
     }
   }, [])
 

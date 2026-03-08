@@ -331,7 +331,7 @@ export default function TestPage() {
       .catch((err) => {
         console.error("[test] Failed to load skills:", err);
         if (!cancelled) setIsLoadingSkills(false);
-        toast.error("Failed to load skills");
+        toast.error("Failed to load skills", { duration: Infinity });
       });
     return () => { cancelled = true; };
   }, []);
@@ -679,7 +679,7 @@ export default function TestPage() {
   const handleRunTest = useCallback(async () => {
     const s = stateRef.current;
     if (!s.selectedSkill || !s.prompt.trim()) {
-      toast.error("Select a skill and enter a prompt");
+      toast.error("Select a skill and enter a prompt", { duration: Infinity });
       return;
     }
     if (s.phase === "running" || s.phase === "evaluating") return;
@@ -689,7 +689,7 @@ export default function TestPage() {
     // Guard: don't clobber in-progress workflow runs
     const agentsRunning = await hasRunningAgents().catch(() => false);
     if (agentsRunning) {
-      toast.error("Cannot start test while other agents are running");
+      toast.error("Cannot start test while other agents are running", { duration: Infinity });
       return;
     }
 
@@ -777,7 +777,7 @@ export default function TestPage() {
         phase: "error",
         errorMessage: `Failed to start test: ${String(err)}`,
       }));
-      toast.error("Failed to start test");
+      toast.error("Failed to start test", { duration: Infinity });
     }
   }, []);
 

@@ -51,7 +51,7 @@ async function checkForMarketplaceUpdates(
     console.error("[app-layout] Marketplace update check failed:", err);
     toast.error(
       `Marketplace update check failed: ${err instanceof Error ? err.message : String(err)}`,
-      { duration: 8000 }
+      { duration: Infinity }
     );
     return null;
   }
@@ -119,7 +119,7 @@ function showManualUpdateToasts(
     toast.info(
       `Dashboard: update available for ${library.length} skill${library.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
       {
-        duration: Infinity,
+        duration: 5000,
         action: {
           label: "Upgrade",
           onClick: () => {
@@ -135,7 +135,7 @@ function showManualUpdateToasts(
     toast.info(
       `Settings \u2192 Skills: update available for ${workspace.length} skill${workspace.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
       {
-        duration: Infinity,
+        duration: 5000,
         action: {
           label: "Upgrade",
           onClick: () => {
@@ -339,7 +339,7 @@ export function AppLayout() {
             } catch (err) {
               toast.error(
                 `Failed to apply startup reconciliation: ${err instanceof Error ? err.message : String(err)}`,
-                { duration: 8000 }
+                { duration: Infinity }
               );
             } finally {
               setReconApplying(false);

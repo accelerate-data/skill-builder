@@ -137,7 +137,7 @@ export function WorkspaceSkillsTab() {
         await setPurpose(skillId, newPurpose)
       } catch (err) {
         console.error("[workspace-skills] setPurpose failed:", err)
-        toast.error(`Failed to update purpose: ${err instanceof Error ? err.message : String(err)}`)
+        toast.error(`Failed to update purpose: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity })
       }
     },
     [setPurpose]

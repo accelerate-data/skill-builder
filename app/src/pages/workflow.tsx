@@ -329,7 +329,7 @@ export default function WorkflowPage() {
 
     acquireLock(skillName).catch((err) => {
       if (mounted) {
-        toast.error(`Could not lock skill: ${err instanceof Error ? err.message : String(err)}`);
+        toast.error(`Could not lock skill: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
         navigate({ to: "/" });
       }
     });
@@ -608,7 +608,7 @@ export default function WorkflowPage() {
       return;
     }
     if (gateLoading || gateAgentIdRef.current) {
-      toast.info("Answer analysis is in progress. Please wait for results.");
+      toast.info("Answer analysis is in progress. Please wait for results.", { duration: 5000 });
       return;
     }
 
@@ -698,7 +698,7 @@ export default function WorkflowPage() {
         setReviewContent(content);
         setEditorDirty(false);
       } catch (err) {
-        toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
+        toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
         return;
       }
     }
@@ -882,10 +882,10 @@ export default function WorkflowPage() {
   const handleGateLetMeAnswer = () => {
     logGateAction("let_me_answer");
     closeGateDialog();
-    toast.info("Refreshing evaluator feedback...");
+    toast.info("Refreshing evaluator feedback...", { duration: 5000 });
     // Ensure evaluator-generated notes are visible immediately in the editor.
     if (!skillsPath) {
-      toast.warning("Skills path is missing in settings. Could not refresh feedback from disk.");
+      toast.warning("Skills path is missing in settings. Could not refresh feedback from disk.", { duration: Infinity });
       return;
     }
 
@@ -894,7 +894,7 @@ export default function WorkflowPage() {
       .then((content) => {
         const parsed = parseClarifications(content ?? null);
         if (!parsed) {
-          toast.warning("Feedback file could not be parsed. You can still answer manually.");
+          toast.warning("Feedback file could not be parsed. You can still answer manually.", { duration: Infinity });
           return;
         }
         setReviewContent(content ?? null);
@@ -910,7 +910,7 @@ export default function WorkflowPage() {
         }
       })
       .catch(() => {
-        toast.warning("Could not refresh feedback from disk. You can still answer manually.");
+        toast.warning("Could not refresh feedback from disk. You can still answer manually.", { duration: Infinity });
       });
   };
 
@@ -957,7 +957,7 @@ export default function WorkflowPage() {
       return true;
     } catch (err) {
       setSaveStatus("dirty"); // Revert to dirty on failure
-      toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
       return false;
     }
   }, [stepConfig?.clarificationsEditable, skillsPath, reviewContent, clarificationsData, skillName]);

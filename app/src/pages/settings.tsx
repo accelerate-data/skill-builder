@@ -772,7 +772,7 @@ export default function SettingsPage() {
                           try {
                             info = await parseGitHubUrl(url)
                           } catch {
-                            toast.error("Invalid GitHub repository format — use owner/repo or owner/repo#branch.")
+                            toast.error("Invalid GitHub repository format — use owner/repo or owner/repo#branch.", { duration: Infinity })
                             setNewRegistryAdding(false)
                             return
                           }
@@ -786,7 +786,7 @@ export default function SettingsPage() {
                             return m && m[1] === info.owner && m[2] === info.repo
                           })
                           if (isDuplicate) {
-                            toast.error(`${info.owner}/${info.repo} is already in your registries.`)
+                            toast.error(`${info.owner}/${info.repo} is already in your registries.`, { duration: Infinity })
                             setNewRegistryAdding(false)
                             return
                           }

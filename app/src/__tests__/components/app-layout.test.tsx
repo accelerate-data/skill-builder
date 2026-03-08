@@ -456,7 +456,7 @@ describe("AppLayout", () => {
       await waitFor(() => {
         expect(toast.info).toHaveBeenCalledWith(
           "Dashboard: update available for 1 skill: sales-skill",
-          expect.objectContaining({ duration: Infinity })
+          expect.objectContaining({ duration: 5000 })
         );
       });
     });
@@ -479,7 +479,7 @@ describe("AppLayout", () => {
       await waitFor(() => {
         expect(toast.info).toHaveBeenCalledWith(
           "Settings \u2192 Skills: update available for 1 skill: hr-skill",
-          expect.objectContaining({ duration: Infinity })
+          expect.objectContaining({ duration: 5000 })
         );
       });
     });
@@ -577,7 +577,7 @@ describe("AppLayout", () => {
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith(
           "Marketplace update check failed: marketplace.json not found",
-          expect.objectContaining({ duration: 8000 })
+          expect.objectContaining({ duration: Infinity })
         );
       });
     });
