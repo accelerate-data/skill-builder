@@ -68,12 +68,11 @@ The user's answers contain unresolvable contradictions. See `decisions.md` for d
 Read `decisions.md` and plan a concise skill structure for the new skill.
 
 - Each reference file covers a coherent topic area, not one file per decision
-- Use only as many reference files as needed for clarity; avoid rigid file-count targets or naming templates
-- Avoid rigid section templates and numeric straitjackets; choose structure based on what the decisions require
+- Avoid rigid section templates and numeric straitjackets; choose structure based on skill development best practices. 
 
 ## Phase 2: Write SKILL.md
 
-Follow the vendored writing guide and keep Skill Builder-specific fields/guards below.
+Follow the skill writing guide to create the skill and keep Skill Builder-specific fields/guards below.
 
 **Frontmatter:**
 
@@ -102,7 +101,8 @@ Description guidance:
 
 - Use a trigger-rich description in frontmatter (what it does + when to use it).
 - Keep "when to use" trigger conditions in the frontmatter description, not scattered in body sections.
-- Reuse the user's provided description if it already satisfies trigger clarity.
+- Build the description draft from the capability + trigger decisions in `decisions.md` first (including any `needs-review` items), then refine with user-context wording.
+- If user-provided description text exists, treat it as input to incorporate and improve, not an automatic final value.
 
 ## Phase 3: Write Reference Files and Self-Review
 
