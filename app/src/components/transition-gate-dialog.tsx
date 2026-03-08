@@ -35,10 +35,12 @@ function EvaluationBreakdown({ evaluation }: { evaluation: AnswerEvaluation }) {
   const vague = pq.filter(q => q.verdict === "vague");
   const contradictory = pq.filter(q => q.verdict === "contradictory");
   const needsRefinement = pq.filter(q => q.verdict === "needs_refinement");
-  const formatDetail = (questionId: string, reason: string) => `${questionId}: ${reason}`;
 
   return (
-    <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1.5" data-testid="question-breakdown">
+    <div
+      className="max-h-56 space-y-2 overflow-y-auto rounded-md border bg-muted/30 p-3 text-xs"
+      data-testid="question-breakdown"
+    >
       {ok.length > 0 && (
         <div className="flex items-center gap-2">
           <CheckCircle2 className="size-3" style={{ color: "var(--color-seafoam)" }} />
@@ -50,34 +52,53 @@ function EvaluationBreakdown({ evaluation }: { evaluation: AnswerEvaluation }) {
         <div className="flex items-start gap-2">
           <Circle className="size-3 mt-0.5 text-destructive" />
           <span className="text-destructive font-medium">Missing:</span>
-          <span className="text-muted-foreground">{missing.map(q => q.question_id).join(", ")}</span>
+          <div className="flex min-w-0 flex-wrap gap-1.5">
+            {missing.map((q) => (
+              <span key={q.question_id} className="rounded border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                {q.question_id}
+              </span>
+            ))}
+          </div>
         </div>
       )}
       {vague.length > 0 && (
         <div className="flex items-start gap-2">
           <AlertCircle className="size-3 mt-0.5 text-amber-600 dark:text-amber-400" />
           <span className="text-amber-600 dark:text-amber-400 font-medium">Vague:</span>
-          <span className="text-muted-foreground">
-            {vague.map(q => formatDetail(q.question_id, q.reason)).join("; ")}
-          </span>
+          <div className="min-w-0 flex-1 space-y-1">
+            {vague.map((q) => (
+              <p key={q.question_id} className="break-words leading-relaxed text-muted-foreground">
+                <span className="font-mono text-[11px]">{q.question_id}</span>: {q.reason}
+              </p>
+            ))}
+          </div>
         </div>
       )}
       {contradictory.length > 0 && (
         <div className="flex items-start gap-2">
           <XCircle className="size-3 mt-0.5 text-destructive" />
           <span className="text-destructive font-medium">Contradictory:</span>
-          <span className="text-muted-foreground">
-            {contradictory
-              .map(q => `${formatDetail(q.question_id, q.reason)} (conflicts with ${q.contradicts})`)
-              .join("; ")}
-          </span>
+          <div className="min-w-0 flex-1 space-y-1">
+            {contradictory.map((q) => (
+              <p key={q.question_id} className="break-words leading-relaxed text-muted-foreground">
+                <span className="font-mono text-[11px]">{q.question_id}</span>: {q.reason}{" "}
+                <span className="font-medium text-destructive">(conflicts with {q.contradicts})</span>
+              </p>
+            ))}
+          </div>
         </div>
       )}
       {needsRefinement.length > 0 && (
         <div className="flex items-start gap-2">
           <Info className="size-3 mt-0.5" style={{ color: "var(--color-pacific)" }} />
           <span style={{ color: "var(--color-pacific)" }} className="font-medium">Needs refinement:</span>
-          <span className="text-muted-foreground">{needsRefinement.map(q => q.question_id).join(", ")}</span>
+          <div className="flex min-w-0 flex-wrap gap-1.5">
+            {needsRefinement.map((q) => (
+              <span key={q.question_id} className="rounded border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                {q.question_id}
+              </span>
+            ))}
+          </div>
         </div>
       )}
     </div>
