@@ -65,7 +65,8 @@ Mandatory user-editable decisions:
 - Always include a decision for: `When should this skill trigger? (what user phrases/contexts)`
 - Mark both of these decisions with `- **Status:** needs-review` so the user can directly edit/confirm them.
 - If either question is missing from clarifications, infer a best-effort draft from user-context + answered questions and still emit the decision as `needs-review`.
-- For the trigger decision, include an implication note that explicitly says this decision will be used to create the skill description and that the description should follow skill-writing best practices (clear trigger phrases and frontmatter-centric trigger guidance).
+- These decisions define the SKILL frontmatter description inputs (what the skill does and when it should trigger). Keep them concise, editable, and grounded in user context.
+- For the trigger decision, include an implication note that explicitly says this decision will be used to create the skill description and that the description should follow skill-writing best practices.
 
 Purpose-aware implication rules:
 
