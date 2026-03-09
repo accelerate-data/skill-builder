@@ -7,14 +7,15 @@ use std::path::Path;
 #[tauri::command]
 pub fn list_skills(
     workspace_path: String,
+    source_url: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<SkillSummary>, String> {
-    log::info!("[list_skills]");
+    log::info!("[list_skills] source_url={:?}", source_url);
     let conn = db.0.lock().map_err(|e| {
         log::error!("[list_skills] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    list_skills_inner(&workspace_path, &conn)
+    list_skills_inner(&workspace_path, source_url.as_deref(), &conn)
 }
 
 /// Unified skill listing driven by the `skills` master table.
@@ -26,6 +27,7 @@ pub fn list_skills(
 /// skill discovery.
 fn list_skills_inner(
     _workspace_path: &str,
+    source_url: Option<&str>,
     conn: &rusqlite::Connection,
 ) -> Result<Vec<SkillSummary>, String> {
     // Query the skills master table
@@ -111,6 +113,22 @@ fn list_skills_inner(
         })
         .collect();
 
+    if let Some(source_url) = source_url {
+        let mut stmt = conn
+            .prepare(
+                "SELECT skill_name FROM imported_skills WHERE marketplace_source_url = ?1
+                 UNION
+                 SELECT skill_name FROM workspace_skills WHERE marketplace_source_url = ?1",
+            )
+            .map_err(|e| format!("list_skills_inner source filter prepare: {}", e))?;
+        let scoped_names: std::collections::HashSet<String> = stmt
+            .query_map(rusqlite::params![source_url], |row| row.get::<_, String>(0))
+            .map_err(|e| format!("list_skills_inner source filter query: {}", e))?
+            .collect::<Result<std::collections::HashSet<_>, _>>()
+            .map_err(|e| format!("list_skills_inner source filter collect: {}", e))?;
+        skills.retain(|s| scoped_names.contains(&s.name));
+    }
+
     // Sort by last_modified descending (most recent first)
     skills.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
     Ok(skills)
@@ -138,7 +156,7 @@ pub fn list_refinable_skills(
         let skills_path = settings
             .skills_path
             .unwrap_or_else(|| workspace_path.clone());
-        let all = list_skills_inner(&workspace_path, &conn)?;
+        let all = list_skills_inner(&workspace_path, None, &conn)?;
         let completed: Vec<SkillSummary> = all
             .into_iter()
             .filter(|s| s.status.as_deref() == Some("completed"))
@@ -185,7 +203,7 @@ fn list_refinable_skills_inner(
     skills_path: &str,
     conn: &rusqlite::Connection,
 ) -> Result<Vec<SkillSummary>, String> {
-    let all = list_skills_inner(workspace_path, conn)?;
+    let all = list_skills_inner(workspace_path, None, conn)?;
     let completed: Vec<SkillSummary> = all
         .into_iter()
         .filter(|s| s.status.as_deref() == Some("completed"))
@@ -291,10 +309,9 @@ fn create_skill_inner(
     }
 
     if let Some(sp) = skills_path {
-        // Workspace dir is a marker for reconcile; context lives in skills_path
-        fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+        // Workspace dir holds runtime context; skill output remains in skills_path
+        fs::create_dir_all(base.join("context")).map_err(|e| e.to_string())?;
         let skill_output = Path::new(sp).join(name);
-        fs::create_dir_all(skill_output.join("context")).map_err(|e| e.to_string())?;
         fs::create_dir_all(skill_output.join("references")).map_err(|e| e.to_string())?;
     } else {
         // No skills_path — workspace holds everything including context
@@ -1042,7 +1059,7 @@ mod tests {
         crate::db::save_workflow_run(&conn, "skill-b", 0, "pending", "platform")
             .unwrap();
 
-        let skills = list_skills_inner("/unused", &conn).unwrap();
+        let skills = list_skills_inner("/unused", None, &conn).unwrap();
         assert_eq!(skills.len(), 2);
 
         // Find skill-a
@@ -1063,7 +1080,7 @@ mod tests {
     #[test]
     fn test_list_skills_db_primary_empty_db() {
         let conn = create_test_db();
-        let skills = list_skills_inner("/unused", &conn).unwrap();
+        let skills = list_skills_inner("/unused", None, &conn).unwrap();
         assert!(skills.is_empty());
     }
 
@@ -1079,7 +1096,7 @@ mod tests {
         )
         .unwrap();
 
-        let skills = list_skills_inner("/unused", &conn).unwrap();
+        let skills = list_skills_inner("/unused", None, &conn).unwrap();
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].tags, vec!["analytics", "salesforce"]);
     }
@@ -1089,7 +1106,7 @@ mod tests {
         let conn = create_test_db();
         crate::db::save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
 
-        let skills = list_skills_inner("/unused", &conn).unwrap();
+        let skills = list_skills_inner("/unused", None, &conn).unwrap();
         assert_eq!(skills.len(), 1);
         // last_modified should be populated from updated_at (not filesystem)
         assert!(skills[0].last_modified.is_some());
@@ -1104,7 +1121,7 @@ mod tests {
         .unwrap();
 
         let skills =
-            list_skills_inner("/this/path/does/not/exist/at/all", &conn).unwrap();
+            list_skills_inner("/this/path/does/not/exist/at/all", None, &conn).unwrap();
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "no-disk-skill");
         
@@ -1118,7 +1135,7 @@ mod tests {
         crate::db::save_workflow_run(&conn, "oldest", 0, "pending", "domain").unwrap();
         crate::db::save_workflow_run(&conn, "newest", 3, "in_progress", "domain").unwrap();
 
-        let skills = list_skills_inner("/unused", &conn).unwrap();
+        let skills = list_skills_inner("/unused", None, &conn).unwrap();
         assert_eq!(skills.len(), 2);
         // The most recently updated should come first
         // Since they're created nearly simultaneously, just verify both exist
@@ -1138,7 +1155,7 @@ mod tests {
         create_skill_inner(workspace, "my-skill", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None)
             .unwrap();
 
-        let skills = list_skills_inner(workspace, &conn).unwrap();
+        let skills = list_skills_inner(workspace, None, &conn).unwrap();
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "my-skill");
         
@@ -1297,13 +1314,13 @@ mod tests {
         create_skill_inner(workspace, "to-delete", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None)
             .unwrap();
 
-        let skills = list_skills_inner(workspace, &conn).unwrap();
+        let skills = list_skills_inner(workspace, None, &conn).unwrap();
         assert_eq!(skills.len(), 1);
 
         delete_skill_inner(workspace, "to-delete", Some(&conn), None).unwrap();
 
         // DB should be clean
-        let skills = list_skills_inner(workspace, &conn).unwrap();
+        let skills = list_skills_inner(workspace, None, &conn).unwrap();
         assert_eq!(skills.len(), 0);
 
         // Filesystem should be clean
@@ -1760,8 +1777,9 @@ mod tests {
 
         // Verify skill output directories were created in skills_path
         let skill_output = Path::new(skills_path).join("new-skill");
-        assert!(skill_output.join("context").exists());
         assert!(skill_output.join("references").exists());
+        // Context is workspace-owned.
+        assert!(Path::new(workspace).join("new-skill").join("context").exists());
     }
 
     #[test]
@@ -2048,7 +2066,8 @@ mod tests {
         assert!(err.contains("already exists"), "Error should mention collision: {}", err);
 
         // Original skill should be untouched
-        let row = crate::db::get_workflow_run(&conn, "skill-a").unwrap().unwrap();
+        let row = crate::db::get_workflow_run(&conn, "skill-a").unwrap();
+        assert!(row.is_some(), "skill-a workflow row should still exist");
         
     }
 

@@ -176,7 +176,10 @@ mod tests {
     }
 
     #[test]
-    fn test_output_format_for_unscoped_agents_is_none() {
+    fn test_output_format_is_unset_for_non_contract_agent_names() {
         assert!(output_format_for_agent("my-skill", Some("confirm-decisions")).is_none());
+        assert!(output_format_for_agent("my-skill", Some("test-plan-with")).is_none());
+        assert!(output_format_for_agent("my-skill", Some("test-plan-without")).is_none());
+        assert!(output_format_for_agent("my-skill", Some("test-evaluator")).is_none());
     }
 }

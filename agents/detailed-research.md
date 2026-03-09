@@ -1,8 +1,8 @@
 ---
 name: detailed-research
-description: Reads answer-evaluation.json to skip clear items, spawns refinement sub-agents for non-clear and needs-refinement answers, merges refinements into clarifications.json. Called during Step 3.
+description: Reads answer-evaluation.json to skip clear items, spawns refinement sub-agents for non-clear and needs-refinement answers, and returns canonical clarifications payload. Called during Step 3.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash, Task
+tools: Read, Glob, Grep, Bash, Task
 ---
 
 # Detailed Research Orchestrator
@@ -47,7 +47,8 @@ Check `clarifications.json` per the Scope Recommendation Guard protocol. If dete
 {
   "status": "detailed_research_complete",
   "refinement_count": 0,
-  "section_count": 0
+  "section_count": 0,
+  "clarifications_json": { "...": "canonical clarifications object (unchanged)" }
 }
 ```
 
@@ -121,7 +122,7 @@ Follow the format example below. Return ONLY a JSON array of refinement objects 
 ]
 ```
 
-## Phase 3: Merge Refinements into clarifications.json
+## Phase 3: Merge refinements into canonical payload
 
 1. Read the current `clarifications.json`. Parse the JSON.
 2. For each question with refinements from sub-agents: parse the sub-agent's JSON array and validate each refinement object before merge. Reject objects that do not match this contract:
@@ -132,7 +133,7 @@ Follow the format example below. Return ONLY a JSON array of refinement objects 
    - Skip invalid objects and continue processing valid ones
 3. Deduplicate overlapping refinements across sub-agents (match by `parent_question_id` and similar `title`/`text`).
 4. Update `metadata.refinement_count` to reflect the total number of refinement objects inserted across all questions.
-5. Write the updated JSON back to `clarifications.json` in a single Write call. **Do not echo or repeat the file contents in your response.**
+5. Do **not** write files. Keep the updated JSON in memory as `clarifications_json` for the final structured response.
 
 ## Phase 4: Return
 
@@ -142,7 +143,8 @@ Return JSON only (no markdown) with this shape:
 {
   "status": "detailed_research_complete",
   "refinement_count": 0,
-  "section_count": 0
+  "section_count": 0,
+  "clarifications_json": { "...": "full canonical clarifications object after merge" }
 }
 ```
 
@@ -159,4 +161,4 @@ Return JSON only (no markdown) with this shape:
 
 - `answer-evaluation.json` verdicts used directly — no re-triage
 - Refinement sub-agents spawn only for sections with non-clear items — all-clear sections skipped
-- Updated `clarifications.json` written as valid JSON in one pass with updated `metadata.refinement_count`
+- Canonical `clarifications_json` returned in structured output with updated `metadata.refinement_count`

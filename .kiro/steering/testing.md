@@ -19,7 +19,7 @@ cd src-tauri && cargo test        # Rust tests
 
 # Agent tests
 cd app && npm run test:agents:structural  # Structural checks (free)
-cd app && npm run test:agents:smoke       # Smoke tests (requires API key)
+cd app && npm run test:agents:smoke       # Promptfoo behavior evals (requires API key)
 ```
 
 ## When to Write Tests

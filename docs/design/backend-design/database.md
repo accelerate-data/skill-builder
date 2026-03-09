@@ -1,6 +1,6 @@
 # Database Design
 
-SQLite database at `{app_data_dir}/skill-builder.db` (macOS: `~/Library/Application Support/com.skillbuilder.app/`). Single `Mutex<Connection>`, WAL mode, 5-second busy timeout.
+SQLite database at `{app_data_dir}/skill-builder.db` (macOS: `~/Library/Application Support/com.vibedata.skill-builder/`). Single `Mutex<Connection>`, WAL mode, 5-second busy timeout.
 
 28 sequential migrations run at startup, tracked in `schema_migrations`. A startup repair pass also runs unconditionally to guard against dev builds with partially-applied migrations.
 

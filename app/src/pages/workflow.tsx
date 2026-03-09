@@ -37,6 +37,8 @@ import {
   saveWorkflowState,
   readFile,
   writeFile,
+  getClarificationsContent,
+  saveClarificationsContent,
   cleanupSkillSidecar,
   acquireLock,
   releaseLock,
@@ -45,6 +47,8 @@ import {
   getDisabledSteps,
   runAnswerEvaluator,
   logGateDecision,
+  materializeAnswerEvaluationOutput,
+  materializeWorkflowStepOutput,
   type AnswerEvaluation,
 } from "@/lib/tauri";
 import { TransitionGateDialog, type GateVerdict } from "@/components/transition-gate-dialog";
@@ -403,15 +407,15 @@ export default function WorkflowPage() {
   }, [steps, currentStep, skillName, purpose, hydrated]);
 
   // Load clarifications file when viewing a completed clarifications-editable step.
-  // skills_path is required — no workspace fallback.
+  // Context files are backend-owned under workspace path.
   useEffect(() => {
     const currentStepStatus = steps[currentStep]?.status;
-    if (!stepConfig?.clarificationsEditable || currentStepStatus !== "completed" || !skillsPath) {
+    if (!stepConfig?.clarificationsEditable || currentStepStatus !== "completed" || !workspacePath) {
       setReviewContent(null);
       return;
     }
 
-    readFile(`${skillsPath}/${skillName}/context/clarifications.json`)
+    getClarificationsContent(skillName, workspacePath)
       .then((content) => {
         setReviewContent(content ?? null);
         setClarificationsData(parseClarifications(content ?? null));
@@ -423,7 +427,7 @@ export default function WorkflowPage() {
       .finally(() => {
         setEditorDirty(false);
       });
-  }, [currentStep, steps, stepConfig?.clarificationsEditable, skillsPath, skillName]);
+  }, [currentStep, steps, stepConfig?.clarificationsEditable, workspacePath, skillName]);
 
   // Advance to next step helper
   const [pendingAutoStartStep, setPendingAutoStartStep] = useState<number | null>(null);
@@ -512,17 +516,30 @@ export default function WorkflowPage() {
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
   const activeRunStatus = activeRun?.status;
 
+  const extractStructuredResultPayload = useCallback((agentId: string): unknown | null => {
+    const run = useAgentStore.getState().runs[agentId];
+    if (!run) return null;
+    for (let i = run.messages.length - 1; i >= 0; i -= 1) {
+      const msg = run.messages[i];
+      if (msg.type !== "result") continue;
+      const raw = msg.raw as Record<string, unknown>;
+      if ("result" in raw) return raw.result ?? null;
+    }
+    return null;
+  }, []);
+
   // Watch for gate agent (answer evaluator) completion — separate from workflow step agents
   useEffect(() => {
     if (!activeRunStatus || !activeAgentId) return;
     if (gateAgentIdRef.current !== activeAgentId) return; // not the gate agent
 
     if (activeRunStatus === "completed" || activeRunStatus === "error") {
+      const completedGateAgentId = activeAgentId;
       gateAgentIdRef.current = null;
       setActiveAgent(null);
-      clearRuns();
 
       if (activeRunStatus === "error") {
+        clearRuns();
         console.warn("[workflow] Gate evaluation failed — proceeding normally");
         setGateLoading(false);
         updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
@@ -530,10 +547,12 @@ export default function WorkflowPage() {
         return;
       }
 
-      // Read the evaluation result
-      finishGateEvaluation();
+      // Materialize gate evaluation output before clearing run messages.
+      const structuredOutput = extractStructuredResultPayload(completedGateAgentId);
+      clearRuns();
+      finishGateEvaluation(structuredOutput);
     }
-  }, [activeRunStatus, activeAgentId]);
+  }, [activeRunStatus, activeAgentId, extractStructuredResultPayload]);
 
   useEffect(() => {
     if (!activeRunStatus || !activeAgentId) return;
@@ -544,14 +563,49 @@ export default function WorkflowPage() {
     if (currentSteps[step]?.status !== "in_progress") return;
 
     if (activeRunStatus === "completed") {
+      const completedAgentId = activeAgentId;
       // Capture cost before clearing activeAgent — after setActiveAgent(null),
       // activeRun becomes null so activeRun?.totalCost would be undefined.
-      lastCompletedCostRef.current = activeAgentId
-        ? useAgentStore.getState().runs[activeAgentId]?.totalCost
+      lastCompletedCostRef.current = completedAgentId
+        ? useAgentStore.getState().runs[completedAgentId]?.totalCost
         : undefined;
       setActiveAgent(null);
 
       const finish = async () => {
+        // Backend-owned context writes: workflow steps return canonical payloads
+        // and Rust materializes context files.
+        if ((step === 0 || step === 1 || step === 2 || step === 3) && completedAgentId) {
+          const structuredOutput = extractStructuredResultPayload(completedAgentId);
+          const hasStructuredObject = !!structuredOutput
+            && typeof structuredOutput === "object"
+            && !Array.isArray(structuredOutput);
+          if (hasStructuredObject) {
+            try {
+              await materializeWorkflowStepOutput(skillName, step, structuredOutput);
+            } catch (err) {
+              updateStepStatus(step, "error");
+              setRunning(false);
+              toast.error(
+                `Step ${step + 1} output validation failed: ${err instanceof Error ? err.message : String(err)}`,
+                { duration: Infinity },
+              );
+              return;
+            }
+          } else {
+            if (step === 1) {
+              updateStepStatus(step, "error");
+              setRunning(false);
+              toast.error(`Step ${step + 1} requires structured output from the agent`, {
+                duration: Infinity,
+              });
+              return;
+            }
+            // Backward-compat fallback for legacy/mocked transcripts that do not
+            // carry structured payloads.
+            console.warn(`[workflow] Missing structured output payload for step ${step}; skipping backend materialization`);
+          }
+        }
+
         // Verify the agent actually produced output files before marking complete
         if (workspacePath && skillName) {
           try {
@@ -598,7 +652,16 @@ export default function WorkflowPage() {
       }
       toast.error(`Step ${step + 1} failed`, { duration: Infinity });
     }
-  }, [activeRunStatus, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, advanceToNextStep]);
+  }, [
+    activeRunStatus,
+    updateStepStatus,
+    setRunning,
+    setActiveAgent,
+    skillName,
+    workspacePath,
+    advanceToNextStep,
+    extractStructuredResultPayload,
+  ]);
 
   // --- Step handlers ---
 
@@ -688,13 +751,13 @@ export default function WorkflowPage() {
   };
 
   const handleReviewContinue = async () => {
-    // Save the editor content to skills path (required — no workspace fallback)
-    if (stepConfig?.clarificationsEditable && reviewContent !== null && skillsPath) {
+    // Save the editor content via backend-owned context commands.
+    if (stepConfig?.clarificationsEditable && reviewContent !== null && workspacePath) {
       try {
         const content = clarificationsData
           ? JSON.stringify(clarificationsData, null, 2)
           : (reviewContent ?? "");
-        await writeFile(`${skillsPath}/${skillName}/context/clarifications.json`, content);
+        await saveClarificationsContent(skillName, workspacePath, content);
         setReviewContent(content);
         setEditorDirty(false);
       } catch (err) {
@@ -706,7 +769,7 @@ export default function WorkflowPage() {
     runGateOrAdvance();
   };
 
-  const finishGateEvaluation = async () => {
+  const finishGateEvaluation = async (structuredOutput?: unknown) => {
     const proceedNormally = () => {
       setGateLoading(false);
       updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
@@ -719,6 +782,15 @@ export default function WorkflowPage() {
     }
 
     try {
+      const hasStructuredObject = !!structuredOutput
+        && typeof structuredOutput === "object"
+        && !Array.isArray(structuredOutput);
+      if (hasStructuredObject && workspacePath) {
+        await materializeAnswerEvaluationOutput(skillName, workspacePath, structuredOutput);
+      } else {
+        console.warn("[workflow] Missing structured gate output; falling back to existing answer-evaluation.json");
+      }
+
       const evalPath = `${workspacePath}/${skillName}/answer-evaluation.json`;
       const raw = await readFile(evalPath);
       const evaluation: AnswerEvaluation = JSON.parse(raw);
@@ -732,10 +804,9 @@ export default function WorkflowPage() {
 
       // Refresh only the evaluator feedback section so research notes stay intact
       // while "Let Me Answer" returns users to actionable guidance in the editor UI.
-      if (skillsPath) {
-        const clarificationsPath = `${skillsPath}/${skillName}/context/clarifications.json`;
+      if (workspacePath) {
         try {
-          const clarificationsRaw = await readFile(clarificationsPath);
+          const clarificationsRaw = await getClarificationsContent(skillName, workspacePath);
           const parsed = parseClarifications(clarificationsRaw);
           if (parsed) {
             const next: ClarificationsFile = {
@@ -743,7 +814,7 @@ export default function WorkflowPage() {
               answer_evaluator_notes: buildGateFeedbackNotes(evaluation),
             };
             const serialized = JSON.stringify(next, null, 2);
-            await writeFile(clarificationsPath, serialized);
+            await saveClarificationsContent(skillName, workspacePath, serialized);
             setClarificationsData(next);
             setReviewContent(serialized);
             setEditorDirty(false);
@@ -754,7 +825,7 @@ export default function WorkflowPage() {
         }
       }
 
-      // Write gate result to .vibedata/skill-builder (internal files) so it appears in Rust
+      // Write gate result to the app-managed workspace directory so it appears in Rust
       // [write_file] logs and persists for debugging.
       if (workspacePath) {
         const gateLog = JSON.stringify({ ...evaluation, action: "show_dialog", timestamp: new Date().toISOString() });
@@ -843,7 +914,7 @@ export default function WorkflowPage() {
     toast.success(message);
   };
 
-  /** Write the user's gate decision to .vibedata/skill-builder so it appears in Rust [write_file] logs. */
+  /** Write the user's gate decision to the app-managed workspace so it appears in Rust [write_file] logs. */
   const logGateAction = (decision: string) => {
     if (!workspacePath) return;
     const entry = JSON.stringify({ decision, verdict: gateVerdict, timestamp: new Date().toISOString() });
@@ -884,13 +955,13 @@ export default function WorkflowPage() {
     closeGateDialog();
     toast.info("Refreshing evaluator feedback...", { duration: 5000 });
     // Ensure evaluator-generated notes are visible immediately in the editor.
-    if (!skillsPath) {
-      toast.warning("Skills path is missing in settings. Could not refresh feedback from disk.", { duration: Infinity });
+    if (!workspacePath) {
+      toast.warning("Workspace path is missing in settings. Could not refresh feedback from disk.", { duration: Infinity });
       return;
     }
 
     const prevNoteCount = clarificationsData?.answer_evaluator_notes?.length ?? 0;
-    readFile(`${skillsPath}/${skillName}/context/clarifications.json`)
+    getClarificationsContent(skillName, workspacePath)
       .then((content) => {
         const parsed = parseClarifications(content ?? null);
         if (!parsed) {
@@ -937,16 +1008,16 @@ export default function WorkflowPage() {
     if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
   }, []);
 
-  // Save editor content to skills path (required — no workspace fallback).
+  // Save editor content through backend domain command.
   // Returns true on success, false if the write failed.
   const handleSave = useCallback(async (silent = false): Promise<boolean> => {
-    if (!stepConfig?.clarificationsEditable || !skillsPath) return false;
+    if (!stepConfig?.clarificationsEditable || !workspacePath) return false;
     setSaveStatus("saving");
     try {
       const content = clarificationsData
         ? JSON.stringify(clarificationsData, null, 2)
         : (reviewContent ?? "");
-      await writeFile(`${skillsPath}/${skillName}/context/clarifications.json`, content);
+      await saveClarificationsContent(skillName, workspacePath, content);
       setReviewContent(content);
       setEditorDirty(false);
       setSaveStatus("saved");
@@ -960,7 +1031,7 @@ export default function WorkflowPage() {
       toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
       return false;
     }
-  }, [stepConfig?.clarificationsEditable, skillsPath, reviewContent, clarificationsData, skillName]);
+  }, [stepConfig?.clarificationsEditable, workspacePath, reviewContent, clarificationsData, skillName]);
 
   const currentStepDef = steps[currentStep];
 

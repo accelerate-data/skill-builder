@@ -1,7 +1,7 @@
 use crate::commands::workflow::get_step_output_files;
 use std::path::Path;
 
-/// Delete output files for a single step from both workspace and skills_path.
+/// Delete output files for a single step from workspace and skills_path.
 /// Used defensively to clean up partial output from interrupted agent runs.
 pub fn cleanup_step_files(
     workspace_path: &str,
@@ -36,12 +36,8 @@ pub fn cleanup_step_files(
         return;
     }
 
-    // Context files for steps 0, 1, 2 live in skills_path/skill_name/
-    let context_dir = if matches!(step_id, 0..=2) {
-        Path::new(skills_path).join(skill_name)
-    } else {
-        skill_dir.clone()
-    };
+    // Context files for steps 0, 1, 2 live in workspace_path/skill_name/context/*
+    let context_dir = skill_dir.clone();
 
     for file in &files {
         for dir in [&skill_dir, &context_dir] {
@@ -119,12 +115,8 @@ pub fn clean_step_output_thorough(workspace_path: &str, skill_name: &str, step_i
         return;
     }
 
-    // Context files (steps 0, 1, 2) live in skills_path/skill_name/
-    let context_dir = if matches!(step_id, 0..=2) {
-        Path::new(skills_path).join(skill_name)
-    } else {
-        skill_dir.clone()
-    };
+    // Context files (steps 0, 1, 2) live in workspace_path/skill_name/context/*
+    let context_dir = skill_dir.clone();
     log::debug!(
         "[clean_step_output_thorough] step={} skill_dir={} context_dir={}",
         step_id, skill_dir.display(), context_dir.display()
@@ -191,16 +183,16 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         create_skill_dir(tmp.path(), "my-skill", "test");
 
-        // Create complete output for steps 0, 1, 2 in skills_path
-        create_step_output(skills_tmp.path(), "my-skill", 0);
-        create_step_output(skills_tmp.path(), "my-skill", 1);
-        create_step_output(skills_tmp.path(), "my-skill", 2);
+        // Create complete output for steps 0, 1, 2 in workspace context
+        create_step_output(tmp.path(), "my-skill", 0);
+        create_step_output(tmp.path(), "my-skill", 1);
+        create_step_output(tmp.path(), "my-skill", 2);
 
         // Clean up everything after step 1
         cleanup_future_steps(workspace, "my-skill", 1, skills_path);
 
         // Step 0 and 1 files should remain (clarifications.json from step 0)
-        let skill_dir = skills_tmp.path().join("my-skill");
+        let skill_dir = tmp.path().join("my-skill");
         assert!(skill_dir.join("context/clarifications.json").exists());
 
         // Step 2 files should be gone
@@ -217,13 +209,13 @@ mod tests {
         create_skill_dir(tmp.path(), "my-skill", "test");
 
         // Create step 0 output (research-plan.md, clarifications.json) and step 2 output (decisions.md)
-        create_step_output(skills_tmp.path(), "my-skill", 0);
-        create_step_output(skills_tmp.path(), "my-skill", 2);
+        create_step_output(tmp.path(), "my-skill", 0);
+        create_step_output(tmp.path(), "my-skill", 2);
 
         // Delete from step 1 onwards
         delete_step_output_files(workspace, "my-skill", 1, skills_path);
 
-        let skill_dir = skills_tmp.path().join("my-skill");
+        let skill_dir = tmp.path().join("my-skill");
         // Step 0 files must survive
         assert!(skill_dir.join("context/research-plan.md").exists());
         assert!(skill_dir.join("context/clarifications.json").exists());
@@ -241,13 +233,13 @@ mod tests {
         create_skill_dir(tmp.path(), "my-skill", "test");
 
         // Create step 0 output and step 2 output
-        create_step_output(skills_tmp.path(), "my-skill", 0);
-        create_step_output(skills_tmp.path(), "my-skill", 2);
+        create_step_output(tmp.path(), "my-skill", 0);
+        create_step_output(tmp.path(), "my-skill", 2);
 
         // Delete from step 0 onwards
         delete_step_output_files(workspace, "my-skill", 0, skills_path);
 
-        let skill_dir = skills_tmp.path().join("my-skill");
+        let skill_dir = tmp.path().join("my-skill");
         // All context files must be gone
         assert!(!skill_dir.join("context/research-plan.md").exists());
         assert!(!skill_dir.join("context/clarifications.json").exists());

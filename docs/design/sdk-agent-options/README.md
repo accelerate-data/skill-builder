@@ -161,8 +161,14 @@ Decision candidate: **keep** (`effort` configurable, `fallbackModel` derived).
 ### `outputFormat`
 
 - Set only for agents with strict JSON response contracts.
-- Current explicit JSON-contract path is feedback enrichment (`_feedback`).
-- Refine chat and test plan/evaluator runs intentionally omit `outputFormat`.
+- Contract-set coverage includes:
+  - Workflow JSON-contract agents: `research-orchestrator`, `detailed-research`
+  - Answer evaluator flow (`answer-evaluator`) via explicit `answer_evaluator_output_format()`
+  - Direct `start_agent` contract paths: `_feedback`, `validate-skill`
+- Contract-unset coverage includes:
+  - Workflow non-contract agents: `confirm-decisions`, `generate-skill`
+  - Refine conversational flow: `refine-skill`
+  - Test conversational/text agents: `test-plan-with`, `test-plan-without`, `test-evaluator`
 
 Decision candidate: **keep selective** (avoid forcing JSON on conversational/text agents).
 

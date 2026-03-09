@@ -124,6 +124,40 @@ test.describe("Toast lifecycle policy", { tag: "@toast" }, () => {
     );
   });
 
+  test("app-layout startup auto-update shows summary toast", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
+        get_settings: {
+          anthropic_api_key: "sk-ant-test",
+          workspace_path: "/tmp/test-workspace",
+          skills_path: "/tmp/test-skills",
+          marketplace_registries: [
+            { name: "Test", source_url: "owner/repo", enabled: true },
+          ],
+          auto_update: true,
+        },
+        check_marketplace_updates: {
+          library: [
+            {
+              name: "sales-skill",
+              path: "skills/sales-skill",
+              version: "1.1.0",
+              source_url: "owner/repo",
+            },
+          ],
+          workspace: [],
+        },
+        import_marketplace_to_library: [],
+        reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0, discovered_skills: [] },
+        list_skills: [],
+      };
+    });
+
+    await page.goto("/");
+    await waitForAppReady(page);
+    await expect(page.getByText(/Auto-updated 1 skill/)).toBeVisible({ timeout: 5000 });
+  });
+
   test("workflow info auto-dismisses and warning stays sticky", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, {
       ...WORKFLOW_OVERRIDES,

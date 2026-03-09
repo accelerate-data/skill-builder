@@ -1,0 +1,227 @@
+description: Skill Builder agent contract regressions via Promptfoo.
+
+prompts:
+  - "{{scenario}}"
+
+providers:
+  - file://./provider.mjs
+
+tests:
+  - description: research-orchestrator-normal
+    vars:
+      scenario: research-orchestrator
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"scenario":"research-orchestrator"'
+      - type: contains
+        value: '"structuredResponseObject":true'
+      - type: contains
+        value: '"returnsResearchPlanMarkdown":true'
+      - type: contains
+        value: '"returnsClarificationsJson":true'
+      - type: contains
+        value: '"sectionCountNumber":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: research-orchestrator-scope-guard
+    vars:
+      scenario: research-orchestrator-scope-guard
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"scopeRecommendation":true'
+      - type: contains
+        value: '"zeroDimensions":true'
+      - type: contains
+        value: '"zeroQuestions":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: answer-evaluator-normal
+    vars:
+      scenario: answer-evaluator
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"scenario":"answer-evaluator"'
+      - type: contains
+        value: '"structuredResponseObject":true'
+      - type: contains
+        value: '"hasRequiredFields":true'
+      - type: contains
+        value: '"contradictoryEntriesHaveFields":true'
+      - type: contains
+        value: '"vagueEntriesHaveReason":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: confirm-decisions-normal
+    vars:
+      scenario: confirm-decisions
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"scenario":"confirm-decisions"'
+      - type: contains
+        value: '"decisionsExists":true'
+      - type: contains
+        value: '"decisionCountField":true'
+      - type: contains
+        value: '"status":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: confirm-decisions-scope-guard
+    vars:
+      scenario: confirm-decisions-scope-guard
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"hasScopeRecommendationFlag":true'
+      - type: contains
+        value: '"hasZeroDecisionCount":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: confirm-decisions-contradictory
+    vars:
+      scenario: confirm-decisions-contradictory
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"contradictoryFlagSet":true'
+      - type: contains
+        value: '"canonicalShape":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: confirm-decisions-resolvable-conflict
+    vars:
+      scenario: confirm-decisions-resolvable-conflict
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"noContradictoryFlag":true'
+      - type: contains
+        value: '"hasConflictResolvedOrResolved":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: generate-skill-normal
+    vars:
+      scenario: generate-skill
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"skillMdExists":true'
+      - type: contains
+        value: '"evaluationsExists":true'
+      - type: contains
+        value: '"invocationPresence":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: generate-skill-scope-guard
+    vars:
+      scenario: generate-skill-scope-guard
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"scopeStubWritten":true'
+      - type: contains
+        value: '"scopeStubHeading":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: generate-skill-contradictory
+    vars:
+      scenario: generate-skill-contradictory
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"contradictionStubWritten":true'
+      - type: contains
+        value: '"contradictionStubHeading":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: generate-skill-revised
+    vars:
+      scenario: generate-skill-revised
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"notStub":true'
+      - type: contains
+        value: '"invocationPresence":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: refine-skill-normal
+    vars:
+      scenario: refine-skill
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"scenario":"refine-skill"'
+      - type: contains
+        value: '"descriptionUpdated":true'
+      - type: contains
+        value: '"descriptionPreserved":true'
+      - type: contains
+        value: '"modifiedUpdated":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: refine-skill-scope-guard
+    vars:
+      scenario: refine-skill-scope-guard
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"blockedMessage":true'
+      - type: contains
+        value: '"noFileEdits":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: validate-skill-scope-guard
+    vars:
+      scenario: validate-skill-scope-guard
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"validationStub":true'
+      - type: contains
+        value: '"testStub":true'
+      - type: contains
+        value: '"companionStub":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: validate-skill-parameter-guard
+    vars:
+      scenario: validate-skill-missing-skill-md
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"guardMessage":true'
+      - type: contains
+        value: '"noValidationFile":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: skill-test-contract
+    vars:
+      scenario: skill-test-contract
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"hasName":true'
+      - type: contains
+        value: '"hasRubricSection":true'
+      - type: contains
+        value: '"failures":[]'

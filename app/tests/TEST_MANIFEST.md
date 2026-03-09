@@ -58,7 +58,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 
 | Source Pattern | npm script |
 |---|---|
-| `agents/*.md` | `test:agents:structural`, `test:agents:smoke` |
+| `agents/*.md` | `test:agents:structural`, `test:agents:smoke` (Promptfoo) |
 | `agent-sources/workspace/CLAUDE.md` | `test:agents:structural` |
 
 ## E2E Spec Files
@@ -119,7 +119,7 @@ cargo test --manifest-path src-tauri/Cargo.toml commands::workflow
 
 # Agents
 npm run test:agents:structural                 # Quick structural check (free)
-npm run test:agents:smoke                      # Agent smoke tests (requires API key)
+npm run test:agents:smoke                      # Promptfoo behavior evals (requires API key)
 npm run test:agents                            # All agent tests (structural + smoke)
 
 # Full suite (shared infrastructure changes)

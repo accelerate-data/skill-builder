@@ -170,6 +170,29 @@ fn is_within_allowed_roots(path: &Path, allowed_roots: &[PathBuf]) -> bool {
     allowed_roots.iter().any(|root| path.starts_with(root))
 }
 
+fn get_workspace_root(db: &tauri::State<'_, Db>) -> Option<PathBuf> {
+    let conn = db.0.lock().ok()?;
+    let settings = crate::db::read_settings(&conn).ok()?;
+    let workspace = settings.workspace_path?;
+    fs::canonicalize(workspace).ok()
+}
+
+fn is_workspace_context_path(path: &Path, workspace_root: &Path) -> bool {
+    if !path.starts_with(workspace_root) {
+        return false;
+    }
+    let Ok(relative) = path.strip_prefix(workspace_root) else {
+        return false;
+    };
+    let mut components = relative.components();
+    // workspace/<skill>/context/<...>
+    let _skill = components.next();
+    matches!(
+        components.next(),
+        Some(Component::Normal(name)) if name == "context"
+    )
+}
+
 fn read_file_with_roots(file_path: &str, allowed_roots: &[PathBuf]) -> Result<String, String> {
     let input = Path::new(file_path);
     reject_traversal(input)?;
@@ -277,6 +300,17 @@ fn read_file_as_base64_with_roots(
 pub fn read_file(file_path: String, db: tauri::State<'_, Db>) -> Result<String, String> {
     log::info!("[read_file] path={}", file_path);
     let allowed_roots = get_allowed_roots(&db)?;
+    if let Some(workspace_root) = get_workspace_root(&db) {
+        let input = Path::new(&file_path);
+        if let Ok(canonical_path) = fs::canonicalize(input) {
+            if is_workspace_context_path(&canonical_path, &workspace_root) {
+                return Err(
+                    "Read rejected: context files are backend-owned; use workflow/refine domain commands"
+                        .to_string(),
+                );
+            }
+        }
+    }
     read_file_with_roots(&file_path, &allowed_roots).map_err(|e| {
         log::error!("[read_file] Failed to read {}: {}", file_path, e);
         e
@@ -287,6 +321,16 @@ pub fn read_file(file_path: String, db: tauri::State<'_, Db>) -> Result<String, 
 pub fn write_file(path: String, content: String, db: tauri::State<'_, Db>) -> Result<(), String> {
     log::info!("[write_file] path={}", path);
     let allowed_roots = get_allowed_roots(&db)?;
+    if let Some(workspace_root) = get_workspace_root(&db) {
+        if let Ok(canonical_target) = canonicalize_for_write_target(Path::new(&path)) {
+            if is_workspace_context_path(&canonical_target, &workspace_root) {
+                return Err(
+                    "Write rejected: context files are backend-owned; use workflow/refine domain commands"
+                        .to_string(),
+                );
+            }
+        }
+    }
     write_file_with_roots(&path, &content, &allowed_roots).map_err(|e| {
         log::error!("[write_file] Failed to write {}: {}", path, e);
         e
@@ -297,6 +341,25 @@ pub fn write_file(path: String, content: String, db: tauri::State<'_, Db>) -> Re
 pub fn copy_file(src: String, dest: String, db: tauri::State<'_, Db>) -> Result<(), String> {
     log::info!("[copy_file] src={} dest={}", src, dest);
     let allowed_roots = get_allowed_roots(&db)?;
+    if let Some(workspace_root) = get_workspace_root(&db) {
+        let src_input = Path::new(&src);
+        if let Ok(canonical_src) = fs::canonicalize(src_input) {
+            if is_workspace_context_path(&canonical_src, &workspace_root) {
+                return Err(
+                    "Copy rejected: context files are backend-owned; use workflow/refine domain commands"
+                        .to_string(),
+                );
+            }
+        }
+        if let Ok(canonical_dest) = canonicalize_for_write_target(Path::new(&dest)) {
+            if is_workspace_context_path(&canonical_dest, &workspace_root) {
+                return Err(
+                    "Copy rejected: context files are backend-owned; use workflow/refine domain commands"
+                        .to_string(),
+                );
+            }
+        }
+    }
     copy_file_with_roots(&src, &dest, &allowed_roots).map_err(|e| {
         log::error!("[copy_file] Failed to copy {} to {}: {}", src, dest, e);
         e

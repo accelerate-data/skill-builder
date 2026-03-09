@@ -36,4 +36,4 @@ The setup screen appears on first launch. You need two things before you can bui
 - **Marketplace** — imported from a GitHub-hosted registry
 - **Imported** — imported from a `.skill` package file
 
-**Workspace** — A local folder (`~/.vibedata/` by default) where agent working files and logs are kept. Skills are saved separately in your Skills Folder.
+**Workspace** — A local app-managed folder (`app_local_data_dir()/workspace`) where agent working files and logs are kept. Skills are saved separately in your Skills Folder.

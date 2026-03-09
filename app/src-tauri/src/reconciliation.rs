@@ -346,10 +346,15 @@ pub fn preview_reconcile_on_startup(
                 continue;
             }
 
+            let workspace_root = Path::new(workspace_path).join(&name);
+            let legacy_root = Path::new(skills_path).join(&name);
             let skill_root = Path::new(skills_path).join(&name);
-            let has_step0 = skill_root.join("context/clarifications.json").exists()
-                && skill_root.join("context/research-plan.md").exists();
-            let has_step2 = skill_root.join("context/decisions.md").exists();
+            let has_step0 = (workspace_root.join("context/clarifications.json").exists()
+                && workspace_root.join("context/research-plan.md").exists())
+                || (legacy_root.join("context/clarifications.json").exists()
+                    && legacy_root.join("context/research-plan.md").exists());
+            let has_step2 = workspace_root.join("context/decisions.md").exists()
+                || legacy_root.join("context/decisions.md").exists();
             let has_step3 = skill_root.join("SKILL.md").exists();
             let detected_step = if has_step0 && has_step2 && has_step3 {
                 3
@@ -972,9 +977,9 @@ mod tests {
         crate::db::save_workflow_run(&conn, "healthy-skill", 2, "in_progress", "domain")
         .unwrap();
         create_skill_dir(tmp.path(), "healthy-skill", "analytics");
-        create_step_output(skills_tmp.path(), "healthy-skill", 0);
+        create_step_output(tmp.path(), "healthy-skill", 0);
         // Step 2 output: decisions.md
-        create_step_output(skills_tmp.path(), "healthy-skill", 2);
+        create_step_output(tmp.path(), "healthy-skill", 2);
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
@@ -1064,7 +1069,7 @@ mod tests {
         }
         create_skill_dir(tmp.path(), "my-skill", "sales");
         // Only step 0 has output on disk (in skills_path)
-        create_step_output(skills_tmp.path(), "my-skill", 0);
+        create_step_output(tmp.path(), "my-skill", 0);
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
@@ -1272,9 +1277,9 @@ mod tests {
 
         crate::db::save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
-        for step in [0, 2, 3] {
-            create_step_output(skills_tmp.path(), "my-skill", step);
-        }
+        create_step_output(tmp.path(), "my-skill", 0);
+        create_step_output(tmp.path(), "my-skill", 2);
+        create_step_output(skills_tmp.path(), "my-skill", 3);
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
@@ -1554,8 +1559,8 @@ mod tests {
         crate::db::save_workflow_run(&conn, "my-skill", 3, "pending", "domain").unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
         // Steps 0 and 2 exist but NOT step 3
-        create_step_output(skills_tmp.path(), "my-skill", 0);
-        create_step_output(skills_tmp.path(), "my-skill", 2);
+        create_step_output(tmp.path(), "my-skill", 0);
+        create_step_output(tmp.path(), "my-skill", 2);
         // Note: step 3 output (SKILL.md) is intentionally absent
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();

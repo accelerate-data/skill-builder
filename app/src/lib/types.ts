@@ -58,12 +58,14 @@ export interface SkillUpdateInfo {
   name: string
   path: string
   version: string
+  source_url?: string
 }
 
 export interface MarketplaceUpdateResult {
   library: SkillUpdateInfo[]
   workspace: SkillUpdateInfo[]
   registry_name: string | null
+  registry_names?: { source_url: string; registry_name: string }[]
 }
 
 export interface DeviceFlowResponse {

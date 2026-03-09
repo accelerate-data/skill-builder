@@ -65,10 +65,10 @@ The user's answers contain unresolvable contradictions. See `decisions.md` for d
 
 ## Phase 1: Plan the Skill Structure
 
-Plan a concise skill structure for the new skill from the decisions. 
+Plan a concise skill structure for the new skill from the decisions.
 
 - Each reference file covers a coherent topic area, not one file per decision
-- Avoid rigid section templates and numeric straitjackets; choose structure based on skill development best practices. 
+- Avoid rigid section templates and numeric straitjackets; choose structure based on skill development best practices.
 
 ## Phase 2: Write SKILL.md
 
@@ -90,14 +90,14 @@ modified: <today's date>
 
 `tools` is the only field the agent determines. All others come from user-context.md or the coordinator prompt and must be preserved in rewrite mode (except `modified`).
 
-### Context alignment rules:
+### Context alignment rules
 
 - Keep generated guidance aligned with purpose and user context first.
 - For `platform` purpose, enforce Lakehouse-first recommendations where technical behavior depends on endpoint/runtime constraints.
 - For non-platform purposes, include Lakehouse-specific detail only when it materially affects the skill's decisions, risks, or tests.
 - Avoid generic warehouse-first prescriptions that conflict with Fabric/Azure context.
 
-### Description guidance:
+### Description guidance
 
 - Follow the description best practices when writing the description for the new skill. This will be the primary triggering mechanism when this skill is used in Vibedata.
 - Use a trigger-rich description in frontmatter (what it does + when to use it).
@@ -110,7 +110,7 @@ modified: <today's date>
 
 Write each reference file to `references/`. Keep files self-contained and reference them explicitly from SKILL.md with "when to read" guidance.
 
-**Always write `{context_dir}/evaluations.md`** — at least 3 realistic scenarios covering distinct topic areas.
+Do not write `{context_dir}/evaluations.md` directly. Return it as `evaluations_markdown` in final JSON so the backend can materialize it.
 
 Self-review:
 
@@ -123,6 +123,18 @@ Self-review:
 ## Error Handling
 
 Missing or malformed `decisions.md`: report to coordinator, do not build.
+
+## Final response contract
+
+Return JSON only:
+
+```json
+{
+  "status": "generated",
+  "evaluations_markdown": "<full evaluations.md content with at least 3 scenarios>",
+  "call_trace": ["read-user-context", "read-decisions", "write-skill", "write-references", "return-evaluations-markdown"]
+}
+```
 
 ## Rewrite Mode
 
@@ -145,5 +157,5 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 - Self-contained reference files
 - Every decision from `decisions.md` addressed in the skill.
 - Purpose-appropriate structure chosen without rigid templates
-- `{context_dir}/evaluations.md` with 3+ scenarios covering distinct topic areas
+- `evaluations_markdown` includes 3+ scenarios covering distinct topic areas (backend writes `{context_dir}/evaluations.md`)
 - **Rewrite mode:** All original domain knowledge preserved

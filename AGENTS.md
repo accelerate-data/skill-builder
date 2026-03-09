@@ -32,9 +32,9 @@ Adapter files must not duplicate canonical policy unless they are adding agent-s
 
 **Key directories:**
 
-- Workspace (`~/.vibedata/skill-builder/` default, configurable): agent prompts, skill context, logs
+- Workspace (derived from Tauri `app_local_data_dir()` as `<app_local_data_dir>/workspace`, not user-configurable): agent prompts, per-skill scratch data, logs
 - Skill output (`~/skill-builder/` default): SKILL.md, references, git-managed
-- App database: `~/Library/Application Support/com.skillbuilder.app/skill-builder.db` (macOS)
+- App database: `~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db` (macOS)
 - Full layout: [`docs/design/agent-specs/storage.md`](docs/design/agent-specs/storage.md)
 
 ## Repository Folder Map
@@ -95,14 +95,28 @@ Determine what you changed, then pick the right runner:
 |---|---|---|
 | Frontend (store/hook/component/page) | — | `npm run test:changed` |
 | Rust command | — | `cargo test <module>` + E2E tag from `app/tests/TEST_MANIFEST.md` |
-| Sidecar agent invocation (`app/sidecar/`) | `cd app && npm run test:agents:structural` (tell user to run `test:agents:smoke` manually) | `cd app/sidecar && npx vitest run` |
+| Sidecar agent invocation (`app/sidecar/`) | `cd app && npm run test:agents:structural` (tell user to run Promptfoo `test:agents:smoke` manually) | `cd app/sidecar && npx vitest run` |
 | Agent prompt (`agents/`) | `cd app && npm run test:agents:structural` | `npm run test:unit` (canonical-format) |
-| Agent output format (`agents/`) | `cd app && npm run test:agents:structural` (tell user to run `test:agents:smoke` manually) | `npm run test:unit` (canonical-format) |
+| Agent output format (`agents/`) | `cd app && npm run test:agents:structural` (tell user to run Promptfoo `test:agents:smoke` manually) | `npm run test:unit` (canonical-format) |
 | `agent-sources/workspace/CLAUDE.md` | `cd app && npm run test:agents:structural` | `npm run test:unit` |
 | Mock templates or E2E fixtures | — | `npm run test:unit` |
 | Shared infrastructure (`src/lib/tauri.ts`, test mocks) | — | `app/tests/run.sh` (all levels) |
 
-**Artifact format changes** (agent output format + app parser + mock templates): run `cd app && npm run test:agents:structural` and `npm run test:unit`, then tell the user to run `cd app && npm run test:agents:smoke` manually. The `canonical-format.test.ts` suite is the canary for format drift across the boundary.
+### Autonomous test triggers (coding agents)
+
+When changed files match these patterns, run the mapped tests automatically before reporting completion:
+
+| Changed files | Run |
+|---|---|
+| `agents/*.md` | `cd app && npm run test:agents:structural` |
+| `agent-sources/workspace/**` | `cd app && npm run test:agents:structural` |
+| `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` |
+| `app/sidecar/mock-templates/**` | `cd app && npm run test:unit` |
+| `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` |
+
+`test:agents:smoke` (Promptfoo) is manual by default because it makes live API calls.
+
+**Artifact format changes** (agent output format + app parser + mock templates): run `cd app && npm run test:agents:structural` and `npm run test:unit`, then tell the user to run `cd app && npm run test:agents:smoke` (Promptfoo evals) manually. The `canonical-format.test.ts` suite is the canary for format drift across the boundary.
 
 **Unsure?** `app/tests/run.sh` runs everything.
 
@@ -110,7 +124,7 @@ Determine what you changed, then pick the right runner:
 
 **Only `test:agents:structural` may be run autonomously** — it makes no API calls and is free.
 
-`test:agents:smoke` makes real API calls and costs real money. **Do not run it. Tell the user to run it manually.**
+`test:agents:smoke` uses Promptfoo and makes real API calls. **Do not run it autonomously; tell the user to run it manually.**
 
 Rust → E2E tag mappings, E2E spec files, and cross-boundary format compliance details are in `app/tests/TEST_MANIFEST.md`.
 

@@ -567,7 +567,6 @@ describe("AppLayout", () => {
         if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
         if (cmd === "list_models") return Promise.resolve([]);
-        if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
         if (cmd === "check_marketplace_updates") return Promise.reject(new Error("marketplace.json not found"));
         return Promise.resolve(undefined);
       });
@@ -578,6 +577,71 @@ describe("AppLayout", () => {
         expect(toast.error).toHaveBeenCalledWith(
           "Marketplace update check failed: marketplace.json not found",
           expect.objectContaining({ duration: Infinity })
+        );
+      });
+    });
+
+    it("skips marketplace update check when all registries are disabled", async () => {
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "get_settings") {
+          return Promise.resolve({
+            ...marketplaceSettings,
+            marketplace_registries: [
+              { name: "Disabled", source_url: "https://github.com/owner/skill-marketplace", enabled: false },
+            ],
+          });
+        }
+        if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+        if (cmd === "list_models") return Promise.resolve([]);
+        return Promise.resolve(undefined);
+      });
+
+      render(<AppLayout />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("outlet")).toBeInTheDocument();
+      });
+      const calls = mockInvoke.mock.calls.map((c) => c[0]);
+      expect(calls).not.toContain("check_marketplace_updates");
+    });
+
+    it("refreshes stored registry name when backend reports a different name", async () => {
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
+        if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+        if (cmd === "list_models") return Promise.resolve([]);
+        if (cmd === "check_marketplace_updates") {
+          return Promise.resolve({
+            library: [],
+            workspace: [],
+            registry_names: [
+              {
+                source_url: "https://github.com/owner/skill-marketplace",
+                registry_name: "Renamed Registry",
+              },
+            ],
+          });
+        }
+        if (cmd === "save_settings") return Promise.resolve(undefined);
+        return Promise.resolve(undefined);
+      });
+
+      render(<AppLayout />);
+
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith(
+          "save_settings",
+          expect.objectContaining({
+            settings: expect.objectContaining({
+              marketplace_registries: [
+                {
+                  name: "Renamed Registry",
+                  source_url: "https://github.com/owner/skill-marketplace",
+                  enabled: true,
+                },
+              ],
+            }),
+          })
         );
       });
     });

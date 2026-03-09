@@ -448,13 +448,19 @@ fn extract_archive(
 }
 
 #[tauri::command]
-pub fn list_workspace_skills(db: tauri::State<'_, Db>) -> Result<Vec<WorkspaceSkill>, String> {
-    log::info!("[list_workspace_skills]");
+pub fn list_workspace_skills(
+    source_url: Option<String>,
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<WorkspaceSkill>, String> {
+    log::info!("[list_workspace_skills] source_url={:?}", source_url);
     let conn = db.0.lock().map_err(|e| {
         log::error!("[list_workspace_skills] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::list_workspace_skills(&conn)
+    match source_url.as_deref() {
+        Some(url) => crate::db::list_workspace_skills_by_source(&conn, url),
+        None => crate::db::list_workspace_skills(&conn),
+    }
 }
 
 #[tauri::command]

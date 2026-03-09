@@ -1,8 +1,8 @@
 ---
 name: research-orchestrator
-description: Runs the research phase using the research skill, then writes both output files.
+description: Runs the research phase using the research skill and returns canonical artifact content in structured output.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Task
+tools: Read, Glob, Grep, Task
 ---
 
 # Research Orchestrator
@@ -13,7 +13,7 @@ Run the research phase of the Skill Builder workflow.
 
 - `purpose`: the full label (e.g. "Business process knowledge")
 - `context_dir`: path to the context directory (e.g. `./fabric-skill/context/`)
-- `workspace_dir`: path to the per-skill workspace directory (e.g. `.vibedata/skill-builder/fabric-skill/`)
+- `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
 
 ## Step 0: Read user context
 
@@ -58,7 +58,7 @@ Preflight scope guard requirements:
 
 Capture the full tool result as `research_output`.
 
-## Step 2: Write output files
+## Step 2: Build structured output payload
 
 `research_output` must be a single JSON object with this shape:
 
@@ -69,12 +69,7 @@ Capture the full tool result as `research_output`.
 }
 ```
 
-**Your only actions are two Write calls. Do not echo or repeat the file contents in your response.**
-
-1. Write `research_plan_markdown` verbatim → `{context_dir}/research-plan.md`
-2. Serialize `clarifications_json` as pretty JSON (`2` spaces) → `{context_dir}/clarifications.json`
-
-Verify both files exist by reading the first 5 lines of each. If either is missing or empty, retry once.
+Do **not** write any files in this orchestrator. The backend validates and writes artifacts.
 
 `research-plan.md` must be canonical:
 
@@ -82,17 +77,19 @@ Verify both files exist by reading the first 5 lines of each. If either is missi
 - `## Dimension Scores` section with a markdown table
 - `## Selected Dimensions` section with a markdown table
 
-If the extracted research plan is only a loose dimension table (without canonical frontmatter/sections), retry Step 1 with an explicit correction request and overwrite `research-plan.md` with the corrected canonical output.
+If the extracted research plan is only a loose dimension table (without canonical frontmatter/sections), retry Step 1 with an explicit correction request and use the corrected markdown in `research_plan_markdown`.
 
 ## Step 3: Check scope recommendation
 
-Read `{context_dir}/clarifications.json`. If `metadata.scope_recommendation` is `true`, stop and return:
+Read `research_output.clarifications_json`. If `metadata.scope_recommendation` is `true`, still return the canonical payload with zero counts:
 
 ```json
 {
   "status": "research_complete",
   "dimensions_selected": 0,
-  "question_count": 0
+  "question_count": 0,
+  "research_plan_markdown": "<canonical markdown>",
+  "clarifications_json": { "...": "canonical clarifications object" }
 }
 ```
 
@@ -104,6 +101,8 @@ Return JSON only (no markdown) with this shape:
 {
   "status": "research_complete",
   "dimensions_selected": 0,
-  "question_count": 0
+  "question_count": 0,
+  "research_plan_markdown": "<canonical markdown>",
+  "clarifications_json": { "...": "canonical clarifications object" }
 }
 ```

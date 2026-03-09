@@ -123,6 +123,16 @@ export const runWorkflowStep = (
   workspacePath: string,
 ) => invoke<string>("run_workflow_step", { skillName, stepId, workspacePath });
 
+export const materializeWorkflowStepOutput = (
+  skillName: string,
+  stepId: number,
+  structuredOutput: unknown,
+) => invoke<void>("materialize_workflow_step_output", {
+  skillName,
+  stepId,
+  structuredOutput,
+});
+
 export const packageSkill = (
   skillName: string,
   workspacePath: string,
@@ -385,12 +395,15 @@ export async function getDashboardSkillNames(): Promise<string[]> {
   return invoke<string[]>("get_dashboard_skill_names")
 }
 
-export async function listSkills(workspacePath: string): Promise<SkillSummary[]> {
-  return invoke<SkillSummary[]>("list_skills", { workspacePath })
+export async function listSkills(workspacePath: string, sourceUrl?: string | null): Promise<SkillSummary[]> {
+  return invoke<SkillSummary[]>("list_skills", {
+    workspacePath,
+    sourceUrl: sourceUrl ?? null,
+  })
 }
 
-export const listWorkspaceSkills = () =>
-  invoke<WorkspaceSkill[]>("list_workspace_skills")
+export const listWorkspaceSkills = (sourceUrl?: string | null) =>
+  invoke<WorkspaceSkill[]>("list_workspace_skills", { sourceUrl: sourceUrl ?? null })
 
 // --- GitHub Import ---
 
@@ -415,14 +428,8 @@ export const setWorkspaceSkillPurpose = (skillId: string, purpose: string | null
 export const importMarketplaceToLibrary = (skillPaths: string[], sourceUrl: string, metadataOverrides?: Record<string, SkillMetadataOverride>) =>
   invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { sourceUrl, skillPaths, metadataOverrides: metadataOverrides ?? null })
 
-export const checkMarketplaceUpdates = (
-  owner: string,
-  repo: string,
-  branch: string,
-  subpath: string | undefined,
-  sourceUrl: string,
-): Promise<MarketplaceUpdateResult> =>
-  invoke<MarketplaceUpdateResult>("check_marketplace_updates", { owner, repo, branch, subpath: subpath ?? null, sourceUrl })
+export const checkMarketplaceUpdates = (): Promise<MarketplaceUpdateResult> =>
+  invoke<MarketplaceUpdateResult>("check_marketplace_updates")
 
 export const checkSkillCustomized = (skillName: string): Promise<boolean> =>
   invoke<boolean>("check_skill_customized", { skillName })
@@ -451,6 +458,16 @@ export const sendRefineMessage = (
   targetFiles?: string[],
   command?: string,
 ) => invoke<string>("send_refine_message", { sessionId, userMessage, workspacePath, targetFiles: targetFiles ?? null, command: command ?? null })
+
+export const materializeRefineValidationOutput = (
+  skillName: string,
+  workspacePath: string,
+  structuredOutput: unknown,
+) => invoke<void>("materialize_refine_validation_output", {
+  skillName,
+  workspacePath,
+  structuredOutput,
+})
 
 // --- Answer Evaluation (Transition Gate) ---
 
@@ -486,6 +503,44 @@ export const runAnswerEvaluator = (
   skillName: string,
   workspacePath: string,
 ) => invoke<string>("run_answer_evaluator", { skillName, workspacePath });
+
+export const materializeAnswerEvaluationOutput = (
+  skillName: string,
+  workspacePath: string,
+  structuredOutput: unknown,
+) => invoke<void>("materialize_answer_evaluation_output", {
+  skillName,
+  workspacePath,
+  structuredOutput,
+});
+
+export const getClarificationsContent = (
+  skillName: string,
+  workspacePath: string,
+) => invoke<string>("get_clarifications_content", { skillName, workspacePath });
+
+export const saveClarificationsContent = (
+  skillName: string,
+  workspacePath: string,
+  content: string,
+) => invoke<void>("save_clarifications_content", { skillName, workspacePath, content });
+
+export const getDecisionsContent = (
+  skillName: string,
+  workspacePath: string,
+) => invoke<string>("get_decisions_content", { skillName, workspacePath });
+
+export const saveDecisionsContent = (
+  skillName: string,
+  workspacePath: string,
+  content: string,
+) => invoke<void>("save_decisions_content", { skillName, workspacePath, content });
+
+export const getContextFileContent = (
+  skillName: string,
+  workspacePath: string,
+  fileName: string,
+) => invoke<string>("get_context_file_content", { skillName, workspacePath, fileName });
 
 export const autofillClarifications = (
   skillName: string,

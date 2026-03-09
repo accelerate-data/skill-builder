@@ -35,4 +35,15 @@ app/src-tauri/resources/node/*
 # MCP server config (contains PATs, never commit)
 .mcp.json
 
+# Git worktrees (local development isolation)
+.worktrees/
+
+# Local screenshots (not committed)
+screenshots-gitignore/
+
+# One-pagers and design drafts (local working documents, not committed)
+ONE-PAGERS/
+
+# Implementation plans (local development working documents, not committed)
+docs/plans/
 

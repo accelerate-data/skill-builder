@@ -269,17 +269,18 @@ describe("Canonical format: decisions.md structure", () => {
 
   if (fs.existsSync(decisionsFile)) {
     const content = readFile(decisionsFile);
+    const normalizedContent = content.replace(/\r\n/g, "\n");
 
     it("has YAML frontmatter with decision_count", () => {
-      expect(content).toMatch(/^---\n[\s\S]*?decision_count:/m);
+      expect(normalizedContent).toMatch(/^---\n[\s\S]*?decision_count:/m);
     });
 
     it("has YAML frontmatter with conflicts_resolved", () => {
-      expect(content).toMatch(/^---\n[\s\S]*?conflicts_resolved:/m);
+      expect(normalizedContent).toMatch(/^---\n[\s\S]*?conflicts_resolved:/m);
     });
 
     it("has YAML frontmatter with round", () => {
-      expect(content).toMatch(/^---\n[\s\S]*?round:/m);
+      expect(normalizedContent).toMatch(/^---\n[\s\S]*?round:/m);
     });
 
     it("has ### D{N}: decision headings (H3)", () => {

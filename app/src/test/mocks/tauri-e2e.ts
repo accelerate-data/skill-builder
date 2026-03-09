@@ -166,9 +166,12 @@ const mockResponses: Record<string, unknown> = {
   // Usage
   get_usage_summary: { total_cost: 0, total_runs: 0, avg_cost_per_run: 0 },
   get_recent_workflow_sessions: [],
+  get_agent_runs: [],
   get_session_agent_runs: [],
   get_usage_by_step: [],
   get_usage_by_model: [],
+  get_usage_by_day: [],
+  get_workflow_skill_names: [],
   reset_usage: undefined,
   // Transition gate (answer evaluator)
   run_answer_evaluator: "gate-agent-001",
@@ -176,6 +179,8 @@ const mockResponses: Record<string, unknown> = {
   log_gate_decision: undefined,
   // Workflow extras
   write_file: undefined,
+  materialize_answer_evaluation_output: undefined,
+  materialize_workflow_step_output: undefined,
   get_disabled_steps: [],
   end_workflow_session: undefined,
   preview_step_reset: [],

@@ -21,6 +21,7 @@ import {
   startRefineSession,
   sendRefineMessage,
   closeRefineSession,
+  materializeRefineValidationOutput,
   cleanupSkillSidecar,
   acquireLock,
   releaseLock,
@@ -94,6 +95,18 @@ export default function RefinePage() {
   // --- Scope recommendation guard ---
   // When scope recommendation is active (disabledSteps non-empty), block refine commands.
   const [scopeBlocked, setScopeBlocked] = useState(false);
+
+  const extractStructuredResultPayload = useCallback((agentId: string) => {
+    const run = useAgentStore.getState().runs[agentId];
+    if (!run) return null;
+    for (let i = run.messages.length - 1; i >= 0; i -= 1) {
+      const msg = run.messages[i];
+      if (msg.type !== "result") continue;
+      const raw = msg.raw as Record<string, unknown>;
+      if ("result" in raw) return raw.result ?? null;
+    }
+    return null;
+  }, []);
 
   useEffect(() => {
     if (!selectedSkill) {
@@ -213,7 +226,7 @@ export default function RefinePage() {
       store.setLoadingFiles(true);
 
       if (workspacePath) {
-        // Start backend refine session — pass workspacePath (.vibedata/skill-builder),
+        // Start backend refine session — pass workspacePath (app-managed workspace dir),
         // Rust resolves skills_path from DB for file lookups.
         try {
           const session = await startRefineSession(skill.name, workspacePath);
@@ -282,17 +295,43 @@ export default function RefinePage() {
       }
     }
 
-    // Re-read skill files to capture any changes the agent made
-    const store = useRefineStore.getState();
-    if (workspacePath && selectedSkill) {
-      loadSkillFiles(workspacePath, selectedSkill.name).then((files) => {
-        if (files) store.updateSkillFiles(files);
-      });
-    }
+    const complete = async () => {
+      const store = useRefineStore.getState();
 
-    store.setRunning(false);
-    store.setActiveAgentId(null);
-  }, [activeAgentId, activeRunStatus, workspacePath, selectedSkill]);
+      // Backend-owned context writes for /validate and /rewrite validate pass.
+      if (activeRunStatus === "completed" && workspacePath && selectedSkill) {
+        const structuredOutput = extractStructuredResultPayload(activeAgentId);
+        const hasStructuredObject = !!structuredOutput
+          && typeof structuredOutput === "object"
+          && !Array.isArray(structuredOutput);
+        if (hasStructuredObject && (structuredOutput as Record<string, unknown>).status === "validation_complete") {
+          try {
+            await materializeRefineValidationOutput(
+              selectedSkill.name,
+              workspacePath,
+              structuredOutput,
+            );
+          } catch (err) {
+            toast.error(
+              `Validation output materialization failed: ${err instanceof Error ? err.message : String(err)}`,
+              { duration: Infinity },
+            );
+          }
+        }
+      }
+
+      // Re-read skill files to capture any changes the agent made
+      if (workspacePath && selectedSkill) {
+        const files = await loadSkillFiles(workspacePath, selectedSkill.name);
+        if (files) store.updateSkillFiles(files);
+      }
+
+      store.setRunning(false);
+      store.setActiveAgentId(null);
+    };
+
+    void complete();
+  }, [activeAgentId, activeRunStatus, workspacePath, selectedSkill, extractStructuredResultPayload]);
 
   // --- Safety-net cleanup on unmount ---
   // Catches cases where the component unmounts without going through the blocker dialog.
