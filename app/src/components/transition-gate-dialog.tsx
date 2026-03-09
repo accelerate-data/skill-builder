@@ -7,7 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Circle, AlertCircle, XCircle, Info } from "lucide-react";
+import { CheckCircle2, AlertCircle, XCircle, Info } from "lucide-react";
 import type { AnswerEvaluation } from "@/lib/tauri";
 
 export type GateVerdict = "sufficient" | "mixed" | "insufficient";
@@ -50,7 +50,7 @@ function EvaluationBreakdown({ evaluation }: { evaluation: AnswerEvaluation }) {
       )}
       {missing.length > 0 && (
         <div className="flex items-start gap-2">
-          <Circle className="size-3 mt-0.5 text-destructive" />
+          <XCircle className="size-3 mt-0.5 text-destructive" />
           <span className="text-destructive font-medium">Missing:</span>
           <div className="flex min-w-0 flex-wrap gap-1.5">
             {missing.map((q) => (

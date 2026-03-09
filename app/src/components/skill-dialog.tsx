@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Switch } from "@/components/ui/switch"
 import TagInput from "@/components/tag-input"
@@ -471,18 +472,20 @@ export default function SkillDialog(props: SkillDialogProps) {
                     What are you trying to capture? <span className="text-destructive">*</span>
                     {(isBuilt || isImported) && <LockedIcon />}
                   </Label>
-                  <select
-                    id="purpose-select"
+                  <Select
                     value={purpose}
-                    onChange={(e) => (isBuilt || isImported) ? undefined : setPurpose(e.target.value)}
+                    onValueChange={(isBuilt || isImported) ? undefined : setPurpose}
                     disabled={submitting || isBuilt || isImported}
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <option value="" disabled>Select a purpose...</option>
-                    {PURPOSES.map((p) => (
-                      <option key={p} value={p}>{PURPOSE_LABELS[p]}</option>
-                    ))}
-                  </select>
+                    <SelectTrigger id="purpose-select" className="w-full">
+                      <SelectValue placeholder="Select a purpose..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PURPOSES.map((p) => (
+                        <SelectItem key={p} value={p}>{PURPOSE_LABELS[p]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="tags">

@@ -6,7 +6,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -61,7 +60,7 @@ export default function OrphanResolutionDialog({
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <AlertTriangle className="size-5" style={{ color: "var(--color-pacific)" }} />
+            <AlertTriangle className="size-5 text-amber-600 dark:text-amber-400" />
             Orphaned Skills Found
           </DialogTitle>
           <DialogDescription>
@@ -114,11 +113,9 @@ export default function OrphanResolutionDialog({
           ))}
         </div>
 
-        <DialogFooter>
-          <p className="text-xs text-muted-foreground">
-            {remaining.length} orphan{remaining.length !== 1 ? "s" : ""} remaining
-          </p>
-        </DialogFooter>
+        <p className="text-xs text-muted-foreground">
+          {remaining.length} orphan{remaining.length !== 1 ? "s" : ""} remaining
+        </p>
       </DialogContent>
     </Dialog>
   )

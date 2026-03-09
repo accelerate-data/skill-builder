@@ -123,7 +123,7 @@ function UpgradeBanner({
   const newVersion = editingSkill.version
   if (!installedVersion || !newVersion || installedVersion === newVersion) return null
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+    <div className="rounded-md border border-amber-300 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
       Upgrading: <span className="font-mono">{installedVersion}</span> &rarr; <span className="font-mono">{newVersion}</span>
     </div>
   )
@@ -478,7 +478,7 @@ export default function GitHubImportDialog({
                               {skill.plugin_name ? `${skill.plugin_name}:${skill.name}` : skill.name}
                             </div>
                             {state === "imported" && (
-                              <Badge variant="outline" className="shrink-0 text-xs text-emerald-600 border-emerald-300 dark:text-emerald-400">Imported</Badge>
+                              <Badge variant="outline" className="shrink-0 text-xs" style={{ color: "var(--color-seafoam)", borderColor: "var(--color-seafoam)" }}>Imported</Badge>
                             )}
                             {isSameVersion && (
                               <Badge variant="secondary" className="shrink-0 text-xs text-muted-foreground">Up to date</Badge>
@@ -507,13 +507,14 @@ export default function GitHubImportDialog({
                       <td className="pr-4 py-2.5 border-b">
                         <div className="flex items-center justify-end">
                           {state === "imported" ? (
-                            <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                            <CheckCircle2 className="size-3.5" style={{ color: "var(--color-seafoam)" }} />
                           ) : isDisabled ? (
                             <CheckCheck className="size-3.5 text-muted-foreground" />
                           ) : (
-                            <button
-                              type="button"
-                              className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              className="text-muted-foreground hover:text-foreground"
                               disabled={isImporting}
                               aria-label={isUpgrade ? `Update ${skill.name}` : `Install ${skill.name}`}
                               onClick={async () => {
@@ -540,7 +541,7 @@ export default function GitHubImportDialog({
                               ) : (
                                 <Download className="size-3.5" />
                               )}
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </td>

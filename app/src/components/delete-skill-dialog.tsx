@@ -2,15 +2,16 @@ import { useState } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { toast } from "sonner"
 import { Loader2, Lock } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import type { SkillSummary } from "@/lib/types"
 
 interface DeleteSkillDialogProps {
@@ -55,11 +56,11 @@ export default function DeleteSkillDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Delete Skill</DialogTitle>
-          <DialogDescription>
+    <AlertDialog open={open}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete Skill</AlertDialogTitle>
+          <AlertDialogDescription>
             {isLocked ? (
               <>
                 <span className="font-medium text-foreground">{skill?.name}</span>
@@ -74,32 +75,28 @@ export default function DeleteSkillDialog({
                 ? This will permanently remove all files for this skill.
               </>
             )}
-          </DialogDescription>
-        </DialogHeader>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
         {isLocked && (
           <div className="flex items-center gap-2 rounded-md border border-amber-500/50 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
             <Lock className="size-4 shrink-0" />
             This skill is being edited in another window and cannot be deleted
           </div>
         )}
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={loading}
-          >
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => onOpenChange(false)} disabled={loading}>
             Cancel
-          </Button>
-          <Button
+          </AlertDialogCancel>
+          <AlertDialogAction
             variant="destructive"
             onClick={handleDelete}
             disabled={loading || isLocked}
           >
             {loading && <Loader2 className="size-4 animate-spin" />}
             Delete
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

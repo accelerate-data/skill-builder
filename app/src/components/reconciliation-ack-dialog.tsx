@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react"
-import { Info, Plus, Trash2, Loader2 } from "lucide-react"
+import { CheckCircle2, Info, Plus, Trash2, Loader2 } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -144,9 +144,7 @@ export default function ReconciliationAckDialog({
                       </div>
 
                       {isResolved ? (
-                        <span className="text-xs text-muted-foreground">
-                          Resolved
-                        </span>
+                        <CheckCircle2 className="size-4 shrink-0" style={{ color: "var(--color-seafoam)" }} />
                       ) : (
                         <div className="flex items-center gap-2">
                           <Button

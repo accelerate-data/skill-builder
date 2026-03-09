@@ -1,19 +1,25 @@
 import { useState, useEffect } from "react"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { previewStepReset, resetWorkflowStep, type StepResetPreview } from "@/lib/tauri"
 
 interface ResetStepDialogProps {
   targetStep: number | null
+  /** Step ID to start deleting from. Defaults to targetStep.
+   *  Set to targetStep+1 when navigating back to a completed step that should
+   *  keep its own output files (e.g. going back to step 2 should preserve
+   *  decisions.json and only delete step 3+ artifacts). */
+  deleteFromStep?: number | null
   workspacePath: string
   skillName: string
   open: boolean
@@ -23,6 +29,7 @@ interface ResetStepDialogProps {
 
 export default function ResetStepDialog({
   targetStep,
+  deleteFromStep,
   workspacePath,
   skillName,
   open,
@@ -33,13 +40,15 @@ export default function ResetStepDialog({
   const [preview, setPreview] = useState<StepResetPreview[] | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
 
+  const effectiveDeleteFrom = deleteFromStep ?? targetStep
+
   useEffect(() => {
-    if (!open || targetStep === null) {
+    if (!open || effectiveDeleteFrom === null) {
       setPreview(null)
       return
     }
     setLoadingPreview(true)
-    previewStepReset(workspacePath, skillName, targetStep)
+    previewStepReset(workspacePath, skillName, effectiveDeleteFrom)
       .then(setPreview)
       .catch((err) => {
         toast.error(
@@ -49,13 +58,13 @@ export default function ResetStepDialog({
         setPreview(null)
       })
       .finally(() => setLoadingPreview(false))
-  }, [open, targetStep, workspacePath, skillName])
+  }, [open, effectiveDeleteFrom, workspacePath, skillName])
 
   const handleReset = async () => {
-    if (targetStep === null) return
+    if (effectiveDeleteFrom === null) return
     setLoading(true)
     try {
-      await resetWorkflowStep(workspacePath, skillName, targetStep)
+      await resetWorkflowStep(workspacePath, skillName, effectiveDeleteFrom)
       toast.success("Workflow reset successfully")
       onOpenChange(false)
       onReset()
@@ -72,14 +81,14 @@ export default function ResetStepDialog({
   const totalFiles = preview?.reduce((sum, s) => sum + s.files.length, 0) ?? 0
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Reset to Earlier Step</DialogTitle>
-          <DialogDescription>
-            Going back will delete all artifacts from step {(targetStep ?? 0) + 1} onward and reset their statuses.
-          </DialogDescription>
-        </DialogHeader>
+    <AlertDialog open={open}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Reset to Earlier Step</AlertDialogTitle>
+          <AlertDialogDescription>
+            Going back will delete all artifacts from step {(effectiveDeleteFrom ?? 0) + 1} onward and reset their statuses.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
 
         {loadingPreview ? (
           <div className="flex items-center justify-center py-4">
@@ -108,24 +117,20 @@ export default function ResetStepDialog({
           </p>
         ) : null}
 
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={loading}
-          >
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => onOpenChange(false)} disabled={loading}>
             Cancel
-          </Button>
-          <Button
+          </AlertDialogCancel>
+          <AlertDialogAction
             variant="destructive"
             onClick={handleReset}
             disabled={loading || loadingPreview || preview === null}
           >
             {loading && <Loader2 className="size-4 animate-spin" />}
             {totalFiles > 0 ? `Delete ${totalFiles} file${totalFiles !== 1 ? "s" : ""} & Reset` : "Reset"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
