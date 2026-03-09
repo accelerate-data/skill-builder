@@ -18,9 +18,9 @@ tests:
       - type: contains
         value: '"structuredResponseObject":true'
       - type: contains
-        value: '"returnsResearchPlanMarkdown":true'
+        value: '"returnsResearchPlanJson":true'
       - type: contains
-        value: '"returnsClarificationsJson":true'
+        value: '"returnsResearchOutput":true'
       - type: contains
         value: '"sectionCountNumber":true'
       - type: contains
@@ -66,11 +66,11 @@ tests:
       - type: contains
         value: '"scenario":"confirm-decisions"'
       - type: contains
-        value: '"decisionsExists":true'
+        value: '"structuredResponseObject":true'
       - type: contains
-        value: '"decisionCountField":true'
+        value: '"hasStatus":true'
       - type: contains
-        value: '"status":true'
+        value: '"decisionsHaveRequiredFields":true'
       - type: contains
         value: '"failures":[]'
   - description: confirm-decisions-scope-guard
@@ -83,6 +83,8 @@ tests:
         value: '"hasScopeRecommendationFlag":true'
       - type: contains
         value: '"hasZeroDecisionCount":true'
+      - type: contains
+        value: '"hasNoDecisions":true'
       - type: contains
         value: '"failures":[]'
   - description: confirm-decisions-contradictory

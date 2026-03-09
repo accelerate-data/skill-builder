@@ -166,6 +166,7 @@ export async function runMockAgent(
 
   const content = await fs.readFile(templatePath, "utf-8");
   const lines = content.split("\n").filter((line) => line.trim());
+  const structuredResultOverride = await buildStructuredMockResult(stepTemplate);
 
   let emittedResult = false;
   for (const line of lines) {
@@ -192,6 +193,9 @@ export async function runMockAgent(
         message.timestamp = Date.now();
       }
       if (message.type === "result") {
+        if (structuredResultOverride !== null) {
+          message.result = structuredResultOverride;
+        }
         emittedResult = true;
       }
       onMessage(message);
@@ -286,4 +290,128 @@ async function copyDirRecursive(src: string, dest: string): Promise<void> {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+type JsonObject = Record<string, unknown>;
+
+async function readJsonIfExists(filePath: string): Promise<JsonObject | null> {
+  try {
+    const raw = await fs.readFile(filePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as JsonObject)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readTextIfExists(filePath: string): Promise<string | null> {
+  try {
+    return await fs.readFile(filePath, "utf-8");
+  } catch {
+    return null;
+  }
+}
+
+/** @internal Exported for testing only. */
+export async function buildStructuredMockResult(
+  stepTemplate: string,
+): Promise<unknown | null> {
+  const outputsRoot = path.join(__dirname, "mock-templates", "outputs");
+  if (stepTemplate === "step0-research") {
+    const clarifications = await readJsonIfExists(
+      path.join(outputsRoot, "step0", "context", "clarifications.json"),
+    );
+    if (!clarifications) return null;
+    const metadata =
+      clarifications.metadata &&
+      typeof clarifications.metadata === "object" &&
+      !Array.isArray(clarifications.metadata)
+        ? (clarifications.metadata as JsonObject)
+        : {};
+    const researchPlan =
+      metadata.research_plan &&
+      typeof metadata.research_plan === "object" &&
+      !Array.isArray(metadata.research_plan)
+        ? (metadata.research_plan as JsonObject)
+        : {};
+    const questionCount =
+      typeof metadata.question_count === "number" ? metadata.question_count : 0;
+    const dimensionsSelected =
+      typeof researchPlan.dimensions_selected === "number"
+        ? researchPlan.dimensions_selected
+        : 0;
+    return {
+      status: "research_complete",
+      dimensions_selected: dimensionsSelected,
+      question_count: questionCount,
+      research_output: clarifications,
+    };
+  }
+
+  if (stepTemplate === "step1-detailed-research") {
+    const clarifications = await readJsonIfExists(
+      path.join(outputsRoot, "step1", "context", "clarifications.json"),
+    );
+    if (!clarifications) return null;
+    const metadata =
+      clarifications.metadata &&
+      typeof clarifications.metadata === "object" &&
+      !Array.isArray(clarifications.metadata)
+        ? (clarifications.metadata as JsonObject)
+        : {};
+    const refinementCount =
+      typeof metadata.refinement_count === "number"
+        ? metadata.refinement_count
+        : 0;
+    const sectionCount =
+      typeof metadata.section_count === "number" ? metadata.section_count : 0;
+    return {
+      status: "detailed_research_complete",
+      refinement_count: refinementCount,
+      section_count: sectionCount,
+      clarifications_json: clarifications,
+    };
+  }
+
+  if (stepTemplate === "step2-confirm-decisions") {
+    const decisions = await readJsonIfExists(
+      path.join(outputsRoot, "step2", "context", "decisions.json"),
+    );
+    if (!decisions) return null;
+    const metadata =
+      decisions.metadata &&
+      typeof decisions.metadata === "object" &&
+      !Array.isArray(decisions.metadata)
+        ? (decisions.metadata as JsonObject)
+        : {};
+    const decisionsArray = Array.isArray(decisions.decisions)
+      ? decisions.decisions
+      : [];
+    const decisionCount =
+      typeof metadata.decision_count === "number"
+        ? metadata.decision_count
+        : decisionsArray.length;
+    const conflictsResolved =
+      typeof metadata.conflicts_resolved === "number"
+        ? metadata.conflicts_resolved
+        : 0;
+    const round = typeof metadata.round === "number" ? metadata.round : 1;
+    return {
+      status: "confirm_decisions_complete",
+      decision_count: decisionCount,
+      conflicts_resolved: conflictsResolved,
+      round,
+      decisions_json: decisions,
+    };
+  }
+
+  if (stepTemplate === "gate-answer-evaluator") {
+    return readJsonIfExists(
+      path.join(outputsRoot, "gate-answer-evaluator", "answer-evaluation.json"),
+    );
+  }
+
+  return null;
 }

@@ -12,6 +12,12 @@ High-delta content (CPQ overriding Amount, ForecastCategory/StageName independen
 
 Research should surface: fields with overridden standard semantics, managed package modification schedules, ISV field interactions, and independently editable field pairs. Focus on decisions that change skill content.
 
+## Quality checks
+
+- Confirm overridden standard fields are listed with owner system/package and update cadence.
+- Confirm independently editable field pairs include precedence rules for each target use case.
+- Confirm canonical-vs-derived field trust decisions are explicit for reporting and joins.
+
 ## Questions to Research
 
 1. Which standard fields have their values overridden or populated by managed packages, ISV integrations, or automation — and on what schedule does each override run?

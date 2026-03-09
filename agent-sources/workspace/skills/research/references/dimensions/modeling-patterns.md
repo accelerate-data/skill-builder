@@ -12,11 +12,11 @@ Claude knows Kimball methodology and star schemas. The delta is domain-specific 
 
 Research should surface: modeling approach trade-offs, grain decisions, snapshot strategy, and field coverage choices. Focus on decisions that change skill content.
 
-Quality checks:
+## Quality checks
 
-- Flag mixed-grain risks when combining entities or measures.
-- Make silver/gold placement implications explicit when pattern choices materially change the output architecture.
-- Prefer model-level implementation implications over conceptual-only domain explanations.
+- Confirm mixed-grain risks are explicitly identified when combining entities or measures.
+- Confirm silver/gold placement implications are explicit when pattern choices change architecture.
+- Confirm model-level implementation implications are prioritized over conceptual-only explanations.
 
 ## Questions to Research
 

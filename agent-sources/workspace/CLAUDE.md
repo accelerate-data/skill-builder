@@ -61,7 +61,7 @@ Every agent must read `user-context.md` from the workspace directory and use it 
 
 ### Workflow Guard (Workflow/Refine/Validate/Test Pipeline)
 
-When `metadata.scope_recommendation` is `true` in `clarifications.json` or `scope_recommendation: true` in the YAML frontmatter of `decisions.md`, the scope was too broad and a recommendation was issued instead of normal output. Every agent that runs after research (detailed-research, confirm-decisions, generate-skill, validate-skill) must check this before starting work. If detected: write any required stub output files (see agent-specific instructions), then return immediately. Do NOT spawn sub-agents, analyze content, or generate output.
+When `metadata.scope_recommendation` is `true` in `clarifications.json` or in `decisions.json` metadata, the scope was too broad and a recommendation was issued instead of normal output. Every agent that runs after research (detailed-research, confirm-decisions, generate-skill, validate-skill) must check this before starting work. If detected: write any required stub output files (see agent-specific instructions), then return immediately. Do NOT spawn sub-agents, analyze content, or generate output.
 
 ### Delegation Policy
 

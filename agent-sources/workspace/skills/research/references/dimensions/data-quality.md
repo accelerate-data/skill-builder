@@ -12,6 +12,12 @@ Claude knows generic data quality concepts (null checks, uniqueness, referential
 
 Research should surface: validation rules, quality gate thresholds, known quality issues, and pipeline failure response patterns. Focus on decisions that change skill content.
 
+## Quality checks
+
+- Confirm quality rules are explicit per layer (bronze/silver/gold), not just global checks.
+- Confirm row-multiplication-sensitive checks are included for Type 2 and merge-heavy flows.
+- Confirm threshold values and actions are concrete (halt/quarantine/continue), not qualitative.
+
 ## Questions to Research
 
 1. Which validation rules are required at each pipeline layer (bronze, silver, gold), and what triggers a halt vs. quarantine vs. continue decision?

@@ -12,6 +12,12 @@ Claude's parametric knowledge comes from official documentation. When reality di
 
 Research should surface: known behavioral deviations contradicting documentation, undocumented limitations causing silent failures, and environment-specific behaviors differing across deployment modes. Focus on decisions that change skill content.
 
+## Quality checks
+
+- Confirm at least one doc-vs-runtime behavioral deviation is captured with environment/version scope.
+- Confirm each deviation includes detection signal and mitigation/workaround guidance.
+- Confirm deployment-mode differences (e.g., endpoint/runtime mode) are explicitly called out where relevant.
+
 ## Questions to Research
 
 1. Which platform features behave differently in the customer's specific environment or version than the official documentation describes?

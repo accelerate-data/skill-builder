@@ -12,6 +12,12 @@ Claude knows reconciliation as a concept but cannot know which specific tables/o
 
 Research should surface: specific reconciliation points where data diverges, source-of-truth resolution when systems conflict, and tolerance levels with reconciliation procedures. Focus on decisions that change skill content.
 
+## Quality checks
+
+- Confirm each reconciliation point names authoritative source when systems disagree.
+- Confirm tolerance thresholds and escalation/action bands are explicitly defined.
+- Confirm period-boundary reconciliation behavior is covered (close adjustments, late-arriving data, timing gaps).
+
 ## Questions to Research
 
 1. Which numbers should agree between systems (e.g., CRM, finance, revenue intelligence platform) but are known to diverge — and by how much, typically?

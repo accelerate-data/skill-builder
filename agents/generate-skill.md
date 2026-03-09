@@ -13,7 +13,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 
 Plan the skill structure, write `SKILL.md` and all reference files. One agent, consistent voice, no handoff gaps.
 
-In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for coherence using existing content + `decisions.md`.
+In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for coherence using existing content + `decisions.json`.
 
 </role>
 
@@ -21,9 +21,9 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 
 ## Context
 
-- Coordinator provides: **skill name**, **purpose**, **context directory** (has `decisions.md`), **skill output directory**, **workspace directory** (has `user-context.md`)
+- Coordinator provides: **skill name**, **purpose**, **context directory** (has `decisions.json`), **skill output directory**, **workspace directory** (has `user-context.md`)
 - Read `{workspace_directory}/user-context.md` (per User Context protocol) to tailor tone, examples, and focus
-- Read `decisions.md` — primary input (in rewrite mode, also read existing skill files)
+- Read `decisions.json` — primary input (in rewrite mode, also read existing skill files)
 
 </context>
 
@@ -33,9 +33,9 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 
 ## Guards
 
-Check `decisions.md` before doing any work. If `contradictory_inputs: revised`, skip reading `clarifications.json` entirely — treat `decisions.md` as the authoritative resolved source and proceed directly to skill generation. Otherwise check both `decisions.md` and `clarifications.json` and block if either condition is true:
+Check `decisions.json` before doing any work. If `metadata.contradictory_inputs == "revised"`, skip reading `clarifications.json` entirely — treat `decisions.json` as the authoritative resolved source and proceed directly to skill generation. Otherwise check both `decisions.json` and `clarifications.json` and block if either condition is true:
 
-**Scope recommendation** — if `metadata.scope_recommendation` is `true` in `clarifications.json` or `scope_recommendation: true` in `decisions.md`, write this stub to `SKILL.md` and return:
+**Scope recommendation** — if `metadata.scope_recommendation` is `true` in `clarifications.json` or in `decisions.json` metadata, write this stub to `SKILL.md` and return:
 
 ```text
 ---
@@ -48,7 +48,7 @@ scope_recommendation: true
 The research planner determined the skill scope is too broad. See `clarifications.json` for recommended narrower skills. No skill was generated.
 ```
 
-**Contradictory inputs** — if `contradictory_inputs: true` in decisions.md, write this stub to `SKILL.md` and return:
+**Contradictory inputs** — if `metadata.contradictory_inputs == true` in `decisions.json`, write this stub to `SKILL.md` and return:
 
 ```text
 ---
@@ -58,10 +58,10 @@ contradictory_inputs: true
 ---
 ## Contradictory Inputs Detected
 
-The user's answers contain unresolvable contradictions. See `decisions.md` for details. Resolve the contradictions before generating the skill.
+The user's answers contain unresolvable contradictions. See `decisions.json` for details. Resolve the contradictions before generating the skill.
 ```
 
-**User-revised contradictions** — if `contradictory_inputs: revised` in decisions.md, the user has reviewed the flagged decisions and edited them directly. Treat `decisions.md` as the authoritative resolved source and generate the skill normally. Do not write a stub.
+**User-revised contradictions** — if `metadata.contradictory_inputs == "revised"` in `decisions.json`, the user has reviewed the flagged decisions and edited them directly. Treat `decisions.json` as the authoritative resolved source and generate the skill normally. Do not write a stub.
 
 ## Phase 1: Plan the Skill Structure
 
@@ -102,7 +102,7 @@ modified: <today's date>
 - Follow the description best practices when writing the description for the new skill. This will be the primary triggering mechanism when this skill is used in Vibedata.
 - Use a trigger-rich description in frontmatter (what it does + when to use it).
 - Keep "when to use" trigger conditions in the frontmatter description, not scattered in body sections.
-- Build the description draft from the capability + trigger decisions in `decisions.md` first (including any `needs-review` items), then refine with user-context wording.
+- Build the description draft from the capability + trigger decisions in `decisions.json` first (including any `needs-review` items), then refine with user-context wording.
 - If user-provided description text exists, treat it as input to incorporate and improve, not an automatic final value.
 - To reduce undertriggering, prefer explicit trigger phrasing that is slightly assertive about when to invoke the skill.
 
@@ -114,7 +114,7 @@ Do not write `{context_dir}/evaluations.md` directly. Return it as `evaluations_
 
 Self-review:
 
-- Re-read `decisions.md` — verify every decision is addressed in at least one file
+- Re-read `decisions.json` — verify every decision is addressed in at least one file
 - Verify SKILL.md pointers match each reference file
 - Remove any 'Questions for your stakeholder', 'Open questions', or 'Pending clarifications' blocks
 - Remove over-constrained formatting rules that are not justified by the task
@@ -122,7 +122,7 @@ Self-review:
 
 ## Error Handling
 
-Missing or malformed `decisions.md`: report to coordinator, do not build.
+Missing or malformed `decisions.json`: report to coordinator, do not build.
 
 ## Final response contract
 
@@ -140,13 +140,13 @@ Return JSON only:
 
 When the prompt contains `/rewrite`, all phases still apply with these additions:
 
-**Phase 1:** Read existing `SKILL.md` and inventory `references/` files alongside `decisions.md`. Identify inconsistencies, redundancies, stale cross-references. Build a rewrite plan, then read reference files progressively as each section needs evidence.
+**Phase 1:** Read existing `SKILL.md` and inventory `references/` files alongside `decisions.json`. Identify inconsistencies, redundancies, stale cross-references. Build a rewrite plan, then read reference files progressively as each section needs evidence.
 
 **Phase 2:** Update `modified` to today. Preserve original `created` and `author`.
 
-**Phase 3:** Rewrite references in a staged, demand-driven order. Preserve all domain knowledge; use existing content as primary source, `decisions.md` as supplement. Before finalizing, perform a full preservation sweep to confirm no original domain knowledge was dropped; if coverage is incomplete, read additional references and close gaps.
+**Phase 3:** Rewrite references in a staged, demand-driven order. Preserve all domain knowledge; use existing content as primary source, `decisions.json` as supplement. Before finalizing, perform a full preservation sweep to confirm no original domain knowledge was dropped; if coverage is incomplete, read additional references and close gaps.
 
-**Error handling (rewrite-only override):** If `decisions.md` is missing, proceed using existing skill content only.
+**Error handling (rewrite-only override):** If `decisions.json` is missing, proceed using existing skill content only.
 
 </instructions>
 
@@ -155,7 +155,7 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 - Vendored skill-creator writing methodology applied
 - SKILL.md has metadata, overview, trigger conditions, quick reference, and pointers
 - Self-contained reference files
-- Every decision from `decisions.md` addressed in the skill.
+- Every decision from `decisions.json` addressed in the skill.
 - Purpose-appropriate structure chosen without rigid templates
 - `evaluations_markdown` includes 3+ scenarios covering distinct topic areas (backend writes `{context_dir}/evaluations.md`)
 - **Rewrite mode:** All original domain knowledge preserved

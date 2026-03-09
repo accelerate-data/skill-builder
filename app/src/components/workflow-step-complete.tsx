@@ -239,7 +239,7 @@ export function WorkflowStepComplete({
         setDecisionsEditorDirty(false);
         setDecisionsSaveStatus("saved");
       } catch (err) {
-        console.error("Failed to save decisions.md:", err);
+        console.error("Failed to save decisions.json:", err);
       }
     }, 1500);
     return () => clearTimeout(timer);
@@ -254,16 +254,15 @@ export function WorkflowStepComplete({
     );
   }
 
-  // Check if this is a research step (has both research-plan.md and clarifications.json in output list)
+  // Step 0 (Research) now uses a single canonical artifact: clarifications.json
   const researchPlanContent = fileContents.get("context/research-plan.md");
   const clarificationsContent = fileContents.get("context/clarifications.json");
-  const isResearchStep = outputFiles.includes("context/research-plan.md")
+  const isResearchStep = stepId === 0
     && outputFiles.includes("context/clarifications.json");
 
   if (isResearchStep) {
     // Missing files = error
     const missingFiles: string[] = [];
-    if (!researchPlanContent || researchPlanContent === "__NOT_FOUND__") missingFiles.push("context/research-plan.md");
     if (!clarificationsContent || clarificationsContent === "__NOT_FOUND__") missingFiles.push("context/clarifications.json");
 
     if (missingFiles.length > 0) {
@@ -316,7 +315,7 @@ export function WorkflowStepComplete({
              The ClarificationsEditor's Continue button handles advancement — no StepActionBar. */
           <div className="min-h-0 flex-1 overflow-hidden">
             <ResearchSummaryCard
-                researchPlan={researchPlanContent!}
+                researchPlan={researchPlanContent}
                 clarificationsData={controlledClarData ?? clarData}
                 duration={!reviewMode ? duration : undefined}
                 cost={displayCost}
@@ -334,7 +333,7 @@ export function WorkflowStepComplete({
             <ScrollArea className="min-h-0 flex-1">
               <div className="pr-4">
                 <ResearchSummaryCard
-                  researchPlan={researchPlanContent!}
+                  researchPlan={researchPlanContent}
                   clarificationsData={clarData}
                   duration={!reviewMode ? duration : undefined}
                   cost={displayCost}
@@ -354,10 +353,10 @@ export function WorkflowStepComplete({
     );
   }
 
-  // Detailed research step: only clarifications.json (no research-plan.md)
+  // Detailed research step (step 1): clarifications.json only.
   const isClarificationsOnlyStep = !isResearchStep
+    && stepId === 1
     && outputFiles.includes("context/clarifications.json")
-    && !outputFiles.includes("context/research-plan.md")
     && clarificationsContent && clarificationsContent !== "__NOT_FOUND__";
 
   if (isClarificationsOnlyStep) {
@@ -403,9 +402,9 @@ export function WorkflowStepComplete({
     }
   }
 
-  // Decisions step: show summary card when decisions.md is the output
-  const decisionsContent = fileContents.get("context/decisions.md");
-  const isDecisionsStep = outputFiles.includes("context/decisions.md")
+  // Decisions step: show summary card when decisions.json is the output
+  const decisionsContent = fileContents.get("context/decisions.json");
+  const isDecisionsStep = outputFiles.includes("context/decisions.json")
     && decisionsContent && decisionsContent !== "__NOT_FOUND__";
 
   if (isDecisionsStep) {

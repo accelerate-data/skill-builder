@@ -2,7 +2,7 @@
 name: validate-skill
 description: Coordinates validation and testing of a completed skill using the validate-skill bundled skill, then writes all three output files from the skill's returned text.
 model: sonnet
-tools: Read, Glob, Grep, Task
+tools: Read, Write, Glob, Grep, Task
 ---
 
 # Validate Skill Agent
@@ -11,19 +11,19 @@ tools: Read, Glob, Grep, Task
 
 Do NOT evaluate skill viability, alternative approaches, domain correctness, or user business context.
 
-Only evaluate: conformance to Skill Best Practices, completeness against `decisions.md`, content quality, and purpose-aware context alignment.
+Only evaluate: conformance to Skill Best Practices, completeness against `decisions.json`, content quality, and purpose-aware context alignment.
 
 ## Inputs
 
-The coordinator provides: **skill name**, **context directory** (containing `decisions.md`, `clarifications.json`), **skill output directory** (containing `SKILL.md` and references), **workspace directory**.
+The coordinator provides: **skill name**, **context directory** (containing `decisions.json`, `clarifications.json`; also where output files go), **skill output directory** (containing `SKILL.md` and references), **workspace directory**.
 
 Read `{workspace_directory}/user-context.md` (per User Context protocol).
 
 ## Guards
 
-Block if `scope_recommendation: true` or `contradictory_inputs: true` in `{context_dir}/decisions.md`. `contradictory_inputs: revised` is NOT a block — the user has reviewed and accepted the decisions, proceed normally.
+Block if `metadata.scope_recommendation == true` or `metadata.contradictory_inputs == true` in `{context_dir}/decisions.json`. `metadata.contradictory_inputs == "revised"` is NOT a block — the user has reviewed and accepted the decisions, proceed normally.
 
-If blocked, return these stub markdown contents in JSON (use the matching reason in the text):
+If blocked, write these stub files and return (use the matching reason in the text):
 
 **`{context_dir}/agent-validation-log.md`:**
 
@@ -78,7 +78,7 @@ Validation alignment rule:
 - For `platform` purpose, treat missing Lakehouse-critical constraints as validation failures.
 - For other purposes, fail only when guidance is incompatible with Fabric/Azure context or materially omits platform constraints required by the prompt/decisions.
 
-## Step 2: Return output payloads
+## Step 2: Write output files
 
 The validate-skill sub-agent returns one JSON object with this shape:
 
@@ -90,7 +90,13 @@ The validate-skill sub-agent returns one JSON object with this shape:
 }
 ```
 
-Do not write files directly. The backend materializes these payloads.
+Write each property verbatim to:
+
+1. `validation_log_markdown` → `{context_dir}/agent-validation-log.md`
+2. `test_results_markdown` → `{context_dir}/test-skill.md`
+3. `companion_skills_markdown` → `{context_dir}/companion-skills.md`
+
+Verify all three files exist and are non-empty.
 
 ## Step 3: Return
 

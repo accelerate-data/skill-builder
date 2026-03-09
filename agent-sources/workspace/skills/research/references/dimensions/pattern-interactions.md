@@ -12,6 +12,12 @@ Claude knows each pattern individually. The delta is the interactions: SCD Type 
 
 Research should surface: non-obvious constraint chains between pattern choices (e.g., SCD type -> merge strategy -> key design) and decision criteria for pattern selection based on entity characteristics. Focus on decisions that change skill content.
 
+## Quality checks
+
+- Confirm at least one end-to-end constraint chain is documented (historization -> merge -> key/materialization).
+- Confirm incompatible pattern combinations are explicitly named with failure symptoms.
+- Confirm late-arriving fact behavior is defined against the selected temporal pattern.
+
 ## Questions to Research
 
 1. Which historization type choices (SCD Type 1, 2, 3, 4, 6) are used for the primary entities, and what merge strategy does each choice require?

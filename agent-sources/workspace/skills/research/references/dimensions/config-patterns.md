@@ -12,6 +12,12 @@ Claude generates syntactically valid configurations from documentation. It canno
 
 Research should surface: dangerous configuration combinations (syntactically valid, semantically wrong), version-dependent constraints, and multi-axis compatibility requirements. Focus on decisions that change skill content.
 
+## Quality checks
+
+- Confirm required version compatibility is explicit across core/adapter/runtime.
+- Confirm at least one syntactically valid but operationally unsafe config combination is documented.
+- Confirm default-value hazards and version-boundary behavior changes are explicitly covered.
+
 ## Questions to Research
 
 1. Which configuration combinations are syntactically valid but produce wrong runtime behavior — settings that look correct but interact unexpectedly?

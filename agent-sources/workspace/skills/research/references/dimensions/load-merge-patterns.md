@@ -12,6 +12,12 @@ Claude knows generic MERGE INTO syntax and high-water marks. The delta is: water
 
 Research should surface: merge predicate design, watermark boundary handling, idempotency guarantees, failure recovery patterns, backfill strategies for historized data, and schema evolution concerns for versioned tables. Focus on decisions that change skill content.
 
+## Quality checks
+
+- Confirm watermark boundary duplicate handling is explicit (overlap window + dedup rule).
+- Confirm idempotency and retry behavior are defined for repeated MERGE execution.
+- Confirm Type 2 partial-failure recovery and history backfill strategy are explicitly addressed.
+
 ## Questions to Research
 
 1. Which column is used as the high-water mark for incremental loads, and how are records that arrive at the watermark boundary (duplicates across runs) handled?

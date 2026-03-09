@@ -6,13 +6,13 @@ Four-pass quality assessment of a completed skill: coverage & structure, content
 
 ## Inputs
 
-- Paths to `decisions.md`, `clarifications.json`, `SKILL.md`, and `references/` files
+- Paths to `decisions.json`, `clarifications.json`, `SKILL.md`, and `references/` files
 - The **purpose** (`domain`, `data-engineering`, `platform`, or `source`)
 - The **workspace directory** path (contains `user-context.md`)
 
-Read `decisions.md` first, then check its frontmatter:
+Read `decisions.json` first, then check its metadata:
 
-- If `contradictory_inputs: revised`, treat decisions as authoritative and skip `clarifications.json`.
+- If `metadata.contradictory_inputs == "revised"`, treat decisions as authoritative and skip `clarifications.json`.
 - Otherwise, read `clarifications.json` in full before quality checks.
 
 After that, use progressive discovery for skill content:
@@ -38,7 +38,7 @@ Report CORRECT or MISMATCH with details.
 
 ### Bundled Skill Compliance Checks
 
-1. **Process artifacts**: Skill output directory must contain ONLY `SKILL.md` and `references/`. Flag any process artifact (clarifications.json, decisions.md, research-plan.md, agent-validation-log.md, test-skill.md, companion-skills.md) as CONTAMINATION.
+1. **Process artifacts**: Skill output directory must contain ONLY `SKILL.md` and `references/`. Flag any process artifact (clarifications.json, decisions.json, research-plan.md, agent-validation-log.md, test-skill.md, companion-skills.md) as CONTAMINATION.
 
 2. **Stakeholder questions**: Scan for "Questions for your stakeholder", "Open questions", "Pending clarifications", or similar. Each is a FAIL.
 

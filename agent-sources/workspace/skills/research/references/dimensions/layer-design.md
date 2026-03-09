@@ -12,6 +12,12 @@ Claude knows medallion architecture and star schema. The delta is where to draw 
 
 Research should surface: silver/gold boundary placement, physical vs. logical conformed dimension governance, materialization strategy trade-offs, and aggregate table needs. Focus on decisions that change skill content.
 
+## Quality checks
+
+- Confirm silver/gold boundary is explicit with at least one concrete inclusion/exclusion example.
+- Confirm conformed-dimension materialization choice (table vs view) is justified with workload constraints.
+- Confirm required aggregate tables and target grains are explicitly named.
+
 ## Questions to Research
 
 1. Where should the silver/gold boundary fall for this domain — should silver be source-conformed (structural cleaning only) or business-conformed (includes business logic), and what drives that choice?

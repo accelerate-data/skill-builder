@@ -21,6 +21,10 @@ export class StreamSession {
   private messageQueue: string[] = [];
   private closed = false;
   private sessionId: string;
+  private mockMode = false;
+  private mockOnMessage:
+    | ((requestId: string, message: Record<string, unknown>) => void)
+    | null = null;
 
   constructor(
     sessionId: string,
@@ -45,6 +49,10 @@ export class StreamSession {
       throw new Error(`StreamSession ${this.sessionId} is closed`);
     }
     this.currentRequestId = requestId;
+    if (this.mockMode && this.mockOnMessage) {
+      void this.emitMockTurn(userMessage, this.mockOnMessage);
+      return;
+    }
     if (this.pendingResolve) {
       this.pendingResolve(userMessage);
       this.pendingResolve = null;
@@ -72,12 +80,11 @@ export class StreamSession {
     externalSignal?: AbortSignal,
   ): Promise<void> {
     if (process.env.MOCK_AGENTS === "true") {
-      process.stderr.write("[stream-session] Mock mode not supported for streaming sessions\n");
-      onMessage(this.currentRequestId, {
-        type: "error",
-        message: "Streaming sessions are not supported in mock mode",
-      });
-      onMessage(this.currentRequestId, { type: "turn_complete" });
+      this.mockMode = true;
+      this.mockOnMessage = onMessage;
+      emitSystemEvent((msg) => onMessage(this.currentRequestId, msg), "init_start");
+      emitSystemEvent((msg) => onMessage(this.currentRequestId, msg), "sdk_ready");
+      await this.emitMockTurn(config.prompt, onMessage);
       return;
     }
 
@@ -205,5 +212,38 @@ export class StreamSession {
     }
 
     process.stderr.write(`[stream-session] Session ${this.sessionId} ended\n`);
+  }
+
+  private async emitMockTurn(
+    userMessage: string,
+    onMessage: (requestId: string, message: Record<string, unknown>) => void,
+  ): Promise<void> {
+    if (this.closed) return;
+    const requestId = this.currentRequestId;
+    const trimmed = userMessage.trim();
+    const preview = trimmed.length > 160 ? `${trimmed.slice(0, 157)}...` : trimmed;
+    const text = preview.length > 0
+      ? `Mock streaming response received:\n\n${preview}`
+      : "Mock streaming response received.";
+
+    onMessage(requestId, {
+      type: "assistant",
+      message: {
+        model: "mock-stream",
+        id: `msg_mock_stream_${Date.now()}`,
+        type: "message",
+        role: "assistant",
+        content: [{ type: "text", text }],
+        stop_reason: "end_turn",
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    if (this.closed) return;
+    onMessage(requestId, { type: "turn_complete" });
   }
 }

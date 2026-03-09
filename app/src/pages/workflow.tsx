@@ -37,6 +37,7 @@ import {
   saveWorkflowState,
   readFile,
   writeFile,
+  getContextFileContent,
   getClarificationsContent,
   saveClarificationsContent,
   cleanupSkillSidecar,
@@ -66,9 +67,9 @@ interface StepConfig {
 }
 
 const STEP_CONFIGS: Record<number, StepConfig> = {
-  0: { type: "agent", outputFiles: ["context/research-plan.md", "context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
+  0: { type: "agent", outputFiles: ["context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
   1: { type: "agent", outputFiles: ["context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
-  2: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
+  2: { type: "reasoning", outputFiles: ["context/decisions.json"], model: "opus" },
   3: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
 };
 
@@ -355,23 +356,31 @@ export default function WorkflowPage() {
   useEffect(() => {
     const stepStatus = steps[currentStep]?.status;
 
-    if (stepStatus === "error" && skillName && skillsPath) {
+    if (stepStatus === "error" && skillName) {
       const cfg = STEP_CONFIGS[currentStep];
       const firstOutput = cfg?.outputFiles?.[0];
       if (firstOutput) {
-        const skillsRelative = firstOutput.startsWith("skill/")
-          ? firstOutput.slice("skill/".length)
-          : firstOutput;
-        readFile(`${skillsPath}/${skillName}/${skillsRelative}`)
-          .then((content) => setErrorHasArtifacts(!!content))
-          .catch(() => setErrorHasArtifacts(false));
+        if (firstOutput.startsWith("context/") && workspacePath) {
+          getContextFileContent(skillName, workspacePath, firstOutput.slice("context/".length))
+            .then((content) => setErrorHasArtifacts(!!content))
+            .catch(() => setErrorHasArtifacts(false));
+        } else if (skillsPath) {
+          const skillsRelative = firstOutput.startsWith("skill/")
+            ? firstOutput.slice("skill/".length)
+            : firstOutput;
+          readFile(`${skillsPath}/${skillName}/${skillsRelative}`)
+            .then((content) => setErrorHasArtifacts(!!content))
+            .catch(() => setErrorHasArtifacts(false));
+        } else {
+          setErrorHasArtifacts(false);
+        }
       } else {
         setErrorHasArtifacts(false);
       }
     } else {
       setErrorHasArtifacts(false);
     }
-  }, [currentStep, steps, skillsPath, skillName]);
+  }, [currentStep, steps, skillsPath, workspacePath, skillName]);
 
   // Debounced SQLite persistence — saves workflow state at most once per 300ms
   // instead of firing synchronously on every step/status change.
@@ -572,37 +581,20 @@ export default function WorkflowPage() {
       setActiveAgent(null);
 
       const finish = async () => {
-        // Backend-owned context writes: workflow steps return canonical payloads
-        // and Rust materializes context files.
-        if ((step === 0 || step === 1 || step === 2 || step === 3) && completedAgentId) {
+        // Backend-owned writes: step 0/1 return canonical artifact payload in
+        // structured output; Rust validates and writes context files.
+        if ((step === 0 || step === 1 || step === 2) && completedAgentId) {
           const structuredOutput = extractStructuredResultPayload(completedAgentId);
-          const hasStructuredObject = !!structuredOutput
-            && typeof structuredOutput === "object"
-            && !Array.isArray(structuredOutput);
-          if (hasStructuredObject) {
-            try {
-              await materializeWorkflowStepOutput(skillName, step, structuredOutput);
-            } catch (err) {
-              updateStepStatus(step, "error");
-              setRunning(false);
-              toast.error(
-                `Step ${step + 1} output validation failed: ${err instanceof Error ? err.message : String(err)}`,
-                { duration: Infinity },
-              );
-              return;
-            }
-          } else {
-            if (step === 1) {
-              updateStepStatus(step, "error");
-              setRunning(false);
-              toast.error(`Step ${step + 1} requires structured output from the agent`, {
-                duration: Infinity,
-              });
-              return;
-            }
-            // Backward-compat fallback for legacy/mocked transcripts that do not
-            // carry structured payloads.
-            console.warn(`[workflow] Missing structured output payload for step ${step}; skipping backend materialization`);
+          try {
+            await materializeWorkflowStepOutput(skillName, step, structuredOutput ?? null);
+          } catch (err) {
+            updateStepStatus(step, "error");
+            setRunning(false);
+            toast.error(
+              `Step ${step + 1} output validation failed: ${err instanceof Error ? err.message : String(err)}`,
+              { duration: Infinity },
+            );
+            return;
           }
         }
 
@@ -776,20 +768,13 @@ export default function WorkflowPage() {
       advanceToNextStep();
     };
 
-    if (!skillsPath) {
+    if (!workspacePath) {
       proceedNormally();
       return;
     }
 
     try {
-      const hasStructuredObject = !!structuredOutput
-        && typeof structuredOutput === "object"
-        && !Array.isArray(structuredOutput);
-      if (hasStructuredObject && workspacePath) {
-        await materializeAnswerEvaluationOutput(skillName, workspacePath, structuredOutput);
-      } else {
-        console.warn("[workflow] Missing structured gate output; falling back to existing answer-evaluation.json");
-      }
+      await materializeAnswerEvaluationOutput(skillName, workspacePath, structuredOutput ?? null);
 
       const evalPath = `${workspacePath}/${skillName}/answer-evaluation.json`;
       const raw = await readFile(evalPath);

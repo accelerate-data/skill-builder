@@ -12,6 +12,12 @@ Claude knows individual tool documentation but not how tools interact in real de
 
 Research should surface: CI/CD pipeline patterns, cross-tool authentication and artifact coordination, and orchestration timing dependencies across tool boundaries. Focus on decisions that change skill content.
 
+## Quality checks
+
+- Confirm auth handoff is explicit at each tool boundary (issuer, token type, expiry/refresh behavior).
+- Confirm artifact contracts between tools are explicit (producer, consumer, format, validation point).
+- Confirm orchestration order and retry/idempotency boundaries are explicitly documented.
+
 ## Questions to Research
 
 1. How is the platform integrated with version control and CI/CD — what pipeline stages exist and what triggers deployments?

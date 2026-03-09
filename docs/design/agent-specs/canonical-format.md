@@ -48,6 +48,11 @@ Scenarios currently covering the behavior contract:
 
 Written by the research skill (via `research-orchestrator`, Step 0). Updated in-place by `detailed-research` (Step 1). Read by `answer-evaluator`, `detailed-research`, `confirm-decisions`, and guard logic in downstream agents.
 
+Step envelopes that carry this payload:
+
+- Step 0 (`research-orchestrator`): `research_output`
+- Step 1 (`detailed-research`): `clarifications_json`
+
 ---
 
 ## JSON Schema
@@ -63,7 +68,42 @@ Written by the research skill (via `research-orchestrator`, Step 0). Updated in-
     "must_answer_count": 3,
     "priority_questions": ["Q1", "Q2", "Q3"],
     "duplicates_removed": 17,
-    "scope_recommendation": false
+    "scope_recommendation": false,
+    "scope_reason": "optional reason",
+    "warning": {
+      "code": "scope_guard_triggered",
+      "message": "Human-readable warning."
+    },
+    "error": {
+      "code": "missing_user_context",
+      "message": "Human-readable error."
+    },
+    "research_plan": {
+      "purpose": "Business process knowledge",
+      "domain": "Sales Pipeline",
+      "topic_relevance": "relevant",
+      "dimensions_evaluated": 6,
+      "dimensions_selected": 4,
+      "dimension_scores": [
+        {
+          "name": "business_process_rules",
+          "score": 5,
+          "reason": "Custom stage exit logic changes KPI semantics.",
+          "focus": "Document stage-entry/exit rules and exceptions that change metric semantics.",
+          "companion_skill": null
+        }
+      ],
+      "selected_dimensions": [
+        {
+          "name": "business_process_rules",
+          "focus": "Document stage-entry/exit rules and exceptions that change metric semantics."
+        },
+        {
+          "name": "metrics_definitions",
+          "focus": "Capture metric formulas, denominator choices, and qualification thresholds."
+        }
+      ]
+    }
   },
   "sections": [
     {
@@ -97,6 +137,14 @@ Written by the research skill (via `research-orchestrator`, Step 0). Updated in-
       "title": "Contradiction title",
       "body": "What is inconsistent and why it matters."
     }
+  ],
+  "answer_evaluator_notes": [
+    {
+      "type": "vague",
+      "question_id": "Q1",
+      "question_title": "Clarify hierarchy depth",
+      "body": "Answer was too broad; ask for exact cardinality."
+    }
   ]
 }
 ```
@@ -109,9 +157,11 @@ Written by the research skill (via `research-orchestrator`, Step 0). Updated in-
 - `must_answer_count` must equal questions where `must_answer: true`.
 - `priority_questions` must list all question IDs where `must_answer: true`.
 - `refinement_count` is `0` at step 0; incremented by `detailed-research`.
+- `research_plan` is required and must be JSON (not markdown) with `dimension_scores[]` entries containing `name`, `score`, and `reason` (plus optional `companion_skill`).
 - Every question must include 2-4 concrete choices plus final `"Other (please specify)"`.
 - `answer_choice` and `answer_text` start as `null`.
 - `refinements` starts as `[]` and is populated in step 1 for targeted follow-up.
+- Keep `notes` and `answer_evaluator_notes` as separate channels.
 
 ### Refinement object schema (added by `detailed-research`)
 
@@ -227,40 +277,33 @@ The research planner determined the skill scope is too broad. See `clarification
 
 ---
 
-# Canonical `research-plan.md` Format
+# Canonical `metadata.research_plan` Format
 
-Written by the research skill (via `research-orchestrator`, Step 0). Read by `companion-recommender` (Step 7). Rendered as markdown in the UI.
+`research_plan` is embedded inside `clarifications.json` at `metadata.research_plan` and must be JSON.
 
-## YAML Frontmatter
-
-```yaml
----
-purpose: domain                       # required — purpose token
-domain: Sales Pipeline                # required — domain name
-topic_relevance: relevant             # required — "relevant" or "not_relevant"
-dimensions_evaluated: 6               # required — total dimensions scored
-dimensions_selected: 4                # required — dimensions chosen for research
----
-```
-
-## Structure
-
-```markdown
-# Research Plan
-
-## Skill: [domain name] ([purpose])
-
-## Dimension Scores
-
-| Dimension | Score | Reason | Companion Note |
-|-----------|-------|--------|----------------|
-| [slug] | [1-5] | [one-sentence] | [optional — for scores 2-3] |
-
-## Selected Dimensions
-
-| Dimension | Focus |
-|-----------|-------|
-| [slug] | [tailored focus line] |
+```json
+{
+  "purpose": "Business process knowledge",
+  "domain": "Sales Pipeline",
+  "topic_relevance": "relevant|not_relevant",
+  "dimensions_evaluated": 6,
+  "dimensions_selected": 4,
+  "dimension_scores": [
+    {
+      "name": "business_process_rules",
+      "score": 5,
+      "reason": "Custom stage exit logic changes KPI semantics.",
+      "focus": "Document stage-entry/exit rules and exceptions that change metric semantics.",
+      "companion_skill": null
+    }
+  ],
+  "selected_dimensions": [
+    {
+      "name": "business_process_rules",
+      "focus": "Document stage-entry/exit rules and exceptions that change metric semantics."
+    }
+  ]
+}
 ```
 
 ---

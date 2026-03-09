@@ -13,7 +13,7 @@ import ResetStepDialog from "@/components/reset-step-dialog";
 
 const mockPreview = [
   { step_id: 1, step_name: "Detailed Research", files: ["context/clarifications.json"] },
-  { step_id: 2, step_name: "Confirm Decisions", files: ["context/decisions.md"] },
+  { step_id: 2, step_name: "Confirm Decisions", files: ["context/decisions.json"] },
 ];
 
 describe("ResetStepDialog", () => {
@@ -57,7 +57,7 @@ describe("ResetStepDialog", () => {
       expect(screen.getByText("Detailed Research")).toBeInTheDocument();
       expect(screen.getByText("context/clarifications.json")).toBeInTheDocument();
       expect(screen.getByText("Confirm Decisions")).toBeInTheDocument();
-      expect(screen.getByText("context/decisions.md")).toBeInTheDocument();
+      expect(screen.getByText("context/decisions.json")).toBeInTheDocument();
     });
   });
 

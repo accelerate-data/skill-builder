@@ -4,7 +4,7 @@
 
 ## Your Role in Consolidation
 
-Synthesize raw research text from multiple parallel dimension Tasks into a single, cohesive `clarifications.json` as inline text. Reason about the full findings — consolidate overlapping concerns, rephrase for clarity, organize into a logical flow a PM can answer efficiently.
+Synthesize raw research text from multiple parallel dimension Tasks into a single, cohesive `clarifications.json`. Reason about the full findings — consolidate overlapping concerns, resolve cross-dimension tension, rephrase for clarity, and organize into a logical flow a PM can answer efficiently.
 
 Use extended thinking before writing. Consider cross-Task question interactions, hidden dependencies, and cognitive load.
 
@@ -12,9 +12,21 @@ Use extended thinking before writing. Consider cross-Task question interactions,
 
 ## Step-by-Step Consolidation Instructions
 
+### Consolidation Output Invariants
+
+This handoff always produces the initial clarifications output (before any detailed-research refinement pass).
+
+- Every question must have 2-4 choices plus a final "Other (please specify)" choice with `is_other: true`
+- Every question must include a `recommendation` field with recommended choice and rationale
+- `metadata.refinement_count` must be `0`
+- `metadata.must_answer_count` must equal the count of questions with `must_answer: true`
+- `metadata.priority_questions` must list all question IDs where `must_answer: true`
+- `answer_choice` and `answer_text` must be `null` on every question
+- `refinements` must be `[]` on every question
+
 ### Step 1: Read all inputs
 
-Read all dimension Task outputs (500-800 words each) before organizing.
+Read all dimension Task outputs before organizing.
 
 ### Step 2: Deduplicate and organize
 
@@ -34,74 +46,34 @@ Within each section, mark questions as either:
 
 ### Step 3: Handle contradictions
 
-Put contradictions in a `notes` array entry with `type: "inconsistency"`. Do not silently resolve contradictions.
+Do not silently resolve or drop contradictions from dimension sub-agent outputs.
+
+Contradiction handling requirements:
+
+- Detect conflicts across dimension sub-agent outputs (definitions, thresholds, workflow boundaries, or metric formulas).
+- If a contradiction can be resolved by a PM decision, convert it into exactly one clear clarification question.
+- If it cannot be resolved by a PM decision yet, record it in `notes` with `type: "inconsistency"` and explain impact/risk.
+- Ensure each contradiction appears exactly once in the final output (question or note), with no duplicates.
+- Keep final questions cohesive: no competing prompts that ask the same underlying decision.
 
 ### Step 4: Build the complete JSON
 
-Number questions sequentially (Q1, Q2, ...). Number sections sequentially (S1, S2, ...). Follow the JSON schema below exactly. For consolidated questions from multiple dimensions, list the source dimension names in the `consolidated_from` array.
+Produce the complete JSON content in a single pass as inline text.
 
-**Always:**
-
-- Every question must have 2-4 choices plus a final "Other (please specify)" choice with `is_other: true`
-- Include a `recommendation` field with the recommended choice and rationale
-- `answer_choice` and `answer_text` are always `null` at step 0
-- `refinements` is always an empty array `[]` at step 0 (added by detailed-research in step 3)
-- `metadata.must_answer_count` must equal the count of questions with `must_answer: true`
-- `metadata.priority_questions` must list all question IDs where `must_answer: true`
-- Produce the complete JSON content in a single pass as inline text
+- Follow the JSON schema below exactly.
+- Number sections sequentially (S1, S2, ...).
+- Number questions sequentially (Q1, Q2, ...) within the section.
+- For consolidated questions from multiple dimensions, list the source dimension names in the `consolidated_from` array.
+- Apply all Consolidation Output Invariants above.
 
 ---
 
-## Canonical `clarifications.json` Schema
+## Canonical `clarifications.json` Schema Source
 
-```json
-{
-  "version": "1",
-  "metadata": {
-    "title": "Clarifications: {Domain Name}",
-    "question_count": 26,
-    "section_count": 6,
-    "refinement_count": 0,
-    "must_answer_count": 3,
-    "priority_questions": ["Q1", "Q2", "Q3"],
-    "duplicates_removed": 17,
-    "scope_recommendation": false
-  },
-  "sections": [
-    {
-      "id": "S1",
-      "title": "Section Name",
-      "description": "Brief description of what this section covers.",
-      "questions": [
-        {
-          "id": "Q1",
-          "title": "Short Title",
-          "must_answer": true,
-          "text": "Full question text explaining what needs to be decided...",
-          "consolidated_from": ["Metrics Research", "Segmentation Research"],
-          "choices": [
-            {"id": "A", "text": "Choice A text", "is_other": false},
-            {"id": "B", "text": "Choice B text", "is_other": false},
-            {"id": "C", "text": "Choice C text", "is_other": false},
-            {"id": "D", "text": "Other (please specify)", "is_other": true}
-          ],
-          "recommendation": "A — Use recurring fee for MS; spread TCV for PS.",
-          "answer_choice": null,
-          "answer_text": null,
-          "refinements": []
-        }
-      ]
-    }
-  ],
-  "notes": [
-    {
-      "type": "inconsistency",
-      "title": "Pipeline Entry vs. Committed Stage",
-      "body": "Q2 says stage beyond 'Prospecting' enters pipeline. Q12 says 'Proposal Sent' is the committed threshold. These may be compatible (entry != commitment) but the PM should confirm."
-    }
-  ]
-}
-```
+Use `references/schemas.md` as the only canonical schema source for `clarifications.json`.
+
+- Do not redefine or extend field shapes in this file.
+- If any schema details conflict, follow `references/schemas.md` and update this handoff doc to match.
 
 ### Field Reference
 
@@ -112,11 +84,12 @@ Number questions sequentially (Q1, Q2, ...). Number sections sequentially (S1, S
 | `title` | string | yes | Document title: `"Clarifications: {Domain Name}"` |
 | `question_count` | integer | yes | Total questions across all sections |
 | `section_count` | integer | yes | Number of sections |
-| `refinement_count` | integer | yes | Total refinement items. Always 0 at Step 0 |
+| `refinement_count` | integer | yes | Total refinement items. Must be `0` in consolidation output |
 | `must_answer_count` | integer | yes | Count of questions with `must_answer: true` |
 | `priority_questions` | string[] | yes | IDs of all questions where `must_answer: true` |
 | `duplicates_removed` | integer | yes | Duplicates eliminated during consolidation. Count each collapsed group as (n-1) |
 | `scope_recommendation` | boolean | yes | Set to `true` by scope advisor when scope is too broad; `false` otherwise |
+| `scope_reason` | string | optional | Human-readable reason for `scope_recommendation`; required when `scope_recommendation: true` |
 
 #### `sections[]` array
 
@@ -138,9 +111,9 @@ Number questions sequentially (Q1, Q2, ...). Number sections sequentially (S1, S
 | `consolidated_from` | string[] | optional | Source dimension names when question draws from multiple dimensions |
 | `choices` | array | yes | 2-4 choices + "Other (please specify)" |
 | `recommendation` | string | yes | Recommended choice letter + rationale |
-| `answer_choice` | string/null | yes | Always `null` at Step 0 |
-| `answer_text` | string/null | yes | Always `null` at Step 0 |
-| `refinements` | array | yes | Always `[]` at Step 0. Populated in Step 3 by detailed-research |
+| `answer_choice` | string/null | yes | Always `null` in consolidation output |
+| `answer_text` | string/null | yes | Always `null` in consolidation output |
+| `refinements` | array | yes | Always `[]` in consolidation output; detailed-research may add entries later |
 
 #### `choices[]` array
 
@@ -158,7 +131,7 @@ Number questions sequentially (Q1, Q2, ...). Number sections sequentially (S1, S
 | `title` | string | yes | Short title describing the issue |
 | `body` | string | yes | Detailed explanation |
 
-#### Refinement objects (added in Step 3 — not Step 0)
+#### Refinement objects (added later by detailed-research, not by this consolidation output)
 
 | Field | Type | Description |
 |---|---|---|
@@ -175,8 +148,8 @@ Number questions sequentially (Q1, Q2, ...). Number sections sequentially (S1, S
 
 | Level | Format | Example | Who creates it |
 |---|---|---|---|
-| Top-level question | `Q{n}` | `Q1`, `Q12` | Step 0 consolidation (this step) |
-| Refinement | `R{n}.{m}` | `R1.1`, `R12.2` | Step 3 |
+| Top-level question | `Q{n}` | `Q1`, `Q12` | Consolidation output (this step) |
+| Refinement | `R{n}.{m}` | `R1.1`, `R12.2` | Detailed-research follow-up pass |
 
 Parent is embedded in the ID: `R1.1` refines **Q1**, `R12.2` refines **Q12**.
 
@@ -295,3 +268,5 @@ Parent is embedded in the ID: `R1.1` refines **Q1**, `R12.2` refines **Q12**.
 - All `answer_choice` and `answer_text` values are `null`
 - All `refinements` arrays are empty `[]`
 - Contradictions and critical gaps captured in `notes[]`
+- Cross-dimension contradictions are converted into explicit clarification questions where possible
+- Final question set is cohesive and deduplicated across all dimension sub-agent outputs

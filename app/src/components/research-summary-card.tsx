@@ -16,6 +16,7 @@ interface DimensionScore {
 
 interface ResearchPlanData {
   purpose: string;
+  domain?: string;
   dimensionsEvaluated: number;
   dimensionsSelected: number;
   topicRelevance?: string;
@@ -23,12 +24,31 @@ interface ResearchPlanData {
   selectedDimensions: string[];
 }
 
+interface ResearchPlanJson {
+  purpose: string;
+  domain: string;
+  topic_relevance: string;
+  dimensions_evaluated: number;
+  dimensions_selected: number;
+  dimension_scores: Array<{
+    name: string;
+    score: number;
+    reason: string;
+    focus: string;
+    companion_skill?: string | null;
+  }>;
+  selected_dimensions: Array<{
+    name: string;
+    focus: string;
+  }>;
+}
+
 function stripInlineMarkdown(text: string): string {
   return text.replace(/[*_`~]/g, "").trim();
 }
 
 interface ResearchSummaryCardProps {
-  researchPlan: string;
+  researchPlan?: string;
   clarificationsData: ClarificationsFile;
   duration?: number;
   cost?: number;
@@ -141,6 +161,36 @@ function parseResearchPlan(markdown: string): ResearchPlanData {
   return result;
 }
 
+function parseResearchPlanFromClarifications(
+  clarificationsData: ClarificationsFile,
+): ResearchPlanData | null {
+  const metadata = clarificationsData.metadata as typeof clarificationsData.metadata & {
+    research_plan?: ResearchPlanJson;
+  };
+  const rawPlan = metadata.research_plan;
+  if (!rawPlan || typeof rawPlan !== "object") return null;
+  return {
+    purpose: rawPlan.purpose ?? "",
+    domain: rawPlan.domain ?? "",
+    topicRelevance: rawPlan.topic_relevance ?? "",
+    dimensionsEvaluated: rawPlan.dimensions_evaluated ?? 0,
+    dimensionsSelected: rawPlan.dimensions_selected ?? 0,
+    dimensions: Array.isArray(rawPlan.dimension_scores)
+      ? rawPlan.dimension_scores.map((d) => ({
+        name: d.name,
+        score: d.score,
+        reason: d.reason,
+        companion: d.companion_skill ?? undefined,
+      }))
+      : [],
+    selectedDimensions: Array.isArray(rawPlan.selected_dimensions)
+      ? rawPlan.selected_dimensions
+          .map((d) => d?.name)
+          .filter((name): name is string => typeof name === "string" && name.trim().length > 0)
+      : [],
+  };
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ResearchSummaryCard({
@@ -156,7 +206,8 @@ export function ResearchSummaryCard({
   evaluating,
 }: ResearchSummaryCardProps) {
   const [planExpanded, setPlanExpanded] = useState(true);
-  const plan = parseResearchPlan(researchPlan);
+  const plan = parseResearchPlanFromClarifications(clarificationsData)
+    ?? parseResearchPlan(researchPlan ?? "");
   const { answered, total } = getTotalCounts(clarificationsData);
   const meta = clarificationsData.metadata;
   const noteCount = clarificationsData.notes.length;

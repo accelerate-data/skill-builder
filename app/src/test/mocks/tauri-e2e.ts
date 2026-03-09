@@ -212,6 +212,49 @@ function resolveReadFileMock(
   return value;
 }
 
+function resolveContextFilePathCandidates(
+  args?: Record<string, unknown>,
+  skillsPathOverride?: string | null,
+): string[] {
+  const skillName = typeof args?.skillName === "string" ? args.skillName : "";
+  const workspacePath = typeof args?.workspacePath === "string" ? args.workspacePath : "";
+  const fileName = typeof args?.fileName === "string" ? args.fileName : "";
+
+  const requestedFile = fileName || "clarifications.json";
+  const skillsPath = skillsPathOverride ?? defaultSettings.skills_path;
+
+  const candidates: string[] = [];
+  if (skillsPath && skillName) {
+    candidates.push(`${skillsPath}/${skillName}/context/${requestedFile}`);
+  }
+  if (workspacePath && skillName) {
+    candidates.push(`${workspacePath}/${skillName}/context/${requestedFile}`);
+  }
+  return candidates;
+}
+
+function resolveContextFileCommand(
+  cmd: string,
+  args: Record<string, unknown> | undefined,
+  readFileSource: unknown,
+  skillsPathOverride?: string | null,
+): unknown {
+  const fileName = cmd === "get_clarifications_content"
+    ? "clarifications.json"
+    : cmd === "get_decisions_content"
+      ? "decisions.json"
+      : (typeof args?.fileName === "string" ? args.fileName : "");
+
+  const candidates = resolveContextFilePathCandidates({ ...(args ?? {}), fileName }, skillsPathOverride);
+  for (const candidate of candidates) {
+    const resolved = resolveReadFileMock(readFileSource, { filePath: candidate, path: candidate });
+    if (typeof resolved === "string") return resolved;
+  }
+
+  // Fall back to wildcard/opaque read_file behavior.
+  return resolveReadFileMock(readFileSource, args);
+}
+
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   // Allow tests to override via window
   const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as
@@ -222,8 +265,30 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
     if (cmd === "read_file") {
       val = resolveReadFileMock(val, args);
     }
+    if (typeof val === "string" && val.startsWith("__throw__:")) {
+      throw new Error(val.slice("__throw__:".length));
+    }
     if (val instanceof Error) throw val;
     return val as T;
+  }
+
+  if (
+    cmd === "get_clarifications_content"
+    || cmd === "get_decisions_content"
+    || cmd === "get_context_file_content"
+  ) {
+    const skillsPathOverride =
+      overrides
+      && typeof overrides.get_settings === "object"
+      && overrides.get_settings !== null
+      && !Array.isArray(overrides.get_settings)
+      && typeof (overrides.get_settings as Record<string, unknown>).skills_path === "string"
+      ? (overrides.get_settings as Record<string, unknown>).skills_path as string
+      : null;
+    const readSource = overrides && "read_file" in overrides
+      ? overrides.read_file
+      : mockResponses.read_file;
+    return resolveContextFileCommand(cmd, args, readSource, skillsPathOverride) as T;
   }
 
   if (cmd in mockResponses) {

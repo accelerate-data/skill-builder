@@ -160,7 +160,7 @@ describe("read directive compliance", () => {
     );
 
     for (const content of [qualitySpec, testSpec, companionSpec]) {
-      expect(content).toMatch(/contradictory_inputs:\s*revised/i);
+      expect(content).toMatch(/metadata\.contradictory_inputs\s*==\s*"revised"/i);
       expect(content).toMatch(
         /\bread\b[^\n]{0,120}\bclarifications\.json\b[^\n]{0,120}\bin full\b/i
       );
@@ -171,7 +171,7 @@ describe("read directive compliance", () => {
   });
 });
 
-describe("VU-448 preflight scope guard prompts", () => {
+describe("Research scope guard contract prompts", () => {
   it("research orchestrator requires preflight before fan-out", () => {
     const content = fs.readFileSync(
       path.join(AGENTS_DIR, "research-orchestrator.md"),
@@ -182,21 +182,18 @@ describe("VU-448 preflight scope guard prompts", () => {
     expect(content).toMatch(/do NOT spawn any dimension research sub-agents/i);
   });
 
-  it("research skill codifies throwaway phrases and fallback bypass", () => {
+  it("research skill does not run preflight and emits low-score scope recommendation", () => {
     const content = fs.readFileSync(
       path.join(REPO_ROOT, "agent-sources/workspace/skills/research/SKILL.md"),
       "utf8"
     );
-    expect(content).toMatch(/## Step 2 — Preflight Scope Guard/);
-    expect(content).toMatch(/`testing`/);
-    expect(content).toMatch(/`throwaway`/);
-    expect(content).toMatch(/`ui test`/);
-    expect(content).toMatch(/`just testing`/);
-    expect(content).toMatch(/`nothing really`/);
-    expect(content).toMatch(/Do not apply fallback dimension selection when Step 2 preflight guard matched/);
+    expect(content).not.toMatch(/Preflight Scope Guard/i);
+    expect(content).toMatch(/topic_relevance[^\n]{0,80}not_relevant/i);
+    expect(content).toMatch(/scope-recommendation clarifications output/i);
+    expect(content).toMatch(/all_dimensions_low_score/);
   });
 
-  it("scoring rubric enforces preflight precedence and early return contract", () => {
+  it("scoring rubric stays scoring-only and delegates selection policy", () => {
     const content = fs.readFileSync(
       path.join(
         REPO_ROOT,
@@ -204,10 +201,7 @@ describe("VU-448 preflight scope guard prompts", () => {
       ),
       "utf8"
     );
-    expect(content).toMatch(/Throwaway\/Test Intent Preflight \(runs before relevance scoring\)/);
-    expect(content).toMatch(/Stop immediately \(no dimension scoring, no fallback dimension selection, no fan-out\)/);
-    expect(content).toMatch(/Set `metadata\.scope_recommendation: true`/);
-    expect(content).toMatch(/Do not trigger solely because domain text is short/);
-    expect(content).toMatch(/If uncertain, continue to normal relevance\/scoring/);
+    expect(content).toMatch(/Do not perform selection or branching in this rubric output/i);
+    expect(content).not.toMatch(/If all scores are <=2, trigger scope recommendation output/i);
   });
 });

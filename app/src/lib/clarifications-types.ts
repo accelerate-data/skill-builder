@@ -20,6 +20,30 @@ export interface ClarificationsMetadata {
   scope_recommendation?: boolean;
   scope_reason?: string;
   scope_next_action?: string;
+  research_plan?: ClarificationsResearchPlan;
+}
+
+export interface ClarificationsResearchPlanDimensionScore {
+  name: string;
+  score: number;
+  reason: string;
+  focus: string;
+  companion_skill?: string | null;
+}
+
+export interface ClarificationsResearchPlanSelectedDimension {
+  name: string;
+  focus: string;
+}
+
+export interface ClarificationsResearchPlan {
+  purpose: string;
+  domain: string;
+  topic_relevance: string;
+  dimensions_evaluated: number;
+  dimensions_selected: number;
+  dimension_scores: ClarificationsResearchPlanDimensionScore[];
+  selected_dimensions: ClarificationsResearchPlanSelectedDimension[];
 }
 
 export interface Section {

@@ -12,10 +12,10 @@ Claude knows textbook formulas (coverage = open/quota, win rate = won/(won+lost)
 
 Research should surface: which metrics to support, formula parameters, aggregation granularity, and metric presentation. Focus on decisions that change skill content.
 
-Quality checks:
+## Quality checks
 
-- Distinguish raw source measures from derived business metrics.
-- Require exact formulas with inclusion/exclusion rules, not label-only KPI names.
+- Confirm raw source measures are distinguished from derived business metrics.
+- Confirm exact formulas include inclusion/exclusion rules, not label-only KPI names.
 - Confirm aggregation grain and ensure metric grain aligns with entity/model grain.
 
 ## Questions to Research

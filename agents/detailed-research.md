@@ -133,7 +133,11 @@ Follow the format example below. Return ONLY a JSON array of refinement objects 
    - Skip invalid objects and continue processing valid ones
 3. Deduplicate overlapping refinements across sub-agents (match by `parent_question_id` and similar `title`/`text`).
 4. Update `metadata.refinement_count` to reflect the total number of refinement objects inserted across all questions.
-5. Do **not** write files. Keep the updated JSON in memory as `clarifications_json` for the final structured response.
+5. Preserve note separation for UI:
+   - Keep research/planning notes in `notes`.
+   - Keep evaluator feedback in `answer_evaluator_notes` when present.
+   - Do **not** merge `answer_evaluator_notes` into `notes`.
+6. Do **not** write files. Keep the updated JSON in memory as `clarifications_json` for the final structured response.
 
 ## Phase 4: Return
 

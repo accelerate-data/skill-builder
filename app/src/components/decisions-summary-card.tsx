@@ -9,6 +9,7 @@ interface DecisionFrontmatter {
   conflicts_resolved: number;
   round: number;
   contradictory_inputs?: true | "revised";
+  scope_recommendation?: true;
 }
 
 export interface Decision {
@@ -46,12 +47,21 @@ function parseFrontmatter(content: string): DecisionFrontmatter {
         if (value === "true") defaults.contradictory_inputs = true;
         else if (value === "revised") defaults.contradictory_inputs = "revised";
         break;
+      case "scope_recommendation":
+        if (value === "true") defaults.scope_recommendation = true;
+        break;
     }
   }
   return defaults;
 }
 
-export function parseDecisions(content: string): Decision[] {
+interface DecisionsJsonFile {
+  version?: string;
+  metadata?: DecisionFrontmatter;
+  decisions?: Decision[];
+}
+
+function parseDecisionsFromMarkdown(content: string): Decision[] {
   const decisions: Decision[] = [];
   const body = content.replace(/^---[\s\S]*?---\n*/, "");
   // Accept either ## or ### headings (both appear in generated decisions.md files).
@@ -90,15 +100,58 @@ export function parseDecisions(content: string): Decision[] {
   return decisions;
 }
 
-/** Serialize Decision[] back to decisions.md format.
+function parseDecisionsFile(content: string): {
+  metadata: DecisionFrontmatter;
+  decisions: Decision[];
+  format: "json" | "markdown";
+} {
+  const trimmed = content.trim();
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(content) as DecisionsJsonFile;
+      const decisions = Array.isArray(parsed.decisions) ? parsed.decisions : [];
+      const metadata = parsed.metadata ?? { decision_count: decisions.length, conflicts_resolved: 0, round: 1 };
+      return { metadata, decisions, format: "json" };
+    } catch {
+      // Fall through to legacy markdown parser
+    }
+  }
+  return {
+    metadata: parseFrontmatter(content),
+    decisions: parseDecisionsFromMarkdown(content),
+    format: "markdown",
+  };
+}
+
+export function parseDecisions(content: string): Decision[] {
+  return parseDecisionsFile(content).decisions;
+}
+
+/** Serialize Decision[] back to decisions content.
  *  Upgrades `contradictory_inputs: true` → `contradictory_inputs: revised`
  *  to signal the user has reviewed and accepted the flagged decisions.
  */
-export function serializeDecisions(decisions: Decision[], rawFrontmatter: string): string {
-  const updatedFm = rawFrontmatter.replace(
-    /contradictory_inputs:\s*true/,
-    "contradictory_inputs: revised"
-  );
+export function serializeDecisions(decisions: Decision[], rawContent: string): string {
+  const parsed = parseDecisionsFile(rawContent);
+  if (parsed.format === "json") {
+    const metadata: DecisionFrontmatter = {
+      ...parsed.metadata,
+      decision_count: decisions.length,
+      conflicts_resolved: decisions.filter((d) => d.status === "conflict-resolved").length,
+    };
+    if (metadata.contradictory_inputs === true) {
+      metadata.contradictory_inputs = "revised";
+    }
+    const payload: DecisionsJsonFile = {
+      version: "1",
+      metadata,
+      decisions,
+    };
+    return `${JSON.stringify(payload, null, 2)}\n`;
+  }
+
+  const rawFrontmatter = rawContent.match(/^(---[\s\S]*?---)/)?.[1] ?? "";
+  const updatedFm = rawFrontmatter.replace(/contradictory_inputs:\s*true/, "contradictory_inputs: revised");
   const blocks = decisions.map((d) =>
     [
       `### ${d.id}: ${d.title}`,
@@ -109,11 +162,6 @@ export function serializeDecisions(decisions: Decision[], rawFrontmatter: string
     ].join("\n")
   );
   return `${updatedFm}\n\n${blocks.join("\n\n")}\n`;
-}
-
-function extractRawFrontmatter(content: string): string {
-  const match = content.match(/^(---[\s\S]*?---)/);
-  return match ? match[1] : "";
 }
 
 function formatDuration(ms: number): string {
@@ -133,17 +181,17 @@ export function DecisionsSummaryCard({
   allowEdit,
   onDecisionsChange,
 }: DecisionsSummaryCardProps) {
-  const fm = parseFrontmatter(decisionsContent);
-  const rawFrontmatter = extractRawFrontmatter(decisionsContent);
+  const parsedFile = parseDecisionsFile(decisionsContent);
+  const fm = parsedFile.metadata;
 
-  const [decisions, setDecisions] = useState<Decision[]>(() => parseDecisions(decisionsContent));
+  const [decisions, setDecisions] = useState<Decision[]>(() => parsedFile.decisions);
   const [summaryExpanded, setSummaryExpanded] = useState(true);
   const [showNeedsReviewOnly, setShowNeedsReviewOnly] = useState(false);
   // Track whether the user has made any edit this session — used to show revised banner immediately
   const [wasEdited, setWasEdited] = useState(false);
 
   useEffect(() => {
-    setDecisions(parseDecisions(decisionsContent));
+    setDecisions(parseDecisionsFile(decisionsContent).decisions);
     setWasEdited(false);
   }, [decisionsContent]);
 
@@ -163,7 +211,7 @@ export function DecisionsSummaryCard({
     const next = decisions.map((d) => (d.id === updated.id ? updated : d));
     setDecisions(next);
     setWasEdited(true);
-    onDecisionsChange?.(serializeDecisions(next, rawFrontmatter));
+    onDecisionsChange?.(serializeDecisions(next, decisionsContent));
   }
 
   return (

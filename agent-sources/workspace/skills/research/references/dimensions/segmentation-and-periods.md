@@ -12,6 +12,12 @@ Claude knows generic segmentation patterns and standard fiscal calendars. The de
 
 Research should surface: segment definitions with exact breakpoints, fiscal calendar structure, period handling rules, and snapshot cadence. Focus on decisions that change skill content.
 
+## Quality checks
+
+- Confirm segment definitions include exact breakpoint values and units (not labels only).
+- Confirm fiscal calendar mapping (including non-standard calendars) is explicit and testable.
+- Confirm period-boundary handling (proration/attribution/snapshot timing) is explicitly covered.
+
 ## Questions to Research
 
 1. What are the segmentation dimensions used in this domain (e.g., company size, ACV, geography, product line), and what are the exact breakpoint values for each?

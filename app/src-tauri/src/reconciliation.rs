@@ -349,12 +349,10 @@ pub fn preview_reconcile_on_startup(
             let workspace_root = Path::new(workspace_path).join(&name);
             let legacy_root = Path::new(skills_path).join(&name);
             let skill_root = Path::new(skills_path).join(&name);
-            let has_step0 = (workspace_root.join("context/clarifications.json").exists()
-                && workspace_root.join("context/research-plan.md").exists())
-                || (legacy_root.join("context/clarifications.json").exists()
-                    && legacy_root.join("context/research-plan.md").exists());
-            let has_step2 = workspace_root.join("context/decisions.md").exists()
-                || legacy_root.join("context/decisions.md").exists();
+            let has_step0 = workspace_root.join("context/clarifications.json").exists()
+                || legacy_root.join("context/clarifications.json").exists();
+            let has_step2 = workspace_root.join("context/decisions.json").exists()
+                || legacy_root.join("context/decisions.json").exists();
             let has_step3 = skill_root.join("SKILL.md").exists();
             let detected_step = if has_step0 && has_step2 && has_step3 {
                 3
@@ -978,7 +976,7 @@ mod tests {
         .unwrap();
         create_skill_dir(tmp.path(), "healthy-skill", "analytics");
         create_step_output(tmp.path(), "healthy-skill", 0);
-        // Step 2 output: decisions.md
+        // Step 2 output: decisions.json
         create_step_output(tmp.path(), "healthy-skill", 2);
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -1818,8 +1816,7 @@ mod tests {
 
     #[test]
     fn test_partial_output_stops_detection_and_cleans_up() {
-        // Step 0 has partial output (only 1 of 2 files) → detection returns None.
-        // Step 0 expects: context/research-plan.md + context/clarifications.json
+        // No canonical output files on disk should reset DB progress to step 0.
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
@@ -1829,21 +1826,13 @@ mod tests {
 
         create_skill_dir(tmp.path(), "my-skill", "test");
 
-        // Create only ONE of step 0's two expected files (partial output)
-        let partial_file = tmp.path().join("my-skill").join("context").join("research-plan.md");
-        std::fs::write(&partial_file, "# Partial step 0").unwrap();
-
         let result = reconcile_on_startup(&conn, workspace, workspace).unwrap();
 
-        // detect_furthest_step sees partial step 0 → cleans up → returns None
         // DB had step 3 → reset to step 0 (no output found)
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 0);
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("reset from step 3 to step 0"));
-
-        // Partial step 0 file should have been cleaned up
-        assert!(!partial_file.exists(), "partial output should be cleaned up");
     }
 
     #[test]
@@ -1914,8 +1903,8 @@ mod tests {
 
         // All step output should be deleted
         let skill_dir = tmp.path().join("my-skill");
-        // Step 0 files (research-plan.md, clarifications.json in context/)
-        let step0_file = skill_dir.join("context").join("research-plan.md");
+        // Step 0 file (clarifications.json in context/)
+        let step0_file = skill_dir.join("context").join("clarifications.json");
         assert!(!step0_file.exists(), "step 0 output should be cleaned");
         // Step 5 file
         let skill_md = skill_dir.join("SKILL.md");

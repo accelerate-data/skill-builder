@@ -42,9 +42,9 @@ Glob `references/` in `skill_output_dir` and collect all reference paths.
 
 ## Step 2 — Sub-agents
 
-Check `{context_dir}/decisions.md` frontmatter.
+Read `{context_dir}/decisions.json` metadata.
 
-If `contradictory_inputs: revised`, treat decisions as authoritative and omit `clarifications.json` from all sub-agent inputs.
+If `metadata.contradictory_inputs == "revised"`, treat decisions as authoritative and omit `clarifications.json` from all sub-agent inputs.
 
 Read three spec files in `references/` and spawn one sub-agent per spec:
 
@@ -57,7 +57,7 @@ Pass required input paths exactly as described in each spec.
 Sub-agent read policy:
 
 - Use progressive discovery for `SKILL.md` and `references/` content; do not require blanket up-front full-file ingestion.
-- Preserve current guard behavior: read `decisions.md` first and read `clarifications.json` in full unless `contradictory_inputs: revised`.
+- Preserve current guard behavior: read `decisions.json` first and read `clarifications.json` in full unless `metadata.contradictory_inputs == "revised"`.
 - Require evidence-backed completeness before each sub-agent returns (expand reads when coverage is insufficient).
 
 ## Step 3 — Consolidate and Report

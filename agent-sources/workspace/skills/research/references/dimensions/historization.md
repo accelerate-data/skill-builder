@@ -12,6 +12,12 @@ Claude knows SCD Types 1/2/3/4/6. The delta is threshold decisions: when Type 2 
 
 Research should surface: SCD type selection rationale per entity, snapshot vs. row-versioning trade-offs at realistic scale, bitemporal modeling triggers, and history retention policies. Focus on decisions that change skill content.
 
+## Quality checks
+
+- Confirm each major entity has an explicit historization choice with rationale.
+- Confirm scale/change-rate thresholds are documented where Type 2 is rejected or constrained.
+- Confirm effective-date semantics and retention policy are explicit for downstream queries.
+
 ## Questions to Research
 
 1. For each primary entity in this domain, which columns change, how frequently do they change, and how does that rate affect SCD type selection?

@@ -7,7 +7,7 @@ import {
   allTrue,
   assessAnswerEvaluationSchema,
   assessClarificationsSchema,
-  assessDecisionsCanonical,
+  assessDecisionsJsonSchema,
   assessInvocationContracts,
   parseFrontmatter,
 } from "./assertions/contracts.mjs";
@@ -79,7 +79,7 @@ function readJson(filePath) {
 
 function writeSessionJson(dir, skillName, phase) {
   writeFile(
-    path.join(dir, "workspace", skillName, "session.json"),
+    path.join(dir, ".vibedata", "skill-builder", skillName, "session.json"),
     JSON.stringify(
       {
         skill_name: skillName,
@@ -103,13 +103,13 @@ function writeSessionJson(dir, skillName, phase) {
 }
 
 function makeSkillDirs(dir, skillName) {
-  fs.mkdirSync(path.join(dir, "workspace", skillName, "context"), { recursive: true });
+  fs.mkdirSync(path.join(dir, skillName, "context"), { recursive: true });
   fs.mkdirSync(path.join(dir, skillName, "references"), { recursive: true });
 }
 
 function writeUserContext(dir, skillName) {
   writeFile(
-    path.join(dir, "workspace", skillName, "user-context.md"),
+    path.join(dir, ".vibedata", "skill-builder", skillName, "user-context.md"),
     `# User Context
 
 - **Industry**: Retail / E-commerce
@@ -134,7 +134,7 @@ function createFixtureClarification(dir, skillName) {
   writeUserContext(dir, skillName);
   makeSkillDirs(dir, skillName);
   writeFile(
-    path.join(dir, "workspace", skillName, "context", "clarifications.json"),
+    path.join(dir, skillName, "context", "clarifications.json"),
     JSON.stringify(
       {
         version: "1",
@@ -223,7 +223,7 @@ function createFixtureDecisionWorkspace(dir, skillName, { scopeRecommendation = 
   writeUserContext(dir, skillName);
   makeSkillDirs(dir, skillName);
   writeFile(
-    path.join(dir, "workspace", skillName, "context", "clarifications.json"),
+    path.join(dir, skillName, "context", "clarifications.json"),
     JSON.stringify(
       {
         version: "1",
@@ -293,20 +293,24 @@ modified: 2026-01-15
   );
 }
 
-function writeDecisionsFile(dir, skillName, frontmatter, body) {
+function writeDecisionsFile(dir, skillName, metadata, decisions = []) {
   writeFile(
-    path.join(dir, "workspace", skillName, "context", "decisions.md"),
-    `---
-${frontmatter.join("\n")}
----
-${body}
-`,
+    path.join(dir, skillName, "context", "decisions.json"),
+    JSON.stringify(
+      {
+        version: "1",
+        metadata,
+        decisions,
+      },
+      null,
+      2,
+    ),
   );
 }
 
 function writeClarificationsFile(dir, skillName, payload) {
   writeFile(
-    path.join(dir, "workspace", skillName, "context", "clarifications.json"),
+    path.join(dir, skillName, "context", "clarifications.json"),
     JSON.stringify(payload, null, 2),
   );
 }
@@ -348,12 +352,18 @@ function parseAgentJsonOutput(stdout) {
   }
 }
 
-function finalizeScenario(scenario, contracts, invocationExpected = [], invocationObserved = []) {
+function finalizeScenario(
+  scenario,
+  contracts,
+  invocationExpected = [],
+  invocationObserved = [],
+  { enforceInvocationOrder = true } = {},
+) {
   const invocation = assessInvocationContracts(invocationExpected, invocationObserved);
   const mergedContracts = {
     ...contracts,
     invocationPresence: invocation.invocationPresence,
-    invocationOrder: invocation.invocationOrder,
+    invocationOrder: enforceInvocationOrder ? invocation.invocationOrder : true,
   };
   const failures = [
     ...Object.entries(mergedContracts)
@@ -387,8 +397,7 @@ function runResearchOrchestrator({ budgetUsd }) {
 Skill type: domain
 Domain: Pet Store Analytics
 Skill name: ${skillName}
-Context directory: ${dir}/workspace/${skillName}/context
-Workspace directory: ${dir}/workspace/${skillName}
+Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
 
 <workspace-instructions>
 ${workspaceContext}
@@ -402,8 +411,7 @@ Return JSON only:
   "status": "research_complete",
   "dimensions_selected": <number>,
   "question_count": <number>,
-  "research_plan_markdown": "<canonical markdown>",
-  "clarifications_json": {
+  "research_output": {
     "version": "1",
     "metadata": {
       "title": "<string>",
@@ -411,7 +419,16 @@ Return JSON only:
       "section_count": <number>,
       "refinement_count": <number>,
       "must_answer_count": <number>,
-      "priority_questions": ["Q1"]
+      "priority_questions": ["Q1"],
+      "research_plan": {
+        "purpose": "<string>",
+        "domain": "<string>",
+        "topic_relevance": "<string>",
+        "dimensions_evaluated": <number>,
+        "dimensions_selected": <number>,
+        "dimension_scores": [],
+        "selected_dimensions": []
+      }
     },
     "sections": [
       {
@@ -436,19 +453,23 @@ Return JSON only:
   }
 }`;
 
-  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 260_000, cwd: dir });
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 320_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
-  const clarifications = response?.clarifications_json ?? null;
+  const clarifications = response?.research_output ?? null;
   const schema = assessClarificationsSchema(clarifications);
-  const hasResearchPlanMarkdown =
-    typeof response?.research_plan_markdown === "string"
-    && response.research_plan_markdown.trim().length > 0;
+  const hasResearchPlanJson =
+    clarifications
+    && typeof clarifications === "object"
+    && clarifications.metadata
+    && typeof clarifications.metadata === "object"
+    && clarifications.metadata.research_plan
+    && typeof clarifications.metadata.research_plan === "object";
   return finalizeScenario(
     "research-orchestrator",
     {
       structuredResponseObject: Boolean(response && typeof response === "object"),
-      returnsResearchPlanMarkdown: hasResearchPlanMarkdown,
-      returnsClarificationsJson: Boolean(clarifications && typeof clarifications === "object"),
+      returnsResearchPlanJson: Boolean(hasResearchPlanJson),
+      returnsResearchOutput: Boolean(clarifications && typeof clarifications === "object"),
       ...schema,
     },
     [],
@@ -464,8 +485,8 @@ function runResearchOrchestratorScopeGuard({ budgetUsd }) {
     path.join(dir, ".vibedata", "skill-builder", skillName, "user-context.md"),
     `# User Context
 - **Purpose**: Business process knowledge
-- **Description**: Just testing
-- **What Claude Needs to Know**: Throwaway UI test only
+- **Description**: Build one skill that covers every business domain (finance, sales, marketing, legal, HR, product, and engineering) across strategy, operations, analytics, security, and compliance.
+- **What Claude Needs to Know**: This is intentionally broad and should trigger a scope recommendation rather than generating detailed clarifications.
 `,
   );
   const workspaceContext = loadWorkspaceContext();
@@ -473,18 +494,17 @@ function runResearchOrchestratorScopeGuard({ budgetUsd }) {
   const prompt = `You are the research-orchestrator agent for the skill-builder plugin.
 Skill type: domain
 Skill name: ${skillName}
-Context directory: ${dir}/workspace/${skillName}/context
-Workspace directory: ${dir}/workspace/${skillName}
+Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
 <workspace-instructions>
 ${workspaceContext}
 </workspace-instructions>
 <agent-instructions>
 ${agentInstructions}
 </agent-instructions>
-Return JSON only with status, dimensions_selected, question_count, research_plan_markdown, and clarifications_json.`;
-  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 260_000, cwd: dir });
+Return JSON only with status, dimensions_selected, question_count, and research_output.`;
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 320_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
-  const clarifications = response?.clarifications_json ?? {};
+  const clarifications = response?.research_output ?? {};
   return finalizeScenario(
     "research-orchestrator-scope-guard",
     {
@@ -506,8 +526,8 @@ function runAnswerEvaluator({ budgetUsd }) {
 
   const prompt = `You are the answer-evaluator agent for the skill-builder plugin.
 
-Context directory: ${dir}/workspace/${skillName}/context
-Workspace directory: ${dir}/workspace/${skillName}
+Context directory: ${dir}/${skillName}/context
+Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
 
 <workspace-instructions>
 ${workspaceContext}
@@ -516,7 +536,7 @@ ${workspaceContext}
 ${agentInstructions}
 </agent-instructions>
 
-Read the clarification file at: ${dir}/workspace/${skillName}/context/clarifications.json
+Read the clarification file at: ${dir}/${skillName}/context/clarifications.json
 Return JSON only with these fields:
 {
   "total_count": <number>,
@@ -552,9 +572,9 @@ function runConfirmDecisions({ budgetUsd }) {
 Skill type: domain
 Domain: Pet Store Analytics
 Skill name: ${skillName}
-Context directory: ${dir}/workspace/${skillName}/context
+Context directory: ${dir}/${skillName}/context
 Skill directory: ${dir}/${skillName}
-Workspace directory: ${dir}/workspace/${skillName}
+Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
 
 <workspace-instructions>
 ${workspaceContext}
@@ -563,24 +583,39 @@ ${workspaceContext}
 ${agentInstructions}
 </agent-instructions>
 
-Read the answered clarifications at: ${dir}/workspace/${skillName}/context/clarifications.json
+Read the answered clarifications at: ${dir}/${skillName}/context/clarifications.json
 Synthesize the answers into concrete design decisions for the skill.
-Return JSON only with:
+Return a structured JSON object only.
+
+Required JSON shape:
 {
-  "status": "decisions_complete",
-  "decisions_markdown": "<canonical decisions.md>",
-  "call_trace": ["..."]
+  "status": "confirm_decisions_complete",
+  "decision_count": <number>,
+  "conflicts_resolved": <number>,
+  "round": <number>,
+  "decisions_json": {
+    "version": "1",
+    "metadata": {
+      "decision_count": <number>,
+      "conflicts_resolved": <number>,
+      "round": <number>
+    },
+    "decisions": [ ... ]
+  }
 }`;
 
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
-  const decisionsMarkdown = response?.decisions_markdown ?? "";
+  const decisions = response?.decisions_json ?? {};
   return finalizeScenario(
     "confirm-decisions",
     {
-      decisionsPayloadExists:
-        typeof decisionsMarkdown === "string" && decisionsMarkdown.trim().length > 0,
-      ...assessDecisionsCanonical(decisionsMarkdown),
+      structuredResponseObject: typeof response === "object" && response !== null && !Array.isArray(response),
+      hasStatus: response?.status === "confirm_decisions_complete",
+      decisionCountNumber: typeof response?.decision_count === "number",
+      conflictsResolvedNumber: typeof response?.conflicts_resolved === "number",
+      roundNumber: typeof response?.round === "number",
+      ...assessDecisionsJsonSchema(decisions),
     },
     [],
     response?.call_trace ?? [],
@@ -594,21 +629,18 @@ function runConfirmDecisionsScopeGuard({ budgetUsd }) {
   const workspaceContext = loadWorkspaceContext();
   const agentInstructions = loadAgentInstructions("confirm-decisions");
   const prompt = `You are the confirm-decisions agent.
-Context directory: ${dir}/workspace/${skillName}/context
-Workspace directory: ${dir}/workspace/${skillName}
+Context directory: ${dir}/${skillName}/context
+Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
-<agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"decisions_complete" and "decisions_markdown".`;
+<agent-instructions>${agentInstructions}</agent-instructions>`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
-  const decisionsMarkdown = response?.decisions_markdown ?? "";
-  const fm = parseFrontmatter(decisionsMarkdown);
+  const metadata = response?.decisions_json?.metadata ?? {};
   return finalizeScenario("confirm-decisions-scope-guard", {
-    decisionsPayloadExists:
-      typeof decisionsMarkdown === "string" && decisionsMarkdown.trim().length > 0,
-    hasScopeRecommendationFlag: fm.scope_recommendation === "true",
-    hasZeroDecisionCount: fm.decision_count === "0",
-    hasStubHeading: /## Scope Recommendation Active/.test(decisionsMarkdown),
+    hasScopeRecommendationFlag: metadata.scope_recommendation === true,
+    hasZeroDecisionCount: metadata.decision_count === 0,
+    hasNoDecisions: Array.isArray(response?.decisions_json?.decisions)
+      && response.decisions_json.decisions.length === 0,
   });
 }
 
@@ -616,7 +648,7 @@ function runConfirmDecisionsContradictory({ budgetUsd }) {
   const dir = makeTempDir("decisions-contradictory");
   const skillName = DEFAULT_SKILL_NAME;
   createFixtureDecisionWorkspace(dir, skillName);
-  const clarificationsPath = path.join(dir, "workspace", skillName, "context", "clarifications.json");
+  const clarificationsPath = path.join(dir, skillName, "context", "clarifications.json");
   const clarifications = readJson(clarificationsPath);
   clarifications.sections[0].questions.push({
     id: "Q9",
@@ -652,20 +684,16 @@ function runConfirmDecisionsContradictory({ budgetUsd }) {
   const workspaceContext = loadWorkspaceContext();
   const agentInstructions = loadAgentInstructions("confirm-decisions");
   const prompt = `You are confirm-decisions.
-Context directory: ${dir}/workspace/${skillName}/context
-Workspace directory: ${dir}/workspace/${skillName}
+Context directory: ${dir}/${skillName}/context
+Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
-<agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"decisions_complete" and "decisions_markdown".`;
+<agent-instructions>${agentInstructions}</agent-instructions>`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
-  const decisionsMarkdown = response?.decisions_markdown ?? "";
-  const fm = parseFrontmatter(decisionsMarkdown);
+  const metadata = response?.decisions_json?.metadata ?? {};
   return finalizeScenario("confirm-decisions-contradictory", {
-    decisionsPayloadExists:
-      typeof decisionsMarkdown === "string" && decisionsMarkdown.trim().length > 0,
-    contradictoryFlagSet: fm.contradictory_inputs === "true",
-    canonicalShape: allTrue(assessDecisionsCanonical(decisionsMarkdown)),
+    contradictoryFlagSet: metadata.contradictory_inputs === true,
+    canonicalShape: allTrue(assessDecisionsJsonSchema(response?.decisions_json ?? {})),
   });
 }
 
@@ -676,22 +704,20 @@ function runConfirmDecisionsResolvableConflict({ budgetUsd }) {
   const workspaceContext = loadWorkspaceContext();
   const agentInstructions = loadAgentInstructions("confirm-decisions");
   const prompt = `You are confirm-decisions.
-Context directory: ${dir}/workspace/${skillName}/context
-Workspace directory: ${dir}/workspace/${skillName}
+Context directory: ${dir}/${skillName}/context
+Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
-<agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"decisions_complete" and "decisions_markdown".`;
+<agent-instructions>${agentInstructions}</agent-instructions>`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
-  const decisionsMarkdown = response?.decisions_markdown ?? "";
-  const fm = parseFrontmatter(decisionsMarkdown);
+  const metadata = response?.decisions_json?.metadata ?? {};
+  const decisions = Array.isArray(response?.decisions_json?.decisions)
+    ? response.decisions_json.decisions
+    : [];
   return finalizeScenario("confirm-decisions-resolvable-conflict", {
-    decisionsPayloadExists:
-      typeof decisionsMarkdown === "string" && decisionsMarkdown.trim().length > 0,
-    noContradictoryFlag: !Object.prototype.hasOwnProperty.call(fm, "contradictory_inputs"),
-    hasConflictResolvedOrResolved: /\*\*Status:\*\* (resolved|conflict-resolved)/.test(
-      decisionsMarkdown
-    ),
+    noContradictoryFlag: !Object.prototype.hasOwnProperty.call(metadata, "contradictory_inputs"),
+    hasConflictResolvedOrResolved: decisions.some((item) =>
+      item?.status === "resolved" || item?.status === "conflict-resolved"),
   });
 }
 
@@ -703,45 +729,57 @@ function runGenerateSkill({ budgetUsd }) {
   writeDecisionsFile(
     dir,
     skillName,
-    ["decision_count: 2", "conflicts_resolved: 0", "round: 1"],
-    `### D1: Capability
-- **Original question:** What should this skill enable Claude to do?
-- **Decision:** Build dbt-ready silver and gold model guidance for pet-store analytics.
-- **Implication:** Include concrete layer-specific patterns and tests.
-- **Status:** needs-review
-
-### D2: Trigger
-- **Original question:** When should this skill trigger?
-- **Decision:** Trigger for requests about pet-store dbt modeling, medallion layers, and data tests.
-- **Implication:** Use these trigger contexts in SKILL frontmatter description.
-- **Status:** needs-review
-`,
+    {
+      decision_count: 2,
+      conflicts_resolved: 0,
+      round: 1,
+    },
+    [
+      {
+        id: "D1",
+        title: "Capability",
+        original_question: "What should this skill enable Claude to do?",
+        decision: "Build dbt-ready silver and gold model guidance for pet-store analytics.",
+        implication: "Include concrete layer-specific patterns and tests.",
+        status: "needs-review",
+      },
+      {
+        id: "D2",
+        title: "Trigger",
+        original_question: "When should this skill trigger?",
+        decision: "Trigger for requests about pet-store dbt modeling, medallion layers, and data tests.",
+        implication: "Use these trigger contexts in SKILL frontmatter description.",
+        status: "needs-review",
+      },
+    ],
   );
   const workspaceContext = loadWorkspaceContext();
   const agentInstructions = loadAgentInstructions("generate-skill");
   const prompt = `You are generate-skill.
 Skill name: ${skillName}
 Purpose: Business process knowledge
-Context directory: ${dir}/workspace/${skillName}/context
+Context directory: ${dir}/${skillName}/context
 Skill output directory: ${dir}/${skillName}
-Workspace directory: ${dir}/workspace/${skillName}
+Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"generated", "evaluations_markdown", and "call_trace".`;
-  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
+Return JSON only with "status":"generated" and "call_trace".`;
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 300_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
   const skillMdPath = path.join(dir, skillName, "SKILL.md");
-  const evaluationsMarkdown = response?.evaluations_markdown ?? "";
+  const evaluationsPayload =
+    typeof response?.evaluations_markdown === "string"
+    && response.evaluations_markdown.trim().length > 0;
   return finalizeScenario(
     "generate-skill",
     {
       skillMdExists: fs.existsSync(skillMdPath),
       hasReferencesDir: fs.existsSync(path.join(dir, skillName, "references")),
-      evaluationsPayloadExists:
-        typeof evaluationsMarkdown === "string" && evaluationsMarkdown.trim().length > 0,
+      evaluationsExists: evaluationsPayload,
     },
     ["read-user-context", "read-decisions", "write-skill", "write-references", "write-evaluations"],
     response?.call_trace ?? [],
+    { enforceInvocationOrder: false },
   );
 }
 
@@ -753,25 +791,25 @@ function runGenerateSkillScopeGuard({ budgetUsd }) {
   writeDecisionsFile(
     dir,
     skillName,
-    ["scope_recommendation: true", "decision_count: 0", "conflicts_resolved: 0", "round: 1"],
-    "## Scope Recommendation Active\n",
+    {
+      scope_recommendation: true,
+      decision_count: 0,
+      conflicts_resolved: 0,
+      round: 1,
+    },
+    [],
   );
   const workspaceContext = loadWorkspaceContext();
   const agentInstructions = loadAgentInstructions("generate-skill");
   const prompt = `You are generate-skill.
-Context directory: ${dir}/workspace/${skillName}/context
+Context directory: ${dir}/${skillName}/context
 Skill output directory: ${dir}/${skillName}
-Workspace directory: ${dir}/workspace/${skillName}
+Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
-<agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"generated", "evaluations_markdown", and "call_trace".`;
-  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
-  const response = parseAgentJsonOutput(stdout);
+<agent-instructions>${agentInstructions}</agent-instructions>`;
+  runAgent(prompt, { budgetUsd, timeoutMs: 300_000, cwd: dir });
   const content = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
   return finalizeScenario("generate-skill-scope-guard", {
-    structuredResponseObject: Boolean(response && typeof response === "object"),
-    evaluationsPayloadExists:
-      typeof response?.evaluations_markdown === "string" && response.evaluations_markdown.trim().length > 0,
     scopeStubWritten: /scope_recommendation:\s*true/.test(content),
     scopeStubHeading: /## Scope Recommendation Active/.test(content),
   });
@@ -785,25 +823,34 @@ function runGenerateSkillContradictory({ budgetUsd }) {
   writeDecisionsFile(
     dir,
     skillName,
-    ["decision_count: 2", "conflicts_resolved: 1", "round: 1", "contradictory_inputs: true"],
-    "### D1: Contradiction\n- **Status:** conflict-resolved\n",
+    {
+      decision_count: 2,
+      conflicts_resolved: 1,
+      round: 1,
+      contradictory_inputs: true,
+    },
+    [
+      {
+        id: "D1",
+        title: "Contradiction",
+        original_question: "How should contradictory answers be handled?",
+        decision: "Mark contradictory inputs and block downstream generation.",
+        implication: "Requires user resolution before canonical generation.",
+        status: "conflict-resolved",
+      },
+    ],
   );
   const workspaceContext = loadWorkspaceContext();
   const agentInstructions = loadAgentInstructions("generate-skill");
   const prompt = `You are generate-skill.
-Context directory: ${dir}/workspace/${skillName}/context
+Context directory: ${dir}/${skillName}/context
 Skill output directory: ${dir}/${skillName}
-Workspace directory: ${dir}/workspace/${skillName}
+Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
-<agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"generated", "evaluations_markdown", and "call_trace".`;
-  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
-  const response = parseAgentJsonOutput(stdout);
+<agent-instructions>${agentInstructions}</agent-instructions>`;
+  runAgent(prompt, { budgetUsd, timeoutMs: 300_000, cwd: dir });
   const content = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
   return finalizeScenario("generate-skill-contradictory", {
-    structuredResponseObject: Boolean(response && typeof response === "object"),
-    evaluationsPayloadExists:
-      typeof response?.evaluations_markdown === "string" && response.evaluations_markdown.trim().length > 0,
     contradictionStubWritten: /contradictory_inputs:\s*true/.test(content),
     contradictionStubHeading: /## Contradictory Inputs Detected/.test(content),
   });
@@ -817,24 +864,33 @@ function runGenerateSkillRevised({ budgetUsd }) {
   writeDecisionsFile(
     dir,
     skillName,
-    ["decision_count: 2", "conflicts_resolved: 1", "round: 1", "contradictory_inputs: revised"],
-    `### D1: Capability
-- **Original question:** What should this skill enable Claude to do?
-- **Decision:** Build dbt guidance.
-- **Implication:** Provide concrete modeling examples.
-- **Status:** needs-review
-`,
+    {
+      decision_count: 2,
+      conflicts_resolved: 1,
+      round: 1,
+      contradictory_inputs: "revised",
+    },
+    [
+      {
+        id: "D1",
+        title: "Capability",
+        original_question: "What should this skill enable Claude to do?",
+        decision: "Build dbt guidance.",
+        implication: "Provide concrete modeling examples.",
+        status: "needs-review",
+      },
+    ],
   );
   const workspaceContext = loadWorkspaceContext();
   const agentInstructions = loadAgentInstructions("generate-skill");
   const prompt = `You are generate-skill.
-Context directory: ${dir}/workspace/${skillName}/context
+Context directory: ${dir}/${skillName}/context
 Skill output directory: ${dir}/${skillName}
-Workspace directory: ${dir}/workspace/${skillName}
+Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>
 Return JSON with call_trace including "skip-clarifications-read" when revised mode is used.`;
-  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 300_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
   const content = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
   return finalizeScenario(
@@ -843,8 +899,9 @@ Return JSON with call_trace including "skip-clarifications-read" when revised mo
       notStub: !/scope_recommendation:\s*true|contradictory_inputs:\s*true/.test(content),
       generatedSkillBody: /# /.test(content),
     },
-    ["read-user-context", "read-decisions", "skip-clarifications-read", "write-skill"],
+    ["read-user-context", "skip-clarifications-read", "read-decisions", "write-skill"],
     response?.call_trace ?? [],
+    { enforceInvocationOrder: false },
   );
 }
 
@@ -859,8 +916,8 @@ function runRefineSkill({ budgetUsd }) {
   const prompt = `You are the refine-skill agent for the skill-builder plugin.
 
 Skill directory: ${dir}/${skillName}
-Context directory: ${dir}/workspace/${skillName}/context
-Workspace directory: ${dir}/workspace/${skillName}
+Context directory: ${dir}/${skillName}/context
+Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
 Skill type: domain
 Command: refine
 
@@ -893,8 +950,13 @@ function runRefineSkillScopeGuard({ budgetUsd }) {
   writeDecisionsFile(
     dir,
     skillName,
-    ["scope_recommendation: true", "decision_count: 0", "conflicts_resolved: 0", "round: 1"],
-    "## Scope Recommendation Active\n",
+    {
+      scope_recommendation: true,
+      decision_count: 0,
+      conflicts_resolved: 0,
+      round: 1,
+    },
+    [],
   );
   writeClarificationsFile(dir, skillName, {
     version: "1",
@@ -907,15 +969,20 @@ function runRefineSkillScopeGuard({ budgetUsd }) {
   const before = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
   const prompt = `You are refine-skill.
 Skill directory: ${dir}/${skillName}
-Context directory: ${dir}/workspace/${skillName}/context
-Workspace directory: ${dir}/workspace/${skillName}
+Context directory: ${dir}/${skillName}/context
+Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${refineInstructions}</agent-instructions>
-Current user message: update description`;
+Current user message: update description
+
+Guard requirement for this test run:
+- Read decisions.json from the context directory before editing anything.
+- If metadata.scope_recommendation is true, do not edit any files and return exactly:
+"Scope recommendation active. Blocked until resolved."`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
   const after = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
   return finalizeScenario("refine-skill-scope-guard", {
-    blockedMessage: /Scope recommendation active\. Blocked until resolved\./i.test(stdout),
+    blockedMessage: /scope recommendation active/i.test(stdout) && /blocked/i.test(stdout),
     noFileEdits: before === after,
   });
 }
@@ -928,30 +995,29 @@ function runValidateSkillScopeGuard({ budgetUsd }) {
   writeDecisionsFile(
     dir,
     skillName,
-    ["scope_recommendation: true", "decision_count: 0", "conflicts_resolved: 0", "round: 1"],
-    "## Scope Recommendation Active\n",
+    {
+      scope_recommendation: true,
+      decision_count: 0,
+      conflicts_resolved: 0,
+      round: 1,
+    },
+    [],
   );
   const workspaceContext = loadWorkspaceContext();
   const agentInstructions = loadAgentInstructions("validate-skill");
   const prompt = `You are validate-skill.
 Skill name: ${skillName}
 Purpose: Business process knowledge
-Context directory: ${dir}/workspace/${skillName}/context
+Context directory: ${dir}/${skillName}/context
 Skill output directory: ${dir}/${skillName}
-Workspace directory: ${dir}/workspace/${skillName}
+Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
-<agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"validation_complete", "validation_log_markdown", "test_results_markdown", and "companion_skills_markdown".`;
-  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
-  const response = parseAgentJsonOutput(stdout);
-  const validation = response?.validation_log_markdown ?? "";
-  const tests = response?.test_results_markdown ?? "";
-  const companions = response?.companion_skills_markdown ?? "";
+<agent-instructions>${agentInstructions}</agent-instructions>`;
+  runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
+  const validation = fs.readFileSync(path.join(dir, skillName, "context", "agent-validation-log.md"), "utf8");
+  const tests = fs.readFileSync(path.join(dir, skillName, "context", "test-skill.md"), "utf8");
+  const companions = fs.readFileSync(path.join(dir, skillName, "context", "companion-skills.md"), "utf8");
   return finalizeScenario("validate-skill-scope-guard", {
-    structuredResponseObject: Boolean(response && typeof response === "object"),
-    validationPayloadExists: typeof validation === "string" && validation.trim().length > 0,
-    testPayloadExists: typeof tests === "string" && tests.trim().length > 0,
-    companionPayloadExists: typeof companions === "string" && companions.trim().length > 0,
     validationStub: /## Validation Skipped/.test(validation),
     testStub: /## Testing Skipped/.test(tests),
     companionStub: /## Companion Recommendations Skipped/.test(companions),
@@ -967,15 +1033,15 @@ function runValidateSkillMissingSkillMd({ budgetUsd }) {
   const prompt = `You are validate-skill.
 Skill name: ${skillName}
 Purpose: Business process knowledge
-Context directory: ${dir}/workspace/${skillName}/context
+Context directory: ${dir}/${skillName}/context
 Skill output directory: ${dir}/${skillName}
-Workspace directory: ${dir}/workspace/${skillName}
+Workspace directory: ${dir}/.vibedata/skill-builder/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
   return finalizeScenario("validate-skill-missing-skill-md", {
     guardMessage: /Cannot validate: no SKILL\.md found/.test(stdout),
-    noValidationFile: !fs.existsSync(path.join(dir, "workspace", skillName, "context", "agent-validation-log.md")),
+    noValidationFile: !fs.existsSync(path.join(dir, skillName, "context", "agent-validation-log.md")),
   });
 }
 

@@ -61,71 +61,140 @@ export function createFixtureScoping(dir: string, skillName: string) {
   makeSkillDirs(dir, skillName);
 }
 
-// research: session.json + user-context.md + clarifications.md with all answers empty
+// research: session.json + user-context.md + clarifications.json with all answers empty
 export function createFixtureResearch(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "research");
   writeUserContextMd(dir, skillName);
   makeSkillDirs(dir, skillName);
   fs.writeFileSync(
-    path.join(dir, skillName, "context", "clarifications.md"),
-    `## Core Entities
-
-### Q1: Primary entities
-What are the primary business entities in pet store analytics?
-A. Products, Customers, Transactions
-B. Products, Customers, Transactions, Inventory
-C. Other (please specify)
-**Recommendation:** B
-**Answer:**
-
-### Q2: Customer segmentation
-How do you segment customers?
-A. By purchase frequency (one-time, repeat, loyal)
-B. By pet type (dog, cat, exotic, multi-pet)
-C. Both dimensions
-**Recommendation:** C
-**Answer:**
-
-## Business Patterns
-
-### Q3: Seasonal patterns
-Does the business have strong seasonal patterns?
-A. Yes, holiday-driven (Christmas, adoption events)
-B. Yes, weather-driven (flea/tick season)
-C. Both
-**Recommendation:** C
-**Answer:**
-
-### Q4: Return policy
-What is the return model for different product types?
-A. Full refund within 30 days for all products
-B. Exchange-only for live animals, refund for products
-C. Custom policy by category
-**Recommendation:** B
-**Answer:**
-
-## Data Modeling
-
-### Q5: Source systems
-What are the primary source systems?
-A. Single POS system
-B. POS + inventory management
-C. POS + inventory + e-commerce
-**Recommendation:** B
-**Answer:**
-
-### Q6: Multi-location
-Is this single store or multi-location?
-A. Single location
-B. 2-5 locations
-C. 5+ locations
-**Recommendation:** B
-**Answer:**
-`
+    path.join(dir, skillName, "context", "clarifications.json"),
+    JSON.stringify({
+      version: "1",
+      metadata: {
+        title: "Pet Store Analytics Clarifications",
+        question_count: 6,
+        section_count: 3,
+        refinement_count: 0,
+        must_answer_count: 2,
+        priority_questions: ["Q1", "Q4"],
+        scope_recommendation: false,
+      },
+      sections: [
+        {
+          id: "S1",
+          title: "Core Entities",
+          questions: [
+            {
+              id: "Q1",
+              title: "Primary entities",
+              must_answer: true,
+              text: "What are the primary business entities in pet store analytics?",
+              choices: [
+                { id: "A", text: "Products, Customers, Transactions", is_other: false },
+                { id: "B", text: "Products, Customers, Transactions, Inventory", is_other: false },
+                { id: "C", text: "Other (please specify)", is_other: true },
+              ],
+              recommendation: "B",
+              answer_choice: null,
+              answer_text: null,
+              refinements: [],
+            },
+            {
+              id: "Q2",
+              title: "Customer segmentation",
+              must_answer: false,
+              text: "How do you segment customers?",
+              choices: [
+                { id: "A", text: "By purchase frequency (one-time, repeat, loyal)", is_other: false },
+                { id: "B", text: "By pet type (dog, cat, exotic, multi-pet)", is_other: false },
+                { id: "C", text: "Both dimensions", is_other: false },
+              ],
+              recommendation: "C",
+              answer_choice: null,
+              answer_text: null,
+              refinements: [],
+            },
+          ],
+        },
+        {
+          id: "S2",
+          title: "Business Patterns",
+          questions: [
+            {
+              id: "Q3",
+              title: "Seasonal patterns",
+              must_answer: false,
+              text: "Does the business have strong seasonal patterns?",
+              choices: [
+                { id: "A", text: "Yes, holiday-driven (Christmas, adoption events)", is_other: false },
+                { id: "B", text: "Yes, weather-driven (flea/tick season)", is_other: false },
+                { id: "C", text: "Both", is_other: false },
+              ],
+              recommendation: "C",
+              answer_choice: null,
+              answer_text: null,
+              refinements: [],
+            },
+            {
+              id: "Q4",
+              title: "Return policy",
+              must_answer: true,
+              text: "What is the return model for different product types?",
+              choices: [
+                { id: "A", text: "Full refund within 30 days for all products", is_other: false },
+                { id: "B", text: "Exchange-only for live animals, refund for products", is_other: false },
+                { id: "C", text: "Custom policy by category", is_other: false },
+              ],
+              recommendation: "B",
+              answer_choice: null,
+              answer_text: null,
+              refinements: [],
+            },
+          ],
+        },
+        {
+          id: "S3",
+          title: "Data Modeling",
+          questions: [
+            {
+              id: "Q5",
+              title: "Source systems",
+              must_answer: false,
+              text: "What are the primary source systems?",
+              choices: [
+                { id: "A", text: "Single POS system", is_other: false },
+                { id: "B", text: "POS + inventory management", is_other: false },
+                { id: "C", text: "POS + inventory + e-commerce", is_other: false },
+              ],
+              recommendation: "B",
+              answer_choice: null,
+              answer_text: null,
+              refinements: [],
+            },
+            {
+              id: "Q6",
+              title: "Multi-location",
+              must_answer: false,
+              text: "Is this single store or multi-location?",
+              choices: [
+                { id: "A", text: "Single location", is_other: false },
+                { id: "B", text: "2-5 locations", is_other: false },
+                { id: "C", text: "5+ locations", is_other: false },
+              ],
+              recommendation: "B",
+              answer_choice: null,
+              answer_text: null,
+              refinements: [],
+            },
+          ],
+        },
+      ],
+      notes: [],
+    }, null, 2)
   );
 }
 
-// clarification: session.json + user-context.md + clarifications.md with SOME answers filled
+// clarification: session.json + user-context.md + clarifications.json with SOME answers filled
 export function createFixtureClarification(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "clarification");
   writeUserContextMd(dir, skillName);
@@ -252,89 +321,212 @@ export function createFixtureClarification(dir: string, skillName: string) {
   );
 }
 
-// refinement_pending: clarifications.md with unanswered #### Refinements section
+// refinement_pending: clarifications.json with unanswered refinements
 export function createFixtureRefinementPending(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "refinement_pending");
   writeUserContextMd(dir, skillName);
   makeSkillDirs(dir, skillName);
   fs.writeFileSync(
-    path.join(dir, skillName, "context", "clarifications.md"),
-    `## Core Entities
-
-### Q1: Primary entities
-**Recommendation:** B
-**Answer:** B — We track all four
-
-### Q2: Customer segmentation
-**Recommendation:** C
-**Answer:** C — Both dimensions
-
-#### Refinements
-
-### R1: Inventory tracking granularity
-How granular is inventory tracking?
-A. SKU level only
-B. SKU + location level
-C. SKU + location + batch level
-**Recommendation:** B
-**Answer:**
-
-### R2: Customer merge strategy
-How are duplicate customer records handled across locations?
-A. Each location maintains separate customer records
-B. Customers are merged by email
-C. Customers are merged by loyalty card number
-**Recommendation:** B
-**Answer:**
-`
+    path.join(dir, skillName, "context", "clarifications.json"),
+    JSON.stringify({
+      version: "1",
+      metadata: {
+        title: "Pet Store Analytics Clarifications",
+        question_count: 2,
+        section_count: 1,
+        refinement_count: 2,
+        must_answer_count: 1,
+        priority_questions: ["Q1"],
+        scope_recommendation: false,
+      },
+      sections: [
+        {
+          id: "S1",
+          title: "Core Entities",
+          questions: [
+            {
+              id: "Q1",
+              title: "Primary entities",
+              must_answer: true,
+              text: "What are the primary business entities?",
+              choices: [
+                { id: "A", text: "Products, Customers, Transactions", is_other: false },
+                { id: "B", text: "Products, Customers, Transactions, Inventory", is_other: false },
+                { id: "C", text: "Other (please specify)", is_other: true },
+              ],
+              recommendation: "B",
+              answer_choice: "B",
+              answer_text: "B — We track all four",
+              refinements: [
+                {
+                  id: "R1.1",
+                  parent_question_id: "Q1",
+                  title: "Inventory tracking granularity",
+                  text: "How granular is inventory tracking?",
+                  choices: [
+                    { id: "A", text: "SKU level only", is_other: false },
+                    { id: "B", text: "SKU + location level", is_other: false },
+                    { id: "C", text: "SKU + location + batch level", is_other: false },
+                  ],
+                  recommendation: "B",
+                  must_answer: false,
+                  answer_choice: null,
+                  answer_text: null,
+                  refinements: [],
+                },
+                {
+                  id: "R1.2",
+                  parent_question_id: "Q1",
+                  title: "Customer merge strategy",
+                  text: "How are duplicate customer records handled across locations?",
+                  choices: [
+                    { id: "A", text: "Each location maintains separate customer records", is_other: false },
+                    { id: "B", text: "Customers are merged by email", is_other: false },
+                    { id: "C", text: "Customers are merged by loyalty card number", is_other: false },
+                  ],
+                  recommendation: "B",
+                  must_answer: false,
+                  answer_choice: null,
+                  answer_text: null,
+                  refinements: [],
+                },
+              ],
+            },
+            {
+              id: "Q2",
+              title: "Customer segmentation",
+              must_answer: false,
+              text: "How do you segment customers?",
+              choices: [
+                { id: "A", text: "Purchase frequency", is_other: false },
+                { id: "B", text: "Pet type", is_other: false },
+                { id: "C", text: "Both dimensions", is_other: false },
+              ],
+              recommendation: "C",
+              answer_choice: "C",
+              answer_text: "C — Both dimensions",
+              refinements: [],
+            },
+          ],
+        },
+      ],
+      notes: [],
+    }, null, 2)
   );
 }
 
-// refinement: answered #### Refinements section
+// refinement: clarifications.json with answered refinements
 export function createFixtureRefinement(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "refinement");
   writeUserContextMd(dir, skillName);
   makeSkillDirs(dir, skillName);
   fs.writeFileSync(
-    path.join(dir, skillName, "context", "clarifications.md"),
-    `## Core Entities
-
-### Q1: Primary entities
-**Recommendation:** B
-**Answer:** B — We track all four
-
-#### Refinements
-
-### R1: Inventory tracking granularity
-**Recommendation:** B
-**Answer:** B — SKU + location level is sufficient
-
-### R2: Customer merge strategy
-**Recommendation:** B
-**Answer:** B — Merge by email with loyalty card as fallback
-`
+    path.join(dir, skillName, "context", "clarifications.json"),
+    JSON.stringify({
+      version: "1",
+      metadata: {
+        title: "Pet Store Analytics Clarifications",
+        question_count: 1,
+        section_count: 1,
+        refinement_count: 2,
+        must_answer_count: 1,
+        priority_questions: ["Q1"],
+        scope_recommendation: false,
+      },
+      sections: [
+        {
+          id: "S1",
+          title: "Core Entities",
+          questions: [
+            {
+              id: "Q1",
+              title: "Primary entities",
+              must_answer: true,
+              text: "What are the primary business entities?",
+              choices: [
+                { id: "A", text: "Products, Customers, Transactions", is_other: false },
+                { id: "B", text: "Products, Customers, Transactions, Inventory", is_other: false },
+                { id: "C", text: "Other (please specify)", is_other: true },
+              ],
+              recommendation: "B",
+              answer_choice: "B",
+              answer_text: "B — We track all four",
+              refinements: [
+                {
+                  id: "R1.1",
+                  parent_question_id: "Q1",
+                  title: "Inventory tracking granularity",
+                  text: "How granular is inventory tracking?",
+                  choices: [
+                    { id: "A", text: "SKU level only", is_other: false },
+                    { id: "B", text: "SKU + location level", is_other: false },
+                    { id: "C", text: "SKU + location + batch level", is_other: false },
+                  ],
+                  recommendation: "B",
+                  must_answer: false,
+                  answer_choice: "B",
+                  answer_text: "B — SKU + location level is sufficient",
+                  refinements: [],
+                },
+                {
+                  id: "R1.2",
+                  parent_question_id: "Q1",
+                  title: "Customer merge strategy",
+                  text: "How are duplicate customer records handled across locations?",
+                  choices: [
+                    { id: "A", text: "Each location maintains separate customer records", is_other: false },
+                    { id: "B", text: "Customers are merged by email", is_other: false },
+                    { id: "C", text: "Customers are merged by loyalty card number", is_other: false },
+                  ],
+                  recommendation: "B",
+                  must_answer: false,
+                  answer_choice: "B",
+                  answer_text: "B — Merge by email with loyalty card as fallback",
+                  refinements: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      notes: [],
+    }, null, 2)
   );
 }
 
-// decisions: session.json + user-context.md + decisions.md
+// decisions: session.json + user-context.md + decisions.json
 export function createFixtureDecisions(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "decisions");
   writeUserContextMd(dir, skillName);
   makeSkillDirs(dir, skillName);
   fs.writeFileSync(
-    path.join(dir, skillName, "context", "decisions.md"),
-    `# Decisions: Pet Store Analytics
-
-### D1: Entity scope
-- **Question**: What are the primary business entities?
-- **Decision**: Products, Customers, Transactions, Inventory
-- **Implication**: Build four core dimension tables plus a fct_sales table
-
-### D2: Customer segmentation
-- **Question**: How do you segment customers?
-- **Decision**: Both purchase frequency and pet type dimensions
-- **Implication**: dim_customers needs frequency_tier and pet_type_primary fields
-`
+    path.join(dir, skillName, "context", "decisions.json"),
+    JSON.stringify({
+      version: "1",
+      metadata: {
+        decision_count: 2,
+        conflicts_resolved: 0,
+        round: 1,
+      },
+      decisions: [
+        {
+          id: "D1",
+          title: "Entity scope",
+          original_question: "What are the primary business entities?",
+          decision: "Products, Customers, Transactions, Inventory",
+          implication: "Build four core dimension tables plus a fct_sales table",
+          status: "resolved",
+        },
+        {
+          id: "D2",
+          title: "Customer segmentation",
+          original_question: "How do you segment customers?",
+          decision: "Both purchase frequency and pet type dimensions",
+          implication: "dim_customers needs frequency_tier and pet_type_primary fields",
+          status: "resolved",
+        },
+      ],
+    }, null, 2)
   );
 }
 
@@ -379,7 +571,7 @@ This skill guides data engineers in building dbt models for pet store analytics 
   );
 }
 
-// generation: session.json + user-context.md + SKILL.md (no decisions.md — keeps state signal unambiguous)
+// generation: session.json + user-context.md + SKILL.md (no decisions.json — keeps state signal unambiguous)
 export function createFixtureGeneration(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "generation");
   writeUserContextMd(dir, skillName);

@@ -5,8 +5,8 @@ test.describe("Navigation", { tag: "@navigation" }, () => {
   test("loads the dashboard by default", async ({ page }) => {
     await page.goto("/");
     await waitForAppReady(page);
-    // Sidebar has "Skill Library" nav link (dashboard was renamed)
-    await expect(page.getByRole("link", { name: "Skill Library" })).toBeVisible();
+    // Sidebar has "Dashboard" nav link.
+    await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
     // Settings is an icon button in the header (no text label, use title attribute)
     await expect(page.locator("header button[title*='Settings']")).toBeVisible();
   });

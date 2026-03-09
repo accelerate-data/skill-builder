@@ -35,6 +35,7 @@ vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: vi.fn(),
   readFile: vi.fn(() => Promise.reject("not found")),
   writeFile: vi.fn(() => Promise.resolve()),
+  getContextFileContent: vi.fn(() => Promise.reject("not found")),
   getClarificationsContent: vi.fn(() => Promise.reject("not found")),
   saveClarificationsContent: vi.fn(() => Promise.resolve()),
   getWorkflowState: vi.fn(() => Promise.reject("not found")),
@@ -96,6 +97,7 @@ import {
   saveWorkflowState,
   writeFile,
   readFile,
+  getContextFileContent,
   getClarificationsContent,
   saveClarificationsContent,
   runWorkflowStep,
@@ -115,6 +117,9 @@ import type { ClarificationsFile } from "@/lib/clarifications-types";
 // Bridge new domain context commands to existing read/write path-based assertions.
 vi.mocked(getClarificationsContent).mockImplementation((skillName: string) =>
   vi.mocked(readFile)(`/test/skills/${skillName}/context/clarifications.json`)
+);
+vi.mocked(getContextFileContent).mockImplementation((skillName: string, _workspacePath: string, fileName: string) =>
+  vi.mocked(readFile)(`/test/skills/${skillName}/context/${fileName}`)
 );
 vi.mocked(saveClarificationsContent).mockImplementation((skillName: string, _workspacePath: string, content: string) =>
   vi.mocked(writeFile)(`/test/skills/${skillName}/context/clarifications.json`, content)
@@ -778,7 +783,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     expect(wf.currentStep).toBe(1);
   });
 
-  it("step 1 errors when structured output payload is missing", async () => {
+  it("step 1 continues when structured output payload is missing", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -794,10 +799,14 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[1].status).toBe("error");
+      expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
     });
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
-    expect(mockToast.error).toHaveBeenCalled();
+    expect(vi.mocked(materializeWorkflowStepOutput)).toHaveBeenCalledWith(
+      "test-skill",
+      1,
+      null,
+    );
+    expect(mockToast.error).not.toHaveBeenCalled();
   });
 
   it("step 0 continues when structured output payload is missing", async () => {
@@ -816,7 +825,11 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     });
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
+    expect(vi.mocked(materializeWorkflowStepOutput)).toHaveBeenCalledWith(
+      "test-skill",
+      0,
+      null,
+    );
   });
 
   it("step 0 errors when structured output fails backend materialization", async () => {
@@ -839,8 +852,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
             status: "research_complete",
             dimensions_selected: 1,
             question_count: 1,
-            research_plan_markdown: "# bad",
-            clarifications_json: {},
+            research_output: {},
           },
         },
         timestamp: Date.now(),
@@ -1062,7 +1074,11 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     await waitFor(() => {
-      expect(vi.mocked(materializeAnswerEvaluationOutput)).not.toHaveBeenCalled();
+      expect(vi.mocked(materializeAnswerEvaluationOutput)).toHaveBeenCalledWith(
+        "test-skill",
+        "/test/workspace",
+        null,
+      );
     });
     expect(await screen.findByRole("button", { name: "Let Me Answer" })).toBeTruthy();
   });
@@ -1387,9 +1403,9 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     useWorkflowStore.getState().updateStepStatus(0, "error");
     useWorkflowStore.getState().setRunning(false);
 
-    // readFile returns content for the step's first output file -> errorHasArtifacts = true
+    // readFile returns content for the step output file -> errorHasArtifacts = true
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.includes("research-plan.md")) {
+      if (path.includes("clarifications.json")) {
         return Promise.resolve("partial content");
       }
       return Promise.reject("not found");
@@ -1400,7 +1416,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     // Wait for artifact detection to complete (readFile resolves asynchronously)
     await waitFor(() => {
       expect(vi.mocked(readFile)).toHaveBeenCalledWith(
-        expect.stringContaining("research-plan.md")
+        expect.stringContaining("clarifications.json")
       );
     });
     // Flush promise so errorHasArtifacts state updates

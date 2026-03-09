@@ -3,6 +3,7 @@ name: research-orchestrator
 description: Runs the research phase using the research skill and returns canonical artifact content in structured output.
 model: sonnet
 tools: Read, Glob, Grep, Task
+skills: research
 ---
 
 # Research Orchestrator
@@ -11,98 +12,67 @@ Run the research phase of the Skill Builder workflow.
 
 ## Inputs
 
-- `purpose`: the full label (e.g. "Business process knowledge")
-- `context_dir`: path to the context directory (e.g. `./fabric-skill/context/`)
+- `purpose`: the full label (e.g. `Business process knowledge`)
+- `skill_name`: the skill being developed (slug/name)
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
+
+## Output
+
+Every return path in this orchestrator must return JSON with the schema defined in the research skill at `references/schemas.md`.
+
+Rules (use canonical envelope definitions from the research skill schema section `references/schemas.md#canonical-orchestrator-envelopes`):
+
+- Missing `user-context.md` (Step 0): return the **Missing user-context hard error** envelope.
+- Scope-guard trigger (Step 1): return the **Preflight scope guard** envelope.
+- Normal path: build counts from canonical `research_output` and return this same envelope.
+
+Warning code semantics are defined in the research skill at `references/schemas.md`. Do not duplicate definitions here.
 
 ## Step 0: Read user context
 
-Read `{workspace_dir}/user-context.md`. Pass the full content to the research skill under a `## User Context` heading. If missing, return an error.
+Read `{workspace_dir}/user-context.md`.
 
-## Step 1: Run the research skill as a sub-agent
+If missing, return immediately using the **Missing user-context hard error** envelope defined in `references/schemas.md#canonical-orchestrator-envelopes`.
 
-Spawn a Task sub-agent with this prompt:
-
----
-**DO NOT write any files. Return all output as inline text only.**
-
-Use the research skill to research dimensions and produce clarifications for:
-
-- purpose: {purpose value from user-context.md}
-- skill_name: {skill/workspace name from coordinator input}
-
-Purpose-aware lens:
-
-- Prioritize the selected purpose dimension set first.
-- If purpose is `platform`, enforce Lakehouse-first constraints explicitly.
-- For other purposes (`business process`, `source`, `data-engineering`), include Lakehouse constraints only when they materially change design, risk, or validation.
-- Avoid generic warehouse guidance that conflicts with Fabric/Azure context.
-
-## User Context
-
-{full user-context.md content from Step 0 — pass the complete file content here}
+## Step 1: Preflight Scope Guard
 
 Preflight scope guard requirements:
 
-- Run a deterministic preflight check before any dimension scoring or sub-agent fan-out.
-- Preflight inputs must include the selected purpose, `skill_name`, and the full user context above.
-- If preflight detects explicit throwaway/test intent or clearly insufficient placeholder context, return immediately with:
-  - `topic_relevance: not_relevant`
-  - `dimensions_evaluated: 0`
-  - `dimensions_selected: 0`
-  - `clarifications_json.metadata.scope_recommendation: true`
-  - concise reason fields in metadata and/or notes for UI display
-- When the preflight guard triggers, do NOT spawn any dimension research sub-agents.
+Run a preflight check (do NOT spawn any dimension research sub-agents) before any dimension scoring or sub-agent fan-out.
 
----
+- Inputs include the selected purpose, `skill_name`, and the full user context.
+- If inputs are irrelevant/malicious/harmful/throwaway/test intent, return immediately using the **Preflight scope guard** envelope defined in `references/schemas.md#canonical-orchestrator-envelopes`.
 
+## Step 2: Produce clarifications
+
+Use research skill and pass it the user context read in Step 0 to produce canonical clarifications to be answered by the user.
 Capture the full tool result as `research_output`.
 
-## Step 2: Build structured output payload
+- Parse `research_output` as JSON object.
+- Ensure `metadata` is an object.
+- Ensure `metadata.question_count` is an integer.
+- Ensure `metadata.research_plan` is an object.
+- Ensure `metadata.research_plan.dimensions_selected` is an integer.
 
-`research_output` must be a single JSON object with this shape:
+If this minimal check fails, return immediately using the **Invalid research output hard error** envelope defined in `references/schemas.md#canonical-orchestrator-envelopes`, and construct `research_output` from the canonical minimal payload rules in `references/schemas.md#scopeerror-minimal-output` (`metadata.error.code: "invalid_research_output"`, `metadata.scope_recommendation: false`).
 
-```json
-{
-  "research_plan_markdown": "<complete canonical research-plan.md content>",
-  "clarifications_json": { "...": "valid clarifications object" }
-}
-```
+## Step 3: Return
 
-Do **not** write any files in this orchestrator. The backend validates and writes artifacts.
+Derive envelope counts from `research_output`:
 
-`research-plan.md` must be canonical:
+- `dimensions_selected` = `research_output.metadata.research_plan.dimensions_selected`
+- `question_count` = `research_output.metadata.question_count`
+- Never hardcode these counts. They must exactly match the derived values above.
 
-- YAML frontmatter with: `purpose`, `domain`, `topic_relevance`, `dimensions_evaluated`, `dimensions_selected`
-- `## Dimension Scores` section with a markdown table
-- `## Selected Dimensions` section with a markdown table
-
-If the extracted research plan is only a loose dimension table (without canonical frontmatter/sections), retry Step 1 with an explicit correction request and use the corrected markdown in `research_plan_markdown`.
-
-## Step 3: Check scope recommendation
-
-Read `research_output.clarifications_json`. If `metadata.scope_recommendation` is `true`, still return the canonical payload with zero counts:
+Return JSON only with this shape (The numbers in this JSON block are illustrative examples):
 
 ```json
 {
   "status": "research_complete",
-  "dimensions_selected": 0,
-  "question_count": 0,
-  "research_plan_markdown": "<canonical markdown>",
-  "clarifications_json": { "...": "canonical clarifications object" }
+  "dimensions_selected": 4,
+  "question_count": 18,
+  "research_output": { "...": "canonical clarifications object" }
 }
 ```
 
-## Step 4: Return
-
-Return JSON only (no markdown) with this shape:
-
-```json
-{
-  "status": "research_complete",
-  "dimensions_selected": 0,
-  "question_count": 0,
-  "research_plan_markdown": "<canonical markdown>",
-  "clarifications_json": { "...": "canonical clarifications object" }
-}
-```
+If research_output.metadata.warning.code == "all_dimensions_low_score", treat it as an intentional research-skill scope-recommendation outcome and pass through unchanged using the canonical envelope (derived counts should be 0/0).

@@ -1,193 +1,109 @@
 ---
 name: research
 description: >
-  Runs the research phase for a skill. Use when researching dimensions and producing
-  clarifications for a purpose and domain. Returns a scored dimension table and
-  complete clarifications content as a structured JSON payload.
+  ALWAYS use this skill when producing clarification questions for any skill-building purpose (domain, source,
+  data-engineering, platform). Invoke immediately in the research phase: score candidate dimensions, select top
+  dimensions, run parallel dimension research, and return the complete clarifications.json payload. Do not attempt to
+  produce clarifications without using this skill.
 ---
 
 # Research Skill
 
 ## Overview
 
-Given a `purpose` and `domain`, produce two inline-text outputs:
+Given a `purpose`, produce clarification questions to be answered by the user to create a skill fit for purpose for Vibedata.
 
-1. A complete canonical `research-plan.md` document
-2. Complete `clarifications.json` content in canonical JSON format
+Always apply the purpose-aware lens:
 
-Pure computation. Read inputs and references, return inline output, write nothing to disk.
+- Prioritize the selected purpose dimension set first.
+- If purpose is `platform` or `data-engineering` enforce Lakehouse-first constraints explicitly.
+- For other purposes include Lakehouse constraints only when they materially change design, risk, or validation.
+- Avoid generic warehouse guidance and do not include any guidance that conflicts with Fabric Lakehouse, dbt Core or Azure context.
 
-## Quick Reference
-
-- Resolve `purpose` to one dimension set from `references/dimension-sets.md`
-- Run deterministic preflight scope guard using `skill_name` + full `user_context`
-- Score all candidate dimensions using `references/scoring-rubric.md`
-- Select top 3-5 dimensions (or one fallback when all scores are low)
-- Run parallel sub-agent research for selected dimensions
-- Consolidate using `references/consolidation-handoff.md`
-- Return one JSON object with `research_plan_markdown` and `clarifications_json`
-
-## Inputs
-
-| Input | Values | Example |
-|-------|--------|---------|
-| `purpose` | Purpose label or token (use mapping table below) | `"Business process knowledge"` |
-| `domain` | Skill domain name | `"Revenue Recognition"` |
-| `skill_name` | Skill slug/name | `"revenue-domain"` |
-| `user_context` | Full user context payload | inline object/text |
-
-## Purpose → Dimension Set Mapping
+### Purpose → Dimension Set Mapping
 
 | Purpose (label or token) | Dimension set |
-|---|---|
+| --- | --- |
 | Business process knowledge (`domain`) | Domain Dimensions |
 | Source system customizations (`source`) | Source Dimensions |
 | Organization specific data engineering standards (`data-engineering`) | Data-Engineering Dimensions |
 | Organization specific Azure or Fabric standards (`platform`) | Platform Dimensions |
 
+## Quick Reference
+
+- Resolve `purpose` to one dimension set from `references/dimension-sets.md`
+- Score all candidate dimensions using `references/scoring-rubric.md`
+- Emit scope recommendation output when rubric `topic_relevance` is `not_relevant`.
+- Select top 3-5 dimensions when viable.
+- Run parallel sub-agent research for selected dimensions
+- Consolidate using `references/consolidation-handoff.md`
+- Validate final payload against `references/schemas.md`
+- Return the canonical `clarifications.json` object as top-level JSON
+
 ## Step 1 — Select Dimension Set
 
 Read `references/dimension-sets.md` and select the matching section.
 
-## Step 2 — Preflight Scope Guard
+## Step 2 — Score dimensions
 
-Run this check before scoring or spawning any sub-agents.
+Use the `references/scoring-rubric.md` to produce scoring-only JSON for all candidate dimensions.
+Use that scoring JSON to construct `metadata.research_plan` which is part of clarifications.json and schema defined in `references/schemas.md`.
 
-Evaluate explicit throwaway/test intent from `skill_name` and `user_context` using deterministic phrase matches. Include these examples and close variants:
+- Set `topic_relevance` from scoring JSON (`relevant|not_relevant`).
+- Set `dimensions_evaluated` from the count of entries in the candidate_dimension_scores array in scoring JSON
+- Set `dimension_scores` from `candidate_dimension_scores` (`name`, `score`, `reason`, `focus`, `companion_skill`).
+- If `topic_relevance` is `not_relevant`, return canonical minimal/scope-recommendation clarifications output per `references/schemas.md` with:
+  - `metadata.scope_recommendation: true`
+  - `metadata.warning.code: "all_dimensions_low_score"`
+  - `metadata.warning.message`: concise explanation for UI
+  - `metadata.research_plan` present and schema-valid with minimal values per `references/schemas.md` Scope/Error Minimal Output (including `topic_relevance: "not_relevant"`, zero counts, and empty selected arrays)
+  - zero selected dimensions.
 
-- `testing`
-- `throwaway`
-- `ui test`
-- `just testing`
-- `nothing really`
-- `it's a test`
+## Step 3 - Select dimensions for research
 
-Also treat the topic as out of scope when explicit test intent is paired with placeholder or clearly insufficient domain context.
-
-Purpose-aware false-positive guard:
-
-- For legitimate short domains with concrete business/platform substance, do not trigger the throwaway guard solely due to brevity.
-- If uncertain, continue with normal scoring.
-
-If the preflight guard triggers, return immediately with canonical minimal outputs:
-
-- `topic_relevance: not_relevant`
-- `dimensions_evaluated: 0`
-- `dimensions_selected: 0`
-- `clarifications_json.metadata.scope_recommendation: true`
-- Add concise reason fields to metadata and/or notes for UI display.
-
-When this guard triggers, skip dimension scoring, fallback dimension selection, and all dimension sub-agent fan-out.
-
-## Step 3 — Score and Select
-
-Read `references/scoring-rubric.md`.
-
-Use extended thinking and score each candidate dimension inline.
-
-### Pre-check: topic relevance
-
-If domain is not relevant to the purpose, return `topic_relevance: not_relevant` with empty selected dimensions and stop.
-
-### Selection rules
+Apply these only when `topic_relevance` is `relevant`.
 
 - Select top 3-5 dimensions by score.
 - Prefer coverage quality over exact count.
-- If every score is <=2, select one highest-scoring dimension (minimum 2).
-- Do not apply fallback dimension selection when Step 2 preflight guard matched.
+- Prefer dimensions scored 4-5.
+- Include score = 3 dimensions only when needed for minimum viable coverage.
+
+Update the `metadata.research_plan` created in Step 2.
+
+- Set `selected_dimensions` as an array of `{ name, focus }` objects copied from the selected `dimension_scores` entries.
+- Set accurate counts `dimensions_selected`.
 
 ## Step 4 — Parallel Dimension Research
 
-For each selected dimension:
+For each selected dimension object in `metadata.research_plan.selected_dimensions`:
 
-- Read `references/dimensions/{slug}.md`
+- Read the dimension spec file `references/dimensions/{name}.md` (use the selected object's `name` field as the slug)
 - Spawn one Task sub-agent per selected dimension
-- Pass full user context and tailored focus line
+- Include in the sub-agent prompt: the full content of the dimension spec file, the full user context, and the tailored focus line from `metadata.research_plan.selected_dimensions`
 - Require raw research text only (500-800 words)
 
 Wait for all tasks before consolidation.
 
 ## Step 5 — Consolidate
 
-Read `references/consolidation-handoff.md` and produce canonical `clarifications.json`.
+Use `references/consolidation-handoff.md` to produce canonical `clarifications.json` and return.
 
-Use this exact top-level shape:
+### Output Contract
 
-```json
-{
-  "version": "1",
-  "metadata": {
-    "title": "...",
-    "question_count": 0,
-    "section_count": 0,
-    "refinement_count": 0,
-    "must_answer_count": 0,
-    "priority_questions": [],
-    "duplicates_removed": 0,
-    "scope_recommendation": false
-  },
-  "sections": [],
-  "notes": []
-}
-```
+Return only the canonical clarifications JSON object as top-level output (no wrappers and no additional text).
 
-Do not emit alternative JSON structures.
+Before returning:
 
-## Return Format
+- Validate against `references/schemas.md` exactly.
+- Ensure `metadata.research_plan` is present and schema-valid.
+- Ensure `metadata.research_plan.selected_dimensions` is present as `{ name, focus }` objects aligned to selected dimensions.
+- Preserve note separation (`notes` vs `answer_evaluator_notes`).
+- Keep warning/error channels separate (`metadata.warning` and `metadata.error`).
 
-Return JSON only with this shape:
+All-low-scores behavior:
 
-```json
-{
-  "research_plan_markdown": "[complete canonical research-plan.md]",
-  "clarifications_json": {
-    "version": "1",
-    "metadata": {},
-    "sections": [],
-    "notes": []
-  }
-}
-```
+- If `topic_relevance` is `not_relevant`, emit the minimal scope-recommendation payload from `references/schemas.md` with `metadata.scope_recommendation: true` and no dimension fan-out.
 
-Both keys are required.
+Runtime resilience:
 
-### Canonical `research-plan.md` requirements
-
-The `research_plan_markdown` value must include:
-
-1. YAML frontmatter:
-   - `purpose`
-   - `domain`
-   - `topic_relevance`
-   - `dimensions_evaluated`
-   - `dimensions_selected`
-2. `# Research Plan`
-3. `## Dimension Scores` markdown table
-4. `## Selected Dimensions` markdown table
-
-Do not return a table-only research plan.
-
-## Error Handling
-
-- Topic not relevant or throwaway/test preflight: emit empty selected dimensions + minimal clarifications JSON with `scope_recommendation: true`.
-- Dimension task failure: score failed dimensions as `0`, reason `Research task failed`, continue with available results.
-- No dimensions selected: force-select one fallback dimension as above.
-- Fallback is disabled when throwaway/test preflight guard matched.
-
-## Output Checklist
-
-- Both required JSON keys are present
-- `clarifications_json` is valid JSON object
-- `research_plan_markdown` includes canonical frontmatter + required headings/tables
-- `metadata` counts are accurate
-- Each question includes 2-4 choices plus `Other (please specify)` with `is_other: true`
-- `recommendation` present on every question
-- `answer_choice` and `answer_text` are `null`
-- `refinements` arrays are empty
-
-## Reference Files
-
-- `references/dimension-sets.md`: dimension candidates by purpose
-- `references/scoring-rubric.md`: scoring rules and thresholds
-- `references/dimensions/{slug}.md`: per-dimension research prompts
-- `references/consolidation-handoff.md`: canonical clarifications schema
+- If a dimension task fails, score that dimension as `1` with reason `Research task failed`, then continue with available results.

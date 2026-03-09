@@ -2,7 +2,11 @@ import { describe, it, expect } from "vitest";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import { parsePromptPaths, resolveStepTemplate } from "../mock-agent.js";
+import {
+  buildStructuredMockResult,
+  parsePromptPaths,
+  resolveStepTemplate,
+} from "../mock-agent.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -185,5 +189,41 @@ describe("mock-agent drift detection", () => {
           `Remove it from the exclusion list.`,
       ).toBe(true);
     }
+  });
+});
+
+describe("buildStructuredMockResult", () => {
+  it("returns structured payload for step0-research", async () => {
+    const result = await buildStructuredMockResult("step0-research");
+    expect(result).not.toBeNull();
+    const payload = result as Record<string, unknown>;
+    expect(payload.status).toBe("research_complete");
+    expect(typeof payload.question_count).toBe("number");
+    expect(typeof payload.dimensions_selected).toBe("number");
+    expect(typeof payload.research_output).toBe("object");
+    const researchOutput = payload.research_output as Record<string, unknown>;
+    expect(researchOutput.version).toBe("1");
+    expect(typeof researchOutput.metadata).toBe("object");
+    expect(Array.isArray(researchOutput.sections)).toBe(true);
+    expect(Array.isArray(researchOutput.notes)).toBe(true);
+  });
+
+  it("returns structured payload for step2-confirm-decisions", async () => {
+    const result = await buildStructuredMockResult("step2-confirm-decisions");
+    expect(result).not.toBeNull();
+    const payload = result as Record<string, unknown>;
+    expect(payload.status).toBe("confirm_decisions_complete");
+    expect(typeof payload.decision_count).toBe("number");
+    expect(typeof payload.conflicts_resolved).toBe("number");
+    expect(typeof payload.round).toBe("number");
+    expect(typeof payload.decisions_json).toBe("object");
+  });
+
+  it("returns structured payload for gate-answer-evaluator", async () => {
+    const result = await buildStructuredMockResult("gate-answer-evaluator");
+    expect(result).not.toBeNull();
+    const payload = result as Record<string, unknown>;
+    expect(typeof payload.verdict).toBe("string");
+    expect(Array.isArray(payload.per_question)).toBe(true);
   });
 });

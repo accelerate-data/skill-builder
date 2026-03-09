@@ -86,7 +86,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 
 ## Cross-Boundary: Agent ↔ App Format Compliance
 
-Agent prompts define artifact formats (`clarifications.md`, `decisions.md`, etc.). The app parses those artifacts in Rust and TypeScript. Changes to either side can break the contract. The canonical format spec lives at `docs/design/agent-specs/canonical-format.md`.
+Agent prompts define artifact formats (`clarifications.json`, `decisions.json`, etc.). The app parses those artifacts in Rust and TypeScript. Changes to either side can break the contract. The canonical format spec lives at `docs/design/agent-specs/canonical-format.md`.
 
 ### How to use this table
 

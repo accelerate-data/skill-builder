@@ -12,6 +12,12 @@ Claude describes happy paths; this dimension surfaces failure paths. Production-
 
 Research should surface: production failure patterns (timeout, concurrency), undocumented debugging procedures, and environment-specific error behaviors at scale. Focus on decisions that change skill content.
 
+## Quality checks
+
+- Confirm failure modes include concrete trigger thresholds (volume, duration, concurrency), not generic statements.
+- Confirm each high-risk failure includes detection signal and operator mitigation/runbook action.
+- Confirm silent data-wrongness cases and validation checks are explicitly included, not only explicit errors.
+
 ## Questions to Research
 
 1. What are the most common production failure patterns for this platform — which operations fail most frequently and under what conditions?

@@ -6,18 +6,18 @@ Identify companion skill candidates from dimensions scored 2-3 that were skipped
 
 ## Inputs
 
-- Paths to `SKILL.md`, `references/` files, `decisions.md`, `clarifications.json`, and `research-plan.md`
+- Paths to `SKILL.md`, `references/` files, `decisions.json`, and `clarifications.json`
 - The **purpose** (`Business process knowledge`, `Organization specific data engineering standards`, `Organization specific Azure or Fabric standards`, or `Source system customizations`)
 - The **workspace directory** path (contains `user-context.md`)
 
-Read `decisions.md` first, then check frontmatter:
+Read `decisions.json` first, then check metadata:
 
-- If `contradictory_inputs: revised`, skip `clarifications.json`.
+- If `metadata.contradictory_inputs == "revised"`, skip `clarifications.json`.
 - Otherwise, read `{context_dir}/clarifications.json` in full before recommendations.
 
 Then use progressive discovery:
 
-- Read `research-plan.md` and `SKILL.md` first.
+- Read `clarifications.json` (including `metadata.research_plan`) and `SKILL.md` first.
 - Read only the reference files needed to validate skipped dimensions, composability, and recommendation priority.
 - Expand reads when recommendation evidence is incomplete.
 

@@ -12,6 +12,12 @@ The "State Machine and Lifecycle" template section previously had zero researchi
 
 Research should surface: state machine behaviors, custom stage progressions, lifecycle boundary conditions (regression, stage skipping), and record type-specific lifecycle variations. Focus on decisions that change skill content.
 
+## Quality checks
+
+- Confirm valid transitions include regressions/reopens where they occur in production.
+- Confirm record-type-specific lifecycle differences and required filters are explicitly covered.
+- Confirm automated state transitions and CDC impact are explicitly addressed.
+
 ## Questions to Research
 
 1. Which objects in this domain follow defined state machines, and what are the valid state transitions — including which transitions are reversible?

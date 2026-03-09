@@ -12,6 +12,12 @@ The key failure modes include: ORG_ID filtering (missed in ~4/10 Claude response
 
 Research should surface: platform-specific extraction traps causing silent data loss, CDC mechanism selection, soft delete handling, and completeness guarantees. Focus on decisions that change skill content.
 
+## Quality checks
+
+- Confirm soft-delete mechanism is explicitly addressed (including required API/query mode).
+- Confirm the primary incremental timestamp/change field is explicitly named with rationale.
+- Confirm multi-tenant filtering requirements (for example ORG/tenant filter) are explicitly covered.
+
 ## Questions to Research
 
 1. Which timestamp field should be used for incremental change detection, and which commonly used alternatives miss system-initiated changes?
