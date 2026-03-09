@@ -67,6 +67,7 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
         (31, run_backfill_synthetic_sessions_migration),
         (32, run_normalize_model_names_migration),
         (33, run_reconciliation_events_migration),
+        (34, run_ghost_running_rows_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -649,6 +650,22 @@ fn run_reconciliation_events_migration(conn: &Connection) -> Result<(), rusqlite
             created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
         );",
     )?;
+    Ok(())
+}
+
+/// Migration 34: Convert any remaining ghost `status='running'` rows to `shutdown`.
+/// The close guard no longer queries agent_runs; only terminal rows should exist.
+/// These rows were created by the now-removed initial persist-on-start call in
+/// the frontend's startRun(), which wrote a `status='running'` row before any
+/// SDK events arrived.
+fn run_ghost_running_rows_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let updated = conn.execute(
+        "UPDATE agent_runs
+         SET status = 'shutdown', completed_at = datetime('now') || 'Z'
+         WHERE status = 'running'",
+        [],
+    )?;
+    log::info!("migration 34: converted {} ghost running rows to shutdown", updated);
     Ok(())
 }
 
@@ -3890,6 +3907,9 @@ mod tests {
         run_marketplace_source_url_migration(&conn).unwrap();
         run_skills_soft_delete_migration(&conn).unwrap();
         run_backfill_synthetic_sessions_migration(&conn).unwrap();
+        run_normalize_model_names_migration(&conn).unwrap();
+        run_reconciliation_events_migration(&conn).unwrap();
+        run_ghost_running_rows_migration(&conn).unwrap();
         conn
     }
 
@@ -7012,5 +7032,63 @@ mod tests {
         )
         .unwrap();
         assert!(not_found.is_none());
+    }
+
+    #[test]
+    fn test_migration_34_converts_ghost_running_rows_to_shutdown() {
+        // Use create_test_db() to get a fully-migrated schema (through migration 34).
+        // Then insert rows and re-run the migration to verify idempotency and correctness.
+        let conn = create_test_db();
+
+        // Insert a ghost running row (as the old startRun() code would have created)
+        conn.execute(
+            "INSERT INTO agent_runs
+             (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
+              total_cost, duration_ms, workflow_session_id)
+             VALUES ('ghost-agent', 'my-skill', 1, 'haiku', 'running', 0, 0, 0.0, 0, 'session-abc')",
+            [],
+        ).unwrap();
+
+        // Also insert a completed row — migration must not touch it
+        conn.execute(
+            "INSERT INTO agent_runs
+             (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
+              total_cost, duration_ms, workflow_session_id)
+             VALUES ('done-agent', 'my-skill', 1, 'sonnet', 'completed', 100, 50, 0.01, 5000, 'session-abc')",
+            [],
+        ).unwrap();
+
+        // Run migration 34 directly (simulates running on a DB that already has ghost rows
+        // created after the previous migration 17 cleanup pass).
+        run_ghost_running_rows_migration(&conn).unwrap();
+
+        let ghost_status: String = conn
+            .query_row(
+                "SELECT status FROM agent_runs WHERE agent_id = 'ghost-agent'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(ghost_status, "shutdown", "Ghost running row must become shutdown");
+
+        let done_status: String = conn
+            .query_row(
+                "SELECT status FROM agent_runs WHERE agent_id = 'done-agent'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(done_status, "completed", "Completed row must not be touched by migration 34");
+
+        // Idempotency: running again must not change anything
+        run_ghost_running_rows_migration(&conn).unwrap();
+        let still_shutdown: String = conn
+            .query_row(
+                "SELECT status FROM agent_runs WHERE agent_id = 'ghost-agent'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(still_shutdown, "shutdown", "Re-running migration must be idempotent");
     }
 }

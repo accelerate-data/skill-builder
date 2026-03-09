@@ -26,8 +26,8 @@ import {
   cleanupSkillSidecar,
   prepareSkillTest,
   cleanupSkillTest,
-  hasRunningAgents,
 } from "@/lib/tauri";
+import { useWorkflowStore } from "@/stores/workflow-store";
 import type { SkillSummary } from "@/lib/types";
 import { cn, deriveModelLabel } from "@/lib/utils";
 
@@ -686,8 +686,10 @@ export default function TestPage() {
 
     console.log("[test] starting test: skill=%s", s.selectedSkill.name);
 
-    // Guard: don't clobber in-progress workflow runs
-    const agentsRunning = await hasRunningAgents().catch(() => false);
+    // Guard: don't clobber in-progress workflow or refine runs
+    const wf = useWorkflowStore.getState();
+    const agentsRunning =
+      wf.isRunning || wf.gateLoading || useRefineStore.getState().isRunning;
     if (agentsRunning) {
       toast.error("Cannot start test while other agents are running", { duration: Infinity });
       return;

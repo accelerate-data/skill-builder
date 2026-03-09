@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { gracefulShutdown, hasRunningAgents } from "@/lib/tauri";
+import { gracefulShutdown } from "@/lib/tauri";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useTestStore } from "@/stores/test-store";
@@ -33,15 +33,14 @@ export function CloseGuard() {
   }, []);
 
   const handleCloseRequested = useCallback(async () => {
-    const sessionId = useWorkflowStore.getState().workflowSessionId;
-    let agentsRunning = false;
-    try {
-      agentsRunning = await hasRunningAgents(sessionId);
-    } catch {
-      // If we can't check, assume no agents and close
-    }
+    const workflow = useWorkflowStore.getState();
+    const agentsRunning =
+      workflow.isRunning ||
+      workflow.gateLoading ||
+      useRefineStore.getState().isRunning ||
+      useTestStore.getState().isRunning;
 
-    if (agentsRunning || useRefineStore.getState().isRunning || useTestStore.getState().isRunning) {
+    if (agentsRunning) {
       setShowDialog(true);
     } else {
       try {

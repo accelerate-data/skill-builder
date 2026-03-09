@@ -328,7 +328,6 @@ pub fn run() {
             commands::workflow::log_gate_decision,
             commands::workflow::scan_legacy_clarifications,
             commands::workflow::reset_legacy_skills,
-            commands::lifecycle::has_running_agents,
             commands::sidecar_lifecycle::cleanup_skill_sidecar,
             commands::sidecar_lifecycle::graceful_shutdown,
             commands::workspace::get_workspace_path,
