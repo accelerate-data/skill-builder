@@ -810,7 +810,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       useAgentStore.getState().addMessage("agent-step0-structured", {
         type: "result",
         content: undefined,
-        raw: { result: payload },
+        raw: { result: "Research complete.", structured_output: payload },
         timestamp: Date.now(),
       });
       useAgentStore.getState().completeRun("agent-step0-structured", true);
@@ -859,7 +859,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       useAgentStore.getState().addMessage("agent-step1-structured", {
         type: "result",
         content: undefined,
-        raw: { result: payload },
+        raw: { result: "Detailed research complete.", structured_output: payload },
         timestamp: Date.now(),
       });
       useAgentStore.getState().completeRun("agent-step1-structured", true);

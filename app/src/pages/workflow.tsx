@@ -532,7 +532,10 @@ export default function WorkflowPage() {
       const msg = run.messages[i];
       if (msg.type !== "result") continue;
       const raw = msg.raw as Record<string, unknown>;
-      if ("result" in raw) return raw.result ?? null;
+      // Prefer structured_output (new SDK behavior: text in result, JSON in structured_output).
+      // Fall back to result for older SDK versions where result held the JSON object directly.
+      if ("structured_output" in raw && raw.structured_output != null) return raw.structured_output;
+      if ("result" in raw && raw.result != null && typeof raw.result !== "string") return raw.result;
     }
     return null;
   }, []);
