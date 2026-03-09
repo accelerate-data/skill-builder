@@ -1,18 +1,5 @@
-import * as path from "node:path";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
-
-/**
- * Infer the plugin name from a namespaced agent name.
- * "skill-content-researcher:research-agent" → "skill-content-researcher"
- * Returns null if agentName is absent or not namespaced.
- */
-function inferPluginFromAgentName(agentName: string | undefined): string | null {
-  if (!agentName) return null;
-  const idx = agentName.indexOf(":");
-  if (idx <= 0) return null;
-  return agentName.slice(0, idx);
-}
 
 /**
  * Build the options object to pass to the SDK query() function.
@@ -21,26 +8,16 @@ function inferPluginFromAgentName(agentName: string | undefined): string | null 
  *  - agentName only  → agent (front-matter model used)
  *  - model only      → model
  *  - both            → agent only (front-matter model authoritative)
+ *
+ * @param pluginPaths  Absolute paths to installed plugin directories discovered by the caller.
+ *                     Each entry becomes { type: 'local', path } in the SDK plugins array.
  */
 export function buildQueryOptions(
   config: SidecarConfig,
   abortController: AbortController,
+  pluginPaths: string[],
   stderr?: (data: string) => void,
 ) {
-  // Resolve plugin directories from the workspace's .claude/plugins/ folder so
-  // the SDK can discover plugin agents (e.g. skill-content-researcher:research-agent).
-  // Also infer the plugin name from a namespaced agentName so callers that only
-  // set agentName (and not requiredPlugins) still get the plugin loaded.
-  const explicitPlugins = (config.requiredPlugins ?? []).filter(
-    (p) => p && p.trim().length > 0,
-  );
-  const inferredPlugin = inferPluginFromAgentName(config.agentName);
-  const allPluginNames = [...new Set([...explicitPlugins, ...(inferredPlugin ? [inferredPlugin] : [])])];
-  const pluginEntries = allPluginNames.map((name) => ({
-    type: "local" as const,
-    path: path.resolve(config.cwd, ".claude", "plugins", name),
-  }));
-  const pluginsField = pluginEntries.length > 0 ? { plugins: pluginEntries } : {};
   // --- agent / model resolution ---
   const hasAgent = typeof config.agentName === "string" && config.agentName.length > 0;
   const agentField = hasAgent ? { agent: config.agentName } : {};
@@ -50,6 +27,10 @@ export function buildQueryOptions(
   // process.env, which avoids races on concurrent requests.
   const envField = config.apiKey
     ? { env: { ...process.env, ANTHROPIC_API_KEY: config.apiKey } }
+    : {};
+
+  const pluginsField = pluginPaths.length > 0
+    ? { plugins: pluginPaths.map((p) => ({ type: "local" as const, path: p })) }
     : {};
 
   return {

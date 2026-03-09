@@ -19,6 +19,28 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
+/**
+ * Discover all installed plugins under <cwd>/.claude/plugins/.
+ * Returns absolute paths for each subdirectory that contains a valid plugin.json manifest.
+ */
+async function discoverInstalledPlugins(cwd: string): Promise<string[]> {
+  const pluginsDir = path.join(cwd, ".claude", "plugins");
+  let entries: string[];
+  try {
+    entries = await fs.readdir(pluginsDir);
+  } catch {
+    return [];
+  }
+  const paths: string[] = [];
+  for (const entry of entries) {
+    const manifestPath = path.join(pluginsDir, entry, ".claude-plugin", "plugin.json");
+    if (await fileExists(manifestPath)) {
+      paths.push(path.join(pluginsDir, entry));
+    }
+  }
+  return paths;
+}
+
 function inferPluginFromAgentName(agentName: string | undefined): string | null {
   if (!agentName) return null;
   const idx = agentName.indexOf(":");
@@ -107,13 +129,16 @@ export async function runAgentRequest(
   // Preflight: validate required plugins are installed in this project workspace.
   await assertRequiredPlugins(config);
 
+  // Discover all installed plugins so every plugin agent is available to the SDK.
+  const pluginPaths = await discoverInstalledPlugins(config.cwd);
+
   // Route SDK subprocess stderr through onMessage so it gets wrapped with
   // request_id and written to the JSONL transcript (not the app log).
   const stderrHandler = (data: string) => {
     onMessage({ type: "system", subtype: "sdk_stderr", data: data.trimEnd(), timestamp: Date.now() });
   };
 
-  const options = buildQueryOptions(config, state.abortController, stderrHandler);
+  const options = buildQueryOptions(config, state.abortController, pluginPaths, stderrHandler);
 
   // Emit plugins passed to the SDK as a system event so it appears in the JSONL transcript.
   const pluginsToLog = (options as Record<string, unknown>).plugins as unknown[] | undefined;
