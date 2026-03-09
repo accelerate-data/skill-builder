@@ -204,4 +204,16 @@ describe("Research scope guard contract prompts", () => {
     expect(content).toMatch(/Do not perform selection or branching in this rubric output/i);
     expect(content).not.toMatch(/If all scores are <=2, trigger scope recommendation output/i);
   });
+
+  it("detailed-research includes scope recommendation short-circuit contract", () => {
+    const content = fs.readFileSync(
+      path.join(AGENTS_DIR, "detailed-research.md"),
+      "utf8"
+    );
+    expect(content).toMatch(/Scope Recommendation Guard/);
+    expect(content).toMatch(/status": "detailed_research_complete"/);
+    expect(content).toMatch(/refinement_count": 0/);
+    expect(content).toMatch(/section_count": 0/);
+    expect(content).toMatch(/canonical clarifications object \(unchanged\)/i);
+  });
 });

@@ -53,8 +53,12 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             step_id: 2,
             name: "Confirm Decisions".to_string(),
             prompt_template: "confirm-decisions.md".to_string(),
-            output_file: "context/decisions.json".to_string(),
-            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
+            output_file: "context/decisions.md".to_string(),
+            // Step 2 returns decisions payload; backend materializes decisions.md.
+            allowed_tools: CONTRACT_NO_WRITE_TOOLS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             max_turns: 100,
         }),
         3 => Ok(StepConfig {
@@ -555,27 +559,19 @@ fn parse_scope_recommendation(clarifications_path: &Path) -> bool {
     value["metadata"]["scope_recommendation"] == true
 }
 
-/// Check decisions guard metadata.
-/// Canonical format is decisions.json with metadata.contradictory_inputs.
-/// Backward compatibility: frontmatter in decisions.md.
+/// Check decisions.md for guard conditions:
+/// - decision_count: 0  → no decisions were derivable
+/// - contradictory_inputs: true → unresolvable contradictions detected
+///
+/// `contradictory_inputs: revised` is NOT a block — the user has reviewed
+/// and edited the flagged decisions; treat decisions.md as authoritative.
+///
+/// Returns true if steps 5-6 should be disabled.
 fn parse_decisions_guard(decisions_path: &Path) -> bool {
     let content = match std::fs::read_to_string(decisions_path) {
         Ok(c) => c,
         Err(_) => return false,
     };
-
-    // Canonical format: decisions.json
-    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
-        let contradictory = &value["metadata"]["contradictory_inputs"];
-        if contradictory == true {
-            return true;
-        }
-        if contradictory == "revised" {
-            return false;
-        }
-    }
-
-    // Backward compatibility for legacy decisions.md files.
     if !content.starts_with("---") {
         return false;
     }
@@ -602,170 +598,7 @@ fn derive_agent_name(workspace_path: &str, _purpose: &str, prompt_template: &str
     phase.to_string()
 }
 
-fn canonical_clarifications_schema_for_sdk() -> serde_json::Value {
-    serde_json::from_str(
-        r#"{
-  "type": "object",
-  "required": ["version", "metadata", "sections", "notes"],
-  "properties": {
-    "version": { "type": "string", "const": "1" },
-    "metadata": {
-      "type": "object",
-      "required": ["title", "question_count", "section_count", "refinement_count", "must_answer_count", "priority_questions", "research_plan"],
-      "properties": {
-        "title": { "type": "string" },
-        "question_count": { "type": "integer", "minimum": 0 },
-        "section_count": { "type": "integer", "minimum": 0 },
-        "refinement_count": { "type": "integer", "minimum": 0 },
-        "must_answer_count": { "type": "integer", "minimum": 0 },
-        "priority_questions": { "type": "array", "items": { "type": "string" } },
-        "duplicates_removed": { "type": "integer", "minimum": 0 },
-        "scope_recommendation": { "type": "boolean" },
-        "scope_reason": { "type": "string" },
-        "warning": {
-          "type": "object",
-          "required": ["code", "message"],
-          "properties": {
-            "code": { "type": "string" },
-            "message": { "type": "string" }
-          },
-          "additionalProperties": false
-        },
-        "error": {
-          "type": "object",
-          "required": ["code", "message"],
-          "properties": {
-            "code": { "type": "string" },
-            "message": { "type": "string" }
-          },
-          "additionalProperties": false
-        },
-        "research_plan": {
-          "type": "object",
-          "required": ["purpose", "domain", "topic_relevance", "dimensions_evaluated", "dimensions_selected", "dimension_scores", "selected_dimensions"],
-          "properties": {
-            "purpose": { "type": "string" },
-            "domain": { "type": "string" },
-            "topic_relevance": { "type": "string", "enum": ["relevant", "not_relevant"] },
-            "dimensions_evaluated": { "type": "integer", "minimum": 0 },
-            "dimensions_selected": { "type": "integer", "minimum": 0 },
-            "dimension_scores": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": ["name", "score", "reason", "focus"],
-                "properties": {
-                  "name": { "type": "string" },
-                  "score": { "type": "integer" },
-                  "reason": { "type": "string" },
-                  "focus": { "type": "string" },
-                  "companion_skill": { "type": ["string", "null"] }
-                },
-                "additionalProperties": false
-              }
-            },
-            "selected_dimensions": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": ["name", "focus"],
-                "properties": {
-                  "name": { "type": "string" },
-                  "focus": { "type": "string" }
-                },
-                "additionalProperties": false
-              }
-            }
-          },
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    },
-    "sections": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["id", "title", "questions"],
-        "properties": {
-          "id": { "type": "string" },
-          "title": { "type": "string" },
-          "description": { "type": "string" },
-          "questions": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["id", "title", "must_answer", "text", "choices", "recommendation", "answer_choice", "answer_text", "refinements"],
-              "properties": {
-                "id": { "type": "string" },
-                "title": { "type": "string" },
-                "must_answer": { "type": "boolean" },
-                "text": { "type": "string" },
-                "consolidated_from": {
-                  "type": "array",
-                  "items": { "type": "string" }
-                },
-                "choices": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "required": ["id", "text", "is_other"],
-                    "properties": {
-                      "id": { "type": "string" },
-                      "text": { "type": "string" },
-                      "is_other": { "type": "boolean" }
-                    },
-                    "additionalProperties": false
-                  }
-                },
-                "recommendation": { "type": "string" },
-                "answer_choice": { "type": ["string", "null"] },
-                "answer_text": { "type": ["string", "null"] },
-                "refinements": { "type": "array", "items": { "type": "object" } }
-              },
-              "additionalProperties": false
-            }
-          }
-        },
-        "additionalProperties": false
-      }
-    },
-    "notes": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["type", "title", "body"],
-        "properties": {
-          "type": { "type": "string" },
-          "title": { "type": "string" },
-          "body": { "type": "string" }
-        },
-        "additionalProperties": false
-      }
-    },
-    "answer_evaluator_notes": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["type", "question_id", "question_title", "body"],
-        "properties": {
-          "type": { "type": "string" },
-          "question_id": { "type": "string" },
-          "question_title": { "type": "string" },
-          "body": { "type": "string" }
-        },
-        "additionalProperties": false
-      }
-    }
-  },
-  "additionalProperties": false
-}"#,
-    )
-    .expect("canonical clarifications schema JSON must parse")
-}
-
 fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Value> {
-    let clarifications_schema = canonical_clarifications_schema_for_sdk();
     match agent_name {
         "research-orchestrator" => Some(serde_json::json!({
             "type": "json_schema",
@@ -775,15 +608,17 @@ fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Valu
                     "status",
                     "dimensions_selected",
                     "question_count",
-                    "research_output"
+                    "research_plan_markdown",
+                    "clarifications_json"
                 ],
                 "properties": {
                     "status": { "type": "string", "const": "research_complete" },
                     "dimensions_selected": { "type": "integer", "minimum": 0 },
                     "question_count": { "type": "integer", "minimum": 0 },
-                    "research_output": clarifications_schema.clone()
+                    "research_plan_markdown": { "type": "string", "minLength": 1 },
+                    "clarifications_json": { "type": "object" }
                 },
-                "additionalProperties": false
+                "additionalProperties": true
             }
         })),
         "detailed-research" => Some(serde_json::json!({
@@ -800,28 +635,39 @@ fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Valu
                     "status": { "type": "string", "const": "detailed_research_complete" },
                     "refinement_count": { "type": "integer", "minimum": 0 },
                     "section_count": { "type": "integer", "minimum": 0 },
-                    "clarifications_json": clarifications_schema.clone()
+                    "clarifications_json": { "type": "object" }
                 },
-                "additionalProperties": false
+                "additionalProperties": true
             }
         })),
         "confirm-decisions" => Some(serde_json::json!({
             "type": "json_schema",
             "schema": {
                 "type": "object",
-                "required": [
-                    "status",
-                    "decision_count",
-                    "conflicts_resolved",
-                    "round",
-                    "decisions_json"
-                ],
+                "required": ["status", "decisions_markdown"],
                 "properties": {
-                    "status": { "type": "string", "const": "confirm_decisions_complete" },
-                    "decision_count": { "type": "integer", "minimum": 0 },
-                    "conflicts_resolved": { "type": "integer", "minimum": 0 },
-                    "round": { "type": "integer", "minimum": 1 },
-                    "decisions_json": { "type": "object" }
+                    "status": { "type": "string", "const": "decisions_complete" },
+                    "decisions_markdown": { "type": "string", "minLength": 1 },
+                    "call_trace": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    }
+                },
+                "additionalProperties": false
+            }
+        })),
+        "generate-skill" => Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status", "evaluations_markdown"],
+                "properties": {
+                    "status": { "type": "string", "const": "generated" },
+                    "evaluations_markdown": { "type": "string", "minLength": 1 },
+                    "call_trace": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    }
                 },
                 "additionalProperties": false
             }
@@ -866,45 +712,6 @@ fn validate_clarifications_json(clarifications: &serde_json::Value) -> Result<()
         .is_none()
     {
         return Err("clarifications_json.metadata.priority_questions must be an array".to_string());
-    }
-    for channel in ["warning", "error"] {
-        if let Some(value) = metadata.get(channel) {
-            let channel_obj = value.as_object().ok_or_else(|| {
-                format!("clarifications_json.metadata.{} must be an object", channel)
-            })?;
-            let code = channel_obj
-                .get("code")
-                .and_then(|v| v.as_str())
-                .map(|s| s.trim())
-                .ok_or_else(|| {
-                    format!(
-                        "clarifications_json.metadata.{}.code must be a non-empty string",
-                        channel
-                    )
-                })?;
-            if code.is_empty() {
-                return Err(format!(
-                    "clarifications_json.metadata.{}.code must be a non-empty string",
-                    channel
-                ));
-            }
-            let message = channel_obj
-                .get("message")
-                .and_then(|v| v.as_str())
-                .map(|s| s.trim())
-                .ok_or_else(|| {
-                    format!(
-                        "clarifications_json.metadata.{}.message must be a non-empty string",
-                        channel
-                    )
-                })?;
-            if message.is_empty() {
-                return Err(format!(
-                    "clarifications_json.metadata.{}.message must be a non-empty string",
-                    channel
-                ));
-            }
-        }
     }
 
     let sections = root
@@ -1025,201 +832,6 @@ fn validate_clarifications_json(clarifications: &serde_json::Value) -> Result<()
         }
     }
 
-    if let Some(research_plan) = metadata.get("research_plan") {
-        let plan = research_plan.as_object().ok_or_else(|| {
-            "clarifications_json.metadata.research_plan must be an object".to_string()
-        })?;
-        for field in [
-            "purpose",
-            "domain",
-            "topic_relevance",
-            "dimensions_evaluated",
-            "dimensions_selected",
-            "dimension_scores",
-            "selected_dimensions",
-        ] {
-            if !plan.contains_key(field) {
-                return Err(format!(
-                    "clarifications_json.metadata.research_plan.{} is required",
-                    field
-                ));
-            }
-        }
-        for field in ["purpose", "domain", "topic_relevance"] {
-            if plan
-                .get(field)
-                .and_then(|v| v.as_str())
-                .map(|s| s.trim().is_empty())
-                .unwrap_or(true)
-            {
-                return Err(format!(
-                    "clarifications_json.metadata.research_plan.{} must be a non-empty string",
-                    field
-                ));
-            }
-        }
-        for field in ["dimensions_evaluated", "dimensions_selected"] {
-            if plan.get(field).and_then(|v| v.as_i64()).is_none() {
-                return Err(format!(
-                    "clarifications_json.metadata.research_plan.{} must be an integer",
-                    field
-                ));
-            }
-        }
-        let scores = plan
-            .get("dimension_scores")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| {
-                "clarifications_json.metadata.research_plan.dimension_scores must be an array"
-                    .to_string()
-            })?;
-        for (idx, entry) in scores.iter().enumerate() {
-            let item = entry.as_object().ok_or_else(|| {
-                format!(
-                    "clarifications_json.metadata.research_plan.dimension_scores[{}] must be an object",
-                    idx
-                )
-            })?;
-            for field in ["name", "reason", "focus"] {
-                if item
-                    .get(field)
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.trim().is_empty())
-                    .unwrap_or(true)
-                {
-                    return Err(format!(
-                        "clarifications_json.metadata.research_plan.dimension_scores[{}].{} must be a non-empty string",
-                        idx, field
-                    ));
-                }
-            }
-            if item.get("score").and_then(|v| v.as_i64()).is_none() {
-                return Err(format!(
-                    "clarifications_json.metadata.research_plan.dimension_scores[{}].score must be an integer",
-                    idx
-                ));
-            }
-            if let Some(companion) = item.get("companion_skill") {
-                if !companion.is_null() && companion.as_str().is_none() {
-                    return Err(format!(
-                        "clarifications_json.metadata.research_plan.dimension_scores[{}].companion_skill must be a string or null",
-                        idx
-                    ));
-                }
-            }
-        }
-        let selected = plan
-            .get("selected_dimensions")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| {
-                "clarifications_json.metadata.research_plan.selected_dimensions must be an array"
-                    .to_string()
-            })?;
-        for (idx, dim) in selected.iter().enumerate() {
-            let item = dim.as_object().ok_or_else(|| {
-                format!(
-                    "clarifications_json.metadata.research_plan.selected_dimensions[{}] must be an object",
-                    idx
-                )
-            })?;
-            for field in ["name", "focus"] {
-                if item
-                    .get(field)
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.trim().is_empty())
-                    .unwrap_or(true)
-                {
-                    return Err(format!(
-                        "clarifications_json.metadata.research_plan.selected_dimensions[{}].{} must be a non-empty string",
-                        idx, field
-                    ));
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn extract_research_output_from_step_payload(
-    payload: &serde_json::Map<String, serde_json::Value>,
-) -> Result<serde_json::Value, String> {
-    payload
-        .get("research_output")
-        .cloned()
-        .ok_or_else(|| "structured_output.research_output is required".to_string())
-}
-
-fn extract_clarifications_json_from_step_payload(
-    payload: &serde_json::Map<String, serde_json::Value>,
-) -> Result<serde_json::Value, String> {
-    payload
-        .get("clarifications_json")
-        .cloned()
-        .ok_or_else(|| "structured_output.clarifications_json is required".to_string())
-}
-
-fn validate_decisions_json(decisions: &serde_json::Value) -> Result<(), String> {
-    let root = decisions
-        .as_object()
-        .ok_or_else(|| "decisions_json must be a JSON object".to_string())?;
-
-    let version = root
-        .get("version")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "decisions_json.version must be a string".to_string())?;
-    if version != "1" {
-        return Err("decisions_json.version must be '1'".to_string());
-    }
-
-    let metadata = root
-        .get("metadata")
-        .and_then(|v| v.as_object())
-        .ok_or_else(|| "decisions_json.metadata must be an object".to_string())?;
-    for field in ["decision_count", "conflicts_resolved", "round"] {
-        if metadata.get(field).and_then(|v| v.as_i64()).is_none() {
-            return Err(format!("decisions_json.metadata.{} must be an integer", field));
-        }
-    }
-    if let Some(value) = metadata.get("contradictory_inputs") {
-        if !(value.is_boolean() || value.as_str() == Some("revised")) {
-            return Err(
-                "decisions_json.metadata.contradictory_inputs must be boolean or 'revised'"
-                    .to_string(),
-            );
-        }
-    }
-    if let Some(value) = metadata.get("scope_recommendation") {
-        if !value.is_boolean() {
-            return Err("decisions_json.metadata.scope_recommendation must be a boolean".to_string());
-        }
-    }
-
-    let items = root
-        .get("decisions")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| "decisions_json.decisions must be an array".to_string())?;
-    for (idx, item) in items.iter().enumerate() {
-        let obj = item
-            .as_object()
-            .ok_or_else(|| format!("decisions_json.decisions[{}] must be an object", idx))?;
-        for field in ["id", "title", "original_question", "decision", "implication"] {
-            if obj.get(field).and_then(|v| v.as_str()).is_none() {
-                return Err(format!("decisions_json.decisions[{}].{} must be a string", idx, field));
-            }
-        }
-        let status = obj
-            .get("status")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| format!("decisions_json.decisions[{}].status must be a string", idx))?;
-        if !["resolved", "conflict-resolved", "needs-review"].contains(&status) {
-            return Err(format!(
-                "decisions_json.decisions[{}].status has invalid value '{}'",
-                idx, status
-            ));
-        }
-    }
-
     Ok(())
 }
 
@@ -1265,73 +877,37 @@ fn materialize_workflow_step_output_value(
     match step_id {
         0 => {
             require_const_status("research_complete")?;
-            let dimensions_selected = require_int("dimensions_selected")?;
-            let question_count = require_int("question_count")?;
-            let clarifications = extract_research_output_from_step_payload(payload)?;
-            validate_clarifications_json(&clarifications)
+            let _ = require_int("dimensions_selected")?;
+            let _ = require_int("question_count")?;
+            let clarifications = payload
+                .get("clarifications_json")
+                .ok_or_else(|| "structured_output.clarifications_json is required".to_string())?;
+            validate_clarifications_json(clarifications)
                 .map_err(|e| format!("Invalid clarifications_json: {}", e))?;
-            let metadata = clarifications
-                .get("metadata")
-                .and_then(|v| v.as_object())
-                .ok_or_else(|| "clarifications_json.metadata must be an object".to_string())?;
-            let metadata_question_count = metadata
-                .get("question_count")
-                .and_then(|v| v.as_i64())
-                .ok_or_else(|| {
-                    "clarifications_json.metadata.question_count must be an integer".to_string()
-                })?;
-            if metadata_question_count != question_count {
-                return Err(format!(
-                    "structured_output.question_count ({}) must match clarifications_json.metadata.question_count ({})",
-                    question_count, metadata_question_count
-                ));
-            }
-            if let Some(plan_selected) = metadata
-                .get("research_plan")
-                .and_then(|v| v.as_object())
-                .and_then(|plan| plan.get("dimensions_selected"))
-                .and_then(|v| v.as_i64())
-            {
-                if plan_selected != dimensions_selected {
-                    return Err(format!(
-                        "structured_output.dimensions_selected ({}) must match clarifications_json.metadata.research_plan.dimensions_selected ({})",
-                        dimensions_selected, plan_selected
-                    ));
-                }
-            }
-            if let Some(warning) = metadata.get("warning").and_then(|v| v.as_object()) {
-                let code = warning
-                    .get("code")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown");
-                let message = warning
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("no message");
-                log::warn!(
-                    "[materialize_workflow_step_output] step=0 metadata.warning code={} message={}",
-                    code,
-                    message
-                );
-            }
-            if let Some(error) = metadata.get("error").and_then(|v| v.as_object()) {
-                let code = error
-                    .get("code")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown");
-                let message = error
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("no message");
-                log::error!(
-                    "[materialize_workflow_step_output] step=0 metadata.error code={} message={}",
-                    code,
-                    message
-                );
-            }
-            let clarifications_pretty = serde_json::to_string_pretty(&clarifications)
+            let clarifications_pretty = serde_json::to_string_pretty(clarifications)
                 .map_err(|e| format!("Failed to serialize clarifications_json: {}", e))?;
+
+            let research_plan_markdown = payload
+                .get("research_plan_markdown")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    "structured_output.research_plan_markdown must be a string".to_string()
+                })?;
+            if research_plan_markdown.trim().is_empty() {
+                return Err(
+                    "structured_output.research_plan_markdown must not be empty".to_string()
+                );
+            }
+
+            let research_plan_path = context_dir.join("research-plan.md");
             let clarifications_path = context_dir.join("clarifications.json");
+            std::fs::write(&research_plan_path, research_plan_markdown).map_err(|e| {
+                format!(
+                    "Failed to write research plan '{}': {}",
+                    research_plan_path.display(),
+                    e
+                )
+            })?;
             std::fs::write(&clarifications_path, clarifications_pretty).map_err(|e| {
                 format!(
                     "Failed to write clarifications '{}': {}",
@@ -1345,42 +921,12 @@ fn materialize_workflow_step_output_value(
             require_const_status("detailed_research_complete")?;
             let _ = require_int("refinement_count")?;
             let _ = require_int("section_count")?;
-            let clarifications = extract_clarifications_json_from_step_payload(payload)?;
-            validate_clarifications_json(&clarifications)
+            let clarifications = payload
+                .get("clarifications_json")
+                .ok_or_else(|| "structured_output.clarifications_json is required".to_string())?;
+            validate_clarifications_json(clarifications)
                 .map_err(|e| format!("Invalid clarifications_json: {}", e))?;
-            if let Some(metadata) = clarifications.get("metadata").and_then(|v| v.as_object()) {
-                if let Some(warning) = metadata.get("warning").and_then(|v| v.as_object()) {
-                    let code = warning
-                        .get("code")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown");
-                    let message = warning
-                        .get("message")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("no message");
-                    log::warn!(
-                        "[materialize_workflow_step_output] step=1 metadata.warning code={} message={}",
-                        code,
-                        message
-                    );
-                }
-                if let Some(error) = metadata.get("error").and_then(|v| v.as_object()) {
-                    let code = error
-                        .get("code")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown");
-                    let message = error
-                        .get("message")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("no message");
-                    log::error!(
-                        "[materialize_workflow_step_output] step=1 metadata.error code={} message={}",
-                        code,
-                        message
-                    );
-                }
-            }
-            let clarifications_pretty = serde_json::to_string_pretty(&clarifications)
+            let clarifications_pretty = serde_json::to_string_pretty(clarifications)
                 .map_err(|e| format!("Failed to serialize clarifications_json: {}", e))?;
 
             let clarifications_path = context_dir.join("clarifications.json");
@@ -1394,20 +940,16 @@ fn materialize_workflow_step_output_value(
             Ok(())
         }
         2 => {
-            require_const_status("confirm_decisions_complete")?;
-            let _ = require_int("decision_count")?;
-            let _ = require_int("conflicts_resolved")?;
-            let _ = require_int("round")?;
-
-            let decisions = payload
-                .get("decisions_json")
-                .ok_or_else(|| "structured_output.decisions_json is required".to_string())?;
-            validate_decisions_json(decisions).map_err(|e| format!("Invalid decisions_json: {}", e))?;
-            let decisions_pretty = serde_json::to_string_pretty(decisions)
-                .map_err(|e| format!("Failed to serialize decisions_json: {}", e))?;
-
-            let decisions_path = context_dir.join("decisions.json");
-            std::fs::write(&decisions_path, decisions_pretty).map_err(|e| {
+            require_const_status("decisions_complete")?;
+            let decisions_markdown = payload
+                .get("decisions_markdown")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "structured_output.decisions_markdown must be a string".to_string())?;
+            if decisions_markdown.trim().is_empty() {
+                return Err("structured_output.decisions_markdown must not be empty".to_string());
+            }
+            let decisions_path = context_dir.join("decisions.md");
+            std::fs::write(&decisions_path, decisions_markdown).map_err(|e| {
                 format!(
                     "Failed to write decisions '{}': {}",
                     decisions_path.display(),
@@ -1416,8 +958,29 @@ fn materialize_workflow_step_output_value(
             })?;
             Ok(())
         }
+        3 => {
+            require_const_status("generated")?;
+            let evaluations_markdown = payload
+                .get("evaluations_markdown")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    "structured_output.evaluations_markdown must be a string".to_string()
+                })?;
+            if evaluations_markdown.trim().is_empty() {
+                return Err("structured_output.evaluations_markdown must not be empty".to_string());
+            }
+            let evaluations_path = context_dir.join("evaluations.md");
+            std::fs::write(&evaluations_path, evaluations_markdown).map_err(|e| {
+                format!(
+                    "Failed to write evaluations '{}': {}",
+                    evaluations_path.display(),
+                    e
+                )
+            })?;
+            Ok(())
+        }
         _ => Err(format!(
-            "materialize_workflow_step_output supports only step 0, 1, and 2; got {}",
+            "materialize_workflow_step_output supports only steps 0-3; got {}",
             step_id
         )),
     }
@@ -1933,7 +1496,7 @@ fn make_agent_id(skill_name: &str, label: &str) -> String {
     format!("{}-{}-{}", skill_name, label, ts)
 }
 
-/// Core logic for validating decisions.json existence — testable without tauri::State.
+/// Core logic for validating decisions.md existence — testable without tauri::State.
 /// Checks in order: skill output dir (skillsPath), workspace dir.
 /// Returns Ok(()) if found, Err with a clear message if missing.
 fn validate_decisions_exist_inner(
@@ -1944,7 +1507,7 @@ fn validate_decisions_exist_inner(
     let path = Path::new(workspace_path)
         .join(skill_name)
         .join("context")
-        .join("decisions.json");
+        .join("decisions.md");
     if path.exists() {
         let content = std::fs::read_to_string(&path).unwrap_or_default();
         if !content.trim().is_empty() {
@@ -1953,7 +1516,7 @@ fn validate_decisions_exist_inner(
     }
 
     Err(
-        "Cannot start Generate Skill step: decisions.json was not found on the filesystem. \
+        "Cannot start Generate Skill step: decisions.md was not found on the filesystem. \
          The Confirm Decisions step (step 2) must create a decisions file before the Generate Skill step can run. \
          Please re-run the Confirm Decisions step first."
             .to_string(),
@@ -2013,7 +1576,7 @@ fn read_workflow_settings(
     let industry = settings.industry;
     let function_role = settings.function_role;
 
-    // Validate prerequisites (step 3 requires decisions.json)
+    // Validate prerequisites (step 3 requires decisions.md)
     if step_id == 3 {
         validate_decisions_exist_inner(skill_name, workspace_path, &skills_path)?;
     }
@@ -2237,11 +1800,11 @@ pub async fn run_workflow_step(
     }
 
     if step_id >= 3 {
-        let decisions_path = context_dir.join("decisions.json");
+        let decisions_path = context_dir.join("decisions.md");
         if parse_decisions_guard(&decisions_path) {
             return Err(format!(
                 "Step {} is disabled: the reasoning agent found unresolvable \
-                 contradictions in decisions.json. Reset to step 2 and revise \
+                 contradictions in decisions.md. Reset to step 2 and revise \
                  your answers before retrying.",
                 step_id
             ));
@@ -2520,9 +2083,9 @@ pub fn save_workflow_state(
 /// Output files produced by each step, relative to the skill directory.
 pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
-        0 => vec!["context/clarifications.json"],
+        0 => vec!["context/research-plan.md", "context/clarifications.json"],
         1 => vec![], // Step 1 edits clarifications.json in-place (no unique artifact)
-        2 => vec!["context/decisions.json"],
+        2 => vec!["context/decisions.md"],
         3 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
         _ => vec![],
     }
@@ -2573,7 +2136,7 @@ pub fn get_disabled_steps(
         read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
     let context_dir = Path::new(&workspace_path).join(&skill_name).join("context");
     let clarifications_path = context_dir.join("clarifications.json");
-    let decisions_path = context_dir.join("decisions.json");
+    let decisions_path = context_dir.join("decisions.md");
 
     if parse_scope_recommendation(&clarifications_path) {
         Ok(vec![1, 2, 3])
@@ -2625,7 +2188,7 @@ pub fn save_clarifications_content(
 
 #[tauri::command]
 pub fn get_decisions_content(skill_name: String, workspace_path: String) -> Result<String, String> {
-    let path = workspace_context_dir(&workspace_path, &skill_name).join("decisions.json");
+    let path = workspace_context_dir(&workspace_path, &skill_name).join("decisions.md");
     std::fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read decisions from '{}': {}", path.display(), e))
 }
@@ -2637,9 +2200,9 @@ pub fn save_decisions_content(
     content: String,
 ) -> Result<(), String> {
     if content.trim().is_empty() {
-        return Err("decisions.json content cannot be empty".to_string());
+        return Err("decisions.md content cannot be empty".to_string());
     }
-    let path = workspace_context_dir(&workspace_path, &skill_name).join("decisions.json");
+    let path = workspace_context_dir(&workspace_path, &skill_name).join("decisions.md");
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create context directory '{}': {}", parent.display(), e))?;
@@ -3228,6 +2791,38 @@ pub fn preview_step_reset(
 mod tests {
     use super::*;
 
+    fn valid_clarifications_value() -> serde_json::Value {
+        serde_json::json!({
+            "version": "1",
+            "metadata": {
+                "question_count": 1,
+                "section_count": 1,
+                "refinement_count": 0,
+                "must_answer_count": 0,
+                "priority_questions": []
+            },
+            "sections": [
+                {
+                    "id": "S1",
+                    "title": "Section",
+                    "questions": [
+                        {
+                            "id": "Q1",
+                            "title": "Question",
+                            "must_answer": false,
+                            "text": "Question text",
+                            "choices": [
+                                {"id":"A","text":"Choice","is_other":false}
+                            ],
+                            "refinements": []
+                        }
+                    ]
+                }
+            ],
+            "notes": []
+        })
+    }
+
     #[test]
     fn test_get_step_config_valid_steps() {
         let valid_steps = [0, 1, 2, 3];
@@ -3275,6 +2870,7 @@ mod tests {
         assert!(workflow_output_format_for_agent("research-orchestrator").is_some());
         assert!(workflow_output_format_for_agent("detailed-research").is_some());
         assert!(workflow_output_format_for_agent("confirm-decisions").is_some());
+        assert!(workflow_output_format_for_agent("generate-skill").is_some());
     }
 
     #[test]
@@ -3283,22 +2879,8 @@ mod tests {
         let required = format["schema"]["required"]
             .as_array()
             .expect("required array");
-        assert!(required.iter().any(|v| v == "status"));
-        assert!(required.iter().any(|v| v == "dimensions_selected"));
-        assert!(required.iter().any(|v| v == "question_count"));
-        assert!(required.iter().any(|v| v == "research_output"));
-        assert_eq!(
-            format["schema"]["properties"]["research_output"]["required"],
-            serde_json::json!(["version", "metadata", "sections", "notes"])
-        );
-        assert_eq!(
-            format["schema"]["properties"]["research_output"]["properties"]["metadata"]["properties"]["research_plan"]["properties"]["dimension_scores"]["items"]["required"],
-            serde_json::json!(["name", "score", "reason", "focus"])
-        );
-        assert_eq!(
-            format["schema"]["properties"]["research_output"]["properties"]["metadata"]["properties"]["research_plan"]["properties"]["selected_dimensions"]["items"]["required"],
-            serde_json::json!(["name", "focus"])
-        );
+        assert!(required.iter().any(|v| v == "research_plan_markdown"));
+        assert!(required.iter().any(|v| v == "clarifications_json"));
     }
 
     #[test]
@@ -3307,35 +2889,12 @@ mod tests {
         let required = format["schema"]["required"]
             .as_array()
             .expect("required array");
-        assert!(required.iter().any(|v| v == "status"));
-        assert!(required.iter().any(|v| v == "refinement_count"));
-        assert!(required.iter().any(|v| v == "section_count"));
         assert!(required.iter().any(|v| v == "clarifications_json"));
-        assert_eq!(
-            format["schema"]["properties"]["clarifications_json"]["required"],
-            serde_json::json!(["version", "metadata", "sections", "notes"])
-        );
-        assert_eq!(
-            format["schema"]["properties"]["clarifications_json"]["properties"]["metadata"]["properties"]["research_plan"]["required"],
-            serde_json::json!([
-                "purpose",
-                "domain",
-                "topic_relevance",
-                "dimensions_evaluated",
-                "dimensions_selected",
-                "dimension_scores",
-                "selected_dimensions"
-            ])
-        );
-        assert_eq!(
-            format["schema"]["properties"]["clarifications_json"]["properties"]["metadata"]["properties"]["research_plan"]["properties"]["selected_dimensions"]["items"]["required"],
-            serde_json::json!(["name", "focus"])
-        );
     }
 
     #[test]
-    fn test_workflow_output_format_is_unset_for_non_contract_workflow_agents() {
-        assert!(workflow_output_format_for_agent("generate-skill").is_none());
+    fn test_workflow_output_format_is_unset_for_unknown_agents() {
+        assert!(workflow_output_format_for_agent("unknown-agent").is_none());
     }
 
     #[test]
@@ -3398,31 +2957,61 @@ mod tests {
     }
 
     #[test]
-    fn test_materialize_step0_writes_clarifications_only() {
+    fn test_materialize_answer_evaluation_rejects_missing_per_question_array() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_dir = tmp.path().join("workspace").join("my-skill");
+        let payload = serde_json::json!({
+            "verdict": "mixed",
+            "answered_count": 1,
+            "empty_count": 0,
+            "vague_count": 0,
+            "contradictory_count": 0,
+            "total_count": 1,
+            "reasoning": "One answer provided."
+        });
+        let err = super::materialize_answer_evaluation_output_value(&workspace_dir, &payload)
+            .unwrap_err();
+        assert!(err.contains("answer_evaluation.per_question must be an array"));
+    }
+
+    #[test]
+    fn test_materialize_answer_evaluation_rejects_vague_without_reason() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_dir = tmp.path().join("workspace").join("my-skill");
+        let payload = serde_json::json!({
+            "verdict": "mixed",
+            "answered_count": 0,
+            "empty_count": 0,
+            "vague_count": 1,
+            "contradictory_count": 0,
+            "total_count": 1,
+            "reasoning": "Answer was vague.",
+            "per_question": [
+                {"question_id": "Q1", "verdict": "vague"}
+            ]
+        });
+        let err = super::materialize_answer_evaluation_output_value(&workspace_dir, &payload)
+            .unwrap_err();
+        assert!(err.contains("reason is required for vague verdict"));
+    }
+
+    #[test]
+    fn test_materialize_step0_writes_research_and_clarifications() {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
         let payload = serde_json::json!({
             "status": "research_complete",
             "dimensions_selected": 2,
-            "question_count": 0,
-            "research_output": {
+            "question_count": 5,
+            "research_plan_markdown": "---\npurpose: domain\n---\n## Dimension Scores\n",
+            "clarifications_json": {
                 "version": "1",
                 "metadata": {
-                    "title": "Clarifications: test",
                     "question_count": 0,
                     "section_count": 0,
                     "refinement_count": 0,
                     "must_answer_count": 0,
-                    "priority_questions": [],
-                    "research_plan": {
-                        "purpose": "domain",
-                        "domain": "test",
-                        "topic_relevance": "relevant",
-                        "dimensions_evaluated": 5,
-                        "dimensions_selected": 2,
-                        "dimension_scores": [],
-                        "selected_dimensions": []
-                    }
+                    "priority_questions": []
                 },
                 "sections": [],
                 "notes": []
@@ -3430,8 +3019,8 @@ mod tests {
         });
 
         super::materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap();
+        assert!(skill_root.join("context/research-plan.md").exists());
         assert!(skill_root.join("context/clarifications.json").exists());
-        assert!(!skill_root.join("context/research-plan.md").exists());
     }
 
     #[test]
@@ -3440,13 +3029,15 @@ mod tests {
         let skill_root = tmp.path().join("my-skill");
         let context_dir = skill_root.join("context");
         std::fs::create_dir_all(&context_dir).unwrap();
+        std::fs::write(context_dir.join("research-plan.md"), "old-plan").unwrap();
         std::fs::write(context_dir.join("clarifications.json"), "{\"old\":true}").unwrap();
 
         let invalid_payload = serde_json::json!({
             "status": "research_complete",
             "dimensions_selected": 2,
             "question_count": 5,
-            "research_output": {
+            "research_plan_markdown": "---\npurpose: domain\n---\n## Dimension Scores\n",
+            "clarifications_json": {
                 "version": "1",
                 "metadata": {},
                 "sections": [],
@@ -3457,6 +3048,10 @@ mod tests {
         let err = super::materialize_workflow_step_output_value(&skill_root, 0, &invalid_payload)
             .unwrap_err();
         assert!(err.contains("Invalid clarifications_json"));
+        assert_eq!(
+            std::fs::read_to_string(context_dir.join("research-plan.md")).unwrap(),
+            "old-plan"
+        );
         assert_eq!(
             std::fs::read_to_string(context_dir.join("clarifications.json")).unwrap(),
             "{\"old\":true}"
@@ -3508,139 +3103,453 @@ mod tests {
     }
 
     #[test]
-    fn test_materialize_step0_accepts_research_output_payload() {
+    fn test_materialize_step0_rejects_non_object_payload() {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
-        let payload = serde_json::json!({
-            "status": "research_complete",
-            "dimensions_selected": 2,
-            "question_count": 0,
-            "research_output": {
-                "version": "1",
-                "metadata": {
-                    "title": "Clarifications: test",
-                    "question_count": 0,
-                    "section_count": 0,
-                    "refinement_count": 0,
-                    "must_answer_count": 0,
-                    "priority_questions": [],
-                    "research_plan": {
-                        "purpose": "domain",
-                        "domain": "test",
-                        "topic_relevance": "relevant",
-                        "dimensions_evaluated": 5,
-                        "dimensions_selected": 2,
-                        "dimension_scores": [],
-                        "selected_dimensions": []
-                    }
-                },
-                "sections": [],
-                "notes": []
-            }
-        });
-
-        super::materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap();
-        assert!(skill_root.join("context/clarifications.json").exists());
-    }
-
-    #[test]
-    fn test_materialize_step0_accepts_error_metadata() {
-        let tmp = tempfile::tempdir().unwrap();
-        let skill_root = tmp.path().join("my-skill");
-        let payload = serde_json::json!({
-            "status": "research_complete",
-            "dimensions_selected": 0,
-            "question_count": 0,
-            "research_output": {
-                "version": "1",
-                "metadata": {
-                    "title": "Clarifications: test",
-                    "question_count": 0,
-                    "section_count": 0,
-                    "refinement_count": 0,
-                    "must_answer_count": 0,
-                    "priority_questions": [],
-                    "error": {
-                        "code": "missing_user_context",
-                        "message": "workspace user-context.md not found; research skipped"
-                    },
-                    "research_plan": {
-                        "purpose": "domain",
-                        "domain": "test",
-                        "topic_relevance": "not_relevant",
-                        "dimensions_evaluated": 0,
-                        "dimensions_selected": 0,
-                        "dimension_scores": [],
-                        "selected_dimensions": []
-                    }
-                },
-                "sections": [],
-                "notes": []
-            }
-        });
-
-        super::materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap();
-        assert!(skill_root.join("context/clarifications.json").exists());
-    }
-
-    #[test]
-    fn test_materialize_step0_rejects_empty_warning_code() {
-        let tmp = tempfile::tempdir().unwrap();
-        let skill_root = tmp.path().join("my-skill");
-        let payload = serde_json::json!({
-            "status": "research_complete",
-            "dimensions_selected": 0,
-            "question_count": 0,
-            "research_output": {
-                "version": "1",
-                "metadata": {
-                    "title": "Clarifications: test",
-                    "question_count": 0,
-                    "section_count": 0,
-                    "refinement_count": 0,
-                    "must_answer_count": 0,
-                    "priority_questions": [],
-                    "warning": {
-                        "code": "",
-                        "message": "scope guard triggered"
-                    },
-                    "research_plan": {
-                        "purpose": "domain",
-                        "domain": "test",
-                        "topic_relevance": "not_relevant",
-                        "dimensions_evaluated": 0,
-                        "dimensions_selected": 0,
-                        "dimension_scores": [],
-                        "selected_dimensions": []
-                    }
-                },
-                "sections": [],
-                "notes": []
-            }
-        });
-
-        let err = super::materialize_workflow_step_output_value(&skill_root, 0, &payload)
+        let err = super::materialize_workflow_step_output_value(&skill_root, 0, &serde_json::json!(null))
             .unwrap_err();
-        assert!(err.contains("warning.code"));
+        assert!(err.contains("structured_output must be a JSON object"));
     }
 
     #[test]
-    fn test_materialize_step1_requires_clarifications_json_payload() {
+    fn test_materialize_step0_rejects_wrong_status() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "detailed_research_complete",
+            "dimensions_selected": 1,
+            "question_count": 1,
+            "research_plan_markdown": "# plan",
+            "clarifications_json": valid_clarifications_value()
+        });
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap_err();
+        assert!(err.contains("structured_output.status must be 'research_complete'"));
+    }
+
+    #[test]
+    fn test_materialize_step0_rejects_missing_or_invalid_numeric_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+
+        let missing_dimensions = serde_json::json!({
+            "status": "research_complete",
+            "question_count": 1,
+            "research_plan_markdown": "# plan",
+            "clarifications_json": valid_clarifications_value()
+        });
+        let err_missing_dimensions =
+            super::materialize_workflow_step_output_value(&skill_root, 0, &missing_dimensions)
+                .unwrap_err();
+        assert!(err_missing_dimensions.contains("structured_output.dimensions_selected must be an integer"));
+
+        let non_integer_question_count = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 1,
+            "question_count": "one",
+            "research_plan_markdown": "# plan",
+            "clarifications_json": valid_clarifications_value()
+        });
+        let err_non_integer_question_count =
+            super::materialize_workflow_step_output_value(&skill_root, 0, &non_integer_question_count)
+                .unwrap_err();
+        assert!(err_non_integer_question_count.contains("structured_output.question_count must be an integer"));
+    }
+
+    #[test]
+    fn test_materialize_step0_rejects_missing_or_invalid_research_plan_markdown() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+
+        let missing = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 1,
+            "question_count": 1,
+            "clarifications_json": valid_clarifications_value()
+        });
+        let err_missing =
+            super::materialize_workflow_step_output_value(&skill_root, 0, &missing).unwrap_err();
+        assert!(err_missing.contains("structured_output.research_plan_markdown must be a string"));
+
+        let non_string = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 1,
+            "question_count": 1,
+            "research_plan_markdown": 42,
+            "clarifications_json": valid_clarifications_value()
+        });
+        let err_non_string =
+            super::materialize_workflow_step_output_value(&skill_root, 0, &non_string).unwrap_err();
+        assert!(err_non_string.contains("structured_output.research_plan_markdown must be a string"));
+
+        let empty = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 1,
+            "question_count": 1,
+            "research_plan_markdown": "   ",
+            "clarifications_json": valid_clarifications_value()
+        });
+        let err_empty =
+            super::materialize_workflow_step_output_value(&skill_root, 0, &empty).unwrap_err();
+        assert!(err_empty.contains("structured_output.research_plan_markdown must not be empty"));
+    }
+
+    #[test]
+    fn test_materialize_step0_rejects_missing_or_invalid_clarifications_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+
+        let missing = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 1,
+            "question_count": 1,
+            "research_plan_markdown": "# plan"
+        });
+        let err_missing =
+            super::materialize_workflow_step_output_value(&skill_root, 0, &missing).unwrap_err();
+        assert!(err_missing.contains("structured_output.clarifications_json is required"));
+
+        let invalid_nested = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 1,
+            "question_count": 1,
+            "research_plan_markdown": "# plan",
+            "clarifications_json": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 1,
+                    "section_count": 1,
+                    "refinement_count": 0,
+                    "must_answer_count": 0,
+                    "priority_questions": []
+                },
+                "sections": [
+                    {
+                        "id": "S1",
+                        "title": "Section",
+                        "questions": [
+                            {
+                                "id": "Q1",
+                                "title": "Question",
+                                "must_answer": false,
+                                "text": "Question text",
+                                "choices": [{"id":"A","text":"Choice"}],
+                                "refinements": []
+                            }
+                        ]
+                    }
+                ],
+                "notes": []
+            }
+        });
+        let err_invalid_nested =
+            super::materialize_workflow_step_output_value(&skill_root, 0, &invalid_nested)
+                .unwrap_err();
+        assert!(err_invalid_nested.contains("Invalid clarifications_json"));
+        assert!(err_invalid_nested.contains("is_other must be a boolean"));
+    }
+
+    #[test]
+    fn test_materialize_step1_rejects_wrong_status() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "research_complete",
+            "refinement_count": 1,
+            "section_count": 1,
+            "clarifications_json": valid_clarifications_value()
+        });
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
+        assert!(err.contains("structured_output.status must be 'detailed_research_complete'"));
+    }
+
+    #[test]
+    fn test_materialize_step1_rejects_missing_or_invalid_numeric_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+
+        let missing_refinement_count = serde_json::json!({
+            "status": "detailed_research_complete",
+            "section_count": 1,
+            "clarifications_json": valid_clarifications_value()
+        });
+        let err_missing_refinement_count =
+            super::materialize_workflow_step_output_value(&skill_root, 1, &missing_refinement_count)
+                .unwrap_err();
+        assert!(err_missing_refinement_count.contains("structured_output.refinement_count must be an integer"));
+
+        let non_integer_section_count = serde_json::json!({
+            "status": "detailed_research_complete",
+            "refinement_count": 1,
+            "section_count": "one",
+            "clarifications_json": valid_clarifications_value()
+        });
+        let err_non_integer_section_count =
+            super::materialize_workflow_step_output_value(&skill_root, 1, &non_integer_section_count)
+                .unwrap_err();
+        assert!(err_non_integer_section_count.contains("structured_output.section_count must be an integer"));
+    }
+
+    #[test]
+    fn test_materialize_step1_rejects_missing_clarifications_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "detailed_research_complete",
+            "refinement_count": 1,
+            "section_count": 1
+        });
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
+        assert!(err.contains("structured_output.clarifications_json is required"));
+    }
+
+    #[test]
+    fn test_materialize_step1_validation_failure_keeps_existing_clarifications() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let context_dir = skill_root.join("context");
+        std::fs::create_dir_all(&context_dir).unwrap();
+        std::fs::write(context_dir.join("clarifications.json"), "{\"old\":true}").unwrap();
+
+        let invalid_payload = serde_json::json!({
+            "status": "detailed_research_complete",
+            "refinement_count": 1,
+            "section_count": 1,
+            "clarifications_json": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 1,
+                    "section_count": 1,
+                    "refinement_count": 0,
+                    "must_answer_count": 0,
+                    "priority_questions": []
+                },
+                "sections": [],
+                "notes": "not-an-array"
+            }
+        });
+        let err = super::materialize_workflow_step_output_value(&skill_root, 1, &invalid_payload)
+            .unwrap_err();
+        assert!(err.contains("Invalid clarifications_json"));
+        assert_eq!(
+            std::fs::read_to_string(context_dir.join("clarifications.json")).unwrap(),
+            "{\"old\":true}"
+        );
+    }
+
+    #[test]
+    fn test_materialize_step1_rejects_invalid_answer_evaluator_notes_shape() {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
         let payload = serde_json::json!({
             "status": "detailed_research_complete",
             "refinement_count": 1,
             "section_count": 1,
-            "version": "1",
-            "metadata": {"question_count": 1},
-            "sections": [],
-            "notes": []
+            "clarifications_json": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 1,
+                    "section_count": 1,
+                    "refinement_count": 0,
+                    "must_answer_count": 0,
+                    "priority_questions": []
+                },
+                "sections": [],
+                "notes": [],
+                "answer_evaluator_notes": "invalid"
+            }
         });
 
         let err = super::materialize_workflow_step_output_value(&skill_root, 1, &payload)
             .unwrap_err();
-        assert!(err.contains("structured_output.clarifications_json is required"));
+        assert!(err.contains("answer_evaluator_notes must be an array when present"));
+    }
+
+    #[test]
+    fn test_materialize_step0_scope_recommendation_triggers_scope_guard_parser() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 0,
+            "question_count": 0,
+            "research_plan_markdown": "---\npurpose: domain\n---\n## Scope Recommendation Active\n",
+            "clarifications_json": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 0,
+                    "section_count": 0,
+                    "refinement_count": 0,
+                    "must_answer_count": 0,
+                    "priority_questions": [],
+                    "scope_recommendation": true
+                },
+                "sections": [],
+                "notes": []
+            }
+        });
+
+        super::materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap();
+        assert!(parse_scope_recommendation(
+            &skill_root.join("context/clarifications.json")
+        ));
+    }
+
+    #[test]
+    fn test_materialize_step2_writes_decisions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": "---\ndecision_count: 1\nconflicts_resolved: 0\nround: 1\n---\n### D1: Capability\n- **Original question:** Q\n- **Decision:** A\n- **Implication:** I\n- **Status:** resolved\n"
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
+        assert!(skill_root.join("context/decisions.md").exists());
+    }
+
+    #[test]
+    fn test_materialize_step2_writes_scope_guard_stub_decisions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": "---\nscope_recommendation: true\ndecision_count: 0\n---\n## Scope Recommendation Active\n"
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
+        let content = std::fs::read_to_string(skill_root.join("context/decisions.md")).unwrap();
+        assert!(content.contains("scope_recommendation: true"));
+        assert!(content.contains("## Scope Recommendation Active"));
+    }
+
+    #[test]
+    fn test_materialize_step2_conflict_decisions_trigger_conflict_guard() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": "---\ndecision_count: 2\nconflicts_resolved: 0\nround: 1\ncontradictory_inputs: true\n---\n### D1: Conflict\n- **Original question:** Q\n- **Decision:** A\n- **Implication:** I\n- **Status:** conflict-resolved\n"
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
+        assert!(parse_decisions_guard(&skill_root.join("context/decisions.md")));
+    }
+
+    #[test]
+    fn test_materialize_step2_revised_conflict_decisions_do_not_trigger_guard() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": "---\ndecision_count: 2\nconflicts_resolved: 1\nround: 2\ncontradictory_inputs: revised\n---\n### D1: Conflict\n- **Original question:** Q\n- **Decision:** A\n- **Implication:** I\n- **Status:** conflict-resolved\n"
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
+        assert!(!parse_decisions_guard(&skill_root.join("context/decisions.md")));
+    }
+
+    #[test]
+    fn test_materialize_step2_rejects_null_payload() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let err = super::materialize_workflow_step_output_value(&skill_root, 2, &serde_json::json!(null))
+            .unwrap_err();
+        assert!(err.contains("structured_output must be a JSON object"));
+    }
+
+    #[test]
+    fn test_materialize_step2_rejects_wrong_status() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "generated",
+            "decisions_markdown": "# decisions"
+        });
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap_err();
+        assert!(err.contains("structured_output.status must be 'decisions_complete'"));
+    }
+
+    #[test]
+    fn test_materialize_step2_rejects_missing_or_invalid_decisions_markdown() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+
+        let missing = serde_json::json!({
+            "status": "decisions_complete"
+        });
+        let err_missing =
+            super::materialize_workflow_step_output_value(&skill_root, 2, &missing).unwrap_err();
+        assert!(err_missing.contains("structured_output.decisions_markdown must be a string"));
+
+        let non_string = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": 42
+        });
+        let err_non_string =
+            super::materialize_workflow_step_output_value(&skill_root, 2, &non_string).unwrap_err();
+        assert!(err_non_string.contains("structured_output.decisions_markdown must be a string"));
+
+        let empty = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": "  "
+        });
+        let err_empty =
+            super::materialize_workflow_step_output_value(&skill_root, 2, &empty).unwrap_err();
+        assert!(err_empty.contains("structured_output.decisions_markdown must not be empty"));
+    }
+
+    #[test]
+    fn test_materialize_step3_writes_evaluations() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "generated",
+            "evaluations_markdown": "## Scenario 1\n- input\n- expected output\n"
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
+        assert!(skill_root.join("context/evaluations.md").exists());
+    }
+
+    #[test]
+    fn test_materialize_step3_rejects_wrong_status() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "decisions_complete",
+            "evaluations_markdown": "## Scenario 1\n- input\n- expected output\n"
+        });
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+        assert!(err.contains("structured_output.status must be 'generated'"));
+    }
+
+    #[test]
+    fn test_materialize_step3_rejects_missing_or_invalid_evaluations_markdown() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+
+        let missing = serde_json::json!({
+            "status": "generated"
+        });
+        let err_missing =
+            super::materialize_workflow_step_output_value(&skill_root, 3, &missing).unwrap_err();
+        assert!(err_missing.contains("structured_output.evaluations_markdown must be a string"));
+
+        let non_string = serde_json::json!({
+            "status": "generated",
+            "evaluations_markdown": ["not", "markdown"]
+        });
+        let err_non_string =
+            super::materialize_workflow_step_output_value(&skill_root, 3, &non_string).unwrap_err();
+        assert!(err_non_string.contains("structured_output.evaluations_markdown must be a string"));
+
+        let empty = serde_json::json!({
+            "status": "generated",
+            "evaluations_markdown": ""
+        });
+        let err_empty =
+            super::materialize_workflow_step_output_value(&skill_root, 3, &empty).unwrap_err();
+        assert!(err_empty.contains("structured_output.evaluations_markdown must not be empty"));
     }
 
     #[test]
@@ -3868,7 +3777,7 @@ mod tests {
         // Create output files for steps 0, 1, 2, 3
         // Steps 0 and 1 both use clarifications.json (unified artifact)
         std::fs::write(workspace_skill_dir.join("context/clarifications.json"), "step0+step1").unwrap();
-        std::fs::write(workspace_skill_dir.join("context/decisions.json"), "step2").unwrap();
+        std::fs::write(workspace_skill_dir.join("context/decisions.md"), "step2").unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "step3").unwrap();
         std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
 
@@ -3879,7 +3788,7 @@ mod tests {
         assert!(workspace_skill_dir.join("context/clarifications.json").exists());
 
         // Steps 2+ outputs should be deleted
-        assert!(!workspace_skill_dir.join("context/decisions.json").exists());
+        assert!(!workspace_skill_dir.join("context/decisions.md").exists());
         assert!(!skill_dir.join("SKILL.md").exists());
         assert!(!skill_dir.join("references").exists());
     }
@@ -3896,13 +3805,13 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
         std::fs::write(skill_dir.join("context/clarifications.json"), "refined").unwrap();
-        std::fs::write(skill_dir.join("context/decisions.json"), "step2").unwrap();
+        std::fs::write(skill_dir.join("context/decisions.md"), "step2").unwrap();
 
         // Clean only step 1 — both files should be untouched (step 1 has no unique output)
         crate::cleanup::clean_step_output_thorough(workspace, "my-skill", 1, skills_path);
 
         assert!(skill_dir.join("context/clarifications.json").exists());
-        assert!(skill_dir.join("context/decisions.json").exists());
+        assert!(skill_dir.join("context/decisions.md").exists());
     }
 
     #[test]
@@ -3924,13 +3833,13 @@ mod tests {
         std::fs::create_dir_all(workspace_skill_dir.join("context")).unwrap();
 
         // Create files for step 2 (decisions) in workspace context
-        std::fs::write(workspace_skill_dir.join("context/decisions.json"), "step2").unwrap();
+        std::fs::write(workspace_skill_dir.join("context/decisions.md"), "step2").unwrap();
 
         // Reset from step 2 onwards should clean up step 2+3
         crate::cleanup::delete_step_output_files(workspace, "my-skill", 2, skills_path);
 
         // Step 2 outputs should be deleted
-        assert!(!workspace_skill_dir.join("context/decisions.json").exists());
+        assert!(!workspace_skill_dir.join("context/decisions.md").exists());
     }
 
     #[test]
@@ -4124,7 +4033,7 @@ mod tests {
         // These context files should be EXCLUDED from the zip
         std::fs::write(source_dir.join("context").join("clarifications.json"), "{}").unwrap();
         std::fs::write(
-            source_dir.join("context").join("decisions.json"),
+            source_dir.join("context").join("decisions.md"),
             "# Decisions",
         )
         .unwrap();
@@ -4159,7 +4068,7 @@ mod tests {
         let result =
             validate_decisions_exist_inner("my-skill", "/unused", skills.to_str().unwrap());
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("decisions.json was not found"));
+        assert!(result.unwrap_err().contains("decisions.md was not found"));
     }
 
     #[test]
@@ -4168,7 +4077,7 @@ mod tests {
         let workspace = tmp.path().join("workspace");
         std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
         std::fs::write(
-            workspace.join("my-skill").join("context").join("decisions.json"),
+            workspace.join("my-skill").join("context").join("decisions.md"),
             "# Decisions\n\nD1: Use periodic recognition",
         )
         .unwrap();
@@ -4185,7 +4094,7 @@ mod tests {
         std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
         // Write an empty decisions file
         std::fs::write(
-            skills.join("my-skill").join("context").join("decisions.json"),
+            skills.join("my-skill").join("context").join("decisions.md"),
             "   \n\n  ",
         )
         .unwrap();
@@ -4193,7 +4102,7 @@ mod tests {
         let result =
             validate_decisions_exist_inner("my-skill", "/unused", skills.to_str().unwrap());
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("decisions.json was not found"));
+        assert!(result.unwrap_err().contains("decisions.md was not found"));
     }
 
     // --- debug mode: no reduced turns, sonnet model override ---
@@ -4484,7 +4393,7 @@ mod tests {
         let context_dir = workspace_tmp.path().join("my-skill").join("context");
         std::fs::create_dir_all(&context_dir).unwrap();
 
-        let context_files = ["clarifications.json", "decisions.json"];
+        let context_files = ["clarifications.json", "decisions.md"];
         for file in &context_files {
             std::fs::write(context_dir.join(file), "test content").unwrap();
         }
@@ -4834,6 +4743,66 @@ mod tests {
             "text": text,
             "is_other": is_other
         })
+    }
+
+    #[test]
+    fn test_save_clarifications_content_writes_pretty_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_path = tmp.path().join("workspace");
+        let workspace_str = workspace_path.to_string_lossy().to_string();
+        let payload = valid_clarifications_value().to_string();
+
+        save_clarifications_content("my-skill".to_string(), workspace_str, payload).unwrap();
+        let saved = std::fs::read_to_string(
+            workspace_path
+                .join("my-skill")
+                .join("context")
+                .join("clarifications.json"),
+        )
+        .unwrap();
+        assert!(saved.contains("\n  \"metadata\""));
+    }
+
+    #[test]
+    fn test_save_clarifications_content_rejects_invalid_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_path = tmp.path().join("workspace");
+        let workspace_str = workspace_path.to_string_lossy().to_string();
+
+        let err = save_clarifications_content(
+            "my-skill".to_string(),
+            workspace_str,
+            "{not-valid-json}".to_string(),
+        )
+        .unwrap_err();
+        assert!(err.contains("Invalid clarifications JSON"));
+    }
+
+    #[test]
+    fn test_save_clarifications_content_rejects_invalid_schema() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_path = tmp.path().join("workspace");
+        let workspace_str = workspace_path.to_string_lossy().to_string();
+        let invalid = serde_json::json!({
+            "version": "1",
+            "metadata": {
+                "question_count": 1,
+                "section_count": 1,
+                "refinement_count": 0,
+                "must_answer_count": 0,
+                "priority_questions": "Q1"
+            },
+            "sections": [],
+            "notes": []
+        });
+
+        let err = save_clarifications_content(
+            "my-skill".to_string(),
+            workspace_str,
+            invalid.to_string(),
+        )
+        .unwrap_err();
+        assert!(err.contains("priority_questions must be an array"));
     }
 
     #[test]
