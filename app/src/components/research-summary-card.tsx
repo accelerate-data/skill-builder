@@ -272,7 +272,7 @@ export function ResearchSummaryCard({
         </div>
       </div>
     ) : (
-      <div className="flex items-start gap-2 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border-b text-amber-700 dark:text-amber-300 text-sm">
+      <div className="flex items-start gap-2 px-4 py-3 bg-amber-100 dark:bg-amber-900/30 border-b text-amber-700 dark:text-amber-300 text-sm">
         <AlertTriangle className="size-4 shrink-0 mt-0.5" />
         <div>
           <p className="font-medium">{meta.warning?.message}</p>

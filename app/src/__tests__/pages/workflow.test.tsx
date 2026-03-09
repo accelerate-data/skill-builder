@@ -34,7 +34,6 @@ vi.mock("sonner", () => ({
 vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: vi.fn(),
   readFile: vi.fn(() => Promise.reject("not found")),
-  getContextFileContent: vi.fn(() => Promise.reject("not found")),
   writeFile: vi.fn(() => Promise.resolve()),
   getClarificationsContent: vi.fn(() => Promise.reject("not found")),
   saveClarificationsContent: vi.fn(() => Promise.resolve()),
@@ -876,7 +875,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
   });
 
-  it("step 1 continues when structured output payload is missing", async () => {
+  it("step 1 errors when structured output payload is missing", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -892,12 +891,13 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+      expect(useWorkflowStore.getState().steps[1].status).toBe("error");
     });
-    expect(vi.mocked(materializeWorkflowStepOutput)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
+    expect(mockToast.error).toHaveBeenCalled();
   });
 
-  it("step 1 continues when structured output payload is not an object", async () => {
+  it("step 1 errors when structured output payload is not an object", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -921,9 +921,10 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+      expect(useWorkflowStore.getState().steps[1].status).toBe("error");
     });
-    expect(vi.mocked(materializeWorkflowStepOutput)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
+    expect(mockToast.error).toHaveBeenCalled();
   });
 
   it("step 0 continues when structured output payload is missing", async () => {
@@ -942,7 +943,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     });
-    expect(vi.mocked(materializeWorkflowStepOutput)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
   });
 
   it("step 0 errors when structured output fails backend materialization", async () => {
@@ -1188,7 +1189,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     await waitFor(() => {
-      expect(vi.mocked(materializeAnswerEvaluationOutput)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(materializeAnswerEvaluationOutput)).not.toHaveBeenCalled();
     });
     expect(await screen.findByRole("button", { name: "Let Me Answer" })).toBeTruthy();
   });
@@ -1500,7 +1501,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
   });
 
-  it("resets via confirmation dialog without requiring session teardown call", async () => {
+  it("calls endWorkflowSession on reset confirmation dialog", async () => {
     // Set up workflow with an active session
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -1523,20 +1524,32 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Flush promise so error artifact state updates
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+    // Wait for artifact detection to complete (readFile resolves asynchronously)
+    await waitFor(() => {
+      expect(vi.mocked(readFile)).toHaveBeenCalledWith(
+        expect.stringContaining("research-plan.md")
+      );
     });
+    // Flush promise so errorHasArtifacts state updates
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
-    // Click "Reset Step" — current behavior performs reset directly in this path.
+    // Click "Reset Step" — should show confirmation dialog (since artifacts exist)
     await act(async () => {
       screen.getByRole("button", { name: /Reset Step/ }).click();
     });
 
+    // Confirmation dialog should appear with "Reset Step?" title
     await waitFor(() => {
-      expect(vi.mocked(resetWorkflowStep)).toHaveBeenCalled();
+      expect(screen.getByText("Reset Step?")).toBeTruthy();
     });
 
+    // Click "Reset" in the confirmation dialog (destructive variant)
+    await act(async () => {
+      screen.getByRole("button", { name: "Reset" }).click();
+    });
+
+    // endWorkflowSession should have been called with the session ID
+    expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
   });
 
   it("calls endWorkflowSession on ResetStepDialog reset", async () => {

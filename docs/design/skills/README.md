@@ -23,7 +23,12 @@ Each bundled skill has a **purpose** — a slot identifier that controls which s
 
 ## Research Skill
 
-`research-orchestrator` runs at step 0. Invoked by:
+The research workflow is split between a bundled skill and a plugin:
+
+- `agent-sources/workspace/skills/research/` holds the **reference material and canonical schema** for research (non‑user‑invocable skill).
+- The `skill-content-researcher` **plugin** owns the executable research behavior (wrapper + internal agent + Python tooling).
+
+`research-orchestrator` runs at step 0 as a **thin wrapper** that delegates to the plugin. It is invoked by:
 
 - **Tauri app** — `workflow.rs` step 0 via the sidecar
 - **Plugin workflow** — coordinator spawns it via `Task(subagent_type: "skill-builder:research-orchestrator")`
@@ -32,13 +37,14 @@ Each bundled skill has a **purpose** — a slot identifier that controls which s
 
 ```text
 agent-sources/workspace/skills/research/
-  SKILL.md
+  SKILL.md                      ← internal-only skill; not user-invocable
   references/
-    dimension-sets.md             ← type-scoped dimension tables (5–6 per type)
-    scoring-rubric.md             ← scoring criteria (1–5) and selection rules
-    consolidation-handoff.md      ← clarifications.md format spec for consolidation
+    dimension-sets.md           ← type-scoped dimension tables (5–6 per type)
+    scoring-rubric.md           ← scoring criteria (1–5) and selection rules
+    schemas.md                  ← canonical JSON schema for research_output
+    consolidation-handoff.md    ← consolidation guidance (legacy markdown reference)
     dimensions/
-      entities.md                 ← 18 dimension specs (focus, approach, output format)
+      entities.md
       metrics.md
       data-quality.md
       business-rules.md
@@ -58,37 +64,60 @@ agent-sources/workspace/skills/research/
       reconciliation.md
 ```
 
-### How It Works
-
-**Step 1 — Select dimension set.** Read `dimension-sets.md`, identify the 5–6 candidate dimensions for the given `purpose`.
-
-**Step 2 — Score and select.** Score each candidate against the domain using `scoring-rubric.md`. Select top 3–5 by score. Extended thinking is used here.
-
-**Step 3 — Parallel dimension research.** Spawn one sub-agent per selected dimension with its spec content plus domain and tailored focus line embedded inline. All sub-agents launch in the same turn.
-
-**Step 4 — Consolidate.** Synthesize all dimension outputs into `clarifications.md` format per `consolidation-handoff.md`.
-
-### Return Format
+The `skill-content-researcher` plugin mirrors this schema and reference set under:
 
 ```text
-=== RESEARCH PLAN ===
-[scored dimension table + selected dimensions]
-=== CLARIFICATIONS ===
-[complete clarifications.md content including YAML frontmatter]
+agent-sources/plugins/skill-content-researcher/
+  skills/
+    research/                   ← embedded research skill (internal-only)
+      SKILL.md
+      references/
+        schemas.md              ← plugin-local copy; kept in sync by tests
+    skill-content-researcher/   ← user-invocable wrapper skill
+      SKILL.md                  ← uses AskUserQuestion to collect inputs
+      …
 ```
 
-Orchestrator writes:
+### How It Works
 
-- `=== RESEARCH PLAN ===` → `{context_dir}/research-plan.md`
-- `=== CLARIFICATIONS ===` → `{context_dir}/clarifications.md`
+At a high level:
 
-If `clarifications.md` contains `scope_recommendation: true`, the orchestrator surfaces this to the caller and stops — the domain scope is too broad for skill generation.
+1. The user invokes the `skill-content-researcher` wrapper skill. It collects `purpose`, `description`, `industry`, and `function_role` **interactively** via `AskUserQuestion`, with Skip/Other options for each.
+2. The wrapper constructs a markdown **User Context** block from the answers and passes it, along with `purpose` and an internal `skill_name` placeholder, to the plugin’s `research-agent`.
+3. `research-agent` runs the research flow using the reference material in `skills/research/references/`, then calls a Python tool (`normalize_research_output.py`) to:
+   - Parse and validate the `research_output` JSON against the minimal required shape.
+   - Derive `question_count` and `dimensions_selected` deterministically.
+4. The Python tool emits a **normalized envelope**:
+
+   ```json
+   {
+     "research_output": { "...canonical clarifications object..." },
+     "dimensions_selected": 4,
+     "question_count": 26
+   }
+   ```
+
+5. `research-orchestrator` returns the app-facing envelope:
+
+   ```json
+   {
+     "status": "research_complete",
+     "dimensions_selected": 4,
+     "question_count": 26,
+     "research_output": { "...canonical clarifications object..." }
+   }
+   ```
+
+The canonical shape of `research_output` (including `metadata.research_plan`) lives in `schemas.md` and is enforced by the Python normalizer, not by prompt text.
 
 ### Customization
 
-Replace by importing a custom skill into Settings→Skills and assigning purpose `research`. The app will use it instead of the bundled skill. Teams can customise: dimensions per skill type, scoring rubric and selection threshold, research approach per dimension, consolidation logic. The orchestrator and `clarifications.md` format contract are app-controlled.
+Teams customise research by editing the **reference inputs** and schema, not the envelope:
 
-Dimension catalog, per-type template mappings, focus line tailoring, and design guidelines: [`dimensions.md`](dimensions.md).
+- Dimension catalog, per‑type template mappings, focus line tailoring, and design guidelines: [`dimensions.md`](dimensions.md).
+- Scoring and selection behavior: `dimension-sets.md`, `scoring-rubric.md`, and the plugin’s internal research SKILL and agent.
+
+The app‑level contract is the JSON envelope (`status`, `dimensions_selected`, `question_count`, `research_output`) and the `research_output` schema defined in `schemas.md`.
 
 ---
 

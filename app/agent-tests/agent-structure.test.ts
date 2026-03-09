@@ -315,4 +315,16 @@ describe("skill-creator plugin structure", () => {
     expect(content).toMatch(/python eval-viewer\/generate_review\.py/);
     expect(content).not.toMatch(/<skill-creator-path>/);
   });
+
+  it("detailed-research includes scope recommendation short-circuit contract", () => {
+    const content = fs.readFileSync(
+      path.join(AGENTS_DIR, "detailed-research.md"),
+      "utf8"
+    );
+    expect(content).toMatch(/Scope Recommendation Guard/);
+    expect(content).toMatch(/status": "detailed_research_complete"/);
+    expect(content).toMatch(/refinement_count": 0/);
+    expect(content).toMatch(/section_count": 0/);
+    expect(content).toMatch(/canonical clarifications object \(unchanged\)/i);
+  });
 });

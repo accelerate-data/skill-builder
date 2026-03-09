@@ -80,7 +80,7 @@ describe("ResearchSummaryCard", () => {
     expect(screen.getByText("Research Complete")).toBeInTheDocument();
     expect(screen.getByText("Clarifications")).toBeInTheDocument();
     expect(screen.getByText("Notes")).toBeInTheDocument();
-    expect(screen.queryByTestId("clarifications-editor")).toBeInTheDocument();
+    expect(screen.getByTestId("clarifications-editor")).toBeInTheDocument();
   });
 
   it("shows Research Failed header with destructive banner when error is present", () => {
@@ -137,6 +137,29 @@ describe("ResearchSummaryCard", () => {
     expect(screen.queryByText("Clarifications")).not.toBeInTheDocument();
     expect(screen.queryByTestId("clarifications-editor")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /reset/i })).toBeInTheDocument();
+  });
+
+  it("falls through to happy path when warning code is unrecognized", () => {
+    const data: ClarificationsFile = {
+      version: "1",
+      metadata: {
+        ...baseMetadata,
+        // Cast required because TypeScript enforces the union — but agent output is unchecked JSON
+        warning: { code: "unknown_future_code" as "scope_guard_triggered", message: "Unknown." },
+      },
+      sections: [],
+      notes: [],
+    };
+
+    render(
+      <ResearchSummaryCard
+        researchPlan={emptyResearchPlan}
+        clarificationsData={data}
+      />,
+    );
+
+    // Unknown warning code silently falls through to "ok" — documents the known behavior
+    expect(screen.getByText("Research Complete")).toBeInTheDocument();
   });
 
   it("shows No Dimensions Selected header and Dimensions column for all_dimensions_low_score", () => {
