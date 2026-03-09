@@ -2733,12 +2733,14 @@ pub fn navigate_back_to_step(
     crate::db::reset_workflow_steps_from(&conn, &skill_name, delete_from as i32)?;
 
     // Set current_step to the target (not delete_from) so DB reflects the correct landing step.
+    // Use "pending" for the run status because subsequent steps are now reset; the next
+    // saveWorkflowState sync will recompute and update as needed.
     if let Some(run) = crate::db::get_workflow_run(&conn, &skill_name)? {
         crate::db::save_workflow_run(
             &conn,
             &skill_name,
             target_step_id as i32,
-            &run.status,
+            "pending",
             &run.purpose,
         )?;
     }
