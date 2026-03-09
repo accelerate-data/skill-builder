@@ -103,24 +103,6 @@ const STEP_DESCRIPTIONS = {
   },
 } as const
 
-const FALLBACK_MODEL_OPTIONS = [
-  { id: "claude-haiku-4-5", displayName: "Haiku -- fastest, lowest cost" },
-  { id: "claude-sonnet-4-6", displayName: "Sonnet -- balanced" },
-  { id: "claude-opus-4-6", displayName: "Opus -- most capable" },
-]
-
-// Map old shorthand values stored in DB to real model IDs.
-const SHORTHAND_TO_MODEL: Record<string, string> = {
-  haiku: "claude-haiku-4-5",
-  sonnet: "claude-sonnet-4-6",
-  opus: "claude-opus-4-6",
-}
-
-function normalizeModelValue(raw: string | null | undefined): string {
-  if (!raw) return ""  // "" = App default (no model override)
-  return SHORTHAND_TO_MODEL[raw] ?? raw
-}
-
 function LockedIcon() {
   return (
     <TooltipProvider>
@@ -137,7 +119,7 @@ function LockedIcon() {
 export default function SkillDialog(props: SkillDialogProps) {
   const isEdit = props.mode === "edit"
   const navigate = useNavigate()
-  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole, availableModels } = useSettingsStore()
+  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole } = useSettingsStore()
 
   // Extract mode-specific props
   const editSkill = isEdit ? (props as SkillDialogEditProps).skill : null
@@ -174,7 +156,6 @@ export default function SkillDialog(props: SkillDialogProps) {
   const [contextQuestions, setContextQuestions] = useState("")
   // Step 2 behaviour fields
   const [version, setVersion] = useState("1.0.0")
-  const [model, setModel] = useState("")
   const [argumentHint, setArgumentHint] = useState("")
   const [userInvocable, setUserInvocable] = useState(true)
   const [disableModelInvocation, setDisableModelInvocation] = useState(false)
@@ -208,7 +189,6 @@ export default function SkillDialog(props: SkillDialogProps) {
     setTags([])
     setContextQuestions("")
     setVersion("1.0.0")
-    setModel("")
     setArgumentHint("")
     setUserInvocable(true)
     setDisableModelInvocation(false)
@@ -229,7 +209,6 @@ export default function SkillDialog(props: SkillDialogProps) {
       setDescription(editSkill.description || "")
       setContextQuestions(parseIntakeContext(editSkill.intake_json))
       setVersion(editSkill.version || "1.0.0")
-      setModel(normalizeModelValue(editSkill.model))
       setArgumentHint(editSkill.argumentHint || "")
       setUserInvocable(editSkill.userInvocable ?? true)
       setDisableModelInvocation(editSkill.disableModelInvocation ?? false)
@@ -327,7 +306,7 @@ export default function SkillDialog(props: SkillDialogProps) {
           buildIntakeJson({ context: contextQuestions }),
           description.trim() || null,
           version.trim() || null,
-          model || null,
+          null,
           argumentHint.trim() || null,
           userInvocable,
           disableModelInvocation,
@@ -345,7 +324,7 @@ export default function SkillDialog(props: SkillDialogProps) {
           intakeJson: buildIntakeJson({ context: contextQuestions }),
           description: description.trim() || null,
           version: version.trim() || null,
-          model: model || null,
+          model: null,
           argumentHint: argumentHint.trim() || null,
           userInvocable,
           disableModelInvocation,
@@ -554,24 +533,6 @@ export default function SkillDialog(props: SkillDialogProps) {
                     onChange={(e) => setVersion(e.target.value)}
                     disabled={submitting}
                   />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="model">Model</Label>
-                  <select
-                    id="model"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    disabled={submitting}
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <option value="">App default</option>
-                    {(availableModels.length > 0 ? availableModels : FALLBACK_MODEL_OPTIONS).map((m) => (
-                      <option key={m.id} value={m.id}>{m.displayName}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-muted-foreground">
-                    Model this skill is designed and tested for
-                  </p>
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="argument-hint">Argument Hint</Label>
