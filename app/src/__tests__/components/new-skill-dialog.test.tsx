@@ -202,7 +202,7 @@ describe("SkillDialog (create mode)", () => {
 
     expect(screen.getByText("Step 2 of 2")).toBeInTheDocument();
     expect(screen.getByLabelText("Version")).toBeInTheDocument();
-    expect(screen.getByLabelText("Model")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Model")).not.toBeInTheDocument();
   });
 
   it("shows Back and Create buttons on Step 2 (no Next or Skip)", async () => {
