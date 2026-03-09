@@ -115,6 +115,14 @@ export async function runAgentRequest(
 
   const options = buildQueryOptions(config, state.abortController, stderrHandler);
 
+  // Log plugins being passed to the SDK for diagnostics
+  const pluginsToLog = (options as Record<string, unknown>).plugins;
+  if (pluginsToLog) {
+    process.stderr.write(`[sidecar] SDK plugins: ${JSON.stringify(pluginsToLog)}\n`);
+  } else {
+    process.stderr.write("[sidecar] SDK plugins: none\n");
+  }
+
   // Notify the UI that we're about to initialize the SDK
   emitSystemEvent(onMessage, "init_start");
 
