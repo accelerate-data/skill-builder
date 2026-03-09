@@ -55,6 +55,7 @@ vi.mock("@/lib/tauri", () => ({
   autofillClarifications: vi.fn(() => Promise.resolve(0)),
   logGateDecision: vi.fn(() => Promise.resolve()),
   navigateBackToStepDb: vi.fn(() => Promise.resolve()),
+  getContextFileContent: vi.fn(() => Promise.resolve(null)),
 }));
 
 // Mock ClarificationsEditor — renders a simple div with testid and
@@ -108,6 +109,7 @@ import {
   getDisabledSteps,
   materializeWorkflowStepOutput,
   materializeAnswerEvaluationOutput,
+  getContextFileContent,
 } from "@/lib/tauri";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
@@ -1431,6 +1433,87 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     expect(wf.currentStep).toBe(2);
     expect(wf.steps[2].name).toBe("Confirm Decisions");
   });
+
+  it("skipToDecisions immediately persists state to DB so a crash doesn't revert the skipped step", async () => {
+    // Set up step 0 completed with clarifications
+    const jsonData = makeClarificationsJson();
+    const sufficientEvaluation = {
+      verdict: "sufficient",
+      answered_count: 2,
+      empty_count: 0,
+      vague_count: 0,
+      contradictory_count: 0,
+      total_count: 2,
+      reasoning: "All answers are clear and complete.",
+      per_question: [],
+    };
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(sufficientEvaluation));
+      }
+      if (path.includes("research-plan.md")) {
+        return Promise.resolve("# Research Plan\nTest content");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-sufficient");
+    vi.mocked(saveWorkflowState).mockClear();
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    // Trigger the gate evaluator via the Continue callback
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    // Gate agent completes — triggers finishGateEvaluation → reads answer-evaluation.json
+    act(() => {
+      useAgentStore.getState().startRun("gate-agent-sufficient", "haiku");
+      useAgentStore.getState().completeRun("gate-agent-sufficient", true);
+    });
+
+    // Wait for the "Skip to Decisions" button to appear (verdict = "sufficient")
+    const skipButton = await screen.findByRole("button", { name: "Skip to Decisions" });
+
+    // Clear calls accumulated during setup so we can assert on the immediate persist only
+    vi.mocked(saveWorkflowState).mockClear();
+
+    await act(async () => {
+      skipButton.click();
+    });
+
+    // saveWorkflowState must have been called synchronously (not waiting for the 300ms debounce)
+    // so that a crash immediately after clicking "Skip to Decisions" doesn't revert step 1.
+    expect(vi.mocked(saveWorkflowState)).toHaveBeenCalledWith(
+      "test-skill",
+      2,         // currentStep = 2 (Confirm Decisions)
+      "pending", // not all steps completed yet
+      expect.arrayContaining([
+        expect.objectContaining({ step_id: 1, status: "completed" }),
+        expect.objectContaining({ step_id: 2, status: "pending" }),
+      ]),
+      expect.anything(),
+    );
+
+    // Zustand state must also reflect the skip
+    expect(useWorkflowStore.getState().currentStep).toBe(2);
+    expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+  });
 });
 
 describe("WorkflowPage — reset flow session lifecycle", () => {
@@ -1515,21 +1598,14 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     useWorkflowStore.getState().updateStepStatus(0, "error");
     useWorkflowStore.getState().setRunning(false);
 
-    // readFile returns content for the step's first output file -> errorHasArtifacts = true
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.includes("research-plan.md")) {
-        return Promise.resolve("partial content");
-      }
-      return Promise.reject("not found");
-    });
+    // getContextFileContent returns content for step 0's first output file (context/clarifications.json)
+    vi.mocked(getContextFileContent).mockResolvedValue("partial content");
 
     render(<WorkflowPage />);
 
-    // Wait for artifact detection to complete (readFile resolves asynchronously)
+    // Wait for artifact detection to complete (getContextFileContent resolves asynchronously)
     await waitFor(() => {
-      expect(vi.mocked(readFile)).toHaveBeenCalledWith(
-        expect.stringContaining("research-plan.md")
-      );
+      expect(vi.mocked(getContextFileContent)).toHaveBeenCalled();
     });
     // Flush promise so errorHasArtifacts state updates
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
