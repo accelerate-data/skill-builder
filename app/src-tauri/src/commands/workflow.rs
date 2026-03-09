@@ -1280,6 +1280,11 @@ pub fn materialize_answer_evaluation_output(
         "[materialize_answer_evaluation_output] skill={}",
         skill_name
     );
+    log::debug!(
+        "[materialize_answer_evaluation_output] skill={} structured_output={}",
+        skill_name,
+        structured_output
+    );
     let workspace_dir = Path::new(&workspace_path).join(&skill_name);
     materialize_answer_evaluation_output_value(&workspace_dir, &structured_output)
 }
@@ -1514,7 +1519,7 @@ fn build_prompt(
         max_dimensions
     ));
 
-    prompt.push_str(" Read user-context.md from the workspace directory for purpose, description, and all user context. The workspace directory only contains user-context.md — ignore everything else (logs/, etc.).");
+    prompt.push_str(" Read user-context.md from the workspace directory for purpose, description, and all user context. The workspace directory may contain other files written by the workflow (such as answer-evaluation.json) — read only the files explicitly named in your agent instructions. Do not read the logs/ directory or any file not named in your instructions.");
 
     prompt
 }
@@ -2681,6 +2686,70 @@ pub fn reset_workflow_step(
         )?;
     }
 
+    Ok(())
+}
+
+/// Navigate back to a completed step: preserves the target step's output files and DB status,
+/// deletes only the files of subsequent steps, and sets current_step to target_step_id.
+/// This makes the DB the canonical source of truth for navigate-back transitions.
+#[tauri::command]
+pub fn navigate_back_to_step(
+    workspace_path: String,
+    skill_name: String,
+    target_step_id: u32,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    log::info!(
+        "[navigate_back_to_step] CALLED skill={} target_step={} workspace={}",
+        skill_name,
+        target_step_id,
+        workspace_path
+    );
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
+    log::debug!("[navigate_back_to_step] skills_path={}", skills_path);
+
+    // Auto-commit: checkpoint before artifacts are deleted
+    let msg = format!(
+        "{}: checkpoint before navigate back to step {}",
+        skill_name, target_step_id
+    );
+    if let Err(e) = crate::git::commit_all(std::path::Path::new(&skills_path), &msg) {
+        log::warn!("Git auto-commit failed ({}): {}", msg, e);
+    }
+
+    // Delete output files only for steps AFTER the target; target step keeps its files.
+    let delete_from = target_step_id + 1;
+    crate::cleanup::delete_step_output_files(
+        &workspace_path,
+        &skill_name,
+        delete_from,
+        &skills_path,
+    );
+
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+
+    // Reset only steps after the target; target step status is preserved as "completed".
+    crate::db::reset_workflow_steps_from(&conn, &skill_name, delete_from as i32)?;
+
+    // Set current_step to the target (not delete_from) so DB reflects the correct landing step.
+    // Use "pending" for the run status because subsequent steps are now reset; the next
+    // saveWorkflowState sync will recompute and update as needed.
+    if let Some(run) = crate::db::get_workflow_run(&conn, &skill_name)? {
+        crate::db::save_workflow_run(
+            &conn,
+            &skill_name,
+            target_step_id as i32,
+            "pending",
+            &run.purpose,
+        )?;
+    }
+
+    log::info!(
+        "[navigate_back_to_step] done skill={} current_step={}",
+        skill_name,
+        target_step_id
+    );
     Ok(())
 }
 

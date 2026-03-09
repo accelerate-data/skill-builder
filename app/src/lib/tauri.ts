@@ -144,6 +144,15 @@ export const resetWorkflowStep = (
   fromStepId: number,
 ) => invoke("reset_workflow_step", { workspacePath, skillName, fromStepId });
 
+/** Navigate back to a completed step: preserves target step's output files,
+ *  resets only subsequent steps in DB, and sets current_step = targetStepId.
+ *  Use this instead of resetWorkflowStep when the target step should stay "completed". */
+export const navigateBackToStepDb = (
+  workspacePath: string,
+  skillName: string,
+  targetStepId: number,
+): Promise<void> => invoke<void>("navigate_back_to_step", { workspacePath, skillName, targetStepId });
+
 export interface StepResetPreview {
   step_id: number;
   step_name: string;

@@ -50,6 +50,7 @@ import {
   logGateDecision,
   materializeAnswerEvaluationOutput,
   materializeWorkflowStepOutput,
+  navigateBackToStepDb,
   type AnswerEvaluation,
 } from "@/lib/tauri";
 import { TransitionGateDialog, type GateVerdict } from "@/components/transition-gate-dialog";
@@ -532,7 +533,10 @@ export default function WorkflowPage() {
       const msg = run.messages[i];
       if (msg.type !== "result") continue;
       const raw = msg.raw as Record<string, unknown>;
-      if ("result" in raw) return raw.result ?? null;
+      // Prefer structured_output (new SDK behavior: text in result, JSON in structured_output).
+      // Fall back to result for older SDK versions where result held the JSON object directly.
+      if ("structured_output" in raw && raw.structured_output != null) return raw.structured_output;
+      if ("result" in raw && raw.result != null && typeof raw.result !== "string") return raw.result;
     }
     return null;
   }, []);
@@ -581,20 +585,35 @@ export default function WorkflowPage() {
       setActiveAgent(null);
 
       const finish = async () => {
-        // Backend-owned writes: step 0/1 return canonical artifact payload in
+        // Backend-owned writes: step 0/1/2 return canonical artifact payload in
         // structured output; Rust validates and writes context files.
         if ((step === 0 || step === 1 || step === 2) && completedAgentId) {
           const structuredOutput = extractStructuredResultPayload(completedAgentId);
-          try {
-            await materializeWorkflowStepOutput(skillName, step, structuredOutput ?? null);
-          } catch (err) {
-            updateStepStatus(step, "error");
-            setRunning(false);
-            toast.error(
-              `Step ${step + 1} output validation failed: ${err instanceof Error ? err.message : String(err)}`,
-              { duration: Infinity },
-            );
-            return;
+          if (structuredOutput == null || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) {
+            // Step 1 requires a structured output object — treat missing/invalid as an error.
+            // Step 0 does not require it — continue normally without materialization.
+            if (step === 1) {
+              updateStepStatus(step, "error");
+              setRunning(false);
+              toast.error(
+                `Step ${step + 1} completed but produced no structured output`,
+                { duration: Infinity },
+              );
+              return;
+            }
+            // step 0 and step 2: proceed without calling materialize
+          } else {
+            try {
+              await materializeWorkflowStepOutput(skillName, step, structuredOutput);
+            } catch (err) {
+              updateStepStatus(step, "error");
+              setRunning(false);
+              toast.error(
+                `Step ${step + 1} output validation failed: ${err instanceof Error ? err.message : String(err)}`,
+                { duration: Infinity },
+              );
+              return;
+            }
           }
         }
 
@@ -773,8 +792,15 @@ export default function WorkflowPage() {
       return;
     }
 
+    console.log("[workflow] Gate structured output:", structuredOutput);
+
     try {
-      await materializeAnswerEvaluationOutput(skillName, workspacePath, structuredOutput ?? null);
+      // Only materialize when the agent produced a structured payload.
+      // When null, skip materialization but still try to read an existing
+      // answer-evaluation.json in case the backend wrote it independently.
+      if (structuredOutput != null) {
+        await materializeAnswerEvaluationOutput(skillName, workspacePath, structuredOutput);
+      }
 
       const evalPath = `${workspacePath}/${skillName}/answer-evaluation.json`;
       const raw = await readFile(evalPath);
@@ -823,7 +849,8 @@ export default function WorkflowPage() {
       setGateEvaluation(evaluation);
       setShowGateDialog(true);
     } catch (err) {
-      console.warn("[workflow] Could not read evaluation result — proceeding normally:", err);
+      console.warn("[workflow] Gate evaluation materialization failed — proceeding normally:", err);
+      console.warn("[workflow] Gate structured output that failed:", structuredOutput);
       proceedNormally();
     }
   };
@@ -896,6 +923,14 @@ export default function WorkflowPage() {
       updateStepStatus(1, "completed");
       setCurrentStep(2);
     }
+    // Persist immediately so a crash in the 300ms debounce window cannot revert the skipped step.
+    // Read the store after the synchronous Zustand updates above so the snapshot is current.
+    const s = useWorkflowStore.getState();
+    const stepStatuses = s.steps.map((step) => ({ step_id: step.id, status: step.status }));
+    const runStatus = s.steps.every((step) => step.status === "completed") ? "completed" : "pending";
+    saveWorkflowState(skillName, s.currentStep, runStatus, stepStatuses, purpose ?? undefined).catch(
+      (err) => console.error("skipToDecisions: failed to persist state:", err),
+    );
     toast.success(message);
   };
 
@@ -1219,20 +1254,24 @@ export default function WorkflowPage() {
       {/* Reset step dialog — shown when clicking a prior completed step */}
       <ResetStepDialog
         targetStep={resetTarget}
+        deleteFromStep={resetTarget !== null && resetTarget > 0 ? resetTarget + 1 : undefined}
         workspacePath={workspacePath ?? ""}
         skillName={skillName}
         open={resetTarget !== null}
         onOpenChange={(open) => { if (!open) setResetTarget(null) }}
+        executeReset={resetTarget !== null && resetTarget > 0
+          ? () => navigateBackToStepDb(workspacePath ?? "", skillName, resetTarget)
+          : undefined}
         onReset={() => {
           if (resetTarget !== null) {
             endActiveSession();
             clearRuns();
             if (resetTarget === 0) {
-              // Step 0 output files are deleted; mark it pending so it re-runs from scratch.
+              // Step 0: full reset — re-runs from scratch.
               resetToStep(0);
             } else {
-              // Steps 1+ keep the target as "completed" so its editor/output renders.
-              // Only subsequent steps are reset to "pending".
+              // Steps 1+: navigate_back_to_step already persisted the correct DB state;
+              // sync Zustand to match (target stays "completed", subsequent steps "pending").
               navigateBackToStep(resetTarget);
             }
             setResetTarget(null);
