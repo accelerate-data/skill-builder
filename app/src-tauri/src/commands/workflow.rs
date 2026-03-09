@@ -1280,6 +1280,11 @@ pub fn materialize_answer_evaluation_output(
         "[materialize_answer_evaluation_output] skill={}",
         skill_name
     );
+    log::debug!(
+        "[materialize_answer_evaluation_output] skill={} structured_output={}",
+        skill_name,
+        structured_output
+    );
     let workspace_dir = Path::new(&workspace_path).join(&skill_name);
     materialize_answer_evaluation_output_value(&workspace_dir, &structured_output)
 }
@@ -1514,7 +1519,7 @@ fn build_prompt(
         max_dimensions
     ));
 
-    prompt.push_str(" Read user-context.md from the workspace directory for purpose, description, and all user context. The workspace directory only contains user-context.md — ignore everything else (logs/, etc.).");
+    prompt.push_str(" Read user-context.md from the workspace directory for purpose, description, and all user context. The workspace directory may contain other files written by the workflow (such as answer-evaluation.json) — read only the files explicitly named in your agent instructions. Do not read the logs/ directory or any file not named in your instructions.");
 
     prompt
 }

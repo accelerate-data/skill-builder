@@ -773,6 +773,8 @@ export default function WorkflowPage() {
       return;
     }
 
+    console.log("[workflow] Gate structured output:", structuredOutput);
+
     try {
       await materializeAnswerEvaluationOutput(skillName, workspacePath, structuredOutput ?? null);
 
@@ -823,7 +825,8 @@ export default function WorkflowPage() {
       setGateEvaluation(evaluation);
       setShowGateDialog(true);
     } catch (err) {
-      console.warn("[workflow] Could not read evaluation result — proceeding normally:", err);
+      console.warn("[workflow] Gate evaluation materialization failed — proceeding normally:", err);
+      console.warn("[workflow] Gate structured output that failed:", structuredOutput);
       proceedNormally();
     }
   };
