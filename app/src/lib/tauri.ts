@@ -227,9 +227,6 @@ export const listSkillFiles = (workspacePath: string, skillName: string) =>
 
 // --- Lifecycle ---
 
-export const hasRunningAgents = (workflowSessionId?: string | null) =>
-  invoke<boolean>("has_running_agents", { workflowSessionId: workflowSessionId ?? null });
-
 export const getWorkspacePath = () =>
   invoke<string>("get_workspace_path");
 

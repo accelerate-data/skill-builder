@@ -982,7 +982,6 @@ describe("completeRun persistence with modelUsageBreakdown", () => {
 
   it("calls persistAgentRun once per model when breakdown has 2+ models", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    // Clear the startRun persist call
     mockInvoke.mockClear();
 
     // Add a result message with multi-model usage
