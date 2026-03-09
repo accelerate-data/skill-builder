@@ -8,6 +8,9 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { runAgentRequest, emitSystemEvent } from "../run-agent.js";
 import type { SidecarConfig } from "../config.js";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 
 const mockQuery = vi.mocked(query);
 
@@ -41,6 +44,52 @@ describe("runAgentRequest", () => {
         prompt: "hello agent",
       }),
     );
+  });
+
+  it("fails fast when a required plugin is missing", async () => {
+    // Create an empty temp dir (no .claude/plugins)
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "sidecar-plugin-missing-"));
+    await expect(
+      runAgentRequest(
+        baseConfig({
+          cwd: tmp,
+          requiredPlugins: ["skill-content-researcher"],
+        }),
+        vi.fn(),
+      ),
+    ).rejects.toThrow("Required plugin 'skill-content-researcher' not installed");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("allows execution when required plugin manifest exists and matches", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "sidecar-plugin-present-"));
+    const manifestPath = path.join(
+      tmp,
+      ".claude",
+      "plugins",
+      "skill-content-researcher",
+      ".claude-plugin",
+      "plugin.json",
+    );
+    await fs.mkdir(path.dirname(manifestPath), { recursive: true });
+    await fs.writeFile(manifestPath, JSON.stringify({ name: "skill-content-researcher" }));
+
+    async function* fakeConversation() {
+      yield { type: "result", content: "done" };
+    }
+    mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
+
+    const messages: Record<string, unknown>[] = [];
+    await runAgentRequest(
+      baseConfig({
+        cwd: tmp,
+        requiredPlugins: ["skill-content-researcher"],
+      }),
+      (msg) => messages.push(msg),
+    );
+
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(messages[0]).toMatchObject({ type: "system", subtype: "init_start" });
   });
 
   it("streams all messages to the onMessage callback", async () => {

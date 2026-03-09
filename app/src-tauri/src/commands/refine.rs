@@ -105,6 +105,7 @@ fn build_refine_config(
         prompt_suggestions: Some(refine_prompt_suggestions),
         path_to_claude_code_executable: None,
         agent_name: Some(REFINE_AGENT_NAME.to_string()),
+        required_plugins: None,
         conversation_history: None,
     };
 

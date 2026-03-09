@@ -4,6 +4,7 @@ export interface SidecarConfig {
   agentName?: string;
   apiKey: string;
   cwd: string;
+  requiredPlugins?: string[];
   allowedTools?: string[];
   maxTurns?: number;
   permissionMode?: string;
@@ -31,5 +32,12 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
   if (typeof c.prompt !== "string") throw new Error("Invalid SidecarConfig: missing prompt");
   if (typeof c.apiKey !== "string" || c.apiKey.length === 0) throw new Error("Invalid SidecarConfig: missing apiKey");
   if (typeof c.cwd !== "string") throw new Error("Invalid SidecarConfig: missing cwd");
+
+  if (c.requiredPlugins !== undefined) {
+    if (!Array.isArray(c.requiredPlugins) || c.requiredPlugins.some((p) => typeof p !== "string")) {
+      throw new Error("Invalid SidecarConfig: requiredPlugins must be string[]");
+    }
+  }
+
   return raw as SidecarConfig;
 }

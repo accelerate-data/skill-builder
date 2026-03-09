@@ -1781,6 +1781,12 @@ async fn run_workflow_step_inner(
         settings.preferred_model
     );
 
+    let required_plugins = if agent_name == "research-orchestrator" {
+        Some(vec!["skill-content-researcher".to_string()])
+    } else {
+        None
+    };
+
     let config = SidecarConfig {
         prompt,
         model: None,
@@ -1806,6 +1812,7 @@ async fn run_workflow_step_inner(
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name),
+        required_plugins,
         conversation_history: None,
     };
 
@@ -2422,6 +2429,7 @@ pub async fn run_answer_evaluator(
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name: Some("answer-evaluator".to_string()),
+        required_plugins: None,
         conversation_history: None,
     };
 

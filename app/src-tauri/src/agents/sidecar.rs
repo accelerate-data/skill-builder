@@ -33,6 +33,8 @@ pub struct SidecarConfig {
     pub path_to_claude_code_executable: Option<String>,
     #[serde(rename = "agentName", skip_serializing_if = "Option::is_none")]
     pub agent_name: Option<String>,
+    #[serde(rename = "requiredPlugins", skip_serializing_if = "Option::is_none")]
+    pub required_plugins: Option<Vec<String>>,
     #[serde(
         rename = "conversationHistory",
         skip_serializing_if = "Option::is_none"
@@ -57,6 +59,7 @@ impl std::fmt::Debug for SidecarConfig {
             .field("output_format", &self.output_format)
             .field("prompt_suggestions", &self.prompt_suggestions)
             .field("agent_name", &self.agent_name)
+            .field("required_plugins", &self.required_plugins)
             .finish()
     }
 }
@@ -158,6 +161,7 @@ mod tests {
             prompt_suggestions: None,
             path_to_claude_code_executable: None,
             agent_name: Some("research-entities".to_string()),
+            required_plugins: None,
             conversation_history: None,
         };
 
@@ -198,6 +202,7 @@ mod tests {
             prompt_suggestions: None,
             path_to_claude_code_executable: None,
             agent_name: None,
+            required_plugins: None,
             conversation_history: None,
         };
 
