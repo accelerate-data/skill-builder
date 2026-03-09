@@ -47,6 +47,6 @@ ONE-PAGERS/
 # Implementation plans (local development working documents, not committed)
 docs/plans/
 
-# Vibedata agent artifacts 
+# Vibedata agent artifacts
 vd-memory/*
 
