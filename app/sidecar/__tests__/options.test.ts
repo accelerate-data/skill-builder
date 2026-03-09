@@ -233,4 +233,37 @@ describe("buildQueryOptions", () => {
     expect(plugins[1]).toEqual({ type: "local", path: "/my/workspace/.claude/plugins/other-plugin" });
   });
 
+  it("infers plugin from namespaced agentName when requiredPlugins is absent", () => {
+    const opts = buildQueryOptions(
+      makeConfig({ cwd: "/my/workspace", agentName: "skill-content-researcher:research-agent" }),
+      new AbortController()
+    );
+    expect(opts).toHaveProperty("plugins");
+    const plugins = (opts as Record<string, unknown>).plugins as Array<{ type: string; path: string }>;
+    expect(plugins).toHaveLength(1);
+    expect(plugins[0]).toEqual({ type: "local", path: "/my/workspace/.claude/plugins/skill-content-researcher" });
+  });
+
+  it("omits plugins when agentName has no namespace prefix", () => {
+    const opts = buildQueryOptions(
+      makeConfig({ agentName: "my-agent" }),
+      new AbortController()
+    );
+    expect(opts).not.toHaveProperty("plugins");
+  });
+
+  it("deduplicates plugin inferred from agentName with requiredPlugins", () => {
+    const opts = buildQueryOptions(
+      makeConfig({
+        cwd: "/my/workspace",
+        agentName: "skill-content-researcher:research-agent",
+        requiredPlugins: ["skill-content-researcher"],
+      }),
+      new AbortController()
+    );
+    const plugins = (opts as Record<string, unknown>).plugins as Array<{ type: string; path: string }>;
+    expect(plugins).toHaveLength(1);
+    expect(plugins[0].path).toBe("/my/workspace/.claude/plugins/skill-content-researcher");
+  });
+
 });
