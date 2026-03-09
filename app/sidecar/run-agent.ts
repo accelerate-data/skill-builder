@@ -6,10 +6,6 @@ import { createAbortState, linkExternalSignal } from "./shutdown.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-type PluginManifest = {
-  name?: unknown;
-};
-
 async function fileExists(p: string): Promise<boolean> {
   try {
     await fs.access(p);
@@ -21,24 +17,16 @@ async function fileExists(p: string): Promise<boolean> {
 
 /**
  * Discover all installed plugins under <cwd>/.claude/plugins/.
- * Returns absolute paths for each subdirectory that contains a valid plugin.json manifest.
+ * Returns an absolute path for each subdirectory found there.
  */
 async function discoverInstalledPlugins(cwd: string): Promise<string[]> {
   const pluginsDir = path.join(cwd, ".claude", "plugins");
-  let entries: string[];
   try {
-    entries = await fs.readdir(pluginsDir);
+    const entries = await fs.readdir(pluginsDir);
+    return entries.map((entry) => path.join(pluginsDir, entry));
   } catch {
     return [];
   }
-  const paths: string[] = [];
-  for (const entry of entries) {
-    const manifestPath = path.join(pluginsDir, entry, ".claude-plugin", "plugin.json");
-    if (await fileExists(manifestPath)) {
-      paths.push(path.join(pluginsDir, entry));
-    }
-  }
-  return paths;
 }
 
 function inferPluginFromAgentName(agentName: string | undefined): string | null {
