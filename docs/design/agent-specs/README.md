@@ -40,7 +40,7 @@ JSON contract write path:
 - Steps 0, 1, and 2 return structured payloads.
 - Rust validates payload shape and writes canonical files.
 - `answer-evaluator` follows the same structured-output pattern for `answer-evaluation.json`.
-- For Step 0 and Step 1, the SDK `structuredOutput` schema must use the same canonical clarifications schema as `agent-sources/workspace/skills/research/references/schemas.md`.
+- For Step 0 and Step 1, the SDK `structuredOutput` schema must use the same canonical clarifications schema as `agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md`.
 
 Step-level structured payload keys:
 

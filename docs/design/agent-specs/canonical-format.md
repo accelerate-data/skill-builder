@@ -261,7 +261,7 @@ The research planner now represents the research plan **inside the `research_out
 }
 ```
 
-The precise field‑level schema for `research_output` is defined in `agent-sources/workspace/skills/research/references/schemas.md` (mirrored into the `skill-content-researcher` plugin) and enforced at runtime by the plugin’s Python normalizer. This document describes the **envelope** and where the canonical schema lives; if `schemas.md` and this example diverge, treat `schemas.md` as authoritative.
+The precise field‑level schema for `research_output` is defined in `agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md` and enforced at runtime by the plugin’s Python normalizer. This document describes the **envelope** and where the canonical schema lives; if `schemas.md` and this example diverge, treat `schemas.md` as authoritative.
 
 Legacy `research-plan.md` markdown output is no longer part of the app ↔ agent contract; it may still be generated for human‑readable views but must be derived from `research_output.metadata.research_plan`.
 

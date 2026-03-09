@@ -142,7 +142,7 @@ Write design docs concisely — state the decision and the reason, not the reaso
 Research output schemas and envelopes are documented in:
 
 - `docs/design/agent-specs/canonical-format.md` — high-level artifact contracts
-- `agent-sources/workspace/skills/research/references/schemas.md` — canonical `research_output` schema (mirrored into the `skill-content-researcher` plugin)
+- `agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md` — canonical `research_output` schema
 
 ## Code Style
 

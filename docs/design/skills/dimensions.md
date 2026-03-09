@@ -16,7 +16,7 @@ A dimension that researches "standard Salesforce object model" is actively harmf
 
 ## Skill Structure
 
-The research skill lives at `agent-sources/workspace/skills/research/`. Its reference files:
+The research skill lives at `agent-sources/plugins/skill-content-researcher/skills/research/`. Its reference files:
 
 | File | Purpose |
 |------|---------|

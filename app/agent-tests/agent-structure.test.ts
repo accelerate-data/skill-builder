@@ -184,7 +184,10 @@ describe("Research scope guard contract prompts", () => {
 
   it("research skill does not run preflight and emits low-score scope recommendation", () => {
     const content = fs.readFileSync(
-      path.join(REPO_ROOT, "agent-sources/workspace/skills/research/SKILL.md"),
+      path.join(
+        REPO_ROOT,
+        "agent-sources/plugins/skill-content-researcher/skills/research/SKILL.md",
+      ),
       "utf8"
     );
     expect(content).not.toMatch(/Preflight Scope Guard/i);
@@ -197,7 +200,7 @@ describe("Research scope guard contract prompts", () => {
     const content = fs.readFileSync(
       path.join(
         REPO_ROOT,
-        "agent-sources/workspace/skills/research/references/scoring-rubric.md"
+        "agent-sources/plugins/skill-content-researcher/skills/research/references/scoring-rubric.md",
       ),
       "utf8"
     );

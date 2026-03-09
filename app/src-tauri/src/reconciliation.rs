@@ -273,7 +273,7 @@ pub fn preview_reconcile_on_startup(
                     .unwrap_or(0);
                     notifications.push(format!(
                         "'{}' workflow record recreated at step {}",
-                        skill.name, disk_step
+                        skill.name, disk_step + 1
                     ));
                     continue;
                 }
@@ -297,19 +297,19 @@ pub fn preview_reconcile_on_startup(
                         if !db_valid {
                             notifications.push(format!(
                                 "'{}' was reset from step {} to step {} (disk state behind DB)",
-                                skill.name, run.current_step, disk_step
+                                skill.name, run.current_step + 1, disk_step + 1
                             ));
                         }
                     } else if disk_step > run.current_step {
                         notifications.push(format!(
                             "'{}' was advanced from step {} to step {} (disk state ahead of DB)",
-                            skill.name, run.current_step, disk_step
+                            skill.name, run.current_step + 1, disk_step + 1
                         ));
                     }
                 } else if run.current_step > 0 {
                     notifications.push(format!(
-                        "'{}' was reset from step {} to step 0 (no output files found)",
-                        skill.name, run.current_step
+                        "'{}' was reset from step {} to step 1 (no output files found)",
+                        skill.name, run.current_step + 1
                     ));
                 }
             }
@@ -441,7 +441,7 @@ fn reconcile_skill_builder(
         )?;
         notifications.push(format!(
             "'{}' workflow record recreated at step {}",
-            name, disk_step
+            name, disk_step + 1
         ));
         return Ok(());
     }
@@ -515,7 +515,7 @@ fn reconcile_skill_builder(
                 did_reset = true;
                 notifications.push(format!(
                     "'{}' was reset from step {} to step {} (disk state behind DB)",
-                    name, run.current_step, disk_step
+                    name, run.current_step + 1, disk_step + 1
                 ));
             }
         } else if disk_step > run.current_step {
@@ -530,7 +530,7 @@ fn reconcile_skill_builder(
             )?;
             notifications.push(format!(
                 "'{}' was advanced from step {} to step {} (disk state ahead of DB)",
-                name, run.current_step, disk_step
+                name, run.current_step + 1, disk_step + 1
             ));
         } else {
             // Scenario 1: DB and disk agree
@@ -586,8 +586,8 @@ fn reconcile_skill_builder(
         crate::db::reset_workflow_steps_from(conn, name, 0)?;
         cleanup_future_steps(workspace_path, name, -1, skills_path);
         notifications.push(format!(
-            "'{}' was reset from step {} to step 0 (no output files found)",
-            name, run.current_step
+            "'{}' was reset from step {} to step 1 (no output files found)",
+            name, run.current_step + 1
         ));
     } else {
         // Scenario 8: Fresh skill (step 0, no output).
@@ -723,7 +723,7 @@ mod tests {
 
         let preview = preview_reconcile_on_startup(&conn, workspace, skills_path).unwrap();
         assert_eq!(preview.notifications.len(), 1);
-        assert!(preview.notifications[0].contains("reset from step 3 to step 0"));
+        assert!(preview.notifications[0].contains("reset from step 4 to step 1"));
 
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 3);
@@ -744,7 +744,8 @@ mod tests {
         let preview = preview_reconcile_on_startup(&conn, workspace, skills_path).unwrap();
         assert_eq!(preview.discovered_skills.len(), 1);
         assert_eq!(preview.discovered_skills[0].name, "complete-skill");
-        assert_eq!(preview.discovered_skills[0].scenario, "9c");
+        // All artifacts present (step 0 clarifications.json, step 2 decisions.json, step 3 SKILL.md) → scenario "9b"
+        assert_eq!(preview.discovered_skills[0].scenario, "9b");
     }
 
     // --- Scenario 10: Master row exists but no workflow_runs row ---
@@ -769,7 +770,7 @@ mod tests {
         assert_eq!(result.auto_cleaned, 0);
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("orphan-skill"));
-        assert!(result.notifications[0].contains("workflow record recreated at step 0"));
+        assert!(result.notifications[0].contains("workflow record recreated at step 1"));
 
         // Verify workflow_runs record was auto-created
         let run = crate::db::get_workflow_run(&conn, "orphan-skill")
@@ -801,7 +802,7 @@ mod tests {
         assert!(result.orphans.is_empty());
         assert_eq!(result.auto_cleaned, 0);
         assert_eq!(result.notifications.len(), 1);
-        assert!(result.notifications[0].contains("reset from step 3 to step 0"));
+        assert!(result.notifications[0].contains("reset from step 4 to step 1"));
 
         // Verify DB was corrected
         let run = crate::db::get_workflow_run(&conn, "my-skill")
@@ -1036,7 +1037,7 @@ mod tests {
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert_eq!(result.notifications.len(), 1);
-        assert!(result.notifications[0].contains("reset from step 2 to step 0"));
+        assert!(result.notifications[0].contains("reset from step 3 to step 1"));
 
         let run = crate::db::get_workflow_run(&conn, "lost-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 0);
@@ -1071,7 +1072,7 @@ mod tests {
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-        assert!(result.notifications[0].contains("reset from step 3 to step 0"));
+        assert!(result.notifications[0].contains("reset from step 4 to step 1"));
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 0);
 
@@ -1135,7 +1136,7 @@ mod tests {
 
         // Should reset — disk is genuinely behind
         assert_eq!(result.notifications.len(), 1);
-        assert!(result.notifications[0].contains("reset from step 4 to step 2"));
+        assert!(result.notifications[0].contains("reset from step 5 to step 3"));
         let run = crate::db::get_workflow_run(&conn, "bad-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 2);
     }
@@ -1258,7 +1259,7 @@ mod tests {
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert_eq!(result.notifications.len(), 1);
-        assert!(result.notifications[0].contains("reset from step 3 to step 0"));
+        assert!(result.notifications[0].contains("reset from step 4 to step 1"));
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 0);
     }
@@ -1282,7 +1283,7 @@ mod tests {
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert_eq!(result.notifications.len(), 1);
-        assert!(result.notifications[0].contains("advanced from step 0 to step 3"));
+        assert!(result.notifications[0].contains("advanced from step 1 to step 4"));
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 3);
     }
@@ -1411,7 +1412,7 @@ mod tests {
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert_eq!(result.notifications.len(), 1);
-        assert!(result.notifications[0].contains("reset from step 3 to step 0"));
+        assert!(result.notifications[0].contains("reset from step 4 to step 1"));
         let run = crate::db::get_workflow_run(&conn, "crashed-skill")
             .unwrap()
             .unwrap();
@@ -1460,7 +1461,7 @@ mod tests {
 
         // Disk ahead (3 > 1) triggers an "advanced" notification
         assert_eq!(result.notifications.len(), 1);
-        assert!(result.notifications[0].contains("advanced from step 1 to step 3"));
+        assert!(result.notifications[0].contains("advanced from step 2 to step 4"));
 
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 3);
@@ -1486,7 +1487,7 @@ mod tests {
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert_eq!(result.notifications.len(), 1);
-        assert!(result.notifications[0].contains("advanced from step 0 to step 2"));
+        assert!(result.notifications[0].contains("advanced from step 1 to step 3"));
 
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 2);
@@ -1565,8 +1566,8 @@ mod tests {
 
         assert_eq!(result.notifications.len(), 1);
         assert!(
-            result.notifications[0].contains("reset from step 3 to step 2"),
-            "expected reset from 3 to 2, got: {:?}",
+            result.notifications[0].contains("reset from step 4 to step 3"),
+            "expected reset from 4 to 3, got: {:?}",
             result.notifications
         );
 
@@ -1721,7 +1722,7 @@ mod tests {
 
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("real-skill"));
-        assert!(result.notifications[0].contains("workflow record recreated at step 2"));
+        assert!(result.notifications[0].contains("workflow record recreated at step 3"));
 
         let run = crate::db::get_workflow_run(&conn, "real-skill")
             .unwrap()
@@ -1750,7 +1751,7 @@ mod tests {
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert_eq!(result.notifications.len(), 1);
-        assert!(result.notifications[0].contains("workflow record recreated at step 3"));
+        assert!(result.notifications[0].contains("workflow record recreated at step 4"));
 
         let run = crate::db::get_workflow_run(&conn, "done-skill")
             .unwrap()
@@ -1774,7 +1775,7 @@ mod tests {
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert_eq!(result.notifications.len(), 1);
-        assert!(result.notifications[0].contains("workflow record recreated at step 0"));
+        assert!(result.notifications[0].contains("workflow record recreated at step 1"));
 
         let run = crate::db::get_workflow_run(&conn, "bare-skill")
             .unwrap()
@@ -1807,7 +1808,7 @@ mod tests {
         assert!(result.orphans.is_empty());
         assert_eq!(result.auto_cleaned, 0);
         assert_eq!(result.notifications.len(), 1);
-        assert!(result.notifications[0].contains("advanced from step 0 to step 3"));
+        assert!(result.notifications[0].contains("advanced from step 1 to step 4"));
 
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 3);
@@ -1828,11 +1829,11 @@ mod tests {
 
         let result = reconcile_on_startup(&conn, workspace, workspace).unwrap();
 
-        // DB had step 3 → reset to step 0 (no output found)
+        // DB had step 3 → reset to step 1 (no output found)
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 0);
         assert_eq!(result.notifications.len(), 1);
-        assert!(result.notifications[0].contains("reset from step 3 to step 0"));
+        assert!(result.notifications[0].contains("reset from step 4 to step 1"));
     }
 
     #[test]
@@ -2031,7 +2032,7 @@ mod tests {
 
         // A was skipped (notification says so), B was reset
         assert!(result.notifications.iter().any(|n| n.contains("protected") && n.contains("skipped")));
-        assert!(result.notifications.iter().any(|n| n.contains("reset-me") && n.contains("reset from step 5")));
+        assert!(result.notifications.iter().any(|n| n.contains("reset-me") && n.contains("reset from step 6")));
 
         // A's DB state should be unchanged
         let run_a = crate::db::get_workflow_run(&conn, "protected").unwrap().unwrap();
@@ -2074,11 +2075,11 @@ mod tests {
 
         // Verify exact message formats
         assert!(result.notifications.iter().any(|n|
-            n == "'ahead-skill' was reset from step 5 to step 0 (disk state behind DB)"));
+            n == "'ahead-skill' was reset from step 6 to step 1 (disk state behind DB)"));
         assert!(result.notifications.iter().any(|n|
-            n == "'empty-skill' was reset from step 3 to step 0 (no output files found)"));
+            n == "'empty-skill' was reset from step 4 to step 1 (no output files found)"));
         assert!(result.notifications.iter().any(|n|
-            n == "'found-skill' workflow record recreated at step 0"));
+            n == "'found-skill' workflow record recreated at step 1"));
         assert!(result.notifications.iter().any(|n|
             n == "'gone-mkt' marketplace skill removed — SKILL.md not found on disk"));
     }
