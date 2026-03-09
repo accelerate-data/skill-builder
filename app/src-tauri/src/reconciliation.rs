@@ -744,7 +744,8 @@ mod tests {
         let preview = preview_reconcile_on_startup(&conn, workspace, skills_path).unwrap();
         assert_eq!(preview.discovered_skills.len(), 1);
         assert_eq!(preview.discovered_skills[0].name, "complete-skill");
-        assert_eq!(preview.discovered_skills[0].scenario, "9c");
+        // All artifacts present (step 0 clarifications.json, step 2 decisions.json, step 3 SKILL.md) → scenario "9b"
+        assert_eq!(preview.discovered_skills[0].scenario, "9b");
     }
 
     // --- Scenario 10: Master row exists but no workflow_runs row ---
