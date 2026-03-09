@@ -217,3 +217,102 @@ describe("Research scope guard contract prompts", () => {
     expect(content).toMatch(/canonical clarifications object \(unchanged\)/i);
   });
 });
+
+// ── Plugin structure sanity checks ───────────────────────────────────────────
+
+describe("skill-content-researcher plugin structure", () => {
+  const pluginRoot = path.join(
+    REPO_ROOT,
+    "agent-sources",
+    "plugins",
+    "skill-content-researcher",
+  );
+
+  it("plugin manifest declares skills, agents, and mcpServers", () => {
+    const manifestPath = path.join(pluginRoot, ".claude-plugin", "plugin.json");
+    const raw = fs.readFileSync(manifestPath, "utf8");
+    const manifest = JSON.parse(raw);
+
+    expect(manifest.name).toBe("skill-content-researcher");
+    expect(manifest.skills).toBe("./skills");
+    expect(manifest.agents).toBe("./agents");
+    expect(manifest.mcpServers).toBe("./.mcp.json");
+  });
+
+  it("wrapper skill is user-invocable and delegates to plugin agent", () => {
+    const wrapperPath = path.join(
+      pluginRoot,
+      "skills",
+      "skill-content-researcher",
+      "SKILL.md",
+    );
+    const content = fs.readFileSync(wrapperPath, "utf8");
+
+    const fm = frontmatter(wrapperPath);
+    expect(fm.name).toBe("skill-content-researcher");
+    expect(fm.user_invocable).toBe("true");
+
+    expect(content).toMatch(/AskUserQuestion/);
+    expect(content).toMatch(/skill-content-researcher:research-agent/);
+  });
+
+  it("embedded research skill is internal-only (not user-invocable)", () => {
+    const researchPath = path.join(
+      pluginRoot,
+      "skills",
+      "research",
+      "SKILL.md",
+    );
+    const fm = frontmatter(researchPath);
+    expect(fm.user_invocable).toBe("false");
+  });
+
+  it("python normalizer tool is referenced from research-agent instructions", () => {
+    const agentPath = path.join(
+      pluginRoot,
+      "agents",
+      "research-agent.md",
+    );
+    const content = fs.readFileSync(agentPath, "utf8");
+    expect(content).toMatch(/python3 ".claude\/plugins\/skill-content-researcher\/skills\/research\/tools\/normalize_research_output\.py"/);
+  });
+});
+
+describe("skill-creator plugin structure", () => {
+  const pluginRoot = path.join(
+    REPO_ROOT,
+    "agent-sources",
+    "plugins",
+    "skill-creator",
+  );
+
+  it("plugin manifest declares skills, agents, and mcpServers", () => {
+    const manifestPath = path.join(pluginRoot, ".claude-plugin", "plugin.json");
+    const raw = fs.readFileSync(manifestPath, "utf8");
+    const manifest = JSON.parse(raw);
+
+    expect(manifest.name).toBe("skill-creator");
+    expect(manifest.skills).toBe("./skills");
+    expect(manifest.agents).toBe("./agents");
+    expect(manifest.mcpServers).toBe("./.mcp.json");
+  });
+
+  it("skill-creator SKILL.md references bundled scripts and eval viewer via relative paths", () => {
+    const skillPath = path.join(
+      pluginRoot,
+      "skills",
+      "skill-creator",
+      "SKILL.md",
+    );
+    const content = fs.readFileSync(skillPath, "utf8");
+
+    // Aggregation + optimization scripts via python -m under scripts/
+    expect(content).toMatch(/python -m scripts\.aggregate_benchmark/);
+    expect(content).toMatch(/python -m scripts\.run_loop/);
+    expect(content).toMatch(/python -m scripts\.package_skill/);
+
+    // Eval viewer launched via relative eval-viewer/generate_review.py, no placeholder path
+    expect(content).toMatch(/python eval-viewer\/generate_review\.py/);
+    expect(content).not.toMatch(/<skill-creator-path>/);
+  });
+});
