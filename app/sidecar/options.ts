@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
 
@@ -14,6 +15,15 @@ export function buildQueryOptions(
   abortController: AbortController,
   stderr?: (data: string) => void,
 ) {
+  // Resolve plugin directories from the workspace's .claude/plugins/ folder so
+  // the SDK can discover plugin agents (e.g. skill-content-researcher:research-agent).
+  const pluginEntries = (config.requiredPlugins ?? [])
+    .filter((p) => p && p.trim().length > 0)
+    .map((name) => ({
+      type: "local" as const,
+      path: path.resolve(config.cwd, ".claude", "plugins", name),
+    }));
+  const pluginsField = pluginEntries.length > 0 ? { plugins: pluginEntries } : {};
   // --- agent / model resolution ---
   const hasAgent = typeof config.agentName === "string" && config.agentName.length > 0;
   const agentField = hasAgent ? { agent: config.agentName } : {};
@@ -29,6 +39,7 @@ export function buildQueryOptions(
     ...agentField,
     ...modelField,
     ...envField,
+    ...pluginsField,
     // Load project settings from the project workspace at {cwd}
     // (workspace-root CLAUDE.md plus .claude/ skills/agents).
     // 'user' is intentionally excluded — it causes the SDK to scan

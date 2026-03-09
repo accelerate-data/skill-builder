@@ -211,4 +211,26 @@ describe("buildQueryOptions", () => {
     expect(opts).not.toHaveProperty("env");
   });
 
+  it("omits plugins when requiredPlugins is absent", () => {
+    const opts = buildQueryOptions(makeConfig(), new AbortController());
+    expect(opts).not.toHaveProperty("plugins");
+  });
+
+  it("omits plugins when requiredPlugins is empty", () => {
+    const opts = buildQueryOptions(makeConfig({ requiredPlugins: [] }), new AbortController());
+    expect(opts).not.toHaveProperty("plugins");
+  });
+
+  it("resolves each required plugin to its absolute path under .claude/plugins/", () => {
+    const opts = buildQueryOptions(
+      makeConfig({ cwd: "/my/workspace", requiredPlugins: ["skill-content-researcher", "other-plugin"] }),
+      new AbortController()
+    );
+    expect(opts).toHaveProperty("plugins");
+    const plugins = (opts as Record<string, unknown>).plugins as Array<{ type: string; path: string }>;
+    expect(plugins).toHaveLength(2);
+    expect(plugins[0]).toEqual({ type: "local", path: "/my/workspace/.claude/plugins/skill-content-researcher" });
+    expect(plugins[1]).toEqual({ type: "local", path: "/my/workspace/.claude/plugins/other-plugin" });
+  });
+
 });
