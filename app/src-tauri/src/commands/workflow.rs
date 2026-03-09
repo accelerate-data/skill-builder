@@ -2689,6 +2689,68 @@ pub fn reset_workflow_step(
     Ok(())
 }
 
+/// Navigate back to a completed step: preserves the target step's output files and DB status,
+/// deletes only the files of subsequent steps, and sets current_step to target_step_id.
+/// This makes the DB the canonical source of truth for navigate-back transitions.
+#[tauri::command]
+pub fn navigate_back_to_step(
+    workspace_path: String,
+    skill_name: String,
+    target_step_id: u32,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    log::info!(
+        "[navigate_back_to_step] CALLED skill={} target_step={} workspace={}",
+        skill_name,
+        target_step_id,
+        workspace_path
+    );
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
+    log::debug!("[navigate_back_to_step] skills_path={}", skills_path);
+
+    // Auto-commit: checkpoint before artifacts are deleted
+    let msg = format!(
+        "{}: checkpoint before navigate back to step {}",
+        skill_name, target_step_id
+    );
+    if let Err(e) = crate::git::commit_all(std::path::Path::new(&skills_path), &msg) {
+        log::warn!("Git auto-commit failed ({}): {}", msg, e);
+    }
+
+    // Delete output files only for steps AFTER the target; target step keeps its files.
+    let delete_from = target_step_id + 1;
+    crate::cleanup::delete_step_output_files(
+        &workspace_path,
+        &skill_name,
+        delete_from,
+        &skills_path,
+    );
+
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+
+    // Reset only steps after the target; target step status is preserved as "completed".
+    crate::db::reset_workflow_steps_from(&conn, &skill_name, delete_from as i32)?;
+
+    // Set current_step to the target (not delete_from) so DB reflects the correct landing step.
+    if let Some(run) = crate::db::get_workflow_run(&conn, &skill_name)? {
+        crate::db::save_workflow_run(
+            &conn,
+            &skill_name,
+            target_step_id as i32,
+            &run.status,
+            &run.purpose,
+        )?;
+    }
+
+    log::info!(
+        "[navigate_back_to_step] done skill={} current_step={}",
+        skill_name,
+        target_step_id
+    );
+    Ok(())
+}
+
 #[tauri::command]
 pub fn scan_legacy_clarifications(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
     log::info!("scan_legacy_clarifications: checking for legacy clarifications.md files");

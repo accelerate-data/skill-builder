@@ -305,6 +305,7 @@ pub fn run() {
             commands::workflow::materialize_workflow_step_output,
             commands::workflow::package_skill,
             commands::workflow::reset_workflow_step,
+            commands::workflow::navigate_back_to_step,
             commands::workflow::preview_step_reset,
             commands::workflow::get_workflow_state,
             commands::workflow::save_workflow_state,

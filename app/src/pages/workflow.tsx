@@ -50,6 +50,7 @@ import {
   logGateDecision,
   materializeAnswerEvaluationOutput,
   materializeWorkflowStepOutput,
+  navigateBackToStepDb,
   type AnswerEvaluation,
 } from "@/lib/tauri";
 import { TransitionGateDialog, type GateVerdict } from "@/components/transition-gate-dialog";
@@ -1225,20 +1226,24 @@ export default function WorkflowPage() {
       {/* Reset step dialog — shown when clicking a prior completed step */}
       <ResetStepDialog
         targetStep={resetTarget}
+        deleteFromStep={resetTarget !== null && resetTarget > 0 ? resetTarget + 1 : undefined}
         workspacePath={workspacePath ?? ""}
         skillName={skillName}
         open={resetTarget !== null}
         onOpenChange={(open) => { if (!open) setResetTarget(null) }}
+        executeReset={resetTarget !== null && resetTarget > 0
+          ? () => navigateBackToStepDb(workspacePath ?? "", skillName, resetTarget)
+          : undefined}
         onReset={() => {
           if (resetTarget !== null) {
             endActiveSession();
             clearRuns();
             if (resetTarget === 0) {
-              // Step 0 output files are deleted; mark it pending so it re-runs from scratch.
+              // Step 0: full reset — re-runs from scratch.
               resetToStep(0);
             } else {
-              // Steps 1+ keep the target as "completed" so its editor/output renders.
-              // Only subsequent steps are reset to "pending".
+              // Steps 1+: navigate_back_to_step already persisted the correct DB state;
+              // sync Zustand to match (target stays "completed", subsequent steps "pending").
               navigateBackToStep(resetTarget);
             }
             setResetTarget(null);

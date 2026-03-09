@@ -54,6 +54,7 @@ vi.mock("@/lib/tauri", () => ({
   runAnswerEvaluator: vi.fn(() => Promise.reject("not available")),
   autofillClarifications: vi.fn(() => Promise.resolve(0)),
   logGateDecision: vi.fn(() => Promise.resolve()),
+  navigateBackToStepDb: vi.fn(() => Promise.resolve()),
 }));
 
 // Mock ClarificationsEditor — renders a simple div with testid and

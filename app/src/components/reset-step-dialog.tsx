@@ -25,6 +25,10 @@ interface ResetStepDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onReset: () => void
+  /** Override the default resetWorkflowStep Tauri call. When provided, this is
+   *  called instead of resetWorkflowStep(workspacePath, skillName, effectiveDeleteFrom).
+   *  Use this for navigate-back flows that need a different DB command (e.g. navigate_back_to_step). */
+  executeReset?: () => Promise<void>
 }
 
 export default function ResetStepDialog({
@@ -35,6 +39,7 @@ export default function ResetStepDialog({
   open,
   onOpenChange,
   onReset,
+  executeReset,
 }: ResetStepDialogProps) {
   const [loading, setLoading] = useState(false)
   const [preview, setPreview] = useState<StepResetPreview[] | null>(null)
@@ -64,7 +69,11 @@ export default function ResetStepDialog({
     if (effectiveDeleteFrom === null) return
     setLoading(true)
     try {
-      await resetWorkflowStep(workspacePath, skillName, effectiveDeleteFrom)
+      if (executeReset) {
+        await executeReset()
+      } else {
+        await resetWorkflowStep(workspacePath, skillName, effectiveDeleteFrom)
+      }
       toast.success("Workflow reset successfully")
       onOpenChange(false)
       onReset()
