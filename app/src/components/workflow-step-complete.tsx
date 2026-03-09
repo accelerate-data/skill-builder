@@ -407,6 +407,25 @@ export function WorkflowStepComplete({
   const isDecisionsStep = outputFiles.includes("context/decisions.json")
     && decisionsContent && decisionsContent !== "__NOT_FOUND__";
 
+  // Decisions step: missing output file — show re-run affordance instead of broken completion screen
+  if (outputFiles.includes("context/decisions.json") && (!decisionsContent || decisionsContent === "__NOT_FOUND__")) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
+        <AlertTriangle className="size-8 text-destructive/50" />
+        <div className="text-center">
+          <p className="font-medium text-destructive">{stepName} step completed but output files are missing</p>
+          <p className="mt-1 text-sm">Expected <code className="text-xs">context/decisions.json</code> but it was not found.</p>
+        </div>
+        {onResetStep && (
+          <Button size="sm" variant="outline" onClick={onResetStep}>
+            <RotateCcw className="size-3.5" />
+            Re-run Step
+          </Button>
+        )}
+      </div>
+    );
+  }
+
   if (isDecisionsStep) {
     // In review mode, derive duration from DB agent runs
     const dbDuration = agentRuns.length > 0
@@ -525,7 +544,15 @@ export function WorkflowStepComplete({
         <ScrollArea className="min-h-0 flex-1">
           <div className="pr-4">
             {activeNotFound && (
-              <p className="text-sm text-muted-foreground italic">File not found</p>
+              <div className="flex flex-col items-center gap-3 py-6">
+                <p className="text-sm text-muted-foreground italic">File not found</p>
+                {onResetStep && (
+                  <Button size="sm" variant="outline" onClick={onResetStep}>
+                    <RotateCcw className="size-3.5" />
+                    Re-run Step
+                  </Button>
+                )}
+              </div>
             )}
             {!activeNotFound && activeContent && (
               <FileContentRenderer file={activeFile} content={activeContent} />
