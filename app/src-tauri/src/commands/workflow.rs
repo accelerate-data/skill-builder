@@ -78,7 +78,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
 /// so we only need to copy once per workspace.
 ///
 /// **Dev-mode caveat:** In development, prompts are read from the repo root.
-/// Edits to `agents/` or `workspace/` while the app is running won't be
+/// Edits to `agent-sources/agents/` or `workspace/` while the app is running won't be
 /// picked up until the app is restarted.
 static COPIED_WORKSPACES: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
@@ -110,6 +110,31 @@ pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
             .path()
             .resource_dir()
             .map(|r| r.join("workspace").join("skills"))
+            .unwrap_or_default(),
+    }
+}
+
+/// Resolve the path to bundled plugins source directory.
+/// In dev mode: `{CARGO_MANIFEST_DIR}/../../agent-sources/plugins/`.
+/// In production: Tauri resource directory `agent-sources/plugins/`.
+pub fn resolve_bundled_plugins_dir(app_handle: &tauri::AppHandle) -> PathBuf {
+    use tauri::Manager;
+
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.to_path_buf());
+
+    let dev_path = repo_root
+        .as_ref()
+        .map(|r| r.join("agent-sources").join("plugins"));
+
+    match dev_path {
+        Some(ref p) if p.is_dir() => p.clone(),
+        _ => app_handle
+            .path()
+            .resource_dir()
+            .map(|r| r.join("agent-sources").join("plugins"))
             .unwrap_or_default(),
     }
 }
@@ -225,7 +250,9 @@ fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBu
         .and_then(|p| p.parent())
         .map(|p| p.to_path_buf());
 
-    let agents_src = repo_root.as_ref().map(|r| r.join("agents"));
+    let agents_src = repo_root
+        .as_ref()
+        .map(|r| r.join("agent-sources").join("agents"));
     let claude_md_src = repo_root
         .as_ref()
         .map(|r| r.join("agent-sources").join("workspace").join("CLAUDE.md"));
@@ -236,7 +263,7 @@ fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBu
             let resource = app_handle
                 .path()
                 .resource_dir()
-                .map(|r| r.join("agents"))
+                .map(|r| r.join("agent-sources").join("agents"))
                 .unwrap_or_default();
             if resource.is_dir() {
                 resource
@@ -314,16 +341,18 @@ pub async fn ensure_workspace_prompts(
     // Extract paths from AppHandle before moving into the blocking closure
     // (AppHandle is !Send so it cannot cross the spawn_blocking boundary)
     let (agents_dir, claude_md) = resolve_prompt_source_dirs(app_handle);
+    let plugins_dir = resolve_bundled_plugins_dir(app_handle);
 
-    if !agents_dir.is_dir() && !claude_md.is_file() {
+    if !agents_dir.is_dir() && !claude_md.is_file() && !plugins_dir.is_dir() {
         return Ok(()); // No sources found anywhere — skip silently
     }
 
     let workspace = workspace_path.to_string();
     let agents = agents_dir.clone();
+    let plugins = plugins_dir.clone();
     let cmd = claude_md.clone();
 
-    tokio::task::spawn_blocking(move || copy_prompts_sync(&agents, &cmd, &workspace))
+    tokio::task::spawn_blocking(move || copy_prompts_sync(&agents, &plugins, &cmd, &workspace))
         .await
         .map_err(|e| format!("Prompt copy task failed: {}", e))??;
 
@@ -335,11 +364,15 @@ pub async fn ensure_workspace_prompts(
 /// Only copies agents — CLAUDE.md is rebuilt separately via `rebuild_claude_md`.
 fn copy_prompts_sync(
     agents_dir: &Path,
+    plugins_dir: &Path,
     _claude_md: &Path,
     workspace_path: &str,
 ) -> Result<(), String> {
     if agents_dir.is_dir() {
         copy_agents_to_claude_dir(agents_dir, workspace_path)?;
+    }
+    if plugins_dir.is_dir() {
+        copy_managed_plugins_to_claude_dir(plugins_dir, workspace_path)?;
     }
     Ok(())
 }
@@ -356,12 +389,13 @@ pub fn ensure_workspace_prompts_sync(
     }
 
     let (agents_dir, claude_md) = resolve_prompt_source_dirs(app_handle);
+    let plugins_dir = resolve_bundled_plugins_dir(app_handle);
 
-    if !agents_dir.is_dir() && !claude_md.is_file() {
+    if !agents_dir.is_dir() && !claude_md.is_file() && !plugins_dir.is_dir() {
         return Ok(());
     }
 
-    copy_prompts_sync(&agents_dir, &claude_md, workspace_path)?;
+    copy_prompts_sync(&agents_dir, &plugins_dir, &claude_md, workspace_path)?;
     mark_workspace_copied(workspace_path);
     Ok(())
 }
@@ -370,8 +404,12 @@ pub fn ensure_workspace_prompts_sync(
 /// other contents of the `.claude/` directory (skills, agents, etc.).
 pub fn redeploy_agents(app_handle: &tauri::AppHandle, workspace_path: &str) -> Result<(), String> {
     let (agents_dir, _) = resolve_prompt_source_dirs(app_handle);
+    let plugins_dir = resolve_bundled_plugins_dir(app_handle);
     if agents_dir.is_dir() {
         copy_agents_to_claude_dir(&agents_dir, workspace_path)?;
+    }
+    if plugins_dir.is_dir() {
+        copy_managed_plugins_to_claude_dir(&plugins_dir, workspace_path)?;
     }
     Ok(())
 }
@@ -494,10 +532,14 @@ pub fn update_skills_section(
     write_claude_md(&base, workspace_path, conn)
 }
 
-/// Copy agent .md files from flat agents/ directory to <workspace>/.claude/agents/.
-/// agents/{name}.md → .claude/agents/{name}.md
+/// Copy agent .md files from flat bundled agent source to <workspace>/.claude/agents/.
+/// agent-sources/agents/{name}.md → .claude/agents/{name}.md
 fn copy_agents_to_claude_dir(agents_src: &Path, workspace_path: &str) -> Result<(), String> {
     let claude_agents_dir = Path::new(workspace_path).join(".claude").join("agents");
+    if claude_agents_dir.is_dir() {
+        std::fs::remove_dir_all(&claude_agents_dir)
+            .map_err(|e| format!("Failed to clear .claude/agents dir: {}", e))?;
+    }
     std::fs::create_dir_all(&claude_agents_dir)
         .map_err(|e| format!("Failed to create .claude/agents dir: {}", e))?;
 
@@ -512,6 +554,59 @@ fn copy_agents_to_claude_dir(agents_src: &Path, workspace_path: &str) -> Result<
                 format!("Failed to copy {} to .claude/agents: {}", path.display(), e)
             })?;
         }
+    }
+    Ok(())
+}
+
+/// Replace only app-managed plugins in `.claude/plugins` from bundled source.
+/// User-added plugins are preserved when they do not have the managed marker.
+fn copy_managed_plugins_to_claude_dir(plugins_src: &Path, workspace_path: &str) -> Result<(), String> {
+    const MANAGED_MARKER: &str = ".skill-builder-managed";
+    let claude_plugins_dir = Path::new(workspace_path).join(".claude").join("plugins");
+    std::fs::create_dir_all(&claude_plugins_dir)
+        .map_err(|e| format!("Failed to create .claude/plugins dir: {}", e))?;
+
+    let source_entries = std::fs::read_dir(plugins_src)
+        .map_err(|e| format!("Failed to read plugins dir: {}", e))?;
+    let mut source_plugin_names = std::collections::HashSet::new();
+    for entry in source_entries {
+        let entry = entry.map_err(|e| format!("Failed to read plugins entry: {}", e))?;
+        let src_path = entry.path();
+        if !src_path.is_dir() {
+            continue;
+        }
+        let plugin_name = entry.file_name().to_string_lossy().to_string();
+        source_plugin_names.insert(plugin_name);
+    }
+
+    // Remove stale managed plugins that are no longer present in source.
+    for entry in std::fs::read_dir(&claude_plugins_dir)
+        .map_err(|e| format!("Failed to read .claude/plugins dir: {}", e))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read .claude/plugins entry: {}", e))?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let is_managed = path.join(MANAGED_MARKER).is_file();
+        if is_managed && !source_plugin_names.contains(&name) {
+            std::fs::remove_dir_all(&path)
+                .map_err(|e| format!("Failed to remove stale managed plugin {}: {}", path.display(), e))?;
+        }
+    }
+
+    // Replace each managed plugin from source.
+    for plugin_name in source_plugin_names {
+        let src_plugin = plugins_src.join(&plugin_name);
+        let dst_plugin = claude_plugins_dir.join(&plugin_name);
+        if dst_plugin.exists() {
+            std::fs::remove_dir_all(&dst_plugin)
+                .map_err(|e| format!("Failed to replace managed plugin {}: {}", dst_plugin.display(), e))?;
+        }
+        copy_directory_recursive(&src_plugin, &dst_plugin)?;
+        std::fs::write(dst_plugin.join(MANAGED_MARKER), "managed by skill-builder startup\n")
+            .map_err(|e| format!("Failed to write managed plugin marker for {}: {}", plugin_name, e))?;
     }
     Ok(())
 }
@@ -1746,18 +1841,11 @@ pub async fn run_workflow_step(
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
-    // Deploy purpose-resolved skills for research, validate, and skill-building.
-    // This overwrites the bundled copies if a workspace skill with a matching purpose is active.
+    // Deploy purpose-resolved bundled skills.
+    // Research is plugin-owned, so only validate and skill-building are deployed from bundled skills.
     {
         let bundled_skills_dir = resolve_bundled_skills_dir(&app);
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        deploy_skill_for_workflow(
-            &conn,
-            &workspace_path,
-            &bundled_skills_dir,
-            "research",
-            "research",
-        );
         deploy_skill_for_workflow(
             &conn,
             &workspace_path,
@@ -3743,22 +3831,22 @@ mod tests {
 
     #[test]
     fn test_resolve_prompts_dir_dev_mode() {
-        // In dev/test mode, CARGO_MANIFEST_DIR is set and the repo root has agents/
+        // In dev/test mode, CARGO_MANIFEST_DIR is set and the repo root has agent-sources/agents/
         let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(|p| p.parent())
-            .map(|p| p.join("agents"));
+            .map(|p| p.join("agent-sources").join("agents"));
         assert!(dev_path.is_some());
         let agents_dir = dev_path.unwrap();
-        assert!(agents_dir.is_dir(), "Repo root agents/ should exist");
+        assert!(agents_dir.is_dir(), "Repo root agent-sources/agents/ should exist");
         // Verify flat agent files exist (no subdirectories)
         assert!(
             agents_dir.join("research-orchestrator.md").exists(),
-            "agents/research-orchestrator.md should exist"
+            "agent-sources/agents/research-orchestrator.md should exist"
         );
         assert!(
             agents_dir.join("validate-skill.md").exists(),
-            "agents/validate-skill.md should exist"
+            "agent-sources/agents/validate-skill.md should exist"
         );
     }
 
@@ -4017,6 +4105,54 @@ mod tests {
         let content =
             std::fs::read_to_string(claude_agents_dir.join("research-entities.md")).unwrap();
         assert_eq!(content, "# Research Entities");
+    }
+
+    #[test]
+    fn test_copy_managed_plugins_replaces_managed_and_preserves_unmanaged() {
+        let src = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let src_plugins = src.path().join("plugins");
+        std::fs::create_dir_all(&src_plugins).unwrap();
+
+        // Source plugin with current content
+        let source_plugin = src_plugins.join("skill-creator");
+        std::fs::create_dir_all(&source_plugin).unwrap();
+        std::fs::write(source_plugin.join("SKILL.md"), "new plugin content").unwrap();
+
+        let claude_plugins_dir = workspace.path().join(".claude").join("plugins");
+        std::fs::create_dir_all(&claude_plugins_dir).unwrap();
+
+        // Existing managed plugin should be replaced
+        let managed_existing = claude_plugins_dir.join("skill-creator");
+        std::fs::create_dir_all(&managed_existing).unwrap();
+        std::fs::write(managed_existing.join("SKILL.md"), "old plugin content").unwrap();
+        std::fs::write(
+            managed_existing.join(".skill-builder-managed"),
+            "managed by skill-builder startup\n",
+        )
+        .unwrap();
+
+        // Unmanaged plugin should be preserved
+        let unmanaged = claude_plugins_dir.join("user-plugin");
+        std::fs::create_dir_all(&unmanaged).unwrap();
+        std::fs::write(unmanaged.join("README.md"), "keep me").unwrap();
+
+        copy_managed_plugins_to_claude_dir(&src_plugins, workspace.path().to_str().unwrap())
+            .unwrap();
+
+        let replaced =
+            std::fs::read_to_string(claude_plugins_dir.join("skill-creator").join("SKILL.md"))
+                .unwrap();
+        assert_eq!(replaced, "new plugin content");
+        assert!(claude_plugins_dir
+            .join("skill-creator")
+            .join(".skill-builder-managed")
+            .exists());
+
+        let preserved =
+            std::fs::read_to_string(claude_plugins_dir.join("user-plugin").join("README.md"))
+                .unwrap();
+        assert_eq!(preserved, "keep me");
     }
 
     // --- Task 5: create_skill_zip excludes context/ ---

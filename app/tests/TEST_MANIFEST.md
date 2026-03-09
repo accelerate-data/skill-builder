@@ -58,7 +58,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 
 | Source Pattern | npm script |
 |---|---|
-| `agents/*.md` | `test:agents:structural`, `test:agents:smoke` (Promptfoo) |
+| `agent-sources/agents/*.md` | `test:agents:structural`, `test:agents:smoke` (Promptfoo) |
 | `agent-sources/workspace/CLAUDE.md` | `test:agents:structural` |
 
 ## E2E Spec Files
@@ -100,7 +100,7 @@ Agent prompts define artifact formats (`clarifications.json`, `decisions.json`, 
 
 | Source | What it validates | Compliance Test |
 |---|---|---|
-| `agents/*.md` (all agent prompts) | Anti-patterns: colon placement, checkboxes, labels | `npm run test:agents:structural` |
+| `agent-sources/agents/*.md` (all agent prompts) | Anti-patterns: colon placement, checkboxes, labels | `npm run test:agents:structural` |
 | `app/sidecar/mock-templates/outputs/*/context/*.md` | Structure + anti-patterns for all markdown artifacts | `npm run test:unit` (`canonical-format.test.ts`) |
 | `app/sidecar/mock-templates/outputs/gate-*/context/*.json` | JSON schema (answer-evaluation.json) | `npm run test:unit` (`canonical-format.test.ts`) |
 | `app/e2e/fixtures/agent-responses/*.md` | E2E fixture structure + anti-patterns | `npm run test:unit` (`canonical-format.test.ts`) |

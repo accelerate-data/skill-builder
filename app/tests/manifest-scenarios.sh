@@ -106,8 +106,8 @@ assert_row_contains "db.rs → cargo filter"          "db.rs"                   
 
 echo ""
 echo -e "${CYAN}${BOLD}━━━ Agents ━━━${RESET}"
-assert_row_contains "agents/*.md → structural tests"               "agents/*.md"                      "test:agents:structural"
-assert_row_contains "agents/*.md → Promptfoo smoke evals"          "agents/*.md"                      "test:agents:smoke"
+assert_row_contains "agent-sources/agents/*.md → structural tests"      "agent-sources/agents/*.md"      "test:agents:structural"
+assert_row_contains "agent-sources/agents/*.md → Promptfoo smoke evals" "agent-sources/agents/*.md"      "test:agents:smoke"
 assert_row_contains "agent-sources CLAUDE.md → structural tests"   "agent-sources/workspace/CLAUDE.md" "test:agents:structural"
 
 # ===== E2E Spec Files =====

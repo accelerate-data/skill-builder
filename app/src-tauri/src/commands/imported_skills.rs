@@ -927,6 +927,15 @@ pub(crate) fn seed_bundled_skills(
 
         let skill_name = fm.name.unwrap_or_else(|| dir_name.clone());
 
+        // Research is plugin-owned and must not be seeded as a bundled workspace skill.
+        if skill_name == "research" {
+            log::debug!(
+                "seed_bundled_skills: skipping plugin-owned skill '{}'",
+                skill_name
+            );
+            continue;
+        }
+
         // Validate required frontmatter fields; skip and error-log if any are missing
         let mut missing_required: Vec<&str> = Vec::new();
         if fm.description.is_none() {
@@ -2482,22 +2491,56 @@ description: A skill
         let workspace_path = workspace.path().to_str().unwrap();
 
         let bundled_dir = tempdir().unwrap();
-        let skill_src = bundled_dir.path().join("research");
+        let skill_src = bundled_dir.path().join("validate-skill");
         fs::create_dir_all(&skill_src).unwrap();
         fs::write(
             skill_src.join("SKILL.md"),
+            "---\nname: validate-skill\ndescription: Validate skill\n---\n# Validate",
+        )
+        .unwrap();
+
+        seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
+
+        let skill = crate::db::get_workspace_skill_by_name(&conn, "validate-skill")
+            .unwrap()
+            .unwrap();
+        assert!(
+            skill.purpose.is_none(),
+            "purpose must be NULL after seeding — it is set by the user via the UI"
+        );
+    }
+
+    #[test]
+    fn test_seed_bundled_skills_skips_plugin_owned_research() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        let bundled_dir = tempdir().unwrap();
+        let research_src = bundled_dir.path().join("research");
+        fs::create_dir_all(&research_src).unwrap();
+        fs::write(
+            research_src.join("SKILL.md"),
             "---\nname: research\ndescription: Research skill\n---\n# Research",
         )
         .unwrap();
 
         seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
 
-        let skill = crate::db::get_workspace_skill_by_name(&conn, "research")
-            .unwrap()
-            .unwrap();
         assert!(
-            skill.purpose.is_none(),
-            "purpose must be NULL after seeding — it is set by the user via the UI"
+            crate::db::get_workspace_skill_by_name(&conn, "research")
+                .unwrap()
+                .is_none(),
+            "plugin-owned research should not be seeded as bundled workspace skill"
+        );
+        assert!(
+            !workspace
+                .path()
+                .join(".claude")
+                .join("skills")
+                .join("research")
+                .exists(),
+            "plugin-owned research should not be copied into .claude/skills"
         );
     }
 
@@ -2652,18 +2695,18 @@ description: A skill
 
     #[test]
     fn test_seed_bundled_skills_copies_nested_dirs() {
-        // The research skill has references/dimensions/ nested structure.
+        // Verify seed_bundled_skills copies nested subdirectories recursively.
         // Verify seed_bundled_skills copies nested subdirectories recursively.
         let conn = create_test_db();
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
 
         let bundled_dir = tempdir().unwrap();
-        let skill_src = bundled_dir.path().join("research");
+        let skill_src = bundled_dir.path().join("nested-skill");
         fs::create_dir_all(skill_src.join("references").join("dimensions")).unwrap();
         fs::write(
             skill_src.join("SKILL.md"),
-            "---\nname: research\ndescription: Research skill\n---\n# Research",
+            "---\nname: nested-skill\ndescription: Nested skill\n---\n# Nested",
         )
         .unwrap();
         fs::write(
@@ -2690,18 +2733,18 @@ description: A skill
 
         seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
 
-        let skill = crate::db::get_workspace_skill_by_name(&conn, "research")
+        let skill = crate::db::get_workspace_skill_by_name(&conn, "nested-skill")
             .unwrap()
             .unwrap();
         assert!(skill.is_bundled);
-        assert_eq!(skill.skill_id, "bundled-research");
-        assert_eq!(skill.description.as_deref(), Some("Research skill"));
+        assert_eq!(skill.skill_id, "bundled-nested-skill");
+        assert_eq!(skill.description.as_deref(), Some("Nested skill"));
 
         let dest = workspace
             .path()
             .join(".claude")
             .join("skills")
-            .join("research");
+            .join("nested-skill");
         assert!(dest.join("SKILL.md").exists());
         assert!(dest.join("references").join("dimension-sets.md").exists());
         assert!(dest
@@ -2717,27 +2760,27 @@ description: A skill
     }
 
     #[test]
-    fn test_delete_bundled_research_skill_blocked() {
+    fn test_delete_bundled_skill_blocked() {
         let conn = create_test_db();
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
 
-        // Seed the research skill as bundled
+        // Seed a bundled skill
         let skills_dir = workspace
             .path()
             .join(".claude")
             .join("skills")
-            .join("research");
+            .join("validate-skill");
         fs::create_dir_all(&skills_dir).unwrap();
         fs::write(
             skills_dir.join("SKILL.md"),
-            "---\nname: research\n---\n# Research",
+            "---\nname: validate-skill\n---\n# Validate Skill",
         )
         .unwrap();
 
         let skill = WorkspaceSkill {
-            skill_id: "bundled-research".to_string(),
-            skill_name: "research".to_string(),
+            skill_id: "bundled-validate-skill".to_string(),
+            skill_name: "validate-skill".to_string(),
             is_active: true,
             disk_path: skills_dir.to_string_lossy().to_string(),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
@@ -2754,11 +2797,15 @@ description: A skill
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
         // Attempt to delete — should fail with bundled guard
-        let result =
-            delete_workspace_skill_inner("bundled-research", "research", workspace_path, &conn);
+        let result = delete_workspace_skill_inner(
+            "bundled-validate-skill",
+            "validate-skill",
+            workspace_path,
+            &conn,
+        );
         assert!(
             result.is_err(),
-            "Deleting bundled research skill should fail"
+            "Deleting bundled skill should fail"
         );
         let err = result.unwrap_err();
         assert!(
@@ -2768,7 +2815,7 @@ description: A skill
         );
 
         // Skill still in DB
-        assert!(crate::db::get_workspace_skill_by_name(&conn, "research")
+        assert!(crate::db::get_workspace_skill_by_name(&conn, "validate-skill")
             .unwrap()
             .is_some());
     }

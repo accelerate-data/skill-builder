@@ -116,8 +116,8 @@ const AGENTS_WITHOUT_MOCK = new Set([
 ]);
 
 describe("mock-agent drift detection", () => {
-  it("every agent in agents/ has a mock template mapping or is explicitly excluded", async () => {
-    const agentsDir = path.resolve(__dirname, "../../../agents");
+  it("every agent in agent-sources/agents has a mock template mapping or is explicitly excluded", async () => {
+    const agentsDir = path.resolve(__dirname, "../../../agent-sources/agents");
     const files = await fs.readdir(agentsDir);
     const agentNames = files
       .filter((f) => f.endsWith(".md"))
@@ -142,7 +142,7 @@ describe("mock-agent drift detection", () => {
   });
 
   it("each mapped template resolves to a valid template name", async () => {
-    const agentsDir = path.resolve(__dirname, "../../../agents");
+    const agentsDir = path.resolve(__dirname, "../../../agent-sources/agents");
     const files = await fs.readdir(agentsDir);
     const agentNames = files
       .filter((f) => f.endsWith(".md"))
@@ -176,7 +176,7 @@ describe("mock-agent drift detection", () => {
   });
 
   it("exclusion list only contains agents that actually exist", async () => {
-    const agentsDir = path.resolve(__dirname, "../../../agents");
+    const agentsDir = path.resolve(__dirname, "../../../agent-sources/agents");
     const files = await fs.readdir(agentsDir);
     const agentNames = new Set(
       files.filter((f) => f.endsWith(".md")).map((f) => f.replace(/\.md$/, "")),
@@ -185,7 +185,7 @@ describe("mock-agent drift detection", () => {
     for (const excluded of AGENTS_WITHOUT_MOCK) {
       expect(
         agentNames.has(excluded),
-        `AGENTS_WITHOUT_MOCK contains "${excluded}" but no agents/${excluded}.md exists. ` +
+        `AGENTS_WITHOUT_MOCK contains "${excluded}" but no agent-sources/agents/${excluded}.md exists. ` +
           `Remove it from the exclusion list.`,
       ).toBe(true);
     }

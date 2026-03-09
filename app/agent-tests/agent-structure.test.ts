@@ -172,14 +172,14 @@ describe("read directive compliance", () => {
 });
 
 describe("Research scope guard contract prompts", () => {
-  it("research orchestrator requires preflight before fan-out", () => {
+  it("research orchestrator is thin and calls plugin research agent", () => {
     const content = fs.readFileSync(
       path.join(AGENTS_DIR, "research-orchestrator.md"),
       "utf8"
     );
-    expect(content).toMatch(/Preflight scope guard requirements:/);
-    expect(content).toMatch(/before any dimension scoring or sub-agent fan-out/i);
-    expect(content).toMatch(/do NOT spawn any dimension research sub-agents/i);
+    expect(content).toMatch(/thin wrapper around the plugin research agent/i);
+    expect(content).toMatch(/subagent_type:\s*"skill-content-researcher:research-agent"/i);
+    expect(content).not.toMatch(/Preflight scope guard requirements:/i);
   });
 
   it("research skill does not run preflight and emits low-score scope recommendation", () => {

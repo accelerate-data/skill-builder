@@ -28,7 +28,8 @@
     "targets": "all",
     "resources": {
       "../sidecar/dist/": "sidecar/dist",
-      "../../agents/": "agents",
+      "../../agent-sources/agents/": "agent-sources/agents",
+      "../../agent-sources/plugins/": "agent-sources/plugins",
       "../../agent-sources/workspace/": "workspace",
       "resources/node/": "node"
     },
