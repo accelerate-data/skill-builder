@@ -36,12 +36,7 @@ pub fn cleanup_step_files(
         return;
     }
 
-    // Context files for steps 0, 1, 2 live in workspace_path/skill_name/context/*
-    let context_dir = if matches!(step_id, 0..=2) {
-        skill_dir.clone()
-    } else {
-        skill_dir.clone()
-    };
+    let context_dir = skill_dir.clone();
 
     for file in &files {
         for dir in [&skill_dir, &context_dir] {
@@ -119,12 +114,7 @@ pub fn clean_step_output_thorough(workspace_path: &str, skill_name: &str, step_i
         return;
     }
 
-    // Context files (steps 0, 1, 2) live in workspace_path/skill_name/context/*
-    let context_dir = if matches!(step_id, 0..=2) {
-        skill_dir.clone()
-    } else {
-        skill_dir.clone()
-    };
+    let context_dir = skill_dir.clone();
     log::debug!(
         "[clean_step_output_thorough] step={} skill_dir={} context_dir={}",
         step_id, skill_dir.display(), context_dir.display()
