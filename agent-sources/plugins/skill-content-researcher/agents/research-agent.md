@@ -19,10 +19,19 @@ Run the embedded `skills/research` flow and return orchestrator-ready values.
 ## Required behavior
 
 1. Use the embedded `research` skill to produce canonical clarifications output, using `user_context` as the full user context.
-2. Use Python (`Bash`) for all JSON parsing, validation, and count derivation:
-   - validate `research_output` against `skills/research/references/schemas.md`
-   - derive `dimensions_selected` from `research_output.metadata.research_plan.dimensions_selected`
-   - derive `question_count` from `research_output.metadata.question_count`
+2. Use Python (`Bash`) for all JSON parsing, minimal validation, and count derivation.
+
+   Run the deterministic normalizer script from the installed plugin bundle:
+
+   ```bash
+   python3 ".claude/plugins/skill-content-researcher/skills/research/tools/normalize_research_output.py"
+   ```
+
+   - Provide a JSON object on stdin: `{ "research_output": <clarifications object> }`
+   - Use its stdout as the authoritative:
+     - `research_output`
+     - `dimensions_selected`
+     - `question_count`
 3. Return JSON only:
 
 ```json
