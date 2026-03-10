@@ -160,7 +160,3 @@ jobs:
               --base main \
               --head "${SYNC_BRANCH}"
           fi
-
-          # Enable auto-merge so the PR merges as soon as required checks pass.
-          PR_NUMBER="$(gh pr list --head "${SYNC_BRANCH}" --state open --json number --limit 1 | jq -r '.[0].number')"
-          gh pr merge "${PR_NUMBER}" --squash --auto
