@@ -25,11 +25,36 @@ Glob `references/` in `skill_output_dir` and collect all reference paths.
 
 Use progressive discovery for skill content: read `{skill_output_dir}/SKILL.md` first, then only the reference files needed for each finding. Expand reads when a claim cannot be evidenced. Before final output, run a completeness sweep to verify every decision and every answered clarification is either COVERED (with file+section evidence) or MISSING.
 
+### Definition of COVERED
+
+COVERED requires substantive content — a section that explains, defines, or evidences the item with specific information the agent can act on. A heading mention or a single bullet that merely names the topic without explanation does not qualify as COVERED.
+
 ## Pass 1: Coverage & Structure
 
 Map every decision and answered clarification to a file and section. Report COVERED (with file+section) or MISSING.
 
-Check SKILL.md against Skill Best Practices, Content Principles, and anti-patterns from `plugins/skill-creator/skills/skill-creator/SKILL.md`. Flag orphaned or unnecessary files.
+Check SKILL.md against the following structural requirements. Flag each violation.
+
+### Frontmatter
+
+- `name` field present: ≤64 characters, lowercase letters/numbers/hyphens only, no XML tags, no reserved words (`anthropic`, `claude`).
+- `description` field present: non-empty, ≤1024 characters, no XML tags, written in third person, describes both what the skill does and when to use it.
+
+### SKILL.md body
+
+- Body under 500 lines. If it exceeds this, content should be split into reference files with clear pointers.
+- No "When to Use This Skill" or equivalent top-level trigger headings ("When to use", "Use cases", "Trigger conditions") — triggering is handled by the description field.
+- File paths use forward slashes; no Windows-style backslashes.
+- File names are descriptive (e.g., `extraction-rules.md`, not `doc1.md`).
+- No time-sensitive dates embedded in content (e.g., "before August 2025, use X"). Historical patterns belong in a clearly labelled legacy/deprecated section.
+- Consistent terminology throughout — do not mix synonyms for the same concept (e.g., "endpoint" vs "URL" vs "API route").
+
+### Progressive disclosure and references
+
+- All reference files are linked directly from SKILL.md — one level deep only. Chains (SKILL.md → A → B) cause partial reads; flag as DEEP_REFERENCE.
+- Reference files longer than 100 lines include a table of contents at the top.
+- Domain-organized skills use per-domain reference files rather than a single flat reference file (e.g., `references/finance.md`, `references/sales.md`).
+- Bundled resources use `references/` (docs), `scripts/` (executable code), or `assets/` (templates/icons/fonts). No other top-level directories.
 
 Verify correct architectural pattern for purpose:
 
@@ -52,7 +77,19 @@ Report CORRECT or MISMATCH with details.
 
 ## Pass 2: Content Quality
 
-Score each section of SKILL.md and every reference file on Quality Dimensions from `plugins/skill-creator/skills/skill-creator/SKILL.md`. Flag anti-patterns. PASS/FAIL per section with improvement suggestions for FAILs.
+Score each section of SKILL.md and every reference file on the five Quality Dimensions below. Flag anti-patterns. PASS/FAIL per section with improvement suggestions for FAILs.
+
+### Quality Dimensions
+
+**Specificity** — Content is concrete and precise, not generic. Passing sections name specific values, field names, patterns, or examples rather than giving guidance like "follow best practices" or "handle errors appropriately." Flag vague guidance with no anchoring detail.
+
+**Evidence** — Claims are supported by examples, sample data, or source references. A rule stated without an illustrative example or rationale is harder for the agent to apply correctly in edge cases. Flag assertions that rely entirely on the agent's judgment with no backing context.
+
+**Actionability** — Instructions tell the agent what to do and how. Passive descriptions of concepts without a corresponding action or decision point leave the agent without clear direction. Flag descriptive-only sections where the agent cannot derive a concrete next step.
+
+**Lean** — Content earns its token cost. Verbose explanations of things Claude already knows (standard language constructs, widely documented APIs, general best practices), repeated context, and redundant examples add noise. Flag sections where the agent gains no delta knowledge from the content.
+
+**Tone** — Informational rather than prescriptive. The skill should explain the *why* behind requirements so the agent can reason about edge cases, rather than issuing imperatives. Sections that rely on ALWAYS/NEVER/MUST without rationale, or that use rigid step lists where reasoning is more appropriate, are flagged. Detailed prescriptive-language detection is handled in Pass 4; use this dimension for overall tone assessment.
 
 ## Pass 3: Boundary Check
 
