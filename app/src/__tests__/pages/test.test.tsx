@@ -10,6 +10,8 @@
  * - startAgent evaluator call does not pass transcriptLogDir in the agentName slot
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { useRef } from "react";
 import { useAgentStore, flushMessageBuffer, type AgentMessage } from "@/stores/agent-store";
 
 // ---------------------------------------------------------------------------
@@ -77,6 +79,9 @@ vi.mock("@/stores/settings-store", () => {
 // (the Zustand static method) inside startRun. The real store works fine in tests;
 // skillName defaults to null → "unknown" via the ?? fallback.
 
+// Import StreamingContent AFTER mocks are set up (it's exported from the page module)
+const { StreamingContent } = await import("@/pages/test");
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -102,10 +107,25 @@ function seedAgentWithBlocks(
 }
 
 // ---------------------------------------------------------------------------
-// StreamingContent via test page rendering
-// We render the full TestPage which includes PlanPanel + StreamingContent.
-// We seed the agent store with the desired messages before rendering.
+// StreamingContent render tests
+// Render StreamingContent directly with a stub scrollRef to test the
+// idle/waiting placeholder and ensure no infinite re-render occurs.
 // ---------------------------------------------------------------------------
+
+function renderStreamingContent(agentId: string | null, phase: "idle" | "running" = "idle") {
+  function Wrapper() {
+    const ref = useRef<HTMLDivElement>(null);
+    return (
+      <StreamingContent
+        agentId={agentId}
+        phase={phase}
+        idlePlaceholder="Run a test to see results"
+        scrollRef={ref}
+      />
+    );
+  }
+  return render(<Wrapper />);
+}
 
 describe("StreamingContent", () => {
   beforeEach(() => {
@@ -113,26 +133,20 @@ describe("StreamingContent", () => {
     vi.clearAllMocks();
   });
 
-  it("agent store has no runs before any test is started (idle state)", () => {
-    // StreamingContent shows the idle placeholder when agentId is null,
-    // which happens when no run has been started. Verify the store is empty.
-    const runs = useAgentStore.getState().runs;
-    expect(Object.keys(runs)).toHaveLength(0);
+  it("renders idle placeholder when agentId is null — no infinite re-render", () => {
+    // Regression: Zustand selector was returning [] literal each render,
+    // causing reference inequality on every call → infinite update loop.
+    // This test would fail with "Maximum update depth exceeded" before the fix.
+    renderStreamingContent(null, "idle");
+    expect(screen.getByText(/run a test to see results/i)).toBeTruthy();
   });
 
-  it("shows 'Waiting for agent response...' when agentId is set but no messages yet", () => {
-    // Start a run but add no messages
+  it("renders waiting placeholder when agentId is set but run has no messages", () => {
     useAgentStore.getState().startRun("agent-with", "sonnet");
     flushMessageBuffer();
 
-    // We need the page to have withAgentId set — this happens after handleRunTest.
-    // Since we're testing the component in isolation here, just verify the
-    // store-subscription path by checking the empty-blocks branch in isolation.
-    const run = useAgentStore.getState().runs["agent-with"];
-    expect(run.messages).toHaveLength(0);
-    // The component will show the waiting placeholder when blocks.length === 0
-    // and phase !== "idle". We verify the store is in the expected shape.
-    expect(run.status).toBe("running");
+    renderStreamingContent("agent-with", "running");
+    expect(screen.getByText(/waiting for agent response/i)).toBeTruthy();
   });
 
   it("renders text block content immediately (always visible)", () => {

@@ -242,7 +242,7 @@ type ContentBlock =
 // Stable empty array — avoids Zustand re-render loop when selector returns []
 const NO_MESSAGES: AgentMessage[] = [];
 
-function StreamingContent({
+export function StreamingContent({
   agentId,
   phase,
   idlePlaceholder,
