@@ -91,7 +91,7 @@ If `metadata.contradictory_inputs == "revised"`, treat it as authoritative and g
 
 ## Phase 1: Plan the Skill Structure
 
-1. Locate and read `plugins/skill-creator/skills/skill-creator/SKILL.md` from the installed plugin bundle to apply the vendored skill-creator writing methodology. 
+1. Locate and read `plugins/skill-creator/skills/skill-creator/SKILL.md` from the installed plugin bundle to apply the vendored skill-creator writing methodology.
 2. Define the skill structure for the new skill using the decisions from the parsed `decisions.json`.
 
 - Each reference file covers a coherent topic area, not one file per decision
