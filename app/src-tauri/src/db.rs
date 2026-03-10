@@ -3048,6 +3048,20 @@ pub fn list_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, S
     Ok(skills)
 }
 
+pub fn list_bundled_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, String> {
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT {WS_COLUMNS} FROM workspace_skills WHERE is_bundled = 1 ORDER BY skill_name"
+        ))
+        .map_err(|e| format!("list_bundled_workspace_skills: {}", e))?;
+    let skills = stmt
+        .query_map([], row_to_workspace_skill)
+        .map_err(|e| format!("list_bundled_workspace_skills query: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("list_bundled_workspace_skills collect: {}", e))?;
+    Ok(skills)
+}
+
 pub fn list_workspace_skills_by_source(
     conn: &Connection,
     source_url: &str,

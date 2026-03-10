@@ -880,6 +880,97 @@ pub fn get_skill_content(skill_name: String, db: tauri::State<'_, Db>) -> Result
     fs::read_to_string(&skill_md_path).map_err(|e| format!("Failed to read SKILL.md: {}", e))
 }
 
+/// Remove bundled skills from DB and workspace that are no longer present in the current bundle.
+/// Only skills with `is_bundled = 1` are candidates; user-imported skills are never touched.
+///
+/// **Caller responsibility:** This function does not regenerate `CLAUDE.md`. In `init_workspace`
+/// that is handled by the subsequent `rebuild_claude_md` call. Any other caller must regenerate
+/// `CLAUDE.md` after this returns to avoid stale skill references.
+pub(crate) fn purge_stale_bundled_skills(
+    workspace_path: &str,
+    conn: &rusqlite::Connection,
+    bundled_skills_dir: &std::path::Path,
+) -> Result<(), String> {
+    log::info!(
+        "purge_stale_bundled_skills: scanning {}",
+        bundled_skills_dir.display()
+    );
+
+    // Collect currently-bundled skill names from the source directory.
+    let current_names: std::collections::HashSet<String> = if bundled_skills_dir.is_dir() {
+        let entries = fs::read_dir(bundled_skills_dir)
+            .map_err(|e| format!("purge_stale_bundled_skills: Failed to read dir: {}", e))?;
+        let mut names = std::collections::HashSet::new();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let skill_md_path = path.join("SKILL.md");
+            if !skill_md_path.is_file() {
+                continue;
+            }
+            let dir_name = entry.file_name().to_string_lossy().to_string();
+            let skill_name = fs::read_to_string(&skill_md_path)
+                .ok()
+                .and_then(|c| parse_frontmatter_full(&c).name)
+                .unwrap_or(dir_name);
+            names.insert(skill_name);
+        }
+        names
+    } else {
+        std::collections::HashSet::new()
+    };
+
+    // Identify DB-registered bundled skills not present in current bundle.
+    let bundled_in_db = crate::db::list_bundled_workspace_skills(conn)?;
+    for skill in bundled_in_db {
+        if current_names.contains(&skill.skill_name) {
+            continue;
+        }
+
+        // Guard against DB rows with unsafe names before constructing filesystem paths.
+        if let Err(e) = validate_skill_name(&skill.skill_name) {
+            log::warn!(
+                "purge_stale_bundled_skills: skipping skill with invalid name '{}': {}",
+                skill.skill_name,
+                e
+            );
+            continue;
+        }
+
+        log::info!(
+            "purge_stale_bundled_skills: removing stale skill '{}' (id={})",
+            skill.skill_name,
+            skill.skill_id
+        );
+
+        // Remove workspace directories (both active and inactive paths).
+        let skills_base = Path::new(workspace_path).join(".claude").join("skills");
+        let active_path = skills_base.join(&skill.skill_name);
+        let inactive_path = skills_base.join(".inactive").join(&skill.skill_name);
+        for path in &[active_path, inactive_path] {
+            if path.exists() {
+                if let Err(e) = fs::remove_dir_all(path) {
+                    log::warn!(
+                        "purge_stale_bundled_skills: failed to remove '{}': {}",
+                        path.display(),
+                        e
+                    );
+                }
+            }
+        }
+
+        crate::db::delete_workspace_skill(conn, &skill.skill_id)?;
+        log::info!(
+            "purge_stale_bundled_skills: removed stale skill '{}' from DB and workspace",
+            skill.skill_name
+        );
+    }
+
+    Ok(())
+}
+
 /// Seed bundled skills from the app's bundled-skills directory into the workspace.
 /// For each subdirectory containing SKILL.md:
 /// 1. Copies the directory to `{workspace}/.claude/skills/{name}/` (always overwrite)
@@ -2870,6 +2961,225 @@ description: A skill
             .join("validate-quality-spec.md")
             .exists());
         assert!(dest.join("references").join("test-skill-spec.md").exists());
+    }
+
+    #[test]
+    fn test_purge_stale_bundled_skills_removes_stale() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        // Pre-insert a stale bundled skill into DB and create its workspace directory.
+        let stale_dir = workspace
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("stale-skill");
+        fs::create_dir_all(&stale_dir).unwrap();
+        fs::write(stale_dir.join("SKILL.md"), "---\nname: stale-skill\n---").unwrap();
+
+        let stale_skill = WorkspaceSkill {
+            skill_id: "bundled-stale-skill".to_string(),
+            skill_name: "stale-skill".to_string(),
+            is_active: true,
+            disk_path: stale_dir.to_string_lossy().to_string(),
+            imported_at: "2000-01-01T00:00:00Z".to_string(),
+            is_bundled: true,
+            description: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: None,
+            marketplace_source_url: None,
+        };
+        crate::db::insert_workspace_skill(&conn, &stale_skill).unwrap();
+
+        // Current bundle: different skill (not stale-skill).
+        let bundled_dir = tempdir().unwrap();
+        let skill_src = bundled_dir.path().join("current-skill");
+        fs::create_dir_all(&skill_src).unwrap();
+        fs::write(
+            skill_src.join("SKILL.md"),
+            "---\nname: current-skill\ndescription: A current skill\n---\n# Current",
+        )
+        .unwrap();
+
+        purge_stale_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
+
+        // Stale skill must be removed from DB.
+        assert!(
+            crate::db::get_workspace_skill_by_name(&conn, "stale-skill")
+                .unwrap()
+                .is_none(),
+            "stale bundled skill must be removed from DB"
+        );
+
+        // Stale skill directory must be removed from workspace.
+        assert!(
+            !stale_dir.exists(),
+            "stale bundled skill directory must be removed from workspace"
+        );
+    }
+
+    #[test]
+    fn test_purge_stale_bundled_skills_removes_stale_inactive() {
+        // Stale skill that is in the .inactive/ directory must also be removed.
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        let inactive_dir = workspace
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join(".inactive")
+            .join("stale-inactive");
+        fs::create_dir_all(&inactive_dir).unwrap();
+        fs::write(inactive_dir.join("SKILL.md"), "---\nname: stale-inactive\n---").unwrap();
+
+        let stale_skill = WorkspaceSkill {
+            skill_id: "bundled-stale-inactive".to_string(),
+            skill_name: "stale-inactive".to_string(),
+            is_active: false,
+            disk_path: inactive_dir.to_string_lossy().to_string(),
+            imported_at: "2000-01-01T00:00:00Z".to_string(),
+            is_bundled: true,
+            description: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: None,
+            marketplace_source_url: None,
+        };
+        crate::db::insert_workspace_skill(&conn, &stale_skill).unwrap();
+
+        // Empty bundle — no current skills.
+        let bundled_dir = tempdir().unwrap();
+
+        purge_stale_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
+
+        assert!(
+            crate::db::get_workspace_skill_by_name(&conn, "stale-inactive")
+                .unwrap()
+                .is_none(),
+            "stale inactive bundled skill must be removed from DB"
+        );
+        assert!(
+            !inactive_dir.exists(),
+            "stale inactive bundled skill directory must be removed"
+        );
+    }
+
+    #[test]
+    fn test_purge_stale_bundled_skills_preserves_user_imported() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        // User-imported skill (is_bundled = false) — must never be touched.
+        let user_dir = workspace
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("user-skill");
+        fs::create_dir_all(&user_dir).unwrap();
+        fs::write(user_dir.join("SKILL.md"), "---\nname: user-skill\n---").unwrap();
+
+        let user_skill = WorkspaceSkill {
+            skill_id: "user-skill-uuid-001".to_string(),
+            skill_name: "user-skill".to_string(),
+            is_active: true,
+            disk_path: user_dir.to_string_lossy().to_string(),
+            imported_at: "2025-01-01T00:00:00Z".to_string(),
+            is_bundled: false,
+            description: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: None,
+            marketplace_source_url: None,
+        };
+        crate::db::insert_workspace_skill(&conn, &user_skill).unwrap();
+
+        // Empty bundle — no bundled skills at all.
+        let bundled_dir = tempdir().unwrap();
+
+        purge_stale_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
+
+        // User skill must still be in DB.
+        assert!(
+            crate::db::get_workspace_skill_by_name(&conn, "user-skill")
+                .unwrap()
+                .is_some(),
+            "user-imported skill must not be purged"
+        );
+        // User skill directory must still exist.
+        assert!(user_dir.exists(), "user-imported skill directory must not be removed");
+    }
+
+    #[test]
+    fn test_purge_stale_bundled_skills_preserves_still_bundled() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        // Insert a bundled skill that IS still in the current bundle.
+        let active_dir = workspace
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("current-skill");
+        fs::create_dir_all(&active_dir).unwrap();
+        fs::write(
+            active_dir.join("SKILL.md"),
+            "---\nname: current-skill\ndescription: Still here\n---",
+        )
+        .unwrap();
+
+        let current_skill = WorkspaceSkill {
+            skill_id: "bundled-current-skill".to_string(),
+            skill_name: "current-skill".to_string(),
+            is_active: true,
+            disk_path: active_dir.to_string_lossy().to_string(),
+            imported_at: "2000-01-01T00:00:00Z".to_string(),
+            is_bundled: true,
+            description: Some("Still here".to_string()),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: None,
+            marketplace_source_url: None,
+        };
+        crate::db::insert_workspace_skill(&conn, &current_skill).unwrap();
+
+        // Bundle contains current-skill.
+        let bundled_dir = tempdir().unwrap();
+        let skill_src = bundled_dir.path().join("current-skill");
+        fs::create_dir_all(&skill_src).unwrap();
+        fs::write(
+            skill_src.join("SKILL.md"),
+            "---\nname: current-skill\ndescription: Still here\n---\n# Content",
+        )
+        .unwrap();
+
+        purge_stale_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
+
+        // Skill must still be in DB and on disk.
+        assert!(
+            crate::db::get_workspace_skill_by_name(&conn, "current-skill")
+                .unwrap()
+                .is_some(),
+            "current bundled skill must be preserved"
+        );
+        assert!(active_dir.exists(), "current bundled skill directory must be preserved");
     }
 
     #[test]
