@@ -148,6 +148,7 @@ pub async fn start_agent(
         agent_name,
         required_plugins: None,
         conversation_history: None,
+        skill_name: Some(skill_name.clone()),
     };
 
     sidecar::spawn_sidecar(

@@ -1814,6 +1814,7 @@ async fn run_workflow_step_inner(
         agent_name: Some(agent_name),
         required_plugins,
         conversation_history: None,
+        skill_name: None,
     };
 
     sidecar::spawn_sidecar(
@@ -2455,6 +2456,7 @@ pub async fn run_answer_evaluator(
         agent_name: Some("answer-evaluator".to_string()),
         required_plugins: None,
         conversation_history: None,
+        skill_name: None,
     };
 
     sidecar::spawn_sidecar(

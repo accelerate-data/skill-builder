@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Play, Square } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ChevronDown, ChevronRight, Play, Square, Wrench } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { useNavigate, useSearch, useBlocker } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
@@ -230,18 +230,147 @@ function scrollToBottom(ref: React.RefObject<HTMLDivElement | null>): void {
 // Sub-components
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Streaming content types
+// ---------------------------------------------------------------------------
+
+type ContentBlock =
+  | { type: "thinking"; thinking: string }
+  | { type: "tool_use"; name: string; input: Record<string, unknown> }
+  | { type: "text"; text: string };
+
+function StreamingContent({
+  agentId,
+  phase,
+  idlePlaceholder,
+  scrollRef,
+}: {
+  agentId: string | null;
+  phase: Phase;
+  idlePlaceholder: string;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const messages = useAgentStore((s) =>
+    agentId ? (s.runs[agentId]?.messages ?? []) : [],
+  );
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
+
+  const blocks = useMemo<ContentBlock[]>(
+    () =>
+      messages
+        .filter((m) => m.type === "assistant")
+        .flatMap((m) => {
+          const content = (
+            m.raw?.message as Record<string, unknown> | undefined
+          )?.content;
+          return Array.isArray(content) ? (content as ContentBlock[]) : [];
+        }),
+    [messages],
+  );
+
+  useEffect(() => {
+    scrollToBottom(scrollRef);
+  }, [blocks.length, scrollRef]);
+
+  const toggle = useCallback((idx: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(idx) ? next.delete(idx) : next.add(idx);
+      return next;
+    });
+  }, []);
+
+  if (blocks.length === 0) {
+    return (
+      <p className="text-xs italic text-muted-foreground/40">
+        {phase === "idle" ? idlePlaceholder : "Waiting for agent response..."}
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {blocks.map((block, idx) => {
+        const isExpanded = expanded.has(idx);
+
+        if (block.type === "thinking") {
+          return (
+            <div key={idx} className="rounded border border-border/40 bg-muted/20">
+              <button
+                onClick={() => toggle(idx)}
+                className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left"
+              >
+                {isExpanded ? (
+                  <ChevronDown className="size-3 shrink-0 text-muted-foreground/40" />
+                ) : (
+                  <ChevronRight className="size-3 shrink-0 text-muted-foreground/40" />
+                )}
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/40">
+                  Thinking
+                </span>
+              </button>
+              {isExpanded && (
+                <pre className="px-3 pb-2.5 whitespace-pre-wrap font-mono text-xs leading-relaxed text-muted-foreground/40 italic">
+                  {block.thinking}
+                </pre>
+              )}
+            </div>
+          );
+        }
+
+        if (block.type === "tool_use") {
+          return (
+            <div key={idx} className="rounded border border-border/40 bg-muted/25">
+              <button
+                onClick={() => toggle(idx)}
+                className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left"
+              >
+                {isExpanded ? (
+                  <ChevronDown className="size-3 shrink-0 text-muted-foreground/50" />
+                ) : (
+                  <ChevronRight className="size-3 shrink-0 text-muted-foreground/50" />
+                )}
+                <Wrench className="size-3 shrink-0 text-muted-foreground/50" />
+                <span className="font-mono text-[10px] text-muted-foreground/60">
+                  {block.name}
+                </span>
+              </button>
+              {isExpanded && (
+                <pre className="px-3 pb-2.5 whitespace-pre-wrap font-mono text-xs leading-relaxed text-muted-foreground/50">
+                  {JSON.stringify(block.input, null, 2)}
+                </pre>
+              )}
+            </div>
+          );
+        }
+
+        // text block — always visible
+        return (
+          <pre
+            key={idx}
+            className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground/85"
+          >
+            {block.text}
+          </pre>
+        );
+      })}
+    </div>
+  );
+}
+
 interface PlanPanelProps {
   scrollRef: React.RefObject<HTMLDivElement | null>;
   text: string;
+  agentId?: string | null;
   phase: Phase;
   label: string;
-  badgeText: string;
+  badgeText: string | React.ReactNode;
   badgeClass: string;
   idlePlaceholder: string;
   cost?: number;
 }
 
-function PlanPanel({ scrollRef, text, phase, label, badgeText, badgeClass, idlePlaceholder, cost }: PlanPanelProps) {
+function PlanPanel({ scrollRef, text, agentId, phase, label, badgeText, badgeClass, idlePlaceholder, cost }: PlanPanelProps) {
   return (
     <>
       <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
@@ -258,12 +387,19 @@ function PlanPanel({ scrollRef, text, phase, label, badgeText, badgeClass, idleP
         )}
       </div>
       <div ref={scrollRef} className="flex-1 overflow-auto p-4">
-        {text ? (
+        {agentId !== undefined ? (
+          <StreamingContent
+            agentId={agentId}
+            phase={phase}
+            idlePlaceholder={idlePlaceholder}
+            scrollRef={scrollRef}
+          />
+        ) : text ? (
           <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-muted-foreground">
             {text}
           </pre>
         ) : (
-          <p className="text-xs text-muted-foreground/40 italic">
+          <p className="text-xs italic text-muted-foreground/40">
             {phase === "idle" ? idlePlaceholder : "Waiting for agent response..."}
           </p>
         )}
@@ -610,7 +746,8 @@ export default function TestPage() {
       "__test_baseline__",
       "test-eval",
       "test-evaluator",
-      state.transcriptLogDir,
+      undefined,                  // agentName — evaluator uses skill-test context, not a plugin agent
+      state.transcriptLogDir ?? undefined,  // transcriptLogDir
     ).catch((err) => {
       console.error("[test] Failed to start evaluator agent:", err);
       setState((prev) => ({
@@ -922,6 +1059,7 @@ export default function TestPage() {
             <PlanPanel
               scrollRef={withScrollRef}
               text={state.withText}
+              agentId={state.withAgentId}
               phase={state.phase}
               label="Agent Plan"
               badgeText={state.selectedSkill ? `Vibedata + ${state.selectedSkill.name} skill` : "Vibedata + skill"}
@@ -947,6 +1085,7 @@ export default function TestPage() {
             <PlanPanel
               scrollRef={withoutScrollRef}
               text={state.withoutText}
+              agentId={state.withoutAgentId}
               phase={state.phase}
               label="Agent Plan"
               badgeText="Vibedata Only"

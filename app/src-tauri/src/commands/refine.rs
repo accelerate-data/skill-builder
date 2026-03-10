@@ -107,6 +107,7 @@ fn build_refine_config(
         agent_name: Some(REFINE_AGENT_NAME.to_string()),
         required_plugins: None,
         conversation_history: None,
+        skill_name: None,
     };
 
     (config, agent_id)

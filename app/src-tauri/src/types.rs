@@ -931,6 +931,7 @@ mod tests {
             agent_name: Some("research-entities".to_string()),
             required_plugins: None,
             conversation_history: None,
+            skill_name: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"apiKey\""));

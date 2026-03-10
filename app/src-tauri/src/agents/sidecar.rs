@@ -40,6 +40,10 @@ pub struct SidecarConfig {
         skip_serializing_if = "Option::is_none"
     )]
     pub conversation_history: Option<Vec<serde_json::Value>>,
+    /// The skill name this agent run is associated with. Used by the mock agent
+    /// to discriminate template selection (e.g. with-skill vs. baseline runs).
+    #[serde(rename = "skillName", skip_serializing_if = "Option::is_none")]
+    pub skill_name: Option<String>,
 }
 
 impl std::fmt::Debug for SidecarConfig {
@@ -163,6 +167,7 @@ mod tests {
             agent_name: Some("research-entities".to_string()),
             required_plugins: None,
             conversation_history: None,
+            skill_name: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -204,6 +209,7 @@ mod tests {
             agent_name: None,
             required_plugins: None,
             conversation_history: None,
+            skill_name: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
