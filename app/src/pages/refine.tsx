@@ -358,6 +358,12 @@ export default function RefinePage() {
       if (store.selectedSkill) {
         releaseSkillResources(store.selectedSkill.name, "unmount");
       }
+
+      // Clear session state so that remounting the page (e.g. navigating back
+      // from the test page) always creates a fresh session. Without this, the
+      // stale sessionId remains in the store and the auto-select guard in
+      // handleSelectSkill short-circuits before calling startRefineSession.
+      store.clearSession();
     };
   }, []);
 
