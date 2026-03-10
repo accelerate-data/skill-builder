@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SkillPicker } from "@/components/refine/skill-picker";
-import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
+import { useAgentStore, flushMessageBuffer, type AgentMessage } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useTestStore } from "@/stores/test-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -239,6 +239,9 @@ type ContentBlock =
   | { type: "tool_use"; name: string; input: Record<string, unknown> }
   | { type: "text"; text: string };
 
+// Stable empty array — avoids Zustand re-render loop when selector returns []
+const NO_MESSAGES: AgentMessage[] = [];
+
 function StreamingContent({
   agentId,
   phase,
@@ -251,7 +254,7 @@ function StreamingContent({
   scrollRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const messages = useAgentStore((s) =>
-    agentId ? (s.runs[agentId]?.messages ?? []) : [],
+    agentId ? (s.runs[agentId]?.messages ?? NO_MESSAGES) : NO_MESSAGES,
   );
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
 
