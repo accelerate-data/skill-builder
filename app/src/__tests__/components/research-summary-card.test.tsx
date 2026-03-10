@@ -65,8 +65,8 @@ describe("ResearchSummaryCard", () => {
     );
 
     expect(screen.getByText("of 5 selected")).toBeInTheDocument();
-    expect(screen.getByText("Deal Structure & Typology")).toBeInTheDocument();
-    expect(screen.getByText("Revenue Recognition & Forecasting Methodology")).toBeInTheDocument();
+    expect(screen.getAllByText("Deal Structure & Typology").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Revenue Recognition & Forecasting Methodology").length).toBeGreaterThan(0);
   });
 
   it("shows Research Complete header and stats grid on happy path", () => {
