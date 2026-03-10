@@ -1056,7 +1056,17 @@ pub fn materialize_workflow_step_output(
     let workspace_path = read_workspace_path(&db)
         .ok_or_else(|| "Workspace path not configured. Please set it in Settings.".to_string())?;
     let skill_root = Path::new(&workspace_path).join(&skill_name);
-    materialize_workflow_step_output_value(&skill_root, step_id, &structured_output)
+    materialize_workflow_step_output_value(&skill_root, step_id, &structured_output).map_err(
+        |e| {
+            log::error!(
+                "[materialize_workflow_step_output] skill={} step={} failed: {}",
+                skill_name,
+                step_id,
+                e
+            );
+            e
+        },
+    )
 }
 
 fn answer_evaluator_output_format() -> serde_json::Value {
@@ -1269,7 +1279,14 @@ pub fn materialize_answer_evaluation_output(
         structured_output
     );
     let workspace_dir = Path::new(&workspace_path).join(&skill_name);
-    materialize_answer_evaluation_output_value(&workspace_dir, &structured_output)
+    materialize_answer_evaluation_output_value(&workspace_dir, &structured_output).map_err(|e| {
+        log::error!(
+            "[materialize_answer_evaluation_output] skill={} failed: {}",
+            skill_name,
+            e
+        );
+        e
+    })
 }
 
 /// Write `user-context.md` to the context directory so that sub-agents
@@ -1910,6 +1927,15 @@ pub async fn run_workflow_step(
         &settings,
     )
     .await
+    .map_err(|e| {
+        log::error!(
+            "[run_workflow_step] skill={} step={} failed: {}",
+            skill_name,
+            step_id,
+            e
+        );
+        e
+    })
 }
 
 #[tauri::command]
@@ -2109,9 +2135,23 @@ pub fn save_workflow_state(
         current_step,
         &effective_status,
         &purpose,
-    )?;
+    )
+    .map_err(|e| {
+        log::error!("[save_workflow_state] save_workflow_run failed skill={}: {}", skill_name, e);
+        e
+    })?;
     for step in &step_statuses {
-        crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status)?;
+        crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status).map_err(
+            |e| {
+                log::error!(
+                    "[save_workflow_state] save_workflow_step failed skill={} step={}: {}",
+                    skill_name,
+                    step.step_id,
+                    e
+                );
+                e
+            },
+        )?;
     }
 
     // Auto-commit when a step is completed.
