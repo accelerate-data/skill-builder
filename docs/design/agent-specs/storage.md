@@ -88,14 +88,13 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
 
 ## Agent Working Directory
 
-Agents run with `cwd = {workspace}` (i.e., `app_local_data_dir()/workspace/`). The app passes the following paths explicitly in the agent prompt:
+Agents run with `cwd = {workspace}` (i.e., `app_local_data_dir()/workspace/`). **SDK calling protocol:** the app sends only **skill name** and **workspace directory** in the prompt. Before each run, the app writes `{workspace_dir}/.skill_output_dir` with the absolute path to the skill output directory. Agents read `user-context.md` and `.skill_output_dir` first; they derive **context_dir** as `workspace_dir/context` and **skill output directory** from the path in `.skill_output_dir`.
 
-| Prompt variable | Resolved path | Purpose |
+| Derived / file | Resolved path | Purpose |
 |---|---|---|
-| `workspace directory` | `{workspace}/{skill-name}/` | Where `user-context.md` lives; agents read it from here |
-| `skill output directory` | `{skills_path}/{skill-name}/` | Where `SKILL.md` and `references/` are written |
-
-For research orchestrator protocol, `context_dir` is derived from `workspace_dir` and is not a separate input field.
+| `workspace directory` | `{workspace}/{skill-name}/` | Where `user-context.md` and `.skill_output_dir` live |
+| `context_dir` | `workspace_dir/context` | Where `clarifications.json`, `decisions.json`, etc. live |
+| `skill output directory` | path in `.skill_output_dir` | Where `SKILL.md` and `references/` are written |
 
 Agents are told to read only specific named files and never create directories — the app pre-creates all directories before launching each step.
 

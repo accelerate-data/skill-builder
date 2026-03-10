@@ -589,14 +589,14 @@ export default function WorkflowPage() {
       setActiveAgent(null);
 
       const finish = async () => {
-        // Backend-owned writes: step 0/1/2 return canonical artifact payload in
+        // Backend-owned writes: steps 0/1/2/3 return canonical artifact payload in
         // structured output; Rust validates and writes context files.
-        if ((step === 0 || step === 1 || step === 2) && completedAgentId) {
+        if ((step === 0 || step === 1 || step === 2 || step === 3) && completedAgentId) {
           const structuredOutput = extractStructuredResultPayload(completedAgentId);
           if (structuredOutput == null || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) {
-            // Step 1 requires a structured output object — treat missing/invalid as an error.
+            // Steps 1 and 3 require a structured output object — treat missing/invalid as an error.
             // Step 0 does not require it — continue normally without materialization.
-            if (step === 1) {
+            if (step === 1 || step === 3) {
               updateStepStatus(step, "error");
               setRunning(false);
               toast.error(

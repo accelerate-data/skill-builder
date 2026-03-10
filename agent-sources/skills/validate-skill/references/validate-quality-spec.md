@@ -6,33 +6,35 @@ Four-pass quality assessment of a completed skill: coverage & structure, content
 
 ## Inputs
 
-- Paths to `decisions.json`, `clarifications.json`, `SKILL.md`, and `references/` files
-- The **purpose** (`domain`, `data-engineering`, `platform`, or `source`)
-- The **workspace directory** path (contains `user-context.md`)
+- `skill_name`: the skill being validated
+- `purpose`: `Business process knowledge` | `Organization specific data engineering standards` | `Organization specific Azure or Fabric standards` | `Source system customizations`
+- `context_dir`: path to context directory
+- `skill_output_dir`: path to skill output directory
+- `workspace_dir`: path to workspace directory
 
-Read `decisions.json` first, then check its metadata:
+Missing `{context_dir}/decisions.json` or `{context_dir}/clarifications.json` are not errors — skip and proceed without them.
 
-- If `metadata.contradictory_inputs == "revised"`, treat decisions as authoritative and skip `clarifications.json`.
-- Otherwise, read `clarifications.json` in full before quality checks.
+Read `{context_dir}/decisions.json` first.
 
-After that, use progressive discovery for skill content:
+- If `metadata.contradictory_inputs == "revised"`, skip `{context_dir}/clarifications.json`.
+- Otherwise, read `{context_dir}/clarifications.json` in full (including `metadata.research_plan`) before recommendations.
 
-- Read `SKILL.md`, then read only the reference files needed for each finding.
-- Expand reads when a claim cannot be evidenced.
-- Before final output, run a completeness sweep to verify every decision and every answered clarification is either COVERED (with file+section evidence) or MISSING.
+Read `{workspace_dir}/user-context.md`.
 
-Read `user-context.md` from the workspace directory.
+Glob `references/` in `skill_output_dir` and collect all reference paths.
+
+Use progressive discovery for skill content: read `{skill_output_dir}/SKILL.md` first, then only the reference files needed for each finding. Expand reads when a claim cannot be evidenced. Before final output, run a completeness sweep to verify every decision and every answered clarification is either COVERED (with file+section evidence) or MISSING.
 
 ## Pass 1: Coverage & Structure
 
 Map every decision and answered clarification to a file and section. Report COVERED (with file+section) or MISSING.
 
-Check SKILL.md against Skill Best Practices, Content Principles, and anti-patterns from agent instructions. Flag orphaned or unnecessary files.
+Check SKILL.md against Skill Best Practices, Content Principles, and anti-patterns from `plugins/skill-creator/skills/skill-creator/SKILL.md`. Flag orphaned or unnecessary files.
 
 Verify correct architectural pattern for purpose:
 
-- **Source/Domain** → knowledge-capture (parallel sections, guided prompts, no dependency map)
-- **Platform/Data Engineering** → standards (dependency map, content tiers, pre-filled assertions within annotation budget)
+- **Business process knowledge / Source system customizations** → knowledge-capture (parallel sections, guided prompts, no dependency map)
+- **Organization specific data engineering standards / Organization specific Azure or Fabric standards** → standards (dependency map, content tiers, pre-filled assertions within annotation budget)
 
 Report CORRECT or MISMATCH with details.
 
@@ -46,20 +48,20 @@ Report CORRECT or MISMATCH with details.
 
 4. **Evaluations**: `{context_dir}/evaluations.md` must exist with 3+ scenarios each having prompt, expected behavior, and pass criteria. Flag MISSING or INCOMPLETE.
 
-5. **Getting Started**: Platform/Data Engineering skills must have a "Getting Started" section. Source/Domain skills must NOT. Flag MISSING or INCORRECT.
+5. **Getting Started**: `Organization specific data engineering standards` and `Organization specific Azure or Fabric standards` skills must have a "Getting Started" section. `Business process knowledge` and `Source system customizations` skills must NOT. Flag MISSING or INCORRECT.
 
 ## Pass 2: Content Quality
 
-Score each section of SKILL.md and every reference file on Quality Dimensions from agent instructions. Flag anti-patterns. PASS/FAIL per section with improvement suggestions for FAILs.
+Score each section of SKILL.md and every reference file on Quality Dimensions from `plugins/skill-creator/skills/skill-creator/SKILL.md`. Flag anti-patterns. PASS/FAIL per section with improvement suggestions for FAILs.
 
 ## Pass 3: Boundary Check
 
 Check for content belonging to a different purpose. Purpose-scoped dimension sets:
 
-- **Domain**: `entities`, `data-quality`, `metrics`, `business-rules`, `segmentation-and-periods`, `modeling-patterns`
-- **Data-Engineering**: `entities`, `data-quality`, `pattern-interactions`, `load-merge-patterns`, `historization`, `layer-design`
-- **Platform**: `entities`, `platform-behavioral-overrides`, `config-patterns`, `integration-orchestration`, `operational-failure-modes`
-- **Source**: `entities`, `data-quality`, `extraction`, `field-semantics`, `lifecycle-and-state`, `reconciliation`
+- **Business process knowledge**: `entities`, `data-quality`, `metrics`, `business-rules`, `segmentation-and-periods`, `modeling-patterns`
+- **Organization specific data engineering standards**: `entities`, `data-quality`, `pattern-interactions`, `load-merge-patterns`, `historization`, `layer-design`
+- **Organization specific Azure or Fabric standards**: `entities`, `platform-behavioral-overrides`, `config-patterns`, `integration-orchestration`, `operational-failure-modes`
+- **Source system customizations**: `entities`, `data-quality`, `extraction`, `field-semantics`, `lifecycle-and-state`, `reconciliation`
 
 Classify each section and reference file by dimension(s). Content mapping outside the current purpose's set is a boundary violation. Brief incidental mentions are acceptable; only substantial sections are violations.
 
@@ -86,3 +88,5 @@ For each pattern, suggest an informational rewrite with rationale and exceptions
 ## Output
 
 Organize by pass (coverage, content quality, boundary, prescriptiveness). Each finding: file, section, actionable detail. Use COVERED/MISSING, PASS/FAIL, VIOLATION/OK, and quote originals with suggested rewrites.
+
+After all passes, add a **Manual Review Items** section listing anything that requires human judgment to verify (e.g., factual accuracy of domain-specific claims, stakeholder approval for omitted content, or ambiguous boundary calls).

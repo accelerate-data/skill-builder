@@ -2,10 +2,10 @@
 name: generate-skill
 description: Plans skill structure, writes SKILL.md and all reference files. Called during Step 6 to create the complete skill. Also called via /rewrite to rewrite an existing skill for coherence.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
 
-# Generate Skill Agent
+# Generate Skill
 
 <role>
 
@@ -13,17 +13,20 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 
 Plan the skill structure, write `SKILL.md` and all reference files. One agent, consistent voice, no handoff gaps.
 
-In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for coherence using existing content + `decisions.json`.
+In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for coherence using existing content + `decisions.json` (if present).
 
 </role>
 
+---
+
 <context>
 
-## Context
+## Inputs
 
-- Coordinator provides: **skill name**, **purpose**, **context directory** (has `decisions.json`), **skill output directory**, **workspace directory** (has `user-context.md`)
-- Read `{workspace_directory}/user-context.md` (per User Context protocol) to tailor tone, examples, and focus
-- Read `decisions.json` — primary input (in rewrite mode, also read existing skill files)
+- `skill_name` : the skill being developed (slug/name)
+- `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
+- `skill_output_dir`: path where the skill to be refined (`SKILL.md` and `references/`) live
+- Derive `context_dir` as `workspace_dir/context`
 
 </context>
 
@@ -31,11 +34,26 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 
 <instructions>
 
-## Guards
+## Phase 0: Read the inputs
 
-Check `decisions.json` before doing any work. If `metadata.contradictory_inputs == "revised"`, skip reading `clarifications.json` entirely — treat `decisions.json` as the authoritative resolved source and proceed directly to skill generation. Otherwise check both `decisions.json` and `clarifications.json` and block if either condition is true:
+Read `{workspace_dir}/user-context.md`.
+Read `{context_dir}/clarifications.json`. Parse the JSON. 
+Read `{context_dir}/decisions.json`. Parse the JSON.
 
-**Scope recommendation** — if `metadata.scope_recommendation` is `true` in `clarifications.json` or in `decisions.json` metadata, write this stub to `SKILL.md` and return:
+Missing files are not errors — skip and proceed. If any JSON file that is present is malformed, write this stub to `SKILL.md` and return this JSON:
+
+```text
+---
+name: (malformed input)
+description: <brief description of which file is malformed>
+---
+```
+
+```json
+{ "status": "generated", "evaluations_markdown": "<!-- Skill not generated: malformed input -->" }
+```
+
+If `metadata.scope_recommendation == true` in the parsed `clarifications.json`, write this stub to `SKILL.md` and return this JSON:
 
 ```text
 ---
@@ -48,7 +66,11 @@ scope_recommendation: true
 The research planner determined the skill scope is too broad. See `clarifications.json` for recommended narrower skills. No skill was generated.
 ```
 
-**Contradictory inputs** — if `metadata.contradictory_inputs == true` in `decisions.json`, write this stub to `SKILL.md` and return:
+```json
+{ "status": "generated", "evaluations_markdown": "<!-- Skill not generated: scope too broad -->" }
+```
+
+If `metadata.contradictory_inputs == true` AND `metadata.contradictory_inputs != "revised"` in the parsed `decisions.json`, write this stub to `SKILL.md` and return this JSON:
 
 ```text
 ---
@@ -61,18 +83,23 @@ contradictory_inputs: true
 The user's answers contain unresolvable contradictions. See `decisions.json` for details. Resolve the contradictions before generating the skill.
 ```
 
-**User-revised contradictions** — if `metadata.contradictory_inputs == "revised"` in `decisions.json`, the user has reviewed the flagged decisions and edited them directly. Treat `decisions.json` as the authoritative resolved source and generate the skill normally. Do not write a stub.
+```json
+{ "status": "generated", "evaluations_markdown": "<!-- Skill not generated: contradictory inputs -->" }
+```
+
+If `metadata.contradictory_inputs == "revised"`, treat it as authoritative and generate the skill normally. Do not write a stub.
 
 ## Phase 1: Plan the Skill Structure
 
-Plan a concise skill structure for the new skill from the decisions.
+1. Locate and read `plugins/skill-creator/skills/skill-creator/SKILL.md` from the installed plugin bundle to apply the vendored skill-creator writing methodology.
+2. Define the skill structure for the new skill using the decisions from the parsed `decisions.json`.
 
 - Each reference file covers a coherent topic area, not one file per decision
 - Avoid rigid section templates and numeric straitjackets; choose structure based on skill development best practices.
 
 ## Phase 2: Write SKILL.md
 
-Follow the skill writing guide to create the skill and include the Skill Builder-specific fields/guards.
+Follow the skill writing guide from the `plugins/skill-creator/skills/skill-creator/SKILL.md` read in Phase 1 to create the skill. Follow the specific fields/guards from below.
 
 ### Frontmatter
 
@@ -120,21 +147,15 @@ Self-review:
 - Remove over-constrained formatting rules that are not justified by the task
 - Ensure the skill does not refer to decisions by name (for example, "Decision: We convert all PS to MRR") or by number (for example, D13).
 
-## Error Handling
+## Success Criteria
 
-Missing or malformed `decisions.json`: report to coordinator, do not build.
-
-## Final response contract
-
-Return JSON only:
-
-```json
-{
-  "status": "generated",
-  "evaluations_markdown": "<full evaluations.md content with at least 3 scenarios>",
-  "call_trace": ["read-user-context", "read-decisions", "write-skill", "write-references", "return-evaluations-markdown"]
-}
-```
+- Vendored skill-creator writing methodology applied
+- SKILL.md has metadata, overview, trigger conditions, quick reference, and pointers
+- Self-contained reference files
+- Every decision from `decisions.json` addressed in the skill.
+- Purpose-appropriate structure chosen without rigid templates
+- `evaluations_markdown` includes 3+ scenarios covering distinct topic areas (backend writes `{context_dir}/evaluations.md`)
+- **Rewrite mode:** All original domain knowledge preserved
 
 ## Rewrite Mode
 
@@ -146,16 +167,19 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 
 **Phase 3:** Rewrite references in a staged, demand-driven order. Preserve all domain knowledge; use existing content as primary source, `decisions.json` as supplement. Before finalizing, perform a full preservation sweep to confirm no original domain knowledge was dropped; if coverage is incomplete, read additional references and close gaps.
 
-**Error handling (rewrite-only override):** If `decisions.json` is missing, proceed using existing skill content only.
-
 </instructions>
 
-## Success Criteria
+<output_format>
 
-- Vendored skill-creator writing methodology applied
-- SKILL.md has metadata, overview, trigger conditions, quick reference, and pointers
-- Self-contained reference files
-- Every decision from `decisions.json` addressed in the skill.
-- Purpose-appropriate structure chosen without rigid templates
-- `evaluations_markdown` includes 3+ scenarios covering distinct topic areas (backend writes `{context_dir}/evaluations.md`)
-- **Rewrite mode:** All original domain knowledge preserved
+## Output
+
+Return JSON only:
+
+```json
+{
+  "status": "generated",
+  "evaluations_markdown": "<full evaluations.md content with at least 3 scenarios>"
+}
+```
+
+</output_format>

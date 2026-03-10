@@ -1,9 +1,9 @@
 ---
 name: validate-skill
 description: >
-  Validates a completed skill against its decisions and clarifications. Use when
-  validating a skill for a domain and purpose. Returns a validation log, test
-  results, and companion recommendations as a structured JSON payload.
+  Validates a completed skill against its decisions and clarifications. Use when validating a skill for a domain and purpose. Returns a validation log, test results, and companion recommendations as a structured JSON payload.
+version: 1.0.0
+user-invocable: false
 ---
 
 # Validate Skill
@@ -20,7 +20,6 @@ Do not modify skill files.
 
 ## Quick Reference
 
-- Inventory skill references from `skill_output_dir/references`
 - Run three focused sub-agents using the spec files
 - Consolidate findings into the required three output sections
 - Keep findings concrete: file + section + specific fix
@@ -36,31 +35,15 @@ Do not modify skill files.
 | `skill_output_dir` | Path to skill output directory |
 | `workspace_dir` | Path to workspace directory |
 
-## Step 1 — File Inventory
+## Step 1 — Sub-agents
 
-Glob `references/` in `skill_output_dir` and collect all reference paths.
+Spawn three sub-agents in the same turn. Mode: `bypassPermissions`. Pass `skill_name`, `purpose`, `context_dir`, `skill_output_dir`, `workspace_dir` to each. Add to every sub-agent prompt: "Return your complete output as text. Do not write files."
 
-## Step 2 — Sub-agents
+- Quality checker: read and follow `references/validate-quality-spec.md`
+- Test evaluator: read and follow `references/test-skill-spec.md`
+- Companion recommender: read and follow `references/companion-recommender-spec.md`
 
-Read `{context_dir}/decisions.json` metadata.
-
-If `metadata.contradictory_inputs == "revised"`, treat decisions as authoritative and omit `clarifications.json` from all sub-agent inputs.
-
-Read three spec files in `references/` and spawn one sub-agent per spec:
-
-- Quality checker: `references/validate-quality-spec.md`
-- Test evaluator: `references/test-skill-spec.md`
-- Companion recommender: `references/companion-recommender-spec.md`
-
-Pass required input paths exactly as described in each spec.
-
-Sub-agent read policy:
-
-- Use progressive discovery for `SKILL.md` and `references/` content; do not require blanket up-front full-file ingestion.
-- Preserve current guard behavior: read `decisions.json` first and read `clarifications.json` in full unless `metadata.contradictory_inputs == "revised"`.
-- Require evidence-backed completeness before each sub-agent returns (expand reads when coverage is insufficient).
-
-## Step 3 — Consolidate and Report
+## Step 2 — Consolidate and Report
 
 Combine sub-agent outputs into:
 
@@ -68,6 +51,7 @@ Combine sub-agent outputs into:
 - Boundary violations
 - Prescriptiveness rewrites
 - Test gap analysis with 5-8 prompt categories
+- Companion skill recommendations
 
 ## Return Format
 
@@ -75,13 +59,14 @@ Return JSON only with this shape:
 
 ```json
 {
+  "status": "validation_complete",
   "validation_log_markdown": "[full agent-validation-log.md content]",
   "test_results_markdown": "[full test-skill.md content]",
   "companion_skills_markdown": "[full companion-skills.md content including YAML frontmatter]"
 }
 ```
 
-All three keys are required.
+All four keys are required.
 
 ## Output Format
 
