@@ -2659,10 +2659,11 @@ mod tests {
         now.duration_since(last_activity) >= idle_timeout
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn test_idle_cleanup_protects_active_sidecars() {
         // A sidecar with pending requests must NOT be identified as idle,
         // even if its last_activity exceeds the idle timeout.
+        tokio::time::advance(std::time::Duration::from_secs(3600)).await;
         let idle_timeout = std::time::Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS);
         let now = tokio::time::Instant::now();
         let stale_activity = now - idle_timeout - std::time::Duration::from_secs(120);
@@ -2694,10 +2695,13 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn test_idle_detection_identifies_stale_sidecars() {
         // A sidecar with old last_activity and no pending requests IS idle
         // and should be eligible for cleanup.
+        // Advance the Tokio clock so subtracting large durations from Instant::now()
+        // does not overflow (on Windows CI the monotonic clock can be very young).
+        tokio::time::advance(std::time::Duration::from_secs(3600)).await;
         let idle_timeout = std::time::Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS);
         let now = tokio::time::Instant::now();
         // Activity just past the timeout — exceeds the 10-minute timeout
