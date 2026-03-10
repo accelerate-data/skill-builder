@@ -1138,7 +1138,27 @@ export default function TestPage() {
             {evalLines.length > 0 ? (
               <div className="space-y-4">
                 <div className="space-y-1">
-                  {evalLines.map((line, i) => (
+                  {evalLines.map((line, i) => {
+                    // Render markdown headers as styled section headings, not plain bullets
+                    const h1Match = line.direction === null && /^#{1}\s+(.+)/.exec(line.text);
+                    const h2Match = line.direction === null && /^#{2}\s+(.+)/.exec(line.text);
+                    const isSeparator = line.direction === null && /^-{3,}$/.test(line.text.trim());
+                    if (h1Match) {
+                      return (
+                        <p key={i} className="pb-1 text-xs font-semibold text-foreground">
+                          {h1Match[1]}
+                        </p>
+                      );
+                    }
+                    if (h2Match) {
+                      return (
+                        <p key={i} className="pb-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {h2Match[1]}
+                        </p>
+                      );
+                    }
+                    if (isSeparator) return <hr key={i} className="border-border/40" />;
+                    return (
                     <div
                       key={i}
                       className={cn(
@@ -1155,7 +1175,8 @@ export default function TestPage() {
                         {renderInlineBold(line.text)}
                       </span>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {evalRecommendations && (
