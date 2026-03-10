@@ -226,6 +226,8 @@ export function ResearchSummaryCard({
   const noteCount = clarificationsData.notes.length;
   const warnCount = clarificationsData.notes.filter((n) => n.type === "blocked" || n.type === "critical_gap").length;
 
+  const sortedDimensions = [...plan.dimensions].sort((a, b) => b.score - a.score);
+
   const dimPct = plan.dimensionsEvaluated > 0
     ? Math.round((plan.dimensionsSelected / plan.dimensionsEvaluated) * 100)
     : 0;
@@ -363,10 +365,9 @@ export function ResearchSummaryCard({
                 />
               </div>
               {/* Dimension pills */}
-              <div className="flex flex-wrap gap-1.5">
-                {plan.dimensions
-                  .sort((a, b) => b.score - a.score)
-                  .map((dim) => {
+              {sortedDimensions.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {sortedDimensions.map((dim) => {
                     const isSelected = plan.selectedDimensions.includes(dim.name);
                     return (
                       <span
@@ -388,7 +389,53 @@ export function ResearchSummaryCard({
                       </span>
                     );
                   })}
-              </div>
+                </div>
+              )}
+
+              {/* Dimension reasons */}
+              {sortedDimensions.length > 0 && (
+                <div className="space-y-1.5">
+                  {sortedDimensions.map((dim) => {
+                    const isSelected = plan.selectedDimensions.includes(dim.name);
+                    return (
+                      <div
+                        key={`${dim.name}-reason`}
+                        className="rounded-md border bg-muted/40 px-2.5 py-1.5"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-medium text-foreground">
+                              {dim.name}
+                            </span>
+                            <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                              {dim.score}/5
+                            </span>
+                          </div>
+                          <span
+                            className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                            style={{
+                              borderColor: isSelected
+                                ? "color-mix(in oklch, var(--color-pacific), transparent 40%)"
+                                : "var(--border)",
+                              background: isSelected
+                                ? "color-mix(in oklch, var(--color-pacific), transparent 90%)"
+                                : "transparent",
+                              color: isSelected ? "var(--color-pacific)" : "var(--muted-foreground)",
+                            }}
+                          >
+                            {isSelected ? "Selected" : "Evaluated"}
+                          </span>
+                        </div>
+                        {dim.reason && (
+                          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                            {dim.reason}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
