@@ -82,6 +82,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `e2e/workflow/workflow-navigation.spec.ts` | `@workflow` |
 | `e2e/refine/refine.spec.ts` | `@refine` |
 | `e2e/skill-tester/skill-tester.spec.ts` | `@skill-tester` |
+| `e2e/skill-tester/test-to-refine.spec.ts` | `@skill-tester` |
 | `e2e/toast-lifecycle.spec.ts` | `@toast` |
 
 ## Cross-Boundary: Agent ↔ App Format Compliance
