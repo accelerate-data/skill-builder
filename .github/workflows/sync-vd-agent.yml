@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
+      # Private upstream repo; requires a PAT with read access stored as VD_STUDIO_TOKEN
       UPSTREAM_REPO: accelerate-data/vd-studio
       UPSTREAM_REF: ${{ github.event.inputs.upstream_ref || 'main' }}
       UPSTREAM_PLUGIN_PATH: plugins/vd-agent
@@ -36,6 +37,9 @@ jobs:
         with:
           repository: ${{ env.UPSTREAM_REPO }}
           ref: ${{ env.UPSTREAM_REF }}
+          # Always use VD_STUDIO_TOKEN so we don't fall back to the default GITHUB_TOKEN,
+          # which typically cannot read private repos in this org.
+          token: ${{ secrets.VD_STUDIO_TOKEN }}
           path: upstream
 
       - name: Show upstream vd-agent commit
