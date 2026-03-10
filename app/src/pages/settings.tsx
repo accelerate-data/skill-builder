@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { getVersion } from "@tauri-apps/api/app"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 import { open } from "@tauri-apps/plugin-dialog"
 import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, PlugZap, FolderOpen, FolderSearch, Trash2, Github, LogOut, Monitor, Sun, Moon, Info, ArrowLeft, Plus } from "lucide-react"
 import { useTheme } from "next-themes"
@@ -228,7 +228,11 @@ export default function SettingsPage() {
       setTimeout(() => setSaved(false), 2000)
     } catch (err) {
       console.error("settings: auto-save failed", err)
-      toast.error(`Failed to save: ${err}`, { duration: Infinity })
+      toast.error(`Failed to save: ${err}`, {
+        duration: Infinity,
+        cause: err,
+        context: { operation: "settings_auto_save" },
+      })
     }
   }
 

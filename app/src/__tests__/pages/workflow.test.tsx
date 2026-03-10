@@ -19,16 +19,16 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mockNavigate,
 }));
 
-// Mock sonner — use vi.hoisted so the object is available in hoisted vi.mock factory
+// Mock toast wrapper — use vi.hoisted so the object is available in hoisted vi.mock factory
 const mockToast = vi.hoisted(() => ({
   success: vi.fn(),
   error: vi.fn(),
   info: vi.fn(),
+  warning: vi.fn(),
+  loading: vi.fn(() => "toast-id"),
+  dismiss: vi.fn(),
 }));
-vi.mock("sonner", () => ({
-  toast: mockToast,
-  Toaster: () => null,
-}));
+vi.mock("@/lib/toast", () => ({ toast: mockToast }));
 
 // Mock @/lib/tauri
 vi.mock("@/lib/tauri", () => ({

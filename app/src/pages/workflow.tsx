@@ -8,7 +8,7 @@ import {
   RotateCcw,
   Loader2,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 
 import {
@@ -335,7 +335,11 @@ export default function WorkflowPage() {
 
     acquireLock(skillName).catch((err) => {
       if (mounted) {
-        toast.error(`Could not lock skill: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
+        toast.error(`Could not lock skill: ${err instanceof Error ? err.message : String(err)}`, {
+          duration: Infinity,
+          cause: err,
+          context: { operation: "workflow_acquire_lock", skillName },
+        });
         navigate({ to: "/" });
       }
     });
@@ -772,7 +776,11 @@ export default function WorkflowPage() {
         setReviewContent(content);
         setEditorDirty(false);
       } catch (err) {
-        toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
+        toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`, {
+          duration: Infinity,
+          cause: err,
+          context: { operation: "workflow_review_continue_save", skillName },
+        });
         return;
       }
     }
@@ -1048,7 +1056,11 @@ export default function WorkflowPage() {
       return true;
     } catch (err) {
       setSaveStatus("dirty"); // Revert to dirty on failure
-      toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
+      toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`, {
+        duration: Infinity,
+        cause: err,
+        context: { operation: "workflow_handle_save", skillName },
+      });
       return false;
     }
   }, [stepConfig?.clarificationsEditable, workspacePath, reviewContent, clarificationsData, skillName]);

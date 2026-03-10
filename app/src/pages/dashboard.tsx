@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
 import { open, save } from "@tauri-apps/plugin-dialog"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 import { FolderOpen, Search, Filter, AlertCircle, Settings, Plus, Github, ChevronUp, ChevronDown, Upload } from "lucide-react"
 import {
   Card,
@@ -309,7 +309,12 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error("[dashboard] Download failed:", err)
-      toast.error(`Download failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId, duration: Infinity })
+      toast.error(`Download failed: ${err instanceof Error ? err.message : String(err)}`, {
+        id: toastId,
+        duration: Infinity,
+        cause: err,
+        context: { operation: "dashboard_download", skillName: skill.name },
+      })
     }
   }, [workspacePath])
 
@@ -327,7 +332,11 @@ export default function DashboardPage() {
     } catch (err) {
       console.error("[dashboard] parseSkillFile failed:", err)
       const msg = err instanceof Error ? err.message : String(err)
-      toast.error(`Import failed: ${msg}`, { duration: Infinity })
+      toast.error(`Import failed: ${msg}`, {
+        duration: Infinity,
+        cause: err,
+        context: { operation: "dashboard_import_parse", filePath },
+      })
     }
   }, [])
 

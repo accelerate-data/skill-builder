@@ -2,13 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockInvoke, resetTauriMocks } from "@/test/mocks/tauri";
-import { toast } from "sonner";
-
-// Mock sonner
-vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
-  Toaster: () => null,
-}));
+import { toast } from "@/lib/toast";
 
 import DeleteSkillDialog from "@/components/delete-skill-dialog";
 import type { SkillSummary } from "@/lib/types";

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 import { Plus, Loader2, ChevronLeft, ChevronRight, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {

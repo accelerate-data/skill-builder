@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useNavigate, useSearch, useBlocker } from "@tanstack/react-router";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import {
   Dialog,
   DialogContent,
@@ -209,7 +209,11 @@ export default function RefinePage() {
         console.log("[refine] acquireLock: %s", skill.name);
       } catch (err) {
         console.error("[refine] acquireLock failed: %s", skill.name, err);
-        toast.error(`Cannot select skill: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
+        toast.error(`Cannot select skill: ${err instanceof Error ? err.message : String(err)}`, {
+          duration: Infinity,
+          cause: err,
+          context: { operation: "refine_acquire_lock", skillName: skill.name },
+        });
         return;
       }
 

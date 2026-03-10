@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { save } from "@tauri-apps/plugin-dialog"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 import { Download, Eye, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"

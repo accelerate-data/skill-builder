@@ -10,7 +10,8 @@ import '@fontsource-variable/jetbrains-mono';
 import "github-markdown-css/github-markdown.css";
 import "./styles/globals.css";
 
-// Route console.log/warn/error to the Rust log backend (writes to log file)
+// Mirror Rust log entries into the webview console (useful in dev).
+// Note: this is backend → console, not console → backend persistence.
 attachConsole().catch((err) => {
   console.error('Failed to attach console logger:', err);
 });
