@@ -204,7 +204,7 @@ export function ChatInputBar({ onSend, isRunning, availableFiles, prefilledValue
   const hasBadges = targetFiles.length > 0 || activeCommand;
 
   return (
-    <div className="flex flex-col gap-2 border-t p-3">
+    <div className="flex flex-col gap-2 border-t px-4 py-3">
       {hasBadges && (
         <div className="flex flex-wrap gap-1">
           {activeCommand && (
