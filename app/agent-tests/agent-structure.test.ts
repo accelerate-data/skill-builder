@@ -94,19 +94,19 @@ describe("read directive compliance", () => {
     path.join(AGENTS_DIR, "generate-skill.md"),
     path.join(
       REPO_ROOT,
-      "agent-sources/workspace/skills/validate-skill/SKILL.md"
+      "agent-sources/skills/validate-skill/SKILL.md"
     ),
     path.join(
       REPO_ROOT,
-      "agent-sources/workspace/skills/validate-skill/references/validate-quality-spec.md"
+      "agent-sources/skills/validate-skill/references/validate-quality-spec.md"
     ),
     path.join(
       REPO_ROOT,
-      "agent-sources/workspace/skills/validate-skill/references/test-skill-spec.md"
+      "agent-sources/skills/validate-skill/references/test-skill-spec.md"
     ),
     path.join(
       REPO_ROOT,
-      "agent-sources/workspace/skills/validate-skill/references/companion-recommender-spec.md"
+      "agent-sources/skills/validate-skill/references/companion-recommender-spec.md"
     ),
   ];
 
@@ -140,21 +140,21 @@ describe("read directive compliance", () => {
     const qualitySpec = fs.readFileSync(
       path.join(
         REPO_ROOT,
-        "agent-sources/workspace/skills/validate-skill/references/validate-quality-spec.md"
+        "agent-sources/skills/validate-skill/references/validate-quality-spec.md"
       ),
       "utf8"
     );
     const testSpec = fs.readFileSync(
       path.join(
         REPO_ROOT,
-        "agent-sources/workspace/skills/validate-skill/references/test-skill-spec.md"
+        "agent-sources/skills/validate-skill/references/test-skill-spec.md"
       ),
       "utf8"
     );
     const companionSpec = fs.readFileSync(
       path.join(
         REPO_ROOT,
-        "agent-sources/workspace/skills/validate-skill/references/companion-recommender-spec.md"
+        "agent-sources/skills/validate-skill/references/companion-recommender-spec.md"
       ),
       "utf8"
     );

@@ -30,6 +30,7 @@
       "../sidecar/dist/": "sidecar/dist",
       "../../agent-sources/agents/": "agent-sources/agents",
       "../../agent-sources/plugins/": "agent-sources/plugins",
+      "../../agent-sources/skills/": "agent-sources/skills",
       "../../agent-sources/workspace/": "workspace",
       "resources/node/": "node"
     },
