@@ -1,7 +1,7 @@
 ---
 name: validate-skill
 description: >
-  Validates a completed skill against its decisions and clarifications. Use when validating a skill for a domain and purpose. Returns a validation log, test results, and companion recommendations as a structured JSON payload.
+  Validates a completed skill against its decisions and clarifications. Use when validating a skill for a domain and purpose. Returns a validation log and test results as a structured JSON payload.
 version: 1.0.0
 user-invocable: false
 ---
@@ -10,18 +10,17 @@ user-invocable: false
 
 ## Overview
 
-Read-only validator that produces three inline outputs:
+Read-only validator that produces two inline outputs:
 
 1. Validation log (`agent-validation-log.md`)
 2. Test results (`test-skill.md`)
-3. Companion recommendations (`companion-skills.md`)
 
 Do not modify skill files.
 
 ## Quick Reference
 
-- Run three focused sub-agents using the spec files
-- Consolidate findings into the required three output sections
+- Run two focused sub-agents using the spec files
+- Consolidate findings into the required two output sections
 - Keep findings concrete: file + section + specific fix
 - Require standards checks (structure, evaluations, anti-patterns)
 
@@ -37,11 +36,10 @@ Do not modify skill files.
 
 ## Step 1 — Sub-agents
 
-Spawn three sub-agents in the same turn. Mode: `bypassPermissions`. Pass `skill_name`, `purpose`, `context_dir`, `skill_output_dir`, `workspace_dir` to each. Add to every sub-agent prompt: "Return your complete output as text. Do not write files."
+Spawn two sub-agents in the same turn. Mode: `bypassPermissions`. Pass `skill_name`, `purpose`, `context_dir`, `skill_output_dir`, `workspace_dir` to each. Add to every sub-agent prompt: "Return your complete output as text. Do not write files."
 
 - Quality checker: read and follow `references/validate-quality-spec.md`
 - Test evaluator: read and follow `references/test-skill-spec.md`
-- Companion recommender: read and follow `references/companion-recommender-spec.md`
 
 ## Step 2 — Consolidate and Report
 
@@ -51,7 +49,6 @@ Combine sub-agent outputs into:
 - Boundary violations
 - Prescriptiveness rewrites
 - Test gap analysis with 5-8 prompt categories
-- Companion skill recommendations
 
 ## Return Format
 
@@ -61,12 +58,11 @@ Return JSON only with this shape:
 {
   "status": "validation_complete",
   "validation_log_markdown": "[full agent-validation-log.md content]",
-  "test_results_markdown": "[full test-skill.md content]",
-  "companion_skills_markdown": "[full companion-skills.md content including YAML frontmatter]"
+  "test_results_markdown": "[full test-skill.md content]"
 }
 ```
 
-All four keys are required.
+All three keys are required.
 
 ## Output Format
 
@@ -77,29 +73,6 @@ Include summary + coverage + structure + content + boundary + rewrites + manual 
 ### `test_results_markdown`
 
 Include summary + per-scenario outcomes + skill content gaps + suggested PM prompts.
-
-### `companion_skills_markdown`
-
-Include YAML frontmatter with companion entries and markdown reasoning body.
-
-YAML schema:
-
-```yaml
----
-skill_name: [skill_name]
-purpose: [purpose]
-companions:
-  - name: [display name]
-    slug: [kebab-case]
-    purpose: [purpose]
-    priority: High | Medium | Low
-    dimension: [dimension slug]
-    score: [planner score]
-    template_match: null
----
-```
-
-If none, use `companions: []`.
 
 ## Success Criteria
 

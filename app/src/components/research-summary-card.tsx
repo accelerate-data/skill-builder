@@ -11,7 +11,6 @@ interface DimensionScore {
   name: string;
   score: number;
   reason: string;
-  companion?: string;
 }
 
 interface ResearchPlanData {
@@ -35,7 +34,6 @@ interface ResearchPlanJson {
     score: number;
     reason: string;
     focus: string;
-    companion_skill?: string | null;
   }>;
   selected_dimensions: Array<{
     name: string;
@@ -98,7 +96,6 @@ function parseResearchPlan(markdown: string): ResearchPlanData {
           name: cells[0],
           score: parseInt(cells[1]) || 0,
           reason: cells[2],
-          companion: cells[3] || undefined,
         });
       }
     }
@@ -136,7 +133,6 @@ function parseResearchPlan(markdown: string): ResearchPlanData {
         name: stripInlineMarkdown(cells[0]),
         score,
         reason: cells[2] ?? "",
-        companion: cells[3] || undefined,
       });
     }
   }
@@ -180,7 +176,6 @@ function parseResearchPlanFromClarifications(
         name: d.name,
         score: d.score,
         reason: d.reason,
-        companion: d.companion_skill ?? undefined,
       }))
       : [],
     selectedDimensions: Array.isArray(rawPlan.selected_dimensions)

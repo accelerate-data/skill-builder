@@ -123,20 +123,18 @@ agent-sources/skills/validate-skill/
   references/
     validate-quality-spec.md      ← quality checker: 4-pass assessment
     test-skill-spec.md            ← test evaluator: 5 test prompts + scoring
-    companion-recommender-spec.md ← companion recommender: gap analysis + recommendations
 ```
 
 ### How It Works
 
 **Step 1 — File inventory.** Glob `references/` in the skill output directory to collect all reference file paths.
 
-**Step 2 — Parallel evaluation.** Spawn one sub-agent per spec, passing spec content as instructions plus paths to skill files. All three launch in the same turn:
+**Step 2 — Parallel evaluation.** Spawn one sub-agent per spec, passing spec content as instructions plus paths to skill files. Both launch in the same turn:
 
 - **Quality checker** (`validate-quality-spec.md`) — 4-pass assessment: coverage & structure, content quality, boundary check, prescriptiveness check. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, all reference files, and `user-context.md`.
 - **Test evaluator** (`test-skill-spec.md`) — generates 5 realistic test prompts across 6 categories, evaluates each against skill content (PASS/PARTIAL/FAIL). Reads the same files.
-- **Companion recommender** (`companion-recommender-spec.md`) — analyzes skipped dimensions (score 2–3 from `research-plan.md`) to identify knowledge gaps and recommend complementary skills. Reads `SKILL.md`, reference files, `decisions.md`, `research-plan.md`, and `user-context.md`.
 
-**Step 3 — Consolidate.** Synthesize all sub-agent findings into three output sections.
+**Step 3 — Consolidate.** Synthesize all sub-agent findings into two output sections.
 
 ### Return Format
 
@@ -145,23 +143,20 @@ agent-sources/skills/validate-skill/
 [full agent-validation-log.md content]
 === TEST RESULTS ===
 [full test-skill.md content]
-=== COMPANION SKILLS ===
-[full companion-skills.md content including YAML frontmatter]
 ```
 
 Orchestrator writes:
 
 - `=== VALIDATION LOG ===` → `{context_dir}/agent-validation-log.md`
 - `=== TEST RESULTS ===` → `{context_dir}/test-skill.md`
-- `=== COMPANION SKILLS ===` → `{context_dir}/companion-skills.md`
 
 ### Scope Recommendation Guard
 
-The orchestrator checks for `scope_recommendation: true` in both `decisions.md` and `clarifications.md` before invoking the skill. If detected, it writes three stub files with `scope_recommendation: true` frontmatter and returns immediately — no skill invocation, no sub-agents.
+The orchestrator checks for `scope_recommendation: true` in both `decisions.md` and `clarifications.md` before invoking the skill. If detected, it writes two stub files with `scope_recommendation: true` frontmatter and returns immediately — no skill invocation, no sub-agents.
 
 ### Customization
 
-Replace by importing a custom skill into Settings→Skills and assigning purpose `validate`. Teams can customise: quality check criteria, test prompt categories and scoring rubric, companion recommendation scoring. Output file names and YAML frontmatter schemas are app-controlled contracts.
+Replace by importing a custom skill into Settings→Skills and assigning purpose `validate`. Teams can customise: quality check criteria and test prompt categories and scoring rubric. Output file names and YAML frontmatter schemas are app-controlled contracts.
 
 ---
 

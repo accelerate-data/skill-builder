@@ -803,7 +803,6 @@ fn materialize_refine_validation_output_value(
 
     let validation_log = require_markdown("validation_log_markdown")?;
     let test_results = require_markdown("test_results_markdown")?;
-    let companion_skills = require_markdown("companion_skills_markdown")?;
 
     let context_dir = skill_root.join("context");
     std::fs::create_dir_all(&context_dir).map_err(|e| {
@@ -826,15 +825,6 @@ fn materialize_refine_validation_output_value(
     let test_path = context_dir.join("test-skill.md");
     std::fs::write(&test_path, test_results)
         .map_err(|e| format!("Failed to write test results '{}': {}", test_path.display(), e))?;
-
-    let companion_path = context_dir.join("companion-skills.md");
-    std::fs::write(&companion_path, companion_skills).map_err(|e| {
-        format!(
-            "Failed to write companion skills '{}': {}",
-            companion_path.display(),
-            e
-        )
-    })?;
 
     Ok(())
 }
@@ -1275,14 +1265,12 @@ mod tests {
         let payload = serde_json::json!({
             "status": "validation_complete",
             "validation_log_markdown": "## Validation\nok",
-            "test_results_markdown": "## Testing\nok",
-            "companion_skills_markdown": "---\ncompanions: []\n---\n## Companion\nok"
+            "test_results_markdown": "## Testing\nok"
         });
 
         super::materialize_refine_validation_output_value(&skill_root, &payload).unwrap();
         assert!(skill_root.join("context/agent-validation-log.md").exists());
         assert!(skill_root.join("context/test-skill.md").exists());
-        assert!(skill_root.join("context/companion-skills.md").exists());
     }
 
     #[test]
@@ -1318,8 +1306,7 @@ mod tests {
         let payload = serde_json::json!({
             "status": "generated",
             "validation_log_markdown": "## Validation\nok",
-            "test_results_markdown": "## Testing\nok",
-            "companion_skills_markdown": "---\ncompanions: []\n---\n## Companion\nok"
+            "test_results_markdown": "## Testing\nok"
         });
         let err =
             super::materialize_refine_validation_output_value(&skill_root, &payload).unwrap_err();
@@ -1333,8 +1320,7 @@ mod tests {
         let payload = serde_json::json!({
             "status": "validation_complete",
             "validation_log_markdown": "  ",
-            "test_results_markdown": "## Testing\nok",
-            "companion_skills_markdown": "---\ncompanions: []\n---\n## Companion\nok"
+            "test_results_markdown": "## Testing\nok"
         });
         let err =
             super::materialize_refine_validation_output_value(&skill_root, &payload).unwrap_err();

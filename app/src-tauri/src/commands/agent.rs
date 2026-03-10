@@ -36,14 +36,12 @@ fn output_format_for_agent(
                 "required": [
                     "status",
                     "validation_log_markdown",
-                    "test_results_markdown",
-                    "companion_skills_markdown"
+                    "test_results_markdown"
                 ],
                 "properties": {
                     "status": { "type": "string", "const": "validation_complete" },
                     "validation_log_markdown": { "type": "string", "minLength": 1 },
-                    "test_results_markdown": { "type": "string", "minLength": 1 },
-                    "companion_skills_markdown": { "type": "string", "minLength": 1 }
+                    "test_results_markdown": { "type": "string", "minLength": 1 }
                 },
                 "additionalProperties": false
             }

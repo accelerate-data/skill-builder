@@ -104,10 +104,6 @@ describe("read directive compliance", () => {
       REPO_ROOT,
       "agent-sources/skills/validate-skill/references/test-skill-spec.md"
     ),
-    path.join(
-      REPO_ROOT,
-      "agent-sources/skills/validate-skill/references/companion-recommender-spec.md"
-    ),
   ];
 
   const bannedPatterns: Array<[string, RegExp]> = [
@@ -151,15 +147,7 @@ describe("read directive compliance", () => {
       ),
       "utf8"
     );
-    const companionSpec = fs.readFileSync(
-      path.join(
-        REPO_ROOT,
-        "agent-sources/skills/validate-skill/references/companion-recommender-spec.md"
-      ),
-      "utf8"
-    );
-
-    for (const content of [qualitySpec, testSpec, companionSpec]) {
+    for (const content of [qualitySpec, testSpec]) {
       expect(content).toMatch(/metadata\.contradictory_inputs\s*==\s*"revised"/i);
       expect(content).toMatch(
         /\bread\b[^\n]{0,120}\bclarifications\.json\b[^\n]{0,120}\bin full\b/i
@@ -274,7 +262,7 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     expect(content).toMatch(/"answered_count"/);
   });
 
-  it("validate-skill agent returns validation_complete envelope with all four output keys", () => {
+  it("validate-skill agent returns validation_complete envelope with all three output keys", () => {
     const content = fs.readFileSync(
       path.join(AGENTS_DIR, "validate-skill.md"),
       "utf8"
@@ -282,7 +270,6 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     expect(content).toMatch(/status.*validation_complete/);
     expect(content).toMatch(/validation_log_markdown/);
     expect(content).toMatch(/test_results_markdown/);
-    expect(content).toMatch(/companion_skills_markdown/);
   });
 });
 

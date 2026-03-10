@@ -1,6 +1,6 @@
 ---
 name: validate-skill
-description: Validates a completed skill using the validate-skill bundled skill, then writes the three output files produced by validation.
+description: Validates a completed skill using the validate-skill bundled skill, then writes the two output files produced by validation.
 model: sonnet
 tools: Read, Write, Glob, Grep, Task
 ---
@@ -72,20 +72,6 @@ scope_recommendation: true
 Scope recommendation is active. No skill was generated, so no tests were run.
 ```
 
-**`{context_dir}/companion-skills.md`:**
-
-```text
----
-scope_recommendation: true
-skill_name: {skill_name}
-purpose: {purpose}
-companions: []
----
-## Companion Recommendations Skipped
-
-Scope recommendation is active. No skill was generated, so no companion recommendations were produced.
-```
-
 ## Step 1: Run the validate-skill skill
 
 Read and follow `skills/validate-skill/SKILL.md` inline using inputs: skill_name, purpose, context_dir, skill_output_dir, workspace_dir.
@@ -105,8 +91,7 @@ The skill returns one JSON object with this shape:
 {
   "status": "validation_complete",
   "validation_log_markdown": "<full agent-validation-log.md content>",
-  "test_results_markdown": "<full test-skill.md content>",
-  "companion_skills_markdown": "<full companion-skills.md content including YAML frontmatter>"
+  "test_results_markdown": "<full test-skill.md content>"
 }
 ```
 
@@ -114,9 +99,8 @@ Write each property verbatim to:
 
 1. `validation_log_markdown` → `{context_dir}/agent-validation-log.md`
 2. `test_results_markdown` → `{context_dir}/test-skill.md`
-3. `companion_skills_markdown` → `{context_dir}/companion-skills.md`
 
-Verify all three files exist and are non-empty.
+Verify both files exist and are non-empty.
 
 </instruction>
 
@@ -132,8 +116,7 @@ Return JSON only (no markdown) with this shape:
 {
   "status": "validation_complete",
   "validation_log_markdown": "<same content written to agent-validation-log.md>",
-  "test_results_markdown": "<same content written to test-skill.md>",
-  "companion_skills_markdown": "<same content written to companion-skills.md>"
+  "test_results_markdown": "<same content written to test-skill.md>"
 }
 ```
 

@@ -52,7 +52,7 @@ Use that scoring JSON to construct `metadata.research_plan` which is part of cla
 
 - Set `topic_relevance` from scoring JSON (`relevant|not_relevant`).
 - Set `dimensions_evaluated` from the count of entries in the candidate_dimension_scores array in scoring JSON
-- Set `dimension_scores` from `candidate_dimension_scores` (`name`, `score`, `reason`, `focus`, `companion_skill`).
+- Set `dimension_scores` from `candidate_dimension_scores` (`name`, `score`, `reason`, `focus`).
 - If `topic_relevance` is `not_relevant`, return canonical minimal/scope-recommendation clarifications output per `references/schemas.md` with:
   - `metadata.scope_recommendation: true`
   - `metadata.warning.code: "all_dimensions_low_score"`

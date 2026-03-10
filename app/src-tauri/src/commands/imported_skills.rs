@@ -2846,13 +2846,6 @@ description: A skill
             "# Test Evaluator",
         )
         .unwrap();
-        fs::write(
-            skill_src
-                .join("references")
-                .join("companion-recommender-spec.md"),
-            "# Companion Recommender",
-        )
-        .unwrap();
 
         seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
 
@@ -2877,10 +2870,6 @@ description: A skill
             .join("validate-quality-spec.md")
             .exists());
         assert!(dest.join("references").join("test-skill-spec.md").exists());
-        assert!(dest
-            .join("references")
-            .join("companion-recommender-spec.md")
-            .exists());
     }
 
     #[test]
