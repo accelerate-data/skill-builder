@@ -134,10 +134,12 @@ ${withoutPlanText}
 
 Use the Evaluation Rubric from your context to compare the two plans.
 
-First, output bullet points (one per line) using:
-- \u2191 if Plan A (Vibedata + skill) is meaningfully better on this dimension
-- \u2193 if Plan B (Vibedata Only) is meaningfully better on this dimension
-- \u2192 if both plans are similar, weak, or neither is clearly better
+First, output bullet points (one per line) in this exact format:
+- \u2191 **dimension name** — explanation why Plan A is meaningfully better
+- \u2193 **dimension name** — explanation why Plan B is meaningfully better
+- \u2192 **dimension name** — explanation why both are similar or neither is clearly better
+
+One bullet per evaluation dimension. Start each line with the direction symbol, then the **bolded dimension name**, then " — " and the explanation.
 
 Then output a "## Recommendations" section with 2-4 specific, actionable suggestions for how to improve the skill based on the evaluation. Focus on gaps where Plan A underperformed or where the skill could have provided more guidance.`;
 }
@@ -206,6 +208,15 @@ function evalRowBg(direction: EvalDirection): string {
     case "down": return "bg-destructive/5";
     default: return "";
   }
+}
+
+/** Render inline bold markdown (**text**) in a string as React nodes. */
+function renderInlineBold(text: string): React.ReactNode {
+  const parts = text.split(/\*\*(.+?)\*\*/);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) =>
+    i % 2 === 1 ? <strong key={i}>{part}</strong> : part,
+  );
 }
 
 /** Return the evaluator placeholder message based on phase. */
@@ -704,7 +715,7 @@ export default function TestPage() {
 
     // Start evaluator
     const ts = Date.now();
-    const evalId = `__test_baseline__-test-eval-${ts}`;
+    const evalId = `${state.selectedSkill.name}-test-eval-${ts}`;
     const evalPrompt = buildEvalPrompt(
       state.prompt,
       state.selectedSkill.name,
@@ -1141,7 +1152,7 @@ export default function TestPage() {
                         {evalDirectionIcon(line.direction)}
                       </span>
                       <span className="font-mono text-xs leading-relaxed text-foreground">
-                        {line.text}
+                        {renderInlineBold(line.text)}
                       </span>
                     </div>
                   ))}
