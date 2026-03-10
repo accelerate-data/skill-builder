@@ -88,7 +88,7 @@ Scope recommendation is active. No skill was generated, so no companion recommen
 
 ## Step 1: Run the validate-skill skill
 
-Read and follow `plugins/skill-creator/skills/validate-skill/SKILL.md` inline using inputs: skill_name, purpose, context_dir, skill_output_dir, workspace_dir.
+Read and follow `skills/validate-skill/SKILL.md` inline using inputs: skill_name, purpose, context_dir, skill_output_dir, workspace_dir.
 
 Before scoring quality, locate and read `agents/grader.md` from the installed `skill-creator` plugin bundle and use its evidence-based grading style as a calibration input for quality checks (use relative plugin paths, not repository source paths).
 

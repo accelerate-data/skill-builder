@@ -34,13 +34,7 @@ Make targeted, minimal edits to skill files based on the user's refinement reque
 **`/rewrite`**
 
 1. Spawn `generate-skill` with `/rewrite` flag. Pass: skill name, skill output directory, workspace directory. Mode: `bypassPermissions`.
-2. If `generate-skill` did NOT return `status: "generated"`, return its output unchanged and stop.
-3. Spawn `validate-skill`. Pass: skill name, skill output directory, workspace directory. Mode: `bypassPermissions`.
-4. Return the JSON response from `validate-skill`:
-   - `status: "validation_complete"`
-   - `validation_log_markdown`
-   - `test_results_markdown`
-   - `companion_skills_markdown`
+2. Return its output unchanged and stop.
 
 **`/rewrite @file1 @file2 ...`** 
 
