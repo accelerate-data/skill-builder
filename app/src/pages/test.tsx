@@ -122,12 +122,12 @@ function buildEvalPrompt(
 ${userPrompt}
 """
 
-Plan A (vd-agent + skill "${skillName}"):
+Plan A (Vibedata + ${skillName} skill):
 """
 ${withPlanText}
 """
 
-Plan B (vd-agent only, no skill):
+Plan B (Vibedata Only, no skill):
 """
 ${withoutPlanText}
 """
@@ -135,8 +135,8 @@ ${withoutPlanText}
 Use the Evaluation Rubric from your context to compare the two plans.
 
 First, output bullet points (one per line) using:
-- \u2191 if Plan A (plugin + skill) is meaningfully better on this dimension
-- \u2193 if Plan B (plugin only) is meaningfully better on this dimension
+- \u2191 if Plan A (Vibedata + skill) is meaningfully better on this dimension
+- \u2193 if Plan B (Vibedata Only) is meaningfully better on this dimension
 - \u2192 if both plans are similar, weak, or neither is clearly better
 
 Then output a "## Recommendations" section with 2-4 specific, actionable suggestions for how to improve the skill based on the evaluation. Focus on gaps where Plan A underperformed or where the skill could have provided more guidance.`;
@@ -924,7 +924,7 @@ export default function TestPage() {
               text={state.withText}
               phase={state.phase}
               label="Agent Plan"
-              badgeText="plugin + skill"
+              badgeText={state.selectedSkill ? `Vibedata + ${state.selectedSkill.name} skill` : "Vibedata + skill"}
               badgeClass="bg-[color-mix(in_oklch,var(--color-seafoam),transparent_85%)] text-[var(--color-seafoam)]"
               idlePlaceholder="Run a test to see the with-skill plan"
               cost={withCost}
@@ -949,7 +949,7 @@ export default function TestPage() {
               text={state.withoutText}
               phase={state.phase}
               label="Agent Plan"
-              badgeText="plugin only"
+              badgeText="Vibedata Only"
               badgeClass="bg-[color-mix(in_oklch,var(--color-ocean),transparent_85%)] text-[var(--color-ocean)]"
               idlePlaceholder="Run a test to see the baseline plan"
               cost={withoutCost}
