@@ -6,7 +6,7 @@ The workflow runs on two layers:
 
 **App-bundled agents** (`agents/`) — one agent per workflow step. Agents read context files from disk; for JSON-contract steps they return structured payloads and Rust materializes files after validation. Tied to the app release cycle.
 
-**Bundled skills** (`agent-sources/workspace/skills/`) — pure computation units. No file I/O, no path knowledge. Each skill receives inputs inline, runs its logic (including spawning sub-agents via `Task`), and returns results as delimited inline text:
+**Bundled skills** (`agent-sources/skills/`) — pure computation units. No file I/O, no path knowledge. Each skill receives inputs inline, runs its logic (including spawning sub-agents via `Task`), and returns results as delimited inline text:
 
 ```text
 === SECTION NAME ===

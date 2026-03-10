@@ -89,9 +89,8 @@ pub fn resolve_prompt_source_dirs_public(app_handle: &tauri::AppHandle) -> (Path
 }
 
 /// Resolve the path to the bundled skills directory.
-/// Derived from the workspace source path (skills live alongside CLAUDE.md).
-/// In dev mode: `{CARGO_MANIFEST_DIR}/../../agent-sources/workspace/skills/`.
-/// In production: Tauri resource directory `workspace/skills/`.
+/// In dev mode: `{CARGO_MANIFEST_DIR}/../../agent-sources/skills/`.
+/// In production: Tauri resource directory `agent-sources/skills/`.
 pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
     use tauri::Manager;
 
@@ -102,14 +101,14 @@ pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
 
     let dev_path = repo_root
         .as_ref()
-        .map(|r| r.join("agent-sources").join("workspace").join("skills"));
+        .map(|r| r.join("agent-sources").join("skills"));
 
     match dev_path {
         Some(ref p) if p.is_dir() => p.clone(),
         _ => app_handle
             .path()
             .resource_dir()
-            .map(|r| r.join("workspace").join("skills"))
+            .map(|r| r.join("agent-sources").join("skills"))
             .unwrap_or_default(),
     }
 }
