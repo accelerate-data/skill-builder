@@ -2700,8 +2700,8 @@ mod tests {
         // and should be eligible for cleanup.
         let idle_timeout = std::time::Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS);
         let now = tokio::time::Instant::now();
-        // Activity 15 minutes ago — exceeds the 10-minute timeout
-        let stale_activity = now - idle_timeout - std::time::Duration::from_secs(300);
+        // Activity just past the timeout — exceeds the 10-minute timeout
+        let stale_activity = now - idle_timeout - std::time::Duration::from_secs(1);
 
         let pending = HashMap::new(); // no pending requests
 
