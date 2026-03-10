@@ -122,12 +122,12 @@ function buildEvalPrompt(
 ${userPrompt}
 """
 
-Plan A (with skill "${skillName}" loaded):
+Plan A (vd-agent + skill "${skillName}"):
 """
 ${withPlanText}
 """
 
-Plan B (no skill loaded):
+Plan B (vd-agent only, no skill):
 """
 ${withoutPlanText}
 """
@@ -135,8 +135,8 @@ ${withoutPlanText}
 Use the Evaluation Rubric from your context to compare the two plans.
 
 First, output bullet points (one per line) using:
-- \u2191 if Plan A (with skill) is meaningfully better on this dimension
-- \u2193 if Plan B (no skill) is meaningfully better on this dimension
+- \u2191 if Plan A (plugin + skill) is meaningfully better on this dimension
+- \u2193 if Plan B (plugin only) is meaningfully better on this dimension
 - \u2192 if both plans are similar, weak, or neither is clearly better
 
 Then output a "## Recommendations" section with 2-4 specific, actionable suggestions for how to improve the skill based on the evaluation. Focus on gaps where Plan A underperformed or where the skill could have provided more guidance.`;
@@ -738,10 +738,12 @@ export default function TestPage() {
         .getState()
         .registerRun(withoutId, testModel, skillName, "test", syntheticTestSessionId);
 
-      // Wrap the prompt so plan agents know the domain context
-      const wrappedPrompt = `You are a data engineer and the user is trying to do the following task:\n\n${s.prompt}`;
+      // Pass the raw user prompt — data-product-builder has its own system persona
+      const wrappedPrompt = s.prompt;
 
-      // Start both agents in parallel
+      // Start both agents in parallel using the vd-agent data-product-builder.
+      // With-skill: CLAUDE.md includes @-import of the skill under test.
+      // Baseline: vd-agent only, no skill context.
       await Promise.all([
         startAgent(
           withId,
@@ -754,7 +756,8 @@ export default function TestPage() {
           skillName,
           "test-with",
           "test-plan-with",
-          prepared.transcript_log_dir,
+          "data-product-builder",       // agentName → --agent data-product-builder
+          prepared.transcript_log_dir,  // transcriptLogDir
         ),
         startAgent(
           withoutId,
@@ -767,7 +770,8 @@ export default function TestPage() {
           "__test_baseline__",
           "test-without",
           "test-plan-without",
-          prepared.transcript_log_dir,
+          "data-product-builder",       // agentName → --agent data-product-builder
+          prepared.transcript_log_dir,  // transcriptLogDir
         ),
       ]);
     } catch (err) {
@@ -920,7 +924,7 @@ export default function TestPage() {
               text={state.withText}
               phase={state.phase}
               label="Agent Plan"
-              badgeText="with skill"
+              badgeText="plugin + skill"
               badgeClass="bg-[color-mix(in_oklch,var(--color-seafoam),transparent_85%)] text-[var(--color-seafoam)]"
               idlePlaceholder="Run a test to see the with-skill plan"
               cost={withCost}
@@ -945,9 +949,9 @@ export default function TestPage() {
               text={state.withoutText}
               phase={state.phase}
               label="Agent Plan"
-              badgeText="no skill"
+              badgeText="plugin only"
               badgeClass="bg-[color-mix(in_oklch,var(--color-ocean),transparent_85%)] text-[var(--color-ocean)]"
-              idlePlaceholder="Run a test to see the no-skill plan"
+              idlePlaceholder="Run a test to see the baseline plan"
               cost={withoutCost}
             />
           </div>

@@ -13,7 +13,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * `confirm-decisions` use the same bare names.
  */
 /** @internal Exported for testing only. */
-export function resolveStepTemplate(agentName: string | undefined): string | null {
+export function resolveStepTemplate(
+  agentName: string | undefined,
+  config?: { skillName?: string },
+): string | null {
   if (!agentName) return null;
 
   // Exact matches first
@@ -34,7 +37,16 @@ export function resolveStepTemplate(agentName: string | undefined): string | nul
     return "step0-research";
   }
 
-  // Skill test agents
+  // Skill test agents — invoked with agentName="data-product-builder" (the vd-agent plugin agent).
+  // Discriminate with vs. without skill using skillName: baseline runs use "__test_baseline__".
+  if (agentName === "data-product-builder") {
+    // Use "test-plan-with" only when skillName is a real skill name (not baseline sentinel, not absent).
+    // Absent config is the safe default → treat as baseline.
+    const skillName = config?.skillName;
+    return skillName && skillName !== "__test_baseline__" ? "test-plan-with" : "test-plan-without";
+  }
+
+  // Legacy bare names kept for backward compatibility
   if (agentName === "test-plan-with") return "test-plan-with";
   if (agentName === "test-plan-without") return "test-plan-without";
   if (agentName === "test-evaluator") return "test-evaluator";
@@ -148,7 +160,7 @@ export async function runMockAgent(
   onMessage: (message: Record<string, unknown>) => void,
   externalSignal?: AbortSignal,
 ): Promise<void> {
-  const stepTemplate = resolveStepTemplate(config.agentName);
+  const stepTemplate = resolveStepTemplate(config.agentName, config);
 
   if (!stepTemplate) {
     // Unknown agent — emit a simple success result

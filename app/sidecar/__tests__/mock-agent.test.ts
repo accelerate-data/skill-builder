@@ -44,6 +44,27 @@ describe("resolveStepTemplate", () => {
     expect(resolveStepTemplate("unknown-agent")).toBeNull();
     expect(resolveStepTemplate(undefined)).toBeNull();
   });
+
+  it("maps data-product-builder to test-plan-with for non-baseline skill names", () => {
+    expect(resolveStepTemplate("data-product-builder", { skillName: "my-skill" })).toBe("test-plan-with");
+    expect(resolveStepTemplate("data-product-builder", { skillName: "churn-analysis" })).toBe("test-plan-with");
+  });
+
+  it("maps data-product-builder to test-plan-without for __test_baseline__ skill name", () => {
+    expect(resolveStepTemplate("data-product-builder", { skillName: "__test_baseline__" })).toBe("test-plan-without");
+  });
+
+  it("maps data-product-builder to test-plan-without when config is absent", () => {
+    // Safe default: no config means treat as baseline
+    expect(resolveStepTemplate("data-product-builder", undefined)).toBe("test-plan-without");
+    expect(resolveStepTemplate("data-product-builder")).toBe("test-plan-without");
+  });
+
+  it("keeps backward-compat for legacy bare test-plan names", () => {
+    expect(resolveStepTemplate("test-plan-with")).toBe("test-plan-with");
+    expect(resolveStepTemplate("test-plan-without")).toBe("test-plan-without");
+    expect(resolveStepTemplate("test-evaluator")).toBe("test-evaluator");
+  });
 });
 
 // ---------------------------------------------------------------------------

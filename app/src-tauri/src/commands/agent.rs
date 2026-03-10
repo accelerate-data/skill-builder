@@ -73,6 +73,12 @@ pub async fn start_agent(
         "[start_agent] agent_id={} model={} skill_name={} agent_name={:?}",
         agent_id, model, skill_name, agent_name
     );
+    log::debug!(
+        "[start_agent] cwd={} transcript_log_dir={:?} prompt_prefix={:?}",
+        cwd,
+        transcript_log_dir,
+        prompt.chars().take(120).collect::<String>()
+    );
     let (api_key, extended_thinking, interleaved_thinking_beta, sdk_effort, fallback_model) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[start_agent] Failed to acquire DB lock: {}", e);
