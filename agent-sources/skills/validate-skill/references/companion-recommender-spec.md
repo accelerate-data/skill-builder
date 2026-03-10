@@ -6,30 +6,32 @@ Identify companion skill candidates from dimensions scored 2-3 that were skipped
 
 ## Inputs
 
-- Paths to `SKILL.md`, `references/` files, `decisions.json`, and `clarifications.json`
-- The **purpose** (`Business process knowledge`, `Organization specific data engineering standards`, `Organization specific Azure or Fabric standards`, or `Source system customizations`)
-- The **workspace directory** path (contains `user-context.md`)
+- `skill_name`: the skill being validated
+- `purpose`: `Business process knowledge` | `Organization specific data engineering standards` | `Organization specific Azure or Fabric standards` | `Source system customizations`
+- `context_dir`: path to context directory
+- `skill_output_dir`: path to skill output directory
+- `workspace_dir`: path to workspace directory
 
-Read `decisions.json` first, then check metadata:
+Missing `{context_dir}/decisions.json` or `{context_dir}/clarifications.json` are not errors — skip and proceed without them.
 
-- If `metadata.contradictory_inputs == "revised"`, skip `clarifications.json`.
-- Otherwise, read `{context_dir}/clarifications.json` in full before recommendations.
+Read `{context_dir}/decisions.json` first.
 
-Then use progressive discovery:
+- If `metadata.contradictory_inputs == "revised"`, skip `{context_dir}/clarifications.json`.
+- Otherwise, read `{context_dir}/clarifications.json` in full (including `metadata.research_plan`) before recommendations.
 
-- Read `clarifications.json` (including `metadata.research_plan`) and `SKILL.md` first.
-- Read only the reference files needed to validate skipped dimensions, composability, and recommendation priority.
-- Expand reads when recommendation evidence is incomplete.
+Read `{workspace_dir}/user-context.md`.
 
-Before final output, confirm each recommendation cites sufficient evidence from the current skill content.
+Glob `references/` in `skill_output_dir` and collect all reference paths.
 
-Read `user-context.md` from the workspace directory.
+Use progressive discovery: read `{skill_output_dir}/SKILL.md` first, then only the reference files needed to validate skipped dimensions, composability, and recommendation priority. Expand reads when recommendation evidence is incomplete.
 
 ## Analysis
 
 Find dimensions scored 2-3 that were skipped, analyze where those gaps affect quality, and recommend complementary skills.
 
 Recommendations span **all purposes** — not limited to the current skill's purpose.
+
+Before final output, confirm each recommendation cites sufficient evidence from the current skill content.
 
 ## Recommendation Format
 

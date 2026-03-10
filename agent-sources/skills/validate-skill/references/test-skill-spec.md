@@ -6,23 +6,24 @@ Run the evaluation scenarios from `evaluations.md` against the skill content. Sc
 
 ## Inputs
 
-- `{context_dir}/evaluations.md` — test scenarios written by generate-skill
-- `{context_dir}/decisions.json` and `{context_dir}/clarifications.json` — decision and clarification context
-- `SKILL.md` and `references/` files — the skill content to evaluate
-- `{workspace_dir}/user-context.md` — user context (per User Context protocol)
+- `skill_name`: the skill being validated
+- `purpose`: `Business process knowledge` | `Organization specific data engineering standards` | `Organization specific Azure or Fabric standards` | `Source system customizations`
+- `context_dir`: path to context directory
+- `skill_output_dir`: path to skill output directory
+- `workspace_dir`: path to workspace directory
 
-Read `{context_dir}/decisions.json` first to determine clarification handling:
+Missing `{context_dir}/decisions.json` or `{context_dir}/clarifications.json` are not errors — skip and proceed without them.
 
-- If `metadata.contradictory_inputs == "revised"`, skip `clarifications.json`.
-- Otherwise, read `{context_dir}/clarifications.json` in full before scenario evaluation.
+Read `{context_dir}/decisions.json` first.
 
-Then evaluate with progressive discovery:
+- If `metadata.contradictory_inputs == "revised"`, skip `{context_dir}/clarifications.json`.
+- Otherwise, read `{context_dir}/clarifications.json` in full (including `metadata.research_plan`) before recommendations.
 
-- Read `evaluations.md` and `SKILL.md` first.
-- For each scenario, read only the reference files needed to assess expected behavior and pass criteria.
-- If evidence is insufficient, expand reads until the scenario can be scored with concrete support.
+Read `{workspace_dir}/user-context.md`.
 
-Read `user-context.md` from the workspace directory.
+Glob `references/` in `skill_output_dir` and collect all reference paths.
+
+Use progressive discovery: read `{context_dir}/evaluations.md` and `{skill_output_dir}/SKILL.md` first, then only the reference files needed per scenario. Expand reads when evidence is insufficient.
 
 ## Evaluation
 
@@ -41,4 +42,8 @@ For PARTIAL/FAIL: what the engineer would expect, what the skill provides, and w
 
 One block per scenario: scenario name, prompt, result, coverage, and gap (or "None" for PASS).
 
-After all scenarios, add a summary: total/passed/partial/failed counts and top gaps to address.
+After all scenarios, add:
+
+1. **Summary**: total/passed/partial/failed counts and top gaps to address.
+2. **Prompt category gaps**: 5-8 prompt categories not covered by the existing scenarios (e.g., edge cases, error handling, ambiguous inputs). For each category, include a one-sentence rationale.
+3. **Suggested PM prompts**: 3-5 sample prompts a product manager could use to test the skill in a real session, drawn from the gaps above.

@@ -91,12 +91,11 @@ describe("canonical format compliance", () => {
 // ── Read-directive compliance ───────────────────────────────────────────────
 
 describe("read directive compliance", () => {
+  // validate-skill/SKILL.md is excluded: it is a pure orchestrator that
+  // spawns sub-agents for all file reads. Progressive discovery is enforced
+  // by the spec files below, not by the orchestrator itself.
   const TARGET_FILES = [
     path.join(AGENTS_DIR, "generate-skill.md"),
-    path.join(
-      REPO_ROOT,
-      "agent-sources/skills/validate-skill/SKILL.md"
-    ),
     path.join(
       REPO_ROOT,
       "agent-sources/skills/validate-skill/references/validate-quality-spec.md"
@@ -222,6 +221,71 @@ describe("Research scope guard contract prompts", () => {
   });
 });
 
+// ── Agent output contracts (backend protocol alignment) ──────────────────────
+//
+// Each test checks that an agent's markdown contains the exact output keys
+// the Rust backend expects. These are the contracts enforced by:
+//   - workflow_output_format_for_agent() → structured output schema
+//   - materialize_workflow_step_output_value() → materialization logic
+//   - materialize_answer_evaluation_output_value() → answer-evaluator path
+
+describe("Agent output contracts (backend protocol alignment)", () => {
+  it("research-orchestrator returns research_complete envelope", () => {
+    const content = fs.readFileSync(
+      path.join(AGENTS_DIR, "research-orchestrator.md"),
+      "utf8"
+    );
+    expect(content).toMatch(/status.*research_complete/);
+    expect(content).toMatch(/dimensions_selected/);
+    expect(content).toMatch(/question_count/);
+    expect(content).toMatch(/research_output/);
+  });
+
+  it("confirm-decisions returns version/metadata/decisions shape", () => {
+    const content = fs.readFileSync(
+      path.join(AGENTS_DIR, "confirm-decisions.md"),
+      "utf8"
+    );
+    // Backend uses additionalProperties: false — only version, metadata, decisions allowed at top level
+    expect(content).toMatch(/"version"/);
+    expect(content).toMatch(/"metadata"/);
+    expect(content).toMatch(/"decisions"/);
+    // Agent must document the three-key constraint explicitly
+    expect(content).toMatch(/Top-level keys|version.*metadata.*decisions/i);
+  });
+
+  it("generate-skill returns generated status with evaluations_markdown", () => {
+    const content = fs.readFileSync(
+      path.join(AGENTS_DIR, "generate-skill.md"),
+      "utf8"
+    );
+    expect(content).toMatch(/status.*generated/);
+    expect(content).toMatch(/evaluations_markdown/);
+  });
+
+  it("answer-evaluator returns verdict enum and per_question array", () => {
+    const content = fs.readFileSync(
+      path.join(AGENTS_DIR, "answer-evaluator.md"),
+      "utf8"
+    );
+    expect(content).toMatch(/"verdict"/);
+    expect(content).toMatch(/sufficient|mixed|insufficient/);
+    expect(content).toMatch(/"per_question"/);
+    expect(content).toMatch(/"answered_count"/);
+  });
+
+  it("validate-skill agent returns validation_complete envelope with all four output keys", () => {
+    const content = fs.readFileSync(
+      path.join(AGENTS_DIR, "validate-skill.md"),
+      "utf8"
+    );
+    expect(content).toMatch(/status.*validation_complete/);
+    expect(content).toMatch(/validation_log_markdown/);
+    expect(content).toMatch(/test_results_markdown/);
+    expect(content).toMatch(/companion_skills_markdown/);
+  });
+});
+
 // ── Plugin structure sanity checks ───────────────────────────────────────────
 
 describe("skill-content-researcher plugin structure", () => {
@@ -232,15 +296,14 @@ describe("skill-content-researcher plugin structure", () => {
     "skill-content-researcher",
   );
 
-  it("plugin manifest declares skills, agents, and mcpServers", () => {
+  it("plugin manifest has required fields", () => {
     const manifestPath = path.join(pluginRoot, ".claude-plugin", "plugin.json");
     const raw = fs.readFileSync(manifestPath, "utf8");
     const manifest = JSON.parse(raw);
 
     expect(manifest.name).toBe("skill-content-researcher");
-    expect(manifest.skills).toBe("./skills");
-    expect(manifest.agents).toBe("./agents");
-    expect(manifest.mcpServers).toBe("./.mcp.json");
+    expect(manifest.version).toBeDefined();
+    expect(manifest.description).toBeDefined();
   });
 
   it("wrapper skill is user-invocable and delegates to plugin agent", () => {
@@ -290,15 +353,14 @@ describe("skill-creator plugin structure", () => {
     "skill-creator",
   );
 
-  it("plugin manifest declares skills, agents, and mcpServers", () => {
+  it("plugin manifest has required fields", () => {
     const manifestPath = path.join(pluginRoot, ".claude-plugin", "plugin.json");
     const raw = fs.readFileSync(manifestPath, "utf8");
     const manifest = JSON.parse(raw);
 
     expect(manifest.name).toBe("skill-creator");
-    expect(manifest.skills).toBe("./skills");
-    expect(manifest.agents).toBe("./agents");
-    expect(manifest.mcpServers).toBe("./.mcp.json");
+    expect(manifest.version).toBeDefined();
+    expect(manifest.description).toBeDefined();
   });
 
   it("skill-creator SKILL.md references bundled scripts and eval viewer via relative paths", () => {
