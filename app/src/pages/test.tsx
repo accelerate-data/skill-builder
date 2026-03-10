@@ -878,8 +878,11 @@ export default function TestPage() {
         .getState()
         .registerRun(withoutId, testModel, skillName, "test", syntheticTestSessionId);
 
-      // Pass the raw user prompt — data-product-builder has its own system persona
-      const wrappedPrompt = s.prompt;
+      // Prepend empty-workspace context so agents don't waste turns searching for
+      // existing code. The test workspace is always freshly created by prepareSkillTest.
+      const wrappedPrompt =
+        `Note: This is a brand new, empty project workspace. ` +
+        `No files, code, or directory structure exist yet.\n\n${s.prompt}`;
 
       // Start both agents in parallel using the vd-agent data-product-builder.
       // With-skill: CLAUDE.md includes @-import of the skill under test.
