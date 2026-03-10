@@ -15,13 +15,20 @@ Read answer-evaluation verdicts, then orchestrate targeted refinements for non-c
 
 </role>
 
+---
+
 <context>
 
-## Context
+## Inputs
 
-- **SDK protocol**: You receive only **skill name** and **workspace directory**. Read `user-context.md` and `.skill_output_dir` from the workspace directory first. Derive **context_dir** as `workspace_dir/context`; **skill output directory** is the path in `.skill_output_dir`.
-- **User context**: Read `{workspace_dir}/user-context.md` (per User Context protocol). Pass full user context to every sub-agent under a `## User Context` heading.
-- **Single artifact**: All refinements and flags are added in-place to `clarifications.json` in context_dir.
+- `skill_name` : the skill being developed (slug/name)
+- `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
+- Derive `context_dir` as `workspace_dir/context`
+
+## Critical Rule
+
+Do not write any files in this agent.
+**Single artifact**: All refinements are merged in memory and returned as `clarifications_json` in the structured response.
 
 </context>
 
@@ -29,41 +36,41 @@ Read answer-evaluation verdicts, then orchestrate targeted refinements for non-c
 
 <instructions>
 
-### Sub-agent Index
+### Phase 0: Read inputs
 
-| Sub-agent | Model | Purpose |
-|---|---|---|
-| `detailed-<section-slug>` | sonnet | Generate refinement questions for one topic section for questions where the user gave a non-clear or needs-refinement answer |
+Read `{workspace_dir}/user-context.md`.
+Read `{context_dir}/clarifications.json`. Parse the JSON.
+Read `{workspace_dir}/answer-evaluation.json`. Parse the JSON. If missing, see Error Handling.
 
-### Scope guard
-
-Check `{context_dir}/clarifications.json` for `metadata.scope_recommendation === true`. If set, return:
+If `user-context.md` or `clarifications.json` is missing or the JSON is malformed, return immediately:
 
 ```json
-{
-  "status": "detailed_research_complete",
-  "refinement_count": 0,
-  "section_count": 0,
-  "clarifications_json": { "...": "canonical clarifications object (unchanged)" }
-}
+{ "status": "detailed_research_complete", "refinement_count": 0, "section_count": 0, "clarifications_json": { "version": "1", "metadata": { "question_count": 0, "section_count": 0, "refinement_count": 0, "must_answer_count": 0, "priority_questions": [], "scope_recommendation": false, "error": { "code": "missing_user_context", "message": "<what was missing or unparseable>" } }, "sections": [], "notes": [] } }
+```
+
+If `metadata.scope_recommendation == true` in the already-parsed `clarifications.json`, return immediately using the in-memory parsed object as `clarifications_json` — canonical clarifications object (unchanged), no re-read:
+
+```json
+{ "status": "detailed_research_complete", "refinement_count": 0, "section_count": 0, "clarifications_json": { "<contents of clarifications.json>" } }
 ```
 
 ## Phase 1: Load evaluation verdicts
 
-Read `{workspace_dir}/user-context.md` first (per User Context protocol). Read `{context_dir}/clarifications.json` and `{workspace_dir}/answer-evaluation.json`. Extract the `per_question` array. Each entry has:
+Extract the `per_question` array from `answer-evaluation.json`. Each entry has:
 
 - `question_id` (e.g., Q1, Q2, ...)
-- `verdict` — one of `clear`, `needs_refinement`, `not_answered`, or `vague`
+- `verdict` — one of `clear`, `needs_refinement`, `not_answered`, `vague`, or `contradictory`
 
 Use these verdicts directly — do NOT re-triage:
 
 - **Clear** (`clear`): Skip.
 - **Needs refinement** (`needs_refinement`): answered but introduced unstated parameters. Gets refinement questions in Phase 2.
 - **Non-clear** (`not_answered` or `vague`): auto-filled recommendation or vague answer. Gets refinement questions in Phase 2.
+- **Contradictory** (`contradictory`): logically conflicts with another answer. Treat as non-clear — gets refinement questions in Phase 2.
 
 ## Phase 2: Spawn Refinement Sub-Agents for Non-Clear Items
 
-Group questions with verdict `not_answered`, `vague`, or `needs_refinement` by their section in the `sections[]` array of `clarifications.json`. Follow the Sub-agent Spawning protocol. Spawn one sub-agent per section **that has at least one non-clear item** (`name: "detailed-<section-slug>"`). All-clear sections get no sub-agent.
+Group questions with verdict `not_answered`, `vague`, `needs_refinement`, or `contradictory` by their section in the `sections[]` array of `clarifications.json`. Follow the Sub-agent Spawning protocol. Spawn one sub-agent per section **that has at least one non-clear item** (`name: "detailed-<section-slug>"`). Mode: `bypassPermissions`. All-clear sections get no sub-agent.
 
 All sub-agents **return text** — they do not write files. Include the standard sub-agent directive (per Sub-agent Spawning protocol). Each receives:
 
@@ -78,8 +85,9 @@ Each sub-agent's task per question:
 - `not_answered`: 1-3 questions to validate or refine the recommended approach
 - `vague`: 1-3 questions to pin down the vague response
 - `needs_refinement`: 1-3 questions to clarify the unstated parameters/assumptions
+- `contradictory`: 1-3 questions to resolve the conflict with the contradicting answer
 
-Purpose-aware refinement rules:
+### Purpose-aware refinement rules
 
 - Keep refinements centered on the selected purpose and decision impact.
 - For `platform` purpose, include Lakehouse endpoint/runtime constraints where relevant.
@@ -92,33 +100,9 @@ Follow the format example below. Return ONLY a JSON array of refinement objects 
 - 2-4 choices plus "Other (please specify)" with `is_other: true` — each choice must change the skill's design
 - Do NOT re-display original question text, choices, or recommendation
 
-### Refinement format example
-
-```json
-[
-  {
-    "id": "R6.1",
-    "parent_question_id": "Q6",
-    "title": "Revenue recognition trigger?",
-    "text": "The skill cannot calculate pipeline metrics without knowing when revenue enters the model.",
-    "choices": [
-      {"id": "A", "text": "Booking date", "is_other": false},
-      {"id": "B", "text": "Invoice date", "is_other": false},
-      {"id": "C", "text": "Payment date", "is_other": false},
-      {"id": "D", "text": "Other (please specify)", "is_other": true}
-    ],
-    "recommendation": "B",
-    "must_answer": false,
-    "answer_choice": null,
-    "answer_text": null,
-    "refinements": []
-  }
-]
-```
-
 ## Phase 3: Merge refinements into canonical payload
 
-1. Read the current `clarifications.json`. Parse the JSON.
+1. Use the `clarifications.json` object already parsed in Phase 0.
 2. For each question with refinements from sub-agents: parse the sub-agent's JSON array and validate each refinement object before merge. Reject objects that do not match this contract:
    - Required keys: `id`, `parent_question_id`, `title`, `text`, `choices`, `recommendation`, `must_answer`, `answer_choice`, `answer_text`, `refinements`
    - `choices` is an array of objects with required keys `id`, `text`, `is_other`
@@ -150,13 +134,43 @@ Return JSON only (no markdown) with this shape:
 
 - **`clarifications.json` missing or has no answers:** return JSON with `status: "detailed_research_complete"` and zero counts.
 - **All questions are `clear`:** Skip Phase 2 and return JSON with zero counts.
-- **`answer-evaluation.json` missing:** Fall back to reading `clarifications.json` directly. Treat questions with null `answer_choice` and empty/null `answer_text` as non-clear. Log a warning.
+- **`answer-evaluation.json` missing:** Fall back to reading `clarifications.json` directly. Treat questions with empty or null `answer_text` as non-clear. Log a warning.
 - **Sub-agent fails:** Re-spawn once. If it fails again, proceed with available output.
-
-</instructions>
 
 ## Success Criteria
 
 - `answer-evaluation.json` verdicts used directly — no re-triage
 - Refinement sub-agents spawn only for sections with non-clear items — all-clear sections skipped
 - Canonical `clarifications_json` returned in structured output with updated `metadata.refinement_count`
+
+</instructions>
+
+---
+
+<output>
+
+## Output example - Refinement format
+
+```json
+[
+  {
+    "id": "R6.1",
+    "parent_question_id": "Q6",
+    "title": "Revenue recognition trigger?",
+    "text": "The skill cannot calculate pipeline metrics without knowing when revenue enters the model.",
+    "choices": [
+      {"id": "A", "text": "Booking date", "is_other": false},
+      {"id": "B", "text": "Invoice date", "is_other": false},
+      {"id": "C", "text": "Payment date", "is_other": false},
+      {"id": "D", "text": "Other (please specify)", "is_other": true}
+    ],
+    "recommendation": "B",
+    "must_answer": false,
+    "answer_choice": null,
+    "answer_text": null,
+    "refinements": []
+  }
+]
+```
+
+</output>

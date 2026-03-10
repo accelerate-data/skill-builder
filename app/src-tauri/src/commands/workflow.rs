@@ -736,13 +736,11 @@ fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Valu
             "type": "json_schema",
             "schema": {
                 "type": "object",
-                "required": ["decisions_json"],
+                "required": ["version", "metadata", "decisions"],
                 "properties": {
-                    "decisions_json": { "type": "object" },
-                    "call_trace": {
-                        "type": "array",
-                        "items": { "type": "string" }
-                    }
+                    "version": { "type": "string" },
+                    "metadata": { "type": "object" },
+                    "decisions": { "type": "array" }
                 },
                 "additionalProperties": false
             }
@@ -754,11 +752,7 @@ fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Valu
                 "required": ["status", "evaluations_markdown"],
                 "properties": {
                     "status": { "type": "string", "const": "generated" },
-                    "evaluations_markdown": { "type": "string", "minLength": 1 },
-                    "call_trace": {
-                        "type": "array",
-                        "items": { "type": "string" }
-                    }
+                    "evaluations_markdown": { "type": "string", "minLength": 1 }
                 },
                 "additionalProperties": false
             }
@@ -1011,14 +1005,8 @@ fn materialize_workflow_step_output_value(
             Ok(())
         }
         2 => {
-            let decisions = payload
-                .get("decisions_json")
-                .ok_or_else(|| "structured_output.decisions_json is required".to_string())?;
-            if !decisions.is_object() {
-                return Err("structured_output.decisions_json must be an object".to_string());
-            }
-            let decisions_pretty = serde_json::to_string_pretty(decisions)
-                .map_err(|e| format!("Failed to serialize decisions_json: {}", e))?;
+            let decisions_pretty = serde_json::to_string_pretty(&serde_json::Value::Object(payload.clone()))
+                .map_err(|e| format!("Failed to serialize decisions: {}", e))?;
             let decisions_path = context_dir.join("decisions.json");
             std::fs::write(&decisions_path, decisions_pretty).map_err(|e| {
                 format!(
@@ -3511,10 +3499,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
         let payload = serde_json::json!({
-            "decisions_json": {
-                "metadata": { "decision_count": 1, "conflicts_resolved": 0, "round": 1 },
-                "decisions": [{ "id": "D1", "title": "Capability", "decision": "A" }]
-            }
+            "version": "1",
+            "metadata": { "decision_count": 1, "conflicts_resolved": 0, "round": 1 },
+            "decisions": [{ "id": "D1", "title": "Capability", "decision": "A" }]
         });
         super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
         assert!(skill_root.join("context/decisions.json").exists());
@@ -3525,9 +3512,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
         let payload = serde_json::json!({
-            "decisions_json": {
-                "metadata": { "scope_recommendation": true, "decision_count": 0 }
-            }
+            "version": "1",
+            "metadata": { "scope_recommendation": true, "decision_count": 0 },
+            "decisions": []
         });
         super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
         let content = std::fs::read_to_string(skill_root.join("context/decisions.json")).unwrap();
@@ -3541,9 +3528,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
         let payload = serde_json::json!({
-            "decisions_json": {
-                "metadata": { "decision_count": 2, "contradictory_inputs": true }
-            }
+            "version": "1",
+            "metadata": { "decision_count": 2, "contradictory_inputs": true },
+            "decisions": []
         });
         super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
         assert!(parse_decisions_guard(&skill_root.join("context/decisions.json")));
@@ -3554,9 +3541,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
         let payload = serde_json::json!({
-            "decisions_json": {
-                "metadata": { "decision_count": 2, "contradictory_inputs": false }
-            }
+            "version": "1",
+            "metadata": { "decision_count": 2, "contradictory_inputs": false },
+            "decisions": []
         });
         super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
         assert!(!parse_decisions_guard(&skill_root.join("context/decisions.json")));
@@ -3569,24 +3556,6 @@ mod tests {
         let err = super::materialize_workflow_step_output_value(&skill_root, 2, &serde_json::json!(null))
             .unwrap_err();
         assert!(err.contains("structured_output must be a JSON object"));
-    }
-
-    #[test]
-    fn test_materialize_step2_rejects_missing_or_invalid_decisions_json() {
-        let tmp = tempfile::tempdir().unwrap();
-        let skill_root = tmp.path().join("my-skill");
-
-        let missing = serde_json::json!({});
-        let err_missing =
-            super::materialize_workflow_step_output_value(&skill_root, 2, &missing).unwrap_err();
-        assert!(err_missing.contains("structured_output.decisions_json is required"));
-
-        let non_object = serde_json::json!({
-            "decisions_json": "not-an-object"
-        });
-        let err_non_object =
-            super::materialize_workflow_step_output_value(&skill_root, 2, &non_object).unwrap_err();
-        assert!(err_non_object.contains("structured_output.decisions_json must be an object"));
     }
 
     #[test]

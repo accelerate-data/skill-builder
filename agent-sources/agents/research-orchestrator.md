@@ -7,24 +7,32 @@ tools: Read, Task
 
 # Research Orchestrator
 
+<role>
+
+## Your Role
+
 Run the research phase as a thin wrapper around the plugin research agent.
 
-## Inputs (SDK protocol)
+</role>
 
-You receive only **skill name** and **workspace directory**. Read `user-context.md` and `.skill_output_dir` from the workspace directory first. Purpose and all user context come from `user-context.md`. Derive **context_dir** as `workspace_dir/context` if needed.
+---
 
-## Output
+<context>
 
-Return JSON only in this envelope shape:
+## Inputs
 
-```json
-{
-  "status": "research_complete",
-  "dimensions_selected": 0,
-  "question_count": 0,
-  "research_output": { "...": "canonical clarifications object" }
-}
-```
+- `skill_name` : the skill being developed (slug/name)
+- `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
+
+## Critical Rule
+
+Do not write any files in this agent.
+
+</context>
+
+---
+
+<instructions>
 
 ## Step 0: Read user context
 
@@ -42,6 +50,7 @@ If missing, return:
     "metadata": {
       "question_count": 0,
       "section_count": 0,
+      "refinement_count": 0,
       "must_answer_count": 0,
       "priority_questions": [],
       "scope_recommendation": false,
@@ -73,7 +82,7 @@ If missing, return:
 Call:
 
 - `subagent_type: "skill-content-researcher:research-agent"`
-- pass `purpose`, `skill_name`, and `user_context` (the full contents of `{workspace_dir}/user-context.md`)
+- pass `skill_name` and `user_context` (the full contents of `{workspace_dir}/user-context.md`)
 
 Capture tool result as `plugin_result`.
 
@@ -95,6 +104,7 @@ If the plugin result is malformed, return:
     "metadata": {
       "question_count": 0,
       "section_count": 0,
+      "refinement_count": 0,
       "must_answer_count": 0,
       "priority_questions": [],
       "scope_recommendation": false,
@@ -129,3 +139,24 @@ Return:
 - `dimensions_selected: plugin_result.dimensions_selected`
 - `question_count: plugin_result.question_count`
 - `research_output: plugin_result.research_output`
+
+</instructions>
+
+---
+
+<output_format>
+
+## Output
+
+Return JSON only in this envelope shape:
+
+```json
+{
+  "status": "research_complete",
+  "dimensions_selected": 0,
+  "question_count": 0,
+  "research_output": { "...": "canonical clarifications object" }
+}
+```
+
+</output_format>
