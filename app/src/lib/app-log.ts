@@ -93,9 +93,18 @@ function emit(level: "debug" | "warn" | "error", message: string, fields?: LogFi
     : sanitizeString(message);
 
   // Fire-and-forget: logging must never block UX paths.
-  if (level === "debug") void debug(line, options);
-  else if (level === "warn") void warn(line, options);
-  else void error(line, options);
+  const write =
+    level === "debug"
+      ? debug(line, options)
+      : level === "warn"
+        ? warn(line, options)
+        : error(line, options);
+
+  // Never let log-write failures become silent drops or unhandled rejections.
+  void write.catch((e) => {
+    // Avoid calling plugin-log again here (could recurse). Console is best-effort visibility.
+    console.warn("[app-log] Failed to write log entry", e);
+  });
 }
 
 export function logDebug(message: string, fields?: LogFields, options?: LogOptions) {

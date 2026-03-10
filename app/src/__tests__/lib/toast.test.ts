@@ -66,5 +66,21 @@ describe("toast wrapper", () => {
     expect(line).toBeDefined();
     expect(String(line)).toContain("Heads up");
   });
+
+  it("does not silently drop when plugin-log debug rejects", async () => {
+    vi.resetModules();
+    vi.unmock("@/lib/toast");
+
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockDebug.mockImplementationOnce(() => Promise.reject(new Error("debug write failed")));
+
+    const { toast } = await import("@/lib/toast");
+    toast.error("Boom", { duration: Infinity });
+
+    await Promise.resolve();
+    expect(consoleWarn).toHaveBeenCalled();
+
+    consoleWarn.mockRestore();
+  });
 });
 
