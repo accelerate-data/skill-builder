@@ -76,7 +76,10 @@ const SESSION_DEFAULTS = {
   baselineFiles: [] as SkillFile[],
   skillFiles: [] as SkillFile[],
   activeFileTab: "SKILL.md",
-  pendingInitialMessage: null as string | null,
+  // pendingInitialMessage is intentionally excluded: it is cross-page navigation
+  // state set by the test page and consumed by ChatInputBar. Including it here
+  // caused React StrictMode's simulated unmount (and normal page-unmount cleanup)
+  // to wipe the message before ChatInputBar could render and read it.
 } as const;
 
 export const useRefineStore = create<RefineState>((set, get) => ({
@@ -85,6 +88,7 @@ export const useRefineStore = create<RefineState>((set, get) => ({
   refinableSkills: [],
   isLoadingSkills: false,
   isLoadingFiles: false,
+  pendingInitialMessage: null,
   ...SESSION_DEFAULTS,
 
   // Actions
@@ -93,7 +97,7 @@ export const useRefineStore = create<RefineState>((set, get) => ({
   setLoadingSkills: (v) => set({ isLoadingSkills: v }),
 
   selectSkill: (skill) =>
-    set((state) => ({ selectedSkill: skill, ...SESSION_DEFAULTS, pendingInitialMessage: state.pendingInitialMessage })),
+    set({ selectedSkill: skill, ...SESSION_DEFAULTS }),
 
   setSkillFiles: (files) => set({ skillFiles: files, isLoadingFiles: false }),
   setLoadingFiles: (v) => set({ isLoadingFiles: v }),
