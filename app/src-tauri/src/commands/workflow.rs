@@ -822,15 +822,11 @@ fn validate_clarifications_json(clarifications: &serde_json::Value) -> Result<()
                 section_idx
             ));
         }
+        let default_questions = Vec::new();
         let questions = section_obj
             .get("questions")
             .and_then(|v| v.as_array())
-            .ok_or_else(|| {
-                format!(
-                    "clarifications_json.sections[{}].questions must be an array",
-                    section_idx
-                )
-            })?;
+            .unwrap_or(&default_questions);
 
         for (question_idx, question) in questions.iter().enumerate() {
             let question_obj = question.as_object().ok_or_else(|| {
