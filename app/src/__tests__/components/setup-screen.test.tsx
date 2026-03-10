@@ -9,14 +9,15 @@ import {
 import { open as mockOpen } from "@tauri-apps/plugin-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 
-vi.mock("sonner", () => ({
-  toast: Object.assign(vi.fn(), {
+vi.mock("@/lib/toast", () => ({
+  toast: {
     success: vi.fn(),
     error: vi.fn(),
     info: vi.fn(),
     warning: vi.fn(),
-  }),
-  Toaster: () => null,
+    loading: vi.fn(() => "toast-id"),
+    dismiss: vi.fn(),
+  },
 }));
 
 vi.mock("@/lib/tauri", async () => {

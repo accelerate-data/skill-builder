@@ -2,13 +2,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockInvoke, resetTauriMocks } from "@/test/mocks/tauri";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { useSettingsStore } from "@/stores/settings-store";
-
-vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
-  Toaster: () => null,
-}));
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => vi.fn(),

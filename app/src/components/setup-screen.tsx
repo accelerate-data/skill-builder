@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { open } from "@tauri-apps/plugin-dialog"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 import { Loader2, Eye, EyeOff, CheckCircle2, FolderSearch } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"

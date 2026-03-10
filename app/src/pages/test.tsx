@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Play, Square } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { useNavigate, useSearch, useBlocker } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";

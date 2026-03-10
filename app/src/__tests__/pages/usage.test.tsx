@@ -5,14 +5,16 @@ import { resetTauriMocks } from "@/test/mocks/tauri";
 import { useUsageStore } from "@/stores/usage-store";
 import type { UsageSummary, UsageByStep, UsageByModel, AgentRunRecord } from "@/lib/types";
 
-// Mock sonner toast
-vi.mock("sonner", () => ({
+// Mock toast wrapper
+vi.mock("@/lib/toast", () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
     info: vi.fn(),
+    warning: vi.fn(),
+    loading: vi.fn(() => "toast-id"),
+    dismiss: vi.fn(),
   },
-  Toaster: () => null,
 }));
 
 // Mock the tauri functions used by usage-store and usage page

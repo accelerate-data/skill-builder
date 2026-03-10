@@ -3,12 +3,18 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockInvoke, resetTauriMocks } from "@/test/mocks/tauri";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
-// Mock sonner
-vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
-  Toaster: () => null,
+// Mock toast wrapper
+vi.mock("@/lib/toast", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
+    loading: vi.fn(() => "toast-id"),
+    dismiss: vi.fn(),
+  },
 }));
 
 // Mock @tanstack/react-router

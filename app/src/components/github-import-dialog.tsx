@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react"
 import { Loader2, AlertCircle, Download, RefreshCw, CheckCircle2, CheckCheck } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 import {
   Dialog,
   DialogContent,
@@ -340,7 +340,11 @@ export default function GitHubImportDialog({
     } else {
       console.error("[github-import] Import failed:", errMsg)
       setSkillState(path, "idle")
-      toast.error(errMsg, { duration: Infinity })
+      toast.error(errMsg, {
+        duration: Infinity,
+        cause: errMsg,
+        context: { operation: "github_import_marketplace_result", skillPath: path },
+      })
     }
     return false
   }
@@ -372,7 +376,11 @@ export default function GitHubImportDialog({
     } catch (err) {
       console.error("[github-import] import_marketplace_to_library failed:", err)
       setSkillState(skill.path, "idle")
-      toast.error(err instanceof Error ? err.message : String(err), { duration: Infinity })
+      toast.error(err instanceof Error ? err.message : String(err), {
+        duration: Infinity,
+        cause: err,
+        context: { operation: "github_import_marketplace_to_library", skillPath: skill.path },
+      })
     }
   }, [onImported])
 
@@ -409,7 +417,11 @@ export default function GitHubImportDialog({
     } catch (err) {
       console.error("[github-import] import_github_skills failed:", err)
       setSkillState(skillPath, "idle")
-      toast.error(err instanceof Error ? err.message : String(err), { duration: Infinity })
+      toast.error(err instanceof Error ? err.message : String(err), {
+        duration: Infinity,
+        cause: err,
+        context: { operation: "github_import_import_github_skills", skillPath },
+      })
     }
   }, [editingSkill, editForm, repoInfo, onImported])
 
