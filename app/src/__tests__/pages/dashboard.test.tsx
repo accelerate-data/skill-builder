@@ -29,16 +29,16 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }));
 
-// Mock sonner
-vi.mock("sonner", () => ({
-  toast: Object.assign(vi.fn(), {
+// Mock toast wrapper
+vi.mock("@/lib/toast", () => ({
+  toast: {
     success: vi.fn(),
     error: vi.fn(),
     info: vi.fn(),
+    warning: vi.fn(),
     loading: vi.fn(() => "toast-id"),
     dismiss: vi.fn(),
-  }),
-  Toaster: () => null,
+  },
 }));
 
 import DashboardPage from "@/pages/dashboard";

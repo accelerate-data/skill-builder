@@ -6,7 +6,7 @@ import {
   mockInvokeCommands,
   resetTauriMocks,
 } from "@/test/mocks/tauri";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import type { AppSettings, ReconciliationResult } from "@/lib/types";
 
 // Mock @tanstack/react-router
@@ -67,17 +67,16 @@ vi.mock("@/components/setup-screen", () => ({
   },
 }));
 
-// Mock sonner
-vi.mock("sonner", () => ({
-  toast: Object.assign(vi.fn(), {
+// Mock toast wrapper
+vi.mock("@/lib/toast", () => ({
+  toast: {
     success: vi.fn(),
     error: vi.fn(),
     info: vi.fn(),
     warning: vi.fn(),
     loading: vi.fn(() => "toast-id"),
     dismiss: vi.fn(),
-  }),
-  Toaster: () => null,
+  },
 }));
 
 // Must import after mocks are set up

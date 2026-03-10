@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { invoke } from "@tauri-apps/api/core"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 import { Loader2, Lock } from "lucide-react"
 import {
   AlertDialog,

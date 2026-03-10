@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { vi } from "vitest";
 
 // Polyfill ResizeObserver for jsdom (used by radix-ui ScrollArea)
 if (typeof globalThis.ResizeObserver === "undefined") {
@@ -29,3 +30,16 @@ console.error = (...args: unknown[]) => {
 
 // Mock Tauri APIs globally for all tests
 import "./mocks/tauri";
+
+// Mock toast wrapper globally so UI tests can assert calls without relying on sonner internals.
+vi.mock("@/lib/toast", () => {
+  const toast = {
+    success: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
+    error: vi.fn(),
+    loading: vi.fn(() => "toast-id"),
+    dismiss: vi.fn(),
+  };
+  return { toast };
+});

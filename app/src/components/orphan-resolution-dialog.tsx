@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 import { Trash2, RotateCcw, Loader2, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {

@@ -38,6 +38,10 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 // Mock @tauri-apps/plugin-log
 vi.mock("@tauri-apps/plugin-log", () => ({
   attachConsole: vi.fn(() => Promise.resolve(() => {})),
+  debug: vi.fn(() => Promise.resolve()),
+  info: vi.fn(() => Promise.resolve()),
+  warn: vi.fn(() => Promise.resolve()),
+  error: vi.fn(() => Promise.resolve()),
 }));
 
 // Mock @tauri-apps/api/app
