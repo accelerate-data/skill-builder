@@ -14,6 +14,9 @@ on:
   schedule:
     - cron: "0 6 * * *"
 
+# Deny all permissions by default; job-level blocks grant only what is needed.
+permissions: {}
+
 jobs:
   sync-vd-agent:
     runs-on: ubuntu-latest
