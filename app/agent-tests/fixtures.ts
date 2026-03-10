@@ -608,10 +608,6 @@ export function createFixtureValidation(dir: string, skillName: string) {
     path.join(contextDir, "test-skill.md"),
     `# Test Skill Results: Pet Store Analytics\n\n**Status**: PARTIAL PASS\n`
   );
-  fs.writeFileSync(
-    path.join(contextDir, "companion-skills.md"),
-    `---\nskill_name: pet-store-analytics\nskill_type: domain\ncompanions:\n  - name: Shopify Extraction\n    slug: shopify-extraction\n    type: source\n    dimension: field-semantics\n    dimension_score: 3\n    priority: high\n    reason: "Field semantics vary across Shopify plan tiers"\n    trigger_description: "Extracting and normalizing Shopify data"\n    template_match: null\n---\n# Companion Skill Recommendations\n`
-  );
 }
 
 // Agent smoke fixture: fully answered clarifications for confirm-decisions tests
