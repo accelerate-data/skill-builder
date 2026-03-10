@@ -59,7 +59,7 @@ describe("toast lifecycle policy guard", () => {
     for (const filePath of files) {
       const sourceText = fs.readFileSync(filePath, "utf-8");
       const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-      const relPath = path.relative(sourceRoot, filePath);
+      const relPath = path.relative(sourceRoot, filePath).replace(/\\/g, "/");
 
       const visit = (node: ts.Node) => {
         if (ts.isCallExpression(node)) {
@@ -94,7 +94,7 @@ describe("toast lifecycle policy guard", () => {
     for (const filePath of files) {
       const sourceText = fs.readFileSync(filePath, "utf-8");
       const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-      const relPath = path.relative(sourceRoot, filePath);
+      const relPath = path.relative(sourceRoot, filePath).replace(/\\/g, "/");
       const counts = initial();
 
       const visit = (node: ts.Node) => {
