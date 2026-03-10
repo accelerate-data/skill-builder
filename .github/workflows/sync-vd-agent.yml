@@ -14,9 +14,16 @@ on:
   schedule:
     - cron: "0 6 * * *"
 
+# Deny all permissions by default; job-level blocks grant only what is needed.
+permissions: {}
+
 jobs:
   sync-vd-agent:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
 
     env:
       # Private upstream repo; requires a PAT with read access stored as VD_STUDIO_TOKEN
@@ -28,26 +35,30 @@ jobs:
 
     steps:
       - name: Checkout skill-builder
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone --no-single-branch \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            .
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
 
       - name: Clone vd-studio
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.UPSTREAM_REPO }}
-          ref: ${{ env.UPSTREAM_REF }}
-          # Always use VD_STUDIO_TOKEN so we don't fall back to the default GITHUB_TOKEN,
-          # which typically cannot read private repos in this org.
-          token: ${{ secrets.VD_STUDIO_TOKEN }}
-          path: upstream
+        env:
+          VD_STUDIO_TOKEN: ${{ secrets.VD_STUDIO_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "${UPSTREAM_REF}" \
+            "https://x-access-token:${VD_STUDIO_TOKEN}@github.com/${UPSTREAM_REPO}.git" \
+            upstream
 
       - name: Show upstream vd-agent commit
-        working-directory: upstream
         run: |
-          echo "Upstream repo: ${{ env.UPSTREAM_REPO }}"
-          echo "Upstream ref:  ${{ env.UPSTREAM_REF }}"
-          git rev-parse HEAD
+          echo "Upstream repo: ${UPSTREAM_REPO}"
+          echo "Upstream ref:  ${UPSTREAM_REF}"
+          git -C upstream rev-parse HEAD
 
       - name: Sync vd-agent plugin directory
         run: |
@@ -64,16 +75,18 @@ jobs:
           rsync -a --delete "upstream/${UPSTREAM_PLUGIN_PATH}/" "${LOCAL_PLUGIN_PATH}/"
 
       - name: Check for changes
+        id: changes
         run: |
-          if git diff --quiet; then
+          # git diff only sees tracked files; use git status --porcelain to also
+          # catch untracked files (e.g. when the plugin directory is new).
+          if git status --porcelain "${LOCAL_PLUGIN_PATH}" | grep -q .; then
+            echo "Changes detected."
+            git status --short "${LOCAL_PLUGIN_PATH}"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
             echo "No changes after sync; exiting."
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Changes detected."
-            git diff --stat
-            echo "has_changes=true" >> "$GITHUB_OUTPUT"
           fi
-        id: changes
 
       - name: Stop on dry run or no changes
         if: steps.changes.outputs.has_changes == 'false' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == 'true')
@@ -148,3 +161,6 @@ jobs:
               --head "${SYNC_BRANCH}"
           fi
 
+          # Enable auto-merge so the PR merges as soon as required checks pass.
+          PR_NUMBER="$(gh pr list --head "${SYNC_BRANCH}" --state open --json number --limit 1 | jq -r '.[0].number')"
+          gh pr merge "${PR_NUMBER}" --squash --auto
