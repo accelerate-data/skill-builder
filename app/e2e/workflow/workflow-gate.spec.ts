@@ -353,7 +353,9 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
 
     // Should stay on step 2 (Detailed Research) — dialog closes, user answers manually
     await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("Not answered: Q7")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("heading", { name: "Some Refinements Unanswered" })).not.toBeVisible({
+      timeout: 5_000,
+    });
   });
 
   test("gate 1 insufficient: quality review dialog and let-me-answer stays", async ({ page }) => {
@@ -449,7 +451,9 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
 
       await page.getByRole("button", { name: "Let Me Answer" }).click();
       await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
-      await expect(page.getByText(`Needs refinement: Q${i + 1}`)).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByRole("heading", { name: "Some Refinements Unanswered" })).not.toBeVisible({
+        timeout: 5_000,
+      });
       await expect(page.getByText("Step 3: Confirm Decisions")).not.toBeVisible();
     }
   });

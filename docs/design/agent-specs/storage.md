@@ -56,9 +56,8 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
     ├── SKILL.md                  # Final skill output — written by generate-skill agent (step 3)
     ├── context/                  # Created empty by Rust on skill creation
     │   ├── clarifications.json   # Written by research-orchestrator (step 0); updated by detailed-research (step 1)
-    │   ├── research-plan.md      # Written by research-orchestrator (step 0)
     │   ├── answer-evaluation.json # Written by answer-evaluator (gate check at steps 0 and 1)
-    │   └── decisions.md          # Written by confirm-decisions (step 2)
+    │   └── decisions.json        # Written by confirm-decisions (step 2)
     └── references/               # Created empty by Rust on skill creation
         └── *.md                  # Written by generate-skill agent (step 3)
 ```
@@ -79,10 +78,9 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
 | `{skill}/context/` (empty) | Rust | `create_skill` | `{skills_path}/{skill}/` |
 | `{skill}/references/` (empty) | Rust | `create_skill` | `{skills_path}/{skill}/` |
 | `context/clarifications.json` | `research-orchestrator` | Step 0 | `{skills_path}/{skill}/context/` |
-| `context/research-plan.md` | `research-orchestrator` | Step 0 | `{skills_path}/{skill}/context/` |
 | `context/clarifications.json` | `detailed-research` | Step 1 (adds refinements in-place) | `{skills_path}/{skill}/context/` |
 | `context/answer-evaluation.json` | `answer-evaluator` | Gate check at steps 0 and 1 | `{skills_path}/{skill}/context/` |
-| `context/decisions.md` | `confirm-decisions` | Step 2 | `{skills_path}/{skill}/context/` |
+| `context/decisions.json` | `confirm-decisions` | Step 2 | `{skills_path}/{skill}/context/` |
 | `SKILL.md` | `generate-skill` | Step 3 | `{skills_path}/{skill}/` |
 | `references/*.md` | `generate-skill` | Step 3 | `{skills_path}/{skill}/references/` |
 
@@ -95,8 +93,9 @@ Agents run with `cwd = {workspace}` (i.e., `app_local_data_dir()/workspace/`). T
 | Prompt variable | Resolved path | Purpose |
 |---|---|---|
 | `workspace directory` | `{workspace}/{skill-name}/` | Where `user-context.md` lives; agents read it from here |
-| `context directory` | `{skills_path}/{skill-name}/context/` | Where context files are read and written |
 | `skill output directory` | `{skills_path}/{skill-name}/` | Where `SKILL.md` and `references/` are written |
+
+For research orchestrator protocol, `context_dir` is derived from `workspace_dir` and is not a separate input field.
 
 Agents are told to read only specific named files and never create directories — the app pre-creates all directories before launching each step.
 
@@ -156,9 +155,9 @@ The reconciler can infer step completion from files on disk:
 
 | Step | Detectable? | Evidence files (in `{skills_path}/{skill-name}/`) |
 |---|---|---|
-| 0 (Research) | Yes | `context/research-plan.md`, `context/clarifications.json` |
+| 0 (Research) | Yes | `context/clarifications.json` |
 | 1 (Detailed Research) | No | Edits `clarifications.json` in-place; no unique artifact |
-| 2 (Confirm Decisions) | Yes | `context/decisions.md` |
+| 2 (Confirm Decisions) | Yes | `context/decisions.json` |
 | 3 (Generate Skill) | Yes | `SKILL.md` |
 
 A step is only counted if **all** expected files exist. Partial output is cleaned up.

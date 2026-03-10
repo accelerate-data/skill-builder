@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { CloseGuard } from "@/components/close-guard";
 import { mockInvoke, mockListen, mockGetCurrentWindow, resetTauriMocks } from "@/test/mocks/tauri";
 import { useWorkflowStore } from "@/stores/workflow-store";
+import { useRefineStore } from "@/stores/refine-store";
+import { useTestStore } from "@/stores/test-store";
 
 describe("CloseGuard", () => {
   let closeRequestedCallback: (() => void) | null = null;
@@ -11,6 +13,8 @@ describe("CloseGuard", () => {
   beforeEach(() => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
+    useRefineStore.setState({ isRunning: false });
+    useTestStore.setState({ isRunning: false });
     closeRequestedCallback = null;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -22,12 +26,8 @@ describe("CloseGuard", () => {
     });
   });
 
-  it("shows dialog with Stay and Close Anyway when agents are running", async () => {
-    useWorkflowStore.setState({ workflowSessionId: "session-1" });
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "has_running_agents") return Promise.resolve(true);
-      return Promise.reject(new Error(`Unmocked: ${cmd}`));
-    });
+  it("shows dialog when workflow isRunning is true", async () => {
+    useWorkflowStore.setState({ isRunning: true });
 
     render(<CloseGuard />);
     closeRequestedCallback?.();
@@ -40,8 +40,41 @@ describe("CloseGuard", () => {
     expect(screen.getByText("Close Anyway")).toBeInTheDocument();
   });
 
+  it("shows dialog when workflow gateLoading is true", async () => {
+    useWorkflowStore.setState({ gateLoading: true });
+
+    render(<CloseGuard />);
+    closeRequestedCallback?.();
+
+    await waitFor(() => {
+      expect(screen.getByText("Agents Still Running")).toBeInTheDocument();
+    });
+  });
+
+  it("shows dialog when refine isRunning is true", async () => {
+    useRefineStore.setState({ isRunning: true });
+
+    render(<CloseGuard />);
+    closeRequestedCallback?.();
+
+    await waitFor(() => {
+      expect(screen.getByText("Agents Still Running")).toBeInTheDocument();
+    });
+  });
+
+  it("shows dialog when test isRunning is true", async () => {
+    useTestStore.setState({ isRunning: true });
+
+    render(<CloseGuard />);
+    closeRequestedCallback?.();
+
+    await waitFor(() => {
+      expect(screen.getByText("Agents Still Running")).toBeInTheDocument();
+    });
+  });
+
   it("calls graceful_shutdown and closes without dialog when no agents running", async () => {
-    useWorkflowStore.setState({ workflowSessionId: "session-1" });
+    // All isRunning/gateLoading flags are false (default after beforeEach reset)
     const callOrder: string[] = [];
     const destroyFn = vi.fn(() => {
       callOrder.push("destroy");
@@ -52,7 +85,6 @@ describe("CloseGuard", () => {
       destroy: destroyFn,
     });
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "has_running_agents") return Promise.resolve(false);
       if (cmd === "graceful_shutdown") {
         callOrder.push("graceful_shutdown");
         return Promise.resolve();
@@ -70,7 +102,7 @@ describe("CloseGuard", () => {
     expect(callOrder).toEqual(["graceful_shutdown", "destroy"]);
   });
 
-  it("closes without dialog when no workflow session active", async () => {
+  it("closes without dialog when no workflow session active and no agents running", async () => {
     const callOrder: string[] = [];
     const destroyFn = vi.fn(() => {
       callOrder.push("destroy");
@@ -81,7 +113,6 @@ describe("CloseGuard", () => {
       destroy: destroyFn,
     });
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "has_running_agents") return Promise.resolve(false);
       if (cmd === "graceful_shutdown") {
         callOrder.push("graceful_shutdown");
         return Promise.resolve();
@@ -101,11 +132,7 @@ describe("CloseGuard", () => {
 
   it("Stay button dismisses dialog", async () => {
     const user = userEvent.setup();
-    useWorkflowStore.setState({ workflowSessionId: "session-1" });
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "has_running_agents") return Promise.resolve(true);
-      return Promise.reject(new Error(`Unmocked: ${cmd}`));
-    });
+    useWorkflowStore.setState({ isRunning: true });
 
     render(<CloseGuard />);
     closeRequestedCallback?.();
@@ -123,7 +150,7 @@ describe("CloseGuard", () => {
 
   it("Close Anyway calls graceful_shutdown then destroys window", async () => {
     const user = userEvent.setup();
-    useWorkflowStore.setState({ workflowSessionId: "session-1" });
+    useWorkflowStore.setState({ isRunning: true });
     const callOrder: string[] = [];
 
     const destroyFn = vi.fn(() => {
@@ -135,7 +162,6 @@ describe("CloseGuard", () => {
       destroy: destroyFn,
     });
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "has_running_agents") return Promise.resolve(true);
       if (cmd === "graceful_shutdown") {
         callOrder.push("graceful_shutdown");
         return Promise.resolve();

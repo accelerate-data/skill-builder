@@ -3,6 +3,22 @@ import type { SidecarConfig } from "./config.js";
 import { runMockAgent } from "./mock-agent.js";
 import { buildQueryOptions } from "./options.js";
 import { createAbortState, linkExternalSignal } from "./shutdown.js";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+
+/**
+ * Discover all installed plugins under <cwd>/.claude/plugins/.
+ * Returns an absolute path for each subdirectory found there.
+ */
+async function discoverInstalledPlugins(cwd: string): Promise<string[]> {
+  const pluginsDir = path.join(cwd, ".claude", "plugins");
+  try {
+    const entries = await fs.readdir(pluginsDir);
+    return entries.map((entry) => path.join(pluginsDir, entry));
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Emit a system-level progress event (not an SDK message).
@@ -42,13 +58,25 @@ export async function runAgentRequest(
     linkExternalSignal(state, externalSignal);
   }
 
+  // Discover all installed plugins so every plugin agent is available to the SDK.
+  const pluginPaths = await discoverInstalledPlugins(config.cwd);
+
   // Route SDK subprocess stderr through onMessage so it gets wrapped with
   // request_id and written to the JSONL transcript (not the app log).
   const stderrHandler = (data: string) => {
     onMessage({ type: "system", subtype: "sdk_stderr", data: data.trimEnd(), timestamp: Date.now() });
   };
 
-  const options = buildQueryOptions(config, state.abortController, stderrHandler);
+  const options = buildQueryOptions(config, state.abortController, pluginPaths, stderrHandler);
+
+  // Emit plugins passed to the SDK as a system event so it appears in the JSONL transcript.
+  const pluginsToLog = (options as Record<string, unknown>).plugins as unknown[] | undefined;
+  onMessage({
+    type: "system",
+    subtype: "sdk_plugins_debug",
+    plugins: pluginsToLog ?? [],
+    timestamp: Date.now(),
+  });
 
   // Notify the UI that we're about to initialize the SDK
   emitSystemEvent(onMessage, "init_start");

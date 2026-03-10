@@ -77,31 +77,65 @@ export function assessDecisionsCanonical(markdown) {
   };
 }
 
+export function assessDecisionsJsonSchema(payload) {
+  const metadata = payload?.metadata ?? {};
+  const decisions = Array.isArray(payload?.decisions) ? payload.decisions : [];
+  return {
+    version: payload?.version === "1",
+    metadataObject: typeof payload?.metadata === "object" && payload?.metadata !== null && !Array.isArray(payload.metadata),
+    decisionCountNumber: typeof metadata?.decision_count === "number",
+    conflictsResolvedNumber: typeof metadata?.conflicts_resolved === "number",
+    roundNumber: typeof metadata?.round === "number",
+    decisionsArray: Array.isArray(payload?.decisions),
+    decisionsHaveRequiredFields: decisions.every((decision) =>
+      typeof decision?.id === "string"
+      && typeof decision?.title === "string"
+      && typeof decision?.original_question === "string"
+      && typeof decision?.decision === "string"
+      && typeof decision?.implication === "string"
+      && ["resolved", "conflict-resolved", "needs-review"].includes(decision?.status),
+    ),
+  };
+}
+
 export function assessInvocationContracts(expected, observed) {
   const normalize = (value) => {
     const lower = String(value ?? "").toLowerCase().trim();
     if (!lower) return "";
-    // New call_trace variants from smoke provider include colon-prefixed file paths.
-    // Normalize both legacy semantic labels and current file-oriented labels.
     if (lower.includes("read user-context")) return "read-user-context";
     if (lower.includes("read-user-context")) return "read-user-context";
     if (lower.includes("read:user-context.md")) return "read-user-context";
-    if (lower.includes("read:session-json") || lower.includes("read session json")) return "read-session-json";
-    if (lower.includes("read-existing-skill-md") || lower.includes("read:skil")) return "read-existing-skill";
+    if (lower.includes("read:user-context-md")) return "read-user-context";
     if (lower.includes("read decisions")) return "read-decisions";
-    if (lower.includes("read:decisions.md")) return "read-decisions";
-    if (lower.includes("read-decisions-md")) return "read-decisions";
+    if (lower.includes("read decisions.json")) return "read-decisions";
+    if (lower.includes("read:decisions.json")) return "read-decisions";
+    if (lower.includes("read:decisions-json")) return "read-decisions";
+    if (lower.includes("read-decisions-json")) return "read-decisions";
     if (lower.includes("skip-clarifications-read")) return "skip-clarifications-read";
     if (lower.includes("read clarifications")) return "read-clarifications";
-    if (lower.includes("read:clarifications.json")) return "read-clarifications";
     if (lower.includes("invoke-research-skill")) return "invoke-research-skill";
     if (lower.includes("write-research-plan")) return "write-research-plan";
     if (lower.includes("write-clarifications")) return "write-clarifications";
     if (lower.includes("write skill") || lower.includes("write-skill")) return "write-skill";
-    if (lower.includes("write:skill.md") || lower.includes("write-skill-md")) return "write-skill";
-    if (lower.includes("write references") || lower.includes("write:references/")) return "write-references";
+    if (lower.includes("write:skill.md") || lower.includes("write:skill-md")) return "write-skill";
+    if (lower.includes("wrote skill.md") || lower.includes("wrote skill-md")) return "write-skill";
+    if (lower.includes("write references")) return "write-references";
+    if (lower.startsWith("write-references/")) return "write-references";
+    if (lower.startsWith("wrote references/")) return "write-references";
+    if (lower.includes("write:references/") || lower.includes("write:references-")) return "write-references";
+    if (lower.includes("wrote references/") || lower.includes("wrote references-")) return "write-references";
     if (lower.includes("write-evaluations") || lower.includes("evaluations.md")) return "write-evaluations";
     if (lower.includes("return-evaluations-markdown")) return "write-evaluations";
+    if (lower.includes("wrote context/evaluations.md") || lower.includes("wrote context-evaluations-md")) return "write-evaluations";
+    if (
+      lower.startsWith("write-")
+      && !lower.startsWith("write-skill")
+      && !lower.startsWith("write-evaluations")
+      && !lower.startsWith("write-clarifications")
+      && !lower.startsWith("write-research-plan")
+    ) {
+      return "write-references";
+    }
     return lower
       .replace(/[/.]/g, "-")
       .replace(/\s+/g, "-")

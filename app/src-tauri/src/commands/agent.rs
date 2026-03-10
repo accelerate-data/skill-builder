@@ -142,6 +142,7 @@ pub async fn start_agent(
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name,
+        required_plugins: None,
         conversation_history: None,
     };
 

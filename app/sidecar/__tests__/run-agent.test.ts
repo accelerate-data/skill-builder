@@ -60,11 +60,11 @@ describe("runAgentRequest", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    // First two messages are system events (init_start, sdk_ready), then SDK messages
-    expect(messages).toHaveLength(5);
-    expect(messages[2]).toEqual({ type: "agent_message", content: "step 1" });
-    expect(messages[3]).toEqual({ type: "tool_use", name: "Read", input: {} });
-    expect(messages[4]).toEqual({ type: "result", content: "done" });
+    // First three messages are system events (sdk_plugins_debug, init_start, sdk_ready), then SDK messages
+    expect(messages).toHaveLength(6);
+    expect(messages[3]).toEqual({ type: "agent_message", content: "step 1" });
+    expect(messages[4]).toEqual({ type: "tool_use", name: "Read", input: {} });
+    expect(messages[5]).toEqual({ type: "result", content: "done" });
   });
 
   it("emits init_start and sdk_ready system events in order", async () => {
@@ -76,18 +76,20 @@ describe("runAgentRequest", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    // System events come first
-    expect(messages[0]).toMatchObject({ type: "system", subtype: "init_start" });
-    expect(messages[0]).toHaveProperty("timestamp");
-    expect(typeof messages[0].timestamp).toBe("number");
+    // System events come first: sdk_plugins_debug, init_start, sdk_ready
+    expect(messages[0]).toMatchObject({ type: "system", subtype: "sdk_plugins_debug" });
 
-    expect(messages[1]).toMatchObject({ type: "system", subtype: "sdk_ready" });
+    expect(messages[1]).toMatchObject({ type: "system", subtype: "init_start" });
     expect(messages[1]).toHaveProperty("timestamp");
     expect(typeof messages[1].timestamp).toBe("number");
 
+    expect(messages[2]).toMatchObject({ type: "system", subtype: "sdk_ready" });
+    expect(messages[2]).toHaveProperty("timestamp");
+    expect(typeof messages[2].timestamp).toBe("number");
+
     // init_start timestamp should be <= sdk_ready timestamp
-    expect(messages[0].timestamp as number).toBeLessThanOrEqual(
-      messages[1].timestamp as number,
+    expect(messages[1].timestamp as number).toBeLessThanOrEqual(
+      messages[2].timestamp as number,
     );
   });
 
@@ -101,9 +103,10 @@ describe("runAgentRequest", () => {
       runAgentRequest(baseConfig(), (msg) => messages.push(msg)),
     ).rejects.toThrow("SDK failure");
 
-    // init_start should have been emitted before the error
-    expect(messages).toHaveLength(1);
-    expect(messages[0]).toMatchObject({ type: "system", subtype: "init_start" });
+    // sdk_plugins_debug then init_start should have been emitted before the error
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toMatchObject({ type: "system", subtype: "sdk_plugins_debug" });
+    expect(messages[1]).toMatchObject({ type: "system", subtype: "init_start" });
   });
 
   it("passes apiKey via SDK env option instead of mutating process.env", async () => {

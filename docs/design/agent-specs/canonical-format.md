@@ -227,41 +227,43 @@ The research planner determined the skill scope is too broad. See `clarification
 
 ---
 
-# Canonical `research-plan.md` Format
+# Canonical Research Plan Representation
 
-Written by the research skill (via `research-orchestrator`, Step 0). Read by `companion-recommender` (Step 7). Rendered as markdown in the UI.
+The research planner now represents the research plan **inside the `research_output` JSON**, not as a standalone markdown file. The top‑level app contract for Step 0 is:
 
-## YAML Frontmatter
-
-```yaml
----
-purpose: domain                       # required — purpose token
-domain: Sales Pipeline                # required — domain name
-topic_relevance: relevant             # required — "relevant" or "not_relevant"
-dimensions_evaluated: 6               # required — total dimensions scored
-dimensions_selected: 4                # required — dimensions chosen for research
----
+```json
+{
+  "status": "research_complete",
+  "dimensions_selected": 4,
+  "question_count": 26,
+  "research_output": {
+    "version": "1",
+    "metadata": {
+      "question_count": 26,
+      "section_count": 6,
+      "must_answer_count": 3,
+      "priority_questions": ["Q1", "Q2", "Q3"],
+      "scope_recommendation": false,
+      "research_plan": {
+        "purpose": "domain",
+        "domain": "Sales Pipeline",
+        "topic_relevance": "relevant",
+        "dimensions_evaluated": 6,
+        "dimensions_selected": 4,
+        "dimension_scores": [],
+        "selected_dimensions": []
+      }
+    },
+    "sections": [],
+    "notes": [],
+    "answer_evaluator_notes": []
+  }
+}
 ```
 
-## Structure
+The precise field‑level schema for `research_output` is defined in `agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md` and enforced at runtime by the plugin’s Python normalizer. This document describes the **envelope** and where the canonical schema lives; if `schemas.md` and this example diverge, treat `schemas.md` as authoritative.
 
-```markdown
-# Research Plan
-
-## Skill: [domain name] ([purpose])
-
-## Dimension Scores
-
-| Dimension | Score | Reason | Companion Note |
-|-----------|-------|--------|----------------|
-| [slug] | [1-5] | [one-sentence] | [optional — for scores 2-3] |
-
-## Selected Dimensions
-
-| Dimension | Focus |
-|-----------|-------|
-| [slug] | [tailored focus line] |
-```
+Legacy `research-plan.md` markdown output is no longer part of the app ↔ agent contract; it may still be generated for human‑readable views but must be derived from `research_output.metadata.research_plan`.
 
 ---
 

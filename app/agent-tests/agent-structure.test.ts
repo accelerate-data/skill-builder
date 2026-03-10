@@ -94,19 +94,19 @@ describe("read directive compliance", () => {
     path.join(AGENTS_DIR, "generate-skill.md"),
     path.join(
       REPO_ROOT,
-      "agent-sources/workspace/skills/validate-skill/SKILL.md"
+      "agent-sources/skills/validate-skill/SKILL.md"
     ),
     path.join(
       REPO_ROOT,
-      "agent-sources/workspace/skills/validate-skill/references/validate-quality-spec.md"
+      "agent-sources/skills/validate-skill/references/validate-quality-spec.md"
     ),
     path.join(
       REPO_ROOT,
-      "agent-sources/workspace/skills/validate-skill/references/test-skill-spec.md"
+      "agent-sources/skills/validate-skill/references/test-skill-spec.md"
     ),
     path.join(
       REPO_ROOT,
-      "agent-sources/workspace/skills/validate-skill/references/companion-recommender-spec.md"
+      "agent-sources/skills/validate-skill/references/companion-recommender-spec.md"
     ),
   ];
 
@@ -140,27 +140,27 @@ describe("read directive compliance", () => {
     const qualitySpec = fs.readFileSync(
       path.join(
         REPO_ROOT,
-        "agent-sources/workspace/skills/validate-skill/references/validate-quality-spec.md"
+        "agent-sources/skills/validate-skill/references/validate-quality-spec.md"
       ),
       "utf8"
     );
     const testSpec = fs.readFileSync(
       path.join(
         REPO_ROOT,
-        "agent-sources/workspace/skills/validate-skill/references/test-skill-spec.md"
+        "agent-sources/skills/validate-skill/references/test-skill-spec.md"
       ),
       "utf8"
     );
     const companionSpec = fs.readFileSync(
       path.join(
         REPO_ROOT,
-        "agent-sources/workspace/skills/validate-skill/references/companion-recommender-spec.md"
+        "agent-sources/skills/validate-skill/references/companion-recommender-spec.md"
       ),
       "utf8"
     );
 
     for (const content of [qualitySpec, testSpec, companionSpec]) {
-      expect(content).toMatch(/contradictory_inputs:\s*revised/i);
+      expect(content).toMatch(/metadata\.contradictory_inputs\s*==\s*"revised"/i);
       expect(content).toMatch(
         /\bread\b[^\n]{0,120}\bclarifications\.json\b[^\n]{0,120}\bin full\b/i
       );
@@ -171,43 +171,163 @@ describe("read directive compliance", () => {
   });
 });
 
-describe("VU-448 preflight scope guard prompts", () => {
-  it("research orchestrator requires preflight before fan-out", () => {
+describe("Research scope guard contract prompts", () => {
+  it("research orchestrator is thin and calls plugin research agent", () => {
     const content = fs.readFileSync(
       path.join(AGENTS_DIR, "research-orchestrator.md"),
       "utf8"
     );
-    expect(content).toMatch(/Preflight scope guard requirements:/);
-    expect(content).toMatch(/before any dimension scoring or sub-agent fan-out/i);
-    expect(content).toMatch(/do NOT spawn any dimension research sub-agents/i);
+    expect(content).toMatch(/thin wrapper around the plugin research agent/i);
+    expect(content).toMatch(/subagent_type:\s*"skill-content-researcher:research-agent"/i);
+    expect(content).not.toMatch(/Preflight scope guard requirements:/i);
   });
 
-  it("research skill codifies throwaway phrases and fallback bypass", () => {
-    const content = fs.readFileSync(
-      path.join(REPO_ROOT, "agent-sources/workspace/skills/research/SKILL.md"),
-      "utf8"
-    );
-    expect(content).toMatch(/## Step 2 — Preflight Scope Guard/);
-    expect(content).toMatch(/`testing`/);
-    expect(content).toMatch(/`throwaway`/);
-    expect(content).toMatch(/`ui test`/);
-    expect(content).toMatch(/`just testing`/);
-    expect(content).toMatch(/`nothing really`/);
-    expect(content).toMatch(/Do not apply fallback dimension selection when Step 2 preflight guard matched/);
-  });
-
-  it("scoring rubric enforces preflight precedence and early return contract", () => {
+  it("research skill does not run preflight and emits low-score scope recommendation", () => {
     const content = fs.readFileSync(
       path.join(
         REPO_ROOT,
-        "agent-sources/workspace/skills/research/references/scoring-rubric.md"
+        "agent-sources/plugins/skill-content-researcher/skills/research/SKILL.md",
       ),
       "utf8"
     );
-    expect(content).toMatch(/Throwaway\/Test Intent Preflight \(runs before relevance scoring\)/);
-    expect(content).toMatch(/Stop immediately \(no dimension scoring, no fallback dimension selection, no fan-out\)/);
-    expect(content).toMatch(/Set `metadata\.scope_recommendation: true`/);
-    expect(content).toMatch(/Do not trigger solely because domain text is short/);
-    expect(content).toMatch(/If uncertain, continue to normal relevance\/scoring/);
+    expect(content).not.toMatch(/Preflight Scope Guard/i);
+    expect(content).toMatch(/topic_relevance[^\n]{0,80}not_relevant/i);
+    expect(content).toMatch(/scope-recommendation clarifications output/i);
+    expect(content).toMatch(/all_dimensions_low_score/);
+  });
+
+  it("scoring rubric stays scoring-only and delegates selection policy", () => {
+    const content = fs.readFileSync(
+      path.join(
+        REPO_ROOT,
+        "agent-sources/plugins/skill-content-researcher/skills/research/references/scoring-rubric.md",
+      ),
+      "utf8"
+    );
+    expect(content).toMatch(/Do not perform selection or branching in this rubric output/i);
+    expect(content).not.toMatch(/If all scores are <=2, trigger scope recommendation output/i);
+  });
+
+  it("detailed-research includes scope recommendation short-circuit contract", () => {
+    const content = fs.readFileSync(
+      path.join(AGENTS_DIR, "detailed-research.md"),
+      "utf8"
+    );
+    expect(content).toMatch(/Scope Recommendation Guard/);
+    expect(content).toMatch(/status": "detailed_research_complete"/);
+    expect(content).toMatch(/refinement_count": 0/);
+    expect(content).toMatch(/section_count": 0/);
+    expect(content).toMatch(/canonical clarifications object \(unchanged\)/i);
+  });
+});
+
+// ── Plugin structure sanity checks ───────────────────────────────────────────
+
+describe("skill-content-researcher plugin structure", () => {
+  const pluginRoot = path.join(
+    REPO_ROOT,
+    "agent-sources",
+    "plugins",
+    "skill-content-researcher",
+  );
+
+  it("plugin manifest declares skills, agents, and mcpServers", () => {
+    const manifestPath = path.join(pluginRoot, ".claude-plugin", "plugin.json");
+    const raw = fs.readFileSync(manifestPath, "utf8");
+    const manifest = JSON.parse(raw);
+
+    expect(manifest.name).toBe("skill-content-researcher");
+    expect(manifest.skills).toBe("./skills");
+    expect(manifest.agents).toBe("./agents");
+    expect(manifest.mcpServers).toBe("./.mcp.json");
+  });
+
+  it("wrapper skill is user-invocable and delegates to plugin agent", () => {
+    const wrapperPath = path.join(
+      pluginRoot,
+      "skills",
+      "skill-content-researcher",
+      "SKILL.md",
+    );
+    const content = fs.readFileSync(wrapperPath, "utf8");
+
+    const fm = frontmatter(wrapperPath);
+    expect(fm.name).toBe("skill-content-researcher");
+    expect(fm.user_invocable).toBe("true");
+
+    expect(content).toMatch(/AskUserQuestion/);
+    expect(content).toMatch(/skill-content-researcher:research-agent/);
+  });
+
+  it("embedded research skill is internal-only (not user-invocable)", () => {
+    const researchPath = path.join(
+      pluginRoot,
+      "skills",
+      "research",
+      "SKILL.md",
+    );
+    const fm = frontmatter(researchPath);
+    expect(fm.user_invocable).toBe("false");
+  });
+
+  it("python normalizer tool is referenced from research-agent instructions", () => {
+    const agentPath = path.join(
+      pluginRoot,
+      "agents",
+      "research-agent.md",
+    );
+    const content = fs.readFileSync(agentPath, "utf8");
+    expect(content).toMatch(/python3 ".claude\/plugins\/skill-content-researcher\/skills\/research\/tools\/normalize_research_output\.py"/);
+  });
+});
+
+describe("skill-creator plugin structure", () => {
+  const pluginRoot = path.join(
+    REPO_ROOT,
+    "agent-sources",
+    "plugins",
+    "skill-creator",
+  );
+
+  it("plugin manifest declares skills, agents, and mcpServers", () => {
+    const manifestPath = path.join(pluginRoot, ".claude-plugin", "plugin.json");
+    const raw = fs.readFileSync(manifestPath, "utf8");
+    const manifest = JSON.parse(raw);
+
+    expect(manifest.name).toBe("skill-creator");
+    expect(manifest.skills).toBe("./skills");
+    expect(manifest.agents).toBe("./agents");
+    expect(manifest.mcpServers).toBe("./.mcp.json");
+  });
+
+  it("skill-creator SKILL.md references bundled scripts and eval viewer via relative paths", () => {
+    const skillPath = path.join(
+      pluginRoot,
+      "skills",
+      "skill-creator",
+      "SKILL.md",
+    );
+    const content = fs.readFileSync(skillPath, "utf8");
+
+    // Aggregation + optimization scripts via python -m under scripts/
+    expect(content).toMatch(/python -m scripts\.aggregate_benchmark/);
+    expect(content).toMatch(/python -m scripts\.run_loop/);
+    expect(content).toMatch(/python -m scripts\.package_skill/);
+
+    // Eval viewer launched via relative eval-viewer/generate_review.py, no placeholder path
+    expect(content).toMatch(/python eval-viewer\/generate_review\.py/);
+    expect(content).not.toMatch(/<skill-creator-path>/);
+  });
+
+  it("detailed-research includes scope recommendation short-circuit contract", () => {
+    const content = fs.readFileSync(
+      path.join(AGENTS_DIR, "detailed-research.md"),
+      "utf8"
+    );
+    expect(content).toMatch(/Scope Recommendation Guard/);
+    expect(content).toMatch(/status": "detailed_research_complete"/);
+    expect(content).toMatch(/refinement_count": 0/);
+    expect(content).toMatch(/section_count": 0/);
+    expect(content).toMatch(/canonical clarifications object \(unchanged\)/i);
   });
 });

@@ -1,0 +1,107 @@
+{
+  "version": "1",
+  "metadata": {
+    "decision_count": 12,
+    "conflicts_resolved": 1,
+    "round": 1,
+    "contradictory_inputs": true
+  },
+  "decisions": [
+    {
+      "id": "D1",
+      "title": "Skill Structure - Progressive Disclosure",
+      "original_question": "How should the skill content be organized for different expertise levels?",
+      "decision": "Use progressive disclosure: SKILL.md covers the 80% use case, reference files provide depth for advanced scenarios.",
+      "implication": "Engineers should be productive from SKILL.md alone. Reference files must be self-contained.",
+      "status": "resolved"
+    },
+    {
+      "id": "D2",
+      "title": "Target Audience - Intermediate Engineers",
+      "original_question": "What level of expertise should the skill assume?",
+      "decision": "Assume intermediate expertise with focus on patterns and trade-offs.",
+      "implication": "Avoid basic syntax explanations; emphasize architecture, performance, and edge cases.",
+      "status": "resolved"
+    },
+    {
+      "id": "D3",
+      "title": "Code Examples - Copy Paste Ready",
+      "original_question": "What format should code examples use?",
+      "decision": "Include production-ready code templates with error handling and logging.",
+      "implication": "No pseudocode; examples should run with minimal adaptation.",
+      "status": "resolved"
+    },
+    {
+      "id": "D4",
+      "title": "Architecture - Decision Matrix",
+      "original_question": "How should architectural choices be presented?",
+      "decision": "Use decision matrices with clear criteria and explicit pattern recommendations.",
+      "implication": "Each matrix cell needs concrete thresholds and a recommendation, not generic advice.",
+      "status": "resolved"
+    },
+    {
+      "id": "D5",
+      "title": "Testing Strategy Tension",
+      "original_question": "What testing approach should the skill recommend?",
+      "decision": "Coverage and delivery-speed goals conflict and require user review.",
+      "implication": "Needs explicit prioritization between strict coverage gates and delivery velocity.",
+      "status": "needs-review"
+    },
+    {
+      "id": "D6",
+      "title": "Error Handling - Recovery Paths",
+      "original_question": "How should error handling be structured?",
+      "decision": "Use explicit error categories with detection, impact, recovery, and prevention.",
+      "implication": "Every documented failure mode must include a concrete recovery path.",
+      "status": "resolved"
+    },
+    {
+      "id": "D7",
+      "title": "Performance - Threshold Driven",
+      "original_question": "How should performance guidance be structured?",
+      "decision": "Define measurable thresholds and an optimization sequence.",
+      "implication": "Thresholds should be adjustable and tied to specific measurement tooling.",
+      "status": "resolved"
+    },
+    {
+      "id": "D8",
+      "title": "Security - Defense in Depth",
+      "original_question": "What security approach should the skill recommend?",
+      "decision": "Layer controls across validation, auth, secrets, and dependency scanning.",
+      "implication": "Security layers must be independently testable and reviewed via checklist.",
+      "status": "resolved"
+    },
+    {
+      "id": "D9",
+      "title": "Monitoring Stack Ambiguity",
+      "original_question": "What monitoring approach should be recommended?",
+      "decision": "Monitoring tooling is inconsistent and needs user confirmation.",
+      "implication": "Cannot finalize tool-specific recommendations until stack constraints are confirmed.",
+      "status": "needs-review"
+    },
+    {
+      "id": "D10",
+      "title": "Documentation - ADRs",
+      "original_question": "How should design decisions be documented in the output?",
+      "decision": "Use ADRs for significant design decisions.",
+      "implication": "ADRs should be stored with code and map back to decisions captured here.",
+      "status": "resolved"
+    },
+    {
+      "id": "D11",
+      "title": "Deployment - Blue Green",
+      "original_question": "What deployment strategy should be recommended?",
+      "decision": "Use blue-green deployments with health checks and automated rollback thresholds.",
+      "implication": "This resolves conflicting asks for rolling deploys plus near-instant rollback.",
+      "status": "conflict-resolved"
+    },
+    {
+      "id": "D12",
+      "title": "Configuration - Environment Aware",
+      "original_question": "How should configuration be managed?",
+      "decision": "Use environment variables for sensitive and environment-specific values.",
+      "implication": "Validate configuration at startup and fail fast on missing required values.",
+      "status": "resolved"
+    }
+  ]
+}

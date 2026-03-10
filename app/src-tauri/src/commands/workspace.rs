@@ -268,7 +268,8 @@ pub fn clear_workspace(
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
     drop(conn);
 
-    // Delete only .claude/agents/ — preserve skills/ and CLAUDE.md
+    // Delete only .claude/agents/ — preserve skills/ and CLAUDE.md.
+    // Managed plugins are refreshed by redeploy_agents() and unmanaged plugins are preserved.
     let agents_dir = Path::new(&workspace_path).join(".claude").join("agents");
     if agents_dir.is_dir() {
         fs::remove_dir_all(&agents_dir).map_err(|e| e.to_string())?;

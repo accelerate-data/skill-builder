@@ -46,7 +46,8 @@ Use this map before reasoning about implementation location:
 - `app/sidecar/` — Node/TypeScript sidecar runtime code.
 - `app/e2e/` — Playwright E2E tests only.
 - `app/src/__tests__/` and `app/sidecar/__tests__/` — unit/integration tests only.
-- `agents/` — agent prompts (flat directory, validated by `./scripts/validate.sh`).
+- `agent-sources/agents/` — agent prompts (flat directory, validated by `./scripts/validate.sh`).
+- `agent-sources/plugins/` — plugin definitions (skills, agents, MCP config, tooling).
 - `agent-sources/workspace/CLAUDE.md` — agent instructions shared by all agents (deployed to workspace `.claude/CLAUDE.md`).
 - `docs/` — documentation and design/reference material only; do not treat as executable source unless explicitly asked.
 - `scripts/` — developer/automation scripts.
@@ -137,6 +138,11 @@ Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the 
 Design notes live in `docs/design/`. Each topic gets its own subdirectory with a `README.md` (e.g. `docs/design/backend-design/README.md`). The index at `docs/design/README.md` must be updated when adding a new subdirectory.
 
 Write design docs concisely — state the decision and the reason, not the reasoning process. One sentence beats a paragraph. Avoid restating what the code already makes obvious.
+
+Research output schemas and envelopes are documented in:
+
+- `docs/design/agent-specs/canonical-format.md` — high-level artifact contracts
+- `agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md` — canonical `research_output` schema
 
 ## Code Style
 

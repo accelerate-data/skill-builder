@@ -36,7 +36,6 @@ pub fn cleanup_step_files(
         return;
     }
 
-    // Context files for steps 0, 1, 2 live in workspace_path/skill_name/context/*
     let context_dir = skill_dir.clone();
 
     for file in &files {
@@ -115,7 +114,6 @@ pub fn clean_step_output_thorough(workspace_path: &str, skill_name: &str, step_i
         return;
     }
 
-    // Context files (steps 0, 1, 2) live in workspace_path/skill_name/context/*
     let context_dir = skill_dir.clone();
     log::debug!(
         "[clean_step_output_thorough] step={} skill_dir={} context_dir={}",
@@ -196,7 +194,7 @@ mod tests {
         assert!(skill_dir.join("context/clarifications.json").exists());
 
         // Step 2 files should be gone
-        assert!(!skill_dir.join("context/decisions.md").exists());
+        assert!(!skill_dir.join("context/decisions.json").exists());
     }
 
     #[test]
@@ -208,7 +206,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         create_skill_dir(tmp.path(), "my-skill", "test");
 
-        // Create step 0 output (research-plan.md, clarifications.json) and step 2 output (decisions.md)
+        // Create step 0 output (clarifications.json) and step 2 output (decisions.json)
         create_step_output(tmp.path(), "my-skill", 0);
         create_step_output(tmp.path(), "my-skill", 2);
 
@@ -216,15 +214,14 @@ mod tests {
         delete_step_output_files(workspace, "my-skill", 1, skills_path);
 
         let skill_dir = tmp.path().join("my-skill");
-        // Step 0 files must survive
-        assert!(skill_dir.join("context/research-plan.md").exists());
+        // Step 0 file must survive
         assert!(skill_dir.join("context/clarifications.json").exists());
         // Step 2 file must be gone
-        assert!(!skill_dir.join("context/decisions.md").exists());
+        assert!(!skill_dir.join("context/decisions.json").exists());
     }
 
     #[test]
-    fn test_delete_step0_deletes_both_context_files() {
+    fn test_delete_step0_deletes_context_files() {
         // Deleting from step 0 must remove all context files including step 2 output.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
@@ -241,9 +238,8 @@ mod tests {
 
         let skill_dir = tmp.path().join("my-skill");
         // All context files must be gone
-        assert!(!skill_dir.join("context/research-plan.md").exists());
         assert!(!skill_dir.join("context/clarifications.json").exists());
-        assert!(!skill_dir.join("context/decisions.md").exists());
+        assert!(!skill_dir.join("context/decisions.json").exists());
     }
 
     #[test]
@@ -255,14 +251,13 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         create_skill_dir(tmp.path(), "my-skill", "test");
 
-        // Create step 0 output files
+        // Create step 0 output file
         create_step_output(skills_tmp.path(), "my-skill", 0);
 
         // Cleaning step 1 should leave step 0 files untouched
         clean_step_output_thorough(workspace, "my-skill", 1, skills_path);
 
         let skill_dir = skills_tmp.path().join("my-skill");
-        assert!(skill_dir.join("context/research-plan.md").exists());
         assert!(skill_dir.join("context/clarifications.json").exists());
     }
 }

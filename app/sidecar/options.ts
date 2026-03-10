@@ -8,10 +8,14 @@ import type { SidecarConfig } from "./config.js";
  *  - agentName only  → agent (front-matter model used)
  *  - model only      → model
  *  - both            → agent only (front-matter model authoritative)
+ *
+ * @param pluginPaths  Absolute paths to installed plugin directories discovered by the caller.
+ *                     Each entry becomes { type: 'local', path } in the SDK plugins array.
  */
 export function buildQueryOptions(
   config: SidecarConfig,
   abortController: AbortController,
+  pluginPaths: string[],
   stderr?: (data: string) => void,
 ) {
   // --- agent / model resolution ---
@@ -25,10 +29,15 @@ export function buildQueryOptions(
     ? { env: { ...process.env, ANTHROPIC_API_KEY: config.apiKey } }
     : {};
 
+  const pluginsField = pluginPaths.length > 0
+    ? { plugins: pluginPaths.map((p) => ({ type: "local" as const, path: p })) }
+    : {};
+
   return {
     ...agentField,
     ...modelField,
     ...envField,
+    ...pluginsField,
     // Load project settings from the project workspace at {cwd}
     // (workspace-root CLAUDE.md plus .claude/ skills/agents).
     // 'user' is intentionally excluded — it causes the SDK to scan

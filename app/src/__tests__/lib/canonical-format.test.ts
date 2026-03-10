@@ -254,97 +254,189 @@ describe("Canonical format: clarifications.json structure", () => {
     expect(Array.isArray(minimal.notes)).toBe(true);
     expect(minimal.notes[0]?.type).toBe("blocked");
   });
+
+  it("accepts warning metadata shape for scope_guard_triggered", () => {
+    const output = {
+      version: "1",
+      metadata: {
+        title: "Scope Guard",
+        question_count: 0,
+        section_count: 0,
+        refinement_count: 0,
+        must_answer_count: 0,
+        priority_questions: [],
+        scope_reason: "Topic spans too many unrelated domains.",
+        warning: {
+          code: "scope_guard_triggered",
+          message: "The requested skill scope is too broad to produce useful output.",
+        },
+      },
+      sections: [],
+      notes: [],
+    };
+
+    expect(output.metadata.warning.code).toBe("scope_guard_triggered");
+    expect(typeof output.metadata.warning.message).toBe("string");
+    expect(output.metadata.warning.message.length).toBeGreaterThan(0);
+    expect(output.metadata.question_count).toBe(0);
+    expect(output.metadata.section_count).toBe(0);
+  });
+
+  it("accepts warning metadata shape for all_dimensions_low_score", () => {
+    const output = {
+      version: "1",
+      metadata: {
+        title: "Low Score Result",
+        question_count: 0,
+        section_count: 0,
+        refinement_count: 0,
+        must_answer_count: 0,
+        priority_questions: [],
+        warning: {
+          code: "all_dimensions_low_score",
+          message: "No dimensions scored high enough to proceed.",
+        },
+      },
+      sections: [],
+      notes: [],
+    };
+
+    expect(output.metadata.warning.code).toBe("all_dimensions_low_score");
+    expect(typeof output.metadata.warning.message).toBe("string");
+    expect(output.metadata.warning.message.length).toBeGreaterThan(0);
+  });
+
+  it("accepts error metadata shape for missing_user_context", () => {
+    const output = {
+      version: "1",
+      metadata: {
+        title: "Error",
+        question_count: 0,
+        section_count: 0,
+        refinement_count: 0,
+        must_answer_count: 0,
+        priority_questions: [],
+        error: {
+          code: "missing_user_context",
+          message: "No user context file was found.",
+        },
+      },
+      sections: [],
+      notes: [],
+    };
+
+    expect(output.metadata.error.code).toBe("missing_user_context");
+    expect(typeof output.metadata.error.message).toBe("string");
+    expect(output.metadata.error.message.length).toBeGreaterThan(0);
+  });
+
+  it("accepts error metadata shape for invalid_research_output", () => {
+    const output = {
+      version: "1",
+      metadata: {
+        title: "Error",
+        question_count: 0,
+        section_count: 0,
+        refinement_count: 0,
+        must_answer_count: 0,
+        priority_questions: [],
+        error: {
+          code: "invalid_research_output",
+          message: "The research agent produced output that could not be parsed.",
+        },
+      },
+      sections: [],
+      notes: [],
+    };
+
+    expect(output.metadata.error.code).toBe("invalid_research_output");
+    expect(typeof output.metadata.error.message).toBe("string");
+    expect(output.metadata.error.message.length).toBeGreaterThan(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
-// decisions.md structural checks (step2)
+// decisions.json structural checks (step2)
 // ---------------------------------------------------------------------------
 
-describe("Canonical format: decisions.md structure", () => {
-  const decisionsFile = path.join(MOCK_ROOT, "step2/context/decisions.md");
+describe("Canonical format: decisions.json structure", () => {
+  const decisionsFile = path.join(MOCK_ROOT, "step2/context/decisions.json");
 
-  it("decisions.md exists", () => {
+  it("decisions.json exists", () => {
     expect(fs.existsSync(decisionsFile)).toBe(true);
   });
 
   if (fs.existsSync(decisionsFile)) {
-    const content = readFile(decisionsFile);
-    const normalizedContent = content.replace(/\r\n/g, "\n");
+    const raw = readFile(decisionsFile);
 
-    it("has YAML frontmatter with decision_count", () => {
-      expect(normalizedContent).toMatch(/^---\n[\s\S]*?decision_count:/m);
+    it("is valid JSON", () => {
+      expect(() => JSON.parse(raw)).not.toThrow();
     });
 
-    it("has YAML frontmatter with conflicts_resolved", () => {
-      expect(normalizedContent).toMatch(/^---\n[\s\S]*?conflicts_resolved:/m);
+    const data = JSON.parse(raw);
+
+    it("has version set to '1'", () => {
+      expect(data.version).toBe("1");
     });
 
-    it("has YAML frontmatter with round", () => {
-      expect(normalizedContent).toMatch(/^---\n[\s\S]*?round:/m);
+    it("has metadata with required numeric fields", () => {
+      expect(typeof data.metadata?.decision_count).toBe("number");
+      expect(typeof data.metadata?.conflicts_resolved).toBe("number");
+      expect(typeof data.metadata?.round).toBe("number");
     });
 
-    it("has ### D{N}: decision headings (H3)", () => {
-      expect(content).toMatch(/^### D\d+:/m);
+    it("has decisions array", () => {
+      expect(Array.isArray(data.decisions)).toBe(true);
     });
 
-    it("no ## D{N}: headings (H2 is old format)", () => {
-      expect(content).not.toMatch(/^## D\d+:/m);
+    it("decision_count matches decisions length", () => {
+      expect(data.metadata.decision_count).toBe(data.decisions.length);
     });
 
-    it("has **Original question:** fields", () => {
-      expect(content).toMatch(/\*\*Original question:\*\*/);
-    });
-
-    it("has **Decision:** fields", () => {
-      expect(content).toMatch(/\*\*Decision:\*\*/);
-    });
-
-    it("has **Implication:** fields", () => {
-      expect(content).toMatch(/\*\*Implication:\*\*/);
-    });
-
-    it("has **Status:** fields", () => {
-      expect(content).toMatch(/\*\*Status:\*\*/);
-    });
-
-    it("has resolved status value", () => {
-      expect(content).toMatch(/\*\*Status:\*\* resolved/);
+    it("decisions have required fields and status values", () => {
+      for (const decision of data.decisions) {
+        expect(typeof decision.id).toBe("string");
+        expect(decision.id).toMatch(/^D\d+$/);
+        expect(typeof decision.title).toBe("string");
+        expect(typeof decision.original_question).toBe("string");
+        expect(typeof decision.decision).toBe("string");
+        expect(typeof decision.implication).toBe("string");
+        expect(["resolved", "conflict-resolved", "needs-review"]).toContain(decision.status);
+      }
     });
   }
 });
 
 // ---------------------------------------------------------------------------
-// research-plan.md structural checks (step0)
+// Embedded research plan JSON checks (step0)
 // ---------------------------------------------------------------------------
 
-describe("Canonical format: research-plan.md structure", () => {
-  const researchPlan = path.join(MOCK_ROOT, "step0/context/research-plan.md");
+describe("Canonical format: embedded research plan structure", () => {
+  const step0Clarifications = path.join(MOCK_ROOT, "step0/context/clarifications.json");
 
-  it("research-plan.md exists", () => {
-    expect(fs.existsSync(researchPlan)).toBe(true);
+  it("step0 clarifications.json exists", () => {
+    expect(fs.existsSync(step0Clarifications)).toBe(true);
   });
 
-  if (fs.existsSync(researchPlan)) {
-    const content = readFile(researchPlan);
+  if (fs.existsSync(step0Clarifications)) {
+    const data = JSON.parse(readFile(step0Clarifications));
+    const plan = data.metadata?.research_plan;
 
-    it("has frontmatter with purpose", () => {
-      expect(content).toMatch(/^---\n[\s\S]*?purpose:/m);
+    it("has metadata.research_plan object", () => {
+      expect(plan && typeof plan === "object").toBe(true);
     });
 
-    it("has frontmatter with dimensions_evaluated", () => {
-      expect(content).toMatch(/^---\n[\s\S]*?dimensions_evaluated:/m);
+    it("research_plan has required scalar fields", () => {
+      expect(typeof plan.purpose).toBe("string");
+      expect(typeof plan.domain).toBe("string");
+      expect(typeof plan.topic_relevance).toBe("string");
+      expect(typeof plan.dimensions_evaluated).toBe("number");
+      expect(typeof plan.dimensions_selected).toBe("number");
     });
 
-    it("has frontmatter with dimensions_selected", () => {
-      expect(content).toMatch(/^---\n[\s\S]*?dimensions_selected:/m);
-    });
-
-    it("has ## Dimension Scores section", () => {
-      expect(content).toMatch(/^## Dimension Scores/m);
-    });
-
-    it("has ## Selected Dimensions section", () => {
-      expect(content).toMatch(/^## Selected Dimensions/m);
+    it("research_plan has scoring arrays", () => {
+      expect(Array.isArray(plan.dimension_scores)).toBe(true);
+      expect(Array.isArray(plan.selected_dimensions)).toBe(true);
     });
   }
 });

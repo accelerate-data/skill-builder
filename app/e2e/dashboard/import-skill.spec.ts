@@ -91,7 +91,7 @@ test.describe("Import Skill from File — conflict handling", { tag: "@import" }
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = overrides;
     }, {
       ...BASE_OVERRIDES,
-      import_skill_from_file: new Error("conflict_overwrite_required:imported-skill"),
+      import_skill_from_file: "__throw__:conflict_overwrite_required:imported-skill",
     });
     await page.goto("/");
     await waitForAppReady(page);

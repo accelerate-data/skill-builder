@@ -27,7 +27,7 @@ The reconciler infers step completion from files in `{skills_path}/{name}/`. Onl
 | Step | Evidence |
 |------|----------|
 | 0 | `context/clarifications.json` + `context/research-plan.md` |
-| 2 | `context/decisions.md` |
+| 2 | `context/decisions.json` |
 | 3 | `SKILL.md` |
 
 Step 1 edits `clarifications.json` in-place — no unique artifact, not independently detectable. `detect_furthest_step` checks steps `[0, 2, 3]` in order and stops at the first incomplete step. Partial output at a step is cleaned up defensively.

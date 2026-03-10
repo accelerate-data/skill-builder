@@ -809,4 +809,67 @@ describe("runPersistent", () => {
       expect(() => JSON.parse(line)).not.toThrow();
     }
   });
+
+  it("supports stream_start and stream_message in MOCK_AGENTS mode", async () => {
+    const originalMockAgents = process.env.MOCK_AGENTS;
+    process.env.MOCK_AGENTS = "true";
+
+    const { Readable } = await import("node:stream");
+    const input = new Readable({ read() {} });
+    const exitFn = vi.fn();
+    const capture = captureStdout();
+
+    try {
+      const runPromise = runPersistent(input, exitFn);
+
+      input.push(JSON.stringify({
+        type: "stream_start",
+        request_id: "req_stream_1",
+        session_id: "sess_mock",
+        config: { prompt: "initial stream prompt", apiKey: "sk-test", cwd: "/tmp" },
+      }) + "\n");
+      await new Promise((r) => setTimeout(r, 40));
+
+      input.push(JSON.stringify({
+        type: "stream_message",
+        request_id: "req_stream_2",
+        session_id: "sess_mock",
+        user_message: "follow-up message",
+      }) + "\n");
+      await new Promise((r) => setTimeout(r, 40));
+
+      input.push(JSON.stringify({ type: "stream_end", session_id: "sess_mock" }) + "\n");
+      input.push(JSON.stringify({ type: "shutdown" }) + "\n");
+      input.push(null);
+      await runPromise;
+    } finally {
+      if (originalMockAgents === undefined) {
+        delete process.env.MOCK_AGENTS;
+      } else {
+        process.env.MOCK_AGENTS = originalMockAgents;
+      }
+      capture.restore();
+    }
+
+    const streamAssistantMessages = capture.lines
+      .map((l) => JSON.parse(l))
+      .filter(
+        (msg) => msg.type === "assistant"
+          && (msg.request_id === "req_stream_1" || msg.request_id === "req_stream_2"),
+      );
+    expect(streamAssistantMessages.length).toBeGreaterThanOrEqual(2);
+    expect(
+      streamAssistantMessages.some((msg) => msg.request_id === "req_stream_1"),
+    ).toBe(true);
+    expect(
+      streamAssistantMessages.some((msg) => msg.request_id === "req_stream_2"),
+    ).toBe(true);
+
+    const turnCompleteForFollowUp = capture.lines
+      .map((l) => JSON.parse(l))
+      .some(
+        (msg) => msg.type === "turn_complete" && msg.request_id === "req_stream_2",
+      );
+    expect(turnCompleteForFollowUp).toBe(true);
+  });
 });

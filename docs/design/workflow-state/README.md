@@ -8,7 +8,7 @@ Four-step pipeline that generates a skill. Each step is an agent or reasoning ru
 |---|---|---|---|---|---|
 | 0 | Research | agent | sonnet | `context/research-plan.md`, `context/clarifications.json` | Yes |
 | 1 | Detailed Research | agent | sonnet | *(mutates `clarifications.json` in-place — no unique file)* | Yes |
-| 2 | Confirm Decisions | reasoning | opus | `context/decisions.md` | No |
+| 2 | Confirm Decisions | reasoning | opus | `context/decisions.json` | No |
 | 3 | Generate Skill | agent | sonnet | `SKILL.md`, `references/`, `<name>.skill` | No |
 
 All output files live under `<skills_path>/<skill_name>/`. Steps 0–2 write into `context/`; step 3 writes directly into the skill root.
@@ -81,7 +81,7 @@ Valid statuses: `pending | in_progress | waiting_for_user | completed | error`
 | "Start Step" (update mode) | `pending` | `in_progress` | — |
 | Agent completes | `in_progress` | `completed` | Writes `research-plan.md` + `clarifications.json` |
 | Agent fails | `in_progress` | `error` | Partial files possible |
-| "Reset Step" button on current step | `completed / error` | `pending` | `resetWorkflowStep(0)` → deletes `research-plan.md`, `clarifications.json`, `decisions.md`, `SKILL.md` + `references/`; `resetToStep(0)` |
+| "Reset Step" button on current step | `completed / error` | `pending` | `resetWorkflowStep(0)` → deletes `research-plan.md`, `clarifications.json`, `decisions.json`, `SKILL.md` + `references/`; `resetToStep(0)` |
 | Sidebar click step 0 from later step (update mode) | `completed` | `pending` | `ResetStepDialog` → `resetWorkflowStep(0)` (same deletions); `resetToStep(0)` marks step 0 **pending** so it re-runs |
 | Sidebar click step 0 (review mode) | `completed` | navigates, no state change | None |
 
@@ -92,7 +92,7 @@ Valid statuses: `pending | in_progress | waiting_for_user | completed | error`
 | Auto-advance from step 0 (or gate "Research more") | `pending` | `in_progress` | — |
 | Agent completes | `in_progress` | `completed` | Mutates `clarifications.json`; no unique file written |
 | Agent fails | `in_progress` | `error` | — |
-| "Reset Step" button on current step | `completed / error` | `pending` | `resetWorkflowStep(1)` → step 1 has **no files**, so only `decisions.md` + `SKILL.md` are deleted; `research-plan.md` and `clarifications.json` are **preserved**; `resetToStep(1)` |
+| "Reset Step" button on current step | `completed / error` | `pending` | `resetWorkflowStep(1)` → step 1 has **no files**, so only `decisions.json` + `SKILL.md` are deleted; `research-plan.md` and `clarifications.json` are **preserved**; `resetToStep(1)` |
 | Sidebar click step 1 from step 2/3 (update mode) | `completed` | stays `completed` | `ResetStepDialog` → `resetWorkflowStep(1)` (same preservation); `navigateBackToStep(1)` keeps step 1 completed, resets steps 2–3 to pending |
 
 **Key invariant**: resetting step 1 never deletes step 0 artifacts. Step 1 is a refinement pass over existing clarifications — step 0 output remains valid.
@@ -102,9 +102,9 @@ Valid statuses: `pending | in_progress | waiting_for_user | completed | error`
 | Trigger | From | To | Disk effect |
 |---|---|---|---|
 | Auto-advance from step 1 + transition gate passes | `pending` | `in_progress` | — |
-| Reasoning completes | `in_progress` | `completed` | Writes `decisions.md` |
+| Reasoning completes | `in_progress` | `completed` | Writes `decisions.json` |
 | Reasoning fails | `in_progress` | `error` | — |
-| "Reset Step" button | `completed / error` | `pending` | `resetWorkflowStep(2)` → deletes `decisions.md` + `SKILL.md`; `resetToStep(2)` |
+| "Reset Step" button | `completed / error` | `pending` | `resetWorkflowStep(2)` → deletes `decisions.json` + `SKILL.md`; `resetToStep(2)` |
 | Sidebar click step 2 from step 3 (update mode) | `completed` | stays `completed` | `ResetStepDialog` → `resetWorkflowStep(2)` → deletes `SKILL.md` only; `navigateBackToStep(2)` |
 
 ### Step 3 — Generate Skill
@@ -140,9 +140,9 @@ After step 0 completes, `runAnswerEvaluator` runs in the background. The gate co
 
 | `fromStepId` | Files deleted |
 |---|---|
-| 0 | `research-plan.md`, `clarifications.json`, `decisions.md`, `SKILL.md` + `references/` |
-| 1 | *(nothing for step 1)*, `decisions.md`, `SKILL.md` + `references/` |
-| 2 | `decisions.md`, `SKILL.md` + `references/` |
+| 0 | `research-plan.md`, `clarifications.json`, `decisions.json`, `SKILL.md` + `references/` |
+| 1 | *(nothing for step 1)*, `decisions.json`, `SKILL.md` + `references/` |
+| 2 | `decisions.json`, `SKILL.md` + `references/` |
 | 3 | `SKILL.md` + `references/` |
 
 Also resets SQLite `workflow_steps.status` for `step_id >= fromStepId`.
@@ -156,7 +156,7 @@ Read from disk after each step completes and after each reset.
 | Condition | Disabled steps | Effect |
 |---|---|---|
 | `clarifications.json` → `scope_recommendation: true` | `[1, 2, 3]` | Steps grayed out; user must refine scope |
-| `decisions.md` → `contradictory_inputs: true` | `[3]` | Generate Skill blocked until decisions are fixed |
+| `decisions.json` → `metadata.contradictory_inputs: true` | `[3]` | Generate Skill blocked until decisions are fixed |
 | After any `resetToStep()` | `[]` | Guards re-evaluated from disk after next step |
 
 ---

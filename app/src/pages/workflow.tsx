@@ -37,6 +37,7 @@ import {
   saveWorkflowState,
   readFile,
   writeFile,
+  getContextFileContent,
   getClarificationsContent,
   saveClarificationsContent,
   cleanupSkillSidecar,
@@ -49,6 +50,7 @@ import {
   logGateDecision,
   materializeAnswerEvaluationOutput,
   materializeWorkflowStepOutput,
+  navigateBackToStepDb,
   type AnswerEvaluation,
 } from "@/lib/tauri";
 import { TransitionGateDialog, type GateVerdict } from "@/components/transition-gate-dialog";
@@ -66,9 +68,9 @@ interface StepConfig {
 }
 
 const STEP_CONFIGS: Record<number, StepConfig> = {
-  0: { type: "agent", outputFiles: ["context/research-plan.md", "context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
+  0: { type: "agent", outputFiles: ["context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
   1: { type: "agent", outputFiles: ["context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
-  2: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
+  2: { type: "reasoning", outputFiles: ["context/decisions.json"], model: "opus" },
   3: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
 };
 
@@ -355,23 +357,31 @@ export default function WorkflowPage() {
   useEffect(() => {
     const stepStatus = steps[currentStep]?.status;
 
-    if (stepStatus === "error" && skillName && skillsPath) {
+    if (stepStatus === "error" && skillName) {
       const cfg = STEP_CONFIGS[currentStep];
       const firstOutput = cfg?.outputFiles?.[0];
       if (firstOutput) {
-        const skillsRelative = firstOutput.startsWith("skill/")
-          ? firstOutput.slice("skill/".length)
-          : firstOutput;
-        readFile(`${skillsPath}/${skillName}/${skillsRelative}`)
-          .then((content) => setErrorHasArtifacts(!!content))
-          .catch(() => setErrorHasArtifacts(false));
+        if (firstOutput.startsWith("context/") && workspacePath) {
+          getContextFileContent(skillName, workspacePath, firstOutput.slice("context/".length))
+            .then((content) => setErrorHasArtifacts(!!content))
+            .catch(() => setErrorHasArtifacts(false));
+        } else if (skillsPath) {
+          const skillsRelative = firstOutput.startsWith("skill/")
+            ? firstOutput.slice("skill/".length)
+            : firstOutput;
+          readFile(`${skillsPath}/${skillName}/${skillsRelative}`)
+            .then((content) => setErrorHasArtifacts(!!content))
+            .catch(() => setErrorHasArtifacts(false));
+        } else {
+          setErrorHasArtifacts(false);
+        }
       } else {
         setErrorHasArtifacts(false);
       }
     } else {
       setErrorHasArtifacts(false);
     }
-  }, [currentStep, steps, skillsPath, skillName]);
+  }, [currentStep, steps, skillsPath, workspacePath, skillName]);
 
   // Debounced SQLite persistence — saves workflow state at most once per 300ms
   // instead of firing synchronously on every step/status change.
@@ -523,7 +533,10 @@ export default function WorkflowPage() {
       const msg = run.messages[i];
       if (msg.type !== "result") continue;
       const raw = msg.raw as Record<string, unknown>;
-      if ("result" in raw) return raw.result ?? null;
+      // Prefer structured_output (new SDK behavior: text in result, JSON in structured_output).
+      // Fall back to result for older SDK versions where result held the JSON object directly.
+      if ("structured_output" in raw && raw.structured_output != null) return raw.structured_output;
+      if ("result" in raw && raw.result != null && typeof raw.result !== "string") return raw.result;
     }
     return null;
   }, []);
@@ -572,14 +585,24 @@ export default function WorkflowPage() {
       setActiveAgent(null);
 
       const finish = async () => {
-        // Backend-owned context writes: workflow steps return canonical payloads
-        // and Rust materializes context files.
-        if ((step === 0 || step === 1 || step === 2 || step === 3) && completedAgentId) {
+        // Backend-owned writes: step 0/1/2 return canonical artifact payload in
+        // structured output; Rust validates and writes context files.
+        if ((step === 0 || step === 1 || step === 2) && completedAgentId) {
           const structuredOutput = extractStructuredResultPayload(completedAgentId);
-          const hasStructuredObject = !!structuredOutput
-            && typeof structuredOutput === "object"
-            && !Array.isArray(structuredOutput);
-          if (hasStructuredObject) {
+          if (structuredOutput == null || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) {
+            // Step 1 requires a structured output object — treat missing/invalid as an error.
+            // Step 0 does not require it — continue normally without materialization.
+            if (step === 1) {
+              updateStepStatus(step, "error");
+              setRunning(false);
+              toast.error(
+                `Step ${step + 1} completed but produced no structured output`,
+                { duration: Infinity },
+              );
+              return;
+            }
+            // step 0 and step 2: proceed without calling materialize
+          } else {
             try {
               await materializeWorkflowStepOutput(skillName, step, structuredOutput);
             } catch (err) {
@@ -591,18 +614,6 @@ export default function WorkflowPage() {
               );
               return;
             }
-          } else {
-            if (step === 1) {
-              updateStepStatus(step, "error");
-              setRunning(false);
-              toast.error(`Step ${step + 1} requires structured output from the agent`, {
-                duration: Infinity,
-              });
-              return;
-            }
-            // Backward-compat fallback for legacy/mocked transcripts that do not
-            // carry structured payloads.
-            console.warn(`[workflow] Missing structured output payload for step ${step}; skipping backend materialization`);
           }
         }
 
@@ -776,19 +787,19 @@ export default function WorkflowPage() {
       advanceToNextStep();
     };
 
-    if (!skillsPath) {
+    if (!workspacePath) {
       proceedNormally();
       return;
     }
 
+    console.log("[workflow] Gate structured output:", structuredOutput);
+
     try {
-      const hasStructuredObject = !!structuredOutput
-        && typeof structuredOutput === "object"
-        && !Array.isArray(structuredOutput);
-      if (hasStructuredObject && workspacePath) {
+      // Only materialize when the agent produced a structured payload.
+      // When null, skip materialization but still try to read an existing
+      // answer-evaluation.json in case the backend wrote it independently.
+      if (structuredOutput != null) {
         await materializeAnswerEvaluationOutput(skillName, workspacePath, structuredOutput);
-      } else {
-        console.warn("[workflow] Missing structured gate output; falling back to existing answer-evaluation.json");
       }
 
       const evalPath = `${workspacePath}/${skillName}/answer-evaluation.json`;
@@ -838,7 +849,8 @@ export default function WorkflowPage() {
       setGateEvaluation(evaluation);
       setShowGateDialog(true);
     } catch (err) {
-      console.warn("[workflow] Could not read evaluation result — proceeding normally:", err);
+      console.warn("[workflow] Gate evaluation materialization failed — proceeding normally:", err);
+      console.warn("[workflow] Gate structured output that failed:", structuredOutput);
       proceedNormally();
     }
   };
@@ -911,6 +923,14 @@ export default function WorkflowPage() {
       updateStepStatus(1, "completed");
       setCurrentStep(2);
     }
+    // Persist immediately so a crash in the 300ms debounce window cannot revert the skipped step.
+    // Read the store after the synchronous Zustand updates above so the snapshot is current.
+    const s = useWorkflowStore.getState();
+    const stepStatuses = s.steps.map((step) => ({ step_id: step.id, status: step.status }));
+    const runStatus = s.steps.every((step) => step.status === "completed") ? "completed" : "pending";
+    saveWorkflowState(skillName, s.currentStep, runStatus, stepStatuses, purpose ?? undefined).catch(
+      (err) => console.error("skipToDecisions: failed to persist state:", err),
+    );
     toast.success(message);
   };
 
@@ -1234,20 +1254,24 @@ export default function WorkflowPage() {
       {/* Reset step dialog — shown when clicking a prior completed step */}
       <ResetStepDialog
         targetStep={resetTarget}
+        deleteFromStep={resetTarget !== null && resetTarget > 0 ? resetTarget + 1 : undefined}
         workspacePath={workspacePath ?? ""}
         skillName={skillName}
         open={resetTarget !== null}
         onOpenChange={(open) => { if (!open) setResetTarget(null) }}
+        executeReset={resetTarget !== null && resetTarget > 0
+          ? () => navigateBackToStepDb(workspacePath ?? "", skillName, resetTarget)
+          : undefined}
         onReset={() => {
           if (resetTarget !== null) {
             endActiveSession();
             clearRuns();
             if (resetTarget === 0) {
-              // Step 0 output files are deleted; mark it pending so it re-runs from scratch.
+              // Step 0: full reset — re-runs from scratch.
               resetToStep(0);
             } else {
-              // Steps 1+ keep the target as "completed" so its editor/output renders.
-              // Only subsequent steps are reset to "pending".
+              // Steps 1+: navigate_back_to_step already persisted the correct DB state;
+              // sync Zustand to match (target stays "completed", subsequent steps "pending").
               navigateBackToStep(resetTarget);
             }
             setResetTarget(null);

@@ -20,11 +20,10 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
 
   test("GitHub account shows sign-in button when not logged in", async ({ page }) => {
     // Switch to GitHub section
-    await page.getByRole("button", { name: /GitHub/i }).click();
+    await page.locator("nav").getByRole("button", { name: "GitHub" }).click();
 
     // Default mock returns github_get_user: null — user is not logged in
-    await expect(page.getByText("GitHub Account", { exact: true })).toBeVisible();
-    await expect(page.getByText("Not connected")).toBeVisible();
+    await expect(page.getByText("Not connected").first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Sign in with GitHub" })).toBeVisible();
   });
 

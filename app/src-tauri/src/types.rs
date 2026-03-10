@@ -929,6 +929,7 @@ mod tests {
             prompt_suggestions: None,
             path_to_claude_code_executable: None,
             agent_name: Some("research-entities".to_string()),
+            required_plugins: None,
             conversation_history: None,
         };
         let json = serde_json::to_string(&config).unwrap();

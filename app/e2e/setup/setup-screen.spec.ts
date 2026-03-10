@@ -57,8 +57,8 @@ test.describe("Setup Screen", { tag: "@workflow" }, () => {
 
     // Setup screen should NOT appear, skill library page should load
     await expect(page.getByTestId("setup-screen")).not.toBeVisible();
-    // Sidebar has "Skill Library" nav link (previously "Skills")
-    await expect(page.getByRole("link", { name: "Skill Library" })).toBeVisible();
+    // Sidebar has "Dashboard" nav link.
+    await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
   });
 
   test("Get Started button is disabled until both fields are filled", async ({ page }) => {
@@ -115,8 +115,8 @@ test.describe("Setup Screen", { tag: "@workflow" }, () => {
 
     // Setup screen should disappear, skill library page should load
     await expect(page.getByTestId("setup-screen")).not.toBeVisible({ timeout: 5_000 });
-    // Sidebar has "Skill Library" nav link (previously "Skills")
-    await expect(page.getByRole("link", { name: "Skill Library" })).toBeVisible();
+    // Sidebar has "Dashboard" nav link.
+    await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
   });
 
   test("Test button validates API key", async ({ page }) => {

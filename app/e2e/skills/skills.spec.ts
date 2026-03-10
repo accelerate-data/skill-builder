@@ -34,7 +34,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
 
     await expect(page.getByText("No workspace skills")).toBeVisible();
     await expect(
-      page.getByText("Upload a .skill package or browse the marketplace to add skills.")
+      page.getByText("Import a .skill package or browse the marketplace to add skills.")
     ).toBeVisible();
   });
 
@@ -52,7 +52,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
 
     // Action buttons — Marketplace import button exists (has GitHub SVG icon, may be disabled without registries)
     await expect(page.getByRole("button", { name: /marketplace/i }).filter({ has: page.locator("svg") })).toBeVisible();
-    await expect(page.getByRole("button", { name: /upload skill/i }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Import$/i }).first()).toBeVisible();
   });
 
   test("shows skill list with names and version badges", async ({ page }) => {
@@ -134,12 +134,12 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     // Delete data-analytics
     await page.getByLabel("Delete data-analytics").click();
 
-    // data-analytics should disappear; api-design remains
-    await expect(page.getByText("data-analytics")).not.toBeVisible();
-    await expect(page.getByText("api-design")).toBeVisible();
+    // data-analytics row should disappear; api-design controls remain.
+    await expect(page.getByLabel("Delete data-analytics")).not.toBeVisible();
+    await expect(page.getByLabel("Delete api-design")).toBeVisible();
   });
 
-  test("upload skill button is clickable", async ({ page }) => {
+  test("import button is clickable", async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
         list_workspace_skills: [],
@@ -148,7 +148,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
 
     await navigateToSkillsLibrary(page);
 
-    const uploadButton = page.getByRole("button", { name: /upload skill/i }).first();
+    const uploadButton = page.getByRole("button", { name: /^Import$/i }).first();
     await expect(uploadButton).toBeVisible();
     await expect(uploadButton).toBeEnabled();
   });
@@ -301,9 +301,9 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await page.getByRole("button", { name: "List view" }).click();
 
     // data-analytics has purpose "domain" → full label text
-    await expect(page.getByText("Business process knowledge", { exact: true })).toBeVisible();
+    await expect(page.getByText("Business Process", { exact: true })).toBeVisible();
     // api-design has purpose "platform" → full label text
-    await expect(page.getByText("Organization specific Azure or Fabric standards", { exact: true })).toBeVisible();
+    await expect(page.getByText("Azure / Fabric", { exact: true })).toBeVisible();
   });
 
   test("can sort skills by name in list view", async ({ page }) => {

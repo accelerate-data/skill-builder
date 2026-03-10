@@ -218,6 +218,37 @@ function createFixtureClarification(dir, skillName) {
   );
 }
 
+function createFixtureDetailedResearchWorkspace(dir, skillName, { scopeRecommendation = false } = {}) {
+  createFixtureClarification(dir, skillName);
+  const clarificationsPath = path.join(dir, "workspace", skillName, "context", "clarifications.json");
+  const clarifications = readJson(clarificationsPath);
+  clarifications.metadata.scope_recommendation = scopeRecommendation;
+  writeFile(clarificationsPath, JSON.stringify(clarifications, null, 2));
+
+  writeFile(
+    path.join(dir, "workspace", skillName, "answer-evaluation.json"),
+    JSON.stringify(
+      {
+        verdict: "mixed",
+        answered_count: 2,
+        empty_count: 1,
+        vague_count: 1,
+        contradictory_count: 0,
+        total_count: 4,
+        reasoning: "Some answers need follow-up clarifications.",
+        per_question: [
+          { question_id: "Q1", verdict: "clear" },
+          { question_id: "Q2", verdict: "vague", reason: "Needs more detail." },
+          { question_id: "Q4", verdict: "not_answered" },
+          { question_id: "Q5", verdict: "needs_refinement" },
+        ],
+      },
+      null,
+      2
+    )
+  );
+}
+
 function createFixtureDecisionWorkspace(dir, skillName, { scopeRecommendation = false } = {}) {
   writeSessionJson(dir, skillName, "clarification");
   writeUserContext(dir, skillName);
@@ -447,6 +478,10 @@ Return JSON only:
     "research-orchestrator",
     {
       structuredResponseObject: Boolean(response && typeof response === "object"),
+      statusResearchComplete: response?.status === "research_complete",
+      dimensionsSelectedNumber:
+        typeof response?.dimensions_selected === "number" && response.dimensions_selected >= 0,
+      questionCountNumber: typeof response?.question_count === "number" && response.question_count >= 0,
       returnsResearchPlanMarkdown: hasResearchPlanMarkdown,
       returnsClarificationsJson: Boolean(clarifications && typeof clarifications === "object"),
       ...schema,
@@ -488,13 +523,194 @@ Return JSON only with status, dimensions_selected, question_count, research_plan
   return finalizeScenario(
     "research-orchestrator-scope-guard",
     {
+      statusResearchComplete: response?.status === "research_complete",
       scopeRecommendation: clarifications?.metadata?.scope_recommendation === true,
       zeroDimensions: Number(response?.dimensions_selected ?? -1) === 0,
       zeroQuestions: Number(response?.question_count ?? -1) === 0,
+      hasScopeReasonOrNotes:
+        typeof clarifications?.metadata?.scope_reason === "string"
+        || (Array.isArray(clarifications?.notes) && clarifications.notes.length > 0),
     },
     [],
     [],
   );
+}
+
+function runDetailedResearch({ budgetUsd }) {
+  const dir = makeTempDir("detailed-research");
+  const skillName = DEFAULT_SKILL_NAME;
+  createFixtureDetailedResearchWorkspace(dir, skillName);
+  const workspaceContext = loadWorkspaceContext();
+  const agentInstructions = loadAgentInstructions("detailed-research");
+
+  const prompt = `You are the detailed-research agent for the skill-builder plugin.
+
+Skill type: domain
+Skill name: ${skillName}
+Context directory: ${dir}/workspace/${skillName}/context
+Skill output directory: ${dir}/${skillName}
+Workspace directory: ${dir}/workspace/${skillName}
+
+<workspace-instructions>
+${workspaceContext}
+</workspace-instructions>
+<agent-instructions>
+${agentInstructions}
+</agent-instructions>
+
+Return JSON only with:
+{
+  "status": "detailed_research_complete",
+  "refinement_count": <number>,
+  "section_count": <number>,
+  "clarifications_json": { ...canonical object... }
+}`;
+
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 260_000, cwd: dir });
+  const response = parseAgentJsonOutput(stdout);
+  const clarifications = response?.clarifications_json ?? null;
+  const schema = assessClarificationsSchema(clarifications);
+  return finalizeScenario(
+    "detailed-research",
+    {
+      structuredResponseObject: Boolean(response && typeof response === "object"),
+      statusDetailedResearchComplete: response?.status === "detailed_research_complete",
+      refinementCountNumber:
+        typeof response?.refinement_count === "number" && response.refinement_count >= 0,
+      sectionCountNumber: typeof response?.section_count === "number" && response.section_count >= 0,
+      returnsClarificationsJson: Boolean(clarifications && typeof clarifications === "object"),
+      ...schema,
+    },
+    [],
+    [],
+  );
+}
+
+function runDetailedResearchScopeGuard({ budgetUsd }) {
+  const dir = makeTempDir("detailed-research-scope");
+  const skillName = DEFAULT_SKILL_NAME;
+  createFixtureDetailedResearchWorkspace(dir, skillName, { scopeRecommendation: true });
+  const workspaceContext = loadWorkspaceContext();
+  const agentInstructions = loadAgentInstructions("detailed-research");
+
+  const prompt = `You are the detailed-research agent for the skill-builder plugin.
+Skill type: domain
+Skill name: ${skillName}
+Context directory: ${dir}/workspace/${skillName}/context
+Skill output directory: ${dir}/${skillName}
+Workspace directory: ${dir}/workspace/${skillName}
+<workspace-instructions>
+${workspaceContext}
+</workspace-instructions>
+<agent-instructions>
+${agentInstructions}
+</agent-instructions>
+Return JSON only with status, refinement_count, section_count, and clarifications_json.`;
+
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 260_000, cwd: dir });
+  const response = parseAgentJsonOutput(stdout);
+  const clarifications = response?.clarifications_json ?? {};
+  return finalizeScenario(
+    "detailed-research-scope-guard",
+    {
+      statusDetailedResearchComplete: response?.status === "detailed_research_complete",
+      scopeRecommendation: clarifications?.metadata?.scope_recommendation === true,
+      zeroRefinements: Number(response?.refinement_count ?? -1) === 0,
+      sectionCountZero: Number(response?.section_count ?? -1) === 0,
+      canonicalShape: Boolean(
+        clarifications
+        && typeof clarifications === "object"
+        && clarifications.version === "1"
+        && Array.isArray(clarifications.sections)
+      ),
+    },
+    [],
+    [],
+  );
+}
+
+function runDetailedResearchAllClear({ budgetUsd }) {
+  const dir = makeTempDir("detailed-research-all-clear");
+  const skillName = DEFAULT_SKILL_NAME;
+  createFixtureDetailedResearchWorkspace(dir, skillName);
+  writeFile(
+    path.join(dir, "workspace", skillName, "answer-evaluation.json"),
+    JSON.stringify(
+      {
+        verdict: "sufficient",
+        answered_count: 4,
+        empty_count: 0,
+        vague_count: 0,
+        contradictory_count: 0,
+        total_count: 4,
+        reasoning: "All answers are clear.",
+        per_question: [
+          { question_id: "Q1", verdict: "clear" },
+          { question_id: "Q2", verdict: "clear" },
+          { question_id: "Q4", verdict: "clear" },
+          { question_id: "Q5", verdict: "clear" },
+        ],
+      },
+      null,
+      2
+    )
+  );
+
+  const workspaceContext = loadWorkspaceContext();
+  const agentInstructions = loadAgentInstructions("detailed-research");
+  const prompt = `You are the detailed-research agent for the skill-builder plugin.
+Skill type: domain
+Skill name: ${skillName}
+Context directory: ${dir}/workspace/${skillName}/context
+Skill output directory: ${dir}/${skillName}
+Workspace directory: ${dir}/workspace/${skillName}
+<workspace-instructions>
+${workspaceContext}
+</workspace-instructions>
+<agent-instructions>
+${agentInstructions}
+</agent-instructions>
+Return JSON only with status, refinement_count, section_count, and clarifications_json.`;
+
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 260_000, cwd: dir });
+  const response = parseAgentJsonOutput(stdout);
+  return finalizeScenario("detailed-research-all-clear", {
+    statusDetailedResearchComplete: response?.status === "detailed_research_complete",
+    zeroRefinements: Number(response?.refinement_count ?? -1) === 0,
+    sectionCountNumber: typeof response?.section_count === "number" && response.section_count >= 0,
+  });
+}
+
+function runDetailedResearchMissingEvaluationFallback({ budgetUsd }) {
+  const dir = makeTempDir("detailed-research-fallback");
+  const skillName = DEFAULT_SKILL_NAME;
+  createFixtureDetailedResearchWorkspace(dir, skillName);
+  fs.rmSync(path.join(dir, "workspace", skillName, "answer-evaluation.json"));
+
+  const workspaceContext = loadWorkspaceContext();
+  const agentInstructions = loadAgentInstructions("detailed-research");
+  const prompt = `You are the detailed-research agent for the skill-builder plugin.
+Skill type: domain
+Skill name: ${skillName}
+Context directory: ${dir}/workspace/${skillName}/context
+Skill output directory: ${dir}/${skillName}
+Workspace directory: ${dir}/workspace/${skillName}
+<workspace-instructions>
+${workspaceContext}
+</workspace-instructions>
+<agent-instructions>
+${agentInstructions}
+</agent-instructions>
+Return JSON only with status, refinement_count, section_count, and clarifications_json.`;
+
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 260_000, cwd: dir });
+  const response = parseAgentJsonOutput(stdout);
+  const clarifications = response?.clarifications_json ?? null;
+  return finalizeScenario("detailed-research-missing-evaluation-fallback", {
+    statusDetailedResearchComplete: response?.status === "detailed_research_complete",
+    returnsClarificationsJson: Boolean(clarifications && typeof clarifications === "object"),
+    hasRefinementCount: typeof response?.refinement_count === "number",
+  });
 }
 
 function runAnswerEvaluator({ budgetUsd }) {
@@ -994,6 +1210,10 @@ function runSkillTestContract() {
 const scenarioHandlers = {
   "research-orchestrator": runResearchOrchestrator,
   "research-orchestrator-scope-guard": runResearchOrchestratorScopeGuard,
+  "detailed-research": runDetailedResearch,
+  "detailed-research-scope-guard": runDetailedResearchScopeGuard,
+  "detailed-research-all-clear": runDetailedResearchAllClear,
+  "detailed-research-missing-evaluation-fallback": runDetailedResearchMissingEvaluationFallback,
   "answer-evaluator": runAnswerEvaluator,
   "confirm-decisions": runConfirmDecisions,
   "confirm-decisions-scope-guard": runConfirmDecisionsScopeGuard,

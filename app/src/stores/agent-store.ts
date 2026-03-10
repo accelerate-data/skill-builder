@@ -342,22 +342,6 @@ export const useAgentStore = create<AgentState>((set) => ({
       };
     });
 
-    // Persist initial row so in-progress and shutdown runs are tracked
-    persistAgentRun({
-      agentId,
-      skillName,
-      stepId: workflow.currentStep,
-      model,
-      status: "running",
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-      totalCost: 0,
-      durationMs: 0,
-      workflowSessionId: workflow.workflowSessionId ?? undefined,
-    }).catch((err) => console.error("Failed to persist agent start:", err));
-
     drainPendingTerminal(agentId);
   },
 

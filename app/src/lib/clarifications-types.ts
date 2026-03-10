@@ -9,6 +9,16 @@ export interface ClarificationsFile {
   answer_evaluator_notes?: Note[]; // gate feedback notes from answer-evaluator
 }
 
+export interface ClarificationsWarning {
+  code: "scope_guard_triggered" | "all_dimensions_low_score";
+  message: string;
+}
+
+export interface ClarificationsError {
+  code: "missing_user_context" | "invalid_research_output";
+  message: string;
+}
+
 export interface ClarificationsMetadata {
   title: string;
   question_count: number;
@@ -20,6 +30,32 @@ export interface ClarificationsMetadata {
   scope_recommendation?: boolean;
   scope_reason?: string;
   scope_next_action?: string;
+  research_plan?: ClarificationsResearchPlan;
+  warning?: ClarificationsWarning;
+  error?: ClarificationsError;
+}
+
+export interface ClarificationsResearchPlanDimensionScore {
+  name: string;
+  score: number;
+  reason: string;
+  focus: string;
+  companion_skill?: string | null;
+}
+
+export interface ClarificationsResearchPlanSelectedDimension {
+  name: string;
+  focus: string;
+}
+
+export interface ClarificationsResearchPlan {
+  purpose: string;
+  domain: string;
+  topic_relevance: string;
+  dimensions_evaluated: number;
+  dimensions_selected: number;
+  dimension_scores: ClarificationsResearchPlanDimensionScore[];
+  selected_dimensions: ClarificationsResearchPlanSelectedDimension[];
 }
 
 export interface Section {

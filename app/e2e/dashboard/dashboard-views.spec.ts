@@ -339,7 +339,7 @@ test.describe("List View Actions", { tag: "@dashboard" }, () => {
 
   test("3g: list view shows purpose as text", async ({ page }) => {
     const row = page.locator("tr").filter({ hasText: "hr-analytics" });
-    await expect(row.getByText("Business process knowledge", { exact: true })).toBeVisible();
+    await expect(row.getByText("Business Process", { exact: true })).toBeVisible();
   });
 
   test("3h: list view shows completed status for completed skills", async ({ page }) => {

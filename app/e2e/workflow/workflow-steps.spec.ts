@@ -78,18 +78,61 @@ const ERROR_STEP_OVERRIDES: Record<string, unknown> = {
 };
 
 /**
- * Step 0 completed, current step is human review (step 1), with steps
- * 2-5 disabled. The human review UI checks whether the next step after
- * review is disabled and shows "Scope Too Broad" when it is.
+ * Step 0 completed, with all downstream workflow steps disabled by
+ * scope recommendation (4-step workflow => steps 1,2,3 disabled).
  */
 const DISABLED_STEPS_OVERRIDES: Record<string, unknown> = {
   ...WORKFLOW_OVERRIDES,
   get_workflow_state: {
-    run: { current_step: 1, purpose: "domain" },
+    run: { current_step: 0, purpose: "domain" },
     steps: [{ step_id: 0, status: "completed" }],
   },
-  get_disabled_steps: [2, 3, 4, 5],
-  read_file: "# Scope Recommendation\n\nThis skill topic is too broad for a single skill.",
+  get_disabled_steps: [1, 2, 3],
+  read_file: {
+    "/tmp/test-skills/test-skill/context/research-plan.md": `---
+purpose: Business process knowledge
+domain: Pet Store Analytics
+topic_relevance: not_relevant
+dimensions_evaluated: 0
+dimensions_selected: 0
+---
+
+# Research Plan
+
+## Dimension Scores
+| Dimension | Score | Reason |
+|---|---:|---|
+| scope | 0 | Throwaway intent detected |
+
+## Selected Dimensions
+| Dimension | Reason |
+|---|---|
+| none | Scope recommendation triggered |
+`,
+    "/tmp/test-skills/test-skill/context/clarifications.json": JSON.stringify({
+      version: "1",
+      metadata: {
+        title: "Scope Recommendation",
+        question_count: 0,
+        section_count: 0,
+        refinement_count: 0,
+        must_answer_count: 0,
+        priority_questions: [],
+        scope_recommendation: true,
+        scope_reason: "Explicit throwaway/test intent detected.",
+        scope_next_action: "Provide a concrete production domain.",
+      },
+      sections: [],
+      notes: [
+        {
+          type: "blocked",
+          title: "Scope Recommendation Active",
+          body: "Narrow the scope and rerun research.",
+        },
+      ],
+    }),
+    "*": "",
+  },
 };
 
 test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
@@ -106,6 +149,17 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     // Should show completion screen with output file names
     await expect(page.getByText("context/research-plan.md")).toBeVisible({ timeout: 5_000 });
     await expect(page.getByText("context/clarifications.json")).toBeVisible();
+  });
+
+  test("research completion renders canonical research-plan sections", async ({ page }) => {
+    await navigateToWorkflow(page, DISABLED_STEPS_OVERRIDES);
+
+    const step1Button = page.locator("button").filter({ hasText: "1. Research" });
+    await step1Button.click();
+    await page.waitForTimeout(300);
+
+    await expect(page.getByText("Dimension Scores")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Selected Dimensions")).toBeVisible();
   });
 
   test("review mode hides action buttons on completed step", async ({ page }) => {
@@ -302,21 +356,16 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     ).not.toBeVisible();
   });
 
-  test("disabled steps show Skipped label and scope-too-broad message", async ({ page }) => {
+  test("scope recommendation marks downstream steps as skipped", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, DISABLED_STEPS_OVERRIDES);
 
-    // Should be on step 2 (Review) — human review with disabled next steps
-    await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
+    // Should remain on step 1 (Research) completion state in 4-step workflow.
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
 
     // Disabled steps in sidebar should show "Skipped" labels
     await expect(page.getByText("Skipped").first()).toBeVisible({ timeout: 5_000 });
-
-    // The human review step detects that the next step (2) is disabled
-    // and shows "Scope Too Broad" with "Return to Dashboard" button
-    await expect(page.getByText("Scope Too Broad")).toBeVisible({ timeout: 5_000 });
-    await expect(
-      page.getByRole("button", { name: "Return to Dashboard" }),
-    ).toBeVisible();
+    await expect(page.getByText("Skipped").nth(1)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Skipped").nth(2)).toBeVisible({ timeout: 5_000 });
   });
 
   test("error state shows Retry and Reset Step buttons", async ({ page }) => {

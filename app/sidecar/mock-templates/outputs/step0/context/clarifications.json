@@ -7,7 +7,24 @@
     "refinement_count": 0,
     "must_answer_count": 3,
     "priority_questions": ["Q1", "Q4", "Q7"],
-    "duplicates_removed": 2
+    "duplicates_removed": 2,
+    "research_plan": {
+      "purpose": "Business process knowledge",
+      "domain": "Mock Domain",
+      "topic_relevance": "relevant",
+      "dimensions_evaluated": 5,
+      "dimensions_selected": 3,
+      "dimension_scores": [
+        { "name": "Entities", "score": 5, "reason": "Core entities are central to this domain.", "focus": "Define canonical entities and identity rules used across marts.", "companion_skill": null },
+        { "name": "Metrics", "score": 4, "reason": "Metric definitions drive business correctness.", "focus": "Capture metric formulas, denominator choices, and exception handling.", "companion_skill": null },
+        { "name": "Operational Failure Modes", "score": 4, "reason": "Failure handling impacts adoption and trust.", "focus": "Identify expected failures, detection signals, and recovery defaults.", "companion_skill": "incident-response-foundations" }
+      ],
+      "selected_dimensions": [
+        { "name": "Entities", "focus": "Define canonical entities and identity rules used across marts." },
+        { "name": "Metrics", "focus": "Capture metric formulas, denominator choices, and exception handling." },
+        { "name": "Operational Failure Modes", "focus": "Identify expected failures, detection signals, and recovery defaults." }
+      ]
+    }
   },
   "sections": [
     {

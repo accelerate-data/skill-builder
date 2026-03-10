@@ -34,7 +34,14 @@ export const WORKFLOW_OVERRIDES: Record<string, unknown> = {
   reset_workflow_step: undefined,
   cleanup_skill_sidecar: undefined,
   run_workflow_step: "agent-001",
-  read_file: "",
+  // Provide canonical step-0 artifacts so workflow completion can advance in e2e mocks.
+  read_file: {
+    "/tmp/test-skills/test-skill/context/research-plan.md": "# Research Results\n\nAnalysis complete.",
+    "/tmp/test-skills/test-skill/context/clarifications.json": "{\"version\":\"1\",\"metadata\":{\"title\":\"Test\",\"question_count\":1,\"section_count\":1,\"refinement_count\":0,\"must_answer_count\":0,\"priority_questions\":[]},\"sections\":[],\"notes\":[]}",
+    "/tmp/test-workspace/test-skill/context/research-plan.md": "# Research Results\n\nAnalysis complete.",
+    "/tmp/test-workspace/test-skill/context/clarifications.json": "{\"version\":\"1\",\"metadata\":{\"title\":\"Test\",\"question_count\":1,\"section_count\":1,\"refinement_count\":0,\"must_answer_count\":0,\"priority_questions\":[]},\"sections\":[],\"notes\":[]}",
+    "*": "",
+  },
   get_artifact_content: null,
   verify_step_output: true,
   write_file: undefined,

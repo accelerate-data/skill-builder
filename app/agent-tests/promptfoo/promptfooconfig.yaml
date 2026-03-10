@@ -18,6 +18,12 @@ tests:
       - type: contains
         value: '"structuredResponseObject":true'
       - type: contains
+        value: '"statusResearchComplete":true'
+      - type: contains
+        value: '"dimensionsSelectedNumber":true'
+      - type: contains
+        value: '"questionCountNumber":true'
+      - type: contains
         value: '"returnsResearchPlanMarkdown":true'
       - type: contains
         value: '"returnsClarificationsJson":true'
@@ -32,11 +38,83 @@ tests:
       - type: contains
         value: '"ok":true'
       - type: contains
+        value: '"statusResearchComplete":true'
+      - type: contains
         value: '"scopeRecommendation":true'
       - type: contains
         value: '"zeroDimensions":true'
       - type: contains
         value: '"zeroQuestions":true'
+      - type: contains
+        value: '"hasScopeReasonOrNotes":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: detailed-research-normal
+    vars:
+      scenario: detailed-research
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"scenario":"detailed-research"'
+      - type: contains
+        value: '"structuredResponseObject":true'
+      - type: contains
+        value: '"statusDetailedResearchComplete":true'
+      - type: contains
+        value: '"refinementCountNumber":true'
+      - type: contains
+        value: '"sectionCountNumber":true'
+      - type: contains
+        value: '"returnsClarificationsJson":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: detailed-research-scope-guard
+    vars:
+      scenario: detailed-research-scope-guard
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"scenario":"detailed-research-scope-guard"'
+      - type: contains
+        value: '"statusDetailedResearchComplete":true'
+      - type: contains
+        value: '"scopeRecommendation":true'
+      - type: contains
+        value: '"zeroRefinements":true'
+      - type: contains
+        value: '"sectionCountZero":true'
+      - type: contains
+        value: '"canonicalShape":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: detailed-research-all-clear
+    vars:
+      scenario: detailed-research-all-clear
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"statusDetailedResearchComplete":true'
+      - type: contains
+        value: '"zeroRefinements":true'
+      - type: contains
+        value: '"sectionCountNumber":true'
+      - type: contains
+        value: '"failures":[]'
+  - description: detailed-research-missing-evaluation-fallback
+    vars:
+      scenario: detailed-research-missing-evaluation-fallback
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"statusDetailedResearchComplete":true'
+      - type: contains
+        value: '"returnsClarificationsJson":true'
+      - type: contains
+        value: '"hasRefinementCount":true'
       - type: contains
         value: '"failures":[]'
   - description: answer-evaluator-normal
