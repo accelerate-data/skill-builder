@@ -18,6 +18,10 @@ jobs:
   sync-vd-agent:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+      pull-requests: write
+
     env:
       # Private upstream repo; requires a PAT with read access stored as VD_STUDIO_TOKEN
       UPSTREAM_REPO: accelerate-data/vd-studio
