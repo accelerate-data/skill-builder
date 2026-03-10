@@ -1,5 +1,8 @@
 {
   "name": "skill-content-researcher",
   "version": "1.0.0",
-  "description": "Plugin-owned research orchestration and deterministic output normalization."
+  "description": "Plugin-owned research orchestration and deterministic output normalization.",
+  "skills": "./skills",
+  "agents": "./agents",
+  "mcpServers": "./.mcp.json"
 }
