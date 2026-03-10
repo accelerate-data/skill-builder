@@ -2,11 +2,13 @@ import { debug, error, warn, type LogOptions } from "@tauri-apps/plugin-log";
 
 type LogFields = Record<string, unknown>;
 
-const REDACT_KEY_RE = /(token|password|secret|authorization|api_key)/i;
+// Include common JS/TS variants (apiKey, api-key, apikey) in addition to api_key.
+const REDACT_KEY_RE = /(token|password|secret|authorization|api[_-]?key|apikey)/i;
 
 function sanitizeString(input: string): string {
   // Prevent log injection / multiline spam; keep it simple and deterministic.
-  return input.replace(/[\r\n\t]/g, " ").slice(0, 8_000);
+  // Replace ASCII control chars (incl. newlines/tabs/esc) with spaces.
+  return input.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 8_000);
 }
 
 function redactValue(value: unknown): unknown {
@@ -18,46 +20,58 @@ function redactValue(value: unknown): unknown {
   return "[REDACTED]";
 }
 
+function sanitizeUnknown(value: unknown, keyHint?: string, depth = 0, seen?: WeakSet<object>): unknown {
+  const nextSeen = seen ?? new WeakSet<object>();
+
+  if (keyHint && REDACT_KEY_RE.test(keyHint)) return redactValue(value);
+  if (value == null) return value;
+
+  if (typeof value === "string") return sanitizeString(value);
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (typeof value === "bigint") return value.toString();
+
+  if (value instanceof Error) {
+    return {
+      kind: "Error",
+      name: value.name,
+      message: sanitizeString(value.message),
+      stack: value.stack ? sanitizeString(value.stack) : undefined,
+    };
+  }
+
+  if (depth >= 6) return "[truncated]";
+
+  if (typeof value === "object") {
+    if (nextSeen.has(value as object)) return "[circular]";
+    nextSeen.add(value as object);
+
+    if (Array.isArray(value)) {
+      return value.slice(0, 50).map((v) => sanitizeUnknown(v, undefined, depth + 1, nextSeen));
+    }
+
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = sanitizeUnknown(v, k, depth + 1, nextSeen);
+    }
+    return out;
+  }
+
+  // symbol/function/unknown
+  return sanitizeString(String(value));
+}
+
 function sanitizeFields(fields: LogFields): LogFields {
   const out: LogFields = {};
   for (const [key, value] of Object.entries(fields)) {
-    if (REDACT_KEY_RE.test(key)) {
-      out[key] = redactValue(value);
-      continue;
-    }
-    if (typeof value === "string") {
-      out[key] = sanitizeString(value);
-      continue;
-    }
-    if (value instanceof Error) {
-      out[key] = {
-        name: value.name,
-        message: sanitizeString(value.message),
-        stack: value.stack ? sanitizeString(value.stack) : undefined,
-      };
-      continue;
-    }
-    out[key] = value;
+    out[key] = sanitizeUnknown(value, key, 0);
   }
   return out;
 }
 
 export function formatCause(cause: unknown): LogFields | undefined {
   if (!cause) return undefined;
-  if (cause instanceof Error) {
-    return {
-      kind: "Error",
-      name: cause.name,
-      message: cause.message,
-      stack: cause.stack,
-    };
-  }
-  if (typeof cause === "string") return { kind: "string", message: cause };
-  try {
-    return { kind: typeof cause, value: safeStringify(cause) };
-  } catch {
-    return { kind: typeof cause, value: "[unstringifiable]" };
-  }
+  // Return the raw cause; emit() sanitization will handle Error/string/object safely (incl. redaction).
+  return { cause };
 }
 
 export function safeStringify(value: unknown): string {

@@ -23,10 +23,12 @@ function toastMessageToString(message: unknown): string {
 
 function logToastShown(toastLevel: "warning" | "error", message: unknown, options?: LoggedToastOptions) {
   logDebug("toast_shown", {
+    event: "toast_shown",
+    component: "toast",
     toastLevel,
-    message: toastMessageToString(message),
+    toastMessage: toastMessageToString(message),
     cause: formatCause(options?.cause),
-    ...(options?.context ?? {}),
+    context: options?.context ?? undefined,
   });
 }
 
