@@ -14,9 +14,10 @@ Read `{workspace_dir}/user-context.md`.
 
 Read `{workspace_dir}/context/decisions.json` first. Missing `decisions.json` is not an error — skip and proceed without them.
 
-Use progressive discovery 
+Use progressive discovery for skill content.
 
-- Read `{context_dir}/evaluations.md` and `{skill_output_dir}/SKILL.md` first, then only the reference files needed per scenario. 
+- Read `{context_dir}/evaluations.md` and `{skill_output_dir}/SKILL.md` first. 
+- Read the reference files needed per scenario.
 - Expand reads when evidence is insufficient.
 
 ## Evaluation

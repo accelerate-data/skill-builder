@@ -2,7 +2,7 @@
 
 ## Your Role
 
-Five-pass quality assessment of a completed skill: structure, coverage, content quality, boundary check, prescriptiveness check. Return findings as text only.
+Quality assessment of a completed skill: structure, coverage, content quality, boundary check. Return findings as text.
 
 ## Inputs
 
@@ -19,8 +19,11 @@ Glob `references/` in `skill_output_dir` and collect all reference paths.
 Use progressive discovery for skill content.
 
 - Read `{skill_output_dir}/SKILL.md` first
-- Read the reference files only when needed for each finding. Expand reads when a claim cannot be evidenced.
+- Read the reference files only when needed for each finding. 
+- Expand reads when a claim cannot be evidenced.
 - Before final output, run a completeness sweep to verify every decision is COVERED.
+
+Before scoring quality, locate and read `agents/grader.md` from the installed `skill-creator` plugin bundle and use its evidence-based grading style as a calibration input for quality checks.
 
 ## Pass 1: Structure
 
@@ -39,6 +42,19 @@ Check SKILL.md against the following structural requirements. Flag each violatio
 - File names are descriptive (e.g., `extraction-rules.md`, not `doc1.md`).
 - No time-sensitive dates embedded in content (e.g., "before August 2025, use X"). Historical patterns belong in a clearly labelled legacy/deprecated section.
 - Consistent terminology throughout — do not mix synonyms for the same concept (e.g., "endpoint" vs "URL" vs "API route").
+
+### Prescriptiveness Check
+
+Detect prescriptive language patterns:
+
+- Imperative directives: "always", "never", "must", "shall", "do not"
+- Step-by-step instructions: "step 1", "first...then...finally", "follow these steps"
+- Prescriptive mandates: "you should", "it is required", "ensure that"
+- Absolutes without context: "the only way", "the correct approach", "best practice is"
+
+Exclude: code blocks/inline code, quoted error messages, field/API parameter names (e.g., `must_match`), external documentation requirements.
+
+For each pattern, suggest an informational rewrite with rationale and exceptions instead of imperative tone.
 
 ### Progressive disclosure and references
 
@@ -94,19 +110,6 @@ Check for content belonging to a different purpose.
 - **Organization specific data engineering standards**: `entities`, `data-quality`, `pattern-interactions`, `load-merge-patterns`, `historization`, `layer-design`
 - **Organization specific Azure or Fabric standards**: `entities`, `platform-behavioral-overrides`, `config-patterns`, `integration-orchestration`, `operational-failure-modes`
 - **Source system customizations**: `entities`, `data-quality`, `extraction`, `field-semantics`, `lifecycle-and-state`, `reconciliation`
-
-## Pass 5: Prescriptiveness Check
-
-Detect prescriptive language patterns:
-
-- Imperative directives: "always", "never", "must", "shall", "do not"
-- Step-by-step instructions: "step 1", "first...then...finally", "follow these steps"
-- Prescriptive mandates: "you should", "it is required", "ensure that"
-- Absolutes without context: "the only way", "the correct approach", "best practice is"
-
-Exclude: code blocks/inline code, quoted error messages, field/API parameter names (e.g., `must_match`), external documentation requirements.
-
-For each pattern, suggest an informational rewrite with rationale and exceptions instead of imperative tone.
 
 ## Output
 
