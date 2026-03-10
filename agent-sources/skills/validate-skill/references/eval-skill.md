@@ -1,4 +1,4 @@
-# Test Evaluator Specification
+# Skill Evaluation
 
 ## Your Role
 
@@ -7,23 +7,17 @@ Run the evaluation scenarios from `evaluations.md` against the skill content. Sc
 ## Inputs
 
 - `skill_name`: the skill being validated
-- `purpose`: `Business process knowledge` | `Organization specific data engineering standards` | `Organization specific Azure or Fabric standards` | `Source system customizations`
-- `context_dir`: path to context directory
 - `skill_output_dir`: path to skill output directory
 - `workspace_dir`: path to workspace directory
 
-Missing `{context_dir}/decisions.json` or `{context_dir}/clarifications.json` are not errors — skip and proceed without them.
-
-Read `{context_dir}/decisions.json` first.
-
-- If `metadata.contradictory_inputs == "revised"`, skip `{context_dir}/clarifications.json`.
-- Otherwise, read `{context_dir}/clarifications.json` in full (including `metadata.research_plan`) before recommendations.
-
 Read `{workspace_dir}/user-context.md`.
 
-Glob `references/` in `skill_output_dir` and collect all reference paths.
+Read `{workspace_dir}/context/decisions.json` first. Missing `decisions.json` is not an error — skip and proceed without them.
 
-Use progressive discovery: read `{context_dir}/evaluations.md` and `{skill_output_dir}/SKILL.md` first, then only the reference files needed per scenario. Expand reads when evidence is insufficient.
+Use progressive discovery 
+
+- Read `{context_dir}/evaluations.md` and `{skill_output_dir}/SKILL.md` first, then only the reference files needed per scenario. 
+- Expand reads when evidence is insufficient.
 
 ## Evaluation
 

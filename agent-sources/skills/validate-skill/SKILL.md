@@ -38,8 +38,8 @@ Do not modify skill files.
 
 Spawn two sub-agents in the same turn. Mode: `bypassPermissions`. Pass `skill_name`, `purpose`, `context_dir`, `skill_output_dir`, `workspace_dir` to each. Add to every sub-agent prompt: "Return your complete output as text. Do not write files."
 
-- Quality checker: read and follow `references/validate-quality-spec.md`
-- Test evaluator: read and follow `references/test-skill-spec.md`
+- Quality checker: read and follow `references/validate-quality.md`
+- Test evaluator: read and follow `references/eval-skill.md`
 
 ## Step 2 — Consolidate and Report
 

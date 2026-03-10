@@ -98,11 +98,11 @@ describe("read directive compliance", () => {
     path.join(AGENTS_DIR, "generate-skill.md"),
     path.join(
       REPO_ROOT,
-      "agent-sources/skills/validate-skill/references/validate-quality-spec.md"
+      "agent-sources/skills/validate-skill/references/validate-quality.md"
     ),
     path.join(
       REPO_ROOT,
-      "agent-sources/skills/validate-skill/references/test-skill-spec.md"
+      "agent-sources/skills/validate-skill/references/eval-skill.md"
     ),
   ];
 
@@ -132,31 +132,6 @@ describe("read directive compliance", () => {
     expect(content).toMatch(/progressive|staged|demand-driven/i);
   });
 
-  it("validate specs preserve full clarifications behavior with revised guard", () => {
-    const qualitySpec = fs.readFileSync(
-      path.join(
-        REPO_ROOT,
-        "agent-sources/skills/validate-skill/references/validate-quality-spec.md"
-      ),
-      "utf8"
-    );
-    const testSpec = fs.readFileSync(
-      path.join(
-        REPO_ROOT,
-        "agent-sources/skills/validate-skill/references/test-skill-spec.md"
-      ),
-      "utf8"
-    );
-    for (const content of [qualitySpec, testSpec]) {
-      expect(content).toMatch(/metadata\.contradictory_inputs\s*==\s*"revised"/i);
-      expect(content).toMatch(
-        /\bread\b[^\n]{0,120}\bclarifications\.json\b[^\n]{0,120}\bin full\b/i
-      );
-      expect(content).not.toMatch(
-        /\b(do not|don't|skip)\b[^\n]{0,120}\bclarifications\.json\b[^\n]{0,120}\bin full\b/i
-      );
-    }
-  });
 });
 
 describe("Research scope guard contract prompts", () => {
