@@ -21,7 +21,7 @@ const DEFAULT_MODEL = "sonnet";
 
 function frontmatter(filePath: string): Record<string, string> {
   const content = fs.readFileSync(filePath, "utf8");
-  const lines = content.split("\n");
+  const lines = content.split("\n").map(line => line.replace(/\r$/, ""));
   if (lines[0] !== "---") return {};
   const end = lines.indexOf("---", 1);
   if (end === -1) return {};
@@ -51,7 +51,8 @@ describe("agent files", () => {
     const missing = EXPECTED_AGENTS.filter((agent) => {
       const file = path.join(AGENTS_DIR, `${agent}.md`);
       if (!fs.existsSync(file)) return true;
-      return fs.readFileSync(file, "utf8").split("\n")[0] !== "---";
+      const firstLine = fs.readFileSync(file, "utf8").split("\n")[0].replace(/\r$/, "");
+      return firstLine !== "---";
     });
     expect(missing).toHaveLength(0);
   });
