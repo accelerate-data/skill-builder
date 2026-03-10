@@ -219,4 +219,61 @@ mod tests {
         assert_eq!(parsed["thinking"]["budgetTokens"], 32000);
     }
 
+    #[test]
+    fn test_sidecar_config_skill_name_serialized_as_camel_case() {
+        // skill_name must serialize as "skillName" so the sidecar's
+        // mock discriminator (config.skillName) receives the value correctly.
+        let config = SidecarConfig {
+            prompt: "test".to_string(),
+            model: None,
+            api_key: "sk-ant-test".to_string(),
+            cwd: "/tmp".to_string(),
+            allowed_tools: None,
+            max_turns: None,
+            permission_mode: None,
+            betas: None,
+            thinking: None,
+            fallback_model: None,
+            effort: None,
+            output_format: None,
+            prompt_suggestions: None,
+            path_to_claude_code_executable: None,
+            agent_name: None,
+            required_plugins: None,
+            conversation_history: None,
+            skill_name: Some("my-skill".to_string()),
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["skillName"], "my-skill", "skill_name must be camelCase 'skillName' in JSON");
+        assert!(parsed.get("skill_name").is_none(), "snake_case key must not appear in JSON");
+    }
+
+    #[test]
+    fn test_sidecar_config_skill_name_absent_when_none() {
+        // When skill_name is None, it must be omitted (skip_serializing_if = "Option::is_none").
+        let config = SidecarConfig {
+            prompt: "test".to_string(),
+            model: None,
+            api_key: "sk-ant-test".to_string(),
+            cwd: "/tmp".to_string(),
+            allowed_tools: None,
+            max_turns: None,
+            permission_mode: None,
+            betas: None,
+            thinking: None,
+            fallback_model: None,
+            effort: None,
+            output_format: None,
+            prompt_suggestions: None,
+            path_to_claude_code_executable: None,
+            agent_name: None,
+            required_plugins: None,
+            conversation_history: None,
+            skill_name: None,
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(parsed.get("skillName").is_none(), "skillName must be absent when None");
+    }
 }
