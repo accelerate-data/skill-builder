@@ -32,26 +32,30 @@ jobs:
 
     steps:
       - name: Checkout skill-builder
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone --no-single-branch \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            .
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
 
       - name: Clone vd-studio
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.UPSTREAM_REPO }}
-          ref: ${{ env.UPSTREAM_REF }}
-          # Always use VD_STUDIO_TOKEN so we don't fall back to the default GITHUB_TOKEN,
-          # which typically cannot read private repos in this org.
-          token: ${{ secrets.VD_STUDIO_TOKEN }}
-          path: upstream
+        env:
+          VD_STUDIO_TOKEN: ${{ secrets.VD_STUDIO_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "${UPSTREAM_REF}" \
+            "https://x-access-token:${VD_STUDIO_TOKEN}@github.com/${UPSTREAM_REPO}.git" \
+            upstream
 
       - name: Show upstream vd-agent commit
-        working-directory: upstream
         run: |
-          echo "Upstream repo: ${{ env.UPSTREAM_REPO }}"
-          echo "Upstream ref:  ${{ env.UPSTREAM_REF }}"
-          git rev-parse HEAD
+          echo "Upstream repo: ${UPSTREAM_REPO}"
+          echo "Upstream ref:  ${UPSTREAM_REF}"
+          git -C upstream rev-parse HEAD
 
       - name: Sync vd-agent plugin directory
         run: |
@@ -105,9 +109,6 @@ jobs:
         if: steps.changes.outputs.has_changes == 'true' && (github.event_name != 'workflow_dispatch' || inputs.dry_run != 'true')
         run: |
           set -euo pipefail
-
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
 
           git add "${LOCAL_PLUGIN_PATH}"
           if git diff --cached --quiet; then
