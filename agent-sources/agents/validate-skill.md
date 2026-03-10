@@ -64,17 +64,7 @@ Read `{skill_output_dir}/SKILL.md`.
 
 ## Step 1: Run the validate-skill skill
 
-Read and follow `skills/validate-skill/SKILL.md` using inputs: `skill_name`, `skill_output_dir`, `workspace_dir`.
-
-</instruction>
-
----
-
-<output>
-
-## Output
-
-Return JSON only (no markdown) with this shape:
+Read and follow installed `validate-skill` skill and return the JSON only (no markdown) with this shape:
 
 ```json
 {
@@ -83,5 +73,3 @@ Return JSON only (no markdown) with this shape:
   "test_results_markdown": "<full test results content>"
 }
 ```
-
-</output>
