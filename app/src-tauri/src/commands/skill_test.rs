@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
@@ -11,35 +11,60 @@ pub struct PrepareResult {
     pub transcript_log_dir: String,
 }
 
-/// Create a workspace root and copy `CLAUDE.md` from the main workspace into it.
-fn copy_workspace_claude_md(
-    src_workspace_path: &Path,
+/// Resolve the bundled `agent-sources/workspace/` directory.
+/// Dev mode: `{CARGO_MANIFEST_DIR}/../../agent-sources/workspace/`.
+/// Production: Tauri resource directory `agent-sources/workspace/`.
+fn resolve_bundled_workspace_dir(app_handle: &tauri::AppHandle) -> PathBuf {
+    use tauri::Manager;
+
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.to_path_buf());
+
+    let dev_path = repo_root
+        .as_ref()
+        .map(|r| r.join("agent-sources").join("workspace"));
+
+    match dev_path {
+        Some(ref p) if p.is_dir() => p.clone(),
+        _ => app_handle
+            .path()
+            .resource_dir()
+            .map(|r| r.join("agent-sources").join("workspace"))
+            .unwrap_or_default(),
+    }
+}
+
+/// Copy `CLAUDE-MINIMAL.md` from the bundled workspace directory into `dest_workspace_dir`
+/// as `CLAUDE.md`. Falls back to an empty file with a warning if the source is absent.
+fn copy_minimal_claude_md(
+    src_workspace_dir: &Path,
     dest_workspace_dir: &Path,
     label: &str,
 ) -> Result<(), String> {
-    let src_claude_md = src_workspace_path.join("CLAUDE.md");
     std::fs::create_dir_all(dest_workspace_dir).map_err(|e| {
         log::error!("[prepare_skill_test] Failed to create {} workspace dir: {}", label, e);
         format!("Failed to create {} workspace: {}", label, e)
     })?;
-    let dest_claude_md = dest_workspace_dir.join("CLAUDE.md");
-
-    if src_claude_md.exists() {
-        std::fs::copy(&src_claude_md, &dest_claude_md).map_err(|e| {
+    let src = src_workspace_dir.join("CLAUDE-MINIMAL.md");
+    let dest = dest_workspace_dir.join("CLAUDE.md");
+    if src.exists() {
+        std::fs::copy(&src, &dest).map_err(|e| {
             log::error!(
-                "[prepare_skill_test] Failed to copy {} CLAUDE.md from {:?}: {}",
+                "[prepare_skill_test] Failed to copy CLAUDE-MINIMAL.md to {} workspace: {}",
                 label,
-                src_claude_md,
                 e
             );
-            format!("Failed to copy {} CLAUDE.md: {}", label, e)
+            format!("Failed to copy CLAUDE-MINIMAL.md to {} workspace: {}", label, e)
         })?;
     } else {
         log::warn!(
-            "[prepare_skill_test] source CLAUDE.md not found at {:?}; writing fallback",
-            src_claude_md
+            "[prepare_skill_test] CLAUDE-MINIMAL.md not found at {:?}; writing empty fallback for {} workspace",
+            src,
+            label
         );
-        std::fs::write(&dest_claude_md, "# Test Workspace").map_err(|e| {
+        std::fs::write(&dest, "").map_err(|e| {
             log::error!(
                 "[prepare_skill_test] Failed to write fallback {} CLAUDE.md: {}",
                 label,
@@ -48,7 +73,6 @@ fn copy_workspace_claude_md(
             format!("Failed to write fallback {} CLAUDE.md: {}", label, e)
         })?;
     }
-
     Ok(())
 }
 
@@ -149,10 +173,13 @@ pub fn prepare_skill_test(
     let baseline_dir = tmp_parent.join("baseline");
     let with_skill_dir = tmp_parent.join("with-skill");
 
-    // Copy workspace CLAUDE.md so test runs use the same global context.
-    let workspace_root = Path::new(&workspace_path);
-    copy_workspace_claude_md(workspace_root, &baseline_dir, "baseline")?;
-    copy_workspace_claude_md(workspace_root, &with_skill_dir, "with-skill")?;
+    // Copy CLAUDE-MINIMAL.md from bundled workspace sources into both test workspaces.
+    // The live workspace CLAUDE.md carries skill-builder identity framing ("This workspace
+    // generates skills…") which confuses the data-product-builder agent. The minimal file
+    // gives the agent a neutral data engineering project context instead.
+    let bundled_workspace_dir = resolve_bundled_workspace_dir(&app);
+    copy_minimal_claude_md(&bundled_workspace_dir, &baseline_dir, "baseline")?;
+    copy_minimal_claude_md(&bundled_workspace_dir, &with_skill_dir, "with-skill")?;
 
     let baseline_skills_dir = baseline_dir.join(".claude").join("skills");
     let with_skill_skills_dir = with_skill_dir.join(".claude").join("skills");
@@ -375,12 +402,84 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    /// Resolve the bundled workspace directory the same way resolve_bundled_workspace_dir()
+    /// does in dev mode, without requiring an AppHandle.
+    fn dev_workspace_dir() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri → app")
+            .parent()
+            .expect("app → repo root")
+            .join("agent-sources")
+            .join("workspace")
+    }
+
+    #[test]
+    fn test_bundled_claude_minimal_exists_and_has_expected_content() {
+        let workspace_dir = dev_workspace_dir();
+        let minimal = workspace_dir.join("CLAUDE-MINIMAL.md");
+        assert!(minimal.exists(), "CLAUDE-MINIMAL.md not found at {:?}", minimal);
+        let content = std::fs::read_to_string(&minimal).unwrap();
+        assert!(
+            content.contains("Medallion"),
+            "CLAUDE-MINIMAL.md should contain medallion layer content"
+        );
+        assert!(
+            !content.contains("Skill Builder"),
+            "CLAUDE-MINIMAL.md must not contain skill-builder identity framing"
+        );
+    }
+
+    #[test]
+    fn test_copy_minimal_claude_md_copies_content() {
+        let workspace_dir = dev_workspace_dir();
+        let tmp = std::env::temp_dir().join(format!("skill-test-minimal-{}", uuid::Uuid::new_v4()));
+
+        copy_minimal_claude_md(&workspace_dir, &tmp, "baseline").unwrap();
+
+        let dest = tmp.join("CLAUDE.md");
+        assert!(dest.exists(), "CLAUDE.md not created in dest workspace");
+        let content = std::fs::read_to_string(&dest).unwrap();
+        assert!(
+            content.contains("Medallion"),
+            "copied CLAUDE.md should contain minimal project content"
+        );
+        assert!(
+            !content.contains("@.claude/skills/"),
+            "minimal CLAUDE.md must not contain skill ref"
+        );
+        assert!(
+            !content.contains("Skill Builder"),
+            "minimal CLAUDE.md must not contain skill-builder identity framing"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_copy_minimal_claude_md_fallback_when_missing() {
+        let tmp = std::env::temp_dir().join(format!("skill-test-minimal-fb-{}", uuid::Uuid::new_v4()));
+        let fake_workspace = tmp.join("fake-workspace");
+        std::fs::create_dir_all(&fake_workspace).unwrap();
+        // No CLAUDE-MINIMAL.md in fake_workspace
+
+        let dest_workspace = tmp.join("dest");
+        copy_minimal_claude_md(&fake_workspace, &dest_workspace, "baseline").unwrap();
+
+        let dest = dest_workspace.join("CLAUDE.md");
+        assert!(dest.exists(), "fallback CLAUDE.md should be created");
+        let content = std::fs::read_to_string(&dest).unwrap();
+        assert_eq!(content, "", "fallback CLAUDE.md should be empty");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     #[test]
     fn test_with_skill_claude_md_includes_skill_ref() {
         let tmp = std::env::temp_dir().join(format!("skill-test-claudemd-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&tmp).unwrap();
 
-        // Simulate copy_workspace_claude_md writing a base CLAUDE.md
+        // Simulate copy_minimal_claude_md writing a base CLAUDE.md
         let claude_md = tmp.join("CLAUDE.md");
         std::fs::write(&claude_md, "# Workspace\nbase content").unwrap();
 
@@ -402,22 +501,4 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    #[test]
-    fn test_baseline_claude_md_has_no_skill_ref() {
-        let tmp = std::env::temp_dir().join(format!("skill-test-baseline-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&tmp).unwrap();
-
-        // Simulate copy_workspace_claude_md for baseline (no skill ref appended)
-        let src_workspace = tmp.join("src");
-        std::fs::create_dir_all(&src_workspace).unwrap();
-        std::fs::write(src_workspace.join("CLAUDE.md"), "# Workspace\nsome content").unwrap();
-
-        let baseline_dir = tmp.join("baseline");
-        copy_workspace_claude_md(&src_workspace, &baseline_dir, "baseline").unwrap();
-
-        let content = std::fs::read_to_string(baseline_dir.join("CLAUDE.md")).unwrap();
-        assert!(!content.contains("@.claude/skills/"), "baseline CLAUDE.md must not contain skill ref");
-
-        let _ = std::fs::remove_dir_all(&tmp);
-    }
 }
