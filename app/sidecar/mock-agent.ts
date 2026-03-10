@@ -59,10 +59,10 @@ function getOutputDir(stepTemplate: string): string {
 /**
  * Extract directory paths from the agent prompt.
  *
- * The Rust backend injects these into every prompt:
- *   "The context directory is: /path/to/context."
- *   "The skill output directory (SKILL.md and references/) is: /path/to/output."
- *   "The skill directory is: /path/to/skill."
+ * SDK protocol: prompt contains only "The skill name is: X" and "The workspace directory is: Y".
+ * Agents derive context_dir as workspace_dir/context and read .skill_output_dir for skill output path.
+ * This function supports both the legacy format (explicit paths in prompt) and the new format
+ * (workspace_dir only; context and skill output derived or read from .skill_output_dir).
  */
 /** @internal Exported for testing only. */
 export function parsePromptPaths(prompt: string): {
@@ -71,10 +71,11 @@ export function parsePromptPaths(prompt: string): {
   skillOutputDir: string | null;
   skillDir: string | null;
 } {
-  // Use [^\n]+ to capture paths that may contain dots (e.g., /Users/john.doe/)
   const workspaceMatch = prompt.match(
     /The workspace directory is: ([^\n]+?)\.\s/,
   );
+  const workspaceDir = workspaceMatch?.[1]?.trim() ?? null;
+
   const contextMatch = prompt.match(
     /The context directory is: ([^\n]+?)\.\s/,
   );
@@ -85,12 +86,47 @@ export function parsePromptPaths(prompt: string): {
     /The skill directory is: ([^\n]+?)\.\s/,
   );
 
+  // Legacy format: explicit context and/or skill output in prompt — use them
+  const contextDir =
+    contextMatch?.[1]?.trim() ??
+    (workspaceDir !== null ? path.join(workspaceDir, "context") : null);
+  const skillOutputDir = outputMatch?.[1]?.trim() ?? null;
+
   return {
-    workspaceDir: workspaceMatch?.[1]?.trim() ?? null,
-    contextDir: contextMatch?.[1]?.trim() ?? null,
-    skillOutputDir: outputMatch?.[1]?.trim() ?? null,
-    skillDir: skillDirMatch?.[1]?.trim() ?? null,
+    workspaceDir,
+    contextDir,
+    skillOutputDir,
+    skillDir: skillDirMatch?.[1]?.trim() ?? skillOutputDir ?? null,
   };
+}
+
+/**
+ * Resolve all paths from the prompt. For the new SDK protocol, reads .skill_output_dir from the workspace directory.
+ */
+export async function resolvePromptPathsAsync(prompt: string): Promise<{
+  workspaceDir: string | null;
+  contextDir: string | null;
+  skillOutputDir: string | null;
+  skillDir: string | null;
+}> {
+  const parsed = parsePromptPaths(prompt);
+  // New SDK protocol: skill output path not in prompt — read from .skill_output_dir
+  if (parsed.skillOutputDir === null && parsed.workspaceDir !== null) {
+    const dotPath = path.join(parsed.workspaceDir, ".skill_output_dir");
+    try {
+      const content = await fs.readFile(dotPath, "utf-8");
+      const skillOutputDir = content.trim();
+      return {
+        workspaceDir: parsed.workspaceDir,
+        contextDir: parsed.contextDir,
+        skillOutputDir: skillOutputDir || null,
+        skillDir: skillOutputDir || null,
+      };
+    } catch {
+      // .skill_output_dir missing (e.g. old run) — keep parsed
+    }
+  }
+  return parsed;
 }
 
 /** Check if a path exists (async replacement for fs.existsSync). */
@@ -239,7 +275,7 @@ async function writeMockOutputFiles(
 
   if (!(await pathExists(srcDir))) return;
 
-  const paths = parsePromptPaths(config.prompt);
+  const paths = await resolvePromptPathsAsync(config.prompt);
 
   // Determine the destination root for this step's files.
   //

@@ -19,13 +19,9 @@ Read answer-evaluation verdicts, then orchestrate targeted refinements for non-c
 
 ## Context
 
-- The coordinator provides these standard fields at runtime:
-  - The **skill name**
-  - The **context directory** path (contains `clarifications.json`; refinements are merged back into it)
-  - The **skill output directory** path
-  - The **workspace directory** path (contains `user-context.md` and `answer-evaluation.json`)
-- **User context**: Read `{workspace_directory}/user-context.md` (per User Context protocol). Pass full user context to every sub-agent under a `## User Context` heading.
-- **Single artifact**: All refinements and flags are added in-place to `clarifications.json`.
+- **SDK protocol**: You receive only **skill name** and **workspace directory**. Read `user-context.md` and `.skill_output_dir` from the workspace directory first. Derive **context_dir** as `workspace_dir/context`; **skill output directory** is the path in `.skill_output_dir`.
+- **User context**: Read `{workspace_dir}/user-context.md` (per User Context protocol). Pass full user context to every sub-agent under a `## User Context` heading.
+- **Single artifact**: All refinements and flags are added in-place to `clarifications.json` in context_dir.
 
 </context>
 
@@ -39,9 +35,9 @@ Read answer-evaluation verdicts, then orchestrate targeted refinements for non-c
 |---|---|---|
 | `detailed-<section-slug>` | sonnet | Generate refinement questions for one topic section for questions where the user gave a non-clear or needs-refinement answer |
 
-### Scope Recommendation Guard
+### Scope guard
 
-Check `clarifications.json` per the Scope Recommendation Guard protocol. If detected, return:
+Check `{context_dir}/clarifications.json` for `metadata.scope_recommendation === true`. If set, return:
 
 ```json
 {
@@ -52,11 +48,9 @@ Check `clarifications.json` per the Scope Recommendation Guard protocol. If dete
 }
 ```
 
-## Phase 1: Load Evaluation Verdicts
+## Phase 1: Load evaluation verdicts
 
-Read `{workspace_directory}/user-context.md` (per User Context protocol).
-
-Read `clarifications.json` from the context directory and `answer-evaluation.json` from the workspace directory. Extract the `per_question` array. Each entry has:
+Read `{workspace_dir}/user-context.md` first (per User Context protocol). Read `{context_dir}/clarifications.json` and `{workspace_dir}/answer-evaluation.json`. Extract the `per_question` array. Each entry has:
 
 - `question_id` (e.g., Q1, Q2, ...)
 - `verdict` — one of `clear`, `needs_refinement`, `not_answered`, or `vague`

@@ -21,9 +21,8 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 
 ## Context
 
-- Coordinator provides: **skill name**, **purpose**, **context directory** (has `decisions.json`), **skill output directory**, **workspace directory** (has `user-context.md`)
-- Read `{workspace_directory}/user-context.md` (per User Context protocol) to tailor tone, examples, and focus
-- Read `decisions.json` — primary input (in rewrite mode, also read existing skill files)
+- **SDK protocol**: You receive only **skill name** and **workspace directory**. Read `user-context.md` and `.skill_output_dir` from the workspace directory first. Derive **context_dir** as `workspace_dir/context`; **skill output directory** is the path in `.skill_output_dir`. Purpose and all user context come from `user-context.md`.
+- Read `{context_dir}/decisions.json` — primary input (in rewrite mode, also read existing skill files)
 
 </context>
 
@@ -33,9 +32,9 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 
 ## Guards
 
-Check `decisions.json` before doing any work. If `metadata.contradictory_inputs == "revised"`, skip reading `clarifications.json` entirely — treat `decisions.json` as the authoritative resolved source and proceed directly to skill generation. Otherwise check both `decisions.json` and `clarifications.json` and block if either condition is true:
+Read `{context_dir}/decisions.json` first. If `metadata.contradictory_inputs == "revised"`, skip reading `clarifications.json` — treat `decisions.json` as authoritative and proceed. Otherwise check both and block if either guard is true:
 
-**Scope recommendation** — if `metadata.scope_recommendation` is `true` in `clarifications.json` or in `decisions.json` metadata, write this stub to `SKILL.md` and return:
+**Scope guard** — if `metadata.scope_recommendation === true` in `{context_dir}/clarifications.json` or `{context_dir}/decisions.json`, write this stub to `SKILL.md` and return:
 
 ```text
 ---
@@ -48,7 +47,7 @@ scope_recommendation: true
 The research planner determined the skill scope is too broad. See `clarifications.json` for recommended narrower skills. No skill was generated.
 ```
 
-**Contradictory inputs** — if `metadata.contradictory_inputs == true` in `decisions.json`, write this stub to `SKILL.md` and return:
+**Contradictory inputs guard** — if `metadata.contradictory_inputs === true` in `{context_dir}/decisions.json`, write this stub to `SKILL.md` and return:
 
 ```text
 ---
@@ -61,7 +60,7 @@ contradictory_inputs: true
 The user's answers contain unresolvable contradictions. See `decisions.json` for details. Resolve the contradictions before generating the skill.
 ```
 
-**User-revised contradictions** — if `metadata.contradictory_inputs == "revised"` in `decisions.json`, the user has reviewed the flagged decisions and edited them directly. Treat `decisions.json` as the authoritative resolved source and generate the skill normally. Do not write a stub.
+**User-revised contradictions** — if `metadata.contradictory_inputs == "revised"` in `{context_dir}/decisions.json`, treat it as authoritative and generate the skill normally. Do not write a stub.
 
 ## Phase 1: Plan the Skill Structure
 

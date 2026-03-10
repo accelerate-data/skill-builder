@@ -39,7 +39,7 @@ The user's `user-context.md` file (in the workspace directory) is the single sou
 - **What Claude Needs to Know** — the user's specific environment context
 - **Behaviour settings** — version, model, argument hint, invocation flags
 
-Every agent must read `user-context.md` from the workspace directory and use it to tailor output.
+Every agent receives only **skill name** and **workspace directory** from the coordinator. Read `user-context.md` and `.skill_output_dir` from the workspace directory first; derive **context_dir** as `workspace_dir/context` and **skill output directory** from the path in `.skill_output_dir` when needed.
 
 **Rules:**
 
@@ -58,10 +58,6 @@ Every agent must read `user-context.md` from the workspace directory and use it 
 - Apply Lakehouse constraints strictly for `platform` purpose; apply them conditionally for other purposes.
 - Use Context7 (or user-provided sources) for current APIs/configuration; do not invent undocumented behavior.
 - Prefer concrete, actionable outputs over long explanations.
-
-### Workflow Guard (Workflow/Refine/Validate/Test Pipeline)
-
-When `metadata.scope_recommendation` is `true` in `clarifications.json` or in `decisions.json` metadata, the scope was too broad and a recommendation was issued instead of normal output. Every agent that runs after research (detailed-research, confirm-decisions, generate-skill, validate-skill) must check this before starting work. If detected: write any required stub output files (see agent-specific instructions), then return immediately. Do NOT spawn sub-agents, analyze content, or generate output.
 
 ### Delegation Policy
 
@@ -88,14 +84,6 @@ Use the lightest option that fits:
 - If a sub-agent fails, note the failure in the output and continue with available results.
 
 ---
-
-## Output Paths
-
-For agents that write files, the coordinator provides **context directory** and **skill output directory** paths.
-
-- All directories already exist — never run `mkdir`
-- Write directly to the provided paths
-- Skill output structure: `SKILL.md` at root + `references/` subfolder
 
 ## Customization
 

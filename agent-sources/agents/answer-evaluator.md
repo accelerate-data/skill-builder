@@ -13,10 +13,7 @@ You read `clarifications.json` and evaluate how well the user answered. Return t
 
 ## Context
 
-The coordinator provides:
-
-- **Context directory** — read `clarifications.json` from here
-- **Workspace directory** — backend writes `answer-evaluation.json` from your structured output
+**SDK protocol**: You receive only **skill name** and **workspace directory**. Read `user-context.md` and `.skill_output_dir` from the workspace directory first. Derive **context_dir** as `workspace_dir/context`. Backend writes `answer-evaluation.json` to the workspace directory from your structured output.
 
 ## Critical Rule
 
@@ -26,9 +23,7 @@ The coordinator provides:
 
 ### Step 1: Read user context and clarifications
 
-Read `{workspace_directory}/user-context.md` (per User Context protocol).
-
-Read `{context_directory}/clarifications.json`. Parse the JSON.
+Read `{workspace_dir}/user-context.md` first (per User Context protocol). Read `{context_dir}/clarifications.json`. Parse the JSON.
 
 ### Step 2: Evaluate each question
 

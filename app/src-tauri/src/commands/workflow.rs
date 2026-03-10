@@ -1475,30 +1475,44 @@ pub fn write_user_context_file(
     }
 }
 
+/// Writes `workspace_dir/.skill_output_dir` with the absolute path to the skill output directory.
+/// Agents read this file to derive the skill output path; call before every agent run so the
+/// prompt only needs skill name and workspace_dir.
+pub(crate) fn write_skill_output_dir_file(workspace_dir: &Path, skill_output_dir: &Path) {
+    let path = workspace_dir.join(".skill_output_dir");
+    let content = skill_output_dir.to_string_lossy().replace('\\', "/");
+    if let Err(e) = std::fs::write(&path, &content) {
+        log::warn!(
+            "[write_skill_output_dir_file] Failed to write {}: {}",
+            path.display(),
+            e
+        );
+    } else {
+        log::debug!(
+            "[write_skill_output_dir_file] Wrote .skill_output_dir ({} bytes) to {}",
+            content.len(),
+            workspace_dir.display()
+        );
+    }
+}
+
 fn build_prompt(
     skill_name: &str,
     workspace_path: &str,
-    skills_path: &str,
+    _skills_path: &str,
     author_login: Option<&str>,
     created_at: Option<&str>,
     max_dimensions: u32,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
-    let context_dir = Path::new(workspace_path).join(skill_name).join("context");
-    let skill_output_dir = Path::new(skills_path).join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    let context_str = context_dir.to_string_lossy().replace('\\', "/");
-    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
     let mut prompt = format!(
-        "The skill name is: {}. \
-         The workspace directory is: {}. \
-         The context directory is: {}. \
-         The skill output directory (SKILL.md and references/) is: {}. \
+        "The skill name is: {}. The workspace directory is: {}. \
+         Read user-context.md and .skill_output_dir from the workspace directory first. \
+         Derive context_dir as workspace_dir/context. The skill output directory (SKILL.md and references/) is the path in .skill_output_dir. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
         skill_name,
         workspace_str,
-        context_str,
-        skill_output_str,
     );
 
     if let Some(author) = author_login {
@@ -1518,7 +1532,7 @@ fn build_prompt(
         max_dimensions
     ));
 
-    prompt.push_str(" Read user-context.md from the workspace directory for purpose, description, and all user context. The workspace directory may contain other files written by the workflow (such as answer-evaluation.json) — read only the files explicitly named in your agent instructions. Do not read the logs/ directory or any file not named in your instructions.");
+    prompt.push_str(" The workspace directory may contain other files written by the workflow (such as answer-evaluation.json) — read only the files explicitly named in your agent instructions. Do not read the logs/ directory or any file not named in your instructions.");
 
     prompt
 }
@@ -1738,6 +1752,10 @@ async fn run_workflow_step_inner(
         settings.user_invocable,
         settings.disable_model_invocation,
     );
+
+    let workspace_dir = Path::new(workspace_path).join(skill_name);
+    let skill_output_dir = Path::new(&settings.skills_path).join(skill_name);
+    write_skill_output_dir_file(&workspace_dir, &skill_output_dir);
 
     let prompt = build_prompt(
         skill_name,
@@ -2318,7 +2336,7 @@ pub async fn run_answer_evaluator(
 
     // Read settings from DB — same pattern as read_workflow_settings but without
     // step-specific validation (this is a gate, not a workflow step).
-    let (api_key, workspace_path_from_settings, industry, function_role, intake_json, preferred_model) = {
+    let (api_key, skills_path, industry, function_role, intake_json, preferred_model) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
             log::error!("run_answer_evaluator: failed to read settings: {}", e);
@@ -2331,10 +2349,11 @@ pub async fn run_answer_evaluator(
                 return Err("Anthropic API key not configured".to_string());
             }
         };
-        let wp = settings.workspace_path.ok_or_else(|| {
+        let _wp = settings.workspace_path.ok_or_else(|| {
             log::error!("run_answer_evaluator: workspace_path not configured");
             "Workspace path not configured".to_string()
         })?;
+        let sp = settings.skills_path.unwrap_or_else(|| workspace_path.clone());
         let run_row = crate::db::get_workflow_run(&conn, &skill_name)
             .ok()
             .flatten();
@@ -2343,7 +2362,7 @@ pub async fn run_answer_evaluator(
         let model = resolve_model_id("haiku");
         (
             key,
-            wp,
+            sp,
             settings.industry,
             settings.function_role,
             ij,
@@ -2368,21 +2387,21 @@ pub async fn run_answer_evaluator(
         None,
     );
 
-    let context_dir = std::path::Path::new(&workspace_path_from_settings)
-        .join(&skill_name)
-        .join("context");
-    let workspace_dir = std::path::Path::new(&workspace_path).join(&skill_name);
-    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    let context_str = context_dir.to_string_lossy().replace('\\', "/");
+    let workspace_dir = Path::new(&workspace_path).join(&skill_name);
+    let skill_output_dir = Path::new(&skills_path).join(&skill_name);
+    write_skill_output_dir_file(&workspace_dir, &skill_output_dir);
 
-    // Point agent at workspace and context dirs; user-context.md is already written.
+    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+
+    // SDK calling protocol: only skill name and workspace_dir; agent reads user-context and .skill_output_dir first.
     let prompt = format!(
-        "The workspace directory is: {workspace}. \
-         The context directory is: {context}. \
+        "The skill name is: {}. The workspace directory is: {}. \
+         Read user-context.md and .skill_output_dir from the workspace directory first. \
+         Derive context_dir as workspace_dir/context. \
          All directories already exist — do not create any directories. \
-         Read {workspace}/user-context.md for purpose, description, and all user context. Use it to evaluate answers in the user's specific domain.",
-        workspace = workspace_str,
-        context = context_str,
+         Use user-context.md to evaluate answers in the user's specific domain.",
+        skill_name,
+        workspace_str,
     );
 
     log::debug!("run_answer_evaluator: prompt={}", prompt);
@@ -3635,13 +3654,12 @@ mod tests {
             5,
         );
         assert!(prompt.contains("my-skill"));
-        // 3 distinct paths in prompt
+        // SDK protocol: only skill name and workspace_dir; agent derives context and reads .skill_output_dir
         assert!(prompt
             .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
-        assert!(
-            prompt.contains("The context directory is: /home/user/.vibedata/skill-builder/my-skill/context")
-        );
-        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
+        assert!(prompt.contains("Read user-context.md and .skill_output_dir"));
+        assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
+        assert!(prompt.contains("path in .skill_output_dir"));
     }
 
     #[test]
@@ -3689,36 +3707,27 @@ mod tests {
 
     #[test]
     fn test_answer_evaluator_prompt_uses_standard_paths() {
-        // The answer-evaluator prompt must follow the same "workspace directory" /
-        // "context directory" pattern as build_prompt so the mock agent and real
-        // agent can parse paths consistently.
+        // The answer-evaluator prompt follows the SDK protocol: only skill name and workspace_dir.
         let workspace_path = "/home/user/.vibedata/skill-builder";
-        let skills_path = "/home/user/my-skills";
         let skill_name = "my-skill";
-
-        let context_dir = std::path::Path::new(skills_path)
-            .join(skill_name)
-            .join("context");
         let workspace_dir = std::path::Path::new(workspace_path).join(skill_name);
+        let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
 
         let prompt = format!(
-            "The workspace directory is: {workspace}. \
-             The context directory is: {context}. \
+            "The skill name is: {}. The workspace directory is: {}. \
+             Read user-context.md and .skill_output_dir from the workspace directory first. \
+             Derive context_dir as workspace_dir/context. \
              All directories already exist — do not create any directories.",
-            workspace = workspace_dir.to_string_lossy().replace('\\', "/"),
-            context = context_dir.to_string_lossy().replace('\\', "/"),
+            skill_name,
+            workspace_str,
         );
 
-        // Verify standard path markers that mock agent and agent prompts rely on
+        assert!(prompt.contains("The skill name is: my-skill"));
         assert!(prompt
-            .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill."));
-        assert!(prompt.contains("The context directory is: /home/user/my-skills/my-skill/context."));
+            .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
+        assert!(prompt.contains("Read user-context.md and .skill_output_dir"));
+        assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
         assert!(prompt.contains("do not create any directories"));
-        // Workspace dir is NOT context dir (answer-evaluation.json goes to workspace)
-        assert_ne!(
-            workspace_dir.to_str().unwrap(),
-            context_dir.to_str().unwrap(),
-        );
     }
 
     #[test]

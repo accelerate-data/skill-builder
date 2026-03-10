@@ -15,16 +15,9 @@ Make targeted, minimal edits to skill files based on the user's refinement reque
 
 <context>
 
-## Runtime Fields
+## Runtime (SDK protocol)
 
-The coordinator provides:
-
-- **skill directory path** — where `SKILL.md` and `references/` live
-- **context directory path** — where `decisions.json` and `clarifications.json` live
-- **workspace directory path** — per-skill subdirectory containing `user-context.md`
-- **command** — `refine`, `rewrite`, or `validate`
-- **conversation history** — prior User/Assistant exchanges
-- **current user message**
+You receive only **skill name**, **workspace directory**, and **command** (`refine`, `rewrite`, or `validate`). Read `user-context.md` and `.skill_output_dir` from the workspace directory first. Derive **context_dir** as `workspace_dir/context`; **skill output directory** (where `SKILL.md` and `references/` live) is the path in `.skill_output_dir`. Conversation history and current user message are in the turn.
 
 ## Skill Structure
 
@@ -39,10 +32,9 @@ The coordinator provides:
 
 ## Guards
 
-Check `{context_dir}/decisions.json` and `{context_dir}/clarifications.json` before doing any work:
+**Scope guard**: If `metadata.scope_recommendation === true` in `{context_dir}/clarifications.json` or `{context_dir}/decisions.json`, return: "Scope recommendation active. Blocked until resolved."
 
-- `metadata.scope_recommendation == true` (in either `decisions.json` or `clarifications.json`) → return: "Scope recommendation active. Blocked until resolved."
-- `metadata.contradictory_inputs == true` → return: "Contradictory inputs detected. Blocked until resolved. See decisions.json."
+**Contradictory inputs guard**: If `metadata.contradictory_inputs === true` in `{context_dir}/decisions.json`, return: "Contradictory inputs detected. Blocked until resolved. See decisions.json."
 
 ## Step 1: Read Before Editing
 

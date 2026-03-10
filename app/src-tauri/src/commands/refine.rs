@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::commands::imported_skills::validate_skill_name;
-use crate::commands::workflow::resolve_model_id;
+use crate::commands::workflow::{resolve_model_id, write_skill_output_dir_file};
 use crate::db::{self, Db};
 use crate::types::{RefineFileDiff, RefineDiff, RefineSessionInfo, SkillFileContent};
 
@@ -147,50 +147,37 @@ fn build_followup_prompt(
 }
 
 /// Build the refine agent prompt with all runtime fields.
-/// Matches the workflow pattern in `workflow.rs::build_prompt` — provides skill directory,
-/// context directory, workspace directory, command, and a pointer to user-context.md.
-/// User context (purpose, industry, intake fields) is NOT inlined — the agent reads
-/// user-context.md from the workspace directory at runtime.
+/// SDK calling protocol: only skill name, workspace_dir, and command. Agent reads
+/// user-context.md and .skill_output_dir first; derives context_dir and skill output path.
 fn build_refine_prompt(
     skill_name: &str,
     workspace_path: &str,
-    skills_path: &str,
+    _skills_path: &str,
     user_message: &str,
     target_files: Option<&[String]>,
     command: Option<&str>,
 ) -> String {
-    let skill_dir = Path::new(skills_path).join(skill_name);
-    let context_dir = Path::new(workspace_path).join(skill_name).join("context");
     let workspace_dir = Path::new(workspace_path).join(skill_name);
-    let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
-    let context_dir_str = context_dir.to_string_lossy().replace('\\', "/");
-    let workspace_dir_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
 
     let effective_command = command.unwrap_or("refine");
 
     let mut prompt = format!(
-        "The skill name is: {}. The command is: {}. \
-         The skill directory is: {}. The context directory is: {}. The workspace directory is: {}. \
+        "The skill name is: {}. The command is: {}. The workspace directory is: {}. \
+         Read user-context.md and .skill_output_dir from the workspace directory first. \
+         Derive context_dir as workspace_dir/context. The skill output directory (SKILL.md and references/) is the path in .skill_output_dir. \
          All directories already exist — never create directories with mkdir or any other method.",
         skill_name,
         effective_command,
-        skill_dir_str,
-        context_dir_str,
-        workspace_dir_str,
+        workspace_str,
     );
 
-    prompt.push_str(" Read user-context.md from the workspace directory for purpose, description, and all user context.");
-
-    // File constraint: restrict edits to specific files if @file targets were specified
+    // File constraint: restrict edits to specific files if @file targets were specified (paths relative to skill output dir)
     if let Some(files) = target_files {
         if !files.is_empty() {
-            let abs_files: Vec<String> = files
-                .iter()
-                .map(|f| format!("{}/{}", skill_dir_str, f))
-                .collect();
             prompt.push_str(&format!(
-                "\n\nIMPORTANT: Only edit these files: {}. Do not modify any other files.",
-                abs_files.join(", ")
+                "\n\nIMPORTANT: Only edit these files (relative to skill output directory): {}. Do not modify any other files.",
+                files.join(", ")
             ));
         }
     }
@@ -619,7 +606,11 @@ pub async fn send_refine_message(
             }
         }
 
-        // 4. Build prompt with paths and pointer to user-context.md (no inline context)
+        // 3b. Write .skill_output_dir so the agent derives paths (SDK calling protocol).
+        let skill_output_dir = Path::new(&skills_path).join(&skill_name);
+        write_skill_output_dir_file(&skill_workspace_dir, &skill_output_dir);
+
+        // 4. Build prompt: only skill name, workspace_dir, command (no inline paths).
         let prompt = build_refine_prompt(
             &skill_name,
             &workspace_path,
@@ -1357,9 +1348,9 @@ mod tests {
         let prompt = build_refine_prompt("my-skill", "/home/user/.vibedata/skill-builder", "/home/user/skills",
             "Add metrics section", None, None,
         );
-        assert!(prompt.contains("The skill directory is: /home/user/skills/my-skill"));
-        assert!(prompt.contains("The context directory is: /home/user/.vibedata/skill-builder/my-skill/context"));
         assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
+        assert!(prompt.contains("Read user-context.md and .skill_output_dir"));
+        assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
     }
 
     #[test]
@@ -1403,9 +1394,9 @@ mod tests {
         let prompt = build_refine_prompt("my-skill", "/ws", "/skills",
             "update these", Some(&files), None,
         );
-        assert!(prompt.contains("IMPORTANT: Only edit these files:"));
-        assert!(prompt.contains("/skills/my-skill/SKILL.md"));
-        assert!(prompt.contains("/skills/my-skill/references/metrics.md"));
+        assert!(prompt.contains("IMPORTANT: Only edit these files (relative to skill output directory):"));
+        assert!(prompt.contains("SKILL.md"));
+        assert!(prompt.contains("references/metrics.md"));
     }
 
     #[test]

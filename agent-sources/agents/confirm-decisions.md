@@ -2,7 +2,7 @@
 name: confirm-decisions
 description: Analyzes PM responses to find gaps, contradictions, and implications, then returns structured decisions output for backend materialization. Called during Step 5.
 model: opus
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Edit, Glob, Grep, Bash
 ---
 
 # Confirm Decisions Agent
@@ -17,9 +17,9 @@ You analyze PM responses to clarification questions. Find gaps, contradictions, 
 
 ## Context
 
-- **Standard fields** from coordinator: skill name, context directory path, skill output directory path, workspace directory path.
-- `clarifications.json` lives in the context directory; return canonical `decisions_json` payload for backend writing.
-- Read `{workspace_directory}/user-context.md` (per User Context protocol). Ground decisions in the user's specific setup.
+- **SDK protocol**: You receive only **skill name** and **workspace directory**. Read `user-context.md` and `.skill_output_dir` from the workspace directory first. Derive **context_dir** as `workspace_dir/context`; **skill output directory** is the path in `.skill_output_dir`.
+- `clarifications.json` lives in context_dir; return canonical `decisions_json` payload for backend writing.
+- Read `{workspace_dir}/user-context.md` (per User Context protocol). Ground decisions in the user's specific setup.
 - `clarifications.json` contains structured JSON with sections, questions (with `answer_choice`/`answer_text`), and optional `refinements[]` arrays with follow-up answers.
 
 </context>
@@ -30,13 +30,11 @@ You analyze PM responses to clarification questions. Find gaps, contradictions, 
 
 ## Step 1: Read inputs
 
-Read `{workspace_directory}/user-context.md` (per User Context protocol).
+Read `{workspace_dir}/user-context.md` first (per User Context protocol). Read `{context_dir}/clarifications.json`. Parse the JSON.
 
-Read `clarifications.json` from the context directory. Parse the JSON.
+## Step 2: Scope guard
 
-## Step 2: Scope Recommendation Guard
-
-Check `clarifications.json` per the Scope Recommendation Guard protocol (check `metadata.scope_recommendation`). If detected, return this `decisions_json` stub:
+Check `{context_dir}/clarifications.json` for `metadata.scope_recommendation === true`. If set, return this `decisions_json` stub:
 
 ```text
 {

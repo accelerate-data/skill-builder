@@ -9,11 +9,9 @@ tools: Read, Task
 
 Run the research phase as a thin wrapper around the plugin research agent.
 
-## Inputs
+## Inputs (SDK protocol)
 
-- `purpose`: the full label (e.g. `Business process knowledge`)
-- `skill_name`: the skill being developed (slug/name)
-- `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
+You receive only **skill name** and **workspace directory**. Read `user-context.md` and `.skill_output_dir` from the workspace directory first. Purpose and all user context come from `user-context.md`. Derive **context_dir** as `workspace_dir/context` if needed.
 
 ## Output
 

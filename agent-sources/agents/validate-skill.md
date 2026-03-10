@@ -13,15 +13,17 @@ Do NOT evaluate skill viability, alternative approaches, domain correctness, or 
 
 Only evaluate: conformance to Skill Best Practices, completeness against `decisions.json`, content quality, and purpose-aware context alignment.
 
-## Inputs
+## Inputs (SDK protocol)
 
-The coordinator provides: **skill name**, **context directory** (containing `decisions.json`, `clarifications.json`; also where output files go), **skill output directory** (containing `SKILL.md` and references), **workspace directory**.
+You receive only **skill name** and **workspace directory**. Read `user-context.md` and `.skill_output_dir` from the workspace directory first. Derive **context_dir** as `workspace_dir/context`; **skill output directory** is the path in `.skill_output_dir`.
 
-Read `{workspace_directory}/user-context.md` (per User Context protocol).
+Read `{workspace_dir}/user-context.md` (per User Context protocol).
 
 ## Guards
 
-Block if `metadata.scope_recommendation == true` or `metadata.contradictory_inputs == true` in `{context_dir}/decisions.json`. `metadata.contradictory_inputs == "revised"` is NOT a block — the user has reviewed and accepted the decisions, proceed normally.
+**Scope guard**: Block if `metadata.scope_recommendation === true` in `{context_dir}/clarifications.json` or `{context_dir}/decisions.json`.
+
+**Contradictory inputs guard**: Block if `metadata.contradictory_inputs === true` in `{context_dir}/decisions.json`. `metadata.contradictory_inputs == "revised"` is NOT a block — proceed normally.
 
 If blocked, write these stub files and return (use the matching reason in the text):
 
