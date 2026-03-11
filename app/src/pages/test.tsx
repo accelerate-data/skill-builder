@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SkillPicker } from "@/components/refine/skill-picker";
-import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
+import { useAgentStore, flushMessageBuffer, type AgentMessage } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useTestStore } from "@/stores/test-store";
 import { useSettingsStore } from "@/stores/settings-store";
