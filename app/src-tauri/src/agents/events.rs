@@ -28,35 +28,64 @@ pub struct AgentInitError {
 pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, line: &str) {
     match serde_json::from_str::<serde_json::Value>(line) {
         Ok(message) => {
-            // Detect system init progress events and emit on a dedicated channel
+            // Detect system init progress events and emit on a dedicated channel.
+            // Only intercept specific init subtypes — other system messages
+            // (e.g. compact_boundary) must fall through to agent-message.
             if message.get("type").and_then(|t| t.as_str()) == Some("system") {
                 if let Some(subtype) = message.get("subtype").and_then(|s| s.as_str()) {
-                    let timestamp = message
-                        .get("timestamp")
-                        .and_then(|t| t.as_u64())
-                        .unwrap_or(0);
-                    let progress = AgentInitProgress {
-                        agent_id: agent_id.to_string(),
-                        subtype: subtype.to_string(),
-                        timestamp,
-                    };
-                    log::debug!("[event:agent-init-progress:{}] {}", agent_id, subtype);
-                    if let Err(e) = app_handle.emit("agent-init-progress", &progress) {
-                        log::warn!(
-                            "Failed to emit agent-init-progress for {}: {}",
-                            agent_id, e
-                        );
+                    if matches!(subtype, "init_start" | "sdk_ready" | "init") {
+                        let timestamp = message
+                            .get("timestamp")
+                            .and_then(|t| t.as_u64())
+                            .unwrap_or(0);
+                        let progress = AgentInitProgress {
+                            agent_id: agent_id.to_string(),
+                            subtype: subtype.to_string(),
+                            timestamp,
+                        };
+                        log::debug!("[event:agent-init-progress:{}] {}", agent_id, subtype);
+                        if let Err(e) = app_handle.emit("agent-init-progress", &progress) {
+                            log::warn!(
+                                "Failed to emit agent-init-progress for {}: {}",
+                                agent_id, e
+                            );
+                        }
+                        return;
                     }
-                    return;
                 }
+            }
+
+            // Log display_item routing at debug level for troubleshooting
+            if message.get("type").and_then(|t| t.as_str()) == Some("display_item") {
+                let item_type = message
+                    .get("item")
+                    .and_then(|i| i.get("type"))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("unknown");
+                let item_id = message
+                    .get("item")
+                    .and_then(|i| i.get("id"))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("unknown");
+                log::debug!(
+                    "[event:agent-message:{}] display_item type={} id={}",
+                    agent_id, item_type, item_id
+                );
+            } else {
+                let msg_type = message
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("unknown");
+                log::debug!(
+                    "[event:agent-message:{}] pass_through type={}",
+                    agent_id, msg_type
+                );
             }
 
             let event = AgentEvent {
                 agent_id: agent_id.to_string(),
                 message,
             };
-            // Agent message content is captured in per-request JSONL transcripts —
-            // no need to dump it into the app log (even at DEBUG, it's enormous).
             if let Err(e) = app_handle.emit("agent-message", &event) {
                 log::warn!("Failed to emit agent-message for {}: {}", agent_id, e);
             }

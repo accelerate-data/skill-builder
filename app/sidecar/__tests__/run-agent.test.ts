@@ -44,10 +44,16 @@ describe("runAgentRequest", () => {
   });
 
   it("streams all messages to the onMessage callback", async () => {
+    // Use proper SDK message shapes that MessageProcessor can process
     const sdkMessages = [
-      { type: "agent_message", content: "step 1" },
-      { type: "tool_use", name: "Read", input: {} },
-      { type: "result", content: "done" },
+      {
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "step 1" }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      },
+      { type: "result", subtype: "success", usage: { input_tokens: 50, output_tokens: 20 }, total_cost_usd: 0.01 },
     ];
 
     async function* fakeConversation() {
@@ -60,11 +66,28 @@ describe("runAgentRequest", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    // First three messages are system events (sdk_plugins_debug, init_start, sdk_ready), then SDK messages
-    expect(messages).toHaveLength(6);
-    expect(messages[3]).toEqual({ type: "agent_message", content: "step 1" });
-    expect(messages[4]).toEqual({ type: "tool_use", name: "Read", input: {} });
-    expect(messages[5]).toEqual({ type: "result", content: "done" });
+    // Messages: system events (sdk_plugins_debug filtered, init_start, sdk_ready),
+    // then processed display items + pass-through raw messages
+    // init_start and sdk_ready are forwarded as-is (system category)
+    // sdk_plugins_debug is filtered (hardNoise)
+    // assistant → display_item(output) + raw assistant pass-through
+    // result → display_item(result) + raw result pass-through
+    const displayItems = messages.filter((m) => m.type === "display_item");
+    const systemMsgs = messages.filter((m) => m.type === "system");
+    const resultMsgs = messages.filter((m) => m.type === "result");
+
+    expect(systemMsgs.length).toBeGreaterThanOrEqual(2); // init_start + sdk_ready
+    expect(displayItems).toHaveLength(2); // output + result
+    expect(resultMsgs).toHaveLength(1); // pass-through result
+
+    // Verify display items
+    const outputItem = (displayItems[0] as Record<string, unknown>).item as Record<string, unknown>;
+    expect(outputItem.type).toBe("output");
+    expect(outputItem.outputText).toBe("step 1");
+
+    const resultItem = (displayItems[1] as Record<string, unknown>).item as Record<string, unknown>;
+    expect(resultItem.type).toBe("result");
+    expect(resultItem.resultStatus).toBe("success");
   });
 
   it("emits init_start and sdk_ready system events in order", async () => {

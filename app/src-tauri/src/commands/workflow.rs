@@ -1476,44 +1476,28 @@ pub fn write_user_context_file(
     }
 }
 
-/// Writes `workspace_dir/.skill_output_dir` with the absolute path to the skill output directory.
-/// Agents read this file to derive the skill output path; call before every agent run so the
-/// prompt only needs skill name and workspace_dir.
-pub(crate) fn write_skill_output_dir_file(workspace_dir: &Path, skill_output_dir: &Path) {
-    let path = workspace_dir.join(".skill_output_dir");
-    let content = skill_output_dir.to_string_lossy().replace('\\', "/");
-    if let Err(e) = std::fs::write(&path, &content) {
-        log::warn!(
-            "[write_skill_output_dir_file] Failed to write {}: {}",
-            path.display(),
-            e
-        );
-    } else {
-        log::debug!(
-            "[write_skill_output_dir_file] Wrote .skill_output_dir ({} bytes) to {}",
-            content.len(),
-            workspace_dir.display()
-        );
-    }
-}
 
 fn build_prompt(
     skill_name: &str,
     workspace_path: &str,
-    _skills_path: &str,
+    skills_path: &str,
     author_login: Option<&str>,
     created_at: Option<&str>,
     max_dimensions: u32,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let skill_output_dir = Path::new(skills_path).join(skill_name);
+    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
     let mut prompt = format!(
         "The skill name is: {}. The workspace directory is: {}. \
-         Read user-context.md and .skill_output_dir from the workspace directory first. \
-         Derive context_dir as workspace_dir/context. The skill output directory (SKILL.md and references/) is the path in .skill_output_dir. \
+         The skill output directory (SKILL.md and references/) is: {}. \
+         Read user-context.md from the workspace directory. \
+         Derive context_dir as workspace_dir/context. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
         skill_name,
         workspace_str,
+        skill_output_str,
     );
 
     if let Some(author) = author_login {
@@ -1753,10 +1737,6 @@ async fn run_workflow_step_inner(
         settings.user_invocable,
         settings.disable_model_invocation,
     );
-
-    let workspace_dir = Path::new(workspace_path).join(skill_name);
-    let skill_output_dir = Path::new(&settings.skills_path).join(skill_name);
-    write_skill_output_dir_file(&workspace_dir, &skill_output_dir);
 
     let prompt = build_prompt(
         skill_name,
@@ -2413,20 +2393,19 @@ pub async fn run_answer_evaluator(
     );
 
     let workspace_dir = Path::new(&workspace_path).join(&skill_name);
-    let skill_output_dir = Path::new(&skills_path).join(&skill_name);
-    write_skill_output_dir_file(&workspace_dir, &skill_output_dir);
-
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let skill_output_str = Path::new(&skills_path).join(&skill_name).to_string_lossy().replace('\\', "/");
 
-    // SDK calling protocol: only skill name and workspace_dir; agent reads user-context and .skill_output_dir first.
     let prompt = format!(
         "The skill name is: {}. The workspace directory is: {}. \
-         Read user-context.md and .skill_output_dir from the workspace directory first. \
+         The skill output directory (SKILL.md and references/) is: {}. \
+         Read user-context.md from the workspace directory. \
          Derive context_dir as workspace_dir/context. \
          All directories already exist — do not create any directories. \
          Use user-context.md to evaluate answers in the user's specific domain.",
         skill_name,
         workspace_str,
+        skill_output_str,
     );
 
     log::debug!("run_answer_evaluator: prompt={}", prompt);
@@ -3661,12 +3640,11 @@ mod tests {
             5,
         );
         assert!(prompt.contains("my-skill"));
-        // SDK protocol: only skill name and workspace_dir; agent derives context and reads .skill_output_dir
         assert!(prompt
             .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
-        assert!(prompt.contains("Read user-context.md and .skill_output_dir"));
+        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
+        assert!(prompt.contains("Read user-context.md from the workspace directory"));
         assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
-        assert!(prompt.contains("path in .skill_output_dir"));
     }
 
     #[test]
@@ -3714,25 +3692,29 @@ mod tests {
 
     #[test]
     fn test_answer_evaluator_prompt_uses_standard_paths() {
-        // The answer-evaluator prompt follows the SDK protocol: only skill name and workspace_dir.
         let workspace_path = "/home/user/.vibedata/skill-builder";
         let skill_name = "my-skill";
+        let skills_path = "/home/user/my-skills";
         let workspace_dir = std::path::Path::new(workspace_path).join(skill_name);
         let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+        let skill_output_str = std::path::Path::new(skills_path).join(skill_name).to_string_lossy().replace('\\', "/");
 
         let prompt = format!(
             "The skill name is: {}. The workspace directory is: {}. \
-             Read user-context.md and .skill_output_dir from the workspace directory first. \
+             The skill output directory (SKILL.md and references/) is: {}. \
+             Read user-context.md from the workspace directory. \
              Derive context_dir as workspace_dir/context. \
              All directories already exist — do not create any directories.",
             skill_name,
             workspace_str,
+            skill_output_str,
         );
 
         assert!(prompt.contains("The skill name is: my-skill"));
         assert!(prompt
             .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
-        assert!(prompt.contains("Read user-context.md and .skill_output_dir"));
+        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
+        assert!(prompt.contains("Read user-context.md from the workspace directory"));
         assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
         assert!(prompt.contains("do not create any directories"));
     }

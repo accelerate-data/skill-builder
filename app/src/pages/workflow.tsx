@@ -1121,7 +1121,7 @@ export default function WorkflowPage() {
   const renderContent = () => {
     // 1. Agent running — show streaming output or init spinner
     if (activeAgentId) {
-      if (isInitializing && !runs[activeAgentId]?.messages.length) {
+      if (isInitializing && !runs[activeAgentId]?.messages.length && !runs[activeAgentId]?.displayItems.length) {
         return <AgentInitializingIndicator />;
       }
       return <AgentOutputPanel agentId={activeAgentId} />;

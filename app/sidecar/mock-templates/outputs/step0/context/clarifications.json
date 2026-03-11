@@ -43,7 +43,7 @@
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
           "recommendation": "A",
-          "answer_choice": null,
+          "answer_choice": "A",
           "answer_text": null,
           "refinements": []
         },
@@ -97,7 +97,7 @@
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
           "recommendation": "A",
-          "answer_choice": null,
+          "answer_choice": "A",
           "answer_text": null,
           "refinements": []
         },
@@ -151,7 +151,7 @@
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
           "recommendation": "A",
-          "answer_choice": null,
+          "answer_choice": "A",
           "answer_text": null,
           "refinements": []
         },

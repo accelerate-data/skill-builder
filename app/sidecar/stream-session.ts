@@ -3,6 +3,7 @@ import type { SidecarConfig } from "./config.js";
 import { buildQueryOptions } from "./options.js";
 import { createAbortState, linkExternalSignal } from "./shutdown.js";
 import { emitSystemEvent, discoverInstalledPlugins } from "./run-agent.js";
+import { MessageProcessor } from "./message-processor.js";
 
 /** Sentinel used to close the async generator cleanly. */
 const CLOSE_SENTINEL = Symbol("close");
@@ -173,12 +174,20 @@ export class StreamSession {
       "sdk_ready",
     );
 
+    // Process raw SDK messages through MessageProcessor for structured display items
+    const processor = new MessageProcessor();
+
     try {
       for await (const message of conversation) {
         if (state.abortController.signal.aborted) break;
 
         const msg = message as Record<string, unknown>;
-        onMessage(this.currentRequestId, msg);
+
+        // Process into display items + pass-through messages
+        const items = processor.process(msg);
+        for (const item of items) {
+          onMessage(this.currentRequestId, item as Record<string, unknown>);
+        }
 
         // Detect turn completion: emit for any non-tool_use stop reason.
         // This is more robust than checking only "end_turn" since the SDK
@@ -227,7 +236,9 @@ export class StreamSession {
       ? `Mock streaming response received:\n\n${preview}`
       : "Mock streaming response received.";
 
-    onMessage(requestId, {
+    // Build a raw assistant message and process through MessageProcessor
+    // so the frontend receives display_item envelopes (not legacy raw messages).
+    const rawAssistant = {
       type: "assistant",
       message: {
         model: "mock-stream",
@@ -242,7 +253,14 @@ export class StreamSession {
           cache_read_input_tokens: 0,
         },
       },
-    });
+    };
+
+    const processor = new MessageProcessor();
+    const items = processor.process(rawAssistant);
+    for (const item of items) {
+      onMessage(requestId, item as Record<string, unknown>);
+    }
+
     await new Promise((resolve) => setTimeout(resolve, 20));
     if (this.closed) return;
     onMessage(requestId, { type: "turn_complete" });

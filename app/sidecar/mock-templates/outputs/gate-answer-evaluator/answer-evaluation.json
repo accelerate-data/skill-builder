@@ -1,23 +1,20 @@
 {
-  "verdict": "mixed",
-  "answered_count": 8,
-  "empty_count": 2,
-  "vague_count": 1,
-  "contradictory_count": 1,
-  "total_count": 12,
-  "reasoning": "Most answers are usable, but there are unresolved gaps: one vague answer, one contradiction, and two unanswered refinements.",
+  "verdict": "sufficient",
+  "answered_count": 9,
+  "empty_count": 0,
+  "vague_count": 0,
+  "contradictory_count": 0,
+  "total_count": 9,
+  "reasoning": "All answers are clear and consistent. Ready to proceed.",
   "per_question": [
     { "question_id": "Q1", "verdict": "clear" },
-    { "question_id": "Q2", "verdict": "contradictory", "contradicts": "Q1", "reason": "Conflicts with scope defined in Q1." },
+    { "question_id": "Q2", "verdict": "clear" },
     { "question_id": "Q3", "verdict": "clear" },
     { "question_id": "Q4", "verdict": "clear" },
     { "question_id": "Q5", "verdict": "clear" },
-    { "question_id": "Q6", "verdict": "vague", "reason": "Missing concrete acceptance criteria and thresholds." },
+    { "question_id": "Q6", "verdict": "clear" },
     { "question_id": "Q7", "verdict": "clear" },
     { "question_id": "Q8", "verdict": "clear" },
-    { "question_id": "Q9", "verdict": "clear" },
-    { "question_id": "R1.1", "verdict": "not_answered" },
-    { "question_id": "R2.1", "verdict": "not_answered" },
-    { "question_id": "R5.1", "verdict": "clear" }
+    { "question_id": "Q9", "verdict": "clear" }
   ]
 }

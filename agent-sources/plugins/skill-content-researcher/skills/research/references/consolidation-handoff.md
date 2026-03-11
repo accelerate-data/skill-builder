@@ -16,7 +16,7 @@ Use extended thinking before writing. Consider cross-Task question interactions,
 
 This handoff always produces the initial clarifications output (before any detailed-research refinement pass).
 
-- Every question must have 2-4 choices plus a final "Other (please specify)" choice with `is_other: true`
+- Every question must have 2-4 concrete choices (all `is_other: false`) plus a final catch-all choice with text exactly `"Other (please specify)"` and `is_other: true`. Never set `is_other: true` on a concrete/specific choice — even negations like "No X exists" must be `is_other: false`.
 - Every question must include a `recommendation` field with recommended choice and rationale
 - `metadata.refinement_count` must be `0`
 - `metadata.must_answer_count` must equal the count of questions with `must_answer: true`
@@ -121,7 +121,7 @@ Use `references/schemas.md` as the only canonical schema source for `clarificati
 |---|---|---|---|
 | `id` | string | yes | Choice letter: `A`, `B`, `C`, `D`, etc. |
 | `text` | string | yes | Choice text (keep short — reasoning belongs in `recommendation`) |
-| `is_other` | boolean | yes | `true` only for the final "Other (please specify)" choice |
+| `is_other` | boolean | yes | `true` ONLY for the final catch-all "Other (please specify)" choice whose `text` is exactly `"Other (please specify)"`. All concrete/specific choices (even negations like "No X exists") must have `is_other: false`. |
 
 #### `notes[]` array
 
@@ -263,7 +263,7 @@ Parent is embedded in the ID: `R1.1` refines **Q1**, `R12.2` refines **Q12**.
 - `metadata.priority_questions` lists all question IDs where `must_answer: true`
 - `metadata.refinement_count` is `0`
 - `metadata.duplicates_removed` reflects actual deduplication count
-- Every question has 2-4 choices + "Other (please specify)" with `is_other: true`
+- Every question has 2-4 concrete choices (`is_other: false`) + final "Other (please specify)" (`is_other: true`)
 - Every question has a `recommendation` field
 - All `answer_choice` and `answer_text` values are `null`
 - All `refinements` arrays are empty `[]`

@@ -1,4 +1,5 @@
 import type { SidecarConfig } from "./config.js";
+import { MessageProcessor } from "./message-processor.js";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -71,10 +72,8 @@ function getOutputDir(stepTemplate: string): string {
 /**
  * Extract directory paths from the agent prompt.
  *
- * SDK protocol: prompt contains only "The skill name is: X" and "The workspace directory is: Y".
- * Agents derive context_dir as workspace_dir/context and read .skill_output_dir for skill output path.
- * This function supports both the legacy format (explicit paths in prompt) and the new format
- * (workspace_dir only; context and skill output derived or read from .skill_output_dir).
+ * Prompt includes all paths inline: workspace_dir, skill output dir, and optionally context_dir.
+ * context_dir is derived from workspace_dir/context when not explicit.
  */
 /** @internal Exported for testing only. */
 export function parsePromptPaths(prompt: string): {
@@ -98,7 +97,6 @@ export function parsePromptPaths(prompt: string): {
     /The skill directory is: ([^\n]+?)\.\s/,
   );
 
-  // Legacy format: explicit context and/or skill output in prompt — use them
   const contextDir =
     contextMatch?.[1]?.trim() ??
     (workspaceDir !== null ? path.join(workspaceDir, "context") : null);
@@ -113,7 +111,7 @@ export function parsePromptPaths(prompt: string): {
 }
 
 /**
- * Resolve all paths from the prompt. For the new SDK protocol, reads .skill_output_dir from the workspace directory.
+ * Resolve all paths from the prompt. Paths are now inline in the prompt string.
  */
 export async function resolvePromptPathsAsync(prompt: string): Promise<{
   workspaceDir: string | null;
@@ -121,24 +119,7 @@ export async function resolvePromptPathsAsync(prompt: string): Promise<{
   skillOutputDir: string | null;
   skillDir: string | null;
 }> {
-  const parsed = parsePromptPaths(prompt);
-  // New SDK protocol: skill output path not in prompt — read from .skill_output_dir
-  if (parsed.skillOutputDir === null && parsed.workspaceDir !== null) {
-    const dotPath = path.join(parsed.workspaceDir, ".skill_output_dir");
-    try {
-      const content = await fs.readFile(dotPath, "utf-8");
-      const skillOutputDir = content.trim();
-      return {
-        workspaceDir: parsed.workspaceDir,
-        contextDir: parsed.contextDir,
-        skillOutputDir: skillOutputDir || null,
-        skillDir: skillOutputDir || null,
-      };
-    } catch {
-      // .skill_output_dir missing (e.g. old run) — keep parsed
-    }
-  }
-  return parsed;
+  return parsePromptPaths(prompt);
 }
 
 /** Check if a path exists (async replacement for fs.existsSync). */
@@ -216,10 +197,13 @@ export async function runMockAgent(
   const lines = content.split("\n").filter((line) => line.trim());
   const structuredResultOverride = await buildStructuredMockResult(stepTemplate);
 
+  // Process mock template messages through MessageProcessor identically to live SDK
+  const processor = new MessageProcessor();
+
   let emittedResult = false;
   for (const line of lines) {
     if (externalSignal?.aborted) {
-      onMessage({
+      const cancelMsg: Record<string, unknown> = {
         type: "result",
         subtype: "error_during_execution",
         is_error: true,
@@ -229,7 +213,11 @@ export async function runMockAgent(
         num_turns: 0,
         total_cost_usd: 0,
         usage: { input_tokens: 0, output_tokens: 0 },
-      });
+      };
+      const items = processor.process(cancelMsg);
+      for (const item of items) {
+        onMessage(item as Record<string, unknown>);
+      }
       emittedResult = true;
       break;
     }
@@ -248,7 +236,11 @@ export async function runMockAgent(
         }
         emittedResult = true;
       }
-      onMessage(message);
+      // Process through MessageProcessor for display items
+      const items = processor.process(message);
+      for (const item of items) {
+        onMessage(item as Record<string, unknown>);
+      }
       // Short delay between messages for realistic UI streaming
       await delay(100);
     } catch {
@@ -260,7 +252,7 @@ export async function runMockAgent(
 
   // Safety net: always emit a result so the UI doesn't hang
   if (!emittedResult) {
-    onMessage({
+    const safetyResult: Record<string, unknown> = {
       type: "result",
       subtype: "success",
       result: `Mock: ${stepTemplate} completed`,
@@ -270,7 +262,11 @@ export async function runMockAgent(
       num_turns: 1,
       total_cost_usd: 0,
       usage: { input_tokens: 0, output_tokens: 0 },
-    });
+    };
+    const items = processor.process(safetyResult);
+    for (const item of items) {
+      onMessage(item as Record<string, unknown>);
+    }
   }
 }
 
@@ -454,6 +450,21 @@ export async function buildStructuredMockResult(
       conflicts_resolved: conflictsResolved,
       round,
       decisions_json: decisions,
+    };
+  }
+
+  if (stepTemplate === "step3-generate-skill") {
+    const skillMd = await readTextIfExists(
+      path.join(outputsRoot, "step3", "SKILL.md"),
+    );
+    if (!skillMd) return null;
+    return {
+      status: "generated",
+      evaluations_markdown:
+        "## Mock Evaluation\n\n" +
+        "- **Completeness:** All required sections present.\n" +
+        "- **Accuracy:** Patterns match domain best practices.\n" +
+        "- **Actionability:** Code examples are copy-paste ready.\n",
     };
   }
 
