@@ -825,13 +825,26 @@ impl SidecarPool {
 
                             if let Some(request_id) = msg.get("request_id").and_then(|r| r.as_str()) {
                                 // Intercept request_complete — sidecar signals it's ready for
-                                // the next request. Log but don't forward to the event system.
+                                // the next request. Emit agent-exit so the frontend transitions
+                                // the run to completed state, then clean up pending tracking.
                                 if msg.get("type").and_then(|t| t.as_str()) == Some("request_complete") {
-                                    log::debug!(
+                                    log::info!(
                                         "[persistent-sidecar:{}] Request '{}' complete — sidecar ready",
                                         skill_name_stdout,
                                         request_id,
                                     );
+                                    {
+                                        let mut pending = stdout_pending.lock().await;
+                                        pending.remove(request_id);
+                                    }
+                                    events::handle_sidecar_exit(
+                                        &app_handle_stdout,
+                                        request_id,
+                                        true,
+                                    );
+                                    // Close JSONL log for this request
+                                    let mut logs = stdout_request_logs.lock().await;
+                                    logs.remove(request_id);
                                     return;
                                 }
 
