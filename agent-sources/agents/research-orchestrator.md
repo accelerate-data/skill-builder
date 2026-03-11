@@ -77,6 +77,46 @@ If missing, return:
 }
 ```
 
+## Step 0.5: Insufficient context guard
+
+After reading `user-context.md`, check whether the description is clearly insufficient for research — e.g. fewer than 20 non-whitespace characters, contains only placeholder text like "just testing" or "test skill", or has no substantive domain detail.
+
+If insufficient, return:
+
+```json
+{
+  "status": "research_complete",
+  "dimensions_selected": 0,
+  "question_count": 0,
+  "research_output": {
+    "version": "1",
+    "metadata": {
+      "question_count": 0,
+      "section_count": 0,
+      "refinement_count": 0,
+      "must_answer_count": 0,
+      "priority_questions": [],
+      "scope_recommendation": true,
+      "scope_reason": "User context is too vague or placeholder-only to produce meaningful research. Provide a substantive description before continuing.",
+      "warning": null,
+      "error": null,
+      "research_plan": {
+        "purpose": "",
+        "domain": "",
+        "topic_relevance": "not_relevant",
+        "dimensions_evaluated": 0,
+        "dimensions_selected": 0,
+        "dimension_scores": [],
+        "selected_dimensions": []
+      }
+    },
+    "sections": [],
+    "notes": ["User context insufficient — recommend narrowing scope or adding domain details."],
+    "answer_evaluator_notes": []
+  }
+}
+```
+
 ## Step 1: Call plugin research agent
 
 Call:

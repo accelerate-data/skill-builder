@@ -24,9 +24,7 @@ tests:
       - type: contains
         value: '"questionCountNumber":true'
       - type: contains
-        value: '"returnsResearchPlanMarkdown":true'
-      - type: contains
-        value: '"returnsClarificationsJson":true'
+        value: '"returnsResearchOutput":true'
       - type: contains
         value: '"sectionCountNumber":true'
       - type: contains
