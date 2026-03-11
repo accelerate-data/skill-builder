@@ -236,7 +236,9 @@ export class StreamSession {
       ? `Mock streaming response received:\n\n${preview}`
       : "Mock streaming response received.";
 
-    onMessage(requestId, {
+    // Build a raw assistant message and process through MessageProcessor
+    // so the frontend receives display_item envelopes (not legacy raw messages).
+    const rawAssistant = {
       type: "assistant",
       message: {
         model: "mock-stream",
@@ -251,7 +253,14 @@ export class StreamSession {
           cache_read_input_tokens: 0,
         },
       },
-    });
+    };
+
+    const processor = new MessageProcessor();
+    const items = processor.process(rawAssistant);
+    for (const item of items) {
+      onMessage(requestId, item as Record<string, unknown>);
+    }
+
     await new Promise((resolve) => setTimeout(resolve, 20));
     if (this.closed) return;
     onMessage(requestId, { type: "turn_complete" });
