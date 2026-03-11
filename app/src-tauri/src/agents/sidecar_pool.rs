@@ -15,6 +15,32 @@ use tokio::task::JoinHandle;
 use super::events;
 use super::sidecar::SidecarConfig;
 
+fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<bool> {
+    match msg.get("type").and_then(|t| t.as_str()) {
+        Some("run_summary") => {
+            let status = msg
+                .get("data")
+                .and_then(|data| data.get("status"))
+                .and_then(|status| status.as_str())
+                .unwrap_or("completed");
+            Some(status == "completed")
+        }
+        Some("result") => {
+            let subtype = msg
+                .get("subtype")
+                .and_then(|s| s.as_str())
+                .unwrap_or("success");
+            let is_error = msg
+                .get("is_error")
+                .and_then(|e| e.as_bool())
+                .unwrap_or(false);
+            Some(!is_error && !subtype.starts_with("error_"))
+        }
+        Some("error") => Some(false),
+        _ => None,
+    }
+}
+
 /// Categorized sidecar startup failure with actionable fix instructions.
 #[derive(Debug, Clone, serde::Serialize)]
 pub enum SidecarStartupError {
@@ -951,26 +977,69 @@ impl SidecarPool {
                                         return;
                                     }
 
-                                    let is_terminal = msg_type == "result" || msg_type == "error";
+                                    let is_terminal = stream_message_terminal_status(&msg).is_some();
 
-                                    if msg_type == "result" {
-                                        // Check subtype and is_error to detect SDK error results
-                                        let subtype = msg.get("subtype").and_then(|s| s.as_str()).unwrap_or("success");
-                                        let is_error = msg.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
-                                        let success = !is_error && !subtype.starts_with("error_");
+                                    if let Some(success) = stream_message_terminal_status(&msg) {
+                                        if msg_type == "result" || msg_type == "run_summary" {
+                                            if success {
+                                                log::info!(
+                                                    "[persistent-sidecar:{}] Agent '{}' completed successfully via {}",
+                                                    skill_name_stdout,
+                                                    request_id,
+                                                    msg_type,
+                                                );
+                                            } else {
+                                                let detail = if msg_type == "run_summary" {
+                                                    msg.get("data")
+                                                        .and_then(|data| data.get("status"))
+                                                        .and_then(|status| status.as_str())
+                                                        .unwrap_or("error")
+                                                        .to_string()
+                                                } else {
+                                                    msg.get("subtype")
+                                                        .and_then(|s| s.as_str())
+                                                        .unwrap_or("error")
+                                                        .to_string()
+                                                };
+                                                log::warn!(
+                                                    "[persistent-sidecar:{}] Agent '{}' finished with error via {}: {}",
+                                                    skill_name_stdout,
+                                                    request_id,
+                                                    msg_type,
+                                                    detail,
+                                                );
+                                            }
+                                        }
 
-                                        if success {
+                                        if msg_type == "error" {
+                                            let error_detail = msg.get("message")
+                                                .and_then(|m| m.as_str())
+                                                .unwrap_or("(no message)");
                                             log::info!(
-                                                "[persistent-sidecar:{}] Agent '{}' completed successfully",
+                                                "[persistent-sidecar:{}] Agent error for '{}': {}",
                                                 skill_name_stdout,
                                                 request_id,
+                                                error_detail,
                                             );
-                                        } else {
+                                            // Emit the error detail as an agent-message so the
+                                            // frontend can display it (instead of "Unknown error").
+                                            events::handle_sidecar_message(
+                                                &app_handle_stdout,
+                                                request_id,
+                                                &serde_json::json!({
+                                                    "type": "error",
+                                                    "error": error_detail,
+                                                }).to_string(),
+                                            );
+                                        }
+
+                                        let error_detail = msg.get("message")
+                                            .and_then(|m| m.as_str());
+                                        if msg_type == "error" && error_detail.is_none() {
                                             log::warn!(
-                                                "[persistent-sidecar:{}] Agent '{}' finished with error: subtype={}",
+                                                "[persistent-sidecar:{}] Agent '{}' emitted terminal error without message",
                                                 skill_name_stdout,
                                                 request_id,
-                                                subtype,
                                             );
                                         }
                                         {
@@ -987,41 +1056,6 @@ impl SidecarPool {
                                             &app_handle_stdout,
                                             request_id,
                                             success,
-                                        );
-                                    } else if msg_type == "error" {
-                                        let error_detail = msg.get("message")
-                                            .and_then(|m| m.as_str())
-                                            .unwrap_or("(no message)");
-                                        log::info!(
-                                            "[persistent-sidecar:{}] Agent error for '{}': {}",
-                                            skill_name_stdout,
-                                            request_id,
-                                            error_detail,
-                                        );
-                                        // Emit the error detail as an agent-message so the
-                                        // frontend can display it (instead of "Unknown error").
-                                        events::handle_sidecar_message(
-                                            &app_handle_stdout,
-                                            request_id,
-                                            &serde_json::json!({
-                                                "type": "error",
-                                                "error": error_detail,
-                                            }).to_string(),
-                                        );
-                                        {
-                                            let mut pending = stdout_pending.lock().await;
-                                            pending.remove(request_id);
-                                        }
-                                        {
-                                            let pool = stdout_pool.lock().await;
-                                            if let Some(s) = pool.get(&skill_name_stdout) {
-                                                *s.last_activity.lock().await = tokio::time::Instant::now();
-                                            }
-                                        }
-                                        events::handle_sidecar_exit(
-                                            &app_handle_stdout,
-                                            request_id,
-                                            false,
                                         );
                                     }
 
@@ -2364,6 +2398,35 @@ mod tests {
 
         assert!(result.is_ok(), "Non-panicking code should return Ok");
         assert_eq!(result.unwrap(), "result");
+    }
+
+    #[test]
+    fn test_stream_message_terminal_status_recognizes_run_summary() {
+        let completed = serde_json::json!({
+            "type": "run_summary",
+            "request_id": "agent-1",
+            "data": {
+                "status": "completed"
+            }
+        });
+        let failed = serde_json::json!({
+            "type": "run_summary",
+            "request_id": "agent-1",
+            "data": {
+                "status": "error"
+            }
+        });
+        let display_item = serde_json::json!({
+            "type": "display_item",
+            "request_id": "agent-1",
+            "item": {
+                "type": "result"
+            }
+        });
+
+        assert_eq!(stream_message_terminal_status(&completed), Some(true));
+        assert_eq!(stream_message_terminal_status(&failed), Some(false));
+        assert_eq!(stream_message_terminal_status(&display_item), None);
     }
 
     // -----------------------------------------------------------------

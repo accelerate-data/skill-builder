@@ -1500,7 +1500,10 @@ mod tests {
             .unwrap()
             .contains(&serde_json::json!("Task")));
         assert_eq!(parsed["skillName"], "my-skill");
-        assert_eq!(parsed["usageSessionId"], "synthetic:refine:my-skill:session-123");
+        assert_eq!(
+            parsed["usageSessionId"],
+            "synthetic:refine:my-skill:session-123"
+        );
         // Streaming mode: no conversation history in config
         assert!(parsed.get("conversationHistory").is_none());
         // sessionId must NOT be set — the SDK interprets it as "resume" and fails
@@ -1963,6 +1966,29 @@ mod tests {
         }
         let map = manager.0.lock().unwrap();
         assert!(map.get("s1").unwrap().stream_started);
+    }
+
+    #[test]
+    fn test_completed_turn_does_not_close_or_reset_stream_started_session() {
+        let manager = RefineSessionManager::new();
+        {
+            let mut map = manager.0.lock().unwrap();
+            map.insert(
+                "s1".to_string(),
+                RefineSession {
+                    skill_name: "my-skill".to_string(),
+                    stream_started: true,
+                },
+            );
+        }
+
+        // A completed refine turn emits agent-exit for the request, but it does not
+        // remove the refine session or reset stream_started. Only close_refine_session
+        // should end the chat session.
+        let map = manager.0.lock().unwrap();
+        let session = map.get("s1").expect("session should remain open after a turn completes");
+        assert_eq!(session.skill_name, "my-skill");
+        assert!(session.stream_started);
     }
 
     #[test]

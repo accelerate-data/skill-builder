@@ -293,4 +293,24 @@ describe("useRefineStore", () => {
     useRefineStore.getState().setActiveAgentId(null);
     expect(useRefineStore.getState().activeAgentId).toBeNull();
   });
+
+  it("ending a turn preserves the refine session for follow-up chat messages", () => {
+    useRefineStore.setState({
+      selectedSkill: makeSkillSummary({ name: "my-skill" }),
+      sessionId: "session-123",
+      activeAgentId: "refine-my-skill-1",
+      isRunning: true,
+      messages: [{ id: "m1", role: "agent", agentId: "refine-my-skill-1", timestamp: 1 }],
+    });
+
+    useRefineStore.getState().setRunning(false);
+    useRefineStore.getState().setActiveAgentId(null);
+
+    const state = useRefineStore.getState();
+    expect(state.isRunning).toBe(false);
+    expect(state.activeAgentId).toBeNull();
+    expect(state.sessionId).toBe("session-123");
+    expect(state.selectedSkill?.name).toBe("my-skill");
+    expect(state.messages).toHaveLength(1);
+  });
 });
