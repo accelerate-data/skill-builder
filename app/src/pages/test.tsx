@@ -22,7 +22,6 @@ import { useTestStore } from "@/stores/test-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   listRefinableSkills,
-  getWorkspacePath,
   startAgent,
   cleanupSkillSidecar,
   prepareSkillTest,
@@ -325,6 +324,7 @@ function PlanPanel({ scrollRef, text, agentId, phase, label, badgeText, badgeCla
 export default function TestPage() {
   const navigate = useNavigate();
   const { skill: skillParam } = useSearch({ from: "/test" });
+  const workspacePath = useSettingsStore((s) => s.workspacePath);
 
   // --- Skills list ---
   const [skills, setSkills] = useState<SkillSummary[]>([]);
@@ -365,9 +365,13 @@ export default function TestPage() {
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
+    if (!workspacePath) {
+      setSkills([]);
+      setIsLoadingSkills(false);
+      return;
+    }
     let cancelled = false;
-    getWorkspacePath()
-      .then((wp) => listRefinableSkills(wp))
+    listRefinableSkills(workspacePath)
       .then((list) => {
         if (!cancelled) {
           setSkills(list);
@@ -380,7 +384,7 @@ export default function TestPage() {
         toast.error("Failed to load skills", { duration: Infinity });
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [workspacePath]);
 
   // ---------------------------------------------------------------------------
   // Auto-select skill from search param
@@ -753,7 +757,9 @@ export default function TestPage() {
 
     let preparedTestId: string | undefined;
     try {
-      const workspacePath = await getWorkspacePath();
+      if (!workspacePath) {
+        throw new Error("Workspace path not configured");
+      }
       const prepared = await prepareSkillTest(workspacePath, skillName);
       preparedTestId = prepared.test_id;
 
