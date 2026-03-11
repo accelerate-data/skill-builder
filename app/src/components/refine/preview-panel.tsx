@@ -49,6 +49,7 @@ export function PreviewPanel() {
   const setDiffMode = useRefineStore((s) => s.setDiffMode);
 
   const [filePickerOpen, setFilePickerOpen] = useState(false);
+  const fileListKey = skillFiles.map((file) => file.filename).join("|");
 
   if (skillFiles.length === 0 && !isLoadingFiles) {
     return (
@@ -84,7 +85,7 @@ export function PreviewPanel() {
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-72 p-0" align="start">
-            <Command>
+            <Command key={fileListKey}>
               <CommandInput placeholder="Search files..." />
               <CommandList>
                 <CommandEmpty>No files found</CommandEmpty>
