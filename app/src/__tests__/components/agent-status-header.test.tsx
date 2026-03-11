@@ -2,11 +2,20 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { useAgentStore } from "@/stores/agent-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
+import type { DisplayItem } from "@/lib/display-types";
 import {
   AgentStatusHeader,
   getDisplayStatus,
   formatElapsed,
 } from "@/components/agent-status-header";
+
+function makeDisplayItem(overrides: Partial<DisplayItem> & { type: DisplayItem["type"] }): DisplayItem {
+  return {
+    id: `di-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: Date.now(),
+    ...overrides,
+  } as DisplayItem;
+}
 
 describe("AgentStatusHeader", () => {
   beforeEach(() => {
@@ -23,34 +32,32 @@ describe("AgentStatusHeader", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
     render(<AgentStatusHeader agentId="test-agent" />);
 
-    // No messages yet, so it should show "Initializing..." instead of "Running"
+    // No displayItems yet, so it should show "Initializing..." instead of "Running"
     expect(screen.getByText("Initializing\u2026")).toBeInTheDocument();
     expect(screen.getByText("Sonnet")).toBeInTheDocument();
   });
 
-  it("shows Initializing badge with spinner when run has no messages", () => {
+  it("shows Initializing badge with spinner when run has no displayItems", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
     render(<AgentStatusHeader agentId="test-agent" />);
 
     expect(screen.getByText("Initializing\u2026")).toBeInTheDocument();
-    // Should NOT show "Running" when no messages have arrived
+    // Should NOT show "Running" when no items have arrived
     expect(screen.queryByText("Running")).not.toBeInTheDocument();
   });
 
-  it("transitions from Initializing to Running when first message arrives", () => {
+  it("transitions from Initializing to Running when first displayItem arrives", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
     const { rerender } = render(<AgentStatusHeader agentId="test-agent" />);
 
     // Initially shows Initializing
     expect(screen.getByText("Initializing\u2026")).toBeInTheDocument();
 
-    // Add a message (simulating first agent output)
-    useAgentStore.getState().addMessage("test-agent", {
-      type: "assistant",
-      content: "Hello",
-      raw: { type: "assistant", message: {} },
-      timestamp: Date.now(),
-    });
+    // Add a display item (simulating first agent output)
+    useAgentStore.getState().addDisplayItem("test-agent", makeDisplayItem({
+      type: "output",
+      outputText: "Hello",
+    }));
 
     rerender(<AgentStatusHeader agentId="test-agent" />);
 
@@ -61,12 +68,10 @@ describe("AgentStatusHeader", () => {
 
   it("transitions from Running to Completed when run completes", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
-    useAgentStore.getState().addMessage("test-agent", {
-      type: "assistant",
-      content: "Working...",
-      raw: { type: "assistant", message: {} },
-      timestamp: Date.now(),
-    });
+    useAgentStore.getState().addDisplayItem("test-agent", makeDisplayItem({
+      type: "output",
+      outputText: "Working...",
+    }));
     const { rerender } = render(<AgentStatusHeader agentId="test-agent" />);
 
     expect(screen.getByText("Running")).toBeInTheDocument();
@@ -80,12 +85,10 @@ describe("AgentStatusHeader", () => {
 
   it("transitions from Running to Error when run fails", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
-    useAgentStore.getState().addMessage("test-agent", {
-      type: "assistant",
-      content: "Working...",
-      raw: { type: "assistant", message: {} },
-      timestamp: Date.now(),
-    });
+    useAgentStore.getState().addDisplayItem("test-agent", makeDisplayItem({
+      type: "output",
+      outputText: "Working...",
+    }));
     const { rerender } = render(<AgentStatusHeader agentId="test-agent" />);
 
     expect(screen.getByText("Running")).toBeInTheDocument();
@@ -97,7 +100,6 @@ describe("AgentStatusHeader", () => {
   });
 
   it("shows elapsed time during initialization phase", () => {
-    // Start run with a known past startTime
     useAgentStore.getState().startRun("test-agent", "sonnet");
     render(<AgentStatusHeader agentId="test-agent" />);
 
@@ -106,27 +108,20 @@ describe("AgentStatusHeader", () => {
     expect(timeBadge).toBeInTheDocument();
   });
 
-  it("shows Thinking badge when config has thinking budget", () => {
+  it("shows Thinking badge when thinkingEnabled is true", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
-    useAgentStore.getState().addMessage("test-agent", {
-      type: "config",
-      raw: {
-        type: "config",
-        config: { thinking: { type: "enabled", budgetTokens: 32000 } },
-      },
-      timestamp: Date.now(),
+    useAgentStore.getState().updateMetadata("test-agent", {
+      config: { thinkingEnabled: true },
     });
     render(<AgentStatusHeader agentId="test-agent" />);
 
     expect(screen.getByText("Thinking")).toBeInTheDocument();
   });
 
-  it("does NOT show Thinking badge when config has no thinking budget", () => {
+  it("does NOT show Thinking badge when thinkingEnabled is false", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
-    useAgentStore.getState().addMessage("test-agent", {
-      type: "config",
-      raw: { type: "config", config: {} },
-      timestamp: Date.now(),
+    useAgentStore.getState().updateMetadata("test-agent", {
+      config: { thinkingEnabled: false },
     });
     render(<AgentStatusHeader agentId="test-agent" />);
 
@@ -135,29 +130,30 @@ describe("AgentStatusHeader", () => {
 
   it("shows cost badge when totalCost is available", () => {
     useAgentStore.getState().startRun("test-agent", "opus");
-    useAgentStore.getState().addMessage("test-agent", {
-      type: "result",
-      content: "Done",
-      raw: {
-        usage: { input_tokens: 1500, output_tokens: 500 },
-        total_cost_usd: 0.042,
+    // Simulate token usage and cost (now set via sidecar persistence)
+    useAgentStore.setState((state) => ({
+      runs: {
+        ...state.runs,
+        "test-agent": {
+          ...state.runs["test-agent"],
+          tokenUsage: { input: 1500, output: 500 },
+          totalCost: 0.042,
+        },
       },
-      timestamp: Date.now(),
-    });
+    }));
     render(<AgentStatusHeader agentId="test-agent" />);
 
     expect(screen.getByText("$0.0420")).toBeInTheDocument();
     expect(screen.getByText("2,000 tokens")).toBeInTheDocument();
   });
 
-  it("shows Initializing when workflow store isInitializing is true even with messages", () => {
+  it("shows Initializing when workflow store isInitializing is true even with displayItems", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
-    // Add a non-assistant message (e.g. config) - messages array is non-empty
-    useAgentStore.getState().addMessage("test-agent", {
-      type: "config",
-      raw: { type: "config", config: {} },
-      timestamp: Date.now(),
-    });
+    // Add a display item so displayItems is non-empty
+    useAgentStore.getState().addDisplayItem("test-agent", makeDisplayItem({
+      type: "output",
+      outputText: "config info",
+    }));
 
     // Simulate workflow store having isInitializing set by Stream 1
     useWorkflowStore.setState({
@@ -170,14 +166,12 @@ describe("AgentStatusHeader", () => {
     expect(screen.getByText("Initializing\u2026")).toBeInTheDocument();
   });
 
-  it("shows Running when workflow store isInitializing is false and messages exist", () => {
+  it("shows Running when workflow store isInitializing is false and displayItems exist", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
-    useAgentStore.getState().addMessage("test-agent", {
-      type: "assistant",
-      content: "Working",
-      raw: { type: "assistant", message: {} },
-      timestamp: Date.now(),
-    });
+    useAgentStore.getState().addDisplayItem("test-agent", makeDisplayItem({
+      type: "output",
+      outputText: "Working",
+    }));
 
     useWorkflowStore.setState({
       isInitializing: false,
@@ -190,7 +184,7 @@ describe("AgentStatusHeader", () => {
 });
 
 describe("getDisplayStatus", () => {
-  it("returns 'initializing' when running with zero messages", () => {
+  it("returns 'initializing' when running with zero items", () => {
     expect(getDisplayStatus("running", 0)).toBe("initializing");
   });
 
@@ -198,24 +192,24 @@ describe("getDisplayStatus", () => {
     expect(getDisplayStatus("running", 5, true)).toBe("initializing");
   });
 
-  it("returns 'running' when running with messages and not initializing", () => {
+  it("returns 'running' when running with items and not initializing", () => {
     expect(getDisplayStatus("running", 1)).toBe("running");
     expect(getDisplayStatus("running", 1, false)).toBe("running");
   });
 
-  it("returns 'completed' regardless of messages or initializing flag", () => {
+  it("returns 'completed' regardless of items or initializing flag", () => {
     expect(getDisplayStatus("completed", 0)).toBe("completed");
     expect(getDisplayStatus("completed", 0, true)).toBe("completed");
     expect(getDisplayStatus("completed", 5, false)).toBe("completed");
   });
 
-  it("returns 'error' regardless of messages or initializing flag", () => {
+  it("returns 'error' regardless of items or initializing flag", () => {
     expect(getDisplayStatus("error", 0)).toBe("error");
     expect(getDisplayStatus("error", 0, true)).toBe("error");
     expect(getDisplayStatus("error", 5, false)).toBe("error");
   });
 
-  it("returns 'running' when workflowIsInitializing is undefined and messages exist", () => {
+  it("returns 'running' when workflowIsInitializing is undefined and items exist", () => {
     expect(getDisplayStatus("running", 3, undefined)).toBe("running");
   });
 });

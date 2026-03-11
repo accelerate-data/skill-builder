@@ -67,18 +67,18 @@ describe("runAgentRequest", () => {
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
     // Messages: system events (sdk_plugins_debug filtered, init_start, sdk_ready),
-    // then processed display items + pass-through raw messages
+    // then processed display items + metadata/run_summary messages
     // init_start and sdk_ready are forwarded as-is (system category)
     // sdk_plugins_debug is filtered (hardNoise)
-    // assistant → display_item(output) + raw assistant pass-through
-    // result → display_item(result) + raw result pass-through
+    // assistant → display_item(output) + metadata(contextSnapshot)
+    // result → display_item(result) + run_summary
     const displayItems = messages.filter((m) => m.type === "display_item");
     const systemMsgs = messages.filter((m) => m.type === "system");
-    const resultMsgs = messages.filter((m) => m.type === "result");
+    const runSummaryMsgs = messages.filter((m) => m.type === "run_summary");
 
     expect(systemMsgs.length).toBeGreaterThanOrEqual(2); // init_start + sdk_ready
     expect(displayItems).toHaveLength(2); // output + result
-    expect(resultMsgs).toHaveLength(1); // pass-through result
+    expect(runSummaryMsgs).toHaveLength(1); // run_summary instead of raw result
 
     // Verify display items
     const outputItem = (displayItems[0] as Record<string, unknown>).item as Record<string, unknown>;
@@ -213,7 +213,7 @@ describe("result message error subtypes", () => {
     vi.clearAllMocks();
   });
 
-  it("forwards error_max_turns result with subtype, is_error, and stop_reason intact", async () => {
+  it("emits run_summary with error_max_turns subtype, errors, and stop_reason", async () => {
     const errorResult = {
       type: "result",
       subtype: "error_max_turns",
@@ -233,16 +233,17 @@ describe("result message error subtypes", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    // Find the result message (after system events)
-    const result = messages.find((m) => m.type === "result");
-    expect(result).toBeDefined();
-    expect(result!.subtype).toBe("error_max_turns");
-    expect(result!.is_error).toBe(true);
-    expect(result!.errors).toEqual(["Max turns reached"]);
-    expect(result!.stop_reason).toBe("end_turn");
+    // Find the run_summary message (replaces raw result pass-through)
+    const summary = messages.find((m) => m.type === "run_summary");
+    expect(summary).toBeDefined();
+    const data = summary!.data as Record<string, unknown>;
+    expect(data.resultSubtype).toBe("error_max_turns");
+    expect(data.resultErrors).toEqual(["Max turns reached"]);
+    expect(data.stopReason).toBe("end_turn");
+    expect(data.status).toBe("error");
   });
 
-  it("forwards error_max_budget_usd result intact", async () => {
+  it("emits run_summary with error_max_budget_usd subtype", async () => {
     async function* fakeConversation() {
       yield {
         type: "result",
@@ -257,12 +258,14 @@ describe("result message error subtypes", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    const result = messages.find((m) => m.type === "result");
-    expect(result!.subtype).toBe("error_max_budget_usd");
-    expect(result!.is_error).toBe(true);
+    const summary = messages.find((m) => m.type === "run_summary");
+    expect(summary).toBeDefined();
+    const data = summary!.data as Record<string, unknown>;
+    expect(data.resultSubtype).toBe("error_max_budget_usd");
+    expect(data.status).toBe("error");
   });
 
-  it("forwards refusal stop_reason on success result", async () => {
+  it("emits run_summary with refusal stop_reason on success result", async () => {
     async function* fakeConversation() {
       yield {
         type: "result",
@@ -277,12 +280,14 @@ describe("result message error subtypes", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    const result = messages.find((m) => m.type === "result");
-    expect(result!.stop_reason).toBe("refusal");
-    expect(result!.subtype).toBe("success");
+    const summary = messages.find((m) => m.type === "run_summary");
+    expect(summary).toBeDefined();
+    const data = summary!.data as Record<string, unknown>;
+    expect(data.stopReason).toBe("refusal");
+    expect(data.resultSubtype).toBe("success");
   });
 
-  it("forwards clean success result with all fields", async () => {
+  it("emits run_summary with clean success fields", async () => {
     async function* fakeConversation() {
       yield {
         type: "result",
@@ -298,10 +303,12 @@ describe("result message error subtypes", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    const result = messages.find((m) => m.type === "result");
-    expect(result!.subtype).toBe("success");
-    expect(result!.is_error).toBe(false);
-    expect(result!.stop_reason).toBe("end_turn");
+    const summary = messages.find((m) => m.type === "run_summary");
+    expect(summary).toBeDefined();
+    const data = summary!.data as Record<string, unknown>;
+    expect(data.resultSubtype).toBe("success");
+    expect(data.status).toBe("completed");
+    expect(data.stopReason).toBe("end_turn");
   });
 });
 

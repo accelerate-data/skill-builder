@@ -932,6 +932,10 @@ mod tests {
             required_plugins: None,
             conversation_history: None,
             skill_name: None,
+            step_id: None,
+            workflow_session_id: None,
+            usage_session_id: None,
+            run_source: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"apiKey\""));

@@ -175,7 +175,13 @@ export class StreamSession {
     );
 
     // Process raw SDK messages through MessageProcessor for structured display items
-    const processor = new MessageProcessor();
+    const processor = new MessageProcessor({
+      skillName: config.skillName,
+      stepId: config.stepId,
+      workflowSessionId: config.workflowSessionId,
+      usageSessionId: config.usageSessionId,
+      runSource: config.runSource,
+    });
 
     try {
       for await (const message of conversation) {
@@ -200,6 +206,13 @@ export class StreamSession {
           }
         }
       }
+
+      // Emit a shutdown run_summary for aborted streaming runs
+      if (state.abortController.signal.aborted) {
+        process.stderr.write(`[stream-session] Session ${this.sessionId} aborted — emitting shutdown run_summary\n`);
+        const shutdownSummary = processor.buildShutdownSummary();
+        onMessage(this.currentRequestId, { type: "run_summary", data: shutdownSummary, timestamp: Date.now() } as Record<string, unknown>);
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       process.stderr.write(`[stream-session] Query error: ${errorMessage}\n`);
@@ -207,6 +220,10 @@ export class StreamSession {
         type: "error",
         message: errorMessage,
       });
+      // Emit error run_summary for persistence
+      process.stderr.write(`[stream-session] Emitting error run_summary for session ${this.sessionId}\n`);
+      const errorSummary = processor.buildShutdownSummary();
+      onMessage(this.currentRequestId, { type: "run_summary", data: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
     }
 
     // Query finished — either all turns exhausted or generator closed

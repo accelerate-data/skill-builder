@@ -99,13 +99,14 @@ export default function RefinePage() {
   const extractStructuredResultPayload = useCallback((agentId: string) => {
     const run = useAgentStore.getState().runs[agentId];
     if (!run) return null;
-    for (let i = run.messages.length - 1; i >= 0; i -= 1) {
-      const msg = run.messages[i];
-      if (msg.type !== "result") continue;
-      const raw = msg.raw as Record<string, unknown>;
-      if ("result" in raw) return raw.result ?? null;
+    // Look for a result display item with outputText_result containing JSON
+    const resultItem = [...run.displayItems].reverse().find((di) => di.type === "result");
+    if (!resultItem?.outputText_result) return null;
+    try {
+      return JSON.parse(resultItem.outputText_result);
+    } catch {
+      return null;
     }
-    return null;
   }, []);
 
   useEffect(() => {
@@ -289,8 +290,9 @@ export default function RefinePage() {
     const agentRun = useAgentStore.getState().runs[activeAgentId];
     setLastTurnCost(agentRun?.totalCost);
     if (agentRun) {
-      const hasExhausted = agentRun.messages.some(
-        (m) => (m.raw as Record<string, unknown>)?.type === "session_exhausted",
+      // Check for session exhaustion via error display items
+      const hasExhausted = agentRun.displayItems.some(
+        (di) => di.type === "error" && di.errorMessage?.includes("session_exhausted"),
       );
       if (hasExhausted) {
         console.warn("[refine] session exhausted for agent %s", activeAgentId);

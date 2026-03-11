@@ -108,6 +108,10 @@ fn build_refine_config(
         required_plugins: None,
         conversation_history: None,
         skill_name: None,
+        step_id: Some(-10),
+        workflow_session_id: None,
+        usage_session_id: None,
+        run_source: Some("refine".to_string()),
     };
 
     (config, agent_id)

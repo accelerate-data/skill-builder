@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ResearchSummaryCard } from "@/components/research-summary-card";
 import type { ClarificationsFile } from "@/lib/clarifications-types";
 
@@ -56,7 +57,8 @@ const legacyResearchPlan = [
 ].join("\n");
 
 describe("ResearchSummaryCard", () => {
-  it("infers selected dimensions from legacy table-only research-plan format", () => {
+  it("infers selected dimensions from legacy table-only research-plan format", async () => {
+    const user = userEvent.setup();
     render(
       <ResearchSummaryCard
         researchPlan={legacyResearchPlan}
@@ -64,12 +66,15 @@ describe("ResearchSummaryCard", () => {
       />,
     );
 
+    // Expand the collapsible panel to reveal dimension details
+    await user.click(screen.getByText("Research Complete"));
+
     expect(screen.getByText("of 5 selected")).toBeInTheDocument();
     expect(screen.getAllByText("Deal Structure & Typology").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Revenue Recognition & Forecasting Methodology").length).toBeGreaterThan(0);
   });
 
-  it("shows Research Complete header and stats grid on happy path", () => {
+  it("shows Research Complete header and clarifications editor on happy path", () => {
     render(
       <ResearchSummaryCard
         researchPlan={emptyResearchPlan}
@@ -78,12 +83,11 @@ describe("ResearchSummaryCard", () => {
     );
 
     expect(screen.getByText("Research Complete")).toBeInTheDocument();
-    expect(screen.getByText("Clarifications")).toBeInTheDocument();
-    expect(screen.getByText("Notes")).toBeInTheDocument();
     expect(screen.getByTestId("clarifications-editor")).toBeInTheDocument();
   });
 
-  it("shows Research Failed header with destructive banner when error is present", () => {
+  it("shows Research Failed header with destructive banner when error is present", async () => {
+    const user = userEvent.setup();
     const data: ClarificationsFile = {
       version: "1",
       metadata: {
@@ -104,14 +108,17 @@ describe("ResearchSummaryCard", () => {
     );
 
     expect(screen.getByText("Research Failed")).toBeInTheDocument();
-    expect(screen.getByText("User context is missing.")).toBeInTheDocument();
-    expect(screen.queryByText("Clarifications")).not.toBeInTheDocument();
-    expect(screen.queryByText("Notes")).not.toBeInTheDocument();
     expect(screen.queryByTestId("clarifications-editor")).not.toBeInTheDocument();
+
+    // Expand the collapsible panel to reveal banner and reset button
+    await user.click(screen.getByText("Research Failed"));
+
+    expect(screen.getByText("User context is missing.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /reset/i })).toBeInTheDocument();
   });
 
-  it("shows Scope Too Broad header with amber banner for scope_guard_triggered", () => {
+  it("shows Scope Too Broad header with amber banner for scope_guard_triggered", async () => {
+    const user = userEvent.setup();
     const data: ClarificationsFile = {
       version: "1",
       metadata: {
@@ -132,10 +139,13 @@ describe("ResearchSummaryCard", () => {
     );
 
     expect(screen.getByText("Scope Too Broad")).toBeInTheDocument();
+    expect(screen.queryByTestId("clarifications-editor")).not.toBeInTheDocument();
+
+    // Expand the collapsible panel to reveal banner and reset button
+    await user.click(screen.getByText("Scope Too Broad"));
+
     expect(screen.getByText("Scope is too broad to proceed.")).toBeInTheDocument();
     expect(screen.getByText("The topic covers too many domains.")).toBeInTheDocument();
-    expect(screen.queryByText("Clarifications")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("clarifications-editor")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /reset/i })).toBeInTheDocument();
   });
 
@@ -162,7 +172,8 @@ describe("ResearchSummaryCard", () => {
     expect(screen.getByText("Research Complete")).toBeInTheDocument();
   });
 
-  it("shows No Dimensions Selected header and Dimensions column for all_dimensions_low_score", () => {
+  it("shows No Dimensions Selected header and Dimensions column for all_dimensions_low_score", async () => {
+    const user = userEvent.setup();
     const data: ClarificationsFile = {
       version: "1",
       metadata: {
@@ -182,11 +193,13 @@ describe("ResearchSummaryCard", () => {
     );
 
     expect(screen.getByText("No Dimensions Selected")).toBeInTheDocument();
+    expect(screen.queryByTestId("clarifications-editor")).not.toBeInTheDocument();
+
+    // Expand the collapsible panel to reveal banner, dimensions, and reset button
+    await user.click(screen.getByText("No Dimensions Selected"));
+
     expect(screen.getByText("All dimensions scored below threshold.")).toBeInTheDocument();
     expect(screen.getByText("Dimensions")).toBeInTheDocument();
-    expect(screen.queryByText("Clarifications")).not.toBeInTheDocument();
-    expect(screen.queryByText("Notes")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("clarifications-editor")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /reset/i })).toBeInTheDocument();
   });
 });

@@ -84,10 +84,14 @@ pub async fn start_agent(
     _step_label: String,
     agent_name: Option<String>,
     transcript_log_dir: Option<String>,
+    step_id: Option<i32>,
+    workflow_session_id: Option<String>,
+    usage_session_id: Option<String>,
+    run_source: Option<String>,
 ) -> Result<String, String> {
     log::info!(
-        "[start_agent] agent_id={} model={} skill_name={} agent_name={:?}",
-        agent_id, model, skill_name, agent_name
+        "[start_agent] agent_id={} model={} skill_name={} agent_name={:?} step_id={:?} run_source={:?}",
+        agent_id, model, skill_name, agent_name, step_id, run_source
     );
     log::debug!(
         "[start_agent] cwd={} transcript_log_dir={:?} prompt_prefix={:?}",
@@ -172,6 +176,10 @@ pub async fn start_agent(
         required_plugins: None,
         conversation_history: None,
         skill_name: Some(skill_name.clone()),
+        step_id: Some(step_id.unwrap_or(-1)),
+        workflow_session_id,
+        usage_session_id,
+        run_source,
     };
 
     sidecar::spawn_sidecar(

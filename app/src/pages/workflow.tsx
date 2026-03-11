@@ -533,16 +533,14 @@ export default function WorkflowPage() {
   const extractStructuredResultPayload = useCallback((agentId: string): unknown | null => {
     const run = useAgentStore.getState().runs[agentId];
     if (!run) return null;
-    for (let i = run.messages.length - 1; i >= 0; i -= 1) {
-      const msg = run.messages[i];
-      if (msg.type !== "result") continue;
-      const raw = msg.raw as Record<string, unknown>;
-      // Prefer structured_output (new SDK behavior: text in result, JSON in structured_output).
-      // Fall back to result for older SDK versions where result held the JSON object directly.
-      if ("structured_output" in raw && raw.structured_output != null) return raw.structured_output;
-      if ("result" in raw && raw.result != null && typeof raw.result !== "string") return raw.result;
+    // Look for a result display item with outputText_result containing JSON
+    const resultItem = [...run.displayItems].reverse().find((di) => di.type === "result");
+    if (!resultItem?.outputText_result) return null;
+    try {
+      return JSON.parse(resultItem.outputText_result);
+    } catch {
+      return null;
     }
-    return null;
   }, []);
 
   // Watch for gate agent (answer evaluator) completion — separate from workflow step agents
@@ -698,10 +696,12 @@ export default function WorkflowPage() {
       setInitializing();
 
       console.log(`[workflow] Starting step ${currentStep} for skill "${skillName}"`);
+      const sessionId = useWorkflowStore.getState().workflowSessionId;
       const agentId = await runWorkflowStep(
         skillName,
         currentStep,
         workspacePath,
+        sessionId ?? undefined,
       );
       agentStartRun(
         agentId,
@@ -1121,7 +1121,7 @@ export default function WorkflowPage() {
   const renderContent = () => {
     // 1. Agent running — show streaming output or init spinner
     if (activeAgentId) {
-      if (isInitializing && !runs[activeAgentId]?.messages.length && !runs[activeAgentId]?.displayItems.length) {
+      if (isInitializing && !runs[activeAgentId]?.displayItems.length) {
         return <AgentInitializingIndicator />;
       }
       return <AgentOutputPanel agentId={activeAgentId} />;

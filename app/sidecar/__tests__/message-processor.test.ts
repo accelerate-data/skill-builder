@@ -26,11 +26,13 @@ describe("MessageProcessor", () => {
   // =========================================================================
 
   describe("filtering", () => {
-    it("forwards config messages as pass-through (for thinkingEnabled/agentName)", () => {
+    it("emits config as metadata message (for thinkingEnabled/agentName)", () => {
       const raw = { type: "config", config: { model: "sonnet" } };
       const out = processor.process(raw);
       expect(out).toHaveLength(1);
-      expect(out[0]).toBe(raw); // pass-through, not a display_item
+      expect(out[0]).toMatchObject({ type: "metadata" });
+      const data = (out[0] as Record<string, unknown>).data as Record<string, unknown>;
+      expect(data).toHaveProperty("config");
     });
 
     it("filters sdk_stderr messages", () => {
@@ -175,7 +177,7 @@ describe("MessageProcessor", () => {
       expect(items[1].type).toBe("tool_call");
     });
 
-    it("forwards raw assistant message for usage tracking", () => {
+    it("emits metadata with contextSnapshot instead of raw assistant pass-through", () => {
       const raw = {
         type: "assistant",
         message: {
@@ -184,10 +186,14 @@ describe("MessageProcessor", () => {
         },
       };
       const out = processor.process(raw);
-      const passThrough = extractPassThrough(out);
+      const metadataMsgs = out.filter((o) => o.type === "metadata");
 
-      expect(passThrough).toHaveLength(1);
-      expect(passThrough[0]).toBe(raw);
+      expect(metadataMsgs).toHaveLength(1);
+      const data = (metadataMsgs[0] as Record<string, unknown>).data as Record<string, unknown>;
+      expect(data).toHaveProperty("contextSnapshot");
+      const snapshot = data.contextSnapshot as Record<string, unknown>;
+      expect(snapshot.inputTokens).toBe(100);
+      expect(snapshot.outputTokens).toBe(50);
     });
   });
 
@@ -498,7 +504,7 @@ describe("MessageProcessor", () => {
   // =========================================================================
 
   describe("result messages", () => {
-    it("dual-emits display_item and raw result for success", () => {
+    it("dual-emits display_item and run_summary for success", () => {
       const raw = {
         type: "result",
         subtype: "success",
@@ -510,15 +516,17 @@ describe("MessageProcessor", () => {
       const out = processor.process(raw);
 
       const items = extractDisplayItems(out);
-      const passThrough = extractPassThrough(out);
+      const runSummaryMsgs = out.filter((o) => o.type === "run_summary");
 
       expect(items).toHaveLength(1);
       expect(items[0].type).toBe("result");
       expect(items[0].resultStatus).toBe("success");
       expect(items[0].outputText_result).toBe("Agent completed");
 
-      expect(passThrough).toHaveLength(1);
-      expect(passThrough[0]).toBe(raw);
+      expect(runSummaryMsgs).toHaveLength(1);
+      const data = (runSummaryMsgs[0] as Record<string, unknown>).data as Record<string, unknown>;
+      expect(data).toHaveProperty("resultSubtype", "success");
+      expect(data).toHaveProperty("stopReason", "end_turn");
     });
 
     it("handles error result with error_max_turns", () => {
@@ -551,22 +559,22 @@ describe("MessageProcessor", () => {
       expect(items[0].resultStatus).toBe("refusal");
     });
 
-    it("forwards raw result unchanged for structured_output extraction", () => {
-      const structuredOutput = { status: "complete", data: [1, 2, 3] };
+    it("emits run_summary instead of raw result pass-through", () => {
       const raw = {
         type: "result",
         subtype: "success",
-        structured_output: structuredOutput,
+        structured_output: { status: "complete", data: [1, 2, 3] },
         usage: { input_tokens: 10, output_tokens: 5 },
         total_cost_usd: 0.001,
       };
       const out = processor.process(raw);
-      const passThrough = extractPassThrough(out);
+      const runSummaryMsgs = out.filter((o) => o.type === "run_summary");
 
-      expect(passThrough[0]).toBe(raw);
-      expect((passThrough[0] as Record<string, unknown>).structured_output).toBe(
-        structuredOutput,
-      );
+      expect(runSummaryMsgs).toHaveLength(1);
+      const data = (runSummaryMsgs[0] as Record<string, unknown>).data as Record<string, unknown>;
+      expect(data).toHaveProperty("resultSubtype", "success");
+      expect(data).toHaveProperty("inputTokens", 10);
+      expect(data).toHaveProperty("outputTokens", 5);
     });
   });
 
@@ -604,7 +612,7 @@ describe("MessageProcessor", () => {
   // =========================================================================
 
   describe("compact boundary", () => {
-    it("emits compact_boundary DisplayItem and forwards raw", () => {
+    it("emits compact_boundary DisplayItem and metadata compactionEvent", () => {
       const raw = {
         type: "system",
         subtype: "compact_boundary",
@@ -614,13 +622,16 @@ describe("MessageProcessor", () => {
       const out = processor.process(raw);
 
       const items = extractDisplayItems(out);
-      const passThrough = extractPassThrough(out);
+      const metadataMsgs = out.filter((o) => o.type === "metadata");
 
       expect(items).toHaveLength(1);
       expect(items[0].type).toBe("compact_boundary");
 
-      expect(passThrough).toHaveLength(1);
-      expect(passThrough[0]).toBe(raw);
+      expect(metadataMsgs).toHaveLength(1);
+      const data = (metadataMsgs[0] as Record<string, unknown>).data as Record<string, unknown>;
+      expect(data).toHaveProperty("compactionEvent");
+      const event = data.compactionEvent as Record<string, unknown>;
+      expect(event.preTokens).toBe(50000);
     });
   });
 

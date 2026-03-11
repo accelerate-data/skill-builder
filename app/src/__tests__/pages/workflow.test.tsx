@@ -252,19 +252,17 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Agent completes step 3 (generate) with required structured output
+    // Agent completes step 3 (generate) with required structured output via display item
     act(() => {
-      useAgentStore.getState().addMessage("agent-build", {
+      useAgentStore.getState().addDisplayItem("agent-build", {
+        id: "result-build",
         type: "result",
-        content: undefined,
-        raw: {
-          result: "Skill generated.",
-          structured_output: {
-            status: "generated",
-            evaluations_markdown: "## Scenario 1\n- input\n- expected output\n",
-          },
-        },
         timestamp: Date.now(),
+        outputText_result: JSON.stringify({
+          status: "generated",
+          evaluations_markdown: "## Scenario 1\n- input\n- expected output\n",
+        }),
+        resultStatus: "success",
       });
       useAgentStore.getState().completeRun("agent-build", true);
     });
@@ -752,29 +750,28 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     render(<WorkflowPage />);
 
     act(() => {
-      useAgentStore.getState().addMessage("agent-2", {
+      useAgentStore.getState().addDisplayItem("agent-2", {
+        id: "result-agent-2",
         type: "result",
-        content: undefined,
-        raw: {
-          result: {
-            status: "detailed_research_complete",
-            refinement_count: 1,
-            section_count: 1,
-            clarifications_json: {
-              version: "1",
-              metadata: {
-                question_count: 0,
-                section_count: 0,
-                refinement_count: 0,
-                must_answer_count: 0,
-                priority_questions: [],
-              },
-              sections: [],
-              notes: [],
-            },
-          },
-        },
         timestamp: Date.now(),
+        outputText_result: JSON.stringify({
+          status: "detailed_research_complete",
+          refinement_count: 1,
+          section_count: 1,
+          clarifications_json: {
+            version: "1",
+            metadata: {
+              question_count: 0,
+              section_count: 0,
+              refinement_count: 0,
+              must_answer_count: 0,
+              priority_questions: [],
+            },
+            sections: [],
+            notes: [],
+          },
+        }),
+        resultStatus: "success",
       });
     });
 
@@ -822,11 +819,12 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     };
 
     act(() => {
-      useAgentStore.getState().addMessage("agent-step0-structured", {
+      useAgentStore.getState().addDisplayItem("agent-step0-structured", {
+        id: "result-step0",
         type: "result",
-        content: undefined,
-        raw: { result: "Research complete.", structured_output: payload },
         timestamp: Date.now(),
+        outputText_result: JSON.stringify(payload),
+        resultStatus: "success",
       });
       useAgentStore.getState().completeRun("agent-step0-structured", true);
     });
@@ -871,11 +869,12 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     };
 
     act(() => {
-      useAgentStore.getState().addMessage("agent-step1-structured", {
+      useAgentStore.getState().addDisplayItem("agent-step1-structured", {
+        id: "result-step1",
         type: "result",
-        content: undefined,
-        raw: { result: "Detailed research complete.", structured_output: payload },
         timestamp: Date.now(),
+        outputText_result: JSON.stringify(payload),
+        resultStatus: "success",
       });
       useAgentStore.getState().completeRun("agent-step1-structured", true);
     });
@@ -924,13 +923,12 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     render(<WorkflowPage />);
 
     act(() => {
-      useAgentStore.getState().addMessage("agent-step1-invalid-shape", {
+      useAgentStore.getState().addDisplayItem("agent-step1-invalid-shape", {
+        id: "result-step1-invalid",
         type: "result",
-        content: undefined,
-        raw: {
-          result: [],
-        },
         timestamp: Date.now(),
+        outputText_result: JSON.stringify([]),
+        resultStatus: "success",
       });
       useAgentStore.getState().completeRun("agent-step1-invalid-shape", true);
     });
@@ -973,19 +971,18 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     render(<WorkflowPage />);
 
     act(() => {
-      useAgentStore.getState().addMessage("agent-invalid-step0", {
+      useAgentStore.getState().addDisplayItem("agent-invalid-step0", {
+        id: "result-invalid-step0",
         type: "result",
-        content: undefined,
-        raw: {
-          result: {
-            status: "research_complete",
-            dimensions_selected: 1,
-            question_count: 1,
-            research_plan_markdown: "# bad",
-            clarifications_json: {},
-          },
-        },
         timestamp: Date.now(),
+        outputText_result: JSON.stringify({
+          status: "research_complete",
+          dimensions_selected: 1,
+          question_count: 1,
+          research_plan_markdown: "# bad",
+          clarifications_json: {},
+        }),
+        resultStatus: "success",
       });
       useAgentStore.getState().completeRun("agent-invalid-step0", true);
     });
@@ -1015,11 +1012,12 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     };
 
     act(() => {
-      useAgentStore.getState().addMessage("agent-step3-structured", {
+      useAgentStore.getState().addDisplayItem("agent-step3-structured", {
+        id: "result-step3",
         type: "result",
-        content: undefined,
-        raw: { result: "Skill generated.", structured_output: payload },
         timestamp: Date.now(),
+        outputText_result: JSON.stringify(payload),
+        resultStatus: "success",
       });
       useAgentStore.getState().completeRun("agent-step3-structured", true);
     });

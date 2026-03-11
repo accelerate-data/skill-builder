@@ -86,28 +86,14 @@ const TERMINAL_STATUSES = new Set(["completed", "error", "shutdown"]);
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Extract accumulated assistant text content from agent store messages.
- * Includes text blocks and AskUserQuestion inputs so the evaluator can see
- * what clarification questions the agent asked. */
+/** Extract accumulated output text from agent display items.
+ * Collects text from output and tool_call display items. */
 function extractAssistantText(agentId: string): string {
   const run = useAgentStore.getState().runs[agentId];
   if (!run) return "";
-  return run.messages
-    .filter((m) => m.type === "assistant")
-    .map((m) => {
-      const textContent = m.content ?? "";
-      // Capture AskUserQuestion inputs so the evaluator sees what was asked
-      const apiBlocks = (
-        (m.raw?.message as Record<string, unknown> | undefined)?.content
-      ) as Array<{ type: string; name?: string; input?: Record<string, unknown> }> | undefined;
-      const questions = Array.isArray(apiBlocks)
-        ? apiBlocks
-            .filter((b) => b.type === "tool_use" && b.name === "AskUserQuestion")
-            .map((b) => (typeof b.input?.question === "string" ? b.input.question : ""))
-            .filter(Boolean)
-        : [];
-      return [textContent, ...questions].filter(Boolean).join("\n");
-    })
+  return run.displayItems
+    .filter((di) => di.type === "output" || di.type === "tool_call")
+    .map((di) => di.outputText ?? di.toolSummary ?? "")
     .filter(Boolean)
     .join("\n");
 }

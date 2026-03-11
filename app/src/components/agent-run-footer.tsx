@@ -39,7 +39,7 @@ export function AgentRunFooter({ agentId }: AgentRunFooterProps) {
   const workflowInitStartTime = useWorkflowStore((s) => s.initStartTime);
 
   const displayStatus: DisplayStatus | null = run
-    ? getDisplayStatus(run.status, run.messages.length, workflowIsInitializing)
+    ? getDisplayStatus(run.status, run.displayItems.length, workflowIsInitializing)
     : null;
 
   // Force re-render every second while running or initializing so elapsed time updates
@@ -62,7 +62,7 @@ export function AgentRunFooter({ agentId }: AgentRunFooterProps) {
 
   const dot = statusDot[displayStatus];
   const isFinished = displayStatus === "completed" || displayStatus === "error";
-  const turnCount = run.numTurns ?? run.contextHistory.length;
+  const turnCount = run.contextHistory.length;
 
   return (
     <div

@@ -1713,6 +1713,7 @@ async fn run_workflow_step_inner(
     step_id: u32,
     workspace_path: &str,
     settings: &WorkflowSettings,
+    workflow_session_id: Option<String>,
 ) -> Result<String, String> {
     let step = get_step_config(step_id)?;
     let thinking_budget = if settings.extended_thinking {
@@ -1794,7 +1795,11 @@ async fn run_workflow_step_inner(
         agent_name: Some(agent_name),
         required_plugins,
         conversation_history: None,
-        skill_name: None,
+        skill_name: Some(skill_name.to_string()),
+        step_id: Some(step_id as i32),
+        workflow_session_id,
+        usage_session_id: None,
+        run_source: Some("workflow".to_string()),
     };
 
     sidecar::spawn_sidecar(
@@ -1819,8 +1824,9 @@ pub async fn run_workflow_step(
     skill_name: String,
     step_id: u32,
     workspace_path: String,
+    workflow_session_id: Option<String>,
 ) -> Result<String, String> {
-    log::info!("[run_workflow_step] skill={} step={}", skill_name, step_id);
+    log::info!("[run_workflow_step] skill={} step={} session={:?}", skill_name, step_id, workflow_session_id);
     crate::commands::workflow_lifecycle::validate_run_request(
         &skill_name,
         step_id,
@@ -1906,6 +1912,7 @@ pub async fn run_workflow_step(
         step_id,
         &workspace_path,
         &settings,
+        workflow_session_id,
     )
     .await
     .map_err(|e| {
@@ -2436,6 +2443,10 @@ pub async fn run_answer_evaluator(
         required_plugins: None,
         conversation_history: None,
         skill_name: None,
+        step_id: None,
+        workflow_session_id: None,
+        usage_session_id: None,
+        run_source: None,
     };
 
     sidecar::spawn_sidecar(

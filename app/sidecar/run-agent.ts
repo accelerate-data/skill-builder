@@ -92,7 +92,13 @@ export async function runAgentRequest(
   emitSystemEvent(onMessage, "sdk_ready");
 
   // Process raw SDK messages through MessageProcessor for structured display items
-  const processor = new MessageProcessor();
+  const processor = new MessageProcessor({
+    skillName: config.skillName,
+    stepId: config.stepId,
+    workflowSessionId: config.workflowSessionId,
+    usageSessionId: config.usageSessionId,
+    runSource: config.runSource,
+  });
 
   for await (const message of conversation) {
     if (state.abortController.signal.aborted) break;
@@ -105,5 +111,12 @@ export async function runAgentRequest(
     for (const item of items) {
       onMessage(item as Record<string, unknown>);
     }
+  }
+
+  // Emit a shutdown run_summary for aborted runs so Rust can persist partial data
+  if (state.abortController.signal.aborted) {
+    process.stderr.write("[sidecar] Run aborted — emitting shutdown run_summary\n");
+    const shutdownSummary = processor.buildShutdownSummary();
+    onMessage({ type: "run_summary", data: shutdownSummary, timestamp: Date.now() } as Record<string, unknown>);
   }
 }

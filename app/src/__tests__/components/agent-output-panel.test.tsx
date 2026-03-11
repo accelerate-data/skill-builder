@@ -18,10 +18,8 @@ vi.mock("remark-gfm", () => ({
   default: () => {},
 }));
 
-// Mock tauri commands used by agent-store
-vi.mock("@/lib/tauri", () => ({
-  persistAgentRun: vi.fn().mockResolvedValue(undefined),
-}));
+// Mock tauri commands
+vi.mock("@/lib/tauri", () => ({}));
 
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 
@@ -65,12 +63,9 @@ describe("AgentOutputPanel", () => {
 
   it("shows running status in footer for running agent", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
-    useAgentStore.getState().addMessage("test-agent", {
-      type: "system",
-      content: undefined,
-      raw: { subtype: "init" },
-      timestamp: Date.now(),
-    });
+    addDisplayItems("test-agent", [
+      makeDisplayItem({ type: "output", outputText: "Starting..." }),
+    ]);
     render(<AgentOutputPanel agentId="test-agent" />);
     expect(screen.getByText("running\u2026")).toBeInTheDocument();
   });
@@ -193,15 +188,17 @@ describe("AgentOutputPanel", () => {
 
   it("shows token usage and cost in footer when run is completed", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
-    useAgentStore.getState().addMessage("test-agent", {
-      type: "result",
-      content: "Done",
-      raw: {
-        usage: { input_tokens: 1000, output_tokens: 500 },
-        total_cost_usd: 0.05,
+    // Simulate token usage and cost being set (normally via sidecar persistence)
+    useAgentStore.setState((state) => ({
+      runs: {
+        ...state.runs,
+        "test-agent": {
+          ...state.runs["test-agent"],
+          tokenUsage: { input: 1000, output: 500 },
+          totalCost: 0.05,
+        },
       },
-      timestamp: Date.now(),
-    });
+    }));
     useAgentStore.getState().completeRun("test-agent", true);
     render(<AgentOutputPanel agentId="test-agent" />);
     expect(screen.getByText(/2K/)).toBeInTheDocument();

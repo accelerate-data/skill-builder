@@ -1,5 +1,5 @@
 import type { AppSettings, SkillSummary } from "@/lib/tauri";
-import type { AgentMessage } from "@/stores/agent-store";
+import type { DisplayItem } from "@/lib/display-types";
 
 // --- Settings fixtures ---
 
@@ -46,14 +46,14 @@ export function makeSkillSummary(overrides?: Partial<SkillSummary>): SkillSummar
   };
 }
 
-// --- Agent fixtures ---
+// --- Display item fixtures ---
 
-export function makeAgentMessage(overrides?: Partial<AgentMessage>): AgentMessage {
+export function makeDisplayItem(overrides?: Partial<DisplayItem>): DisplayItem {
   return {
-    type: "assistant",
-    content: "Analyzing domain...",
-    raw: {},
+    id: `di-${Date.now()}`,
+    type: "output",
     timestamp: Date.now(),
+    outputText: "Analyzing domain...",
     ...overrides,
   };
 }

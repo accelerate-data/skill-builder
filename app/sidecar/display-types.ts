@@ -93,7 +93,69 @@ export interface DisplayItemEnvelope {
 }
 
 // ---------------------------------------------------------------------------
+// RunMetadata — structured metadata emitted by the sidecar
+// ---------------------------------------------------------------------------
+
+export interface ModelUsageEntry {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  cost: number;
+}
+
+/**
+ * Structured metadata emitted by the sidecar instead of raw SDK pass-throughs.
+ * Exactly one of the optional fields is set per message.
+ */
+export interface RunMetadata {
+  /** Per-turn context token snapshot (from assistant message usage). */
+  contextSnapshot?: { turn: number; inputTokens: number; outputTokens: number };
+  /** Compaction boundary event. */
+  compactionEvent?: { turn: number; preTokens: number; timestamp: number };
+  /** SDK session init data. */
+  sessionInit?: { sessionId: string; model: string };
+  /** Agent config flags. */
+  config?: { thinkingEnabled?: boolean; agentName?: string };
+  /** Context window size, emitted once from result message. */
+  contextWindow?: number;
+}
+
+/**
+ * Self-contained run summary emitted by the sidecar on result.
+ * Carries everything Rust needs to persist the run to SQLite.
+ */
+export interface RunSummary {
+  skillName: string;
+  stepId: number;
+  workflowSessionId?: string;
+  usageSessionId?: string;
+  runSource?: "workflow" | "refine" | "test";
+  sessionId?: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalCostUsd: number;
+  modelUsageBreakdown: ModelUsageEntry[];
+  contextWindow: number;
+  resultSubtype?: string;
+  resultErrors?: string[];
+  stopReason?: string;
+  numTurns: number;
+  durationMs: number;
+  durationApiMs?: number;
+  toolUseCount: number;
+  compactionCount: number;
+  status: "completed" | "error" | "shutdown";
+}
+
+export const METADATA_TYPES_VERSION = 1;
+
+// ---------------------------------------------------------------------------
 // Version tag for structural sync tests
 // ---------------------------------------------------------------------------
 
-export const DISPLAY_TYPES_VERSION = 1;
+export const DISPLAY_TYPES_VERSION = 2;
