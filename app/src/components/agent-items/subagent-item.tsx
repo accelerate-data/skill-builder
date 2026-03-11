@@ -15,7 +15,7 @@ export function SubagentItem({ item, depth = 0 }: { item: DisplayItem; depth?: n
 
   return (
     <div
-      className="rounded-lg border overflow-hidden"
+      className="min-w-0 rounded-lg border overflow-hidden"
       style={{
         borderColor: "color-mix(in oklch, var(--chat-subagent-border), transparent 80%)",
         backgroundColor: "var(--chat-subagent-bg)",

@@ -48,9 +48,9 @@ export const DisplayItemList = memo(function DisplayItemList({
   if (items.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex min-w-0 flex-col gap-0.5">
       {items.map((item) => (
-        <div key={item.id} className="animate-message-in">
+        <div key={item.id} className="min-w-0 animate-message-in">
           <DisplayItemRenderer item={item} depth={depth} />
         </div>
       ))}
