@@ -48,9 +48,15 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
         settings.marketplace_url = None; // clear legacy field
         settings.marketplace_initialized = true;
         if let Err(e) = crate::db::write_settings(&conn, &settings) {
-            log::error!("[get_settings] failed to persist marketplace migration: {}", e);
+            log::error!(
+                "[get_settings] failed to persist marketplace migration: {}",
+                e
+            );
         } else {
-            log::info!("[get_settings] migrated marketplace_url to marketplace_registries ({} entries)", settings.marketplace_registries.len());
+            log::info!(
+                "[get_settings] migrated marketplace_url to marketplace_registries ({} entries)",
+                settings.marketplace_registries.len()
+            );
         }
     }
 
@@ -58,14 +64,20 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
     // This migrates existing entries that were saved as full HTTPS URLs.
     let mut normalized = false;
     for registry in &mut settings.marketplace_registries {
-        if let Ok(info) = crate::commands::github_import::parse_github_url_inner(&registry.source_url) {
+        if let Ok(info) =
+            crate::commands::github_import::parse_github_url_inner(&registry.source_url)
+        {
             let canonical = if info.branch == "main" {
                 format!("{}/{}", info.owner, info.repo)
             } else {
                 format!("{}/{}#{}", info.owner, info.repo, info.branch)
             };
             if canonical != registry.source_url {
-                log::info!("[get_settings] normalizing registry url: {} -> {}", registry.source_url, canonical);
+                log::info!(
+                    "[get_settings] normalizing registry url: {} -> {}",
+                    registry.source_url,
+                    canonical
+                );
                 registry.source_url = canonical;
                 normalized = true;
             }
@@ -73,7 +85,10 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
     }
     if normalized {
         if let Err(e) = crate::db::write_settings(&conn, &settings) {
-            log::error!("[get_settings] failed to persist normalized registry URLs: {}", e);
+            log::error!(
+                "[get_settings] failed to persist normalized registry URLs: {}",
+                e
+            );
         }
     }
 
@@ -94,10 +109,7 @@ fn normalize_path(raw: &str) -> String {
 }
 
 #[tauri::command]
-pub fn save_settings(
-    db: tauri::State<'_, Db>,
-    settings: AppSettings,
-) -> Result<(), String> {
+pub fn save_settings(db: tauri::State<'_, Db>, settings: AppSettings) -> Result<(), String> {
     log::info!("[save_settings]");
     let mut settings = settings;
     // Normalize skills_path before persisting
@@ -178,7 +190,10 @@ fn diff_settings(old: &AppSettings, new: &AppSettings) -> Vec<String> {
     cmp_bool!(refine_prompt_suggestions, "refine_prompt_suggestions");
     cmp_opt!(marketplace_url, "marketplace_url");
     if old.marketplace_registries.len() != new.marketplace_registries.len() {
-        changes.push(format!("marketplace_registries={} entries", new.marketplace_registries.len()));
+        changes.push(format!(
+            "marketplace_registries={} entries",
+            new.marketplace_registries.len()
+        ));
     }
     cmp_val!(max_dimensions, "max_dimensions");
     cmp_opt!(industry, "industry");
@@ -207,8 +222,9 @@ fn handle_skills_path_change(old: Option<&str>, new: Option<&str>) -> Result<(),
 
             if !old.exists() {
                 // Old doesn't exist, just create new + init
-                fs::create_dir_all(new)
-                    .map_err(|e| format!("Failed to create skills directory {}: {}", new_path, e))?;
+                fs::create_dir_all(new).map_err(|e| {
+                    format!("Failed to create skills directory {}: {}", new_path, e)
+                })?;
                 if let Err(e) = crate::git::ensure_repo(new) {
                     log::warn!("Failed to init git repo at {}: {}", new_path, e);
                 }
@@ -218,9 +234,11 @@ fn handle_skills_path_change(old: Option<&str>, new: Option<&str>) -> Result<(),
             if new.exists() {
                 // Check if new directory is empty (or just has hidden files)
                 let has_content = fs::read_dir(new)
-                    .map(|entries| entries.filter_map(|e| e.ok()).any(|e| {
-                        !e.file_name().to_string_lossy().starts_with('.')
-                    }))
+                    .map(|entries| {
+                        entries
+                            .filter_map(|e| e.ok())
+                            .any(|e| !e.file_name().to_string_lossy().starts_with('.'))
+                    })
                     .unwrap_or(false);
                 if has_content {
                     return Err(format!(
@@ -276,7 +294,9 @@ fn move_directory(src: &std::path::Path, dst: &std::path::Path) -> Result<(), St
 fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
     fs::create_dir_all(dst).map_err(|e| format!("Failed to create {}: {}", dst.display(), e))?;
 
-    for entry in fs::read_dir(src).map_err(|e| format!("Failed to read {}: {}", src.display(), e))? {
+    for entry in
+        fs::read_dir(src).map_err(|e| format!("Failed to read {}: {}", src.display(), e))?
+    {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
@@ -285,7 +305,12 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
             copy_dir_recursive(&src_path, &dst_path)?;
         } else {
             fs::copy(&src_path, &dst_path).map_err(|e| {
-                format!("Failed to copy {} to {}: {}", src_path.display(), dst_path.display(), e)
+                format!(
+                    "Failed to copy {} to {}: {}",
+                    src_path.display(),
+                    dst_path.display(),
+                    e
+                )
             })?;
         }
     }
@@ -357,12 +382,18 @@ pub async fn list_models(api_key: String) -> Result<Vec<ModelInfo>, String> {
         return Err(format!("API error: {}", resp.status()));
     }
 
-    let body: ModelsApiResponse = resp.json().await.map_err(|e| format!("Parse error: {}", e))?;
+    let body: ModelsApiResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
     let models = body
         .data
         .into_iter()
         .filter(|m| m.id.starts_with("claude-"))
-        .map(|m| ModelInfo { id: m.id, display_name: m.display_name })
+        .map(|m| ModelInfo {
+            id: m.id,
+            display_name: m.display_name,
+        })
         .collect();
 
     Ok(models)
@@ -384,8 +415,7 @@ pub fn get_log_file_path(app: tauri::AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub fn get_default_skills_path() -> Result<String, String> {
     log::info!("[get_default_skills_path]");
-    let home = dirs::home_dir()
-        .ok_or_else(|| "Could not determine home directory".to_string())?;
+    let home = dirs::home_dir().ok_or_else(|| "Could not determine home directory".to_string())?;
     let path = home.join("skill-builder");
     path.to_str()
         .map(|s| s.to_string())
@@ -584,7 +614,9 @@ mod tests {
         .unwrap();
 
         // Verify DB records are unchanged — skill_name still resolves
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.skill_name, "my-skill");
         assert_eq!(run.current_step, 3);
         assert_eq!(run.status, "in_progress");

@@ -21,6 +21,7 @@ import {
   startRefineSession,
   sendRefineMessage,
   closeRefineSession,
+  finalizeRefineRun,
   materializeRefineValidationOutput,
   cleanupSkillSidecar,
   acquireLock,
@@ -244,8 +245,9 @@ export default function RefinePage() {
         }
 
         const files = await loadSkillFiles(workspacePath, skill.name);
-        if (files) {
+      if (files) {
           store.setSkillFiles(files);
+          store.setGitDiff(null);
           if (files.length > 0) {
             store.setActiveFileTab(files[0].filename);
           }
@@ -304,32 +306,53 @@ export default function RefinePage() {
     const complete = async () => {
       const store = useRefineStore.getState();
 
-      // Backend-owned context writes for /validate and /rewrite validate pass.
       if (activeRunStatus === "completed" && workspacePath && selectedSkill) {
         const structuredOutput = extractStructuredResultPayload(activeAgentId);
         const hasStructuredObject = !!structuredOutput
           && typeof structuredOutput === "object"
           && !Array.isArray(structuredOutput);
-        if (hasStructuredObject && (structuredOutput as Record<string, unknown>).status === "validation_complete") {
+
+        try {
+          const finalized = await finalizeRefineRun(
+            selectedSkill.name,
+            workspacePath,
+            hasStructuredObject ? structuredOutput : undefined,
+          );
+          store.updateSkillFiles(
+            finalized.files.map((file): SkillFile => ({
+              filename: file.path,
+              content: file.content,
+            })),
+          );
+          store.setGitDiff(finalized.diff);
+        } catch (err) {
           try {
-            await materializeRefineValidationOutput(
-              selectedSkill.name,
-              workspacePath,
-              structuredOutput,
-            );
+            if (hasStructuredObject && (structuredOutput as Record<string, unknown>).status === "validation_complete") {
+              await materializeRefineValidationOutput(
+                selectedSkill.name,
+                workspacePath,
+                structuredOutput,
+              );
+            }
+
+            const files = await loadSkillFiles(workspacePath, selectedSkill.name);
+            if (files) {
+              store.updateSkillFiles(files);
+              store.setGitDiff(null);
+            }
           } catch (err) {
             toast.error(
-              `Validation output materialization failed: ${err instanceof Error ? err.message : String(err)}`,
+              `Refine finalization failed: ${err instanceof Error ? err.message : String(err)}`,
               { duration: Infinity },
             );
           }
         }
-      }
-
-      // Re-read skill files to capture any changes the agent made
-      if (workspacePath && selectedSkill) {
+      } else if (workspacePath && selectedSkill) {
         const files = await loadSkillFiles(workspacePath, selectedSkill.name);
-        if (files) store.updateSkillFiles(files);
+        if (files) {
+          store.updateSkillFiles(files);
+          store.setGitDiff(null);
+        }
       }
 
       store.setRunning(false);
@@ -383,6 +406,7 @@ export default function RefinePage() {
 
       // Snapshot baseline for diff
       store.snapshotBaseline();
+      store.setGitDiff(null);
 
       // Add user message
       store.addUserMessage(text, targetFiles, command);

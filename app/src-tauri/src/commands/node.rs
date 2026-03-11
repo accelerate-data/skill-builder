@@ -74,11 +74,7 @@ pub async fn check_startup_deps(app: tauri::AppHandle) -> Result<StartupDeps, St
         Ok(res) if res.meets_minimum => dep_ok(
             "node_runtime",
             "Node.js",
-            format!(
-                "{} ({})",
-                res.version.unwrap_or_default(),
-                res.source
-            ),
+            format!("{} ({})", res.version.unwrap_or_default(), res.source),
         ),
         Ok(res) => dep_fail(
             "node_runtime",

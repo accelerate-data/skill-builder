@@ -125,7 +125,8 @@ fn route_sidecar_message(
                 Err(e) => {
                     log::error!(
                         "[event:run_summary:{}] Failed to deserialize: {}",
-                        agent_id, e
+                        agent_id,
+                        e
                     );
                     None
                 }
@@ -152,7 +153,10 @@ fn route_sidecar_message(
                 }))
             }
             None => {
-                log::warn!("[event:metadata:{}] Missing 'data' field — skipping", agent_id);
+                log::warn!(
+                    "[event:metadata:{}] Missing 'data' field — skipping",
+                    agent_id
+                );
                 None
             }
         };
@@ -186,7 +190,9 @@ fn persist_run_summary_to_conn(
     summary: &SidecarRunSummary,
 ) {
     // Determine the effective workflow_session_id (prefer workflowSessionId, fallback to usageSessionId)
-    let effective_session_id = summary.workflow_session_id.as_deref()
+    let effective_session_id = summary
+        .workflow_session_id
+        .as_deref()
         .or(summary.usage_session_id.as_deref());
 
     // Persist one row per model entry or one aggregate row
@@ -194,7 +200,12 @@ fn persist_run_summary_to_conn(
         for entry in &summary.model_usage_breakdown {
             log::info!(
                 "[persist_run_summary] agent={} skill={} step={} model={} status={} cost={:.4}",
-                agent_id, summary.skill_name, summary.step_id, entry.model, summary.status, entry.cost
+                agent_id,
+                summary.skill_name,
+                summary.step_id,
+                entry.model,
+                summary.status,
+                entry.cost
             );
             if let Err(e) = crate::db::persist_agent_run(
                 &conn,
@@ -219,7 +230,9 @@ fn persist_run_summary_to_conn(
             ) {
                 log::error!(
                     "[persist_run_summary] Failed to persist for agent={} model={}: {}",
-                    agent_id, entry.model, e
+                    agent_id,
+                    entry.model,
+                    e
                 );
             }
         }
@@ -227,7 +240,12 @@ fn persist_run_summary_to_conn(
         // Single aggregate row
         log::info!(
             "[persist_run_summary] agent={} skill={} step={} model={} status={} cost={:.4}",
-            agent_id, summary.skill_name, summary.step_id, summary.model, summary.status, summary.total_cost_usd
+            agent_id,
+            summary.skill_name,
+            summary.step_id,
+            summary.model,
+            summary.status,
+            summary.total_cost_usd
         );
         if let Err(e) = crate::db::persist_agent_run(
             &conn,
@@ -250,22 +268,30 @@ fn persist_run_summary_to_conn(
             summary.session_id.as_deref(),
             effective_session_id,
         ) {
-                log::error!(
-                    "[persist_run_summary] Failed to persist aggregate for agent={}: {}",
-                    agent_id, e
-                );
+            log::error!(
+                "[persist_run_summary] Failed to persist aggregate for agent={}: {}",
+                agent_id,
+                e
+            );
         }
     }
 }
 
 /// Persist a run summary directly to SQLite (fire-and-forget from the caller's perspective).
-pub fn persist_run_summary(app_handle: &tauri::AppHandle, agent_id: &str, summary: &SidecarRunSummary) {
+pub fn persist_run_summary(
+    app_handle: &tauri::AppHandle,
+    agent_id: &str,
+    summary: &SidecarRunSummary,
+) {
     use tauri::Manager;
 
     let db = match app_handle.try_state::<crate::db::Db>() {
         Some(db) => db,
         None => {
-            log::error!("[persist_run_summary] DB state not available for agent={}", agent_id);
+            log::error!(
+                "[persist_run_summary] DB state not available for agent={}",
+                agent_id
+            );
             return;
         }
     };
@@ -273,7 +299,11 @@ pub fn persist_run_summary(app_handle: &tauri::AppHandle, agent_id: &str, summar
     let conn = match db.0.lock() {
         Ok(c) => c,
         Err(e) => {
-            log::error!("[persist_run_summary] Failed to acquire DB lock for agent={}: {}", agent_id, e);
+            log::error!(
+                "[persist_run_summary] Failed to acquire DB lock for agent={}: {}",
+                agent_id,
+                e
+            );
             return;
         }
     };
@@ -283,62 +313,64 @@ pub fn persist_run_summary(app_handle: &tauri::AppHandle, agent_id: &str, summar
 
 pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, line: &str) {
     match serde_json::from_str::<serde_json::Value>(line) {
-        Ok(message) => {
-            match route_sidecar_message(agent_id, message) {
-                Some(SidecarMessageAction::PersistRunSummary(summary)) => {
-                    persist_run_summary(app_handle, agent_id, &summary);
+        Ok(message) => match route_sidecar_message(agent_id, message) {
+            Some(SidecarMessageAction::PersistRunSummary(summary)) => {
+                persist_run_summary(app_handle, agent_id, &summary);
+            }
+            Some(SidecarMessageAction::EmitMetadata(event)) => {
+                if let Err(e) = app_handle.emit("agent-metadata", &event) {
+                    log::warn!("Failed to emit agent-metadata for {}: {}", agent_id, e);
                 }
-                Some(SidecarMessageAction::EmitMetadata(event)) => {
-                    if let Err(e) = app_handle.emit("agent-metadata", &event) {
-                        log::warn!("Failed to emit agent-metadata for {}: {}", agent_id, e);
-                    }
+            }
+            Some(SidecarMessageAction::EmitInitProgress(progress)) => {
+                log::debug!(
+                    "[event:agent-init-progress:{}] {}",
+                    agent_id,
+                    progress.subtype
+                );
+                if let Err(e) = app_handle.emit("agent-init-progress", &progress) {
+                    log::warn!("Failed to emit agent-init-progress for {}: {}", agent_id, e);
                 }
-                Some(SidecarMessageAction::EmitInitProgress(progress)) => {
-                    log::debug!("[event:agent-init-progress:{}] {}", agent_id, progress.subtype);
-                    if let Err(e) = app_handle.emit("agent-init-progress", &progress) {
-                        log::warn!(
-                            "Failed to emit agent-init-progress for {}: {}",
-                            agent_id, e
-                        );
-                    }
-                }
-                Some(SidecarMessageAction::ForwardAgentMessage(event)) => {
-                    let msg_type = event
+            }
+            Some(SidecarMessageAction::ForwardAgentMessage(event)) => {
+                let msg_type = event
+                    .message
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("unknown");
+                if msg_type == "display_item" {
+                    let item_type = event
                         .message
-                        .get("type")
+                        .get("item")
+                        .and_then(|i| i.get("type"))
                         .and_then(|t| t.as_str())
                         .unwrap_or("unknown");
-                    if msg_type == "display_item" {
-                        let item_type = event
-                            .message
-                            .get("item")
-                            .and_then(|i| i.get("type"))
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("unknown");
-                        let item_id = event
-                            .message
-                            .get("item")
-                            .and_then(|i| i.get("id"))
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("unknown");
-                        log::debug!(
-                            "[event:agent-message:{}] display_item type={} id={}",
-                            agent_id, item_type, item_id
-                        );
-                    } else {
-                        log::debug!(
-                            "[event:agent-message:{}] pass_through type={}",
-                            agent_id, msg_type
-                        );
-                    }
-
-                    if let Err(e) = app_handle.emit("agent-message", &event) {
-                        log::warn!("Failed to emit agent-message for {}: {}", agent_id, e);
-                    }
+                    let item_id = event
+                        .message
+                        .get("item")
+                        .and_then(|i| i.get("id"))
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("unknown");
+                    log::debug!(
+                        "[event:agent-message:{}] display_item type={} id={}",
+                        agent_id,
+                        item_type,
+                        item_id
+                    );
+                } else {
+                    log::debug!(
+                        "[event:agent-message:{}] pass_through type={}",
+                        agent_id,
+                        msg_type
+                    );
                 }
-                None => {}
+
+                if let Err(e) = app_handle.emit("agent-message", &event) {
+                    log::warn!("Failed to emit agent-message for {}: {}", agent_id, e);
+                }
             }
-        }
+            None => {}
+        },
         Err(e) => {
             log::warn!("Failed to parse sidecar output: {}", e);
         }
@@ -356,7 +388,9 @@ pub fn handle_sidecar_exit(app_handle: &tauri::AppHandle, agent_id: &str, succes
     ) {
         log::warn!(
             "Failed to emit agent-exit for {} (success={}): {}",
-            agent_id, success, e
+            agent_id,
+            success,
+            e
         );
     }
 }
@@ -390,7 +424,8 @@ pub fn emit_init_error(app_handle: &tauri::AppHandle, error: &SidecarStartupErro
     if let Err(e) = app_handle.emit("agent-init-error", &payload) {
         log::error!(
             "Failed to emit agent-init-error [{}]: {}",
-            payload.error_type, e
+            payload.error_type,
+            e
         );
     }
 }
@@ -596,8 +631,8 @@ mod tests {
 
         persist_run_summary_to_conn(&conn, "agent-breakdown", &summary);
 
-        let runs = crate::db::get_session_agent_runs(&conn, "synthetic:refine:demo-skill:sess-1")
-            .unwrap();
+        let runs =
+            crate::db::get_session_agent_runs(&conn, "synthetic:refine:demo-skill:sess-1").unwrap();
         assert_eq!(runs.len(), 2);
         let models: Vec<_> = runs.iter().map(|run| run.model.as_str()).collect();
         assert!(models.contains(&"claude-sonnet-4-6"));

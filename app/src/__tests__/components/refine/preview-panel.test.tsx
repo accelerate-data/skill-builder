@@ -39,6 +39,7 @@ describe("PreviewPanel", () => {
       activeFileTab: "SKILL.md",
       diffMode: false,
       baselineFiles: [],
+      gitDiff: null,
     });
   });
 
@@ -105,7 +106,7 @@ describe("PreviewPanel", () => {
   // --- Diff toggle ---
 
   it("disables diff toggle when no baseline exists", () => {
-    setStoreState({ skillFiles: SKILL_FILES, baselineFiles: [] });
+    setStoreState({ skillFiles: SKILL_FILES, baselineFiles: [], gitDiff: null });
     render(<PreviewPanel />);
 
     const diffBtn = screen.getByTestId("refine-diff-toggle");
@@ -118,6 +119,20 @@ describe("PreviewPanel", () => {
 
     const diffBtn = screen.getByTestId("refine-diff-toggle");
     expect(diffBtn).toBeEnabled();
+  });
+
+  it("enables diff toggle when git diff exists", () => {
+    setStoreState({
+      skillFiles: SKILL_FILES,
+      baselineFiles: [],
+      gitDiff: {
+        stat: "1 file changed",
+        files: [{ path: "my-skill/SKILL.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" }],
+      },
+    });
+    render(<PreviewPanel />);
+
+    expect(screen.getByTestId("refine-diff-toggle")).toBeEnabled();
   });
 
   it("shows 'Diff' label when not in diff mode", () => {
@@ -164,5 +179,23 @@ describe("PreviewPanel", () => {
     const hasAdded = rows.some((r) => r.className.includes("bg-[color-mix"));
     expect(hasRemoved).toBe(true);
     expect(hasAdded).toBe(true);
+  });
+
+  it("renders git patch text when git-backed diff exists for the active file", () => {
+    setStoreState({
+      skillFiles: SKILL_FILES,
+      diffMode: true,
+      activeFileTab: "SKILL.md",
+      gitDiff: {
+        stat: "1 file changed",
+        files: [{ path: "my-skill/SKILL.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" }],
+      },
+    });
+
+    render(<PreviewPanel />);
+
+    expect(screen.getByTestId("git-patch-view")).toHaveTextContent("@@ -1 +1 @@");
+    expect(screen.getByTestId("git-patch-view")).toHaveTextContent("+new");
+    expect(screen.queryByTestId("markdown-preview")).not.toBeInTheDocument();
   });
 });

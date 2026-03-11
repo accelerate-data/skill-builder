@@ -99,8 +99,14 @@ pub async fn spawn_sidecar(
         }
     }
 
-    pool.send_request(&skill_name, &agent_id, config, &app_handle, transcript_log_dir.as_deref())
-        .await?;
+    pool.send_request(
+        &skill_name,
+        &agent_id,
+        config,
+        &app_handle,
+        transcript_log_dir.as_deref(),
+    )
+    .await?;
 
     Ok(())
 }
@@ -117,7 +123,11 @@ fn resolve_sdk_cli_path(app_handle: &tauri::AppHandle) -> Result<String, String>
 
     // Try resource directory first (production)
     if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        let cli = resource_dir.join("sidecar").join("dist").join("sdk").join("cli.js");
+        let cli = resource_dir
+            .join("sidecar")
+            .join("dist")
+            .join("sdk")
+            .join("cli.js");
         if cli.exists() {
             return cli
                 .to_str()
@@ -269,8 +279,14 @@ mod tests {
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed["skillName"], "my-skill", "skill_name must be camelCase 'skillName' in JSON");
-        assert!(parsed.get("skill_name").is_none(), "snake_case key must not appear in JSON");
+        assert_eq!(
+            parsed["skillName"], "my-skill",
+            "skill_name must be camelCase 'skillName' in JSON"
+        );
+        assert!(
+            parsed.get("skill_name").is_none(),
+            "snake_case key must not appear in JSON"
+        );
     }
 
     #[test]
@@ -302,6 +318,9 @@ mod tests {
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert!(parsed.get("skillName").is_none(), "skillName must be absent when None");
+        assert!(
+            parsed.get("skillName").is_none(),
+            "skillName must be absent when None"
+        );
     }
 }

@@ -22,6 +22,11 @@ import { DiffView } from "./diff-view";
 const REMARK_PLUGINS = [remarkGfm];
 const REHYPE_PLUGINS = [rehypeHighlight];
 
+function normalizeDiffPath(path: string): string {
+  const parts = path.split("/");
+  return parts.length > 1 ? parts.slice(1).join("/") : path;
+}
+
 /** Memoized markdown renderer — only re-renders when content changes. */
 const MarkdownPreview = memo(function MarkdownPreview({ content }: { content: string }) {
   return (
@@ -38,6 +43,7 @@ export function PreviewPanel() {
   const activeFileTab = useRefineStore((s) => s.activeFileTab);
   const diffMode = useRefineStore((s) => s.diffMode);
   const baselineFiles = useRefineStore((s) => s.baselineFiles);
+  const gitDiff = useRefineStore((s) => s.gitDiff);
   const isLoadingFiles = useRefineStore((s) => s.isLoadingFiles);
   const setActiveFileTab = useRefineStore((s) => s.setActiveFileTab);
   const setDiffMode = useRefineStore((s) => s.setDiffMode);
@@ -63,7 +69,8 @@ export function PreviewPanel() {
 
   const activeFile = skillFiles.find((f) => f.filename === activeFileTab);
   const baselineFile = baselineFiles.find((f) => f.filename === activeFileTab);
-  const hasBaseline = baselineFiles.length > 0;
+  const gitDiffFile = gitDiff?.files.find((file) => normalizeDiffPath(file.path) === activeFileTab);
+  const hasDiff = (gitDiff?.files.length ?? 0) > 0 || baselineFiles.length > 0;
 
   return (
     <div className="flex h-full flex-col">
@@ -104,7 +111,7 @@ export function PreviewPanel() {
           data-testid="refine-diff-toggle"
           variant="outline"
           size="sm"
-          disabled={!hasBaseline}
+          disabled={!hasDiff}
           onClick={() => setDiffMode(!diffMode)}
           className="ml-2 gap-1.5"
         >
@@ -113,7 +120,13 @@ export function PreviewPanel() {
         </Button>
       </div>
       <div className="min-h-0 flex-1">
-        {diffMode && baselineFile ? (
+        {diffMode && gitDiffFile ? (
+          <ScrollArea className="h-full">
+            <pre data-testid="git-patch-view" className="whitespace-pre-wrap break-all p-4 font-mono text-sm">
+              {gitDiffFile.diff}
+            </pre>
+          </ScrollArea>
+        ) : diffMode && baselineFile ? (
           <DiffView
             before={baselineFile.content}
             after={activeFile?.content ?? ""}

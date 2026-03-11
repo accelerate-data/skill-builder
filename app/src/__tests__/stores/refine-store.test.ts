@@ -12,6 +12,7 @@ const initialState = {
   activeFileTab: "SKILL.md",
   diffMode: false,
   baselineFiles: [],
+  gitDiff: null,
   messages: [],
   activeAgentId: null,
   isRunning: false,
@@ -33,6 +34,7 @@ describe("useRefineStore", () => {
     expect(state.activeFileTab).toBe("SKILL.md");
     expect(state.diffMode).toBe(false);
     expect(state.baselineFiles).toEqual([]);
+    expect(state.gitDiff).toBeNull();
     expect(state.messages).toEqual([]);
     expect(state.activeAgentId).toBeNull();
     expect(state.isRunning).toBe(false);
@@ -181,6 +183,44 @@ describe("useRefineStore", () => {
     expect(state.skillFiles).toHaveLength(2);
   });
 
+  it("updateSkillFiles preserves the active file when it still exists", () => {
+    useRefineStore.setState({
+      activeFileTab: "references/glossary.md",
+      skillFiles: [
+        { filename: "SKILL.md", content: "old" },
+        { filename: "references/glossary.md", content: "old glossary" },
+      ],
+    });
+
+    useRefineStore.getState().updateSkillFiles([
+      { filename: "SKILL.md", content: "new" },
+      { filename: "references/glossary.md", content: "new glossary" },
+      { filename: "references/api.md", content: "api docs" },
+    ]);
+
+    const state = useRefineStore.getState();
+    expect(state.activeFileTab).toBe("references/glossary.md");
+    expect(state.skillFiles).toHaveLength(3);
+  });
+
+  it("updateSkillFiles falls back to the first file when the active file was removed", () => {
+    useRefineStore.setState({
+      activeFileTab: "references/glossary.md",
+      skillFiles: [
+        { filename: "SKILL.md", content: "old" },
+        { filename: "references/glossary.md", content: "old glossary" },
+      ],
+    });
+
+    useRefineStore.getState().updateSkillFiles([
+      { filename: "SKILL.md", content: "new" },
+      { filename: "references/api.md", content: "api docs" },
+    ]);
+
+    const state = useRefineStore.getState();
+    expect(state.activeFileTab).toBe("SKILL.md");
+  });
+
   it("clearSession resets messages, agent state, diff state, but preserves refinableSkills", () => {
     const skills = [makeSkillSummary({ name: "skill-a" })];
     useRefineStore.setState({
@@ -192,6 +232,7 @@ describe("useRefineStore", () => {
       sessionId: "sess-1",
       diffMode: true,
       baselineFiles: [{ filename: "SKILL.md", content: "old" }],
+      gitDiff: { stat: "1 file changed", files: [] },
       skillFiles: [{ filename: "SKILL.md", content: "new" }],
       activeFileTab: "references/foo.md",
     });
@@ -209,6 +250,7 @@ describe("useRefineStore", () => {
     expect(state.sessionId).toBeNull();
     expect(state.diffMode).toBe(false);
     expect(state.baselineFiles).toEqual([]);
+    expect(state.gitDiff).toBeNull();
     expect(state.skillFiles).toEqual([]);
     expect(state.activeFileTab).toBe("SKILL.md");
   });
@@ -218,6 +260,19 @@ describe("useRefineStore", () => {
     expect(useRefineStore.getState().diffMode).toBe(true);
     useRefineStore.getState().setDiffMode(false);
     expect(useRefineStore.getState().diffMode).toBe(false);
+  });
+
+  it("setGitDiff stores and clears git-backed diff state", () => {
+    const diff = {
+      stat: "1 file changed",
+      files: [{ path: "my-skill/SKILL.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" }],
+    };
+
+    useRefineStore.getState().setGitDiff(diff);
+    expect(useRefineStore.getState().gitDiff).toEqual(diff);
+
+    useRefineStore.getState().setGitDiff(null);
+    expect(useRefineStore.getState().gitDiff).toBeNull();
   });
 
   it("setActiveFileTab changes the active file tab", () => {

@@ -209,7 +209,10 @@ mod tests {
         let fmt = output_format_for_agent("my-skill", Some("validate-skill"));
         assert!(fmt.is_some());
         let schema = fmt.expect("schema");
-        assert_eq!(schema["schema"]["properties"]["status"]["const"], "validation_complete");
+        assert_eq!(
+            schema["schema"]["properties"]["status"]["const"],
+            "validation_complete"
+        );
     }
 
     #[test]
@@ -227,7 +230,10 @@ mod tests {
             Some("claude-haiku-4-5-20251001"),
             Some("claude-haiku-4-5-20251001".to_string()),
         );
-        assert!(result.is_none(), "fallback must be suppressed when equal to main model");
+        assert!(
+            result.is_none(),
+            "fallback must be suppressed when equal to main model"
+        );
     }
 
     #[test]
@@ -243,10 +249,8 @@ mod tests {
     #[test]
     fn test_suppress_same_fallback_model_keeps_when_no_explicit_model() {
         // agent_name is set → model_for_config = None; fallback is preserved
-        let result = suppress_same_fallback_model(
-            None,
-            Some("claude-haiku-4-5-20251001".to_string()),
-        );
+        let result =
+            suppress_same_fallback_model(None, Some("claude-haiku-4-5-20251001".to_string()));
         assert_eq!(result.as_deref(), Some("claude-haiku-4-5-20251001"));
     }
 

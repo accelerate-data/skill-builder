@@ -380,6 +380,7 @@ pub fn run() {
             commands::refine::send_refine_message,
             commands::refine::close_refine_session,
             commands::refine::materialize_refine_validation_output,
+            commands::refine::finalize_refine_run,
             commands::skill_test::prepare_skill_test,
             commands::skill_test::cleanup_skill_test,
             commands::imported_skills::parse_skill_file,
@@ -488,7 +489,13 @@ mod tests {
 
         migrate_legacy_app_data_dir(&new_dir);
 
-        assert!(legacy.exists(), "legacy dir should remain when target is populated");
-        assert!(new_dir.join("existing.txt").exists(), "existing target content must be preserved");
+        assert!(
+            legacy.exists(),
+            "legacy dir should remain when target is populated"
+        );
+        assert!(
+            new_dir.join("existing.txt").exists(),
+            "existing target content must be preserved"
+        );
     }
 }

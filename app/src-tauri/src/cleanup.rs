@@ -3,15 +3,13 @@ use std::path::Path;
 
 /// Delete output files for a single step from workspace and skills_path.
 /// Used defensively to clean up partial output from interrupted agent runs.
-pub fn cleanup_step_files(
-    workspace_path: &str,
-    skill_name: &str,
-    step_id: u32,
-    skills_path: &str,
-) {
+pub fn cleanup_step_files(workspace_path: &str, skill_name: &str, step_id: u32, skills_path: &str) {
     log::debug!(
         "[cleanup_step_files] skill='{}': step={} workspace={} skills_path={}",
-        skill_name, step_id, workspace_path, skills_path
+        skill_name,
+        step_id,
+        workspace_path,
+        skills_path
     );
     let skill_dir = Path::new(workspace_path).join(skill_name);
     let files = get_step_output_files(step_id);
@@ -26,11 +24,17 @@ pub fn cleanup_step_files(
         let refs_dir = output_dir.join("references");
         if refs_dir.is_dir() {
             // Only delete if non-empty (empty dir is from create_skill_inner)
-            if std::fs::read_dir(&refs_dir).map(|mut d| d.next().is_some()).unwrap_or(false) {
+            if std::fs::read_dir(&refs_dir)
+                .map(|mut d| d.next().is_some())
+                .unwrap_or(false)
+            {
                 let _ = std::fs::remove_dir_all(&refs_dir);
                 // Recreate empty dir (create_skill_inner expects it)
                 let _ = std::fs::create_dir_all(&refs_dir);
-                log::debug!("[cleanup_step_files] cleaned references/ in {}", output_dir.display());
+                log::debug!(
+                    "[cleanup_step_files] cleaned references/ in {}",
+                    output_dir.display()
+                );
             }
         }
         return;
@@ -60,7 +64,10 @@ pub fn cleanup_future_steps(
 ) {
     log::debug!(
         "[cleanup_future_steps] skill='{}': after_step={} workspace={} skills_path={}",
-        skill_name, after_step, workspace_path, skills_path
+        skill_name,
+        after_step,
+        workspace_path,
+        skills_path
     );
     for step_id in [0u32, 1, 2, 3] {
         if (step_id as i32) <= after_step {
@@ -74,40 +81,72 @@ pub fn cleanup_future_steps(
 /// For step 3 (generate skill), files are in `skill_output_dir` (skills_path/skill_name).
 /// For other steps, files are in skills_path/skill_name/ (context files).
 /// More thorough than `cleanup_step_files` — used by the reset flow.
-pub fn clean_step_output_thorough(workspace_path: &str, skill_name: &str, step_id: u32, skills_path: &str) {
+pub fn clean_step_output_thorough(
+    workspace_path: &str,
+    skill_name: &str,
+    step_id: u32,
+    skills_path: &str,
+) {
     let skill_dir = Path::new(workspace_path).join(skill_name);
     log::debug!(
         "[clean_step_output_thorough] skill='{}': step={} workspace={} skills_path={}",
-        skill_name, step_id, workspace_path, skills_path
+        skill_name,
+        step_id,
+        workspace_path,
+        skills_path
     );
 
     if step_id == 3 {
         // Step 3 output lives in skills_path/skill_name/
         let skill_output_dir = Path::new(skills_path).join(skill_name);
-        log::debug!("[clean_step_output_thorough] step=3 output_dir={} exists={}", skill_output_dir.display(), skill_output_dir.exists());
+        log::debug!(
+            "[clean_step_output_thorough] step=3 output_dir={} exists={}",
+            skill_output_dir.display(),
+            skill_output_dir.exists()
+        );
         if skill_output_dir.exists() {
             for file in get_step_output_files(3) {
                 let path = skill_output_dir.join(file);
                 if path.exists() {
                     match std::fs::remove_file(&path) {
-                        Ok(()) => log::debug!("[clean_step_output_thorough] deleted {}", path.display()),
-                        Err(e) => log::warn!("[clean_step_output_thorough] FAILED to delete {}: {}", path.display(), e),
+                        Ok(()) => {
+                            log::debug!("[clean_step_output_thorough] deleted {}", path.display())
+                        }
+                        Err(e) => log::warn!(
+                            "[clean_step_output_thorough] FAILED to delete {}: {}",
+                            path.display(),
+                            e
+                        ),
                     }
                 }
             }
             let refs_dir = skill_output_dir.join("references");
             if refs_dir.is_dir() {
                 match std::fs::remove_dir_all(&refs_dir) {
-                    Ok(()) => log::debug!("[clean_step_output_thorough] deleted dir {}", refs_dir.display()),
-                    Err(e) => log::warn!("[clean_step_output_thorough] FAILED to delete dir {}: {}", refs_dir.display(), e),
+                    Ok(()) => log::debug!(
+                        "[clean_step_output_thorough] deleted dir {}",
+                        refs_dir.display()
+                    ),
+                    Err(e) => log::warn!(
+                        "[clean_step_output_thorough] FAILED to delete dir {}: {}",
+                        refs_dir.display(),
+                        e
+                    ),
                 }
             }
             // Clean up .skill zip from skill output dir
             let skill_file = skill_output_dir.join(format!("{}.skill", skill_name));
             if skill_file.exists() {
                 match std::fs::remove_file(&skill_file) {
-                    Ok(()) => log::debug!("[clean_step_output_thorough] deleted {}", skill_file.display()),
-                    Err(e) => log::warn!("[clean_step_output_thorough] FAILED to delete {}: {}", skill_file.display(), e),
+                    Ok(()) => log::debug!(
+                        "[clean_step_output_thorough] deleted {}",
+                        skill_file.display()
+                    ),
+                    Err(e) => log::warn!(
+                        "[clean_step_output_thorough] FAILED to delete {}: {}",
+                        skill_file.display(),
+                        e
+                    ),
                 }
             }
         }
@@ -117,7 +156,9 @@ pub fn clean_step_output_thorough(workspace_path: &str, skill_name: &str, step_i
     let context_dir = skill_dir.clone();
     log::debug!(
         "[clean_step_output_thorough] step={} skill_dir={} context_dir={}",
-        step_id, skill_dir.display(), context_dir.display()
+        step_id,
+        skill_dir.display(),
+        context_dir.display()
     );
 
     for file in get_step_output_files(step_id) {
@@ -126,8 +167,14 @@ pub fn clean_step_output_thorough(workspace_path: &str, skill_name: &str, step_i
             let path = dir.join(file);
             if path.exists() {
                 match std::fs::remove_file(&path) {
-                    Ok(()) => log::debug!("[clean_step_output_thorough] deleted {}", path.display()),
-                    Err(e) => log::warn!("[clean_step_output_thorough] FAILED to delete {}: {}", path.display(), e),
+                    Ok(()) => {
+                        log::debug!("[clean_step_output_thorough] deleted {}", path.display())
+                    }
+                    Err(e) => log::warn!(
+                        "[clean_step_output_thorough] FAILED to delete {}: {}",
+                        path.display(),
+                        e
+                    ),
                 }
             } else {
                 log::debug!("[clean_step_output_thorough] not found: {}", path.display());
@@ -137,10 +184,18 @@ pub fn clean_step_output_thorough(workspace_path: &str, skill_name: &str, step_i
 }
 
 /// Delete output files for the given step and all subsequent steps.
-pub fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id: u32, skills_path: &str) {
+pub fn delete_step_output_files(
+    workspace_path: &str,
+    skill_name: &str,
+    from_step_id: u32,
+    skills_path: &str,
+) {
     log::debug!(
         "[delete_step_output_files] skill='{}': from_step={} workspace={} skills_path={}",
-        skill_name, from_step_id, workspace_path, skills_path
+        skill_name,
+        from_step_id,
+        workspace_path,
+        skills_path
     );
     for step_id in from_step_id..=3 {
         clean_step_output_thorough(workspace_path, skill_name, step_id, skills_path);

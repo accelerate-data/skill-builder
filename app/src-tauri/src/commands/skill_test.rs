@@ -44,7 +44,11 @@ fn copy_minimal_claude_md(
     label: &str,
 ) -> Result<(), String> {
     std::fs::create_dir_all(dest_workspace_dir).map_err(|e| {
-        log::error!("[prepare_skill_test] Failed to create {} workspace dir: {}", label, e);
+        log::error!(
+            "[prepare_skill_test] Failed to create {} workspace dir: {}",
+            label,
+            e
+        );
         format!("Failed to create {} workspace: {}", label, e)
     })?;
     let src = src_workspace_dir.join("CLAUDE-MINIMAL.md");
@@ -56,7 +60,10 @@ fn copy_minimal_claude_md(
                 label,
                 e
             );
-            format!("Failed to copy CLAUDE-MINIMAL.md to {} workspace: {}", label, e)
+            format!(
+                "Failed to copy CLAUDE-MINIMAL.md to {} workspace: {}",
+                label, e
+            )
         })?;
     } else {
         log::warn!(
@@ -116,7 +123,11 @@ fn copy_plugin_into_workspace(
 
 /// Recursively copy a skill directory into `dest_skills_dir/{skill_name}/`.
 /// Creates `dest_skills_dir` and the destination subdirectory if they don't exist.
-fn copy_skill_dir(src_skills_dir: &Path, dest_skills_dir: &Path, skill_name: &str) -> Result<(), String> {
+fn copy_skill_dir(
+    src_skills_dir: &Path,
+    dest_skills_dir: &Path,
+    skill_name: &str,
+) -> Result<(), String> {
     let src = src_skills_dir.join(skill_name);
     let dest = dest_skills_dir.join(skill_name);
     std::fs::create_dir_all(&dest).map_err(|e| {
@@ -125,7 +136,11 @@ fn copy_skill_dir(src_skills_dir: &Path, dest_skills_dir: &Path, skill_name: &st
         msg
     })?;
     super::imported_skills::copy_dir_recursive(&src, &dest).map_err(|e| {
-        log::error!("[copy_skill_dir] Failed to copy skill '{}': {}", skill_name, e);
+        log::error!(
+            "[copy_skill_dir] Failed to copy skill '{}': {}",
+            skill_name,
+            e
+        );
         e
     })
 }
@@ -158,12 +173,16 @@ pub fn prepare_skill_test(
     let (skills_path, test_context_skill) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = db::read_settings(&conn)?;
-        let sp = settings.skills_path.unwrap_or_else(|| workspace_path.clone());
-        let tc = crate::db::get_workspace_skill_by_purpose(&conn, "test-context")
-            .map_err(|e| {
-                log::error!("[prepare_skill_test] failed to query test-context skill: {}", e);
-                e.to_string()
-            })?;
+        let sp = settings
+            .skills_path
+            .unwrap_or_else(|| workspace_path.clone());
+        let tc = crate::db::get_workspace_skill_by_purpose(&conn, "test-context").map_err(|e| {
+            log::error!(
+                "[prepare_skill_test] failed to query test-context skill: {}",
+                e
+            );
+            e.to_string()
+        })?;
         (sp, tc)
     };
 
@@ -192,13 +211,19 @@ pub fn prepare_skill_test(
             tc_skill.disk_path
         );
         // Copy the test-context skill into both workspaces as "skill-test"
-        for (label, dest_dir) in [("baseline", &baseline_skills_dir), ("with-skill", &with_skill_skills_dir)] {
+        for (label, dest_dir) in [
+            ("baseline", &baseline_skills_dir),
+            ("with-skill", &with_skill_skills_dir),
+        ] {
             let dest = dest_dir.join("skill-test");
-            std::fs::create_dir_all(&dest).map_err(|e| {
-                format!("Failed to create {} skill-test dir: {}", label, e)
-            })?;
+            std::fs::create_dir_all(&dest)
+                .map_err(|e| format!("Failed to create {} skill-test dir: {}", label, e))?;
             super::imported_skills::copy_dir_recursive(tc_path, &dest).map_err(|e| {
-                log::error!("[prepare_skill_test] failed to copy test-context to {}: {}", label, e);
+                log::error!(
+                    "[prepare_skill_test] failed to copy test-context to {}: {}",
+                    label,
+                    e
+                );
                 e
             })?;
         }
@@ -219,12 +244,11 @@ pub fn prepare_skill_test(
 
     // User skill is in skills_path (may differ from workspace_path when custom skills dir is configured)
     // User skills live in skills_path; bundled skills (like skill-test) live in workspace_path/.claude/skills/
-    log::info!("[prepare_skill_test] copying skill '{}' into with-skill workspace", skill_name);
-    copy_skill_dir(
-        Path::new(&skills_path),
-        &with_skill_skills_dir,
-        &skill_name,
-    )?;
+    log::info!(
+        "[prepare_skill_test] copying skill '{}' into with-skill workspace",
+        skill_name
+    );
+    copy_skill_dir(Path::new(&skills_path), &with_skill_skills_dir, &skill_name)?;
 
     // Install vd-agent plugin into both workspaces so agents run with the plugin as base context.
     // The sidecar discovers plugins from {cwd}/.claude/plugins/ and passes each as --plugin-dir.
@@ -249,7 +273,10 @@ pub fn prepare_skill_test(
             .open(&with_skill_claude_md)
             .and_then(|mut f| f.write_all(skill_ref.as_bytes()))
             .map_err(|e| {
-                log::error!("[prepare_skill_test] failed to append skill ref to CLAUDE.md: {}", e);
+                log::error!(
+                    "[prepare_skill_test] failed to append skill ref to CLAUDE.md: {}",
+                    e
+                );
                 format!("Failed to append skill ref to with-skill CLAUDE.md: {}", e)
             })?;
     }
@@ -319,7 +346,8 @@ mod tests {
         copy_skill_dir(&src_skills, &dest_skills, "my-skill").unwrap();
 
         assert!(dest_skills.join("my-skill").join("SKILL.md").exists());
-        let content = std::fs::read_to_string(dest_skills.join("my-skill").join("SKILL.md")).unwrap();
+        let content =
+            std::fs::read_to_string(dest_skills.join("my-skill").join("SKILL.md")).unwrap();
         assert_eq!(content, "# My Skill");
 
         // Cleanup
@@ -354,14 +382,22 @@ mod tests {
 
         // plugin.json must be present
         assert!(
-            tmp.join(".claude").join("plugins").join("vd-agent")
-                .join(".claude-plugin").join("plugin.json").exists(),
+            tmp.join(".claude")
+                .join("plugins")
+                .join("vd-agent")
+                .join(".claude-plugin")
+                .join("plugin.json")
+                .exists(),
             "plugin.json not found after copy"
         );
         // data-product-builder agent must be present
         assert!(
-            tmp.join(".claude").join("plugins").join("vd-agent")
-                .join("agents").join("data-product-builder.md").exists(),
+            tmp.join(".claude")
+                .join("plugins")
+                .join("vd-agent")
+                .join("agents")
+                .join("data-product-builder.md")
+                .exists(),
             "data-product-builder.md not found after copy"
         );
 
@@ -371,13 +407,20 @@ mod tests {
     #[test]
     fn test_copy_plugin_into_workspace_graceful_skip_when_missing() {
         let plugins_dir = dev_plugins_dir();
-        let tmp = std::env::temp_dir().join(format!("skill-test-plugin-skip-{}", uuid::Uuid::new_v4()));
+        let tmp =
+            std::env::temp_dir().join(format!("skill-test-plugin-skip-{}", uuid::Uuid::new_v4()));
 
         // "does-not-exist" is not a real plugin
         let result = copy_plugin_into_workspace(&plugins_dir, &tmp, "does-not-exist");
-        assert!(result.is_ok(), "should succeed gracefully when plugin is missing");
         assert!(
-            !tmp.join(".claude").join("plugins").join("does-not-exist").exists(),
+            result.is_ok(),
+            "should succeed gracefully when plugin is missing"
+        );
+        assert!(
+            !tmp.join(".claude")
+                .join("plugins")
+                .join("does-not-exist")
+                .exists(),
             "dest dir should not be created when plugin is missing"
         );
 
@@ -387,7 +430,8 @@ mod tests {
     #[test]
     fn test_copy_plugin_leaves_sibling_plugins_untouched() {
         let plugins_dir = dev_plugins_dir();
-        let tmp = std::env::temp_dir().join(format!("skill-test-plugin-sib-{}", uuid::Uuid::new_v4()));
+        let tmp =
+            std::env::temp_dir().join(format!("skill-test-plugin-sib-{}", uuid::Uuid::new_v4()));
 
         // Create a pre-existing sibling plugin
         let sibling = tmp.join(".claude").join("plugins").join("other-plugin");
@@ -397,7 +441,10 @@ mod tests {
         copy_plugin_into_workspace(&plugins_dir, &tmp, "vd-agent").unwrap();
 
         // Sibling must still be intact
-        assert!(sibling.join("file.txt").exists(), "sibling plugin should be untouched");
+        assert!(
+            sibling.join("file.txt").exists(),
+            "sibling plugin should be untouched"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -418,7 +465,11 @@ mod tests {
     fn test_bundled_claude_minimal_exists_and_has_expected_content() {
         let workspace_dir = dev_workspace_dir();
         let minimal = workspace_dir.join("CLAUDE-MINIMAL.md");
-        assert!(minimal.exists(), "CLAUDE-MINIMAL.md not found at {:?}", minimal);
+        assert!(
+            minimal.exists(),
+            "CLAUDE-MINIMAL.md not found at {:?}",
+            minimal
+        );
         let content = std::fs::read_to_string(&minimal).unwrap();
         assert!(
             content.contains("Medallion"),
@@ -458,7 +509,8 @@ mod tests {
 
     #[test]
     fn test_copy_minimal_claude_md_fallback_when_missing() {
-        let tmp = std::env::temp_dir().join(format!("skill-test-minimal-fb-{}", uuid::Uuid::new_v4()));
+        let tmp =
+            std::env::temp_dir().join(format!("skill-test-minimal-fb-{}", uuid::Uuid::new_v4()));
         let fake_workspace = tmp.join("fake-workspace");
         std::fs::create_dir_all(&fake_workspace).unwrap();
         // No CLAUDE-MINIMAL.md in fake_workspace
@@ -476,7 +528,8 @@ mod tests {
 
     #[test]
     fn test_with_skill_claude_md_includes_skill_ref() {
-        let tmp = std::env::temp_dir().join(format!("skill-test-claudemd-{}", uuid::Uuid::new_v4()));
+        let tmp =
+            std::env::temp_dir().join(format!("skill-test-claudemd-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&tmp).unwrap();
 
         // Simulate copy_minimal_claude_md writing a base CLAUDE.md
@@ -495,10 +548,15 @@ mod tests {
         }
 
         let content = std::fs::read_to_string(&claude_md).unwrap();
-        assert!(content.contains("@.claude/skills/my-skill/SKILL.md"), "skill ref not found");
-        assert!(content.contains("# Workspace\nbase content"), "original content should be preserved");
+        assert!(
+            content.contains("@.claude/skills/my-skill/SKILL.md"),
+            "skill ref not found"
+        );
+        assert!(
+            content.contains("# Workspace\nbase content"),
+            "original content should be preserved"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
-
 }

@@ -130,7 +130,10 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
     Ok(Db(Mutex::new(conn)))
 }
 
-fn migrate_legacy_db_path(legacy_path: &Path, new_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn migrate_legacy_db_path(
+    legacy_path: &Path,
+    new_path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     if new_path.exists() || !legacy_path.exists() {
         return Ok(());
     }
@@ -705,7 +708,10 @@ fn run_ghost_running_rows_migration(conn: &Connection) -> Result<(), rusqlite::E
          WHERE status = 'running'",
         [],
     )?;
-    log::info!("migration 34: converted {} ghost running rows to shutdown", updated);
+    log::info!(
+        "migration 34: converted {} ghost running rows to shutdown",
+        updated
+    );
     Ok(())
 }
 
@@ -1565,7 +1571,11 @@ pub fn get_agent_runs(
     model_family: Option<&str>,
     limit: usize,
 ) -> Result<Vec<AgentRunRecord>, String> {
-    let cost_clause = if hide_cancelled { " AND total_cost > 0" } else { "" };
+    let cost_clause = if hide_cancelled {
+        " AND total_cost > 0"
+    } else {
+        ""
+    };
     let mut p = 1usize;
     let date_clause = if start_date.is_some() {
         let s = format!(" AND started_at >= ?{p}");
@@ -1642,13 +1652,13 @@ pub fn get_agent_runs(
     }
     match (start_date, skill_name, model_family) {
         (Some(sd), Some(sn), Some(mf)) => collect_rows!(rusqlite::params![sd, sn, mf, limit_i64]),
-        (Some(sd), Some(sn), None)     => collect_rows!(rusqlite::params![sd, sn, limit_i64]),
-        (Some(sd), None, Some(mf))     => collect_rows!(rusqlite::params![sd, mf, limit_i64]),
-        (Some(sd), None, None)         => collect_rows!(rusqlite::params![sd, limit_i64]),
-        (None, Some(sn), Some(mf))     => collect_rows!(rusqlite::params![sn, mf, limit_i64]),
-        (None, Some(sn), None)         => collect_rows!(rusqlite::params![sn, limit_i64]),
-        (None, None, Some(mf))         => collect_rows!(rusqlite::params![mf, limit_i64]),
-        (None, None, None)             => collect_rows!(rusqlite::params![limit_i64]),
+        (Some(sd), Some(sn), None) => collect_rows!(rusqlite::params![sd, sn, limit_i64]),
+        (Some(sd), None, Some(mf)) => collect_rows!(rusqlite::params![sd, mf, limit_i64]),
+        (Some(sd), None, None) => collect_rows!(rusqlite::params![sd, limit_i64]),
+        (None, Some(sn), Some(mf)) => collect_rows!(rusqlite::params![sn, mf, limit_i64]),
+        (None, Some(sn), None) => collect_rows!(rusqlite::params![sn, limit_i64]),
+        (None, None, Some(mf)) => collect_rows!(rusqlite::params![mf, limit_i64]),
+        (None, None, None) => collect_rows!(rusqlite::params![limit_i64]),
     }
 }
 
@@ -5279,12 +5289,72 @@ mod tests {
         let ws = Some("wf-session-mf");
         create_workflow_session(&conn, "wf-session-mf", "skill-a", 1000).unwrap();
 
-        persist_agent_run(&conn, "run-sonnet", "skill-a", 0, "claude-sonnet-4-6", "completed",
-            100, 50, 0, 0, 0.10, 1000, 1, None, None, 0, 0, None, ws).unwrap();
-        persist_agent_run(&conn, "run-opus", "skill-a", 4, "claude-opus-4-6", "completed",
-            200, 100, 0, 0, 0.50, 2000, 1, None, None, 0, 0, None, ws).unwrap();
-        persist_agent_run(&conn, "run-haiku", "skill-a", 1, "claude-haiku-4-5-20251001", "completed",
-            50, 25, 0, 0, 0.02, 500, 1, None, None, 0, 0, None, ws).unwrap();
+        persist_agent_run(
+            &conn,
+            "run-sonnet",
+            "skill-a",
+            0,
+            "claude-sonnet-4-6",
+            "completed",
+            100,
+            50,
+            0,
+            0,
+            0.10,
+            1000,
+            1,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn,
+            "run-opus",
+            "skill-a",
+            4,
+            "claude-opus-4-6",
+            "completed",
+            200,
+            100,
+            0,
+            0,
+            0.50,
+            2000,
+            1,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn,
+            "run-haiku",
+            "skill-a",
+            1,
+            "claude-haiku-4-5-20251001",
+            "completed",
+            50,
+            25,
+            0,
+            0,
+            0.02,
+            500,
+            1,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
+        )
+        .unwrap();
 
         // No filter: all three returned
         let all = get_agent_runs(&conn, false, None, None, None, 100).unwrap();
@@ -5314,16 +5384,78 @@ mod tests {
         let ws = Some("wf-norm");
         create_workflow_session(&conn, "wf-norm", "skill-x", 1000).unwrap();
 
-        persist_agent_run(&conn, "a-sonnet", "skill-x", 0, "sonnet", "completed",
-            10, 5, 0, 0, 0.01, 100, 1, None, None, 0, 0, None, ws).unwrap();
-        persist_agent_run(&conn, "a-haiku", "skill-x", 0, "Haiku", "completed",
-            10, 5, 0, 0, 0.01, 100, 1, None, None, 0, 0, None, ws).unwrap();
-        persist_agent_run(&conn, "a-opus", "skill-x", 0, "opus", "completed",
-            10, 5, 0, 0, 0.01, 100, 1, None, None, 0, 0, None, ws).unwrap();
+        persist_agent_run(
+            &conn,
+            "a-sonnet",
+            "skill-x",
+            0,
+            "sonnet",
+            "completed",
+            10,
+            5,
+            0,
+            0,
+            0.01,
+            100,
+            1,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn,
+            "a-haiku",
+            "skill-x",
+            0,
+            "Haiku",
+            "completed",
+            10,
+            5,
+            0,
+            0,
+            0.01,
+            100,
+            1,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn,
+            "a-opus",
+            "skill-x",
+            0,
+            "opus",
+            "completed",
+            10,
+            5,
+            0,
+            0,
+            0.01,
+            100,
+            1,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
+        )
+        .unwrap();
 
         let runs = get_agent_runs(&conn, false, None, None, None, 10).unwrap();
-        let models: std::collections::HashMap<&str, &str> =
-            runs.iter().map(|r| (r.agent_id.as_str(), r.model.as_str())).collect();
+        let models: std::collections::HashMap<&str, &str> = runs
+            .iter()
+            .map(|r| (r.agent_id.as_str(), r.model.as_str()))
+            .collect();
 
         assert_eq!(models["a-sonnet"], "claude-sonnet-4-6");
         assert_eq!(models["a-haiku"], "claude-haiku-4-5-20251001");
@@ -5352,8 +5484,10 @@ mod tests {
         run_normalize_model_names_migration(&conn).unwrap();
 
         let runs = get_agent_runs(&conn, false, None, None, None, 10).unwrap();
-        let models: std::collections::HashMap<&str, &str> =
-            runs.iter().map(|r| (r.agent_id.as_str(), r.model.as_str())).collect();
+        let models: std::collections::HashMap<&str, &str> = runs
+            .iter()
+            .map(|r| (r.agent_id.as_str(), r.model.as_str()))
+            .collect();
 
         assert_eq!(models["old-sonnet"], "claude-sonnet-4-6");
         assert_eq!(models["old-haiku"], "claude-haiku-4-5-20251001");
@@ -7088,7 +7222,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(ghost_status, "shutdown", "Ghost running row must become shutdown");
+        assert_eq!(
+            ghost_status, "shutdown",
+            "Ghost running row must become shutdown"
+        );
 
         let done_status: String = conn
             .query_row(
@@ -7097,7 +7234,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(done_status, "completed", "Completed row must not be touched by migration 34");
+        assert_eq!(
+            done_status, "completed",
+            "Completed row must not be touched by migration 34"
+        );
 
         // Idempotency: running again must not change anything
         run_ghost_running_rows_migration(&conn).unwrap();
@@ -7108,6 +7248,9 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(still_shutdown, "shutdown", "Re-running migration must be idempotent");
+        assert_eq!(
+            still_shutdown, "shutdown",
+            "Re-running migration must be idempotent"
+        );
     }
 }
