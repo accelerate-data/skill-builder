@@ -10,10 +10,27 @@ user-invocable: false
 
 ## Step 1 — Sub-agents
 
-Spawn two sub-agents in the same turn. Mode: `bypassPermissions`. Pass `skill_name`, `skill_output_dir`, `workspace_dir` to each. Add to every sub-agent prompt: "Return your complete output as text. Do not write files"
+Derive the skill install directory from the path of this SKILL.md: the `references/` folder is a sibling of this file.
 
-- Quality checker: read and follow `references/validate-quality.md`
-- Test evaluator: read and follow `references/eval-skill.md`
+Call the **Task tool TWICE in the same response** (both calls in one turn, so they run in parallel). Do NOT read or execute the reference files yourself — delegate entirely.
+
+**Task 1 — Quality checker prompt:**
+
+```text
+skill_name=<skill_name> skill_output_dir=<skill_output_dir> workspace_dir=<workspace_dir>
+Read and follow the instructions at: <absolute_path_to_references>/validate-quality.md
+Return your complete output as text. Do not write files.
+```
+
+**Task 2 — Test evaluator prompt:**
+
+```text
+skill_name=<skill_name> skill_output_dir=<skill_output_dir> workspace_dir=<workspace_dir>
+Read and follow the instructions at: <absolute_path_to_references>/eval-skill.md
+Return your complete output as text. Do not write files.
+```
+
+Wait for both Task results before proceeding to Step 2.
 
 ## Step 2 — Consolidate and Report
 
