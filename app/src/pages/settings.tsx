@@ -55,19 +55,18 @@ function RegistryTestIcon({ state }: { state: RegistryTestState }) {
 export default function SettingsPage() {
   const navigate = useNavigate()
   const [activeSection, setActiveSection] = useState<SectionId>("general")
-  const [apiKey, setApiKey] = useState<string | null>(null)
-  const [workspacePath, setWorkspacePath] = useState<string | null>(null)
-  const [skillsPath, setSkillsPath] = useState<string | null>(null)
-  const [preferredModel, setPreferredModel] = useState<string>("sonnet")
-  const [logLevel, setLogLevel] = useState("info")
-  const [extendedThinking, setExtendedThinking] = useState(false)
-  const [interleavedThinkingBeta, setInterleavedThinkingBeta] = useState(true)
-  const [sdkEffort, setSdkEffort] = useState<string>("")
-  const [refinePromptSuggestions, setRefinePromptSuggestions] = useState(true)
-  const [maxDimensions, setMaxDimensions] = useState(5)
-  const [industry, setIndustry] = useState("")
-  const [functionRole, setFunctionRole] = useState("")
-  const [loading, setLoading] = useState(true)
+  const [apiKey, setApiKey] = useState<string | null>(useSettingsStore.getState().anthropicApiKey ?? null)
+  const workspacePath = useSettingsStore.getState().workspacePath ?? null
+  const [skillsPath, setSkillsPath] = useState<string | null>(useSettingsStore.getState().skillsPath ?? null)
+  const [preferredModel, setPreferredModel] = useState<string>(useSettingsStore.getState().preferredModel ?? "sonnet")
+  const [logLevel, setLogLevel] = useState(useSettingsStore.getState().logLevel ?? "info")
+  const [extendedThinking, setExtendedThinking] = useState(useSettingsStore.getState().extendedThinking ?? false)
+  const [interleavedThinkingBeta, setInterleavedThinkingBeta] = useState(useSettingsStore.getState().interleavedThinkingBeta ?? true)
+  const [sdkEffort, setSdkEffort] = useState<string>(useSettingsStore.getState().sdkEffort ?? "")
+  const [refinePromptSuggestions, setRefinePromptSuggestions] = useState(useSettingsStore.getState().refinePromptSuggestions ?? true)
+  const [maxDimensions, setMaxDimensions] = useState(useSettingsStore.getState().maxDimensions ?? 5)
+  const [industry, setIndustry] = useState(useSettingsStore.getState().industry ?? "")
+  const [functionRole, setFunctionRole] = useState(useSettingsStore.getState().functionRole ?? "")
   const [saved, setSaved] = useState(false)
   const [testing, setTesting] = useState(false)
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null)
@@ -76,7 +75,7 @@ export default function SettingsPage() {
   const [dataDir, setDataDir] = useState<string | null>(null)
   const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const [aboutDialogOpen, setAboutDialogOpen] = useState(false)
-  const [autoUpdate, setAutoUpdate] = useState(false)
+  const [autoUpdate, setAutoUpdate] = useState(useSettingsStore.getState().autoUpdate ?? false)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
   const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
   const [addingRegistry, setAddingRegistry] = useState(false)
@@ -97,43 +96,11 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme()
 
   useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          const result = await invoke<AppSettings>("get_settings")
-          if (!cancelled) {
-            setApiKey(result.anthropic_api_key)
-            setWorkspacePath(result.workspace_path)
-            setSkillsPath(result.skills_path)
-            setPreferredModel(result.preferred_model || "sonnet")
-            setLogLevel(result.log_level ?? "info")
-            setExtendedThinking(result.extended_thinking ?? false)
-            setInterleavedThinkingBeta(result.interleaved_thinking_beta ?? true)
-            setSdkEffort(result.sdk_effort ?? "")
-            setRefinePromptSuggestions(result.refine_prompt_suggestions ?? true)
-            setMaxDimensions(result.max_dimensions ?? 5)
-            setIndustry(result.industry ?? "")
-            setFunctionRole(result.function_role ?? "")
-            setAutoUpdate(result.auto_update ?? false)
-            setStoreSettings({ marketplaceRegistries: result.marketplace_registries ?? [], marketplaceInitialized: result.marketplace_initialized ?? false })
-            setLoading(false)
-            // Fetch available models once we have an API key
-            if (result.anthropic_api_key) {
-              fetchModels(result.anthropic_api_key)
-            }
-          }
-          return
-        } catch (err) {
-          console.error(`Failed to load settings (attempt ${attempt}/3):`, err)
-          if (attempt < 3) await new Promise((r) => setTimeout(r, 500))
-        }
-      }
-      // All retries exhausted
-      if (!cancelled) setLoading(false)
+    // Fetch available models once (if we have an API key)
+    const key = apiKey || useSettingsStore.getState().anthropicApiKey
+    if (key) {
+      fetchModels(key)
     }
-    load()
-    return () => { cancelled = true }
   }, [])
 
   useEffect(() => {
@@ -304,11 +271,6 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      {loading ? (
-        <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-        </div>
-      ) : (
       <div className="flex flex-1 overflow-hidden">
         <nav className="flex w-48 shrink-0 flex-col space-y-1 overflow-y-auto border-r p-4">
           {sections.map(({ id, label }) => (
@@ -941,8 +903,6 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
-
-      )}
 
       <AboutDialog open={aboutDialogOpen} onOpenChange={setAboutDialogOpen} />
       <GitHubLoginDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
