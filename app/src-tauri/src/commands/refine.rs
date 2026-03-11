@@ -13,10 +13,10 @@ use crate::types::{
 };
 
 /// Tools available to the refine-skill agent. Matches the agent's frontmatter
-/// `tools: Read, Edit, Write, Glob, Grep, Task, Skill`. Task is required for the
+/// `tools: Read, Edit, Write, Glob, Grep, Bash, Task, Skill`. Task is required for the
 /// `/rewrite` and `/validate` magic commands which spawn sub-agents. Skill is
 /// required for agents that delegate to installed skills via the Skill tool.
-const REFINE_TOOLS: &[&str] = &["Read", "Edit", "Write", "Glob", "Grep", "Task", "Skill"];
+const REFINE_TOOLS: &[&str] = &["Read", "Edit", "Write", "Glob", "Grep", "Bash", "Task", "Skill"];
 
 const REFINE_AGENT_NAME: &str = "refine-skill";
 /// Max agentic turns for the entire streaming session. Each user message may
