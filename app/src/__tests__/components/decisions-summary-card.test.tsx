@@ -161,9 +161,9 @@ describe("DecisionsSummaryCard — Decision Cards", () => {
   });
 });
 
-// ─── Serializer Round-trip ────────────────────────────────────────────────────
+// ─── Serializer ─────────────────────────────────────────────────────────────
 
-describe("serializeDecisions — round-trip", () => {
+describe("serializeDecisions", () => {
   it("parse → serialize → re-parse produces identical decisions", () => {
     const decisions = parseDecisions(sampleDecisions);
     const serialized = serializeDecisions(decisions, sampleDecisions);
@@ -191,16 +191,18 @@ describe("serializeDecisions — round-trip", () => {
     expect(parsed.metadata.round).toBe(1);
   });
 
-  it("does NOT upgrade contradictory_inputs when allReviewed is false", () => {
+  it("does NOT upgrade contradictory_inputs when needs-review decisions remain", () => {
     const decisions = parseDecisions(contradictoryDecisions);
     const serialized = serializeDecisions(decisions, contradictoryDecisions);
     const parsed = JSON.parse(serialized);
     expect(parsed.metadata.contradictory_inputs).toBe(true);
   });
 
-  it("upgrades contradictory_inputs: true → revised when allReviewed is true", () => {
-    const decisions = parseDecisions(contradictoryDecisions);
-    const serialized = serializeDecisions(decisions, contradictoryDecisions, true);
+  it("upgrades contradictory_inputs when all needs-review are revised", () => {
+    const decisions = parseDecisions(contradictoryDecisions).map((d) =>
+      d.status === "needs-review" ? { ...d, status: "revised" as const } : d,
+    );
+    const serialized = serializeDecisions(decisions, contradictoryDecisions);
     const parsed = JSON.parse(serialized);
     expect(parsed.metadata.contradictory_inputs).toBe("revised");
   });
@@ -212,9 +214,34 @@ describe("serializeDecisions — round-trip", () => {
     const parsed = JSON.parse(serialized);
     expect(parsed.metadata.contradictory_inputs).toBe("revised");
   });
+
+  it("preserves revised status in serialized output", () => {
+    const decisions = parseDecisions(multiContradictoryDecisions).map((d) =>
+      d.status === "needs-review" ? { ...d, status: "revised" as const } : d,
+    );
+    const serialized = serializeDecisions(decisions, multiContradictoryDecisions);
+    const parsed = JSON.parse(serialized);
+    expect(parsed.decisions[0].status).toBe("revised");
+    expect(parsed.decisions[1].status).toBe("revised");
+    expect(parsed.decisions[2].status).toBe("resolved");
+    expect(parsed.metadata.contradictory_inputs).toBe("revised");
+  });
+
+  it("does NOT upgrade when some are revised but others still need review", () => {
+    const decisions = parseDecisions(multiContradictoryDecisions);
+    // Only revise D1, leave D2 as needs-review
+    const partial = decisions.map((d) =>
+      d.id === "D1" ? { ...d, status: "revised" as const } : d,
+    );
+    const serialized = serializeDecisions(partial, multiContradictoryDecisions);
+    const parsed = JSON.parse(serialized);
+    expect(parsed.metadata.contradictory_inputs).toBe(true);
+    expect(parsed.decisions[0].status).toBe("revised");
+    expect(parsed.decisions[1].status).toBe("needs-review");
+  });
 });
 
-// ─── Inline Editing (allowEdit) ───────────────────────────────────────────────
+// ─── Inline Editing (allowEdit + blur) ───────────────────────────────────────
 
 describe("DecisionsSummaryCard — inline editing", () => {
   it("shows editing hint banner when allowEdit and needs-review cards exist", () => {
@@ -270,29 +297,7 @@ describe("DecisionsSummaryCard — inline editing", () => {
     expect(textareas.every((ta) => ta.value !== resolvedText)).toBe(true);
   });
 
-  it("shows revised banner and hides contradictions banner after editing", async () => {
-    const user = userEvent.setup();
-    render(
-      <DecisionsSummaryCard
-        decisionsContent={contradictoryDecisions}
-        allowEdit={true}
-        onDecisionsChange={vi.fn()}
-      />
-    );
-
-    expect(screen.getByText(/Contradictory inputs detected/)).toBeInTheDocument();
-    expect(screen.queryByText(/Contradictions reviewed/)).not.toBeInTheDocument();
-
-    const textareas = screen.getAllByRole("textbox") as HTMLTextAreaElement[];
-    const decisionTextarea = textareas.find((ta) => ta.value === "Track MRR");
-    await user.clear(decisionTextarea!);
-    await user.type(decisionTextarea!, "Track ARR instead.");
-
-    expect(screen.queryByText(/Contradictory inputs detected/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Contradictions reviewed/)).toBeInTheDocument();
-  });
-
-  it("calls onDecisionsChange when editing decision text", async () => {
+  it("does NOT call onDecisionsChange on keystroke — only on blur", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(
@@ -307,14 +312,84 @@ describe("DecisionsSummaryCard — inline editing", () => {
     const decisionTextarea = textareas.find((ta) => ta.value === "Track MRR");
     expect(decisionTextarea).toBeDefined();
 
+    // Type without blurring — no change event
+    await user.clear(decisionTextarea!);
+    await user.type(decisionTextarea!, "Track ARR");
+    expect(onChange).not.toHaveBeenCalled();
+
+    // Blur triggers the change
+    await user.tab();
+    expect(onChange).toHaveBeenCalled();
+  });
+
+  it("shows revised banner and hides contradictions banner after blur on single-contradiction", async () => {
+    const user = userEvent.setup();
+    render(
+      <DecisionsSummaryCard
+        decisionsContent={contradictoryDecisions}
+        allowEdit={true}
+        onDecisionsChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/Contradictory inputs detected/)).toBeInTheDocument();
+
+    const textareas = screen.getAllByRole("textbox") as HTMLTextAreaElement[];
+    const decisionTextarea = textareas.find((ta) => ta.value === "Track MRR");
     await user.clear(decisionTextarea!);
     await user.type(decisionTextarea!, "Track ARR instead.");
+    await user.tab(); // blur
+
+    expect(screen.queryByText(/Contradictory inputs detected/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Contradictions reviewed/)).toBeInTheDocument();
+  });
+
+  it("serializes with revised status on blur", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <DecisionsSummaryCard
+        decisionsContent={contradictoryDecisions}
+        allowEdit={true}
+        onDecisionsChange={onChange}
+      />
+    );
+
+    const textareas = screen.getAllByRole("textbox") as HTMLTextAreaElement[];
+    const decisionTextarea = textareas.find((ta) => ta.value === "Track MRR");
+    await user.clear(decisionTextarea!);
+    await user.type(decisionTextarea!, "Track ARR instead.");
+    await user.tab();
 
     expect(onChange).toHaveBeenCalled();
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
     const parsed = JSON.parse(lastCall);
+    expect(parsed.decisions[0].status).toBe("revised");
     expect(parsed.decisions[0].decision).toBe("Track ARR instead.");
-    expect(parsed.metadata.decision_count).toBe(2);
+    expect(parsed.metadata.contradictory_inputs).toBe("revised");
+  });
+
+  it("shows Revised count row after blur", async () => {
+    const user = userEvent.setup();
+    render(
+      <DecisionsSummaryCard
+        decisionsContent={contradictoryDecisions}
+        allowEdit={true}
+        onDecisionsChange={vi.fn()}
+      />
+    );
+
+    // Before blur: no Revised row
+    expect(screen.queryByText("Revised")).not.toBeInTheDocument();
+
+    const textareas = screen.getAllByRole("textbox") as HTMLTextAreaElement[];
+    const decisionTextarea = textareas.find((ta) => ta.value === "Track MRR");
+    await user.clear(decisionTextarea!);
+    await user.type(decisionTextarea!, "ARR");
+    await user.tab();
+
+    // After blur: Revised row visible
+    expect(screen.getByText("Revised")).toBeInTheDocument();
   });
 });
 
@@ -337,7 +412,7 @@ describe("DecisionsSummaryCard — Edge Cases", () => {
 // ─── Multi-contradiction guard lifecycle ──────────────────────────────────────
 
 describe("DecisionsSummaryCard — multi-contradiction guard", () => {
-  it("keeps contradictions banner when only one of two needs-review decisions is edited", async () => {
+  it("keeps contradictions banner when only one of two needs-review decisions is blurred", async () => {
     const user = userEvent.setup();
     render(
       <DecisionsSummaryCard
@@ -348,19 +423,21 @@ describe("DecisionsSummaryCard — multi-contradiction guard", () => {
     );
 
     expect(screen.getByText(/Contradictory inputs detected/)).toBeInTheDocument();
-    expect(screen.queryByText(/Contradictions reviewed/)).not.toBeInTheDocument();
 
+    // Edit + blur only D1 — D2 still needs review
     const textareas = screen.getAllByRole("textbox") as HTMLTextAreaElement[];
     const d1Textarea = textareas.find((ta) => ta.value === "Track MRR");
     expect(d1Textarea).toBeDefined();
     await user.clear(d1Textarea!);
     await user.type(d1Textarea!, "Track ARR instead.");
+    await user.tab(); // blur D1
 
+    // Contradictions banner should STILL be visible (D2 not addressed)
     expect(screen.getByText(/Contradictory inputs detected/)).toBeInTheDocument();
     expect(screen.queryByText(/Contradictions reviewed/)).not.toBeInTheDocument();
   });
 
-  it("shows revised banner only after ALL needs-review decisions are edited", async () => {
+  it("shows revised banner only after ALL needs-review decisions are blurred", async () => {
     const user = userEvent.setup();
     render(
       <DecisionsSummaryCard
@@ -372,46 +449,46 @@ describe("DecisionsSummaryCard — multi-contradiction guard", () => {
 
     const textareas = screen.getAllByRole("textbox") as HTMLTextAreaElement[];
 
+    // Edit + blur D1
     const d1Textarea = textareas.find((ta) => ta.value === "Track MRR");
     await user.clear(d1Textarea!);
     await user.type(d1Textarea!, "Track ARR.");
+    await user.tab();
 
     expect(screen.getByText(/Contradictory inputs detected/)).toBeInTheDocument();
 
-    const d2Textarea = textareas.find((ta) => ta.value === "All stages");
+    // Edit + blur D2
+    const d2Textarea = screen.getAllByRole("textbox").find(
+      (ta) => (ta as HTMLTextAreaElement).value === "All stages",
+    ) as HTMLTextAreaElement;
     await user.clear(d2Textarea!);
     await user.type(d2Textarea!, "Top-of-funnel only.");
+    await user.tab();
 
+    // NOW both are revised → banner switches
     expect(screen.queryByText(/Contradictory inputs detected/)).not.toBeInTheDocument();
     expect(screen.getByText(/Contradictions reviewed/)).toBeInTheDocument();
   });
 
-  it("serializes contradictory_inputs correctly based on allReviewed flag", () => {
-    const decisions = parseDecisions(multiContradictoryDecisions);
+  it("shows correct counts: 1 revised, 1 needs-review after partial blur", async () => {
+    const user = userEvent.setup();
+    render(
+      <DecisionsSummaryCard
+        decisionsContent={multiContradictoryDecisions}
+        allowEdit={true}
+        onDecisionsChange={vi.fn()}
+      />
+    );
 
-    const partial = serializeDecisions(decisions, multiContradictoryDecisions, false);
-    expect(JSON.parse(partial).metadata.contradictory_inputs).toBe(true);
+    // Edit + blur only D1
+    const textareas = screen.getAllByRole("textbox") as HTMLTextAreaElement[];
+    const d1Textarea = textareas.find((ta) => ta.value === "Track MRR");
+    await user.clear(d1Textarea!);
+    await user.type(d1Textarea!, "ARR");
+    await user.tab();
 
-    const full = serializeDecisions(decisions, multiContradictoryDecisions, true);
-    expect(JSON.parse(full).metadata.contradictory_inputs).toBe("revised");
-  });
-
-  it("flips needs-review → resolved in serialization when allReviewed is true", () => {
-    const decisions = parseDecisions(multiContradictoryDecisions);
-
-    // Without allReviewed: needs-review preserved
-    const partial = serializeDecisions(decisions, multiContradictoryDecisions, false);
-    const partialParsed = JSON.parse(partial);
-    expect(partialParsed.decisions[0].status).toBe("needs-review");
-    expect(partialParsed.decisions[1].status).toBe("needs-review");
-    expect(partialParsed.decisions[2].status).toBe("resolved");
-
-    // With allReviewed: needs-review flipped to resolved
-    const full = serializeDecisions(decisions, multiContradictoryDecisions, true);
-    const fullParsed = JSON.parse(full);
-    expect(fullParsed.decisions[0].status).toBe("resolved");
-    expect(fullParsed.decisions[1].status).toBe("resolved");
-    expect(fullParsed.decisions[2].status).toBe("resolved");
-    expect(fullParsed.metadata.contradictory_inputs).toBe("revised");
+    // Should show 1 revised and 1 needs-review in the stats
+    expect(screen.getByText("Revised")).toBeInTheDocument();
+    expect(screen.getByText("Needs review")).toBeInTheDocument();
   });
 });

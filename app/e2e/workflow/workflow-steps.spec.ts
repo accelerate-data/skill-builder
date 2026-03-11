@@ -726,12 +726,13 @@ test.describe("Contradictions guard — multi-decision", { tag: "@workflow" }, (
     await navigateToWorkflowUpdateMode(page, CONTRADICTION_GUARD_OVERRIDES);
     await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
 
-    // Edit only D1
+    // Edit only D1 and blur (click elsewhere to trigger blur)
     const d1Textarea = page.locator("textarea").filter({ hasText: "Track MRR" }).first();
     await d1Textarea.fill("Track ARR instead.");
+    await page.locator("body").click(); // blur
 
-    // Wait for autosave debounce
-    await page.waitForTimeout(2000);
+    // Wait for save debounce (300ms) + guard refresh
+    await page.waitForTimeout(500);
 
     // Contradictions banner should STILL be visible (D2 not yet edited)
     await expect(page.getByText(/Contradictory inputs detected/)).toBeVisible();
@@ -747,13 +748,15 @@ test.describe("Contradictions guard — multi-decision", { tag: "@workflow" }, (
     await navigateToWorkflowUpdateMode(page, CONTRADICTION_GUARD_OVERRIDES);
     await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
 
-    // Edit D1
+    // Edit D1 and blur
     const d1Textarea = page.locator("textarea").filter({ hasText: "Track MRR" }).first();
     await d1Textarea.fill("Track ARR instead.");
+    await page.locator("body").click(); // blur
 
-    // Edit D2
+    // Edit D2 and blur
     const d2Textarea = page.locator("textarea").filter({ hasText: "All stages" }).first();
     await d2Textarea.fill("Top-of-funnel only.");
+    await page.locator("body").click(); // blur
 
     // Dynamically update mock so getDisabledSteps returns [] after save
     await page.evaluate(() => {
@@ -762,8 +765,8 @@ test.describe("Contradictions guard — multi-decision", { tag: "@workflow" }, (
       overrides.get_disabled_steps = [];
     });
 
-    // Wait for autosave debounce + guard refresh
-    await page.waitForTimeout(2500);
+    // Wait for save debounce (300ms) + guard refresh
+    await page.waitForTimeout(500);
 
     // Revised banner should appear
     await expect(page.getByText(/Contradictions reviewed/)).toBeVisible({ timeout: 5_000 });

@@ -247,7 +247,7 @@ export function WorkflowStepComplete({
       } catch (err) {
         console.error("Failed to save decisions.json:", err);
       }
-    }, 1500);
+    }, 300); // Short debounce — trigger is now blur, not keystroke
     return () => clearTimeout(timer);
   }, [decisionsEditContent, decisionsEditorDirty, workspacePath, skillName, reviewMode]);
 
