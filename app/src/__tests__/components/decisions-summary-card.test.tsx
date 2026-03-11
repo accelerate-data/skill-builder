@@ -470,4 +470,50 @@ describe("DecisionsSummaryCard — multi-contradiction guard", () => {
     const full = serializeDecisions(decisions, rawFm, true);
     expect(full).toContain("contradictory_inputs: revised");
   });
+
+  it("flips needs-review → resolved in markdown serialization when allReviewed is true", () => {
+    const decisions = parseDecisions(multiContradictoryMd);
+    const rawFm = multiContradictoryMd.match(/^(---[\s\S]*?---)/)?.[1] ?? "";
+
+    // Without allReviewed: needs-review preserved
+    const partial = serializeDecisions(decisions, rawFm, false);
+    expect(partial).toContain("**Status:** needs-review");
+
+    // With allReviewed: needs-review flipped to resolved
+    const full = serializeDecisions(decisions, rawFm, true);
+    expect(full).not.toContain("**Status:** needs-review");
+    expect(full).toContain("**Status:** resolved");
+  });
+
+  it("flips needs-review → resolved in JSON serialization when allReviewed is true", () => {
+    const jsonContent = JSON.stringify({
+      version: "1",
+      metadata: {
+        decision_count: 2,
+        conflicts_resolved: 0,
+        round: 1,
+        contradictory_inputs: true,
+      },
+      decisions: [
+        { id: "D1", title: "Revenue", originalQuestion: "Q1", decision: "MRR", implication: "Contradicts Q5", status: "needs-review" },
+        { id: "D2", title: "Scope", originalQuestion: "Q2", decision: "All", implication: "Clear", status: "resolved" },
+      ],
+    }, null, 2);
+
+    const decisions = parseDecisions(jsonContent);
+
+    // Without allReviewed
+    const partial = serializeDecisions(decisions, jsonContent, false);
+    const partialParsed = JSON.parse(partial);
+    expect(partialParsed.metadata.contradictory_inputs).toBe(true);
+    expect(partialParsed.decisions[0].status).toBe("needs-review");
+    expect(partialParsed.decisions[1].status).toBe("resolved");
+
+    // With allReviewed
+    const full = serializeDecisions(decisions, jsonContent, true);
+    const fullParsed = JSON.parse(full);
+    expect(fullParsed.metadata.contradictory_inputs).toBe("revised");
+    expect(fullParsed.decisions[0].status).toBe("resolved");
+    expect(fullParsed.decisions[1].status).toBe("resolved");
+  });
 });

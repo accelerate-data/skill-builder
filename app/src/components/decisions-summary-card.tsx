@@ -139,13 +139,18 @@ export function serializeDecisions(decisions: Decision[], rawContent: string, al
       decision_count: decisions.length,
       conflicts_resolved: decisions.filter((d) => d.status === "conflict-resolved").length,
     };
+    // When all needs-review decisions have been addressed, upgrade the guard
+    // and flip their status to "resolved" so the state survives round-trips.
+    const finalDecisions = allReviewed
+      ? decisions.map((d) => d.status === "needs-review" ? { ...d, status: "resolved" as const } : d)
+      : decisions;
     if (metadata.contradictory_inputs === true && allReviewed) {
       metadata.contradictory_inputs = "revised";
     }
     const payload: DecisionsJsonFile = {
       version: "1",
       metadata,
-      decisions,
+      decisions: finalDecisions,
     };
     return `${JSON.stringify(payload, null, 2)}\n`;
   }
@@ -154,7 +159,10 @@ export function serializeDecisions(decisions: Decision[], rawContent: string, al
   const updatedFm = allReviewed
     ? rawFrontmatter.replace(/contradictory_inputs:\s*true/, "contradictory_inputs: revised")
     : rawFrontmatter;
-  const blocks = decisions.map((d) =>
+  const finalDecisionsMd = allReviewed
+    ? decisions.map((d) => d.status === "needs-review" ? { ...d, status: "resolved" as const } : d)
+    : decisions;
+  const blocks = finalDecisionsMd.map((d) =>
     [
       `### ${d.id}: ${d.title}`,
       `- **Original question:** ${d.originalQuestion}`,
