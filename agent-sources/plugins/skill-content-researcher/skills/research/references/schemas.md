@@ -76,7 +76,7 @@ The research skill returns the canonical `clarifications.json` object directly a
             {"id": "A", "text": "Choice A", "is_other": false},
             {"id": "B", "text": "Choice B", "is_other": false},
             {"id": "C", "text": "Choice C", "is_other": false},
-            {"id": "D", "text": "Other (please specify)", "is_other": true}
+            {"id": "D", "text": "Other (please specify)", "is_other": true}  // is_other:true ONLY for this exact catch-all; concrete choices (even negations) must be is_other:false
           ],
           "recommendation": "A - Rationale",
           "answer_choice": null,

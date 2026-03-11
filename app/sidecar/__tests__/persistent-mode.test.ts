@@ -351,9 +351,16 @@ describe("runPersistent", () => {
   });
 
   it("processes an agent_request and wraps responses with request_id", async () => {
+    // Use proper SDK message shapes that MessageProcessor can process
     const sdkMessages = [
-      { type: "agent_message", content: "thinking..." },
-      { type: "result", content: "done", usage: { input: 100, output: 50 } },
+      {
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "thinking..." }],
+          usage: { input_tokens: 100, output_tokens: 50 },
+        },
+      },
+      { type: "result", subtype: "success", usage: { input_tokens: 100, output_tokens: 50 }, total_cost_usd: 0.01 },
     ];
 
     async function* fakeConversation() {
@@ -393,17 +400,22 @@ describe("runPersistent", () => {
       return parsed.type !== "sidecar_ready" && parsed.type !== "system" && parsed.type !== "request_complete";
     });
 
-    expect(responseLinesRaw).toHaveLength(2);
+    // Now we get: display_item(output), assistant(pass-through), display_item(result), result(pass-through)
+    // Filter to just display_items for easy assertions
+    const displayItemLines = responseLinesRaw.filter((l) => JSON.parse(l).type === "display_item");
+    expect(displayItemLines.length).toBeGreaterThanOrEqual(2);
 
-    const msg0 = JSON.parse(responseLinesRaw[0]);
-    expect(msg0.request_id).toBe("req_1");
-    expect(msg0.type).toBe("agent_message");
-    expect(msg0.content).toBe("thinking...");
+    const di0 = JSON.parse(displayItemLines[0]);
+    expect(di0.request_id).toBe("req_1");
+    expect(di0.type).toBe("display_item");
+    expect(di0.item.type).toBe("output");
+    expect(di0.item.outputText).toBe("thinking...");
 
-    const msg1 = JSON.parse(responseLinesRaw[1]);
-    expect(msg1.request_id).toBe("req_1");
-    expect(msg1.type).toBe("result");
-    expect(msg1.content).toBe("done");
+    const di1 = JSON.parse(displayItemLines[1]);
+    expect(di1.request_id).toBe("req_1");
+    expect(di1.type).toBe("display_item");
+    expect(di1.item.type).toBe("result");
+    expect(di1.item.resultStatus).toBe("success");
   });
 
   it("handles SDK errors per-request without crashing", async () => {
@@ -546,7 +558,7 @@ describe("runPersistent", () => {
       callCount++;
       const current = callCount;
       async function* fakeConversation() {
-        yield { type: "result", content: `result_${current}` };
+        yield { type: "result", subtype: "success", result: `result_${current}`, usage: { input_tokens: 10, output_tokens: 5 }, total_cost_usd: 0.001 };
       }
       return fakeConversation() as ReturnType<typeof query>;
     });
@@ -586,19 +598,20 @@ describe("runPersistent", () => {
 
     capture.restore();
 
-    // Both requests should have succeeded
-    const responses = capture.lines
+    // Both requests should have succeeded — now messages are processed through MessageProcessor
+    // Each result yields: display_item(result) + raw result pass-through
+    const resultPassThrough = capture.lines
       .filter((l) => {
         const parsed = JSON.parse(l);
-        return parsed.request_id && parsed.type !== "system" && parsed.type !== "error" && parsed.type !== "request_complete";
+        return parsed.request_id && parsed.type === "result";
       })
       .map((l) => JSON.parse(l));
 
-    expect(responses).toHaveLength(2);
-    expect(responses[0].request_id).toBe("req_a");
-    expect(responses[0].content).toBe("result_1");
-    expect(responses[1].request_id).toBe("req_b");
-    expect(responses[1].content).toBe("result_2");
+    expect(resultPassThrough).toHaveLength(2);
+    expect(resultPassThrough[0].request_id).toBe("req_a");
+    expect(resultPassThrough[0].result).toBe("result_1");
+    expect(resultPassThrough[1].request_id).toBe("req_b");
+    expect(resultPassThrough[1].result).toBe("result_2");
     expect(exitFn).toHaveBeenCalledWith(0);
   });
 

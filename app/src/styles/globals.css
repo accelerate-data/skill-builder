@@ -54,6 +54,10 @@
   --color-chat-error-bg: var(--chat-error-bg);
   --color-chat-error-border: var(--chat-error-border);
   --color-chat-muted: var(--chat-muted);
+  --color-chat-thinking-bg: var(--chat-thinking-bg);
+  --color-chat-thinking-border: var(--chat-thinking-border);
+  --color-chat-subagent-bg: var(--chat-subagent-bg);
+  --color-chat-subagent-border: var(--chat-subagent-border);
 }
 
 :root {
@@ -111,6 +115,10 @@
   --chat-error-bg: oklch(0.970 0.015 25);
   --chat-error-border: oklch(0.570 0.180 25);
   --chat-muted: oklch(0.530 0.006 85);
+  --chat-thinking-bg: oklch(0.960 0.020 265);
+  --chat-thinking-border: oklch(0.600 0.100 265);
+  --chat-subagent-bg: oklch(0.960 0.015 210);
+  --chat-subagent-border: oklch(0.600 0.100 210);
 }
 
 .dark {
@@ -167,6 +175,10 @@
   --chat-error-bg: oklch(0.250 0.050 25 / 0.35);
   --chat-error-border: oklch(0.570 0.180 25);
   --chat-muted: oklch(0.680 0.005 85);
+  --chat-thinking-bg: oklch(0.250 0.040 265 / 0.35);
+  --chat-thinking-border: oklch(0.600 0.100 265);
+  --chat-subagent-bg: oklch(0.250 0.030 210 / 0.35);
+  --chat-subagent-border: oklch(0.600 0.100 210);
 }
 
 @keyframes message-fade-in {

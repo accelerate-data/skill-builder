@@ -3,6 +3,7 @@ import type { SidecarConfig } from "./config.js";
 import { runMockAgent } from "./mock-agent.js";
 import { buildQueryOptions } from "./options.js";
 import { createAbortState, linkExternalSignal } from "./shutdown.js";
+import { MessageProcessor } from "./message-processor.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -90,8 +91,19 @@ export async function runAgentRequest(
   // SDK is loaded and connected — ready to stream messages
   emitSystemEvent(onMessage, "sdk_ready");
 
+  // Process raw SDK messages through MessageProcessor for structured display items
+  const processor = new MessageProcessor();
+
   for await (const message of conversation) {
     if (state.abortController.signal.aborted) break;
-    onMessage(message as Record<string, unknown>);
+
+    const raw = message as Record<string, unknown>;
+    // Log raw message to transcript (debugging) — the raw message is still
+    // captured by persistent-mode's writeLine wrapping, so no separate log needed.
+    // Process into display items + pass-through messages
+    const items = processor.process(raw);
+    for (const item of items) {
+      onMessage(item as Record<string, unknown>);
+    }
   }
 }
