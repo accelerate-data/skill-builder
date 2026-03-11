@@ -726,8 +726,9 @@ test.describe("Contradictions guard — multi-decision", { tag: "@workflow" }, (
     await navigateToWorkflowUpdateMode(page, CONTRADICTION_GUARD_OVERRIDES);
     await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
 
-    // Edit only D1 and blur (click elsewhere to trigger blur)
-    const d1Textarea = page.locator("textarea").filter({ hasText: "Track MRR" }).first();
+    // Edit only D1 and blur — first "Enter decision…" textarea belongs to D1 (first card)
+    const d1Textarea = page.getByPlaceholder("Enter decision…").first();
+    await expect(d1Textarea).toBeVisible();
     await d1Textarea.fill("Track ARR instead.");
     await page.locator("body").click(); // blur
 
@@ -749,12 +750,19 @@ test.describe("Contradictions guard — multi-decision", { tag: "@workflow" }, (
     await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
 
     // Edit D1 and blur
-    const d1Textarea = page.locator("textarea").filter({ hasText: "Track MRR" }).first();
+    const d1Textarea = page.getByPlaceholder("Enter decision…").first();
+    await expect(d1Textarea).toBeVisible();
+    await d1Textarea.click();
     await d1Textarea.fill("Track ARR instead.");
     await page.locator("body").click(); // blur
 
+    // Wait for D1 status to flip to "revised" before editing D2
+    await expect(page.getByRole("button", { name: /Revenue Model.*revised/ })).toBeVisible({ timeout: 3_000 });
+
     // Edit D2 and blur
-    const d2Textarea = page.locator("textarea").filter({ hasText: "All stages" }).first();
+    const d2Textarea = page.getByPlaceholder("Enter decision…").nth(1);
+    await expect(d2Textarea).toBeVisible();
+    await d2Textarea.click();
     await d2Textarea.fill("Top-of-funnel only.");
     await page.locator("body").click(); // blur
 

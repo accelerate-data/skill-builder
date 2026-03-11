@@ -409,6 +409,8 @@ function DecisionCard({
 }) {
   const isEditable = allowEdit && (decision.status === "needs-review" || decision.status === "revised");
   const [expanded, setExpanded] = useState(isEditable ?? false);
+  // Auto-expand when the card becomes editable (e.g. review → update mode switch)
+  useEffect(() => { if (isEditable) setExpanded(true); }, [isEditable]);
   // Local draft state for typing — propagated on blur
   const [draft, setDraft] = useState(decision);
   useEffect(() => { setDraft(decision); }, [decision]);
