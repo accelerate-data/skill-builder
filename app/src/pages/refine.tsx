@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { useNavigate, useSearch, useBlocker } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { toast } from "@/lib/toast";
 import {
   Dialog,
@@ -14,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import type { RefineCommand, SkillFile } from "@/stores/refine-store";
-import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
+import { useAgentStore } from "@/stores/agent-store";
 import {
   listRefinableSkills,
   getSkillContentForRefine,
@@ -124,41 +125,34 @@ export default function RefinePage() {
 
   // --- Navigation guard ---
   // Block navigation while an agent is running and show a confirmation dialog.
-  const { proceed, reset: resetBlocker, status: blockerStatus } = useBlocker({
-    shouldBlockFn: () => useRefineStore.getState().isRunning,
-    enableBeforeUnload: false,
-    withResolver: true,
+  const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
+    shouldBlock: () => useRefineStore.getState().isRunning,
+    onLeave: (proceed) => {
+      const store = useRefineStore.getState();
+
+      store.setRunning(false);
+      store.setActiveAgentId(null);
+      useAgentStore.getState().clearRuns();
+
+      // Fire-and-forget: close refine session
+      if (store.sessionId) {
+        closeRefineSession(store.sessionId).catch(() => {});
+      }
+
+      if (store.selectedSkill) {
+        releaseSkillResources(store.selectedSkill.name, "navigation");
+      }
+
+      // Clear session state so that returning to this page always creates a
+      // fresh session. Without this, the stale sessionId remains in the store
+      // and the auto-select guard skips session creation, causing send_refine_message
+      // to fail on the dead session.
+      store.clearSession();
+      autoSelectedRef.current = null;
+
+      proceed();
+    },
   });
-
-  const handleNavStay = useCallback(() => {
-    resetBlocker?.();
-  }, [resetBlocker]);
-
-  const handleNavLeave = useCallback(() => {
-    const store = useRefineStore.getState();
-
-    store.setRunning(false);
-    store.setActiveAgentId(null);
-    useAgentStore.getState().clearRuns();
-
-    // Fire-and-forget: close refine session
-    if (store.sessionId) {
-      closeRefineSession(store.sessionId).catch(() => {});
-    }
-
-    if (store.selectedSkill) {
-      releaseSkillResources(store.selectedSkill.name, "navigation");
-    }
-
-    // Clear session state so that returning to this page always creates a
-    // fresh session. Without this, the stale sessionId remains in the store
-    // and the auto-select guard skips session creation, causing send_refine_message
-    // to fail on the dead session.
-    store.clearSession();
-    autoSelectedRef.current = null;
-
-    proceed?.();
-  }, [proceed]);
 
   // Available filenames for @file autocomplete
   const availableFiles = useMemo(
@@ -337,35 +331,6 @@ export default function RefinePage() {
     void complete();
   }, [activeAgentId, activeRunStatus, workspacePath, selectedSkill, extractStructuredResultPayload]);
 
-  // --- Safety-net cleanup on unmount ---
-  // Catches cases where the component unmounts without going through the blocker dialog.
-  useEffect(() => {
-    return () => {
-      flushMessageBuffer();
-
-      const store = useRefineStore.getState();
-      if (store.isRunning) {
-        store.setRunning(false);
-        store.setActiveAgentId(null);
-        useAgentStore.getState().clearRuns();
-      }
-
-      // Fire-and-forget: close refine session
-      if (store.sessionId) {
-        closeRefineSession(store.sessionId).catch(() => {});
-      }
-
-      if (store.selectedSkill) {
-        releaseSkillResources(store.selectedSkill.name, "unmount");
-      }
-
-      // Clear session state so that remounting the page (e.g. navigating back
-      // from the test page) always creates a fresh session. Without this, the
-      // stale sessionId remains in the store and the auto-select guard in
-      // handleSelectSkill short-circuits before calling startRefineSession.
-      store.clearSession();
-    };
-  }, []);
 
   // --- Send a message ---
   const handleSend = useCallback(
