@@ -2,7 +2,7 @@
 name: validate-skill
 description: Validates a completed skill and returns structured validation output.
 model: sonnet
-tools: Read, Glob, Grep, Bash, Task, Skill
+tools: Read, Glob, Grep, Bash, Task
 ---
 
 # Validate Skill
@@ -74,7 +74,7 @@ Read `{skill_output_dir}/SKILL.md`.
 
 ## Step 1: Launch Subagents to perform quality checks for the given skill
 
-Use the **Task tool** to spawn `validate-quality` and `eval-skill` in the same turn. Mode: bypassPermissions.
+Use the **Task tool** to spawn `validate-quality` and `eval-skill` agents in the same turn. Mode: bypassPermissions.
 
 - Pass skill_name, skill_output_dir, workspace_dir to each. 
 - Add to every sub-agent prompt: "Return your complete output as text. Do not write files"
