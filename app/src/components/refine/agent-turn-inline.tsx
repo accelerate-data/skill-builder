@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import { useAgentStore } from "@/stores/agent-store";
+import { DisplayItemList } from "@/components/agent-items/display-item-list";
 import {
   computeMessageGroups,
   computeToolCallGroups,
@@ -22,8 +23,11 @@ function formatCost(cost: number): string {
 export function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
   const run = useAgentStore((s) => s.runs[agentId]);
 
+  const hasDisplayItems = (run?.displayItems?.length ?? 0) > 0;
+
+  // --- Legacy message-based rendering helpers ---
   const turnMap = useMemo(() => {
-    if (!run) return new Map<number, number>();
+    if (!run || hasDisplayItems) return new Map<number, number>();
     const map = new Map<number, number>();
     let turn = 0;
     for (let i = 0; i < run.messages.length; i++) {
@@ -33,22 +37,23 @@ export function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
       }
     }
     return map;
-  }, [run?.messages]);
+  }, [run?.messages, hasDisplayItems]);
 
   const messageGroups = useMemo(
-    () => (run ? computeMessageGroups(run.messages, turnMap) : []),
-    [run?.messages, turnMap],
+    () => (run && !hasDisplayItems ? computeMessageGroups(run.messages, turnMap) : []),
+    [run?.messages, turnMap, hasDisplayItems],
   );
 
   const toolCallGroupMap = useMemo(
-    () => (run ? computeToolCallGroups(run.messages) : EMPTY_TOOL_GROUPS),
-    [run?.messages],
+    () => (run && !hasDisplayItems ? computeToolCallGroups(run.messages) : EMPTY_TOOL_GROUPS),
+    [run?.messages, hasDisplayItems],
   );
 
   if (!run) return null;
 
-  // Typing indicator while agent is running with no messages yet
-  if (run.status === "running" && run.messages.length === 0) {
+  // Typing indicator while agent is running with no output yet
+  const noOutput = run.messages.length === 0 && run.displayItems.length === 0;
+  if (run.status === "running" && noOutput) {
     return (
       <div data-testid="refine-agent-thinking" data-agent-id={agentId} className="flex items-center gap-1.5 py-2 text-muted-foreground">
         <Loader2 className="size-3.5 animate-spin" />
@@ -57,6 +62,26 @@ export function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
     );
   }
 
+  // --- DisplayItem-based rendering (new path) ---
+  if (hasDisplayItems) {
+    return (
+      <div data-agent-id={agentId} className="flex min-w-0 flex-col">
+        <DisplayItemList items={run.displayItems} />
+        {run.status === "running" && run.displayItems.length > 0 && (
+          <div className="flex items-center gap-1.5 py-1 text-muted-foreground">
+            <Loader2 className="size-3 animate-spin" />
+          </div>
+        )}
+        {run.status !== "running" && run.totalCost !== undefined && (
+          <div className="pt-1 text-xs text-muted-foreground/70">
+            Cost {formatCost(run.totalCost)}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // --- Legacy message-based rendering (backward compat) ---
   return (
     <div data-agent-id={agentId} className="flex min-w-0 flex-col">
       {run.messages.map((msg, i) => {

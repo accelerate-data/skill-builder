@@ -30,6 +30,8 @@ import {
 import { useWorkflowStore } from "@/stores/workflow-store";
 import type { SkillSummary } from "@/lib/types";
 import { cn, deriveModelLabel } from "@/lib/utils";
+import { DisplayItemList } from "@/components/agent-items/display-item-list";
+import type { DisplayItem } from "@/lib/display-types";
 
 // Ensure agent-stream listeners are registered
 import "@/hooks/use-agent-stream";
@@ -250,8 +252,9 @@ type ContentBlock =
   | { type: "tool_use"; name: string; input: Record<string, unknown> }
   | { type: "text"; text: string };
 
-// Stable empty array — avoids Zustand re-render loop when selector returns []
+// Stable empty arrays — avoids Zustand re-render loop when selector returns []
 const NO_MESSAGES: AgentMessage[] = [];
+const NO_DISPLAY_ITEMS: DisplayItem[] = [];
 
 export function StreamingContent({
   agentId,
@@ -264,27 +267,35 @@ export function StreamingContent({
   idlePlaceholder: string;
   scrollRef: React.RefObject<HTMLDivElement | null>;
 }) {
+  const displayItems = useAgentStore((s) =>
+    agentId ? (s.runs[agentId]?.displayItems ?? NO_DISPLAY_ITEMS) : NO_DISPLAY_ITEMS,
+  );
   const messages = useAgentStore((s) =>
     agentId ? (s.runs[agentId]?.messages ?? NO_MESSAGES) : NO_MESSAGES,
   );
-  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
 
+  const hasDisplayItems = displayItems.length > 0;
+
+  // Legacy: extract content blocks from raw assistant messages
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
   const blocks = useMemo<ContentBlock[]>(
     () =>
-      messages
-        .filter((m) => m.type === "assistant")
-        .flatMap((m) => {
-          const content = (
-            m.raw?.message as Record<string, unknown> | undefined
-          )?.content;
-          return Array.isArray(content) ? (content as ContentBlock[]) : [];
-        }),
-    [messages],
+      hasDisplayItems
+        ? []
+        : messages
+            .filter((m) => m.type === "assistant")
+            .flatMap((m) => {
+              const content = (
+                m.raw?.message as Record<string, unknown> | undefined
+              )?.content;
+              return Array.isArray(content) ? (content as ContentBlock[]) : [];
+            }),
+    [messages, hasDisplayItems],
   );
 
   useEffect(() => {
     scrollToBottom(scrollRef);
-  }, [blocks.length, scrollRef]);
+  }, [displayItems.length, blocks.length, scrollRef]);
 
   const toggle = useCallback((idx: number) => {
     setExpanded((prev) => {
@@ -294,6 +305,12 @@ export function StreamingContent({
     });
   }, []);
 
+  // --- DisplayItem path (new) ---
+  if (hasDisplayItems) {
+    return <DisplayItemList items={displayItems} />;
+  }
+
+  // --- Legacy content block path ---
   if (blocks.length === 0) {
     return (
       <p className="text-xs italic text-muted-foreground/40">

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { useWorkflowStore } from "./workflow-store";
 import { persistAgentRun } from "@/lib/tauri";
+import type { DisplayItem } from "@/lib/display-types";
 
 // --- RAF-batched message buffer ---
 // Instead of calling set() per message (which copies the full state tree each
@@ -162,6 +163,8 @@ interface AgentRun {
   model: string;
   status: "running" | "completed" | "error" | "shutdown";
   messages: AgentMessage[];
+  /** Structured display items from sidecar MessageProcessor. */
+  displayItems: DisplayItem[];
   startTime: number;
   endTime?: number;
   totalCost?: number;
@@ -199,6 +202,8 @@ interface AgentState {
     usageSessionId?: string,
   ) => void;
   addMessage: (agentId: string, message: AgentMessage) => void;
+  /** Add a structured DisplayItem from the sidecar. Update-by-id for tool call status changes. */
+  addDisplayItem: (agentId: string, item: DisplayItem) => void;
   completeRun: (agentId: string, success: boolean) => void;
   shutdownRun: (agentId: string) => void;
   setActiveAgent: (agentId: string | null) => void;
@@ -330,6 +335,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 skillName,
                 status: "running" as const,
                 messages: [],
+                displayItems: [],
                 startTime: Date.now(),
                 contextHistory: [],
                 contextWindow: 200_000,
@@ -366,6 +372,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 skillName,
                 status: "running" as const,
                 messages: [],
+                displayItems: [],
                 startTime: Date.now(),
                 contextHistory: [],
                 contextWindow: 200_000,
@@ -388,6 +395,70 @@ export const useAgentStore = create<AgentState>((set) => ({
       _rafId = requestAnimationFrame(_flushMessageBuffer);
     }
   },
+
+  addDisplayItem: (agentId, item) =>
+    set((state) => {
+      const run = state.runs[agentId];
+      if (!run) {
+        // Auto-create run for display items that arrive before startRun
+        console.debug(
+          "[agent-store] event=auto_create_run operation=add_display_item agent_id=%s item_type=%s",
+          agentId,
+          item.type,
+        );
+        return {
+          runs: {
+            ...state.runs,
+            [agentId]: {
+              agentId,
+              model: "unknown",
+              status: "running" as const,
+              messages: [],
+              displayItems: [item],
+              startTime: Date.now(),
+              contextHistory: [],
+              contextWindow: 200_000,
+              compactionEvents: [],
+              thinkingEnabled: false,
+            },
+          },
+        };
+      }
+
+      // Update-by-id: if this item has the same id as an existing one,
+      // replace it (tool call status updates, subagent completion)
+      const existingIdx = run.displayItems.findIndex((di) => di.id === item.id);
+      let updatedItems: DisplayItem[];
+      if (existingIdx >= 0) {
+        updatedItems = [...run.displayItems];
+        updatedItems[existingIdx] = item;
+        console.debug(
+          "[agent-store] event=update_display_item operation=replace_by_id agent_id=%s item_id=%s item_type=%s",
+          agentId,
+          item.id,
+          item.type,
+        );
+      } else {
+        updatedItems = [...run.displayItems, item];
+        console.debug(
+          "[agent-store] event=add_display_item operation=append agent_id=%s item_id=%s item_type=%s total=%d",
+          agentId,
+          item.id,
+          item.type,
+          updatedItems.length,
+        );
+      }
+
+      return {
+        runs: {
+          ...state.runs,
+          [agentId]: {
+            ...run,
+            displayItems: updatedItems,
+          },
+        },
+      };
+    }),
 
   completeRun: (agentId, success) => {
     // Flush any buffered messages so all data is applied before status changes
@@ -536,6 +607,7 @@ export const useAgentStore = create<AgentState>((set) => ({
           model: "unknown",
           status: "running" as const,
           messages: [],
+          displayItems: [],
           startTime: Date.now(),
           contextHistory: [],
           contextWindow: 200_000,

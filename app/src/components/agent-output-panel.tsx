@@ -28,6 +28,7 @@ import {
 import { AgentRunFooter } from "@/components/agent-run-footer";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { parseAgentResponseType } from "@/lib/reasoning-parser";
+import { DisplayItemList } from "@/components/agent-items/display-item-list";
 
 function getToolIcon(toolName: string) {
   switch (toolName) {
@@ -550,13 +551,16 @@ export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Use DisplayItems when available, fall back to legacy messages
+  const hasDisplayItems = (run?.displayItems?.length ?? 0) > 0;
+
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [run?.messages.length, scrollToBottom]);
+  }, [run?.messages.length, run?.displayItems?.length, scrollToBottom]);
 
   if (!run) {
     return (
@@ -567,6 +571,23 @@ export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
       </Card>
     );
   }
+
+  // --- DisplayItem-based rendering (new path) ---
+  if (hasDisplayItems) {
+    return (
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <ScrollArea className="min-h-0 flex-1">
+          <div ref={scrollRef} className="flex flex-col p-3">
+            <DisplayItemList items={run.displayItems} />
+            <div ref={bottomRef} />
+          </div>
+        </ScrollArea>
+        <AgentRunFooter agentId={agentId} />
+      </Card>
+    );
+  }
+
+  // --- Legacy message-based rendering (backward compat) ---
 
   // Pre-compute turn numbers in O(n) instead of O(n^2)
   const turnMap = useMemo(() => {
