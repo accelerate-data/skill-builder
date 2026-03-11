@@ -60,7 +60,7 @@ export function ChatMessageList({ messages }: ChatMessageListProps) {
 
           if (msg.role === "agent" && msg.agentId) {
             return (
-              <div key={msg.id} className="flex flex-col gap-1">
+              <div key={msg.id} className="flex min-w-0 w-full flex-col gap-1 overflow-hidden">
                 <Separator />
                 <AgentTurnInline agentId={msg.agentId} />
               </div>

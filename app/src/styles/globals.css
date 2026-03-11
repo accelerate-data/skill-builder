@@ -541,6 +541,20 @@
   word-break: break-word;
 }
 
+/* Code blocks and tables must not push the chat panel wider */
+.markdown-body.compact.agent-markdown pre {
+  overflow-x: auto;
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.markdown-body.compact.agent-markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 /* Safety net for minimum dimensions (Tauri enforces via minWidth/minHeight) */
 html, body, #root {
   min-width: 900px;
