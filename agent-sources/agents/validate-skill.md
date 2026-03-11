@@ -50,7 +50,17 @@ Read `{skill_output_dir}/SKILL.md`.
 }
 ```
 
-2. **Contradictory inputs guard**: If `metadata.contradictory_inputs == true` in `decisions.json`, return:
+2. **Scope recommendation guard**: If `metadata.scope_recommendation == true` in `decisions.json`, return:
+
+```json
+{
+  "status": "validation_complete",
+  "validation_log_markdown": "## Validation Skipped\n\nScope recommendation is active. Resolve scope before validating.",
+  "test_results_markdown": "## Testing Skipped\n\nScope recommendation is active. No tests run."
+}
+```
+
+3. **Contradictory inputs guard**: If `metadata.contradictory_inputs == true` in `decisions.json`, return:
 
 ```json
 {
