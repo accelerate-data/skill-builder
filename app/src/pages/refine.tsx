@@ -31,6 +31,7 @@ import {
 import { useSkillStore } from "@/stores/skill-store";
 import type { SkillSummary } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
+import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
 import { ResizableSplitPane } from "@/components/refine/resizable-split-pane";
 import { SkillPicker } from "@/components/refine/skill-picker";
 import { ChatPanel } from "@/components/refine/chat-panel";
@@ -99,15 +100,7 @@ export default function RefinePage() {
 
   const extractStructuredResultPayload = useCallback((agentId: string) => {
     const run = useAgentStore.getState().runs[agentId];
-    if (!run) return null;
-    // Look for a result display item with outputText_result containing JSON
-    const resultItem = [...run.displayItems].reverse().find((di) => di.type === "result");
-    if (!resultItem?.outputText_result) return null;
-    try {
-      return JSON.parse(resultItem.outputText_result);
-    } catch {
-      return null;
-    }
+    return extractStructuredResultFromDisplayItems(run?.displayItems);
   }, []);
 
   useEffect(() => {

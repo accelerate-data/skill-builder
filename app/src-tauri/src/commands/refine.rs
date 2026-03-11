@@ -60,6 +60,7 @@ impl RefineSessionManager {
 fn build_refine_config(
     prompt: String,
     skill_name: &str,
+    refine_session_id: &str,
     workspace_path: &str,
     api_key: String,
     model: String,
@@ -70,6 +71,7 @@ fn build_refine_config(
     refine_prompt_suggestions: bool,
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
+    let usage_session_id = format!("synthetic:refine:{}:{}", skill_name, refine_session_id);
 
     // CWD is the workspace root (.vibedata) so the sidecar can find
     // .claude/agents/ and workspace-root CLAUDE.md. Skill files are accessed via
@@ -110,10 +112,10 @@ fn build_refine_config(
         agent_name: Some(REFINE_AGENT_NAME.to_string()),
         required_plugins: None,
         conversation_history: None,
-        skill_name: None,
+        skill_name: Some(skill_name.to_string()),
         step_id: Some(-10),
         workflow_session_id: None,
-        usage_session_id: None,
+        usage_session_id: Some(usage_session_id),
         run_source: Some("refine".to_string()),
     };
 
@@ -787,6 +789,7 @@ pub async fn send_refine_message(
         let (mut config, agent_id) = build_refine_config(
             prompt,
             &skill_name,
+            &session_id,
             &workspace_path,
             api_key,
             model,
@@ -1350,6 +1353,7 @@ mod tests {
         build_refine_config(
             prompt.to_string(),
             "my-skill",
+            "session-123",
             "/home/user/.vibedata/skill-builder",
             "sk-test-key".to_string(),
             "sonnet".to_string(),
@@ -1401,6 +1405,7 @@ mod tests {
         let (config, _) = build_refine_config(
             "test".to_string(),
             "data-engineering",
+            "session-123",
             "/home/user/.vibedata/skill-builder",
             "sk-key".to_string(),
             "sonnet".to_string(),
@@ -1447,6 +1452,7 @@ mod tests {
         let (config, _) = build_refine_config(
             "test".to_string(),
             "my-skill",
+            "session-123",
             "/skills",
             "sk-key".to_string(),
             "sonnet".to_string(),
@@ -1493,10 +1499,23 @@ mod tests {
             .as_array()
             .unwrap()
             .contains(&serde_json::json!("Task")));
+        assert_eq!(parsed["skillName"], "my-skill");
+        assert_eq!(parsed["usageSessionId"], "synthetic:refine:my-skill:session-123");
         // Streaming mode: no conversation history in config
         assert!(parsed.get("conversationHistory").is_none());
         // sessionId must NOT be set — the SDK interprets it as "resume" and fails
         assert!(parsed.get("sessionId").is_none());
+    }
+
+    #[test]
+    fn test_refine_config_includes_persistence_identity_for_run_summary() {
+        let (config, _) = base_refine_config("improve metrics");
+        assert_eq!(config.skill_name.as_deref(), Some("my-skill"));
+        assert_eq!(
+            config.usage_session_id.as_deref(),
+            Some("synthetic:refine:my-skill:session-123")
+        );
+        assert_eq!(config.run_source.as_deref(), Some("refine"));
     }
 
     #[test]
