@@ -450,8 +450,10 @@ export default function WorkflowPage() {
   const isAgentType = stepConfig?.type === "agent" || stepConfig?.type === "reasoning";
 
   const autoStartAfterReset = (stepId: number) => {
+    const { reviewMode: isReview, disabledSteps: disabled } = useWorkflowStore.getState();
+    if (disabled.includes(stepId)) return; // never auto-start a disabled step
     const cfg = STEP_CONFIGS[stepId];
-    if ((cfg?.type === "agent" || cfg?.type === "reasoning") && !useWorkflowStore.getState().reviewMode) {
+    if ((cfg?.type === "agent" || cfg?.type === "reasoning") && !isReview) {
       setPendingAutoStartStep(stepId);
     }
   };
@@ -518,8 +520,9 @@ export default function WorkflowPage() {
     if (currentCfg?.clarificationsEditable && steps[currentStep]?.status === "completed") {
       return; // stay on this step for editing
     }
-    const first = steps.find((s) => s.status !== "completed");
-    const target = first ? first.id : steps.length - 1;
+    const { disabledSteps: disabled } = useWorkflowStore.getState();
+    const first = steps.find((s) => s.status !== "completed" && !disabled.includes(s.id));
+    const target = first ? first.id : currentStep; // stay put if all remaining steps are disabled
     if (target !== currentStep) {
       setCurrentStep(target);
     }
@@ -630,8 +633,11 @@ export default function WorkflowPage() {
           }
         }
 
-        // Check for disabled steps before marking complete (so first render has correct state)
-        if (step === 0 && skillName) {
+        // Refresh disabled steps so the UI blocks advance to guarded steps.
+        // Step 0: scope-recommendation may disable steps 1-3.
+        // Step 2: contradictory decisions may disable step 3.
+        // Called unconditionally — the backend call is cheap (two file reads).
+        if (skillName) {
           try {
             const disabled = await getDisabledSteps(skillName);
             useWorkflowStore.getState().setDisabledSteps(disabled);
@@ -1021,7 +1027,23 @@ export default function WorkflowPage() {
     }
     clearRuns();
     resetToStep(stepId);
-    autoStartAfterReset(stepId);
+
+    // Re-evaluate guards after reset — disk state may still have guard conditions
+    // (e.g. resetting step 3 doesn't remove contradictory decisions.json).
+    let disabled: number[] = [];
+    if (skillName) {
+      try {
+        disabled = await getDisabledSteps(skillName);
+        useWorkflowStore.getState().setDisabledSteps(disabled);
+      } catch {
+        // non-fatal
+      }
+    }
+
+    // Only auto-start if the target step is not itself disabled
+    if (!disabled.includes(stepId)) {
+      autoStartAfterReset(stepId);
+    }
     toast.success(`Reset to step ${stepId + 1}`);
   };
 
@@ -1281,6 +1303,13 @@ export default function WorkflowPage() {
               // Steps 1+: navigate_back_to_step already persisted the correct DB state;
               // sync Zustand to match (target stays "completed", subsequent steps "pending").
               navigateBackToStep(resetTarget);
+            }
+            // Re-evaluate guards — navigateBackToStep clears disabledSteps but
+            // guard conditions on disk (e.g. contradictory decisions) may persist.
+            if (skillName) {
+              getDisabledSteps(skillName)
+                .then((disabled) => useWorkflowStore.getState().setDisabledSteps(disabled))
+                .catch(() => { /* non-fatal */ });
             }
             setResetTarget(null);
           }
