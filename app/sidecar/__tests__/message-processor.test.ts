@@ -745,6 +745,47 @@ describe("MessageProcessor", () => {
       expect(processor.pendingToolCallCount).toBe(0);
     });
 
+    // =========================================================================
+    // Streaming terminal paths — failure vs shutdown distinction (VU-506)
+    // =========================================================================
+
+    it("buildExecutionErrorSummary produces status=error with error message", () => {
+      const summary = processor.buildExecutionErrorSummary("connection reset");
+      expect(summary.status).toBe("error");
+      expect(summary.resultSubtype).toBe("error_during_execution");
+      expect(summary.resultErrors).toEqual(["connection reset"]);
+      expect(summary.stopReason).toBe("error");
+    });
+
+    it("buildShutdownSummary produces status=shutdown with zeroed tokens", () => {
+      const summary = processor.buildShutdownSummary();
+      expect(summary.status).toBe("shutdown");
+      expect(summary.inputTokens).toBe(0);
+      expect(summary.outputTokens).toBe(0);
+      expect(summary.resultErrors).toBeUndefined();
+    });
+
+    it("buildExecutionErrorSummary and buildShutdownSummary are distinct", () => {
+      const err = processor.buildExecutionErrorSummary("boom");
+      const shutdown = processor.buildShutdownSummary();
+      expect(err.status).not.toBe(shutdown.status);
+      expect(err.resultSubtype).toBeDefined();
+      expect(shutdown.resultSubtype).toBeUndefined();
+    });
+
+    it("buildExecutionErrorSummary carries accumulated turn count", () => {
+      // Process one assistant turn to bump the turn counter
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "hello" }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      });
+      const summary = processor.buildExecutionErrorSummary("crash");
+      expect(summary.numTurns).toBeGreaterThanOrEqual(1);
+    });
+
     it("reset clears all state", () => {
       processor.process({
         type: "assistant",

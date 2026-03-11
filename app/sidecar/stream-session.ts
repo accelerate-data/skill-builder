@@ -222,9 +222,10 @@ export class StreamSession {
         type: "error",
         message: errorMessage,
       });
-      // Emit error run_summary for persistence
+      // Emit error run_summary for persistence — use execution-error path so
+      // failures are distinguishable from user-initiated shutdowns.
       process.stderr.write(`[stream-session] Emitting error run_summary for session ${this.sessionId}\n`);
-      const errorSummary = processor.buildShutdownSummary();
+      const errorSummary = processor.buildExecutionErrorSummary(errorMessage);
       onMessage(this.currentRequestId, { type: "run_summary", data: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
     }
 
