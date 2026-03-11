@@ -72,6 +72,8 @@ export interface DisplayItem {
   outputText_result?: string;
   resultStatus?: ResultStatus;
   errorSubtype?: string;
+  /** Structured output from the SDK result (JSON object), used for artifact materialization. */
+  structuredOutput?: unknown;
 
   // --- error ---
   errorMessage?: string;

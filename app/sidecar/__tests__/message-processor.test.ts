@@ -583,7 +583,7 @@ describe("MessageProcessor", () => {
   // =========================================================================
 
   describe("error messages", () => {
-    it("creates error DisplayItem and forwards raw", () => {
+    it("creates error DisplayItem without forwarding raw", () => {
       const raw = { type: "error", error: "API rate limit exceeded" };
       const out = processor.process(raw);
 
@@ -594,8 +594,7 @@ describe("MessageProcessor", () => {
       expect(items[0].type).toBe("error");
       expect(items[0].errorMessage).toBe("API rate limit exceeded");
 
-      expect(passThrough).toHaveLength(1);
-      expect(passThrough[0]).toBe(raw);
+      expect(passThrough).toHaveLength(0);
     });
 
     it("handles error with message field instead of error field", () => {

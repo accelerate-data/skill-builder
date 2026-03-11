@@ -22,6 +22,7 @@ export class StreamSession {
   private messageQueue: string[] = [];
   private closed = false;
   private sessionId: string;
+  private config: SidecarConfig;
   private mockMode = false;
   private mockOnMessage:
     | ((requestId: string, message: Record<string, unknown>) => void)
@@ -35,6 +36,7 @@ export class StreamSession {
     externalSignal?: AbortSignal,
   ) {
     this.sessionId = sessionId;
+    this.config = config;
     this.currentRequestId = firstRequestId;
 
     // Start the streaming query in background — don't await
@@ -272,7 +274,13 @@ export class StreamSession {
       },
     };
 
-    const processor = new MessageProcessor();
+    const processor = new MessageProcessor({
+      skillName: this.config.skillName,
+      stepId: this.config.stepId,
+      workflowSessionId: this.config.workflowSessionId,
+      usageSessionId: this.config.usageSessionId,
+      runSource: this.config.runSource,
+    });
     const items = processor.process(rawAssistant);
     for (const item of items) {
       onMessage(requestId, item as Record<string, unknown>);

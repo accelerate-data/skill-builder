@@ -533,14 +533,10 @@ export default function WorkflowPage() {
   const extractStructuredResultPayload = useCallback((agentId: string): unknown | null => {
     const run = useAgentStore.getState().runs[agentId];
     if (!run) return null;
-    // Look for a result display item with outputText_result containing JSON
+    // Look for a result display item with structuredOutput from the SDK
     const resultItem = [...run.displayItems].reverse().find((di) => di.type === "result");
-    if (!resultItem?.outputText_result) return null;
-    try {
-      return JSON.parse(resultItem.outputText_result);
-    } catch {
-      return null;
-    }
+    if (!resultItem?.structuredOutput) return null;
+    return resultItem.structuredOutput;
   }, []);
 
   // Watch for gate agent (answer evaluator) completion — separate from workflow step agents

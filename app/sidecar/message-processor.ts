@@ -765,6 +765,15 @@ export class MessageProcessor {
         ?? "Agent ended with an error";
     }
 
+    // Extract structured output from SDK result for artifact materialization.
+    // Prefer structured_output (new SDK); fall back to result if it's an object.
+    let structuredOutput: unknown = undefined;
+    if ("structured_output" in raw && raw.structured_output != null) {
+      structuredOutput = raw.structured_output;
+    } else if ("result" in raw && raw.result != null && typeof raw.result !== "string") {
+      structuredOutput = raw.result;
+    }
+
     // Mark any remaining pending tool calls as orphaned
     const orphanedItems = this.markOrphanedToolCalls(now);
 
@@ -775,6 +784,7 @@ export class MessageProcessor {
       outputText_result: outputText,
       resultStatus,
       errorSubtype,
+      structuredOutput,
     };
 
     process.stderr.write(
@@ -823,8 +833,7 @@ export class MessageProcessor {
       `[message-processor] event=emit_display_item item_type=error id=${item.id} message="${truncate(errorMsg, 60)}"\n`,
     );
 
-    // Forward error for existing error handling in agent-store
-    return [this.makeEnvelope(item), raw];
+    return [this.makeEnvelope(item)];
   }
 
   // -------------------------------------------------------------------------

@@ -258,10 +258,11 @@ describe("WorkflowPage — agent completion lifecycle", () => {
         id: "result-build",
         type: "result",
         timestamp: Date.now(),
-        outputText_result: JSON.stringify({
+        outputText_result: "Agent completed",
+        structuredOutput: {
           status: "generated",
           evaluations_markdown: "## Scenario 1\n- input\n- expected output\n",
-        }),
+        },
         resultStatus: "success",
       });
       useAgentStore.getState().completeRun("agent-build", true);
@@ -754,7 +755,8 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
         id: "result-agent-2",
         type: "result",
         timestamp: Date.now(),
-        outputText_result: JSON.stringify({
+        outputText_result: "Agent completed",
+        structuredOutput: {
           status: "detailed_research_complete",
           refinement_count: 1,
           section_count: 1,
@@ -770,7 +772,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
             sections: [],
             notes: [],
           },
-        }),
+        },
         resultStatus: "success",
       });
     });
@@ -823,7 +825,8 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
         id: "result-step0",
         type: "result",
         timestamp: Date.now(),
-        outputText_result: JSON.stringify(payload),
+        outputText_result: "Agent completed",
+        structuredOutput: payload,
         resultStatus: "success",
       });
       useAgentStore.getState().completeRun("agent-step0-structured", true);
@@ -873,7 +876,8 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
         id: "result-step1",
         type: "result",
         timestamp: Date.now(),
-        outputText_result: JSON.stringify(payload),
+        outputText_result: "Agent completed",
+        structuredOutput: payload,
         resultStatus: "success",
       });
       useAgentStore.getState().completeRun("agent-step1-structured", true);
@@ -927,7 +931,8 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
         id: "result-step1-invalid",
         type: "result",
         timestamp: Date.now(),
-        outputText_result: JSON.stringify([]),
+        outputText_result: "Agent completed",
+        structuredOutput: [],
         resultStatus: "success",
       });
       useAgentStore.getState().completeRun("agent-step1-invalid-shape", true);
@@ -975,13 +980,14 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
         id: "result-invalid-step0",
         type: "result",
         timestamp: Date.now(),
-        outputText_result: JSON.stringify({
+        outputText_result: "Agent completed",
+        structuredOutput: {
           status: "research_complete",
           dimensions_selected: 1,
           question_count: 1,
           research_plan_markdown: "# bad",
           clarifications_json: {},
-        }),
+        },
         resultStatus: "success",
       });
       useAgentStore.getState().completeRun("agent-invalid-step0", true);
@@ -1016,7 +1022,8 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
         id: "result-step3",
         type: "result",
         timestamp: Date.now(),
-        outputText_result: JSON.stringify(payload),
+        outputText_result: "Agent completed",
+        structuredOutput: payload,
         resultStatus: "success",
       });
       useAgentStore.getState().completeRun("agent-step3-structured", true);

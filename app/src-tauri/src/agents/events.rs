@@ -77,7 +77,7 @@ pub struct SidecarRunSummary {
     #[serde(rename = "modelUsageBreakdown")]
     pub model_usage_breakdown: Vec<SidecarModelUsageEntry>,
     #[serde(rename = "contextWindow")]
-    pub context_window: i32,
+    pub context_window: i64,
     #[serde(rename = "resultSubtype")]
     pub result_subtype: Option<String>,
     #[serde(rename = "resultErrors")]
