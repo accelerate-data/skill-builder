@@ -1929,8 +1929,11 @@ description: A skill
             .unwrap()
             .unwrap();
         assert!(!imported_after.is_active);
+        let inactive_component = std::path::Path::new(&imported_after.disk_path)
+            .components()
+            .any(|c| c.as_os_str() == ".inactive");
         assert!(
-            imported_after.disk_path.contains("/.inactive/"),
+            inactive_component,
             "imported conflicting skill should be moved to .inactive"
         );
         assert!(skills_dir.join(".inactive").join("incoming-research").exists());

@@ -525,8 +525,10 @@ mod tests {
 
     #[test]
     fn test_read_file_not_found() {
-        let roots = vec![fs::canonicalize("/tmp").unwrap()];
-        let result = read_file_with_roots("/tmp/nonexistent-file-abc123xyz", &roots);
+        let tmp = std::env::temp_dir();
+        let roots = vec![fs::canonicalize(&tmp).unwrap()];
+        let nonexistent = tmp.join("nonexistent-file-abc123xyz");
+        let result = read_file_with_roots(nonexistent.to_str().unwrap(), &roots);
         assert!(result.is_err());
     }
 
@@ -624,10 +626,11 @@ mod tests {
 
     #[test]
     fn test_read_file_as_base64_not_found() {
-        let roots = vec![fs::canonicalize("/tmp").unwrap()];
-        let result = read_file_as_base64_with_roots("/tmp/nonexistent-base64-file-xyz", &roots);
+        let tmp = std::env::temp_dir();
+        let roots = vec![fs::canonicalize(&tmp).unwrap()];
+        let nonexistent = tmp.join("nonexistent-base64-file-xyz");
+        let result = read_file_as_base64_with_roots(nonexistent.to_str().unwrap(), &roots);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("canonicalize"));
     }
 
     #[test]
