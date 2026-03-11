@@ -179,6 +179,102 @@ export async function simulateAgentInitError(
   await emitTauriEvent(page, "agent-init-error", payload);
 }
 
+// ---------------------------------------------------------------------------
+// DisplayItem payload type (mirrors sidecar display-types.ts)
+// ---------------------------------------------------------------------------
+
+interface DisplayItemPayload {
+  id: string;
+  type: string;
+  timestamp: number;
+  thinkingText?: string;
+  outputText?: string;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+  toolUseId?: string;
+  toolStatus?: string;
+  toolSummary?: string;
+  errorMessage?: string;
+  outputText_result?: string;
+  resultStatus?: string;
+  [key: string]: unknown;
+}
+
+interface SimulateDisplayItemRunOptions {
+  agentId: string;
+  /** DisplayItem payloads to emit. */
+  items: DisplayItemPayload[];
+  /** Result text for the final result message. */
+  result?: string;
+  /** Delay in ms between events. Defaults to 50. */
+  delays?: number;
+}
+
+/**
+ * Simulate a complete agent run using the new DisplayItem pipeline:
+ * 1. agent-init-progress (init_start, sdk_ready)
+ * 2. N agent-message events (type=display_item)
+ * 3. agent-message (type=result) — pass-through for usage tracking
+ * 4. agent-exit (success=true)
+ */
+export async function simulateAgentRunWithDisplayItems(
+  page: Page,
+  options: SimulateDisplayItemRunOptions,
+): Promise<void> {
+  const {
+    agentId,
+    items,
+    result = "Agent completed.",
+    delays = 50,
+  } = options;
+
+  const wait = (ms: number) => page.waitForTimeout(ms);
+
+  // Init progress
+  await emitTauriEvent(page, "agent-init-progress", {
+    agent_id: agentId,
+    subtype: "init_start",
+    timestamp: Date.now(),
+  } satisfies AgentInitProgressPayload);
+  await wait(delays);
+
+  await emitTauriEvent(page, "agent-init-progress", {
+    agent_id: agentId,
+    subtype: "sdk_ready",
+    timestamp: Date.now(),
+  } satisfies AgentInitProgressPayload);
+  await wait(delays);
+
+  // Display items
+  for (const item of items) {
+    await emitTauriEvent(page, "agent-message", {
+      agent_id: agentId,
+      message: {
+        type: "display_item",
+        item,
+      },
+    });
+    await wait(delays);
+  }
+
+  // Result message (pass-through for usage tracking)
+  await emitTauriEvent(page, "agent-message", {
+    agent_id: agentId,
+    message: {
+      type: "result",
+      result,
+      subtype: "success",
+    },
+  });
+  await wait(delays);
+
+  // Exit
+  await emitTauriEvent(page, "agent-exit", {
+    agent_id: agentId,
+    success: true,
+  } satisfies AgentExitPayload);
+}
+
 /**
  * Simulate an agent that initializes but then exits with an error.
  * Emits the init sequence followed by agent-exit with success=false.
