@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { initAgentStream, _resetForTesting } from "@/hooks/use-agent-stream";
-import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
+import { useAgentStore } from "@/stores/agent-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { mockListen } from "@/test/mocks/tauri";
 
@@ -23,16 +23,18 @@ describe("initAgentStream", () => {
     });
   });
 
-  it("subscribes to agent-message, agent-exit, agent-init-progress, and agent-shutdown events", () => {
+  it("subscribes to agent-message, agent-exit, agent-init-progress, agent-metadata, and agent-shutdown events", () => {
     initAgentStream();
 
     expect(mockListen).toHaveBeenCalledWith("agent-init-progress", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("agent-init-error", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("agent-metadata", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-message", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-exit", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-shutdown", expect.any(Function));
   });
 
-  it("adds assistant message content to agent store", () => {
+  it("adds display_item message to agent store", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
     initAgentStream();
 
@@ -40,81 +42,39 @@ describe("initAgentStream", () => {
       payload: {
         agent_id: "agent-1",
         message: {
-          type: "assistant",
-          message: {
-            content: [
-              { type: "text", text: "Hello " },
-              { type: "text", text: "world" },
-            ],
+          type: "display_item",
+          item: {
+            id: "di-1",
+            type: "output",
+            timestamp: Date.now(),
+            outputText: "Hello world",
           },
         },
       },
     });
-    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
-    expect(run.messages).toHaveLength(1);
-    expect(run.messages[0].type).toBe("assistant");
-    expect(run.messages[0].content).toBe("Hello world");
+    expect(run.displayItems).toHaveLength(1);
+    expect(run.displayItems[0].outputText).toBe("Hello world");
   });
 
-  it("adds result message content to agent store", () => {
+  it("updates metadata via agent-metadata event", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
     initAgentStream();
 
-    listeners["agent-message"]({
+    listeners["agent-metadata"]({
       payload: {
         agent_id: "agent-1",
-        message: {
-          type: "result",
-          result: "Task completed successfully",
+        data: {
+          sessionInit: { sessionId: "sess-123", model: "claude-sonnet-4-5-20250929" },
         },
+        timestamp: Date.now(),
       },
     });
-    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
-    expect(run.messages).toHaveLength(1);
-    expect(run.messages[0].type).toBe("result");
-    expect(run.messages[0].content).toBe("Task completed successfully");
-  });
-
-  it("adds error message content to agent store", () => {
-    useAgentStore.getState().startRun("agent-1", "sonnet");
-    initAgentStream();
-
-    listeners["agent-message"]({
-      payload: {
-        agent_id: "agent-1",
-        message: {
-          type: "error",
-          error: "Rate limited",
-        },
-      },
-    });
-    flushMessageBuffer();
-
-    const run = useAgentStore.getState().runs["agent-1"];
-    expect(run.messages[0].type).toBe("error");
-    expect(run.messages[0].content).toBe("Rate limited");
-  });
-
-  it("handles error message with no error string", () => {
-    useAgentStore.getState().startRun("agent-1", "sonnet");
-    initAgentStream();
-
-    listeners["agent-message"]({
-      payload: {
-        agent_id: "agent-1",
-        message: {
-          type: "error",
-        },
-      },
-    });
-    flushMessageBuffer();
-
-    const run = useAgentStore.getState().runs["agent-1"];
-    expect(run.messages[0].content).toBe("Unknown error");
+    expect(run.model).toBe("claude-sonnet-4-5-20250929");
+    expect(run.sessionId).toBe("sess-123");
   });
 
   it("completes run on agent-exit with success=true", () => {
@@ -146,57 +106,60 @@ describe("initAgentStream", () => {
     initAgentStream();
     initAgentStream();
 
-    // listen should only be called 5 times (agent-init-progress, agent-init-error, agent-message, agent-exit, agent-shutdown)
-    expect(mockListen).toHaveBeenCalledTimes(5);
+    // listen should only be called 6 times (agent-init-progress, agent-init-error, agent-metadata, agent-message, agent-exit, agent-shutdown)
+    expect(mockListen).toHaveBeenCalledTimes(6);
   });
 
-  it("auto-creates run for messages arriving before startRun", () => {
+  it("auto-creates run for display_item messages arriving before startRun", () => {
     initAgentStream();
 
-    // Send a message for an agent that hasn't been registered via startRun
     listeners["agent-message"]({
       payload: {
         agent_id: "unknown-agent",
         message: {
-          type: "assistant",
-          message: {
-            content: [{ type: "text", text: "Early message" }],
+          type: "display_item",
+          item: {
+            id: "di-early",
+            type: "output",
+            timestamp: Date.now(),
+            outputText: "Early message",
           },
         },
       },
     });
-    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["unknown-agent"];
     expect(run).toBeDefined();
-    expect(run.messages).toHaveLength(1);
-    expect(run.messages[0].content).toBe("Early message");
+    expect(run.displayItems).toHaveLength(1);
+    expect(run.displayItems[0].outputText).toBe("Early message");
   });
 
-  it("startRun preserves messages from auto-created run", () => {
+  it("startRun preserves displayItems from auto-created run", () => {
     initAgentStream();
 
-    // Message arrives before startRun
+    // Display item arrives before startRun
     listeners["agent-message"]({
       payload: {
         agent_id: "early-agent",
         message: {
-          type: "assistant",
-          message: {
-            content: [{ type: "text", text: "I started early" }],
+          type: "display_item",
+          item: {
+            id: "di-early",
+            type: "output",
+            timestamp: Date.now(),
+            outputText: "I started early",
           },
         },
       },
     });
-    flushMessageBuffer();
 
     // Now startRun is called (e.g. by workflow page)
     useAgentStore.getState().startRun("early-agent", "sonnet");
 
     const run = useAgentStore.getState().runs["early-agent"];
     expect(run.model).toBe("sonnet");
-    expect(run.messages).toHaveLength(1);
-    expect(run.messages[0].content).toBe("I started early");
+    expect(run.displayItems).toHaveLength(1);
+    expect(run.displayItems[0].outputText).toBe("I started early");
   });
 
   it("clears initializing state on first agent message", () => {
@@ -210,15 +173,16 @@ describe("initAgentStream", () => {
       payload: {
         agent_id: "agent-1",
         message: {
-          type: "assistant",
-          message: {
-            content: [{ type: "text", text: "First message" }],
+          type: "display_item",
+          item: {
+            id: "di-1",
+            type: "output",
+            timestamp: Date.now(),
+            outputText: "First message",
           },
         },
       },
     });
-    // Note: clearInitializing happens synchronously in the listener before addMessage buffers,
-    // so we don't need flushMessageBuffer() to check isInitializing — but we do if checking messages.
 
     // After first message, initializing should be cleared
     expect(useWorkflowStore.getState().isInitializing).toBe(false);
@@ -235,14 +199,11 @@ describe("initAgentStream", () => {
       payload: {
         agent_id: "agent-1",
         message: {
-          type: "assistant",
-          message: {
-            content: [{ type: "text", text: "First" }],
-          },
+          type: "display_item",
+          item: { id: "di-1", type: "output", timestamp: Date.now(), outputText: "First" },
         },
       },
     });
-    flushMessageBuffer();
 
     expect(useWorkflowStore.getState().isInitializing).toBe(false);
 
@@ -251,17 +212,14 @@ describe("initAgentStream", () => {
       payload: {
         agent_id: "agent-1",
         message: {
-          type: "assistant",
-          message: {
-            content: [{ type: "text", text: "Second" }],
-          },
+          type: "display_item",
+          item: { id: "di-2", type: "output", timestamp: Date.now(), outputText: "Second" },
         },
       },
     });
-    flushMessageBuffer();
 
     expect(useWorkflowStore.getState().isInitializing).toBe(false);
-    expect(useAgentStore.getState().runs["agent-1"].messages).toHaveLength(2);
+    expect(useAgentStore.getState().runs["agent-1"].displayItems).toHaveLength(2);
   });
 
   it("does not clear initializing when it was not set", () => {
@@ -275,10 +233,8 @@ describe("initAgentStream", () => {
       payload: {
         agent_id: "agent-1",
         message: {
-          type: "assistant",
-          message: {
-            content: [{ type: "text", text: "Hello" }],
-          },
+          type: "display_item",
+          item: { id: "di-1", type: "output", timestamp: Date.now(), outputText: "Hello" },
         },
       },
     });
@@ -375,10 +331,8 @@ describe("initAgentStream", () => {
       payload: {
         agent_id: "agent-1",
         message: {
-          type: "assistant",
-          message: {
-            content: [{ type: "text", text: "Hello" }],
-          },
+          type: "display_item",
+          item: { id: "di-1", type: "output", timestamp: Date.now(), outputText: "Hello" },
         },
       },
     });
@@ -426,10 +380,8 @@ describe("initAgentStream", () => {
       payload: {
         agent_id: "agent-1",
         message: {
-          type: "assistant",
-          message: {
-            content: [{ type: "text", text: "Processing..." }],
-          },
+          type: "display_item",
+          item: { id: "di-1", type: "output", timestamp: Date.now(), outputText: "Processing..." },
         },
       },
     });

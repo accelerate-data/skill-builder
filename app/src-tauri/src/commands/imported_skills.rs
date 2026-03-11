@@ -350,8 +350,13 @@ fn upload_skill_inner(
         skill.purpose.as_deref(),
     )?;
 
-    let mut persisted = crate::db::get_workspace_skill(conn, &skill.skill_id)?
-        .ok_or_else(|| format!("Uploaded skill '{}' not found after insert", skill.skill_name))?;
+    let mut persisted =
+        crate::db::get_workspace_skill(conn, &skill.skill_id)?.ok_or_else(|| {
+            format!(
+                "Uploaded skill '{}' not found after insert",
+                skill.skill_name
+            )
+        })?;
     persisted.is_active = imported_is_active;
     Ok(persisted)
 }
@@ -1923,7 +1928,10 @@ description: A skill
         let existing_after = crate::db::get_workspace_skill_by_name(&conn, "existing-research")
             .unwrap()
             .unwrap();
-        assert!(existing_after.is_active, "existing active skill should stay active");
+        assert!(
+            existing_after.is_active,
+            "existing active skill should stay active"
+        );
 
         let imported_after = crate::db::get_workspace_skill_by_name(&conn, "incoming-research")
             .unwrap()
@@ -1936,7 +1944,10 @@ description: A skill
             inactive_component,
             "imported conflicting skill should be moved to .inactive"
         );
-        assert!(skills_dir.join(".inactive").join("incoming-research").exists());
+        assert!(skills_dir
+            .join(".inactive")
+            .join("incoming-research")
+            .exists());
     }
 
     // --- Toggle active/inactive tests ---
@@ -2897,10 +2908,7 @@ description: A skill
             workspace_path,
             &conn,
         );
-        assert!(
-            result.is_err(),
-            "Deleting bundled skill should fail"
-        );
+        assert!(result.is_err(), "Deleting bundled skill should fail");
         let err = result.unwrap_err();
         assert!(
             err.contains("Cannot delete bundled skill"),
@@ -2909,9 +2917,11 @@ description: A skill
         );
 
         // Skill still in DB
-        assert!(crate::db::get_workspace_skill_by_name(&conn, "validate-skill")
-            .unwrap()
-            .is_some());
+        assert!(
+            crate::db::get_workspace_skill_by_name(&conn, "validate-skill")
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[test]
@@ -3040,7 +3050,11 @@ description: A skill
             .join(".inactive")
             .join("stale-inactive");
         fs::create_dir_all(&inactive_dir).unwrap();
-        fs::write(inactive_dir.join("SKILL.md"), "---\nname: stale-inactive\n---").unwrap();
+        fs::write(
+            inactive_dir.join("SKILL.md"),
+            "---\nname: stale-inactive\n---",
+        )
+        .unwrap();
 
         let stale_skill = WorkspaceSkill {
             skill_id: "bundled-stale-inactive".to_string(),
@@ -3123,7 +3137,10 @@ description: A skill
             "user-imported skill must not be purged"
         );
         // User skill directory must still exist.
-        assert!(user_dir.exists(), "user-imported skill directory must not be removed");
+        assert!(
+            user_dir.exists(),
+            "user-imported skill directory must not be removed"
+        );
     }
 
     #[test]
@@ -3182,7 +3199,10 @@ description: A skill
                 .is_some(),
             "current bundled skill must be preserved"
         );
-        assert!(active_dir.exists(), "current bundled skill directory must be preserved");
+        assert!(
+            active_dir.exists(),
+            "current bundled skill directory must be preserved"
+        );
     }
 
     #[test]
@@ -3581,7 +3601,10 @@ description: A skill
             Some("review"),
         )
         .unwrap();
-        assert!(!is_active, "policy should disable incoming conflicting skill");
+        assert!(
+            !is_active,
+            "policy should disable incoming conflicting skill"
+        );
 
         let incumbent_after = crate::db::get_workspace_skill(&conn, "id-incumbent")
             .unwrap()

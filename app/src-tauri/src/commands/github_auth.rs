@@ -12,10 +12,7 @@ pub async fn github_start_device_flow() -> Result<DeviceFlowResponse, String> {
     let response = client
         .post("https://github.com/login/device/code")
         .header("Accept", "application/json")
-        .form(&[
-            ("client_id", GITHUB_CLIENT_ID),
-            ("scope", "repo,read:user"),
-        ])
+        .form(&[("client_id", GITHUB_CLIENT_ID), ("scope", "repo,read:user")])
         .send()
         .await
         .map_err(|e| format!("Failed to start device flow: {e}"))?;
@@ -31,7 +28,10 @@ pub async fn github_start_device_flow() -> Result<DeviceFlowResponse, String> {
             .as_str()
             .or_else(|| body["error"].as_str())
             .unwrap_or("Unknown error");
-        return Err(format!("GitHub device flow error ({}): {}", status, message));
+        return Err(format!(
+            "GitHub device flow error ({}): {}",
+            status, message
+        ));
     }
 
     let device_code = body["device_code"]
@@ -77,10 +77,7 @@ pub async fn github_poll_for_token(
         .form(&[
             ("client_id", GITHUB_CLIENT_ID),
             ("device_code", device_code.as_str()),
-            (
-                "grant_type",
-                "urn:ietf:params:oauth:grant-type:device_code",
-            ),
+            ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
         ])
         .send()
         .await
@@ -172,10 +169,7 @@ pub fn github_logout(db: tauri::State<'_, Db>) -> Result<(), String> {
 }
 
 /// Fetch the authenticated user's profile from GitHub.
-async fn fetch_github_user(
-    client: &reqwest::Client,
-    token: &str,
-) -> Result<GitHubUser, String> {
+async fn fetch_github_user(client: &reqwest::Client, token: &str) -> Result<GitHubUser, String> {
     let response = client
         .get("https://api.github.com/user")
         .header("Authorization", format!("Bearer {}", token))

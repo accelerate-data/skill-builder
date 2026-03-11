@@ -2,7 +2,7 @@
 name: research-orchestrator
 description: Thin wrapper for plugin-owned research execution and canonical envelope return.
 model: sonnet
-tools: Read, Task
+tools: Read, Task, Skill
 ---
 
 # Research Orchestrator
@@ -77,47 +77,19 @@ If missing, return:
 }
 ```
 
-## Step 0.5: Insufficient context guard
+## Step 1: Insufficient context guard
 
-After reading `user-context.md`, check whether the description is clearly insufficient for research — e.g. fewer than 20 non-whitespace characters, contains only placeholder text like "just testing" or "test skill", or has no substantive domain detail.
+After reading `user-context.md`, check whether the description is clearly insufficient for research — e.g. fewer than 20 non-whitespace characters, contains only placeholder text like "just testing" or "test skill", or is not relevanr or lacks substantive domain detail.
 
-If insufficient, return:
+If any of these conditions exist , stop and return canonical minimal/scope-recommendation clarifications output per `references/schemas.md` with
 
-```json
-{
-  "status": "research_complete",
-  "dimensions_selected": 0,
-  "question_count": 0,
-  "research_output": {
-    "version": "1",
-    "metadata": {
-      "question_count": 0,
-      "section_count": 0,
-      "refinement_count": 0,
-      "must_answer_count": 0,
-      "priority_questions": [],
-      "scope_recommendation": true,
-      "scope_reason": "User context is too vague or placeholder-only to produce meaningful research. Provide a substantive description before continuing.",
-      "warning": null,
-      "error": null,
-      "research_plan": {
-        "purpose": "",
-        "domain": "",
-        "topic_relevance": "not_relevant",
-        "dimensions_evaluated": 0,
-        "dimensions_selected": 0,
-        "dimension_scores": [],
-        "selected_dimensions": []
-      }
-    },
-    "sections": [],
-    "notes": ["User context insufficient — recommend narrowing scope or adding domain details."],
-    "answer_evaluator_notes": []
-  }
-}
-```
+- `metadata.scope_recommendation: true`
+- `metadata.warning.code: "all_dimensions_low_score"`
+- `metadata.warning.message`: concise explanation for UI
+- `metadata.research_plan` present and schema-valid with minimal values per `references/schemas.md` Scope/Error Minimal Output (including `topic_relevance: "not_relevant"`, zero counts, and empty selected arrays)
+- zero selected dimensions.
 
-## Step 1: Call plugin research agent
+## Step 2: Call plugin research agent
 
 Call:
 
@@ -171,7 +143,7 @@ If the plugin result is malformed, return:
 }
 ```
 
-## Step 2: Return
+## Step 3: Return
 
 Return:
 

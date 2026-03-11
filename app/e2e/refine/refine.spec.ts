@@ -326,16 +326,18 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
 
     const agentId1 = await getAgentId(page);
 
-    // Swap mock to return SKILL.md with Quick Start added
+    // Swap mocks to return SKILL.md with Quick Start added
     await page.evaluate(() => {
       const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
-      overrides.get_skill_content_for_refine = [
+      const files = [
         {
           path: "SKILL.md",
           content: "# Test Skill\n\nA skill for testing.\n\n## Quick Start\n\nGet started in 3 steps.\n\n## Instructions\n\nFollow these steps...",
         },
         { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
       ];
+      overrides.get_skill_content_for_refine = files;
+      overrides.finalize_refine_run = { files, diff: { stat: "1 file changed", files: [] }, commit_sha: null };
     });
 
     await simulateAgentRun(page, {
@@ -367,16 +369,18 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     const agentId2 = await getAgentId(page);
     expect(agentId2).toBe("refine-test-skill-e2e-002");
 
-    // Swap mock to return SKILL.md with BOTH Quick Start AND Tips
+    // Swap mocks to return SKILL.md with BOTH Quick Start AND Tips
     await page.evaluate(() => {
       const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
-      overrides.get_skill_content_for_refine = [
+      const files = [
         {
           path: "SKILL.md",
           content: "# Test Skill\n\nA skill for testing.\n\n## Quick Start\n\nGet started in 3 steps.\n\n## Tips\n\nRemember to test often.\n\n## Instructions\n\nFollow these steps...",
         },
         { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
       ];
+      overrides.get_skill_content_for_refine = files;
+      overrides.finalize_refine_run = { files, diff: { stat: "1 file changed", files: [] }, commit_sha: null };
     });
 
     await simulateAgentRun(page, {
@@ -406,10 +410,10 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
 
     const agentId = await getAgentId(page);
 
-    // Swap mock to return both files modified
+    // Swap mocks to return both files modified
     await page.evaluate(() => {
       const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
-      overrides.get_skill_content_for_refine = [
+      const files = [
         {
           path: "SKILL.md",
           content: "# Test Skill\n\nA skill for testing.\n\n## Quick Start\n\nGet started in 3 steps.\n\n## Instructions\n\nFollow these steps...",
@@ -419,6 +423,8 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
           content: "# Glossary\n\n- **Term**: Definition\n- **New Term**: New definition",
         },
       ];
+      overrides.get_skill_content_for_refine = files;
+      overrides.finalize_refine_run = { files, diff: { stat: "2 files changed", files: [] }, commit_sha: null };
     });
 
     await simulateAgentRun(page, {
@@ -457,16 +463,18 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
 
     const agentId1 = await getAgentId(page);
 
-    // Swap mock to return modified SKILL.md with Quick Start
+    // Swap mocks to return modified SKILL.md with Quick Start
     await page.evaluate(() => {
       const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
-      overrides.get_skill_content_for_refine = [
+      const files = [
         {
           path: "SKILL.md",
           content: "# Test Skill\n\nA skill for testing.\n\n## Quick Start\n\nGet started in 3 steps.\n\n## Instructions\n\nFollow these steps...",
         },
         { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
       ];
+      overrides.get_skill_content_for_refine = files;
+      overrides.finalize_refine_run = { files, diff: { stat: "1 file changed", files: [] }, commit_sha: null };
     });
 
     await simulateAgentRun(page, {

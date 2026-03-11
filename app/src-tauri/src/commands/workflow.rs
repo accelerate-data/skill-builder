@@ -559,14 +559,17 @@ fn copy_agents_to_claude_dir(agents_src: &Path, workspace_path: &str) -> Result<
 
 /// Replace only app-managed plugins in `.claude/plugins` from bundled source.
 /// User-added plugins are preserved when they do not have the managed marker.
-fn copy_managed_plugins_to_claude_dir(plugins_src: &Path, workspace_path: &str) -> Result<(), String> {
+fn copy_managed_plugins_to_claude_dir(
+    plugins_src: &Path,
+    workspace_path: &str,
+) -> Result<(), String> {
     const MANAGED_MARKER: &str = ".skill-builder-managed";
     let claude_plugins_dir = Path::new(workspace_path).join(".claude").join("plugins");
     std::fs::create_dir_all(&claude_plugins_dir)
         .map_err(|e| format!("Failed to create .claude/plugins dir: {}", e))?;
 
-    let source_entries = std::fs::read_dir(plugins_src)
-        .map_err(|e| format!("Failed to read plugins dir: {}", e))?;
+    let source_entries =
+        std::fs::read_dir(plugins_src).map_err(|e| format!("Failed to read plugins dir: {}", e))?;
     let mut source_plugin_names = std::collections::HashSet::new();
     for entry in source_entries {
         let entry = entry.map_err(|e| format!("Failed to read plugins entry: {}", e))?;
@@ -590,8 +593,13 @@ fn copy_managed_plugins_to_claude_dir(plugins_src: &Path, workspace_path: &str) 
         let name = entry.file_name().to_string_lossy().to_string();
         let is_managed = path.join(MANAGED_MARKER).is_file();
         if is_managed && !source_plugin_names.contains(&name) {
-            std::fs::remove_dir_all(&path)
-                .map_err(|e| format!("Failed to remove stale managed plugin {}: {}", path.display(), e))?;
+            std::fs::remove_dir_all(&path).map_err(|e| {
+                format!(
+                    "Failed to remove stale managed plugin {}: {}",
+                    path.display(),
+                    e
+                )
+            })?;
         }
     }
 
@@ -600,12 +608,25 @@ fn copy_managed_plugins_to_claude_dir(plugins_src: &Path, workspace_path: &str) 
         let src_plugin = plugins_src.join(&plugin_name);
         let dst_plugin = claude_plugins_dir.join(&plugin_name);
         if dst_plugin.exists() {
-            std::fs::remove_dir_all(&dst_plugin)
-                .map_err(|e| format!("Failed to replace managed plugin {}: {}", dst_plugin.display(), e))?;
+            std::fs::remove_dir_all(&dst_plugin).map_err(|e| {
+                format!(
+                    "Failed to replace managed plugin {}: {}",
+                    dst_plugin.display(),
+                    e
+                )
+            })?;
         }
         copy_directory_recursive(&src_plugin, &dst_plugin)?;
-        std::fs::write(dst_plugin.join(MANAGED_MARKER), "managed by skill-builder startup\n")
-            .map_err(|e| format!("Failed to write managed plugin marker for {}: {}", plugin_name, e))?;
+        std::fs::write(
+            dst_plugin.join(MANAGED_MARKER),
+            "managed by skill-builder startup\n",
+        )
+        .map_err(|e| {
+            format!(
+                "Failed to write managed plugin marker for {}: {}",
+                plugin_name, e
+            )
+        })?;
     }
     Ok(())
 }
@@ -1001,8 +1022,9 @@ fn materialize_workflow_step_output_value(
             Ok(())
         }
         2 => {
-            let decisions_pretty = serde_json::to_string_pretty(&serde_json::Value::Object(payload.clone()))
-                .map_err(|e| format!("Failed to serialize decisions: {}", e))?;
+            let decisions_pretty =
+                serde_json::to_string_pretty(&serde_json::Value::Object(payload.clone()))
+                    .map_err(|e| format!("Failed to serialize decisions: {}", e))?;
             let decisions_path = context_dir.join("decisions.json");
             std::fs::write(&decisions_path, decisions_pretty).map_err(|e| {
                 format!(
@@ -1056,17 +1078,15 @@ pub fn materialize_workflow_step_output(
     let workspace_path = read_workspace_path(&db)
         .ok_or_else(|| "Workspace path not configured. Please set it in Settings.".to_string())?;
     let skill_root = Path::new(&workspace_path).join(&skill_name);
-    materialize_workflow_step_output_value(&skill_root, step_id, &structured_output).map_err(
-        |e| {
-            log::error!(
-                "[materialize_workflow_step_output] skill={} step={} failed: {}",
-                skill_name,
-                step_id,
-                e
-            );
+    materialize_workflow_step_output_value(&skill_root, step_id, &structured_output).map_err(|e| {
+        log::error!(
+            "[materialize_workflow_step_output] skill={} step={} failed: {}",
+            skill_name,
+            step_id,
             e
-        },
-    )
+        );
+        e
+    })
 }
 
 fn answer_evaluator_output_format() -> serde_json::Value {
@@ -1476,7 +1496,6 @@ pub fn write_user_context_file(
     }
 }
 
-
 fn build_prompt(
     skill_name: &str,
     workspace_path: &str,
@@ -1651,7 +1670,7 @@ fn read_workflow_settings(
     let industry = settings.industry;
     let function_role = settings.function_role;
 
-    // Validate prerequisites (step 3 requires decisions.md)
+    // Validate prerequisites (step 3 requires decisions.json)
     if step_id == 3 {
         validate_decisions_exist_inner(skill_name, workspace_path, &skills_path)?;
     }
@@ -1713,6 +1732,7 @@ async fn run_workflow_step_inner(
     step_id: u32,
     workspace_path: &str,
     settings: &WorkflowSettings,
+    workflow_session_id: Option<String>,
 ) -> Result<String, String> {
     let step = get_step_config(step_id)?;
     let thinking_budget = if settings.extended_thinking {
@@ -1794,7 +1814,11 @@ async fn run_workflow_step_inner(
         agent_name: Some(agent_name),
         required_plugins,
         conversation_history: None,
-        skill_name: None,
+        skill_name: Some(skill_name.to_string()),
+        step_id: Some(step_id as i32),
+        workflow_session_id,
+        usage_session_id: None,
+        run_source: Some("workflow".to_string()),
     };
 
     sidecar::spawn_sidecar(
@@ -1819,8 +1843,14 @@ pub async fn run_workflow_step(
     skill_name: String,
     step_id: u32,
     workspace_path: String,
+    workflow_session_id: Option<String>,
 ) -> Result<String, String> {
-    log::info!("[run_workflow_step] skill={} step={}", skill_name, step_id);
+    log::info!(
+        "[run_workflow_step] skill={} step={} session={:?}",
+        skill_name,
+        step_id,
+        workflow_session_id
+    );
     crate::commands::workflow_lifecycle::validate_run_request(
         &skill_name,
         step_id,
@@ -1830,17 +1860,10 @@ pub async fn run_workflow_step(
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
     // Deploy purpose-resolved bundled skills.
-    // Research is plugin-owned, so only validate and skill-building are deployed from bundled skills.
+    // Research is plugin-owned; validate-skill is agent-only (no SKILL.md to deploy).
     {
         let bundled_skills_dir = resolve_bundled_skills_dir(&app);
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        deploy_skill_for_workflow(
-            &conn,
-            &workspace_path,
-            &bundled_skills_dir,
-            "validate-skill",
-            "validate",
-        );
         deploy_skill_for_workflow(
             &conn,
             &workspace_path,
@@ -1859,9 +1882,7 @@ pub async fn run_workflow_step(
     );
 
     // Gate: reject disabled steps when guard conditions are active
-    let context_dir = Path::new(&workspace_path)
-        .join(&skill_name)
-        .join("context");
+    let context_dir = Path::new(&workspace_path).join(&skill_name).join("context");
 
     if step_id >= 1 {
         let clarifications_path = context_dir.join("clarifications.json");
@@ -1906,6 +1927,7 @@ pub async fn run_workflow_step(
         step_id,
         &workspace_path,
         &settings,
+        workflow_session_id,
     )
     .await
     .map_err(|e| {
@@ -2118,7 +2140,11 @@ pub fn save_workflow_state(
         &purpose,
     )
     .map_err(|e| {
-        log::error!("[save_workflow_state] save_workflow_run failed skill={}: {}", skill_name, e);
+        log::error!(
+            "[save_workflow_state] save_workflow_run failed skill={}: {}",
+            skill_name,
+            e
+        );
         e
     })?;
     for step in &step_statuses {
@@ -2182,9 +2208,9 @@ pub fn save_workflow_state(
 /// Output files produced by each step, relative to the skill directory.
 pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
-        0 => vec!["context/clarifications.json"], // research-plan.md removed; plan embedded in clarifications metadata.research_plan
+        0 => vec!["context/clarifications.json"],
         1 => vec![], // Step 1 edits clarifications.json in-place (no unique artifact)
-        2 => vec!["context/decisions.json"], // was decisions.md; now structured JSON
+        2 => vec!["context/decisions.json"],
         3 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
         _ => vec![],
     }
@@ -2267,16 +2293,25 @@ pub fn save_clarifications_content(
     workspace_path: String,
     content: String,
 ) -> Result<(), String> {
-    let parsed: serde_json::Value =
-        serde_json::from_str(&content).map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
+    let parsed: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
     validate_clarifications_json(&parsed)
         .map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
     let path = workspace_context_dir(&workspace_path, &skill_name).join("clarifications.json");
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create context directory '{}': {}", parent.display(), e))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create context directory '{}': {}",
+                parent.display(),
+                e
+            )
+        })?;
     }
-    std::fs::write(&path, serde_json::to_string_pretty(&parsed).unwrap_or(content)).map_err(|e| {
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&parsed).unwrap_or(content),
+    )
+    .map_err(|e| {
         format!(
             "Failed to write clarifications to '{}': {}",
             path.display(),
@@ -2303,8 +2338,13 @@ pub fn save_decisions_content(
     }
     let path = workspace_context_dir(&workspace_path, &skill_name).join("decisions.json");
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create context directory '{}': {}", parent.display(), e))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create context directory '{}': {}",
+                parent.display(),
+                e
+            )
+        })?;
     }
     std::fs::write(&path, content)
         .map_err(|e| format!("Failed to write decisions to '{}': {}", path.display(), e))
@@ -2358,7 +2398,9 @@ pub async fn run_answer_evaluator(
             log::error!("run_answer_evaluator: workspace_path not configured");
             "Workspace path not configured".to_string()
         })?;
-        let sp = settings.skills_path.unwrap_or_else(|| workspace_path.clone());
+        let sp = settings
+            .skills_path
+            .unwrap_or_else(|| workspace_path.clone());
         let run_row = crate::db::get_workflow_run(&conn, &skill_name)
             .ok()
             .flatten();
@@ -2394,7 +2436,10 @@ pub async fn run_answer_evaluator(
 
     let workspace_dir = Path::new(&workspace_path).join(&skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    let skill_output_str = Path::new(&skills_path).join(&skill_name).to_string_lossy().replace('\\', "/");
+    let skill_output_str = Path::new(&skills_path)
+        .join(&skill_name)
+        .to_string_lossy()
+        .replace('\\', "/");
 
     let prompt = format!(
         "The skill name is: {}. The workspace directory is: {}. \
@@ -2403,9 +2448,7 @@ pub async fn run_answer_evaluator(
          Derive context_dir as workspace_dir/context. \
          All directories already exist — do not create any directories. \
          Use user-context.md to evaluate answers in the user's specific domain.",
-        skill_name,
-        workspace_str,
-        skill_output_str,
+        skill_name, workspace_str, skill_output_str,
     );
 
     log::debug!("run_answer_evaluator: prompt={}", prompt);
@@ -2436,6 +2479,10 @@ pub async fn run_answer_evaluator(
         required_plugins: None,
         conversation_history: None,
         skill_name: None,
+        step_id: None,
+        workflow_session_id: None,
+        usage_session_id: None,
+        run_source: None,
     };
 
     sidecar::spawn_sidecar(
@@ -2911,7 +2958,10 @@ pub fn preview_step_reset(
             let exists = if step_id == 3 {
                 skill_output_dir.join(file).exists()
             } else {
-                Path::new(&workspace_path).join(&skill_name).join(file).exists()
+                Path::new(&workspace_path)
+                    .join(&skill_name)
+                    .join(file)
+                    .exists()
             };
             if exists {
                 existing_files.push(file.to_string());
@@ -3264,8 +3314,9 @@ mod tests {
     fn test_materialize_step0_rejects_non_object_payload() {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
-        let err = super::materialize_workflow_step_output_value(&skill_root, 0, &serde_json::json!(null))
-            .unwrap_err();
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 0, &serde_json::json!(null))
+                .unwrap_err();
         assert!(err.contains("structured_output must be a JSON object"));
     }
 
@@ -3297,7 +3348,8 @@ mod tests {
         let err_missing_dimensions =
             super::materialize_workflow_step_output_value(&skill_root, 0, &missing_dimensions)
                 .unwrap_err();
-        assert!(err_missing_dimensions.contains("structured_output.dimensions_selected must be an integer"));
+        assert!(err_missing_dimensions
+            .contains("structured_output.dimensions_selected must be an integer"));
 
         let non_integer_question_count = serde_json::json!({
             "status": "research_complete",
@@ -3305,10 +3357,14 @@ mod tests {
             "question_count": "one",
             "research_output": valid_clarifications_value()
         });
-        let err_non_integer_question_count =
-            super::materialize_workflow_step_output_value(&skill_root, 0, &non_integer_question_count)
-                .unwrap_err();
-        assert!(err_non_integer_question_count.contains("structured_output.question_count must be an integer"));
+        let err_non_integer_question_count = super::materialize_workflow_step_output_value(
+            &skill_root,
+            0,
+            &non_integer_question_count,
+        )
+        .unwrap_err();
+        assert!(err_non_integer_question_count
+            .contains("structured_output.question_count must be an integer"));
     }
 
     #[test]
@@ -3389,10 +3445,14 @@ mod tests {
             "section_count": 1,
             "clarifications_json": valid_clarifications_value()
         });
-        let err_missing_refinement_count =
-            super::materialize_workflow_step_output_value(&skill_root, 1, &missing_refinement_count)
-                .unwrap_err();
-        assert!(err_missing_refinement_count.contains("structured_output.refinement_count must be an integer"));
+        let err_missing_refinement_count = super::materialize_workflow_step_output_value(
+            &skill_root,
+            1,
+            &missing_refinement_count,
+        )
+        .unwrap_err();
+        assert!(err_missing_refinement_count
+            .contains("structured_output.refinement_count must be an integer"));
 
         let non_integer_section_count = serde_json::json!({
             "status": "detailed_research_complete",
@@ -3400,10 +3460,14 @@ mod tests {
             "section_count": "one",
             "clarifications_json": valid_clarifications_value()
         });
-        let err_non_integer_section_count =
-            super::materialize_workflow_step_output_value(&skill_root, 1, &non_integer_section_count)
-                .unwrap_err();
-        assert!(err_non_integer_section_count.contains("structured_output.section_count must be an integer"));
+        let err_non_integer_section_count = super::materialize_workflow_step_output_value(
+            &skill_root,
+            1,
+            &non_integer_section_count,
+        )
+        .unwrap_err();
+        assert!(err_non_integer_section_count
+            .contains("structured_output.section_count must be an integer"));
     }
 
     #[test]
@@ -3477,8 +3541,8 @@ mod tests {
             }
         });
 
-        let err = super::materialize_workflow_step_output_value(&skill_root, 1, &payload)
-            .unwrap_err();
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
         assert!(err.contains("answer_evaluator_notes must be an array when present"));
     }
 
@@ -3550,7 +3614,9 @@ mod tests {
             "decisions": []
         });
         super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
-        assert!(parse_decisions_guard(&skill_root.join("context/decisions.json")));
+        assert!(parse_decisions_guard(
+            &skill_root.join("context/decisions.json")
+        ));
     }
 
     #[test]
@@ -3563,15 +3629,18 @@ mod tests {
             "decisions": []
         });
         super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
-        assert!(!parse_decisions_guard(&skill_root.join("context/decisions.json")));
+        assert!(!parse_decisions_guard(
+            &skill_root.join("context/decisions.json")
+        ));
     }
 
     #[test]
     fn test_materialize_step2_rejects_null_payload() {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
-        let err = super::materialize_workflow_step_output_value(&skill_root, 2, &serde_json::json!(null))
-            .unwrap_err();
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 2, &serde_json::json!(null))
+                .unwrap_err();
         assert!(err.contains("structured_output must be a JSON object"));
     }
 
@@ -3697,7 +3766,10 @@ mod tests {
         let skills_path = "/home/user/my-skills";
         let workspace_dir = std::path::Path::new(workspace_path).join(skill_name);
         let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-        let skill_output_str = std::path::Path::new(skills_path).join(skill_name).to_string_lossy().replace('\\', "/");
+        let skill_output_str = std::path::Path::new(skills_path)
+            .join(skill_name)
+            .to_string_lossy()
+            .replace('\\', "/");
 
         let prompt = format!(
             "The skill name is: {}. The workspace directory is: {}. \
@@ -3705,9 +3777,7 @@ mod tests {
              Read user-context.md from the workspace directory. \
              Derive context_dir as workspace_dir/context. \
              All directories already exist — do not create any directories.",
-            skill_name,
-            workspace_str,
-            skill_output_str,
+            skill_name, workspace_str, skill_output_str,
         );
 
         assert!(prompt.contains("The skill name is: my-skill"));
@@ -3743,11 +3813,7 @@ mod tests {
 
         // Extra files that should NOT be included in the zip
         std::fs::create_dir_all(source_dir.join("context")).unwrap();
-        std::fs::write(
-            source_dir.join("context").join("decisions.json"),
-            "{}",
-        )
-        .unwrap();
+        std::fs::write(source_dir.join("context").join("decisions.json"), "{}").unwrap();
         std::fs::write(source_dir.join("workflow.md"), "# Workflow").unwrap();
 
         let output_path = source_dir.join("my-skill.skill");
@@ -3820,7 +3886,10 @@ mod tests {
             .map(|p| p.join("agent-sources").join("agents"));
         assert!(dev_path.is_some());
         let agents_dir = dev_path.unwrap();
-        assert!(agents_dir.is_dir(), "Repo root agent-sources/agents/ should exist");
+        assert!(
+            agents_dir.is_dir(),
+            "Repo root agent-sources/agents/ should exist"
+        );
         // Verify flat agent files exist (no subdirectories)
         assert!(
             agents_dir.join("research-orchestrator.md").exists(),
@@ -3846,7 +3915,11 @@ mod tests {
 
         // Create output files for steps 0, 1, 2, 3
         // Steps 0 and 1 both use clarifications.json (unified artifact)
-        std::fs::write(workspace_skill_dir.join("context/clarifications.json"), "step0+step1").unwrap();
+        std::fs::write(
+            workspace_skill_dir.join("context/clarifications.json"),
+            "step0+step1",
+        )
+        .unwrap();
         std::fs::write(workspace_skill_dir.join("context/decisions.json"), "{}").unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "step3").unwrap();
         std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
@@ -3855,7 +3928,9 @@ mod tests {
         crate::cleanup::delete_step_output_files(workspace, "my-skill", 2, skills_path);
 
         // Steps 0, 1 output (unified clarifications.json) should still exist
-        assert!(workspace_skill_dir.join("context/clarifications.json").exists());
+        assert!(workspace_skill_dir
+            .join("context/clarifications.json")
+            .exists());
 
         // Steps 2+ outputs should be deleted
         assert!(!workspace_skill_dir.join("context/decisions.json").exists());
@@ -4150,11 +4225,7 @@ mod tests {
         std::fs::write(source_dir.join("references").join("ref.md"), "# Ref").unwrap();
         // These context files should be EXCLUDED from the zip
         std::fs::write(source_dir.join("context").join("clarifications.json"), "{}").unwrap();
-        std::fs::write(
-            source_dir.join("context").join("decisions.json"),
-            "{}",
-        )
-        .unwrap();
+        std::fs::write(source_dir.join("context").join("decisions.json"), "{}").unwrap();
 
         let output_path = source_dir.join("my-skill.skill");
         let result = create_skill_zip(&source_dir, &output_path).unwrap();
@@ -4195,7 +4266,10 @@ mod tests {
         let workspace = tmp.path().join("workspace");
         std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
         std::fs::write(
-            workspace.join("my-skill").join("context").join("decisions.json"),
+            workspace
+                .join("my-skill")
+                .join("context")
+                .join("decisions.json"),
             r#"{"metadata":{"decision_count":1}}"#,
         )
         .unwrap();
@@ -4212,7 +4286,10 @@ mod tests {
         std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
         // Write an empty decisions file
         std::fs::write(
-            workspace.join("my-skill").join("context").join("decisions.json"),
+            workspace
+                .join("my-skill")
+                .join("context")
+                .join("decisions.json"),
             "   \n\n  ",
         )
         .unwrap();
@@ -4761,11 +4838,7 @@ mod tests {
         // decision_count: 0 in decisions.json means no decisions were produced — block step 3
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("decisions.json");
-        std::fs::write(
-            &path,
-            r#"{"metadata":{"decision_count":0,"round":1}}"#,
-        )
-        .unwrap();
+        std::fs::write(&path, r#"{"metadata":{"decision_count":0,"round":1}}"#).unwrap();
         assert!(parse_decisions_guard(&path));
     }
 
@@ -4913,12 +4986,9 @@ mod tests {
             "notes": []
         });
 
-        let err = save_clarifications_content(
-            "my-skill".to_string(),
-            workspace_str,
-            invalid.to_string(),
-        )
-        .unwrap_err();
+        let err =
+            save_clarifications_content("my-skill".to_string(), workspace_str, invalid.to_string())
+                .unwrap_err();
         assert!(err.contains("priority_questions must be an array"));
     }
 

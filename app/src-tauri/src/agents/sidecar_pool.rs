@@ -15,6 +15,32 @@ use tokio::task::JoinHandle;
 use super::events;
 use super::sidecar::SidecarConfig;
 
+fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<bool> {
+    match msg.get("type").and_then(|t| t.as_str()) {
+        Some("run_summary") => {
+            let status = msg
+                .get("data")
+                .and_then(|data| data.get("status"))
+                .and_then(|status| status.as_str())
+                .unwrap_or("completed");
+            Some(status == "completed")
+        }
+        Some("result") => {
+            let subtype = msg
+                .get("subtype")
+                .and_then(|s| s.as_str())
+                .unwrap_or("success");
+            let is_error = msg
+                .get("is_error")
+                .and_then(|e| e.as_bool())
+                .unwrap_or(false);
+            Some(!is_error && !subtype.starts_with("error_"))
+        }
+        Some("error") => Some(false),
+        _ => None,
+    }
+}
+
 /// Categorized sidecar startup failure with actionable fix instructions.
 #[derive(Debug, Clone, serde::Serialize)]
 pub enum SidecarStartupError {
@@ -23,22 +49,13 @@ pub enum SidecarStartupError {
     /// Node.js binary was not found on the system.
     NodeMissing,
     /// Node.js was found but its version is outside the supported range (18-24).
-    NodeIncompatible {
-        found: String,
-        required: String,
-    },
+    NodeIncompatible { found: String, required: String },
     /// The sidecar process could not be spawned (OS-level failure).
-    SpawnFailed {
-        detail: String,
-    },
+    SpawnFailed { detail: String },
     /// The sidecar started but did not send the ready signal within the timeout.
-    ReadyTimeout {
-        pid: u32,
-    },
+    ReadyTimeout { pid: u32 },
     /// An unexpected error during startup.
-    Other {
-        detail: String,
-    },
+    Other { detail: String },
 }
 
 impl SidecarStartupError {
@@ -57,9 +74,7 @@ impl SidecarStartupError {
     /// Human-readable message describing the error.
     pub fn message(&self) -> String {
         match self {
-            SidecarStartupError::SidecarMissing => {
-                "Agent runtime not found.".to_string()
-            }
+            SidecarStartupError::SidecarMissing => "Agent runtime not found.".to_string(),
             SidecarStartupError::NodeMissing => {
                 "Node.js is not installed or not in PATH.".to_string()
             }
@@ -381,7 +396,9 @@ impl SidecarPool {
                 // Check shutdown flag before each Phase 2 operation to avoid
                 // orphaning child processes if shutdown_all is running concurrently
                 if self.shutdown_initiated.load(Ordering::SeqCst) {
-                    log::debug!("[idle-cleanup] shutdown_initiated flag set during Phase 2, exiting loop");
+                    log::debug!(
+                        "[idle-cleanup] shutdown_initiated flag set during Phase 2, exiting loop"
+                    );
                     break;
                 }
                 log::info!(
@@ -396,7 +413,10 @@ impl SidecarPool {
                     pending.values().any(|sn| sn == skill_name)
                 };
                 if has_pending {
-                    log::debug!("[idle-cleanup] Skipping '{}' — became active after idle check", skill_name);
+                    log::debug!(
+                        "[idle-cleanup] Skipping '{}' — became active after idle check",
+                        skill_name
+                    );
                     continue;
                 }
 
@@ -428,19 +448,24 @@ impl SidecarPool {
                         Ok(Ok(status)) => {
                             log::info!(
                                 "[idle-cleanup] Sidecar for '{}' (pid {}) exited gracefully: {}",
-                                skill_name, pid, status
+                                skill_name,
+                                pid,
+                                status
                             );
                         }
                         Ok(Err(e)) => {
                             log::warn!(
                                 "[idle-cleanup] Error waiting for sidecar '{}' (pid {}): {}",
-                                skill_name, pid, e
+                                skill_name,
+                                pid,
+                                e
                             );
                         }
                         Err(_) => {
                             log::warn!(
                                 "[idle-cleanup] Sidecar '{}' (pid {}) did not exit in 3s, killing",
-                                skill_name, pid
+                                skill_name,
+                                pid
                             );
                             let _ = sidecar.child.kill().await;
                         }
@@ -563,8 +588,8 @@ impl SidecarPool {
         app_handle: &tauri::AppHandle,
     ) -> Result<(String, String), SidecarStartupError> {
         // 1. Check sidecar bundle exists
-        let sidecar_path = resolve_sidecar_path(app_handle)
-            .map_err(|_| SidecarStartupError::SidecarMissing)?;
+        let sidecar_path =
+            resolve_sidecar_path(app_handle).map_err(|_| SidecarStartupError::SidecarMissing)?;
 
         // 2. Check Node.js is available (bundled-first waterfall)
         let node_bin = resolve_node_binary_for_preflight(app_handle)
@@ -621,14 +646,13 @@ impl SidecarPool {
             }
         }
 
-        let mut child = cmd.spawn()
-            .map_err(|e| {
-                let err = SidecarStartupError::SpawnFailed {
-                    detail: e.to_string(),
-                };
-                events::emit_init_error(app_handle, &err);
-                err.to_string()
-            })?;
+        let mut child = cmd.spawn().map_err(|e| {
+            let err = SidecarStartupError::SpawnFailed {
+                detail: e.to_string(),
+            };
+            events::emit_init_error(app_handle, &err);
+            err.to_string()
+        })?;
 
         let pid = child.id().ok_or("Failed to get child PID")?;
         let stdin = child.stdin.take().ok_or("Failed to open stdin")?;
@@ -715,7 +739,10 @@ impl SidecarPool {
                 let detail = if stderr_lines.is_empty() {
                     format!("Error reading sidecar_ready: {}", e)
                 } else {
-                    format!("Error reading sidecar_ready: {}. Stderr:\n{}", e, stderr_lines)
+                    format!(
+                        "Error reading sidecar_ready: {}. Stderr:\n{}",
+                        e, stderr_lines
+                    )
                 };
                 let err = SidecarStartupError::Other { detail };
                 events::emit_init_error(app_handle, &err);
@@ -780,7 +807,10 @@ impl SidecarPool {
             }
         }
 
-        log::info!("Persistent sidecar for '{}' is ready (pid [REDACTED])", skill_name);
+        log::info!(
+            "Persistent sidecar for '{}' is ready (pid [REDACTED])",
+            skill_name
+        );
 
         // Issue 3: Store JoinHandles so we can abort them on shutdown/crash-respawn
         // The stderr_task is already spawned above and will keep running,
@@ -825,13 +855,26 @@ impl SidecarPool {
 
                             if let Some(request_id) = msg.get("request_id").and_then(|r| r.as_str()) {
                                 // Intercept request_complete — sidecar signals it's ready for
-                                // the next request. Log but don't forward to the event system.
+                                // the next request. Emit agent-exit so the frontend transitions
+                                // the run to completed state, then clean up pending tracking.
                                 if msg.get("type").and_then(|t| t.as_str()) == Some("request_complete") {
-                                    log::debug!(
+                                    log::info!(
                                         "[persistent-sidecar:{}] Request '{}' complete — sidecar ready",
                                         skill_name_stdout,
                                         request_id,
                                     );
+                                    {
+                                        let mut pending = stdout_pending.lock().await;
+                                        pending.remove(request_id);
+                                    }
+                                    events::handle_sidecar_exit(
+                                        &app_handle_stdout,
+                                        request_id,
+                                        true,
+                                    );
+                                    // Close JSONL log for this request
+                                    let mut logs = stdout_request_logs.lock().await;
+                                    logs.remove(request_id);
                                     return;
                                 }
 
@@ -934,26 +977,69 @@ impl SidecarPool {
                                         return;
                                     }
 
-                                    let is_terminal = msg_type == "result" || msg_type == "error";
+                                    let is_terminal = stream_message_terminal_status(&msg).is_some();
 
-                                    if msg_type == "result" {
-                                        // Check subtype and is_error to detect SDK error results
-                                        let subtype = msg.get("subtype").and_then(|s| s.as_str()).unwrap_or("success");
-                                        let is_error = msg.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
-                                        let success = !is_error && !subtype.starts_with("error_");
+                                    if let Some(success) = stream_message_terminal_status(&msg) {
+                                        if msg_type == "result" || msg_type == "run_summary" {
+                                            if success {
+                                                log::info!(
+                                                    "[persistent-sidecar:{}] Agent '{}' completed successfully via {}",
+                                                    skill_name_stdout,
+                                                    request_id,
+                                                    msg_type,
+                                                );
+                                            } else {
+                                                let detail = if msg_type == "run_summary" {
+                                                    msg.get("data")
+                                                        .and_then(|data| data.get("status"))
+                                                        .and_then(|status| status.as_str())
+                                                        .unwrap_or("error")
+                                                        .to_string()
+                                                } else {
+                                                    msg.get("subtype")
+                                                        .and_then(|s| s.as_str())
+                                                        .unwrap_or("error")
+                                                        .to_string()
+                                                };
+                                                log::warn!(
+                                                    "[persistent-sidecar:{}] Agent '{}' finished with error via {}: {}",
+                                                    skill_name_stdout,
+                                                    request_id,
+                                                    msg_type,
+                                                    detail,
+                                                );
+                                            }
+                                        }
 
-                                        if success {
+                                        if msg_type == "error" {
+                                            let error_detail = msg.get("message")
+                                                .and_then(|m| m.as_str())
+                                                .unwrap_or("(no message)");
                                             log::info!(
-                                                "[persistent-sidecar:{}] Agent '{}' completed successfully",
+                                                "[persistent-sidecar:{}] Agent error for '{}': {}",
                                                 skill_name_stdout,
                                                 request_id,
+                                                error_detail,
                                             );
-                                        } else {
+                                            // Emit the error detail as an agent-message so the
+                                            // frontend can display it (instead of "Unknown error").
+                                            events::handle_sidecar_message(
+                                                &app_handle_stdout,
+                                                request_id,
+                                                &serde_json::json!({
+                                                    "type": "error",
+                                                    "error": error_detail,
+                                                }).to_string(),
+                                            );
+                                        }
+
+                                        let error_detail = msg.get("message")
+                                            .and_then(|m| m.as_str());
+                                        if msg_type == "error" && error_detail.is_none() {
                                             log::warn!(
-                                                "[persistent-sidecar:{}] Agent '{}' finished with error: subtype={}",
+                                                "[persistent-sidecar:{}] Agent '{}' emitted terminal error without message",
                                                 skill_name_stdout,
                                                 request_id,
-                                                subtype,
                                             );
                                         }
                                         {
@@ -970,41 +1056,6 @@ impl SidecarPool {
                                             &app_handle_stdout,
                                             request_id,
                                             success,
-                                        );
-                                    } else if msg_type == "error" {
-                                        let error_detail = msg.get("message")
-                                            .and_then(|m| m.as_str())
-                                            .unwrap_or("(no message)");
-                                        log::info!(
-                                            "[persistent-sidecar:{}] Agent error for '{}': {}",
-                                            skill_name_stdout,
-                                            request_id,
-                                            error_detail,
-                                        );
-                                        // Emit the error detail as an agent-message so the
-                                        // frontend can display it (instead of "Unknown error").
-                                        events::handle_sidecar_message(
-                                            &app_handle_stdout,
-                                            request_id,
-                                            &serde_json::json!({
-                                                "type": "error",
-                                                "error": error_detail,
-                                            }).to_string(),
-                                        );
-                                        {
-                                            let mut pending = stdout_pending.lock().await;
-                                            pending.remove(request_id);
-                                        }
-                                        {
-                                            let pool = stdout_pool.lock().await;
-                                            if let Some(s) = pool.get(&skill_name_stdout) {
-                                                *s.last_activity.lock().await = tokio::time::Instant::now();
-                                            }
-                                        }
-                                        events::handle_sidecar_exit(
-                                            &app_handle_stdout,
-                                            request_id,
-                                            false,
                                         );
                                     }
 
@@ -1194,9 +1245,7 @@ impl SidecarPool {
             };
             let log_path = log_dir.join(format!("{}-{}.jsonl", step_label, ts));
 
-            match std::fs::create_dir_all(&log_dir)
-                .and_then(|_| std::fs::File::create(&log_path))
-            {
+            match std::fs::create_dir_all(&log_dir).and_then(|_| std::fs::File::create(&log_path)) {
                 Ok(mut f) => {
                     // Write config with prompt as the first line (apiKey redacted)
                     let _ = writeln!(f, "{}", transcript_first_line);
@@ -1278,11 +1327,7 @@ impl SidecarPool {
             }
 
             // Flush with timeout (5s)
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(5),
-                stdin_guard.flush(),
-            )
-            .await
+            match tokio::time::timeout(std::time::Duration::from_secs(5), stdin_guard.flush()).await
             {
                 Err(_) => {
                     log::warn!(
@@ -1348,9 +1393,9 @@ impl SidecarPool {
 
         let stdin_handle = {
             let pool = self.sidecars.lock().await;
-            let sidecar = pool.get(skill_name).ok_or_else(|| {
-                format!("Sidecar for '{}' not found in pool", skill_name)
-            })?;
+            let sidecar = pool
+                .get(skill_name)
+                .ok_or_else(|| format!("Sidecar for '{}' not found in pool", skill_name))?;
             sidecar.stdin.clone()
         };
 
@@ -1370,11 +1415,7 @@ impl SidecarPool {
                 Ok(Err(e)) => return Err(format!("Failed to write to sidecar stdin: {}", e)),
                 Ok(Ok(())) => {}
             }
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(5),
-                stdin_guard.flush(),
-            )
-            .await
+            match tokio::time::timeout(std::time::Duration::from_secs(5), stdin_guard.flush()).await
             {
                 Err(_) => {
                     drop(stdin_guard);
@@ -1449,7 +1490,9 @@ impl SidecarPool {
             let log_dir = Path::new(&config.cwd).join(skill_name).join("logs");
             let log_path = log_dir.join(format!("{}-{}.jsonl", step_label, ts));
 
-            if let Ok(mut f) = std::fs::create_dir_all(&log_dir).and_then(|_| std::fs::File::create(&log_path)) {
+            if let Ok(mut f) =
+                std::fs::create_dir_all(&log_dir).and_then(|_| std::fs::File::create(&log_path))
+            {
                 // Write config with prompt as the first line (apiKey redacted)
                 let _ = writeln!(f, "{}", transcript_first_line);
                 let log_handle: RequestLogFile = Arc::new(Mutex::new(Some(f)));
@@ -1479,7 +1522,8 @@ impl SidecarPool {
         } else {
             log::info!(
                 "[send_stream_start] session=[REDACTED] agent={} on skill '{}'",
-                agent_id, skill_name,
+                agent_id,
+                skill_name,
             );
         }
         result
@@ -1532,24 +1576,24 @@ impl SidecarPool {
 
         let result = self.write_to_sidecar_stdin(skill_name, &message).await;
         if let Err(ref e) = result {
-            log::error!("[send_stream_message] Failed for session '[REDACTED]': {}", e);
+            log::error!(
+                "[send_stream_message] Failed for session '[REDACTED]': {}",
+                e
+            );
             self.unregister_pending(agent_id).await;
             events::handle_sidecar_exit(app_handle, agent_id, false);
         } else {
             log::info!(
                 "[send_stream_message] session=[REDACTED] agent={} on skill '{}'",
-                agent_id, skill_name,
+                agent_id,
+                skill_name,
             );
         }
         result
     }
 
     /// Close a streaming session.
-    pub async fn send_stream_end(
-        &self,
-        skill_name: &str,
-        session_id: &str,
-    ) -> Result<(), String> {
+    pub async fn send_stream_end(&self, skill_name: &str, session_id: &str) -> Result<(), String> {
         let message = serde_json::json!({
             "type": "stream_end",
             "session_id": session_id,
@@ -1559,7 +1603,10 @@ impl SidecarPool {
         if let Err(ref e) = result {
             log::warn!("[send_stream_end] Failed for session '[REDACTED]': {}", e);
         } else {
-            log::info!("[send_stream_end] session=[REDACTED] on skill '{}'", skill_name);
+            log::info!(
+                "[send_stream_end] session=[REDACTED] on skill '{}'",
+                skill_name
+            );
         }
         result
     }
@@ -1570,7 +1617,11 @@ impl SidecarPool {
     /// The pool lock is released immediately after removing the sidecar entry so that
     /// concurrent `shutdown_skill` calls (via `join_all` in `shutdown_all`) can proceed
     /// in parallel rather than serializing on the 3-second child.wait().
-    pub async fn shutdown_skill(&self, skill_name: &str, app_handle: &tauri::AppHandle) -> Result<(), String> {
+    pub async fn shutdown_skill(
+        &self,
+        skill_name: &str,
+        app_handle: &tauri::AppHandle,
+    ) -> Result<(), String> {
         // Short lock: remove sidecar from the pool so other skills can proceed concurrently
         let maybe_sidecar = {
             let mut pool = self.sidecars.lock().await;
@@ -1628,26 +1679,15 @@ impl SidecarPool {
             }
 
             // Wait up to 3 seconds for graceful exit (pool lock NOT held — true parallelism)
-            let wait_result = tokio::time::timeout(
-                std::time::Duration::from_secs(3),
-                sidecar.child.wait(),
-            )
-            .await;
+            let wait_result =
+                tokio::time::timeout(std::time::Duration::from_secs(3), sidecar.child.wait()).await;
 
             match wait_result {
                 Ok(Ok(status)) => {
-                    log::info!(
-                        "Sidecar for '{}' exited gracefully: {}",
-                        skill_name,
-                        status
-                    );
+                    log::info!("Sidecar for '{}' exited gracefully: {}", skill_name, status);
                 }
                 Ok(Err(e)) => {
-                    log::warn!(
-                        "Error waiting for sidecar '{}' to exit: {}",
-                        skill_name,
-                        e
-                    );
+                    log::warn!("Error waiting for sidecar '{}' to exit: {}", skill_name, e);
                 }
                 Err(_) => {
                     // Timeout — force kill
@@ -1660,7 +1700,10 @@ impl SidecarPool {
                 }
             }
         } else {
-            log::debug!("No sidecar running for '{}', nothing to shut down", skill_name);
+            log::debug!(
+                "No sidecar running for '{}', nothing to shut down",
+                skill_name
+            );
         }
 
         Ok(())
@@ -2010,11 +2053,7 @@ async fn resolve_system_node() -> Result<NodeResolution, String> {
                 }
 
                 if is_node_compatible(&version) {
-                    log::info!(
-                        "Using system Node.js {} at {}",
-                        version,
-                        path_str
-                    );
+                    log::info!("Using system Node.js {} at {}", version, path_str);
                     return Ok(NodeResolution {
                         path: path_str,
                         source: "system".to_string(),
@@ -2037,7 +2076,10 @@ async fn resolve_system_node() -> Result<NodeResolution, String> {
         });
     }
 
-    Err("Node.js not found. Install Node.js 18+ from https://nodejs.org or use the bundled app.".to_string())
+    Err(
+        "Node.js not found. Install Node.js 18+ from https://nodejs.org or use the bundled app."
+            .to_string(),
+    )
 }
 
 fn is_node_compatible(version: &str) -> bool {
@@ -2108,7 +2150,10 @@ mod tests {
     async fn test_spawning_set_empty_after_init() {
         let pool = SidecarPool::new();
         let spawning = pool.spawning.lock().await;
-        assert!(spawning.is_empty(), "Spawning set should be empty after creation");
+        assert!(
+            spawning.is_empty(),
+            "Spawning set should be empty after creation"
+        );
     }
 
     // Note: test_shutdown_skill_no_sidecar and test_shutdown_all_empty_pool
@@ -2135,7 +2180,8 @@ mod tests {
         assert!(
             expected.contains(&arch),
             "Expected one of {:?}, got: {}",
-            expected, arch
+            expected,
+            arch
         );
     }
 
@@ -2190,7 +2236,10 @@ mod tests {
     async fn test_pending_requests_empty_after_init() {
         let pool = SidecarPool::new();
         let pending = pool.pending_requests.lock().await;
-        assert!(pending.is_empty(), "Pending requests should be empty after creation");
+        assert!(
+            pending.is_empty(),
+            "Pending requests should be empty after creation"
+        );
     }
 
     #[tokio::test]
@@ -2270,9 +2319,18 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
         // Verify all tasks are finished after abort
-        assert!(heartbeat_task.is_finished(), "Heartbeat task should be aborted by cleanup");
-        assert!(stdout_task.is_finished(), "Stdout task should be aborted by cleanup");
-        assert!(stderr_task.is_finished(), "Stderr task should be aborted by cleanup");
+        assert!(
+            heartbeat_task.is_finished(),
+            "Heartbeat task should be aborted by cleanup"
+        );
+        assert!(
+            stdout_task.is_finished(),
+            "Stdout task should be aborted by cleanup"
+        );
+        assert!(
+            stderr_task.is_finished(),
+            "Stderr task should be aborted by cleanup"
+        );
     }
 
     #[tokio::test]
@@ -2297,7 +2355,10 @@ mod tests {
             let mut pending = pool.pending_requests.lock().await;
             pending.remove("agent-fast")
         };
-        assert!(still_pending.is_none(), "Request should have already been removed");
+        assert!(
+            still_pending.is_none(),
+            "Request should have already been removed"
+        );
     }
 
     #[tokio::test]
@@ -2339,13 +2400,45 @@ mod tests {
         assert_eq!(result.unwrap(), "result");
     }
 
+    #[test]
+    fn test_stream_message_terminal_status_recognizes_run_summary() {
+        let completed = serde_json::json!({
+            "type": "run_summary",
+            "request_id": "agent-1",
+            "data": {
+                "status": "completed"
+            }
+        });
+        let failed = serde_json::json!({
+            "type": "run_summary",
+            "request_id": "agent-1",
+            "data": {
+                "status": "error"
+            }
+        });
+        let display_item = serde_json::json!({
+            "type": "display_item",
+            "request_id": "agent-1",
+            "item": {
+                "type": "result"
+            }
+        });
+
+        assert_eq!(stream_message_terminal_status(&completed), Some(true));
+        assert_eq!(stream_message_terminal_status(&failed), Some(false));
+        assert_eq!(stream_message_terminal_status(&display_item), None);
+    }
+
     // -----------------------------------------------------------------
     // extract_step_label tests
     // -----------------------------------------------------------------
 
     #[test]
     fn test_extract_step_label_basic() {
-        assert_eq!(extract_step_label("dbt-step5-1707654321000", "dbt"), "step5");
+        assert_eq!(
+            extract_step_label("dbt-step5-1707654321000", "dbt"),
+            "step5"
+        );
     }
 
     #[test]
@@ -2387,7 +2480,10 @@ mod tests {
     async fn test_request_logs_empty_after_init() {
         let pool = SidecarPool::new();
         let logs = pool.request_logs.lock().await;
-        assert!(logs.is_empty(), "Request logs should be empty after creation");
+        assert!(
+            logs.is_empty(),
+            "Request logs should be empty after creation"
+        );
     }
 
     #[tokio::test]
@@ -2448,7 +2544,10 @@ mod tests {
         )
         .await;
 
-        assert!(result.is_ok(), "Fast shutdown should complete within timeout");
+        assert!(
+            result.is_ok(),
+            "Fast shutdown should complete within timeout"
+        );
         drop(pool);
     }
 
@@ -2516,7 +2615,10 @@ mod tests {
         // Verify task was taken (set to None)
         {
             let guard = pool.idle_cleanup_task.lock().await;
-            assert!(guard.is_none(), "Idle cleanup task should be removed after abort");
+            assert!(
+                guard.is_none(),
+                "Idle cleanup task should be removed after abort"
+            );
         }
     }
 
@@ -2583,7 +2685,10 @@ mod tests {
         // Add a pending request for "active-skill"
         {
             let mut pending = pool.pending_requests.lock().await;
-            pending.insert("active-skill-step1-123456".to_string(), "active-skill".to_string());
+            pending.insert(
+                "active-skill-step1-123456".to_string(),
+                "active-skill".to_string(),
+            );
         }
 
         // Verify the pending request is detected
@@ -2591,14 +2696,20 @@ mod tests {
             let pending = pool.pending_requests.lock().await;
             pending.values().any(|sn| sn == "active-skill")
         };
-        assert!(has_pending, "Should detect pending requests for active skill");
+        assert!(
+            has_pending,
+            "Should detect pending requests for active skill"
+        );
 
         // Verify a different skill has no pending requests
         let other_has_pending = {
             let pending = pool.pending_requests.lock().await;
             pending.values().any(|sn| sn == "other-skill")
         };
-        assert!(!other_has_pending, "Should not detect pending requests for other skill");
+        assert!(
+            !other_has_pending,
+            "Should not detect pending requests for other skill"
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -2617,7 +2728,10 @@ mod tests {
         // "idle-skill" has no pending requests and old last_activity
         {
             let mut pending = pool.pending_requests.lock().await;
-            pending.insert("active-skill-step3-999999".to_string(), "active-skill".to_string());
+            pending.insert(
+                "active-skill-step3-999999".to_string(),
+                "active-skill".to_string(),
+            );
         }
 
         // Simulate checking which skills are idle (mirrors idle_cleanup_loop logic)
@@ -2629,14 +2743,20 @@ mod tests {
             let pending = pool.pending_requests.lock().await;
             pending.values().any(|sn| sn == "active-skill")
         };
-        assert!(active_has_pending, "active-skill should have pending requests");
+        assert!(
+            active_has_pending,
+            "active-skill should have pending requests"
+        );
 
         // Check "idle-skill": no pending requests + old activity -> should be cleaned
         let idle_has_pending = {
             let pending = pool.pending_requests.lock().await;
             pending.values().any(|sn| sn == "idle-skill")
         };
-        assert!(!idle_has_pending, "idle-skill should have no pending requests");
+        assert!(
+            !idle_has_pending,
+            "idle-skill should have no pending requests"
+        );
         let idle_duration = now.duration_since(simulated_old_activity);
         assert!(
             idle_duration >= idle_timeout,
@@ -2720,14 +2840,26 @@ mod tests {
         // Also verify the boundary: exactly at the timeout should be idle
         let boundary_activity = now - idle_timeout;
         assert!(
-            is_idle("boundary-skill", boundary_activity, now, idle_timeout, &pending),
+            is_idle(
+                "boundary-skill",
+                boundary_activity,
+                now,
+                idle_timeout,
+                &pending
+            ),
             "Sidecar at exactly the idle timeout boundary should be identified as idle"
         );
 
         // Just under the timeout should NOT be idle
         let almost_idle_activity = now - idle_timeout + std::time::Duration::from_secs(1);
         assert!(
-            !is_idle("almost-idle-skill", almost_idle_activity, now, idle_timeout, &pending),
+            !is_idle(
+                "almost-idle-skill",
+                almost_idle_activity,
+                now,
+                idle_timeout,
+                &pending
+            ),
             "Sidecar just under the idle timeout should not be identified as idle"
         );
     }

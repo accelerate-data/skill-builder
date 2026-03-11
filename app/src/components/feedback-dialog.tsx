@@ -174,10 +174,10 @@ export function FeedbackDialog() {
 
     if (step === "enriching") {
       if (currentRun.status === "completed") {
-        const resultMsg = currentRun.messages.find((m) => m.type === "result")
+        const resultItem = currentRun.displayItems.find((di) => di.type === "result")
         const content =
-          resultMsg?.content ??
-          currentRun.messages.filter((m) => m.type === "text").pop()?.content ??
+          resultItem?.outputText_result ??
+          currentRun.displayItems.filter((di) => di.type === "output").pop()?.outputText ??
           ""
         const parsed = parseEnrichmentResponse(content)
         if (parsed) {

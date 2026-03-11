@@ -24,7 +24,10 @@ pub async fn graceful_shutdown(
     instance: tauri::State<'_, InstanceInfo>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    log::info!("[graceful_shutdown] called (timeout={}s)", DEFAULT_SHUTDOWN_TIMEOUT_SECS);
+    log::info!(
+        "[graceful_shutdown] called (timeout={}s)",
+        DEFAULT_SHUTDOWN_TIMEOUT_SECS
+    );
 
     let shutdown_result = tokio::time::timeout(
         std::time::Duration::from_secs(DEFAULT_SHUTDOWN_TIMEOUT_SECS),

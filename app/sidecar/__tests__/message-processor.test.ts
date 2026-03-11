@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { MessageProcessor } from "../message-processor.js";
+import { MessageProcessor, extractResultMarkdown, tryParseJsonFromText } from "../message-processor.js";
 import type { DisplayItem, DisplayItemEnvelope } from "../display-types.js";
 
 /** Helper to extract DisplayItems from processed output. */
@@ -26,11 +26,13 @@ describe("MessageProcessor", () => {
   // =========================================================================
 
   describe("filtering", () => {
-    it("forwards config messages as pass-through (for thinkingEnabled/agentName)", () => {
+    it("emits config as metadata message (for thinkingEnabled/agentName)", () => {
       const raw = { type: "config", config: { model: "sonnet" } };
       const out = processor.process(raw);
       expect(out).toHaveLength(1);
-      expect(out[0]).toBe(raw); // pass-through, not a display_item
+      expect(out[0]).toMatchObject({ type: "metadata" });
+      const data = (out[0] as Record<string, unknown>).data as Record<string, unknown>;
+      expect(data).toHaveProperty("config");
     });
 
     it("filters sdk_stderr messages", () => {
@@ -175,7 +177,7 @@ describe("MessageProcessor", () => {
       expect(items[1].type).toBe("tool_call");
     });
 
-    it("forwards raw assistant message for usage tracking", () => {
+    it("emits metadata with contextSnapshot instead of raw assistant pass-through", () => {
       const raw = {
         type: "assistant",
         message: {
@@ -184,10 +186,14 @@ describe("MessageProcessor", () => {
         },
       };
       const out = processor.process(raw);
-      const passThrough = extractPassThrough(out);
+      const metadataMsgs = out.filter((o) => o.type === "metadata");
 
-      expect(passThrough).toHaveLength(1);
-      expect(passThrough[0]).toBe(raw);
+      expect(metadataMsgs).toHaveLength(1);
+      const data = (metadataMsgs[0] as Record<string, unknown>).data as Record<string, unknown>;
+      expect(data).toHaveProperty("contextSnapshot");
+      const snapshot = data.contextSnapshot as Record<string, unknown>;
+      expect(snapshot.inputTokens).toBe(100);
+      expect(snapshot.outputTokens).toBe(50);
     });
   });
 
@@ -498,7 +504,7 @@ describe("MessageProcessor", () => {
   // =========================================================================
 
   describe("result messages", () => {
-    it("dual-emits display_item and raw result for success", () => {
+    it("dual-emits display_item and run_summary for success", () => {
       const raw = {
         type: "result",
         subtype: "success",
@@ -510,15 +516,17 @@ describe("MessageProcessor", () => {
       const out = processor.process(raw);
 
       const items = extractDisplayItems(out);
-      const passThrough = extractPassThrough(out);
+      const runSummaryMsgs = out.filter((o) => o.type === "run_summary");
 
       expect(items).toHaveLength(1);
       expect(items[0].type).toBe("result");
       expect(items[0].resultStatus).toBe("success");
       expect(items[0].outputText_result).toBe("Agent completed");
 
-      expect(passThrough).toHaveLength(1);
-      expect(passThrough[0]).toBe(raw);
+      expect(runSummaryMsgs).toHaveLength(1);
+      const data = (runSummaryMsgs[0] as Record<string, unknown>).data as Record<string, unknown>;
+      expect(data).toHaveProperty("resultSubtype", "success");
+      expect(data).toHaveProperty("stopReason", "end_turn");
     });
 
     it("handles error result with error_max_turns", () => {
@@ -551,22 +559,214 @@ describe("MessageProcessor", () => {
       expect(items[0].resultStatus).toBe("refusal");
     });
 
-    it("forwards raw result unchanged for structured_output extraction", () => {
-      const structuredOutput = { status: "complete", data: [1, 2, 3] };
+    it("emits run_summary instead of raw result pass-through", () => {
       const raw = {
         type: "result",
         subtype: "success",
-        structured_output: structuredOutput,
+        structured_output: { status: "complete", data: [1, 2, 3] },
         usage: { input_tokens: 10, output_tokens: 5 },
         total_cost_usd: 0.001,
       };
       const out = processor.process(raw);
-      const passThrough = extractPassThrough(out);
+      const runSummaryMsgs = out.filter((o) => o.type === "run_summary");
 
-      expect(passThrough[0]).toBe(raw);
-      expect((passThrough[0] as Record<string, unknown>).structured_output).toBe(
-        structuredOutput,
-      );
+      expect(runSummaryMsgs).toHaveLength(1);
+      const data = (runSummaryMsgs[0] as Record<string, unknown>).data as Record<string, unknown>;
+      expect(data).toHaveProperty("resultSubtype", "success");
+      expect(data).toHaveProperty("inputTokens", 10);
+      expect(data).toHaveProperty("outputTokens", 5);
+    });
+
+    it("populates resultMarkdown when structured output has *_markdown fields", () => {
+      const raw = {
+        type: "result",
+        subtype: "success",
+        structured_output: {
+          status: "validation_complete",
+          validation_log_markdown: "# Validation Log\n\nAll checks passed.",
+          test_results_markdown: "# Test Results\n\n3/3 passed.",
+        },
+        usage: { input_tokens: 10, output_tokens: 5 },
+      };
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+
+      expect(items[0].resultMarkdown).toContain("# Validation Log");
+      expect(items[0].resultMarkdown).toContain("# Test Results");
+      expect(items[0].resultMarkdown).toContain("---");
+    });
+
+    it("does not set resultMarkdown when structured output has no *_markdown fields", () => {
+      const raw = {
+        type: "result",
+        subtype: "success",
+        structured_output: { status: "done", count: 3 },
+        usage: { input_tokens: 10, output_tokens: 5 },
+      };
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+
+      expect(items[0].resultMarkdown).toBeUndefined();
+    });
+
+    it("does not set resultMarkdown when there is no structured output", () => {
+      const raw = {
+        type: "result",
+        subtype: "success",
+        usage: { input_tokens: 10, output_tokens: 5 },
+      };
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+
+      expect(items[0].resultMarkdown).toBeUndefined();
+    });
+  });
+
+  // =========================================================================
+  // extractResultMarkdown helper
+  // =========================================================================
+
+  describe("extractResultMarkdown", () => {
+    it("returns undefined for non-object inputs", () => {
+      expect(extractResultMarkdown(null)).toBeUndefined();
+      expect(extractResultMarkdown(undefined)).toBeUndefined();
+      expect(extractResultMarkdown("string")).toBeUndefined();
+      expect(extractResultMarkdown(42)).toBeUndefined();
+    });
+
+    it("returns undefined when no *_markdown fields exist", () => {
+      expect(extractResultMarkdown({ status: "done", count: 3 })).toBeUndefined();
+    });
+
+    it("returns undefined when *_markdown fields are empty strings", () => {
+      expect(extractResultMarkdown({ validation_log_markdown: "" })).toBeUndefined();
+    });
+
+    it("returns single markdown field content directly", () => {
+      const result = extractResultMarkdown({ validation_log_markdown: "# Log\n\nOK" });
+      expect(result).toBe("# Log\n\nOK");
+    });
+
+    it("joins multiple *_markdown fields with divider", () => {
+      const result = extractResultMarkdown({
+        validation_log_markdown: "# Log",
+        test_results_markdown: "# Tests",
+        status: "validation_complete",
+      });
+      expect(result).toBe("# Log\n\n---\n\n# Tests");
+    });
+
+    it("ignores non-string *_markdown fields", () => {
+      const result = extractResultMarkdown({
+        validation_log_markdown: "# Log",
+        test_results_markdown: null,
+      });
+      expect(result).toBe("# Log");
+    });
+  });
+
+  // =========================================================================
+  // tryParseJsonFromText helper
+  // =========================================================================
+
+  describe("tryParseJsonFromText", () => {
+    it("parses plain JSON string", () => {
+      const result = tryParseJsonFromText('{"status":"ok","count":3}');
+      expect(result).toEqual({ status: "ok", count: 3 });
+    });
+
+    it("strips ```json code fence before parsing", () => {
+      const text = "```json\n{\"status\":\"validation_complete\",\"validation_log_markdown\":\"# Log\"}\n```";
+      const result = tryParseJsonFromText(text) as Record<string, unknown>;
+      expect(result.status).toBe("validation_complete");
+      expect(result.validation_log_markdown).toBe("# Log");
+    });
+
+    it("strips plain ``` code fence before parsing", () => {
+      const text = "```\n{\"key\":\"value\"}\n```";
+      expect(tryParseJsonFromText(text)).toEqual({ key: "value" });
+    });
+
+    it("returns undefined for non-JSON text", () => {
+      expect(tryParseJsonFromText("just some plain text")).toBeUndefined();
+    });
+
+    it("returns undefined for empty string", () => {
+      expect(tryParseJsonFromText("")).toBeUndefined();
+    });
+  });
+
+  // =========================================================================
+  // resultMarkdown fallback from output text block
+  // =========================================================================
+
+  describe("resultMarkdown fallback from output text", () => {
+    it("extracts resultMarkdown from last output text when structuredOutput is absent", () => {
+      const jsonText = JSON.stringify({
+        status: "validation_complete",
+        validation_log_markdown: "# Validation Log\n\nAll good.",
+        test_results_markdown: "# Tests\n\nAll pass.",
+      });
+
+      // Emit a text output block containing JSON
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: jsonText }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      });
+
+      // Emit a result with no structured_output
+      const out = processor.process({ type: "result", subtype: "success", stop_reason: "end_turn" });
+      const items = extractDisplayItems(out);
+      const resultItem = items.find((i) => i.type === "result");
+
+      expect(resultItem?.resultMarkdown).toContain("# Validation Log");
+      expect(resultItem?.resultMarkdown).toContain("# Tests");
+      expect(resultItem?.structuredOutput).toMatchObject({ status: "validation_complete" });
+    });
+
+    it("extracts resultMarkdown from output text with ```json code fence", () => {
+      const jsonText = "```json\n" + JSON.stringify({
+        status: "validation_complete",
+        validation_log_markdown: "# Log",
+      }) + "\n```";
+
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: jsonText }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      });
+
+      const out = processor.process({ type: "result", subtype: "success", stop_reason: "end_turn" });
+      const items = extractDisplayItems(out);
+      const resultItem = items.find((i) => i.type === "result");
+
+      expect(resultItem?.resultMarkdown).toBe("# Log");
+    });
+
+    it("does not override structuredOutput when already present", () => {
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: '{"validation_log_markdown":"# From text"}' }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      });
+
+      const out = processor.process({
+        type: "result",
+        subtype: "success",
+        stop_reason: "end_turn",
+        structured_output: { validation_log_markdown: "# From structured" },
+      });
+      const items = extractDisplayItems(out);
+      const resultItem = items.find((i) => i.type === "result");
+
+      expect(resultItem?.resultMarkdown).toBe("# From structured");
     });
   });
 
@@ -575,7 +775,7 @@ describe("MessageProcessor", () => {
   // =========================================================================
 
   describe("error messages", () => {
-    it("creates error DisplayItem and forwards raw", () => {
+    it("creates error DisplayItem without forwarding raw", () => {
       const raw = { type: "error", error: "API rate limit exceeded" };
       const out = processor.process(raw);
 
@@ -586,8 +786,7 @@ describe("MessageProcessor", () => {
       expect(items[0].type).toBe("error");
       expect(items[0].errorMessage).toBe("API rate limit exceeded");
 
-      expect(passThrough).toHaveLength(1);
-      expect(passThrough[0]).toBe(raw);
+      expect(passThrough).toHaveLength(0);
     });
 
     it("handles error with message field instead of error field", () => {
@@ -604,7 +803,7 @@ describe("MessageProcessor", () => {
   // =========================================================================
 
   describe("compact boundary", () => {
-    it("emits compact_boundary DisplayItem and forwards raw", () => {
+    it("emits compact_boundary DisplayItem and metadata compactionEvent", () => {
       const raw = {
         type: "system",
         subtype: "compact_boundary",
@@ -614,13 +813,16 @@ describe("MessageProcessor", () => {
       const out = processor.process(raw);
 
       const items = extractDisplayItems(out);
-      const passThrough = extractPassThrough(out);
+      const metadataMsgs = out.filter((o) => o.type === "metadata");
 
       expect(items).toHaveLength(1);
       expect(items[0].type).toBe("compact_boundary");
 
-      expect(passThrough).toHaveLength(1);
-      expect(passThrough[0]).toBe(raw);
+      expect(metadataMsgs).toHaveLength(1);
+      const data = (metadataMsgs[0] as Record<string, unknown>).data as Record<string, unknown>;
+      expect(data).toHaveProperty("compactionEvent");
+      const event = data.compactionEvent as Record<string, unknown>;
+      expect(event.preTokens).toBe(50000);
     });
   });
 
@@ -733,6 +935,47 @@ describe("MessageProcessor", () => {
       expect(orphaned).toHaveLength(1);
       expect(orphaned[0].toolUseId).toBe("tu-late-2");
       expect(processor.pendingToolCallCount).toBe(0);
+    });
+
+    // =========================================================================
+    // Streaming terminal paths — failure vs shutdown distinction (VU-506)
+    // =========================================================================
+
+    it("buildExecutionErrorSummary produces status=error with error message", () => {
+      const summary = processor.buildExecutionErrorSummary("connection reset");
+      expect(summary.status).toBe("error");
+      expect(summary.resultSubtype).toBe("error_during_execution");
+      expect(summary.resultErrors).toEqual(["connection reset"]);
+      expect(summary.stopReason).toBe("error");
+    });
+
+    it("buildShutdownSummary produces status=shutdown with zeroed tokens", () => {
+      const summary = processor.buildShutdownSummary();
+      expect(summary.status).toBe("shutdown");
+      expect(summary.inputTokens).toBe(0);
+      expect(summary.outputTokens).toBe(0);
+      expect(summary.resultErrors).toBeUndefined();
+    });
+
+    it("buildExecutionErrorSummary and buildShutdownSummary are distinct", () => {
+      const err = processor.buildExecutionErrorSummary("boom");
+      const shutdown = processor.buildShutdownSummary();
+      expect(err.status).not.toBe(shutdown.status);
+      expect(err.resultSubtype).toBeDefined();
+      expect(shutdown.resultSubtype).toBeUndefined();
+    });
+
+    it("buildExecutionErrorSummary carries accumulated turn count", () => {
+      // Process one assistant turn to bump the turn counter
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "hello" }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      });
+      const summary = processor.buildExecutionErrorSummary("crash");
+      expect(summary.numTurns).toBeGreaterThanOrEqual(1);
     });
 
     it("reset clears all state", () => {

@@ -81,33 +81,20 @@ const INITIAL_STATE: TestState = {
 };
 
 const TERMINAL_STATUSES = new Set(["completed", "error", "shutdown"]);
+const TEST_RUN_STEP_ID = -11;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Extract accumulated assistant text content from agent store messages.
- * Includes text blocks and AskUserQuestion inputs so the evaluator can see
- * what clarification questions the agent asked. */
+/** Extract accumulated output text from agent display items.
+ * Collects text from output and tool_call display items. */
 function extractAssistantText(agentId: string): string {
   const run = useAgentStore.getState().runs[agentId];
   if (!run) return "";
-  return run.messages
-    .filter((m) => m.type === "assistant")
-    .map((m) => {
-      const textContent = m.content ?? "";
-      // Capture AskUserQuestion inputs so the evaluator sees what was asked
-      const apiBlocks = (
-        (m.raw?.message as Record<string, unknown> | undefined)?.content
-      ) as Array<{ type: string; name?: string; input?: Record<string, unknown> }> | undefined;
-      const questions = Array.isArray(apiBlocks)
-        ? apiBlocks
-            .filter((b) => b.type === "tool_use" && b.name === "AskUserQuestion")
-            .map((b) => (typeof b.input?.question === "string" ? b.input.question : ""))
-            .filter(Boolean)
-        : [];
-      return [textContent, ...questions].filter(Boolean).join("\n");
-    })
+  return run.displayItems
+    .filter((di) => di.type === "output" || di.type === "tool_call")
+    .map((di) => di.outputText ?? di.toolSummary ?? "")
     .filter(Boolean)
     .join("\n");
 }
@@ -230,6 +217,10 @@ function evalPlaceholder(phase: Phase, errorMessage: string | null): string {
     case "error": return errorMessage ?? "An error occurred";
     default: return "No evaluation results";
   }
+}
+
+function buildSyntheticTestSessionId(skillName: string, testId: string): string {
+  return `synthetic:test:${skillName}:${testId}`;
 }
 
 /** Auto-scroll a container to the bottom. */
@@ -646,12 +637,16 @@ export default function TestPage() {
     }
 
     const evalModel = useSettingsStore.getState().preferredModel ?? "sonnet";
+    const syntheticTestSessionId = buildSyntheticTestSessionId(
+      state.selectedSkill.name,
+      state.testId ?? "unknown",
+    );
     useAgentStore.getState().registerRun(
       evalId,
       evalModel,
       state.selectedSkill.name,
       "test",
-      `synthetic:test:${state.selectedSkill.name}:${state.testId ?? "unknown"}`,
+      syntheticTestSessionId,
     );
     startAgent(
       evalId,
@@ -661,11 +656,15 @@ export default function TestPage() {
       [],
       15,
       "plan",
-      "__test_baseline__",
-      "test-eval",
+      syntheticTestSessionId,
+      state.selectedSkill.name,
       "test-evaluator",
       undefined,                  // agentName — evaluator uses skill-test context, not a plugin agent
       state.transcriptLogDir ?? undefined,  // transcriptLogDir
+      TEST_RUN_STEP_ID,
+      undefined,
+      syntheticTestSessionId,
+      "test",
     ).catch((err) => {
       console.error("[test] Failed to start evaluator agent:", err);
       setState((prev) => ({
@@ -782,7 +781,10 @@ export default function TestPage() {
         transcriptLogDir: prepared.transcript_log_dir,
       }));
 
-      const syntheticTestSessionId = `synthetic:test:${skillName}:${prepared.test_id}`;
+      const syntheticTestSessionId = buildSyntheticTestSessionId(
+        skillName,
+        prepared.test_id,
+      );
 
       // Register runs in agent store
       const testModel = useSettingsStore.getState().preferredModel ?? "sonnet";
@@ -811,11 +813,15 @@ export default function TestPage() {
           [],
           15,
           "plan",
+          syntheticTestSessionId,
           skillName,
-          "test-with",
           "test-plan-with",
           "data-product-builder",       // agentName → --agent data-product-builder
           prepared.transcript_log_dir,  // transcriptLogDir
+          TEST_RUN_STEP_ID,
+          undefined,
+          syntheticTestSessionId,
+          "test",
         ),
         startAgent(
           withoutId,
@@ -825,11 +831,15 @@ export default function TestPage() {
           [],
           15,
           "plan",
-          "__test_baseline__",
-          "test-without",
+          syntheticTestSessionId,
+          skillName,
           "test-plan-without",
           "data-product-builder",       // agentName → --agent data-product-builder
           prepared.transcript_log_dir,  // transcriptLogDir
+          TEST_RUN_STEP_ID,
+          undefined,
+          syntheticTestSessionId,
+          "test",
         ),
       ]);
     } catch (err) {

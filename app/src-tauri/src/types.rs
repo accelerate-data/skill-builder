@@ -761,6 +761,13 @@ pub struct RefineDiff {
     pub files: Vec<RefineFileDiff>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefineFinalizeResult {
+    pub files: Vec<SkillFileContent>,
+    pub diff: RefineDiff,
+    pub commit_sha: Option<String>,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct RefineSessionInfo {
     pub session_id: String,
@@ -786,7 +793,6 @@ pub struct ConversationMessage {
     pub role: String,
     pub content: String,
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -862,10 +868,7 @@ mod tests {
             deserialized.skills_path.as_deref(),
             Some("/home/user/output")
         );
-        assert_eq!(
-            deserialized.preferred_model.as_deref(),
-            Some("sonnet")
-        );
+        assert_eq!(deserialized.preferred_model.as_deref(), Some("sonnet"));
         assert_eq!(
             deserialized.marketplace_url.as_deref(),
             Some("https://github.com/my-org/skills")
@@ -878,10 +881,7 @@ mod tests {
         );
         assert!(deserialized.marketplace_registries[0].enabled);
         assert!(!deserialized.marketplace_initialized);
-        assert_eq!(
-            deserialized.industry.as_deref(),
-            Some("Financial Services")
-        );
+        assert_eq!(deserialized.industry.as_deref(), Some("Financial Services"));
         assert_eq!(
             deserialized.function_role.as_deref(),
             Some("Analytics Engineer")
@@ -932,6 +932,10 @@ mod tests {
             required_plugins: None,
             conversation_history: None,
             skill_name: None,
+            step_id: None,
+            workflow_session_id: None,
+            usage_session_id: None,
+            run_source: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"apiKey\""));

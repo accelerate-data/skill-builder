@@ -26,7 +26,7 @@ export function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
   }
 
   return (
-    <div data-agent-id={agentId} className="flex min-w-0 flex-col">
+    <div data-agent-id={agentId} className="flex min-w-0 w-full flex-col overflow-hidden">
       <DisplayItemList items={run.displayItems} />
       {run.status === "running" && run.displayItems.length > 0 && (
         <div className="flex items-center gap-1.5 py-1 text-muted-foreground">

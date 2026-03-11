@@ -4,7 +4,7 @@ import { Switch } from "@/components/ui/switch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface DecisionFrontmatter {
+interface DecisionsMetadata {
   decision_count: number;
   conflicts_resolved: number;
   round: number;
@@ -15,10 +15,10 @@ interface DecisionFrontmatter {
 export interface Decision {
   id: string;
   title: string;
-  originalQuestion: string;
+  original_question: string;
   decision: string;
   implication: string;
-  status: "resolved" | "conflict-resolved" | "needs-review";
+  status: "resolved" | "conflict-resolved" | "needs-review" | "revised";
 }
 
 interface DecisionsSummaryCardProps {
@@ -31,137 +31,55 @@ interface DecisionsSummaryCardProps {
 
 // ─── Parsers & Serializers ────────────────────────────────────────────────────
 
-function parseFrontmatter(content: string): DecisionFrontmatter {
-  const defaults: DecisionFrontmatter = { decision_count: 0, conflicts_resolved: 0, round: 1 };
-  const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!fmMatch) return defaults;
-  const fm = fmMatch[1];
-  for (const line of fm.split("\n")) {
-    const [key, ...rest] = line.split(":");
-    const value = rest.join(":").trim();
-    switch (key.trim()) {
-      case "decision_count": defaults.decision_count = parseInt(value) || 0; break;
-      case "conflicts_resolved": defaults.conflicts_resolved = parseInt(value) || 0; break;
-      case "round": defaults.round = parseInt(value) || 1; break;
-      case "contradictory_inputs":
-        if (value === "true") defaults.contradictory_inputs = true;
-        else if (value === "revised") defaults.contradictory_inputs = "revised";
-        break;
-      case "scope_recommendation":
-        if (value === "true") defaults.scope_recommendation = true;
-        break;
-    }
-  }
-  return defaults;
-}
-
 interface DecisionsJsonFile {
   version?: string;
-  metadata?: DecisionFrontmatter;
+  metadata?: DecisionsMetadata;
   decisions?: Decision[];
 }
 
-function parseDecisionsFromMarkdown(content: string): Decision[] {
-  const decisions: Decision[] = [];
-  const body = content.replace(/^---[\s\S]*?---\n*/, "");
-  // Accept either ## or ### headings (both appear in generated decisions.md files).
-  const sections = body.split(/(?=^##+\s*D\d+\s*:)/m).filter((s) => s.trim());
-
-  for (const section of sections) {
-    const headingMatch = section.match(/^##+\s*(D\d+):\s*(.+)/);
-    if (!headingMatch) continue;
-
-    const id = headingMatch[1];
-    const title = headingMatch[2].trim();
-    const lines = section.split("\n");
-
-    let originalQuestion = "";
-    let decision = "";
-    let implication = "";
-    let status: Decision["status"] = "resolved";
-
-    for (const line of lines) {
-      const oq = line.match(/^\s*-?\s*\*\*Original question:\*\*\s*(.*)/);
-      if (oq) { originalQuestion = oq[1].trim(); continue; }
-      const dec = line.match(/^\s*-?\s*\*\*Decision:\*\*\s*(.*)/);
-      if (dec) { decision = dec[1].trim(); continue; }
-      const imp = line.match(/^\s*-?\s*\*\*Implication:\*\*\s*(.*)/);
-      if (imp) { implication = imp[1].trim(); continue; }
-      const st = line.match(/^\s*-?\s*\*\*Status:\*\*\s*(.*)/);
-      if (st) {
-        const val = st[1].trim();
-        if (val === "conflict-resolved" || val === "needs-review") status = val;
-        else status = "resolved";
-      }
-    }
-
-    decisions.push({ id, title, originalQuestion, decision, implication, status });
-  }
-  return decisions;
-}
+const DEFAULT_METADATA: DecisionsMetadata = { decision_count: 0, conflicts_resolved: 0, round: 1 };
 
 function parseDecisionsFile(content: string): {
-  metadata: DecisionFrontmatter;
+  metadata: DecisionsMetadata;
   decisions: Decision[];
-  format: "json" | "markdown";
 } {
-  const trimmed = content.trim();
-  if (trimmed.startsWith("{")) {
-    try {
-      const parsed = JSON.parse(content) as DecisionsJsonFile;
-      const decisions = Array.isArray(parsed.decisions) ? parsed.decisions : [];
-      const metadata = parsed.metadata ?? { decision_count: decisions.length, conflicts_resolved: 0, round: 1 };
-      return { metadata, decisions, format: "json" };
-    } catch {
-      // Fall through to legacy markdown parser
-    }
+  try {
+    const parsed = JSON.parse(content) as DecisionsJsonFile;
+    const decisions = Array.isArray(parsed.decisions) ? parsed.decisions : [];
+    const metadata = parsed.metadata ?? { ...DEFAULT_METADATA, decision_count: decisions.length };
+    return { metadata, decisions };
+  } catch {
+    return { metadata: { ...DEFAULT_METADATA }, decisions: [] };
   }
-  return {
-    metadata: parseFrontmatter(content),
-    decisions: parseDecisionsFromMarkdown(content),
-    format: "markdown",
-  };
 }
 
 export function parseDecisions(content: string): Decision[] {
   return parseDecisionsFile(content).decisions;
 }
 
-/** Serialize Decision[] back to decisions content.
- *  Upgrades `contradictory_inputs: true` → `contradictory_inputs: revised`
- *  to signal the user has reviewed and accepted the flagged decisions.
+/** Serialize Decision[] back to decisions JSON content.
+ *  Decisions carry their own status ("revised", "resolved", etc.) — no mapping needed.
+ *  Upgrades `contradictory_inputs: true` → `"revised"` when no decisions are "needs-review".
  */
 export function serializeDecisions(decisions: Decision[], rawContent: string): string {
   const parsed = parseDecisionsFile(rawContent);
-  if (parsed.format === "json") {
-    const metadata: DecisionFrontmatter = {
-      ...parsed.metadata,
-      decision_count: decisions.length,
-      conflicts_resolved: decisions.filter((d) => d.status === "conflict-resolved").length,
-    };
-    if (metadata.contradictory_inputs === true) {
-      metadata.contradictory_inputs = "revised";
-    }
-    const payload: DecisionsJsonFile = {
-      version: "1",
-      metadata,
-      decisions,
-    };
-    return `${JSON.stringify(payload, null, 2)}\n`;
+  const metadata: DecisionsMetadata = {
+    ...parsed.metadata,
+    decision_count: decisions.length,
+    conflicts_resolved: decisions.filter((d) => d.status === "conflict-resolved").length,
+  };
+  // Upgrade contradictory_inputs when all needs-review have been addressed
+  const hasNeedsReview = decisions.some((d) => d.status === "needs-review");
+  const hasRevised = decisions.some((d) => d.status === "revised");
+  if (metadata.contradictory_inputs === true && !hasNeedsReview && hasRevised) {
+    metadata.contradictory_inputs = "revised";
   }
-
-  const rawFrontmatter = rawContent.match(/^(---[\s\S]*?---)/)?.[1] ?? "";
-  const updatedFm = rawFrontmatter.replace(/contradictory_inputs:\s*true/, "contradictory_inputs: revised");
-  const blocks = decisions.map((d) =>
-    [
-      `### ${d.id}: ${d.title}`,
-      `- **Original question:** ${d.originalQuestion}`,
-      `- **Decision:** ${d.decision}`,
-      `- **Implication:** ${d.implication}`,
-      `- **Status:** ${d.status}`,
-    ].join("\n")
-  );
-  return `${updatedFm}\n\n${blocks.join("\n\n")}\n`;
+  const payload: DecisionsJsonFile = {
+    version: "1",
+    metadata,
+    decisions,
+  };
+  return `${JSON.stringify(payload, null, 2)}\n`;
 }
 
 function formatDuration(ms: number): string {
@@ -187,30 +105,38 @@ export function DecisionsSummaryCard({
   const [decisions, setDecisions] = useState<Decision[]>(() => parsedFile.decisions);
   const [summaryExpanded, setSummaryExpanded] = useState(true);
   const [showNeedsReviewOnly, setShowNeedsReviewOnly] = useState(false);
-  // Track whether the user has made any edit this session — used to show revised banner immediately
-  const [wasEdited, setWasEdited] = useState(false);
 
   useEffect(() => {
     setDecisions(parseDecisionsFile(decisionsContent).decisions);
-    setWasEdited(false);
   }, [decisionsContent]);
 
   const resolvedCount = decisions.filter((d) => d.status === "resolved").length;
   const conflictResolvedCount = decisions.filter((d) => d.status === "conflict-resolved").length;
-  const needsReviewCount = decisions.filter((d) => d.status === "needs-review").length;
+  const revisedCount = decisions.filter((d) => d.status === "revised").length;
+  const needsReviewDecisions = decisions.filter((d) => d.status === "needs-review");
+  const needsReviewCount = needsReviewDecisions.length;
+  const pendingReviewDecisions = decisions.filter((d) => d.status === "needs-review" || d.status === "revised");
   const visibleDecisions = showNeedsReviewOnly
-    ? decisions.filter((d) => d.status === "needs-review")
+    ? pendingReviewDecisions
     : decisions;
 
-  // Effective contradictory state: upgrade true → "revised" once the user edits
-  const effectiveContradictory = wasEdited && fm.contradictory_inputs === true
-    ? "revised"
+  // Effective contradictory state: upgrade true → "revised" when no needs-review left
+  const effectiveContradictory = fm.contradictory_inputs === true
+    ? (needsReviewCount > 0 ? true : (revisedCount > 0 ? "revised" : true))
     : fm.contradictory_inputs;
 
-  function handleDecisionChange(updated: Decision) {
-    const next = decisions.map((d) => (d.id === updated.id ? updated : d));
+  // Called on every keystroke — update local decisions array only, no save
+  function handleDecisionDraftChange(updated: Decision) {
+    setDecisions((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+  }
+
+  // Called on blur — flip status to "revised", serialize, notify parent
+  function handleDecisionBlur(updated: Decision) {
+    const blurred: Decision = updated.status === "needs-review"
+      ? { ...updated, status: "revised" }
+      : updated;
+    const next = decisions.map((d) => (d.id === blurred.id ? blurred : d));
     setDecisions(next);
-    setWasEdited(true);
     onDecisionsChange?.(serializeDecisions(next, decisionsContent));
   }
 
@@ -270,11 +196,11 @@ export function DecisionsSummaryCard({
           </div>
         )}
 
-        {/* needs-review editing hint — only shown before user has edited */}
+        {/* needs-review editing hint — only shown when unaddressed decisions remain */}
         {allowEdit && needsReviewCount > 0 && effectiveContradictory !== "revised" && (
           <div className="flex items-center gap-2 border-b bg-amber-50 dark:bg-amber-950/20 px-5 py-2 text-xs text-amber-600 dark:text-amber-400 font-medium">
             <AlertTriangle className="size-3.5" />
-            {needsReviewCount} decision{needsReviewCount > 1 ? "s" : ""} need your review — edit the text below, changes save automatically.
+            {needsReviewCount} decision{needsReviewCount > 1 ? "s" : ""} need your review — edit the text below, changes save when you leave the field.
           </div>
         )}
 
@@ -303,6 +229,12 @@ export function DecisionsSummaryCard({
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Conflict-resolved</span>
                   <span className="font-medium" style={{ color: "var(--color-ocean)" }}>{conflictResolvedCount}</span>
+                </div>
+              )}
+              {revisedCount > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Revised</span>
+                  <span className="font-medium" style={{ color: "var(--color-pacific)" }}>{revisedCount}</span>
                 </div>
               )}
               {needsReviewCount > 0 && (
@@ -346,8 +278,8 @@ export function DecisionsSummaryCard({
         </div>}
       </div>
 
-      {/* Decision filter */}
-      {needsReviewCount > 0 && (
+      {/* Decision filter — show when there are needs-review or revised decisions */}
+      {pendingReviewDecisions.length > 0 && (
         <div className="flex items-center justify-end gap-2 px-1">
           <span className="text-xs text-muted-foreground">Needs Review</span>
           <Switch
@@ -365,7 +297,8 @@ export function DecisionsSummaryCard({
           key={d.id}
           decision={d}
           allowEdit={allowEdit}
-          onChange={handleDecisionChange}
+          onChange={handleDecisionDraftChange}
+          onBlur={handleDecisionBlur}
         />
       ))}
       {showNeedsReviewOnly && visibleDecisions.length === 0 && (
@@ -395,17 +328,24 @@ const statusColors: Record<Decision["status"], { border: string; badge: string; 
     badge: "var(--destructive)",
     badgeBg: "color-mix(in oklch, var(--destructive), transparent 85%)",
   },
+  revised: {
+    border: "var(--color-pacific)",
+    badge: "var(--color-pacific)",
+    badgeBg: "color-mix(in oklch, var(--color-pacific), transparent 85%)",
+  },
 };
 
 function AutoResizeTextarea({
   value,
   onChange,
+  onBlur,
   className,
   style,
   placeholder,
 }: {
   value: string;
   onChange: (v: string) => void;
+  onBlur?: () => void;
   className?: string;
   style?: React.CSSProperties;
   placeholder?: string;
@@ -448,6 +388,7 @@ function AutoResizeTextarea({
       value={value}
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
+      onBlur={onBlur}
       className={className}
       style={{ resize: "none", overflow: "hidden", ...style }}
       rows={1}
@@ -459,14 +400,32 @@ function DecisionCard({
   decision,
   allowEdit,
   onChange,
+  onBlur,
 }: {
   decision: Decision;
   allowEdit?: boolean;
   onChange?: (updated: Decision) => void;
+  onBlur?: (updated: Decision) => void;
 }) {
-  const isEditable = allowEdit && decision.status === "needs-review";
+  const isEditable = allowEdit && (decision.status === "needs-review" || decision.status === "revised");
   const [expanded, setExpanded] = useState(isEditable ?? false);
+  // Auto-expand when the card becomes editable (e.g. review → update mode switch)
+  useEffect(() => { if (isEditable) setExpanded(true); }, [isEditable]);
+  // Local draft state for typing — propagated on blur
+  const [draft, setDraft] = useState(decision);
+  useEffect(() => { setDraft(decision); }, [decision]);
+
   const colors = statusColors[decision.status];
+
+  function handleDraftChange(field: "decision" | "implication", value: string) {
+    const updated = { ...draft, [field]: value };
+    setDraft(updated);
+    onChange?.(updated);
+  }
+
+  function handleBlur() {
+    onBlur?.(draft);
+  }
 
   return (
     <div
@@ -498,10 +457,10 @@ function DecisionCard({
       </button>
 
       {/* Collapsed preview — show decision text */}
-      {!expanded && decision.decision && (
+      {!expanded && draft.decision && (
         <div className="bg-muted/40 px-4 pb-2.5">
           <span className="truncate text-xs italic" style={{ color: "var(--color-pacific)" }}>
-            {decision.decision}
+            {draft.decision}
           </span>
         </div>
       )}
@@ -510,13 +469,13 @@ function DecisionCard({
       {expanded && (
         <div className="border-t bg-card p-4 space-y-3">
           {/* Original question */}
-          {decision.originalQuestion && (
+          {draft.original_question && (
             <div>
               <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 Original question
               </span>
               <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-                {decision.originalQuestion}
+                {draft.original_question}
               </p>
             </div>
           )}
@@ -528,20 +487,21 @@ function DecisionCard({
             </span>
             {isEditable ? (
               <AutoResizeTextarea
-                value={decision.decision}
-                onChange={(v) => onChange?.({ ...decision, decision: v })}
+                value={draft.decision}
+                onChange={(v) => handleDraftChange("decision", v)}
+                onBlur={handleBlur}
                 placeholder="Enter decision…"
                 className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm text-foreground leading-relaxed focus:outline-none focus:ring-1 focus:ring-offset-0"
               />
             ) : (
               <p className="mt-0.5 text-sm text-foreground leading-relaxed">
-                {decision.decision}
+                {draft.decision}
               </p>
             )}
           </div>
 
           {/* Implication */}
-          {(decision.implication || isEditable) && (
+          {(draft.implication || isEditable) && (
             <div
               className="rounded-md border px-3 py-2"
               style={{
@@ -554,15 +514,16 @@ function DecisionCard({
               </span>
               {isEditable ? (
                 <AutoResizeTextarea
-                  value={decision.implication}
-                  onChange={(v) => onChange?.({ ...decision, implication: v })}
+                  value={draft.implication}
+                  onChange={(v) => handleDraftChange("implication", v)}
+                  onBlur={handleBlur}
                   placeholder="Enter implication…"
                   className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-offset-0"
                   style={{ color: "var(--color-ocean)" }}
                 />
               ) : (
                 <p className="mt-0.5 text-xs leading-relaxed" style={{ color: "var(--color-ocean)" }}>
-                  {decision.implication}
+                  {draft.implication}
                 </p>
               )}
             </div>

@@ -2,7 +2,7 @@
 name: validate-skill
 description: Validates a completed skill and returns structured validation output.
 model: sonnet
-tools: Read, Glob, Grep, Task
+tools: Read, Glob, Grep, Bash, Task
 ---
 
 # Validate Skill
@@ -72,9 +72,52 @@ Read `{skill_output_dir}/SKILL.md`.
 
 `metadata.contradictory_inputs == "revised"` is NOT a block — proceed normally.
 
-## Step 1: Run the validate-skill skill
+## Step 1: Launch Subagents to perform quality checks for the given skill
 
-Read and follow installed `validate-skill` skill and return the JSON only (no markdown) with this shape:
+Use the **Task tool** to spawn `validate-quality` and `eval-skill` agents in the same turn. Mode: bypassPermissions.
+
+- Pass skill_name, skill_output_dir, workspace_dir to each. 
+- Add to every sub-agent prompt: "Return your complete output as text. Do not write files"
+
+Wait for both Task results before proceeding to Step 2.
+
+## Step 2: Consolidate and Report
+
+After both Task results return, consolidate them into JSON only as per the Output section. 
+Combine sub-agent outputs into:
+
+- Validation findings (FAIL/MISSING with concrete fixes)
+- Boundary violations
+- Prescriptiveness rewrites
+- Test gap analysis with 5-8 prompt categories
+
+## Success Criteria
+
+### Validation
+
+- Every decision mapped to file + section
+- Structural and best-practice checks pass
+- Content sections score >=3 on quality dimensions
+- No process artifacts or stakeholder Q&A blocks in skill output
+
+### Evaluations
+
+- `{workspace_dir}/context/evaluations.md` exists with 3+ complete scenarios
+- Scenarios include prompt, expected behavior, and pass criteria
+- Results include PASS/PARTIAL/FAIL evidence
+
+### Testing
+
+- At least 5 test prompts across required categories
+- Every result includes specific evidence and actionable next steps
+
+</instruction>
+
+<output_format>
+
+## Output Format
+
+Return JSON only with this shape:
 
 ```json
 {
@@ -83,3 +126,15 @@ Read and follow installed `validate-skill` skill and return the JSON only (no ma
   "test_results_markdown": "<full test results content>"
 }
 ```
+
+### `validation_log_markdown`
+
+Include summary + coverage + structure + content quality + boundary + suggestions for rewrites + manual review items.
+
+### `test_results_markdown`
+
+Include summary + per-scenario outcomes + skill content gaps + suggested PM prompts.
+
+</output_format>
+
+

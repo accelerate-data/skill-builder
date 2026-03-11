@@ -68,13 +68,29 @@ export interface DisplayItem {
   outputText_result?: string;
   resultStatus?: ResultStatus;
   errorSubtype?: string;
+  /** Structured output from the SDK result, used for artifact materialization. */
+  structuredOutput?: unknown;
+  /** Display-ready markdown extracted by the sidecar from structured output fields. */
+  resultMarkdown?: string;
 
   // error
   errorMessage?: string;
 }
 
 // ---------------------------------------------------------------------------
+// RunMetadata — structured metadata forwarded from sidecar as agent-metadata events
+// ---------------------------------------------------------------------------
+
+export interface RunMetadata {
+  contextSnapshot?: { turn: number; inputTokens: number; outputTokens: number };
+  compactionEvent?: { turn: number; preTokens: number; timestamp: number };
+  sessionInit?: { sessionId: string; model: string };
+  config?: { thinkingEnabled?: boolean; agentName?: string };
+  contextWindow?: number;
+}
+
+// ---------------------------------------------------------------------------
 // Version tag for structural sync tests
 // ---------------------------------------------------------------------------
 
-export const DISPLAY_TYPES_VERSION = 1;
+export const DISPLAY_TYPES_VERSION = 2;
