@@ -500,3 +500,65 @@ describe("displayItems management", () => {
     expect(useAgentStore.getState().runs["agent-1"].displayItems).toHaveLength(0);
   });
 });
+
+// =============================================================================
+// Pending metadata buffer (VU-507)
+// =============================================================================
+
+describe("updateMetadata buffering", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+  });
+
+  it("applies metadata immediately when run already exists", () => {
+    useAgentStore.getState().startRun("agent-buf-1", "sonnet");
+    useAgentStore.getState().updateMetadata("agent-buf-1", {
+      sessionInit: { sessionId: "s1", model: "sonnet" },
+    });
+    expect(useAgentStore.getState().runs["agent-buf-1"].sessionId).toBe("s1");
+  });
+
+  it("buffers metadata arriving before startRun and drains after", () => {
+    useAgentStore.getState().updateMetadata("agent-buf-2", {
+      sessionInit: { sessionId: "early-session", model: "sonnet" },
+    });
+    expect(useAgentStore.getState().runs["agent-buf-2"]).toBeUndefined();
+
+    useAgentStore.getState().startRun("agent-buf-2", "sonnet");
+    expect(useAgentStore.getState().runs["agent-buf-2"].sessionId).toBe("early-session");
+  });
+
+  it("buffers metadata arriving before registerRun and drains after", () => {
+    useAgentStore.getState().updateMetadata("agent-buf-3", {
+      config: { thinkingEnabled: true, agentName: "researcher" },
+    });
+    expect(useAgentStore.getState().runs["agent-buf-3"]).toBeUndefined();
+
+    useAgentStore.getState().registerRun("agent-buf-3", "sonnet", "my-skill", "refine");
+    expect(useAgentStore.getState().runs["agent-buf-3"].thinkingEnabled).toBe(true);
+    expect(useAgentStore.getState().runs["agent-buf-3"].agentName).toBe("researcher");
+  });
+
+  it("drains multiple buffered events in order", () => {
+    useAgentStore.getState().updateMetadata("agent-buf-4", {
+      contextSnapshot: { turn: 1, inputTokens: 100, outputTokens: 10 },
+    });
+    useAgentStore.getState().updateMetadata("agent-buf-4", {
+      contextSnapshot: { turn: 2, inputTokens: 200, outputTokens: 20 },
+    });
+    useAgentStore.getState().startRun("agent-buf-4", "sonnet");
+    const history = useAgentStore.getState().runs["agent-buf-4"].contextHistory;
+    expect(history).toHaveLength(2);
+    expect(history[0].turn).toBe(1);
+    expect(history[1].turn).toBe(2);
+  });
+
+  it("clearRuns discards the pending metadata buffer", () => {
+    useAgentStore.getState().updateMetadata("agent-buf-5", {
+      sessionInit: { sessionId: "should-be-gone", model: "sonnet" },
+    });
+    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().startRun("agent-buf-5", "sonnet");
+    expect(useAgentStore.getState().runs["agent-buf-5"].sessionId).toBeUndefined();
+  });
+});
