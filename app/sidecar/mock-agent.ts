@@ -72,10 +72,8 @@ function getOutputDir(stepTemplate: string): string {
 /**
  * Extract directory paths from the agent prompt.
  *
- * SDK protocol: prompt contains only "The skill name is: X" and "The workspace directory is: Y".
- * Agents derive context_dir as workspace_dir/context and read .skill_output_dir for skill output path.
- * This function supports both the legacy format (explicit paths in prompt) and the new format
- * (workspace_dir only; context and skill output derived or read from .skill_output_dir).
+ * Prompt includes all paths inline: workspace_dir, skill output dir, and optionally context_dir.
+ * context_dir is derived from workspace_dir/context when not explicit.
  */
 /** @internal Exported for testing only. */
 export function parsePromptPaths(prompt: string): {
@@ -99,7 +97,6 @@ export function parsePromptPaths(prompt: string): {
     /The skill directory is: ([^\n]+?)\.\s/,
   );
 
-  // Legacy format: explicit context and/or skill output in prompt — use them
   const contextDir =
     contextMatch?.[1]?.trim() ??
     (workspaceDir !== null ? path.join(workspaceDir, "context") : null);
@@ -114,7 +111,7 @@ export function parsePromptPaths(prompt: string): {
 }
 
 /**
- * Resolve all paths from the prompt. For the new SDK protocol, reads .skill_output_dir from the workspace directory.
+ * Resolve all paths from the prompt. Paths are now inline in the prompt string.
  */
 export async function resolvePromptPathsAsync(prompt: string): Promise<{
   workspaceDir: string | null;
@@ -122,24 +119,7 @@ export async function resolvePromptPathsAsync(prompt: string): Promise<{
   skillOutputDir: string | null;
   skillDir: string | null;
 }> {
-  const parsed = parsePromptPaths(prompt);
-  // New SDK protocol: skill output path not in prompt — read from .skill_output_dir
-  if (parsed.skillOutputDir === null && parsed.workspaceDir !== null) {
-    const dotPath = path.join(parsed.workspaceDir, ".skill_output_dir");
-    try {
-      const content = await fs.readFile(dotPath, "utf-8");
-      const skillOutputDir = content.trim();
-      return {
-        workspaceDir: parsed.workspaceDir,
-        contextDir: parsed.contextDir,
-        skillOutputDir: skillOutputDir || null,
-        skillDir: skillOutputDir || null,
-      };
-    } catch {
-      // .skill_output_dir missing (e.g. old run) — keep parsed
-    }
-  }
-  return parsed;
+  return parsePromptPaths(prompt);
 }
 
 /** Check if a path exists (async replacement for fs.existsSync). */

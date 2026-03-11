@@ -25,7 +25,7 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 
 - `skill_name` : the skill being developed (slug/name)
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
-- `skill_output_dir`: path where the skill to be refined (`SKILL.md` and `references/`) live
+- `skill_output_dir`: path where the skill (`SKILL.md` and `references/`) live — provided directly in the prompt
 - Derive `context_dir` as `workspace_dir/context`
 
 </context>
