@@ -1197,4 +1197,88 @@ describe("completeRun persistence with modelUsageBreakdown", () => {
     expect(args.totalCost).toBe(0.06);
     expect(args.status).toBe("completed");
   });
+
+  it("completeRun logs structured error when persistence fails", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockInvoke.mockRejectedValue(new Error("Database connection failed"));
+
+    useAgentStore.getState().startRun("agent-persist-fail", "sonnet");
+    useAgentStore.getState().completeRun("agent-persist-fail", true);
+
+    // Wait for async persistence to complete
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const errorCalls = consoleSpy.mock.calls.filter((call) =>
+      String(call[0]).includes("event=persistence_failed")
+    );
+    expect(errorCalls.length).toBeGreaterThan(0);
+    expect(String(errorCalls[0][0])).toContain("operation=persist_agent_run");
+    // Check that the error log contains the format string and args
+    expect(errorCalls[0].length).toBeGreaterThan(1); // Has message + format args
+
+    consoleSpy.mockRestore();
+  });
+
+  it("completeRun logs persistence summary after all rows are attempted", async () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockInvoke.mockResolvedValue(undefined);
+
+    useAgentStore.getState().startRun("agent-summary", "sonnet");
+    const msg: AgentMessage = {
+      type: "result",
+      content: "Done",
+      raw: {
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          cache_read_input_tokens: 10,
+          cache_creation_input_tokens: 5,
+        },
+        model_usage: {
+          model: "claude-sonnet-4-5-20250929",
+          input_tokens: 100,
+          output_tokens: 50,
+          cache_read_input_tokens: 10,
+          cache_creation_input_tokens: 5,
+        },
+      },
+      timestamp: Date.now(),
+    };
+    useAgentStore.getState().addMessage("agent-summary", msg);
+    flushMessageBuffer();
+
+    useAgentStore.getState().completeRun("agent-summary", true);
+
+    // Wait for async persistence to complete
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const summaryCalls = consoleSpy.mock.calls.filter((call) =>
+      String(call[0]).includes("event=persistence_summary")
+    );
+    expect(summaryCalls.length).toBeGreaterThan(0);
+    expect(String(summaryCalls[0][0])).toContain("operation=persist_run_rows");
+    expect(String(summaryCalls[0][0])).toContain("status=success");
+    // Check that the log has format args
+    expect(summaryCalls[0].length).toBeGreaterThan(1);
+
+    consoleSpy.mockRestore();
+  });
+
+  it("shutdownRun logs structured errors on persistence failure", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockInvoke.mockRejectedValue(new Error("Write lock timeout"));
+
+    useAgentStore.getState().startRun("agent-shutdown-fail", "sonnet");
+    useAgentStore.getState().shutdownRun("agent-shutdown-fail");
+
+    // Wait for async persistence to complete
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const errorCalls = consoleSpy.mock.calls.filter((call) =>
+      String(call[0]).includes("event=persistence_failed")
+    );
+    expect(errorCalls.length).toBeGreaterThan(0);
+
+    consoleSpy.mockRestore();
+  });
 });

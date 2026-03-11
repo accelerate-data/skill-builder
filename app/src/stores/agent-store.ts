@@ -210,11 +210,46 @@ interface AgentState {
   _applyMessageBatch: (batch: BufferedMessage[]) => void;
 }
 
-/** Persist one row per model entry (fire-and-forget). Used by both completeRun and shutdownRun. */
+/**
+ * Validate persistence context before attempting to write.
+ * Returns true if context is valid; logs structured error and returns false otherwise.
+ */
+function validatePersistenceContext(
+  context: { stepId: number; workflowSessionId?: string },
+  agentId: string,
+): boolean {
+  if (!context || typeof context.stepId !== "number") {
+    console.error(
+      "[agent-store] event=persistence_validation_failed operation=validate_context agent_id=%s reason=invalid_step_id",
+      agentId,
+    );
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Persist one row per model entry with transaction-like semantics.
+ * All rows for the same agent run share the same session context. If any row fails,
+ * subsequent rows are still attempted (best-effort), but the failure is logged with context.
+ * Used by both completeRun and shutdownRun.
+ */
 function persistRunRows(
   sharedParams: Record<string, unknown>,
   modelEntries: Array<{ model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; totalCost: number }>,
 ): void {
+  const agentId = sharedParams.agentId as string;
+
+  // Validate persistence context early
+  if (!validatePersistenceContext(
+    { stepId: sharedParams.stepId as number, workflowSessionId: sharedParams.workflowSessionId as string | undefined },
+    agentId,
+  )) {
+    return;
+  }
+
+  // Attempt to persist all model entries. Track failures but continue to attempt remaining rows.
+  let failureCount = 0;
   for (const entry of modelEntries) {
     persistAgentRun({
       ...sharedParams,
@@ -224,8 +259,32 @@ function persistRunRows(
       cacheReadTokens: entry.cacheReadTokens,
       cacheWriteTokens: entry.cacheWriteTokens,
       totalCost: entry.totalCost,
-    } as Parameters<typeof persistAgentRun>[0]).catch((err) =>
-      console.error("Failed to persist agent run:", err),
+    } as Parameters<typeof persistAgentRun>[0]).catch((err: unknown) => {
+      failureCount++;
+      console.error(
+        "[agent-store] event=persistence_failed operation=persist_agent_run agent_id=%s model=%s error=%s row=%d/%d",
+        agentId,
+        entry.model,
+        err instanceof Error ? err.message : String(err),
+        failureCount,
+        modelEntries.length,
+      );
+    });
+  }
+
+  // Log transaction summary
+  if (failureCount > 0) {
+    console.warn(
+      "[agent-store] event=persistence_summary operation=persist_run_rows agent_id=%s status=partial_failure rows_attempted=%d rows_failed=%d",
+      agentId,
+      modelEntries.length,
+      failureCount,
+    );
+  } else {
+    console.log(
+      "[agent-store] event=persistence_summary operation=persist_run_rows agent_id=%s status=success rows=%d",
+      agentId,
+      modelEntries.length,
     );
   }
 }
