@@ -562,6 +562,32 @@ export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
     scrollToBottom();
   }, [run?.messages.length, run?.displayItems?.length, scrollToBottom]);
 
+  // All hooks must be called unconditionally (Rules of Hooks).
+  // These are only used by the legacy path but must always execute.
+  const messages = run?.messages ?? [];
+
+  const turnMap = useMemo(() => {
+    const map = new Map<number, number>();
+    let turn = 0;
+    for (let i = 0; i < messages.length; i++) {
+      if (messages[i].type === "assistant") {
+        turn++;
+        map.set(i, turn);
+      }
+    }
+    return map;
+  }, [messages]);
+
+  const messageGroups = useMemo(
+    () => computeMessageGroups(messages, turnMap),
+    [messages, turnMap],
+  );
+
+  const toolCallGroupMap = useMemo(
+    () => computeToolCallGroups(messages),
+    [messages],
+  );
+
   if (!run) {
     return (
       <Card className="flex-1">
@@ -588,30 +614,6 @@ export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
   }
 
   // --- Legacy message-based rendering (backward compat) ---
-
-  // Pre-compute turn numbers in O(n) instead of O(n^2)
-  const turnMap = useMemo(() => {
-    const map = new Map<number, number>();
-    let turn = 0;
-    for (let i = 0; i < run.messages.length; i++) {
-      if (run.messages[i].type === "assistant") {
-        turn++;
-        map.set(i, turn);
-      }
-    }
-    return map;
-  }, [run.messages]);
-
-  const messageGroups = useMemo(
-    () => computeMessageGroups(run.messages, turnMap),
-    [run.messages, turnMap],
-  );
-
-  const toolCallGroupMap = useMemo(
-    () => computeToolCallGroups(run.messages),
-    [run.messages],
-  );
-
   return (
     <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <ScrollArea className="min-h-0 flex-1">
