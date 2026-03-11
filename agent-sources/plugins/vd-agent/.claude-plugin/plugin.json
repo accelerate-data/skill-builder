@@ -1,0 +1,5 @@
+{
+  "name": "vd-agent",
+  "version": "1.0.0",
+  "description": "VibeData data engineering agent for building dbt transformation pipelines on Microsoft Fabric Lakehouses and SQLite databases."
+}

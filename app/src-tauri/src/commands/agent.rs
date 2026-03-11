@@ -2,6 +2,22 @@ use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
 
+/// Suppress `fallback_model` when it equals `model` to avoid the SDK error
+/// "Fallback model cannot be the same as the main model".
+///
+/// Only applies when an explicit `model` is set (i.e. no `agent_name`).
+/// When `model` is `None` (agent frontmatter is authoritative) we leave
+/// `fallback_model` as-is — the agent's frontmatter model may differ.
+fn suppress_same_fallback_model(
+    model: Option<&str>,
+    fallback_model: Option<String>,
+) -> Option<String> {
+    match model {
+        Some(m) if fallback_model.as_deref() == Some(m) => None,
+        _ => fallback_model,
+    }
+}
+
 fn output_format_for_agent(
     skill_name: &str,
     agent_name: Option<&str>,
@@ -36,14 +52,12 @@ fn output_format_for_agent(
                 "required": [
                     "status",
                     "validation_log_markdown",
-                    "test_results_markdown",
-                    "companion_skills_markdown"
+                    "test_results_markdown"
                 ],
                 "properties": {
                     "status": { "type": "string", "const": "validation_complete" },
                     "validation_log_markdown": { "type": "string", "minLength": 1 },
-                    "test_results_markdown": { "type": "string", "minLength": 1 },
-                    "companion_skills_markdown": { "type": "string", "minLength": 1 }
+                    "test_results_markdown": { "type": "string", "minLength": 1 }
                 },
                 "additionalProperties": false
             }
@@ -75,6 +89,12 @@ pub async fn start_agent(
         "[start_agent] agent_id={} model={} skill_name={} agent_name={:?}",
         agent_id, model, skill_name, agent_name
     );
+    log::debug!(
+        "[start_agent] cwd={} transcript_log_dir={:?} prompt_prefix={:?}",
+        cwd,
+        transcript_log_dir,
+        prompt.chars().take(120).collect::<String>()
+    );
     let (api_key, extended_thinking, interleaved_thinking_beta, sdk_effort, fallback_model) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[start_agent] Failed to acquire DB lock: {}", e);
@@ -86,16 +106,12 @@ pub async fn start_agent(
             None => return Err("Anthropic API key not configured".to_string()),
         };
 
-        let preferred_model = settings
-            .preferred_model
-            .clone()
-            .unwrap_or_else(|| "sonnet".to_string());
         (
             key,
             settings.extended_thinking,
             settings.interleaved_thinking_beta,
             settings.sdk_effort.clone(),
-            Some(preferred_model),
+            settings.fallback_model.clone(),
         )
     };
 
@@ -122,6 +138,17 @@ pub async fn start_agent(
         Some(model.clone())
     };
 
+    // The SDK rejects a config where fallbackModel == the explicit main model.
+    // Suppress fallback_model when it would equal model_for_config (e.g. user's
+    // preferred model is haiku and the evaluator is also invoked with haiku).
+    if fallback_model.as_deref() == model_for_config.as_deref() && model_for_config.is_some() {
+        log::debug!(
+            "[start_agent] suppressing fallback_model '{}' — equals main model",
+            model_for_config.as_deref().unwrap_or("")
+        );
+    }
+    let fallback_model = suppress_same_fallback_model(model_for_config.as_deref(), fallback_model);
+
     let config = SidecarConfig {
         prompt,
         model: model_for_config,
@@ -144,6 +171,7 @@ pub async fn start_agent(
         agent_name,
         required_plugins: None,
         conversation_history: None,
+        skill_name: Some(skill_name.clone()),
     };
 
     sidecar::spawn_sidecar(
@@ -161,7 +189,7 @@ pub async fn start_agent(
 
 #[cfg(test)]
 mod tests {
-    use super::output_format_for_agent;
+    use super::{output_format_for_agent, suppress_same_fallback_model};
 
     #[test]
     fn test_output_format_for_feedback() {
@@ -182,5 +210,41 @@ mod tests {
         assert!(output_format_for_agent("my-skill", Some("test-plan-with")).is_none());
         assert!(output_format_for_agent("my-skill", Some("test-plan-without")).is_none());
         assert!(output_format_for_agent("my-skill", Some("test-evaluator")).is_none());
+    }
+
+    #[test]
+    fn test_suppress_same_fallback_model_clears_when_equal() {
+        // Evaluator scenario: preferred_model = haiku, model = haiku → suppress
+        let result = suppress_same_fallback_model(
+            Some("claude-haiku-4-5-20251001"),
+            Some("claude-haiku-4-5-20251001".to_string()),
+        );
+        assert!(result.is_none(), "fallback must be suppressed when equal to main model");
+    }
+
+    #[test]
+    fn test_suppress_same_fallback_model_keeps_when_different() {
+        // Typical scenario: preferred_model = sonnet, fallback = sonnet, main = opus
+        let result = suppress_same_fallback_model(
+            Some("claude-opus-4-6"),
+            Some("claude-sonnet-4-6".to_string()),
+        );
+        assert_eq!(result.as_deref(), Some("claude-sonnet-4-6"));
+    }
+
+    #[test]
+    fn test_suppress_same_fallback_model_keeps_when_no_explicit_model() {
+        // agent_name is set → model_for_config = None; fallback is preserved
+        let result = suppress_same_fallback_model(
+            None,
+            Some("claude-haiku-4-5-20251001".to_string()),
+        );
+        assert_eq!(result.as_deref(), Some("claude-haiku-4-5-20251001"));
+    }
+
+    #[test]
+    fn test_suppress_same_fallback_model_noop_when_no_fallback() {
+        let result = suppress_same_fallback_model(Some("claude-sonnet-4-6"), None);
+        assert!(result.is_none());
     }
 }

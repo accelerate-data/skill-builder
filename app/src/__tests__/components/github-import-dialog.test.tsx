@@ -9,20 +9,8 @@ import {
 } from "@/test/mocks/tauri";
 import type { AvailableSkill, WorkspaceSkill } from "@/lib/types";
 
-// Mock sonner
-vi.mock("sonner", () => ({
-  toast: Object.assign(vi.fn(), {
-    success: vi.fn(),
-    error: vi.fn(),
-    info: vi.fn(),
-    loading: vi.fn(() => "toast-id"),
-    dismiss: vi.fn(),
-  }),
-  Toaster: () => null,
-}));
-
 import GitHubImportDialog from "@/components/github-import-dialog";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 const DEFAULT_REPO_INFO = { owner: "acme", repo: "skills", branch: "main", subpath: null };
 

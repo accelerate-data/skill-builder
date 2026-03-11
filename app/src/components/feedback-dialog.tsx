@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { getVersion } from "@tauri-apps/api/app"
 import { Bug, Github, Lightbulb, Loader2, MessageSquarePlus } from "lucide-react"

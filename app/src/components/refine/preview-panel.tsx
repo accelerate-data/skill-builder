@@ -67,7 +67,7 @@ export function PreviewPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b px-3 py-2">
+      <div className="flex items-center justify-between border-b px-4 py-2">
         <Popover open={filePickerOpen} onOpenChange={setFilePickerOpen}>
           <PopoverTrigger asChild>
             <Button data-testid="refine-file-picker" variant="outline" size="sm" className="max-w-[280px] justify-between gap-1.5">

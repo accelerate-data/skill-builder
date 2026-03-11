@@ -52,7 +52,7 @@ Use that scoring JSON to construct `metadata.research_plan` which is part of cla
 
 - Set `topic_relevance` from scoring JSON (`relevant|not_relevant`).
 - Set `dimensions_evaluated` from the count of entries in the candidate_dimension_scores array in scoring JSON
-- Set `dimension_scores` from `candidate_dimension_scores` (`name`, `score`, `reason`, `focus`, `companion_skill`).
+- Set `dimension_scores` from `candidate_dimension_scores` (`name`, `score`, `reason`, `focus`).
 - If `topic_relevance` is `not_relevant`, return canonical minimal/scope-recommendation clarifications output per `references/schemas.md` with:
   - `metadata.scope_recommendation: true`
   - `metadata.warning.code: "all_dimensions_low_score"`
@@ -79,7 +79,7 @@ Update the `metadata.research_plan` created in Step 2.
 For each selected dimension object in `metadata.research_plan.selected_dimensions`:
 
 - Read the dimension spec file `references/dimensions/{name}.md` (use the selected object's `name` field as the slug)
-- Spawn one Task sub-agent per selected dimension
+- Spawn one Task sub-agent per selected dimension. Mode: `bypassPermissions`.
 - Include in the sub-agent prompt: the full content of the dimension spec file, the full user context, and the tailored focus line from `metadata.research_plan.selected_dimensions`
 - Require raw research text only (500-800 words)
 

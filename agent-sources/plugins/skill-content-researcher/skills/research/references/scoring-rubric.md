@@ -31,7 +31,6 @@ For each of the candidate dimensions from the type-scoped set:
 1. Assign a score (1–5) using the rubric above
 2. Write a one-sentence reason grounded in the domain
 3. Write a tailored focus line (see Tailored Focus Line guidelines below)
-4. For scores 2–3, note a companion skill candidate that could cover this area
 
 ### 2. Return scoring JSON
 
@@ -70,8 +69,7 @@ Canonical scoring JSON object:
       "name": "<dimension slug>",
       "score": 1,
       "reason": "<one-sentence reason grounded in domain delta>",
-      "focus": "<tailored focus line for this dimension>",
-      "companion_skill": null
+      "focus": "<tailored focus line for this dimension>"
     }
   ]
 }

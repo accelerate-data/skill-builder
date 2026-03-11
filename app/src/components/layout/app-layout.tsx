@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useRouterState, useRouter } from "@tanstack/react-router";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Sidebar } from "./sidebar";
 import { Header } from "./header";
 import { CloseGuard } from "@/components/close-guard";

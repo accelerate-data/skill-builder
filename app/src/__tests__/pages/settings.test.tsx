@@ -7,14 +7,16 @@ import { useAuthStore } from "@/stores/auth-store";
 
 import type { AppSettings } from "@/lib/types";
 
-// Mock sonner toast
-vi.mock("sonner", () => ({
+// Mock toast wrapper
+vi.mock("@/lib/toast", () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
     info: vi.fn(),
+    warning: vi.fn(),
+    loading: vi.fn(() => "toast-id"),
+    dismiss: vi.fn(),
   },
-  Toaster: () => null,
 }));
 
 // Mock next-themes
@@ -296,7 +298,7 @@ describe("SettingsPage", () => {
 
   it("shows error toast on auto-save failure", async () => {
     const user = userEvent.setup();
-    const { toast } = await import("sonner");
+    const { toast } = await import("@/lib/toast");
     setupDefaultMocks(populatedSettings);
     // Override save_settings to fail
     mockInvoke.mockImplementation((cmd: string) => {
@@ -316,7 +318,10 @@ describe("SettingsPage", () => {
     await user.click(thinkingSwitch);
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Failed to save: DB error", { duration: Infinity });
+      expect(toast.error).toHaveBeenCalledWith(
+        "Failed to save: DB error",
+        expect.objectContaining({ duration: Infinity }),
+      );
     });
   });
 

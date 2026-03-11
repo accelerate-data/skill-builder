@@ -276,8 +276,6 @@ tests:
       - type: contains
         value: '"testStub":true'
       - type: contains
-        value: '"companionStub":true'
-      - type: contains
         value: '"failures":[]'
   - description: validate-skill-parameter-guard
     vars:

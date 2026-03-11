@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Play, Square } from "lucide-react";
-import { toast } from "sonner";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ChevronDown, ChevronRight, Play, Square, Wrench } from "lucide-react";
+import { toast } from "@/lib/toast";
 import { useNavigate, useSearch, useBlocker } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SkillPicker } from "@/components/refine/skill-picker";
-import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
+import { useAgentStore, flushMessageBuffer, type AgentMessage } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useTestStore } from "@/stores/test-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -122,22 +122,24 @@ function buildEvalPrompt(
 ${userPrompt}
 """
 
-Plan A (with skill "${skillName}" loaded):
+Plan A (Vibedata + ${skillName} skill):
 """
 ${withPlanText}
 """
 
-Plan B (no skill loaded):
+Plan B (Vibedata Only, no skill):
 """
 ${withoutPlanText}
 """
 
 Use the Evaluation Rubric from your context to compare the two plans.
 
-First, output bullet points (one per line) using:
-- \u2191 if Plan A (with skill) is meaningfully better on this dimension
-- \u2193 if Plan B (no skill) is meaningfully better on this dimension
-- \u2192 if both plans are similar, weak, or neither is clearly better
+First, output bullet points (one per line) in this exact format:
+- \u2191 **dimension name** — explanation why Plan A is meaningfully better
+- \u2193 **dimension name** — explanation why Plan B is meaningfully better
+- \u2192 **dimension name** — explanation why both are similar or neither is clearly better
+
+One bullet per evaluation dimension. Start each line with the direction symbol, then the **bolded dimension name**, then " — " and the explanation.
 
 Then output a "## Recommendations" section with 2-4 specific, actionable suggestions for how to improve the skill based on the evaluation. Focus on gaps where Plan A underperformed or where the skill could have provided more guidance.`;
 }
@@ -208,6 +210,15 @@ function evalRowBg(direction: EvalDirection): string {
   }
 }
 
+/** Render inline bold markdown (**text**) in a string as React nodes. */
+function renderInlineBold(text: string): React.ReactNode {
+  const parts = text.split(/\*\*(.+?)\*\*/);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) =>
+    i % 2 === 1 ? <strong key={i}>{part}</strong> : part,
+  );
+}
+
 /** Return the evaluator placeholder message based on phase. */
 function evalPlaceholder(phase: Phase, errorMessage: string | null): string {
   switch (phase) {
@@ -230,18 +241,150 @@ function scrollToBottom(ref: React.RefObject<HTMLDivElement | null>): void {
 // Sub-components
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Streaming content types
+// ---------------------------------------------------------------------------
+
+type ContentBlock =
+  | { type: "thinking"; thinking: string }
+  | { type: "tool_use"; name: string; input: Record<string, unknown> }
+  | { type: "text"; text: string };
+
+// Stable empty array — avoids Zustand re-render loop when selector returns []
+const NO_MESSAGES: AgentMessage[] = [];
+
+export function StreamingContent({
+  agentId,
+  phase,
+  idlePlaceholder,
+  scrollRef,
+}: {
+  agentId: string | null;
+  phase: Phase;
+  idlePlaceholder: string;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const messages = useAgentStore((s) =>
+    agentId ? (s.runs[agentId]?.messages ?? NO_MESSAGES) : NO_MESSAGES,
+  );
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
+
+  const blocks = useMemo<ContentBlock[]>(
+    () =>
+      messages
+        .filter((m) => m.type === "assistant")
+        .flatMap((m) => {
+          const content = (
+            m.raw?.message as Record<string, unknown> | undefined
+          )?.content;
+          return Array.isArray(content) ? (content as ContentBlock[]) : [];
+        }),
+    [messages],
+  );
+
+  useEffect(() => {
+    scrollToBottom(scrollRef);
+  }, [blocks.length, scrollRef]);
+
+  const toggle = useCallback((idx: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(idx) ? next.delete(idx) : next.add(idx);
+      return next;
+    });
+  }, []);
+
+  if (blocks.length === 0) {
+    return (
+      <p className="text-xs italic text-muted-foreground/40">
+        {phase === "idle" ? idlePlaceholder : "Waiting for agent response..."}
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {blocks.map((block, idx) => {
+        const isExpanded = expanded.has(idx);
+
+        if (block.type === "thinking") {
+          return (
+            <div key={idx} className="rounded border border-border/40 bg-muted/20">
+              <button
+                onClick={() => toggle(idx)}
+                className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left"
+              >
+                {isExpanded ? (
+                  <ChevronDown className="size-3 shrink-0 text-muted-foreground/40" />
+                ) : (
+                  <ChevronRight className="size-3 shrink-0 text-muted-foreground/40" />
+                )}
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/40">
+                  Thinking
+                </span>
+              </button>
+              {isExpanded && (
+                <pre className="px-3 pb-2.5 whitespace-pre-wrap font-mono text-xs leading-relaxed text-muted-foreground/40 italic">
+                  {block.thinking}
+                </pre>
+              )}
+            </div>
+          );
+        }
+
+        if (block.type === "tool_use") {
+          return (
+            <div key={idx} className="rounded border border-border/40 bg-muted/25">
+              <button
+                onClick={() => toggle(idx)}
+                className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left"
+              >
+                {isExpanded ? (
+                  <ChevronDown className="size-3 shrink-0 text-muted-foreground/50" />
+                ) : (
+                  <ChevronRight className="size-3 shrink-0 text-muted-foreground/50" />
+                )}
+                <Wrench className="size-3 shrink-0 text-muted-foreground/50" />
+                <span className="font-mono text-[10px] text-muted-foreground/60">
+                  {block.name}
+                </span>
+              </button>
+              {isExpanded && (
+                <pre className="px-3 pb-2.5 whitespace-pre-wrap font-mono text-xs leading-relaxed text-muted-foreground/50">
+                  {JSON.stringify(block.input, null, 2)}
+                </pre>
+              )}
+            </div>
+          );
+        }
+
+        // text block — always visible
+        return (
+          <pre
+            key={idx}
+            className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground/85"
+          >
+            {block.text}
+          </pre>
+        );
+      })}
+    </div>
+  );
+}
+
 interface PlanPanelProps {
   scrollRef: React.RefObject<HTMLDivElement | null>;
   text: string;
+  agentId?: string | null;
   phase: Phase;
   label: string;
-  badgeText: string;
+  badgeText: string | React.ReactNode;
   badgeClass: string;
   idlePlaceholder: string;
   cost?: number;
 }
 
-function PlanPanel({ scrollRef, text, phase, label, badgeText, badgeClass, idlePlaceholder, cost }: PlanPanelProps) {
+function PlanPanel({ scrollRef, text, agentId, phase, label, badgeText, badgeClass, idlePlaceholder, cost }: PlanPanelProps) {
   return (
     <>
       <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
@@ -258,12 +401,19 @@ function PlanPanel({ scrollRef, text, phase, label, badgeText, badgeClass, idleP
         )}
       </div>
       <div ref={scrollRef} className="flex-1 overflow-auto p-4">
-        {text ? (
+        {agentId !== undefined ? (
+          <StreamingContent
+            agentId={agentId}
+            phase={phase}
+            idlePlaceholder={idlePlaceholder}
+            scrollRef={scrollRef}
+          />
+        ) : text ? (
           <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-muted-foreground">
             {text}
           </pre>
         ) : (
-          <p className="text-xs text-muted-foreground/40 italic">
+          <p className="text-xs italic text-muted-foreground/40">
             {phase === "idle" ? idlePlaceholder : "Waiting for agent response..."}
           </p>
         )}
@@ -565,7 +715,7 @@ export default function TestPage() {
 
     // Start evaluator
     const ts = Date.now();
-    const evalId = `__test_baseline__-test-eval-${ts}`;
+    const evalId = `${state.selectedSkill.name}-test-eval-${ts}`;
     const evalPrompt = buildEvalPrompt(
       state.prompt,
       state.selectedSkill.name,
@@ -610,7 +760,8 @@ export default function TestPage() {
       "__test_baseline__",
       "test-eval",
       "test-evaluator",
-      state.transcriptLogDir,
+      undefined,                  // agentName — evaluator uses skill-test context, not a plugin agent
+      state.transcriptLogDir ?? undefined,  // transcriptLogDir
     ).catch((err) => {
       console.error("[test] Failed to start evaluator agent:", err);
       setState((prev) => ({
@@ -738,10 +889,15 @@ export default function TestPage() {
         .getState()
         .registerRun(withoutId, testModel, skillName, "test", syntheticTestSessionId);
 
-      // Wrap the prompt so plan agents know the domain context
-      const wrappedPrompt = `You are a data engineer and the user is trying to do the following task:\n\n${s.prompt}`;
+      // Prepend empty-workspace context so agents don't waste turns searching for
+      // existing code. The test workspace is always freshly created by prepareSkillTest.
+      const wrappedPrompt =
+        `Note: This is a brand new, empty project workspace. ` +
+        `No files, code, or directory structure exist yet.\n\n${s.prompt}`;
 
-      // Start both agents in parallel
+      // Start both agents in parallel using the vd-agent data-product-builder.
+      // With-skill: CLAUDE.md includes @-import of the skill under test.
+      // Baseline: vd-agent only, no skill context.
       await Promise.all([
         startAgent(
           withId,
@@ -754,7 +910,8 @@ export default function TestPage() {
           skillName,
           "test-with",
           "test-plan-with",
-          prepared.transcript_log_dir,
+          "data-product-builder",       // agentName → --agent data-product-builder
+          prepared.transcript_log_dir,  // transcriptLogDir
         ),
         startAgent(
           withoutId,
@@ -767,7 +924,8 @@ export default function TestPage() {
           "__test_baseline__",
           "test-without",
           "test-plan-without",
-          prepared.transcript_log_dir,
+          "data-product-builder",       // agentName → --agent data-product-builder
+          prepared.transcript_log_dir,  // transcriptLogDir
         ),
       ]);
     } catch (err) {
@@ -918,9 +1076,10 @@ export default function TestPage() {
             <PlanPanel
               scrollRef={withScrollRef}
               text={state.withText}
+              agentId={state.withAgentId}
               phase={state.phase}
               label="Agent Plan"
-              badgeText="with skill"
+              badgeText={state.selectedSkill ? `Vibedata + ${state.selectedSkill.name} skill` : "Vibedata + skill"}
               badgeClass="bg-[color-mix(in_oklch,var(--color-seafoam),transparent_85%)] text-[var(--color-seafoam)]"
               idlePlaceholder="Run a test to see the with-skill plan"
               cost={withCost}
@@ -943,11 +1102,12 @@ export default function TestPage() {
             <PlanPanel
               scrollRef={withoutScrollRef}
               text={state.withoutText}
+              agentId={state.withoutAgentId}
               phase={state.phase}
               label="Agent Plan"
-              badgeText="no skill"
+              badgeText="Vibedata Only"
               badgeClass="bg-[color-mix(in_oklch,var(--color-ocean),transparent_85%)] text-[var(--color-ocean)]"
-              idlePlaceholder="Run a test to see the no-skill plan"
+              idlePlaceholder="Run a test to see the baseline plan"
               cost={withoutCost}
             />
           </div>
@@ -978,7 +1138,27 @@ export default function TestPage() {
             {evalLines.length > 0 ? (
               <div className="space-y-4">
                 <div className="space-y-1">
-                  {evalLines.map((line, i) => (
+                  {evalLines.map((line, i) => {
+                    // Render markdown headers as styled section headings, not plain bullets
+                    const h1Match = line.direction === null && /^#{1}\s+(.+)/.exec(line.text);
+                    const h2Match = line.direction === null && /^#{2}\s+(.+)/.exec(line.text);
+                    const isSeparator = line.direction === null && /^-{3,}$/.test(line.text.trim());
+                    if (h1Match) {
+                      return (
+                        <p key={i} className="pb-1 text-xs font-semibold text-foreground">
+                          {h1Match[1]}
+                        </p>
+                      );
+                    }
+                    if (h2Match) {
+                      return (
+                        <p key={i} className="pb-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {h2Match[1]}
+                        </p>
+                      );
+                    }
+                    if (isSeparator) return <hr key={i} className="border-border/40" />;
+                    return (
                     <div
                       key={i}
                       className={cn(
@@ -992,10 +1172,11 @@ export default function TestPage() {
                         {evalDirectionIcon(line.direction)}
                       </span>
                       <span className="font-mono text-xs leading-relaxed text-foreground">
-                        {line.text}
+                        {renderInlineBold(line.text)}
                       </span>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {evalRecommendations && (

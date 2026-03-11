@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react"
 import { Loader2, DollarSign, Activity, TrendingUp, RotateCcw, ChevronUp, ChevronDown, CheckCircle2, XCircle } from "lucide-react"
 import type { UsageByDay } from "@/lib/types"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -230,7 +230,11 @@ export default function UsagePage() {
       toast.success("Usage data reset")
     } catch (err) {
       console.error("usage: reset failed", err)
-      toast.error(`Failed to reset usage: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity })
+      toast.error(`Failed to reset usage: ${err instanceof Error ? err.message : String(err)}`, {
+        duration: Infinity,
+        cause: err,
+        context: { operation: "usage_reset" },
+      })
     } finally {
       setResetting(false)
     }

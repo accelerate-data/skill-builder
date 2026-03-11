@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useState } from "react"
 import { open } from "@tauri-apps/plugin-dialog"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 import { FolderInput, Package, Github, Trash2 } from "lucide-react"
 import {
   Card,
@@ -78,7 +78,7 @@ export function WorkspaceSkillsTab() {
       console.error("[workspace-skills] parse failed:", err)
       toast.error(
         "Import failed: not a valid skill package.",
-        { duration: Infinity }
+        { duration: Infinity, cause: err, context: { operation: "workspace_skills_import_parse" } }
       )
     }
   }, [])
@@ -93,7 +93,11 @@ export function WorkspaceSkillsTab() {
         )
       } catch (err) {
         console.error("[workspace-skills] toggle failed:", err)
-        toast.error(`Failed to toggle: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity })
+        toast.error(`Failed to toggle: ${err instanceof Error ? err.message : String(err)}`, {
+          duration: Infinity,
+          cause: err,
+          context: { operation: "workspace_skills_toggle", skillId: skill.skill_id },
+        })
       }
     },
     [toggleActive]
@@ -107,7 +111,12 @@ export function WorkspaceSkillsTab() {
         toast.success(`Deleted "${skill.skill_name}"`, { id: toastId })
       } catch (err) {
         console.error("[workspace-skills] delete failed:", err)
-        toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId, duration: Infinity })
+        toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`, {
+          id: toastId,
+          duration: Infinity,
+          cause: err,
+          context: { operation: "workspace_skills_delete", skillId: skill.skill_id },
+        })
       }
     },
     [deleteSkill]
@@ -137,7 +146,11 @@ export function WorkspaceSkillsTab() {
         await setPurpose(skillId, newPurpose)
       } catch (err) {
         console.error("[workspace-skills] setPurpose failed:", err)
-        toast.error(`Failed to update purpose: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity })
+        toast.error(`Failed to update purpose: ${err instanceof Error ? err.message : String(err)}`, {
+          duration: Infinity,
+          cause: err,
+          context: { operation: "workspace_skills_set_purpose", skillId },
+        })
       }
     },
     [setPurpose]

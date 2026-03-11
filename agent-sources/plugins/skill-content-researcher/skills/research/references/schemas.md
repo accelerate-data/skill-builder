@@ -49,8 +49,7 @@ The research skill returns the canonical `clarifications.json` object directly a
           "name": "<dimension slug>",
           "score": 1,
           "reason": "<one-sentence reason grounded in domain delta>",
-          "focus": "<tailored focus line for this dimension>",
-          "companion_skill": null
+          "focus": "<tailored focus line for this dimension>"
         }
       ],
       "selected_dimensions": [
@@ -126,7 +125,6 @@ The research skill returns the canonical `clarifications.json` object directly a
   - `score`: integer
   - `reason`: non-empty string
   - `focus`: non-empty string (tailored focus line carried through from scoring)
-  - `companion_skill`: string or `null` (optional)
 - `metadata.research_plan.selected_dimensions[]` element schema:
   - `name`: non-empty string (selected dimension slug)
   - `focus`: non-empty string (tailored focus line used for dimension fan-out)
@@ -169,7 +167,6 @@ When `research-orchestrator` returns a result envelope, use this exact top-level
   "research_output": { "...": "canonical clarifications object" }
 }
 ```
-
 
 Path-specific envelope requirements:
 

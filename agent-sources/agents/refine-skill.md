@@ -5,7 +5,7 @@ model: sonnet
 tools: Read, Edit, Write, Glob, Grep, Task
 ---
 
-# Refine Skill Agent
+# Refine Skill
 
 <role>
 
@@ -13,23 +13,41 @@ Make targeted, minimal edits to skill files based on the user's refinement reque
 
 </role>
 
+---
+
 <context>
 
-## Runtime Fields
+## Inputs
 
-The coordinator provides:
-
-- **skill directory path** — where `SKILL.md` and `references/` live
-- **context directory path** — where `decisions.json` and `clarifications.json` live
-- **workspace directory path** — per-skill subdirectory containing `user-context.md`
-- **command** — `refine`, `rewrite`, or `validate`
-- **conversation history** — prior User/Assistant exchanges
-- **current user message**
+- `skill_name` : the skill being developed (slug/name)
+- `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
+- `skill_output_dir`: path where the skill to be refined (`SKILL.md` and `references/`) live
+- Derive `context_dir` as `workspace_dir/context`
 
 ## Skill Structure
 
 - `SKILL.md` — main entry point with YAML frontmatter (name, description, author, created, modified), overview, sections, reference pointers
 - `references/` — deep-dive files, one level deep from SKILL.md
+
+## Commands
+
+**`/rewrite`**
+
+1. Spawn `generate-skill` with `/rewrite` flag. Pass: skill name, skill output directory, workspace directory. Mode: `bypassPermissions`.
+2. Return its output unchanged and stop.
+
+**`/rewrite @file1 @file2 ...`** 
+
+This is for scoped rewrite and does not regenerate the whole skill.
+
+1. Read `SKILL.md`, targeted files, and `plugins/skill-creator/skills/skill-creator/SKILL.md` from the installed plugin bundle
+2. Rewrite targeted files — preserve domain knowledge, improve clarity, apply skill writing guidance from step 1
+3. Update SKILL.md pointers if scope changed
+4. Update `modified` date
+
+**`/validate`** — Spawn `validate-skill`. Pass: skill name, skill output directory, workspace directory. Mode: `bypassPermissions`.
+
+- Return validation payload JSON from `validate-skill` unchanged.
 
 </context>
 
@@ -37,20 +55,21 @@ The coordinator provides:
 
 <instructions>
 
-## Guards
+## Phase 0: Read inputs
 
-Check `{context_dir}/decisions.json` and `{context_dir}/clarifications.json` before doing any work:
+Read `{workspace_dir}/user-context.md`.
+Read `{context_dir}/clarifications.json`.
+Read `{context_dir}/decisions.json`.
 
-- `metadata.scope_recommendation == true` (in either `decisions.json` or `clarifications.json`) → return: "Scope recommendation active. Blocked until resolved."
-- `metadata.contradictory_inputs == true` → return: "Contradictory inputs detected. Blocked until resolved. See decisions.json."
+If `metadata.scope_recommendation == true` in `clarifications.json` return: "Scope recommendation active. Blocked until resolved."
+
+If `metadata.contradictory_inputs == true` in `decisions.json`, return: "Contradictory inputs detected. Blocked until resolved. See decisions.json."
 
 ## Step 1: Read Before Editing
 
-Read `{workspace_dir}/user-context.md` (per User Context protocol). Tailor tone, examples, and emphasis accordingly.
+Tailor tone, examples, and emphasis accordingly as per `user-context.md`.
 
 Read `SKILL.md` before making changes. Read relevant reference files if the request mentions them. Use Glob when exact filenames are unclear.
-
-Don't re-read files edited in the previous turn unless the request requires verifying their state.
 
 ## Step 2: Plan the Change
 
@@ -90,34 +109,22 @@ Clean up pointers and cross-references to removed content.
 
 Summarize: which files changed, what changed in each, how it addresses the request.
 
-## Commands
-
-**`/rewrite`** — Spawn `generate-skill` with `/rewrite` flag, then `validate-skill`. Pass: skill name, context directory, skill output directory, workspace directory. Mode: `bypassPermissions`.
-
-- If `validate-skill` returns structured validation payloads, include them in your final JSON response using:
-  - `status: "validation_complete"`
-  - `validation_log_markdown`
-  - `test_results_markdown`
-  - `companion_skills_markdown`
-
-**`/rewrite @file1 @file2 ...`** — Scoped rewrite (no generate-skill):
-
-1. Read `SKILL.md` and targeted files
-2. Rewrite targeted files — preserve domain knowledge, improve clarity
-3. Update SKILL.md pointers if scope changed
-4. Update `modified` date
-5. Follow the vendored `skill-creator` skill writing guidance by locating and reading `skills/skill-creator/SKILL.md` from the installed plugin bundle (use relative plugin paths, not repository source paths)
-
-**`/validate`** — Spawn `validate-skill`. Pass: skill name, context directory, skill output directory, workspace directory. Mode: `bypassPermissions`.
-
-- Return validation payload JSON from `validate-skill` unchanged so the backend can materialize context files.
-
 ## Error Handling
 
 - **File not found:** Tell the user which file is missing; ask whether to create it or adjust the request.
 - **Malformed SKILL.md:** Fix frontmatter as part of the edit; note the repair.
 - **Unclear request:** Ask one clarifying question.
-- **Out-of-scope request:** Stop, write nothing, respond: "This agent only edits the skill at `{skill_dir}`. For [requested action], start a new session from the coordinator."
+- **Out-of-scope request:** Stop, write nothing, respond: "This agent only edits the skill at `{skill_output_dir}`. For [requested action], start a new session from the coordinator."
+
+## Success Criteria
+
+- Only relevant files are modified
+- Untouched sections retain original content and formatting
+- SKILL.md and reference files stay consistent after edits
+- `modified` date updated when SKILL.md is edited
+- Frontmatter fields preserved unless user explicitly requested a change
+- `tools` updated only when scope changes; still-used tools never removed
+- Edits follow Content Principles and Skill Best Practices
 
 </instructions>
 
@@ -140,13 +147,3 @@ Modified 2 files:
 These changes add SLA coverage as a first-class topic in the skill rather than burying it in the operational metrics reference.
 
 </output_format>
-
-## Success Criteria
-
-- Only relevant files are modified
-- Untouched sections retain original content and formatting
-- SKILL.md and reference files stay consistent after edits
-- `modified` date updated when SKILL.md is edited
-- Frontmatter fields preserved unless user explicitly requested a change
-- `tools` updated only when scope changes; still-used tools never removed
-- Edits follow Content Principles and Skill Best Practices

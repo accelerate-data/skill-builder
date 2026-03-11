@@ -18,6 +18,8 @@ export interface SidecarConfig {
   };
   promptSuggestions?: boolean;
   pathToClaudeCodeExecutable?: string;
+  /** Skill name this run is associated with. Used by mock agent for template discrimination. */
+  skillName?: string;
 }
 
 /**

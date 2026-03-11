@@ -10,7 +10,7 @@ import * as path from "node:path";
  * Discover all installed plugins under <cwd>/.claude/plugins/.
  * Returns an absolute path for each subdirectory found there.
  */
-async function discoverInstalledPlugins(cwd: string): Promise<string[]> {
+export async function discoverInstalledPlugins(cwd: string): Promise<string[]> {
   const pluginsDir = path.join(cwd, ".claude", "plugins");
   try {
     const entries = await fs.readdir(pluginsDir);

@@ -8,7 +8,7 @@ import {
   RotateCcw,
   Loader2,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 
 import {
@@ -335,7 +335,11 @@ export default function WorkflowPage() {
 
     acquireLock(skillName).catch((err) => {
       if (mounted) {
-        toast.error(`Could not lock skill: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
+        toast.error(`Could not lock skill: ${err instanceof Error ? err.message : String(err)}`, {
+          duration: Infinity,
+          cause: err,
+          context: { operation: "workflow_acquire_lock", skillName },
+        });
         navigate({ to: "/" });
       }
     });
@@ -585,14 +589,14 @@ export default function WorkflowPage() {
       setActiveAgent(null);
 
       const finish = async () => {
-        // Backend-owned writes: step 0/1/2 return canonical artifact payload in
+        // Backend-owned writes: steps 0/1/2/3 return canonical artifact payload in
         // structured output; Rust validates and writes context files.
-        if ((step === 0 || step === 1 || step === 2) && completedAgentId) {
+        if ((step === 0 || step === 1 || step === 2 || step === 3) && completedAgentId) {
           const structuredOutput = extractStructuredResultPayload(completedAgentId);
           if (structuredOutput == null || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) {
-            // Step 1 requires a structured output object — treat missing/invalid as an error.
+            // Steps 1 and 3 require a structured output object — treat missing/invalid as an error.
             // Step 0 does not require it — continue normally without materialization.
-            if (step === 1) {
+            if (step === 1 || step === 3) {
               updateStepStatus(step, "error");
               setRunning(false);
               toast.error(
@@ -772,7 +776,11 @@ export default function WorkflowPage() {
         setReviewContent(content);
         setEditorDirty(false);
       } catch (err) {
-        toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
+        toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`, {
+          duration: Infinity,
+          cause: err,
+          context: { operation: "workflow_review_continue_save", skillName },
+        });
         return;
       }
     }
@@ -1048,7 +1056,11 @@ export default function WorkflowPage() {
       return true;
     } catch (err) {
       setSaveStatus("dirty"); // Revert to dirty on failure
-      toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
+      toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`, {
+        duration: Infinity,
+        cause: err,
+        context: { operation: "workflow_handle_save", skillName },
+      });
       return false;
     }
   }, [stepConfig?.clarificationsEditable, workspacePath, reviewContent, clarificationsData, skillName]);

@@ -5,8 +5,10 @@ import { fileURLToPath } from "url";
 import {
   buildStructuredMockResult,
   parsePromptPaths,
+  resolvePromptPathsAsync,
   resolveStepTemplate,
 } from "../mock-agent.js";
+import * as os from "os";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -42,6 +44,27 @@ describe("resolveStepTemplate", () => {
     expect(resolveStepTemplate("unknown-agent")).toBeNull();
     expect(resolveStepTemplate(undefined)).toBeNull();
   });
+
+  it("maps data-product-builder to test-plan-with for non-baseline skill names", () => {
+    expect(resolveStepTemplate("data-product-builder", { skillName: "my-skill" })).toBe("test-plan-with");
+    expect(resolveStepTemplate("data-product-builder", { skillName: "churn-analysis" })).toBe("test-plan-with");
+  });
+
+  it("maps data-product-builder to test-plan-without for __test_baseline__ skill name", () => {
+    expect(resolveStepTemplate("data-product-builder", { skillName: "__test_baseline__" })).toBe("test-plan-without");
+  });
+
+  it("maps data-product-builder to test-plan-without when config is absent", () => {
+    // Safe default: no config means treat as baseline
+    expect(resolveStepTemplate("data-product-builder", undefined)).toBe("test-plan-without");
+    expect(resolveStepTemplate("data-product-builder")).toBe("test-plan-without");
+  });
+
+  it("keeps backward-compat for legacy bare test-plan names", () => {
+    expect(resolveStepTemplate("test-plan-with")).toBe("test-plan-with");
+    expect(resolveStepTemplate("test-plan-without")).toBe("test-plan-without");
+    expect(resolveStepTemplate("test-evaluator")).toBe("test-evaluator");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -66,7 +89,8 @@ describe("parsePromptPaths", () => {
       "/home/user/my-skills/my-skill/context",
     );
     expect(paths.skillOutputDir).toBe("/home/user/my-skills/my-skill");
-    expect(paths.skillDir).toBeNull(); // not present in this prompt
+    // When "The skill directory is" is absent, skillDir falls back to skillOutputDir for mock destRoot
+    expect(paths.skillDir).toBe("/home/user/my-skills/my-skill");
   });
 
   it("extracts workspace + context from answer-evaluator prompt", () => {
@@ -99,6 +123,44 @@ describe("parsePromptPaths", () => {
     expect(paths.contextDir).toBeNull();
     expect(paths.skillOutputDir).toBeNull();
     expect(paths.skillDir).toBeNull();
+  });
+
+  it("derives contextDir from workspaceDir when only workspace in prompt (SDK protocol)", () => {
+    const prompt =
+      "The skill name is: my-skill. The workspace directory is: /Users/john/workspace/my-skill. " +
+      "Read user-context.md and .skill_output_dir from the workspace directory first. " +
+      "Derive context_dir as workspace_dir/context.";
+    const paths = parsePromptPaths(prompt);
+    expect(paths.workspaceDir).toBe("/Users/john/workspace/my-skill");
+    expect(paths.contextDir).toBe("/Users/john/workspace/my-skill/context");
+    expect(paths.skillOutputDir).toBeNull();
+    expect(paths.skillDir).toBeNull();
+  });
+});
+
+describe("resolvePromptPathsAsync", () => {
+  it("resolves skillOutputDir from .skill_output_dir when not in prompt", async () => {
+    const prompt =
+      "The skill name is: x. The workspace directory is: /tmp/ws/x. " +
+      "Read user-context.md and .skill_output_dir first.";
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "mock-agent-"));
+    try {
+      const workspaceDir = path.join(tmp, "x");
+      await fs.mkdir(workspaceDir, { recursive: true });
+      const skillOutputPath = path.join(tmp, "skill-out", "x");
+      await fs.writeFile(
+        path.join(workspaceDir, ".skill_output_dir"),
+        skillOutputPath,
+      );
+      const promptWithTmp = prompt.replace("/tmp/ws/x", workspaceDir);
+      const paths = await resolvePromptPathsAsync(promptWithTmp);
+      expect(paths.workspaceDir).toBe(workspaceDir);
+      expect(paths.contextDir).toBe(path.join(workspaceDir, "context"));
+      expect(paths.skillOutputDir).toBe(skillOutputPath);
+      expect(paths.skillDir).toBe(skillOutputPath);
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
   });
 });
 

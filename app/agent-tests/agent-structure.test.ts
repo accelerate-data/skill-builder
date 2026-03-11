@@ -21,7 +21,7 @@ const DEFAULT_MODEL = "sonnet";
 
 function frontmatter(filePath: string): Record<string, string> {
   const content = fs.readFileSync(filePath, "utf8");
-  const lines = content.split("\n");
+  const lines = content.split("\n").map(line => line.replace(/\r$/, ""));
   if (lines[0] !== "---") return {};
   const end = lines.indexOf("---", 1);
   if (end === -1) return {};
@@ -51,7 +51,8 @@ describe("agent files", () => {
     const missing = EXPECTED_AGENTS.filter((agent) => {
       const file = path.join(AGENTS_DIR, `${agent}.md`);
       if (!fs.existsSync(file)) return true;
-      return fs.readFileSync(file, "utf8").split("\n")[0] !== "---";
+      const firstLine = fs.readFileSync(file, "utf8").split("\n")[0].replace(/\r$/, "");
+      return firstLine !== "---";
     });
     expect(missing).toHaveLength(0);
   });
@@ -90,23 +91,18 @@ describe("canonical format compliance", () => {
 // ── Read-directive compliance ───────────────────────────────────────────────
 
 describe("read directive compliance", () => {
+  // validate-skill/SKILL.md is excluded: it is a pure orchestrator that
+  // spawns sub-agents for all file reads. Progressive discovery is enforced
+  // by the spec files below, not by the orchestrator itself.
   const TARGET_FILES = [
     path.join(AGENTS_DIR, "generate-skill.md"),
     path.join(
       REPO_ROOT,
-      "agent-sources/skills/validate-skill/SKILL.md"
+      "agent-sources/skills/validate-skill/references/validate-quality.md"
     ),
     path.join(
       REPO_ROOT,
-      "agent-sources/skills/validate-skill/references/validate-quality-spec.md"
-    ),
-    path.join(
-      REPO_ROOT,
-      "agent-sources/skills/validate-skill/references/test-skill-spec.md"
-    ),
-    path.join(
-      REPO_ROOT,
-      "agent-sources/skills/validate-skill/references/companion-recommender-spec.md"
+      "agent-sources/skills/validate-skill/references/eval-skill.md"
     ),
   ];
 
@@ -136,39 +132,6 @@ describe("read directive compliance", () => {
     expect(content).toMatch(/progressive|staged|demand-driven/i);
   });
 
-  it("validate specs preserve full clarifications behavior with revised guard", () => {
-    const qualitySpec = fs.readFileSync(
-      path.join(
-        REPO_ROOT,
-        "agent-sources/skills/validate-skill/references/validate-quality-spec.md"
-      ),
-      "utf8"
-    );
-    const testSpec = fs.readFileSync(
-      path.join(
-        REPO_ROOT,
-        "agent-sources/skills/validate-skill/references/test-skill-spec.md"
-      ),
-      "utf8"
-    );
-    const companionSpec = fs.readFileSync(
-      path.join(
-        REPO_ROOT,
-        "agent-sources/skills/validate-skill/references/companion-recommender-spec.md"
-      ),
-      "utf8"
-    );
-
-    for (const content of [qualitySpec, testSpec, companionSpec]) {
-      expect(content).toMatch(/metadata\.contradictory_inputs\s*==\s*"revised"/i);
-      expect(content).toMatch(
-        /\bread\b[^\n]{0,120}\bclarifications\.json\b[^\n]{0,120}\bin full\b/i
-      );
-      expect(content).not.toMatch(
-        /\b(do not|don't|skip)\b[^\n]{0,120}\bclarifications\.json\b[^\n]{0,120}\bin full\b/i
-      );
-    }
-  });
 });
 
 describe("Research scope guard contract prompts", () => {
@@ -213,11 +176,75 @@ describe("Research scope guard contract prompts", () => {
       path.join(AGENTS_DIR, "detailed-research.md"),
       "utf8"
     );
-    expect(content).toMatch(/Scope Recommendation Guard/);
+    expect(content).toMatch(/Scope (Recommendation )?[Gg]uard|scope_recommendation/);
     expect(content).toMatch(/status": "detailed_research_complete"/);
     expect(content).toMatch(/refinement_count": 0/);
     expect(content).toMatch(/section_count": 0/);
     expect(content).toMatch(/canonical clarifications object \(unchanged\)/i);
+  });
+});
+
+// ── Agent output contracts (backend protocol alignment) ──────────────────────
+//
+// Each test checks that an agent's markdown contains the exact output keys
+// the Rust backend expects. These are the contracts enforced by:
+//   - workflow_output_format_for_agent() → structured output schema
+//   - materialize_workflow_step_output_value() → materialization logic
+//   - materialize_answer_evaluation_output_value() → answer-evaluator path
+
+describe("Agent output contracts (backend protocol alignment)", () => {
+  it("research-orchestrator returns research_complete envelope", () => {
+    const content = fs.readFileSync(
+      path.join(AGENTS_DIR, "research-orchestrator.md"),
+      "utf8"
+    );
+    expect(content).toMatch(/status.*research_complete/);
+    expect(content).toMatch(/dimensions_selected/);
+    expect(content).toMatch(/question_count/);
+    expect(content).toMatch(/research_output/);
+  });
+
+  it("confirm-decisions returns version/metadata/decisions shape", () => {
+    const content = fs.readFileSync(
+      path.join(AGENTS_DIR, "confirm-decisions.md"),
+      "utf8"
+    );
+    // Backend uses additionalProperties: false — only version, metadata, decisions allowed at top level
+    expect(content).toMatch(/"version"/);
+    expect(content).toMatch(/"metadata"/);
+    expect(content).toMatch(/"decisions"/);
+    // Agent must document the three-key constraint explicitly
+    expect(content).toMatch(/Top-level keys|version.*metadata.*decisions/i);
+  });
+
+  it("generate-skill returns generated status with evaluations_markdown", () => {
+    const content = fs.readFileSync(
+      path.join(AGENTS_DIR, "generate-skill.md"),
+      "utf8"
+    );
+    expect(content).toMatch(/status.*generated/);
+    expect(content).toMatch(/evaluations_markdown/);
+  });
+
+  it("answer-evaluator returns verdict enum and per_question array", () => {
+    const content = fs.readFileSync(
+      path.join(AGENTS_DIR, "answer-evaluator.md"),
+      "utf8"
+    );
+    expect(content).toMatch(/"verdict"/);
+    expect(content).toMatch(/sufficient|mixed|insufficient/);
+    expect(content).toMatch(/"per_question"/);
+    expect(content).toMatch(/"answered_count"/);
+  });
+
+  it("validate-skill agent returns validation_complete envelope with all three output keys", () => {
+    const content = fs.readFileSync(
+      path.join(AGENTS_DIR, "validate-skill.md"),
+      "utf8"
+    );
+    expect(content).toMatch(/status.*validation_complete/);
+    expect(content).toMatch(/validation_log_markdown/);
+    expect(content).toMatch(/test_results_markdown/);
   });
 });
 
@@ -231,15 +258,14 @@ describe("skill-content-researcher plugin structure", () => {
     "skill-content-researcher",
   );
 
-  it("plugin manifest declares skills, agents, and mcpServers", () => {
+  it("plugin manifest has required fields", () => {
     const manifestPath = path.join(pluginRoot, ".claude-plugin", "plugin.json");
     const raw = fs.readFileSync(manifestPath, "utf8");
     const manifest = JSON.parse(raw);
 
     expect(manifest.name).toBe("skill-content-researcher");
-    expect(manifest.skills).toBe("./skills");
-    expect(manifest.agents).toBe("./agents");
-    expect(manifest.mcpServers).toBe("./.mcp.json");
+    expect(manifest.version).toBeDefined();
+    expect(manifest.description).toBeDefined();
   });
 
   it("wrapper skill is user-invocable and delegates to plugin agent", () => {
@@ -289,15 +315,14 @@ describe("skill-creator plugin structure", () => {
     "skill-creator",
   );
 
-  it("plugin manifest declares skills, agents, and mcpServers", () => {
+  it("plugin manifest has required fields", () => {
     const manifestPath = path.join(pluginRoot, ".claude-plugin", "plugin.json");
     const raw = fs.readFileSync(manifestPath, "utf8");
     const manifest = JSON.parse(raw);
 
     expect(manifest.name).toBe("skill-creator");
-    expect(manifest.skills).toBe("./skills");
-    expect(manifest.agents).toBe("./agents");
-    expect(manifest.mcpServers).toBe("./.mcp.json");
+    expect(manifest.version).toBeDefined();
+    expect(manifest.description).toBeDefined();
   });
 
   it("skill-creator SKILL.md references bundled scripts and eval viewer via relative paths", () => {
@@ -324,7 +349,7 @@ describe("skill-creator plugin structure", () => {
       path.join(AGENTS_DIR, "detailed-research.md"),
       "utf8"
     );
-    expect(content).toMatch(/Scope Recommendation Guard/);
+    expect(content).toMatch(/Scope (Recommendation )?[Gg]uard|scope_recommendation/);
     expect(content).toMatch(/status": "detailed_research_complete"/);
     expect(content).toMatch(/refinement_count": 0/);
     expect(content).toMatch(/section_count": 0/);

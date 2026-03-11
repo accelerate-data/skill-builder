@@ -40,7 +40,6 @@ export interface ClarificationsResearchPlanDimensionScore {
   score: number;
   reason: string;
   focus: string;
-  companion_skill?: string | null;
 }
 
 export interface ClarificationsResearchPlanSelectedDimension {

@@ -736,13 +736,11 @@ fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Valu
             "type": "json_schema",
             "schema": {
                 "type": "object",
-                "required": ["decisions_json"],
+                "required": ["version", "metadata", "decisions"],
                 "properties": {
-                    "decisions_json": { "type": "object" },
-                    "call_trace": {
-                        "type": "array",
-                        "items": { "type": "string" }
-                    }
+                    "version": { "type": "string" },
+                    "metadata": { "type": "object" },
+                    "decisions": { "type": "array" }
                 },
                 "additionalProperties": false
             }
@@ -754,11 +752,7 @@ fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Valu
                 "required": ["status", "evaluations_markdown"],
                 "properties": {
                     "status": { "type": "string", "const": "generated" },
-                    "evaluations_markdown": { "type": "string", "minLength": 1 },
-                    "call_trace": {
-                        "type": "array",
-                        "items": { "type": "string" }
-                    }
+                    "evaluations_markdown": { "type": "string", "minLength": 1 }
                 },
                 "additionalProperties": false
             }
@@ -828,15 +822,11 @@ fn validate_clarifications_json(clarifications: &serde_json::Value) -> Result<()
                 section_idx
             ));
         }
+        let default_questions = Vec::new();
         let questions = section_obj
             .get("questions")
             .and_then(|v| v.as_array())
-            .ok_or_else(|| {
-                format!(
-                    "clarifications_json.sections[{}].questions must be an array",
-                    section_idx
-                )
-            })?;
+            .unwrap_or(&default_questions);
 
         for (question_idx, question) in questions.iter().enumerate() {
             let question_obj = question.as_object().ok_or_else(|| {
@@ -1011,14 +1001,8 @@ fn materialize_workflow_step_output_value(
             Ok(())
         }
         2 => {
-            let decisions = payload
-                .get("decisions_json")
-                .ok_or_else(|| "structured_output.decisions_json is required".to_string())?;
-            if !decisions.is_object() {
-                return Err("structured_output.decisions_json must be an object".to_string());
-            }
-            let decisions_pretty = serde_json::to_string_pretty(decisions)
-                .map_err(|e| format!("Failed to serialize decisions_json: {}", e))?;
+            let decisions_pretty = serde_json::to_string_pretty(&serde_json::Value::Object(payload.clone()))
+                .map_err(|e| format!("Failed to serialize decisions: {}", e))?;
             let decisions_path = context_dir.join("decisions.json");
             std::fs::write(&decisions_path, decisions_pretty).map_err(|e| {
                 format!(
@@ -1072,7 +1056,17 @@ pub fn materialize_workflow_step_output(
     let workspace_path = read_workspace_path(&db)
         .ok_or_else(|| "Workspace path not configured. Please set it in Settings.".to_string())?;
     let skill_root = Path::new(&workspace_path).join(&skill_name);
-    materialize_workflow_step_output_value(&skill_root, step_id, &structured_output)
+    materialize_workflow_step_output_value(&skill_root, step_id, &structured_output).map_err(
+        |e| {
+            log::error!(
+                "[materialize_workflow_step_output] skill={} step={} failed: {}",
+                skill_name,
+                step_id,
+                e
+            );
+            e
+        },
+    )
 }
 
 fn answer_evaluator_output_format() -> serde_json::Value {
@@ -1285,7 +1279,14 @@ pub fn materialize_answer_evaluation_output(
         structured_output
     );
     let workspace_dir = Path::new(&workspace_path).join(&skill_name);
-    materialize_answer_evaluation_output_value(&workspace_dir, &structured_output)
+    materialize_answer_evaluation_output_value(&workspace_dir, &structured_output).map_err(|e| {
+        log::error!(
+            "[materialize_answer_evaluation_output] skill={} failed: {}",
+            skill_name,
+            e
+        );
+        e
+    })
 }
 
 /// Write `user-context.md` to the context directory so that sub-agents
@@ -1475,30 +1476,44 @@ pub fn write_user_context_file(
     }
 }
 
+/// Writes `workspace_dir/.skill_output_dir` with the absolute path to the skill output directory.
+/// Agents read this file to derive the skill output path; call before every agent run so the
+/// prompt only needs skill name and workspace_dir.
+pub(crate) fn write_skill_output_dir_file(workspace_dir: &Path, skill_output_dir: &Path) {
+    let path = workspace_dir.join(".skill_output_dir");
+    let content = skill_output_dir.to_string_lossy().replace('\\', "/");
+    if let Err(e) = std::fs::write(&path, &content) {
+        log::warn!(
+            "[write_skill_output_dir_file] Failed to write {}: {}",
+            path.display(),
+            e
+        );
+    } else {
+        log::debug!(
+            "[write_skill_output_dir_file] Wrote .skill_output_dir ({} bytes) to {}",
+            content.len(),
+            workspace_dir.display()
+        );
+    }
+}
+
 fn build_prompt(
     skill_name: &str,
     workspace_path: &str,
-    skills_path: &str,
+    _skills_path: &str,
     author_login: Option<&str>,
     created_at: Option<&str>,
     max_dimensions: u32,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
-    let context_dir = Path::new(workspace_path).join(skill_name).join("context");
-    let skill_output_dir = Path::new(skills_path).join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    let context_str = context_dir.to_string_lossy().replace('\\', "/");
-    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
     let mut prompt = format!(
-        "The skill name is: {}. \
-         The workspace directory is: {}. \
-         The context directory is: {}. \
-         The skill output directory (SKILL.md and references/) is: {}. \
+        "The skill name is: {}. The workspace directory is: {}. \
+         Read user-context.md and .skill_output_dir from the workspace directory first. \
+         Derive context_dir as workspace_dir/context. The skill output directory (SKILL.md and references/) is the path in .skill_output_dir. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
         skill_name,
         workspace_str,
-        context_str,
-        skill_output_str,
     );
 
     if let Some(author) = author_login {
@@ -1518,7 +1533,7 @@ fn build_prompt(
         max_dimensions
     ));
 
-    prompt.push_str(" Read user-context.md from the workspace directory for purpose, description, and all user context. The workspace directory may contain other files written by the workflow (such as answer-evaluation.json) — read only the files explicitly named in your agent instructions. Do not read the logs/ directory or any file not named in your instructions.");
+    prompt.push_str(" The workspace directory may contain other files written by the workflow (such as answer-evaluation.json) — read only the files explicitly named in your agent instructions. Do not read the logs/ directory or any file not named in your instructions.");
 
     prompt
 }
@@ -1739,6 +1754,10 @@ async fn run_workflow_step_inner(
         settings.disable_model_invocation,
     );
 
+    let workspace_dir = Path::new(workspace_path).join(skill_name);
+    let skill_output_dir = Path::new(&settings.skills_path).join(skill_name);
+    write_skill_output_dir_file(&workspace_dir, &skill_output_dir);
+
     let prompt = build_prompt(
         skill_name,
         workspace_path,
@@ -1795,6 +1814,7 @@ async fn run_workflow_step_inner(
         agent_name: Some(agent_name),
         required_plugins,
         conversation_history: None,
+        skill_name: None,
     };
 
     sidecar::spawn_sidecar(
@@ -1908,6 +1928,15 @@ pub async fn run_workflow_step(
         &settings,
     )
     .await
+    .map_err(|e| {
+        log::error!(
+            "[run_workflow_step] skill={} step={} failed: {}",
+            skill_name,
+            step_id,
+            e
+        );
+        e
+    })
 }
 
 #[tauri::command]
@@ -2107,9 +2136,23 @@ pub fn save_workflow_state(
         current_step,
         &effective_status,
         &purpose,
-    )?;
+    )
+    .map_err(|e| {
+        log::error!("[save_workflow_state] save_workflow_run failed skill={}: {}", skill_name, e);
+        e
+    })?;
     for step in &step_statuses {
-        crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status)?;
+        crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status).map_err(
+            |e| {
+                log::error!(
+                    "[save_workflow_state] save_workflow_step failed skill={} step={}: {}",
+                    skill_name,
+                    step.step_id,
+                    e
+                );
+                e
+            },
+        )?;
     }
 
     // Auto-commit when a step is completed.
@@ -2318,7 +2361,7 @@ pub async fn run_answer_evaluator(
 
     // Read settings from DB — same pattern as read_workflow_settings but without
     // step-specific validation (this is a gate, not a workflow step).
-    let (api_key, workspace_path_from_settings, industry, function_role, intake_json, preferred_model) = {
+    let (api_key, skills_path, industry, function_role, intake_json, preferred_model) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
             log::error!("run_answer_evaluator: failed to read settings: {}", e);
@@ -2331,10 +2374,11 @@ pub async fn run_answer_evaluator(
                 return Err("Anthropic API key not configured".to_string());
             }
         };
-        let wp = settings.workspace_path.ok_or_else(|| {
+        let _wp = settings.workspace_path.ok_or_else(|| {
             log::error!("run_answer_evaluator: workspace_path not configured");
             "Workspace path not configured".to_string()
         })?;
+        let sp = settings.skills_path.unwrap_or_else(|| workspace_path.clone());
         let run_row = crate::db::get_workflow_run(&conn, &skill_name)
             .ok()
             .flatten();
@@ -2343,7 +2387,7 @@ pub async fn run_answer_evaluator(
         let model = resolve_model_id("haiku");
         (
             key,
-            wp,
+            sp,
             settings.industry,
             settings.function_role,
             ij,
@@ -2368,21 +2412,21 @@ pub async fn run_answer_evaluator(
         None,
     );
 
-    let context_dir = std::path::Path::new(&workspace_path_from_settings)
-        .join(&skill_name)
-        .join("context");
-    let workspace_dir = std::path::Path::new(&workspace_path).join(&skill_name);
-    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    let context_str = context_dir.to_string_lossy().replace('\\', "/");
+    let workspace_dir = Path::new(&workspace_path).join(&skill_name);
+    let skill_output_dir = Path::new(&skills_path).join(&skill_name);
+    write_skill_output_dir_file(&workspace_dir, &skill_output_dir);
 
-    // Point agent at workspace and context dirs; user-context.md is already written.
+    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+
+    // SDK calling protocol: only skill name and workspace_dir; agent reads user-context and .skill_output_dir first.
     let prompt = format!(
-        "The workspace directory is: {workspace}. \
-         The context directory is: {context}. \
+        "The skill name is: {}. The workspace directory is: {}. \
+         Read user-context.md and .skill_output_dir from the workspace directory first. \
+         Derive context_dir as workspace_dir/context. \
          All directories already exist — do not create any directories. \
-         Read {workspace}/user-context.md for purpose, description, and all user context. Use it to evaluate answers in the user's specific domain.",
-        workspace = workspace_str,
-        context = context_str,
+         Use user-context.md to evaluate answers in the user's specific domain.",
+        skill_name,
+        workspace_str,
     );
 
     log::debug!("run_answer_evaluator: prompt={}", prompt);
@@ -2412,6 +2456,7 @@ pub async fn run_answer_evaluator(
         agent_name: Some("answer-evaluator".to_string()),
         required_plugins: None,
         conversation_history: None,
+        skill_name: None,
     };
 
     sidecar::spawn_sidecar(
@@ -3492,10 +3537,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
         let payload = serde_json::json!({
-            "decisions_json": {
-                "metadata": { "decision_count": 1, "conflicts_resolved": 0, "round": 1 },
-                "decisions": [{ "id": "D1", "title": "Capability", "decision": "A" }]
-            }
+            "version": "1",
+            "metadata": { "decision_count": 1, "conflicts_resolved": 0, "round": 1 },
+            "decisions": [{ "id": "D1", "title": "Capability", "decision": "A" }]
         });
         super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
         assert!(skill_root.join("context/decisions.json").exists());
@@ -3506,9 +3550,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
         let payload = serde_json::json!({
-            "decisions_json": {
-                "metadata": { "scope_recommendation": true, "decision_count": 0 }
-            }
+            "version": "1",
+            "metadata": { "scope_recommendation": true, "decision_count": 0 },
+            "decisions": []
         });
         super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
         let content = std::fs::read_to_string(skill_root.join("context/decisions.json")).unwrap();
@@ -3522,9 +3566,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
         let payload = serde_json::json!({
-            "decisions_json": {
-                "metadata": { "decision_count": 2, "contradictory_inputs": true }
-            }
+            "version": "1",
+            "metadata": { "decision_count": 2, "contradictory_inputs": true },
+            "decisions": []
         });
         super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
         assert!(parse_decisions_guard(&skill_root.join("context/decisions.json")));
@@ -3535,9 +3579,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
         let payload = serde_json::json!({
-            "decisions_json": {
-                "metadata": { "decision_count": 2, "contradictory_inputs": false }
-            }
+            "version": "1",
+            "metadata": { "decision_count": 2, "contradictory_inputs": false },
+            "decisions": []
         });
         super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
         assert!(!parse_decisions_guard(&skill_root.join("context/decisions.json")));
@@ -3550,24 +3594,6 @@ mod tests {
         let err = super::materialize_workflow_step_output_value(&skill_root, 2, &serde_json::json!(null))
             .unwrap_err();
         assert!(err.contains("structured_output must be a JSON object"));
-    }
-
-    #[test]
-    fn test_materialize_step2_rejects_missing_or_invalid_decisions_json() {
-        let tmp = tempfile::tempdir().unwrap();
-        let skill_root = tmp.path().join("my-skill");
-
-        let missing = serde_json::json!({});
-        let err_missing =
-            super::materialize_workflow_step_output_value(&skill_root, 2, &missing).unwrap_err();
-        assert!(err_missing.contains("structured_output.decisions_json is required"));
-
-        let non_object = serde_json::json!({
-            "decisions_json": "not-an-object"
-        });
-        let err_non_object =
-            super::materialize_workflow_step_output_value(&skill_root, 2, &non_object).unwrap_err();
-        assert!(err_non_object.contains("structured_output.decisions_json must be an object"));
     }
 
     #[test]
@@ -3635,13 +3661,12 @@ mod tests {
             5,
         );
         assert!(prompt.contains("my-skill"));
-        // 3 distinct paths in prompt
+        // SDK protocol: only skill name and workspace_dir; agent derives context and reads .skill_output_dir
         assert!(prompt
             .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
-        assert!(
-            prompt.contains("The context directory is: /home/user/.vibedata/skill-builder/my-skill/context")
-        );
-        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
+        assert!(prompt.contains("Read user-context.md and .skill_output_dir"));
+        assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
+        assert!(prompt.contains("path in .skill_output_dir"));
     }
 
     #[test]
@@ -3689,36 +3714,27 @@ mod tests {
 
     #[test]
     fn test_answer_evaluator_prompt_uses_standard_paths() {
-        // The answer-evaluator prompt must follow the same "workspace directory" /
-        // "context directory" pattern as build_prompt so the mock agent and real
-        // agent can parse paths consistently.
+        // The answer-evaluator prompt follows the SDK protocol: only skill name and workspace_dir.
         let workspace_path = "/home/user/.vibedata/skill-builder";
-        let skills_path = "/home/user/my-skills";
         let skill_name = "my-skill";
-
-        let context_dir = std::path::Path::new(skills_path)
-            .join(skill_name)
-            .join("context");
         let workspace_dir = std::path::Path::new(workspace_path).join(skill_name);
+        let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
 
         let prompt = format!(
-            "The workspace directory is: {workspace}. \
-             The context directory is: {context}. \
+            "The skill name is: {}. The workspace directory is: {}. \
+             Read user-context.md and .skill_output_dir from the workspace directory first. \
+             Derive context_dir as workspace_dir/context. \
              All directories already exist — do not create any directories.",
-            workspace = workspace_dir.to_string_lossy().replace('\\', "/"),
-            context = context_dir.to_string_lossy().replace('\\', "/"),
+            skill_name,
+            workspace_str,
         );
 
-        // Verify standard path markers that mock agent and agent prompts rely on
+        assert!(prompt.contains("The skill name is: my-skill"));
         assert!(prompt
-            .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill."));
-        assert!(prompt.contains("The context directory is: /home/user/my-skills/my-skill/context."));
+            .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
+        assert!(prompt.contains("Read user-context.md and .skill_output_dir"));
+        assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
         assert!(prompt.contains("do not create any directories"));
-        // Workspace dir is NOT context dir (answer-evaluation.json goes to workspace)
-        assert_ne!(
-            workspace_dir.to_str().unwrap(),
-            context_dir.to_str().unwrap(),
-        );
     }
 
     #[test]

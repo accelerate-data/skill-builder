@@ -10,9 +10,6 @@ on:
   pull_request:
     branches:
       - main
-    paths-ignore:
-      - '**/*.md'
-      - 'LICENSE'
 
 permissions:
   contents: read
@@ -32,6 +29,9 @@ jobs:
           cache-dependency-path: |
             app/package-lock.json
             app/sidecar/package-lock.json
+
+      - name: Upgrade npm to v11
+        run: npm install -g npm@11
 
       - name: Install npm dependencies
         working-directory: app
@@ -76,3 +76,4 @@ jobs:
       - name: Clippy
         working-directory: app/src-tauri
         run: cargo clippy -- -D warnings
+

@@ -19,16 +19,16 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mockNavigate,
 }));
 
-// Mock sonner — use vi.hoisted so the object is available in hoisted vi.mock factory
+// Mock toast wrapper — use vi.hoisted so the object is available in hoisted vi.mock factory
 const mockToast = vi.hoisted(() => ({
   success: vi.fn(),
   error: vi.fn(),
   info: vi.fn(),
+  warning: vi.fn(),
+  loading: vi.fn(() => "toast-id"),
+  dismiss: vi.fn(),
 }));
-vi.mock("sonner", () => ({
-  toast: mockToast,
-  Toaster: () => null,
-}));
+vi.mock("@/lib/toast", () => ({ toast: mockToast }));
 
 // Mock @/lib/tauri
 vi.mock("@/lib/tauri", () => ({
@@ -252,8 +252,20 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Agent completes step 3 (generate)
+    // Agent completes step 3 (generate) with required structured output
     act(() => {
+      useAgentStore.getState().addMessage("agent-build", {
+        type: "result",
+        content: undefined,
+        raw: {
+          result: "Skill generated.",
+          structured_output: {
+            status: "generated",
+            evaluations_markdown: "## Scenario 1\n- input\n- expected output\n",
+          },
+        },
+        timestamp: Date.now(),
+      });
       useAgentStore.getState().completeRun("agent-build", true);
     });
 
@@ -981,6 +993,68 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("error");
     });
+    expect(mockToast.error).toHaveBeenCalled();
+  });
+
+  it("passes step 3 structured payload to backend materialization", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().updateStepStatus(2, "completed");
+    useWorkflowStore.getState().setCurrentStep(3);
+    useWorkflowStore.getState().updateStepStatus(3, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-step3-structured", "sonnet");
+
+    render(<WorkflowPage />);
+
+    const payload = {
+      status: "generated",
+      evaluations_markdown: "## Scenario 1\n- input\n- expected output\n",
+    };
+
+    act(() => {
+      useAgentStore.getState().addMessage("agent-step3-structured", {
+        type: "result",
+        content: undefined,
+        raw: { result: "Skill generated.", structured_output: payload },
+        timestamp: Date.now(),
+      });
+      useAgentStore.getState().completeRun("agent-step3-structured", true);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(materializeWorkflowStepOutput)).toHaveBeenCalledWith(
+        "test-skill",
+        3,
+        payload
+      );
+      expect(useWorkflowStore.getState().steps[3].status).toBe("completed");
+    });
+  });
+
+  it("step 3 errors when structured output payload is missing", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().updateStepStatus(2, "completed");
+    useWorkflowStore.getState().setCurrentStep(3);
+    useWorkflowStore.getState().updateStepStatus(3, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-missing-step3", "sonnet");
+
+    render(<WorkflowPage />);
+
+    act(() => {
+      useAgentStore.getState().completeRun("agent-missing-step3", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[3].status).toBe("error");
+    });
+    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
     expect(mockToast.error).toHaveBeenCalled();
   });
 
