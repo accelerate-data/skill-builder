@@ -213,7 +213,7 @@ export function ResearchSummaryCard({
   saveStatus,
   evaluating,
 }: ResearchSummaryCardProps) {
-  const [planExpanded, setPlanExpanded] = useState(true);
+  const [planExpanded, setPlanExpanded] = useState(false);
   const plan = parseResearchPlanFromClarifications(clarificationsData)
     ?? parseResearchPlan(researchPlan ?? "");
   const meta = clarificationsData.metadata;
