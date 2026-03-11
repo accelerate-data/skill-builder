@@ -754,7 +754,7 @@ fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Valu
                     "status": { "type": "string", "const": "generated" },
                     "evaluations_markdown": { "type": "string", "minLength": 1 }
                 },
-                "additionalProperties": false
+                "additionalProperties": true
             }
         })),
         _ => None,
