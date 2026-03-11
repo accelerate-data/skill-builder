@@ -637,3 +637,141 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     await expect(page.getByRole("button", { name: "Reset Step" })).toBeVisible({ timeout: 5_000 });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Contradictions guard — multi-decision scenarios
+// ---------------------------------------------------------------------------
+
+const MULTI_CONTRADICTION_DECISIONS = JSON.stringify({
+  version: "1",
+  metadata: {
+    decision_count: 3,
+    conflicts_resolved: 0,
+    round: 1,
+    contradictory_inputs: true,
+  },
+  decisions: [
+    {
+      id: "D1",
+      title: "Revenue Model",
+      original_question: "Should we track revenue?",
+      decision: "Track MRR",
+      implication: "Contradicts Q5 answer",
+      status: "needs-review",
+    },
+    {
+      id: "D2",
+      title: "Pipeline Scope",
+      original_question: "What pipeline stages?",
+      decision: "All stages",
+      implication: "Contradicts Q3 top-of-funnel",
+      status: "needs-review",
+    },
+    {
+      id: "D3",
+      title: "Format",
+      original_question: "Output format?",
+      decision: "JSON",
+      implication: "Clear",
+      status: "resolved",
+    },
+  ],
+});
+
+/** Step 2 completed with multi-contradiction decisions, step 3 disabled. */
+const CONTRADICTION_GUARD_OVERRIDES: Record<string, unknown> = {
+  ...WORKFLOW_OVERRIDES,
+  get_workflow_state: {
+    run: { current_step: 2, purpose: "domain" },
+    steps: [
+      { step_id: 0, status: "completed" },
+      { step_id: 1, status: "completed" },
+      { step_id: 2, status: "completed" },
+    ],
+  },
+  get_disabled_steps: [3],
+  save_decisions_content: undefined,
+  read_file: {
+    "/tmp/test-workspace/test-skill/context/decisions.json": MULTI_CONTRADICTION_DECISIONS,
+    "/tmp/test-skills/test-skill/context/decisions.json": MULTI_CONTRADICTION_DECISIONS,
+    "/tmp/test-workspace/test-skill/context/clarifications.json": "{\"version\":\"1\",\"metadata\":{\"title\":\"Test\",\"question_count\":1,\"section_count\":1,\"refinement_count\":0,\"must_answer_count\":0,\"priority_questions\":[]},\"sections\":[],\"notes\":[]}",
+    "*": "",
+  },
+};
+
+test.describe("Contradictions guard — multi-decision", { tag: "@workflow" }, () => {
+  test("step 4 shows Skipped when contradictions disable it", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, CONTRADICTION_GUARD_OVERRIDES);
+
+    // Step 3 (Confirm Decisions) should be current and completed
+    await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
+
+    // Step 4 (Generate Skill) should show "Skipped" in the sidebar
+    await expect(page.getByText("Skipped")).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("shows contradictions banner and 2 needs-review decisions", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, CONTRADICTION_GUARD_OVERRIDES);
+    await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
+
+    // Contradictions banner visible
+    await expect(page.getByText(/Contradictory inputs detected/)).toBeVisible({ timeout: 5_000 });
+
+    // 2 needs-review badges
+    const needsReviewBadges = page.locator("span").filter({ hasText: "needs-review" });
+    await expect(needsReviewBadges).toHaveCount(2);
+  });
+
+  test("editing one of two needs-review decisions does NOT clear contradictions", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, CONTRADICTION_GUARD_OVERRIDES);
+    await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
+
+    // Edit only D1
+    const d1Textarea = page.locator("textarea").filter({ hasText: "Track MRR" }).first();
+    await d1Textarea.fill("Track ARR instead.");
+
+    // Wait for autosave debounce
+    await page.waitForTimeout(2000);
+
+    // Contradictions banner should STILL be visible (D2 not yet edited)
+    await expect(page.getByText(/Contradictory inputs detected/)).toBeVisible();
+
+    // Revised banner should NOT be visible
+    await expect(page.getByText(/Contradictions reviewed/)).not.toBeVisible();
+
+    // Step 4 should still show "Skipped"
+    await expect(page.getByText("Skipped")).toBeVisible();
+  });
+
+  test("editing ALL needs-review decisions clears contradictions and enables step 4", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, CONTRADICTION_GUARD_OVERRIDES);
+    await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
+
+    // Edit D1
+    const d1Textarea = page.locator("textarea").filter({ hasText: "Track MRR" }).first();
+    await d1Textarea.fill("Track ARR instead.");
+
+    // Edit D2
+    const d2Textarea = page.locator("textarea").filter({ hasText: "All stages" }).first();
+    await d2Textarea.fill("Top-of-funnel only.");
+
+    // Dynamically update mock so getDisabledSteps returns [] after save
+    await page.evaluate(() => {
+      const w = window as unknown as Record<string, unknown>;
+      const overrides = w.__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
+      overrides.get_disabled_steps = [];
+    });
+
+    // Wait for autosave debounce + guard refresh
+    await page.waitForTimeout(2500);
+
+    // Revised banner should appear
+    await expect(page.getByText(/Contradictions reviewed/)).toBeVisible({ timeout: 5_000 });
+
+    // Contradictions banner should be gone
+    await expect(page.getByText(/Contradictory inputs detected/)).not.toBeVisible();
+
+    // Step 4 should no longer show "Skipped"
+    await expect(page.getByText("Skipped")).not.toBeVisible({ timeout: 5_000 });
+  });
+});
