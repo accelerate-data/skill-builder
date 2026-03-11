@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mockInvoke } from "@/test/mocks/tauri";
+import { useWorkflowStore } from "@/stores/workflow-store";
 import {
   useAgentStore,
   flushMessageBuffer,
@@ -1126,6 +1127,36 @@ describe("completeRun persistence with modelUsageBreakdown", () => {
       expect(a.numTurns).toBe(5);
       expect(a.stopReason).toBe("end_turn");
     }
+  });
+
+  it("uses workflow context captured at startRun, not at completeRun (attribution stability)", () => {
+    // Arrange: workflow is at session-A / step 3 when the run starts
+    vi.spyOn(useWorkflowStore, "getState").mockReturnValue({
+      ...useWorkflowStore.getState(),
+      workflowSessionId: "session-A",
+      currentStep: 3,
+    });
+
+    useAgentStore.getState().startRun("attr-agent", "sonnet");
+    mockInvoke.mockClear();
+
+    // Simulate navigation / session reset before the run completes
+    vi.spyOn(useWorkflowStore, "getState").mockReturnValue({
+      ...useWorkflowStore.getState(),
+      workflowSessionId: null,
+      currentStep: 0,
+    });
+
+    useAgentStore.getState().completeRun("attr-agent", true);
+
+    const persistCalls = (mockInvoke.mock.calls as [string, Record<string, unknown>][]).filter(
+      ([cmd]) => cmd === "persist_agent_run",
+    );
+    expect(persistCalls).toHaveLength(1);
+    const args = persistCalls[0][1] as Record<string, unknown>;
+    // Must reflect start-time context, not the changed ambient state
+    expect(args.workflowSessionId).toBe("session-A");
+    expect(args.stepId).toBe(3);
   });
 
   it("persists when tokenUsage is missing but modelUsageBreakdown exists", () => {
