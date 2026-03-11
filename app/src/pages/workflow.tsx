@@ -280,19 +280,25 @@ export default function WorkflowPage() {
     // don't pick up a completed run from another workflow.
     clearRuns();
 
-    // Reset immediately so stale state from another skill doesn't linger
-    initWorkflow(skillName);
-
-    // Read workflow state from SQLite
-    getWorkflowState(skillName)
-      .then((state) => {
+    // Read workflow state and disabled steps in parallel — they are independent
+    // IPC calls (SQLite vs filesystem reads).
+    Promise.all([
+      getWorkflowState(skillName),
+      getDisabledSteps(skillName).catch(() => [] as number[]),
+    ])
+      .then(([state, disabled]) => {
         if (cancelled) return;
+
+        // Initialize workflow with purpose from saved state (single init, no double render)
+        initWorkflow(skillName, state.run?.purpose);
+
+        // Apply disabled steps immediately
+        useWorkflowStore.getState().setDisabledSteps(disabled);
+
         if (!state.run) {
           setHydrated(true);
           return;
         }
-
-        initWorkflow(skillName, state.run.purpose);
 
         const completedIds = state.steps
           .filter((s) => s.status === "completed")
@@ -302,15 +308,6 @@ export default function WorkflowPage() {
         } else {
           setHydrated(true);
         }
-
-        // Restore disabled steps (scope recommendation) after hydration
-        getDisabledSteps(skillName)
-          .then((disabled) => {
-            if (!cancelled) {
-              useWorkflowStore.getState().setDisabledSteps(disabled);
-            }
-          })
-          .catch(() => {}); // Non-fatal
       })
       .catch(() => {
         setHydrated(true);
