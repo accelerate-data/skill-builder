@@ -453,6 +453,21 @@ export async function buildStructuredMockResult(
     };
   }
 
+  if (stepTemplate === "step3-generate-skill") {
+    const skillMd = await readTextIfExists(
+      path.join(outputsRoot, "step3", "SKILL.md"),
+    );
+    if (!skillMd) return null;
+    return {
+      status: "generated",
+      evaluations_markdown:
+        "## Mock Evaluation\n\n" +
+        "- **Completeness:** All required sections present.\n" +
+        "- **Accuracy:** Patterns match domain best practices.\n" +
+        "- **Actionability:** Code examples are copy-paste ready.\n",
+    };
+  }
+
   if (stepTemplate === "gate-answer-evaluator") {
     return readJsonIfExists(
       path.join(outputsRoot, "gate-answer-evaluator", "answer-evaluation.json"),
