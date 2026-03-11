@@ -1,0 +1,717 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { MessageProcessor } from "../message-processor.js";
+import type { DisplayItem, DisplayItemEnvelope } from "../display-types.js";
+
+/** Helper to extract DisplayItems from processed output. */
+function extractDisplayItems(output: Record<string, unknown>[]): DisplayItem[] {
+  return output
+    .filter((o) => o.type === "display_item")
+    .map((o) => (o as DisplayItemEnvelope).item);
+}
+
+/** Helper to extract pass-through messages (non-display_item). */
+function extractPassThrough(output: Record<string, unknown>[]): Record<string, unknown>[] {
+  return output.filter((o) => o.type !== "display_item");
+}
+
+describe("MessageProcessor", () => {
+  let processor: MessageProcessor;
+
+  beforeEach(() => {
+    processor = new MessageProcessor();
+  });
+
+  // =========================================================================
+  // Classification / filtering
+  // =========================================================================
+
+  describe("filtering", () => {
+    it("filters config messages (hardNoise)", () => {
+      const out = processor.process({ type: "config", config: { model: "sonnet" } });
+      expect(out).toHaveLength(0);
+    });
+
+    it("filters sdk_stderr messages", () => {
+      const out = processor.process({
+        type: "system",
+        subtype: "sdk_stderr",
+        data: "debug info",
+      });
+      expect(out).toHaveLength(0);
+    });
+
+    it("filters turn_complete messages", () => {
+      const out = processor.process({ type: "turn_complete" });
+      expect(out).toHaveLength(0);
+    });
+
+    it("forwards system init messages as-is", () => {
+      const raw = { type: "system", subtype: "init_start", timestamp: 123 };
+      const out = processor.process(raw);
+      expect(out).toHaveLength(1);
+      expect(out[0]).toBe(raw);
+    });
+
+    it("forwards sdk_ready as-is", () => {
+      const raw = { type: "system", subtype: "sdk_ready", timestamp: 456 };
+      const out = processor.process(raw);
+      expect(out).toHaveLength(1);
+      expect(out[0]).toBe(raw);
+    });
+  });
+
+  // =========================================================================
+  // Assistant message decomposition
+  // =========================================================================
+
+  describe("assistant messages", () => {
+    it("decomposes text block into output DisplayItem", () => {
+      const raw = {
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "Hello, world!" }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      };
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+
+      expect(items).toHaveLength(1);
+      expect(items[0].type).toBe("output");
+      expect(items[0].outputText).toBe("Hello, world!");
+      expect(items[0].id).toBeDefined();
+      expect(items[0].timestamp).toBeGreaterThan(0);
+    });
+
+    it("decomposes thinking block into thinking DisplayItem", () => {
+      const raw = {
+        type: "assistant",
+        message: {
+          content: [{ type: "thinking", thinking: "Let me analyze..." }],
+        },
+      };
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+
+      expect(items).toHaveLength(1);
+      expect(items[0].type).toBe("thinking");
+      expect(items[0].thinkingText).toBe("Let me analyze...");
+    });
+
+    it("decomposes tool_use block into tool_call DisplayItem with pending status", () => {
+      const raw = {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tu-abc",
+              name: "Read",
+              input: { file_path: "/src/foo.ts" },
+            },
+          ],
+        },
+      };
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+
+      expect(items).toHaveLength(1);
+      expect(items[0].type).toBe("tool_call");
+      expect(items[0].toolName).toBe("Read");
+      expect(items[0].toolUseId).toBe("tu-abc");
+      expect(items[0].toolStatus).toBe("pending");
+      expect(items[0].toolSummary).toBe("Reading foo.ts");
+      expect(items[0].toolInput).toEqual({ file_path: "/src/foo.ts" });
+    });
+
+    it("decomposes multiple content blocks into separate DisplayItems", () => {
+      const raw = {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "thinking", thinking: "First think..." },
+            { type: "text", text: "Here is my analysis." },
+            {
+              type: "tool_use",
+              id: "tu-1",
+              name: "Bash",
+              input: { command: "ls -la" },
+            },
+          ],
+        },
+      };
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+
+      expect(items).toHaveLength(3);
+      expect(items[0].type).toBe("thinking");
+      expect(items[1].type).toBe("output");
+      expect(items[2].type).toBe("tool_call");
+    });
+
+    it("preserves text alongside tool_use (no silent discard)", () => {
+      const raw = {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "text", text: "Let me read that file." },
+            {
+              type: "tool_use",
+              id: "tu-2",
+              name: "Read",
+              input: { file_path: "/foo.ts" },
+            },
+          ],
+        },
+      };
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+
+      expect(items).toHaveLength(2);
+      expect(items[0].type).toBe("output");
+      expect(items[0].outputText).toBe("Let me read that file.");
+      expect(items[1].type).toBe("tool_call");
+    });
+
+    it("forwards raw assistant message for usage tracking", () => {
+      const raw = {
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "hi" }],
+          usage: { input_tokens: 100, output_tokens: 50 },
+        },
+      };
+      const out = processor.process(raw);
+      const passThrough = extractPassThrough(out);
+
+      expect(passThrough).toHaveLength(1);
+      expect(passThrough[0]).toBe(raw);
+    });
+  });
+
+  // =========================================================================
+  // Tool call → result linking
+  // =========================================================================
+
+  describe("tool call linking", () => {
+    it("links tool_result to pending tool_call with ok status", () => {
+      // Step 1: tool_use in assistant message
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tu-link-1",
+              name: "Read",
+              input: { file_path: "/test.ts" },
+            },
+          ],
+        },
+      });
+      expect(processor.pendingToolCallCount).toBe(1);
+
+      // Step 2: tool_result in user message
+      const out = processor.process({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tu-link-1",
+              content: "file contents here",
+            },
+          ],
+        },
+      });
+
+      const items = extractDisplayItems(out);
+      expect(items).toHaveLength(1);
+      expect(items[0].type).toBe("tool_call");
+      expect(items[0].toolUseId).toBe("tu-link-1");
+      expect(items[0].toolStatus).toBe("ok");
+      expect(items[0].toolResult).toEqual({
+        content: "file contents here",
+        isError: false,
+      });
+      expect(items[0].toolDurationMs).toBeGreaterThanOrEqual(0);
+      expect(processor.pendingToolCallCount).toBe(0);
+    });
+
+    it("links tool_result with error status", () => {
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tu-err-1",
+              name: "Bash",
+              input: { command: "false" },
+            },
+          ],
+        },
+      });
+
+      const out = processor.process({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tu-err-1",
+              content: "exit code 1",
+              is_error: true,
+            },
+          ],
+        },
+      });
+
+      const items = extractDisplayItems(out);
+      expect(items[0].toolStatus).toBe("error");
+      expect(items[0].toolResult?.isError).toBe(true);
+    });
+
+    it("handles orphaned tool_result (no matching pending call)", () => {
+      const out = processor.process({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tu-nonexistent",
+              content: "orphan",
+            },
+          ],
+        },
+      });
+
+      // No display items emitted for orphaned results
+      const items = extractDisplayItems(out);
+      expect(items).toHaveLength(0);
+    });
+
+    it("marks pending tool calls as orphaned on result message", () => {
+      // Create a pending tool call
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tu-orphan-1",
+              name: "Read",
+              input: { file_path: "/x.ts" },
+            },
+          ],
+        },
+      });
+      expect(processor.pendingToolCallCount).toBe(1);
+
+      // Result arrives without tool_result for tu-orphan-1
+      const out = processor.process({
+        type: "result",
+        subtype: "success",
+        usage: { input_tokens: 100, output_tokens: 50 },
+        total_cost_usd: 0.01,
+      });
+
+      const items = extractDisplayItems(out);
+      // Should have: orphaned tool call update + result item
+      const orphaned = items.filter((i) => i.toolStatus === "orphaned");
+      const resultItems = items.filter((i) => i.type === "result");
+
+      expect(orphaned).toHaveLength(1);
+      expect(orphaned[0].toolUseId).toBe("tu-orphan-1");
+      expect(resultItems).toHaveLength(1);
+      expect(processor.pendingToolCallCount).toBe(0);
+    });
+  });
+
+  // =========================================================================
+  // Subagent grouping
+  // =========================================================================
+
+  describe("subagent grouping", () => {
+    it("creates subagent DisplayItem for Task tool_use", () => {
+      const raw = {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tu-task-1",
+              name: "Task",
+              input: {
+                description: "Research entities",
+                subagent_type: "Explore",
+                prompt: "Find all entity definitions",
+              },
+            },
+          ],
+        },
+      };
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+
+      expect(items).toHaveLength(1);
+      expect(items[0].type).toBe("subagent");
+      expect(items[0].subagentDescription).toBe("Research entities");
+      expect(items[0].subagentType).toBe("Explore");
+      expect(items[0].subagentStatus).toBe("running");
+      expect(items[0].toolUseId).toBe("tu-task-1");
+      expect(processor.activeSubagentCount).toBe(1);
+    });
+
+    it("groups child messages under parent subagent", () => {
+      // Step 1: Create subagent
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tu-parent-1",
+              name: "Task",
+              input: { description: "Research" },
+            },
+          ],
+        },
+      });
+
+      // Step 2: Child assistant message with parent_tool_use_id
+      const childOut = processor.process({
+        type: "assistant",
+        parent_tool_use_id: "tu-parent-1",
+        message: {
+          content: [{ type: "text", text: "Found 3 entities." }],
+        },
+      });
+      const childItems = extractDisplayItems(childOut);
+      expect(childItems).toHaveLength(1);
+      expect(childItems[0].parentToolUseId).toBe("tu-parent-1");
+
+      // Step 3: Complete subagent via tool_result
+      const completeOut = processor.process({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tu-parent-1",
+              content: "Research complete",
+            },
+          ],
+        },
+      });
+      const completeItems = extractDisplayItems(completeOut);
+
+      // Should have: tool_call update + subagent update
+      const subagentUpdates = completeItems.filter(
+        (i) => i.type === "subagent",
+      );
+      expect(subagentUpdates).toHaveLength(1);
+      expect(subagentUpdates[0].subagentStatus).toBe("complete");
+      expect(subagentUpdates[0].subagentItems).toHaveLength(1);
+      expect(subagentUpdates[0].subagentItems![0].type).toBe("output");
+      expect(processor.activeSubagentCount).toBe(0);
+    });
+
+    it("handles subagent error", () => {
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tu-sub-err",
+              name: "Task",
+              input: { description: "Failing task" },
+            },
+          ],
+        },
+      });
+
+      const out = processor.process({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tu-sub-err",
+              content: "Task failed",
+              is_error: true,
+            },
+          ],
+        },
+      });
+      const items = extractDisplayItems(out);
+      const subagent = items.find((i) => i.type === "subagent");
+      expect(subagent?.subagentStatus).toBe("error");
+    });
+  });
+
+  // =========================================================================
+  // Result message dual-emit
+  // =========================================================================
+
+  describe("result messages", () => {
+    it("dual-emits display_item and raw result for success", () => {
+      const raw = {
+        type: "result",
+        subtype: "success",
+        usage: { input_tokens: 5000, output_tokens: 2000 },
+        total_cost_usd: 0.05,
+        stop_reason: "end_turn",
+        structured_output: { status: "done" },
+      };
+      const out = processor.process(raw);
+
+      const items = extractDisplayItems(out);
+      const passThrough = extractPassThrough(out);
+
+      expect(items).toHaveLength(1);
+      expect(items[0].type).toBe("result");
+      expect(items[0].resultStatus).toBe("success");
+      expect(items[0].outputText_result).toBe("Agent completed");
+
+      expect(passThrough).toHaveLength(1);
+      expect(passThrough[0]).toBe(raw);
+    });
+
+    it("handles error result with error_max_turns", () => {
+      const raw = {
+        type: "result",
+        subtype: "error_max_turns",
+        is_error: true,
+        usage: { input_tokens: 100 },
+      };
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+
+      expect(items[0].resultStatus).toBe("error");
+      expect(items[0].errorSubtype).toBe("error_max_turns");
+      expect(items[0].outputText_result).toBe(
+        "Agent reached the maximum number of turns allowed.",
+      );
+    });
+
+    it("handles refusal result", () => {
+      const raw = {
+        type: "result",
+        subtype: "success",
+        stop_reason: "refusal",
+        usage: {},
+      };
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+
+      expect(items[0].resultStatus).toBe("refusal");
+    });
+
+    it("forwards raw result unchanged for structured_output extraction", () => {
+      const structuredOutput = { status: "complete", data: [1, 2, 3] };
+      const raw = {
+        type: "result",
+        subtype: "success",
+        structured_output: structuredOutput,
+        usage: { input_tokens: 10, output_tokens: 5 },
+        total_cost_usd: 0.001,
+      };
+      const out = processor.process(raw);
+      const passThrough = extractPassThrough(out);
+
+      expect(passThrough[0]).toBe(raw);
+      expect((passThrough[0] as Record<string, unknown>).structured_output).toBe(
+        structuredOutput,
+      );
+    });
+  });
+
+  // =========================================================================
+  // Error messages
+  // =========================================================================
+
+  describe("error messages", () => {
+    it("creates error DisplayItem and forwards raw", () => {
+      const raw = { type: "error", error: "API rate limit exceeded" };
+      const out = processor.process(raw);
+
+      const items = extractDisplayItems(out);
+      const passThrough = extractPassThrough(out);
+
+      expect(items).toHaveLength(1);
+      expect(items[0].type).toBe("error");
+      expect(items[0].errorMessage).toBe("API rate limit exceeded");
+
+      expect(passThrough).toHaveLength(1);
+      expect(passThrough[0]).toBe(raw);
+    });
+
+    it("handles error with message field instead of error field", () => {
+      const raw = { type: "error", message: "Connection timeout" };
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+
+      expect(items[0].errorMessage).toBe("Connection timeout");
+    });
+  });
+
+  // =========================================================================
+  // Compact boundary
+  // =========================================================================
+
+  describe("compact boundary", () => {
+    it("emits compact_boundary DisplayItem and forwards raw", () => {
+      const raw = {
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { pre_tokens: 50000 },
+        timestamp: 12345,
+      };
+      const out = processor.process(raw);
+
+      const items = extractDisplayItems(out);
+      const passThrough = extractPassThrough(out);
+
+      expect(items).toHaveLength(1);
+      expect(items[0].type).toBe("compact_boundary");
+
+      expect(passThrough).toHaveLength(1);
+      expect(passThrough[0]).toBe(raw);
+    });
+  });
+
+  // =========================================================================
+  // Tool summary computation
+  // =========================================================================
+
+  describe("tool summaries", () => {
+    const toolSummaryTests: [string, Record<string, unknown>, string][] = [
+      ["Read", { file_path: "/src/components/app.tsx" }, "Reading app.tsx"],
+      ["Write", { file_path: "/src/index.ts" }, "Writing index.ts"],
+      ["Edit", { file_path: "/lib/utils.ts" }, "Editing utils.ts"],
+      ["Bash", { command: "npm run test" }, "Running: npm run test"],
+      ["Grep", { pattern: "TODO", path: "/src/lib" }, 'Grep: "TODO" in lib'],
+      ["Glob", { pattern: "**/*.tsx" }, "Glob: **/*.tsx"],
+      ["WebSearch", { query: "vitest mocking" }, 'Web search: "vitest mocking"'],
+    ];
+
+    it.each(toolSummaryTests)(
+      "computes summary for %s tool",
+      (toolName, input, expectedSummary) => {
+        const out = processor.process({
+          type: "assistant",
+          message: {
+            content: [
+              { type: "tool_use", id: `tu-sum-${toolName}`, name: toolName, input },
+            ],
+          },
+        });
+        const items = extractDisplayItems(out);
+        expect(items[0].toolSummary).toBe(expectedSummary);
+      },
+    );
+  });
+
+  // =========================================================================
+  // State machine integrity
+  // =========================================================================
+
+  describe("state machine", () => {
+    it("handles multiple tool calls in parallel", () => {
+      // Two tool_use blocks in one message
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "tu-p1", name: "Read", input: { file_path: "/a.ts" } },
+            { type: "tool_use", id: "tu-p2", name: "Read", input: { file_path: "/b.ts" } },
+          ],
+        },
+      });
+      expect(processor.pendingToolCallCount).toBe(2);
+
+      // Result for first
+      processor.process({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "tu-p1", content: "a contents" },
+          ],
+        },
+      });
+      expect(processor.pendingToolCallCount).toBe(1);
+
+      // Result for second
+      processor.process({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "tu-p2", content: "b contents" },
+          ],
+        },
+      });
+      expect(processor.pendingToolCallCount).toBe(0);
+    });
+
+    it("handles result before all tool results arrive (orphaning)", () => {
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "tu-late-1", name: "Read", input: { file_path: "/x.ts" } },
+            { type: "tool_use", id: "tu-late-2", name: "Read", input: { file_path: "/y.ts" } },
+          ],
+        },
+      });
+
+      // Only resolve one
+      processor.process({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "tu-late-1", content: "x" },
+          ],
+        },
+      });
+      expect(processor.pendingToolCallCount).toBe(1);
+
+      // Result arrives
+      const out = processor.process({
+        type: "result",
+        subtype: "success",
+        usage: {},
+      });
+      const items = extractDisplayItems(out);
+      const orphaned = items.filter((i) => i.toolStatus === "orphaned");
+      expect(orphaned).toHaveLength(1);
+      expect(orphaned[0].toolUseId).toBe("tu-late-2");
+      expect(processor.pendingToolCallCount).toBe(0);
+    });
+
+    it("reset clears all state", () => {
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "tu-reset", name: "Read", input: {} },
+          ],
+        },
+      });
+      expect(processor.pendingToolCallCount).toBe(1);
+
+      processor.reset();
+      expect(processor.pendingToolCallCount).toBe(0);
+      expect(processor.activeSubagentCount).toBe(0);
+    });
+  });
+});

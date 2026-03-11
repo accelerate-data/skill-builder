@@ -1,4 +1,5 @@
 import type { SidecarConfig } from "./config.js";
+import { MessageProcessor } from "./message-processor.js";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -216,10 +217,13 @@ export async function runMockAgent(
   const lines = content.split("\n").filter((line) => line.trim());
   const structuredResultOverride = await buildStructuredMockResult(stepTemplate);
 
+  // Process mock template messages through MessageProcessor identically to live SDK
+  const processor = new MessageProcessor();
+
   let emittedResult = false;
   for (const line of lines) {
     if (externalSignal?.aborted) {
-      onMessage({
+      const cancelMsg: Record<string, unknown> = {
         type: "result",
         subtype: "error_during_execution",
         is_error: true,
@@ -229,7 +233,11 @@ export async function runMockAgent(
         num_turns: 0,
         total_cost_usd: 0,
         usage: { input_tokens: 0, output_tokens: 0 },
-      });
+      };
+      const items = processor.process(cancelMsg);
+      for (const item of items) {
+        onMessage(item as Record<string, unknown>);
+      }
       emittedResult = true;
       break;
     }
@@ -248,7 +256,11 @@ export async function runMockAgent(
         }
         emittedResult = true;
       }
-      onMessage(message);
+      // Process through MessageProcessor for display items
+      const items = processor.process(message);
+      for (const item of items) {
+        onMessage(item as Record<string, unknown>);
+      }
       // Short delay between messages for realistic UI streaming
       await delay(100);
     } catch {
@@ -260,7 +272,7 @@ export async function runMockAgent(
 
   // Safety net: always emit a result so the UI doesn't hang
   if (!emittedResult) {
-    onMessage({
+    const safetyResult: Record<string, unknown> = {
       type: "result",
       subtype: "success",
       result: `Mock: ${stepTemplate} completed`,
@@ -270,7 +282,11 @@ export async function runMockAgent(
       num_turns: 1,
       total_cost_usd: 0,
       usage: { input_tokens: 0, output_tokens: 0 },
-    });
+    };
+    const items = processor.process(safetyResult);
+    for (const item of items) {
+      onMessage(item as Record<string, unknown>);
+    }
   }
 }
 
