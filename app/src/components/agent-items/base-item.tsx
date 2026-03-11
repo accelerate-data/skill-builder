@@ -107,11 +107,11 @@ export function BaseItem({
   );
 
   if (!hasContent) {
-    return <div data-testid="base-item" className="min-w-0">{header}</div>;
+    return <div data-testid="base-item" className="min-w-0 w-full">{header}</div>;
   }
 
   return (
-    <div data-testid="base-item" className="min-w-0">
+    <div data-testid="base-item" className="min-w-0 w-full">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
@@ -127,7 +127,7 @@ export function BaseItem({
         }`}
       >
         <div
-          className="ml-[7px] pl-3 pt-1 pb-1 min-w-0 overflow-x-auto"
+          className="ml-[7px] pl-3 pr-2 pt-1 pb-1 min-w-0 overflow-x-auto"
           style={{ borderLeft: `3px solid ${borderColor}` }}
         >
           {children}
