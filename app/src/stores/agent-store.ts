@@ -182,6 +182,9 @@ interface AgentRun {
   runSource?: "workflow" | "refine" | "test";
   /** Optional synthetic session key used for non-workflow usage grouping. */
   usageSessionId?: string;
+  /** Workflow context captured at run start — used for attribution, never read from live store. */
+  capturedWorkflowSessionId?: string;
+  capturedStepId?: number;
 }
 
 interface AgentState {
@@ -269,8 +272,6 @@ function buildModelEntries(
 
 function resolvePersistenceContext(
   run: AgentRun | undefined,
-  workflowSessionId: string | null,
-  currentStep: number,
 ): { stepId: number; workflowSessionId?: string } {
   const runSourceStepId = run?.runSource === "refine"
     ? -10
@@ -278,8 +279,11 @@ function resolvePersistenceContext(
       ? -11
       : -1;
 
-  if (workflowSessionId) {
-    return { stepId: currentStep, workflowSessionId };
+  const capturedWorkflowSessionId = run?.capturedWorkflowSessionId ?? null;
+  const capturedStepId = run?.capturedStepId ?? -1;
+
+  if (capturedWorkflowSessionId) {
+    return { stepId: capturedStepId, workflowSessionId: capturedWorkflowSessionId };
   }
 
   if (!run) return { stepId: -1 };
@@ -315,6 +319,8 @@ export const useAgentStore = create<AgentState>((set) => ({
   startRun: (agentId, model) => {
     const workflow = useWorkflowStore.getState();
     const skillName = workflow.skillName ?? "unknown";
+    const capturedWorkflowSessionId = workflow.workflowSessionId ?? undefined;
+    const capturedStepId = workflow.currentStep;
 
     set((state) => {
       const existing = state.runs[agentId];
@@ -323,7 +329,7 @@ export const useAgentStore = create<AgentState>((set) => ({
           ...state.runs,
           [agentId]: existing
             ? // Run was auto-created by early messages — update model, keep messages
-              { ...existing, model, skillName, status: "running" as const }
+              { ...existing, model, skillName, status: "running" as const, capturedWorkflowSessionId, capturedStepId }
             : {
                 agentId,
                 model,
@@ -336,6 +342,8 @@ export const useAgentStore = create<AgentState>((set) => ({
                 compactionEvents: [],
                 thinkingEnabled: false,
                 runSource: "workflow",
+                capturedWorkflowSessionId,
+                capturedStepId,
               },
         },
         activeAgentId: agentId,
@@ -418,12 +426,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     // Persist agent run to SQLite (fire-and-forget). Do not require tokenUsage;
     // some runs only report modelUsage breakdown or partial result metadata.
     if (runBeforeUpdate) {
-      const workflow = useWorkflowStore.getState();
-      const persistenceContext = resolvePersistenceContext(
-        runBeforeUpdate,
-        workflow.workflowSessionId,
-        workflow.currentStep,
-      );
+      const persistenceContext = resolvePersistenceContext(runBeforeUpdate);
 
       // Count tool uses across all assistant messages
       let toolUseCount = 0;
@@ -441,7 +444,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       persistRunRows(
         {
           agentId,
-          skillName: runBeforeUpdate.skillName ?? workflow.skillName ?? "unknown",
+          skillName: runBeforeUpdate.skillName ?? "unknown",
           stepId: persistenceContext.stepId,
           status: success ? "completed" : "error",
           durationMs: Date.now() - runBeforeUpdate.startTime,
@@ -485,16 +488,11 @@ export const useAgentStore = create<AgentState>((set) => ({
 
     // Persist shutdown status with whatever partial data we have
     if (runBeforeUpdate) {
-      const workflow = useWorkflowStore.getState();
-      const persistenceContext = resolvePersistenceContext(
-        runBeforeUpdate,
-        workflow.workflowSessionId,
-        workflow.currentStep,
-      );
+      const persistenceContext = resolvePersistenceContext(runBeforeUpdate);
       persistRunRows(
         {
           agentId,
-          skillName: runBeforeUpdate.skillName ?? workflow.skillName ?? "unknown",
+          skillName: runBeforeUpdate.skillName ?? "unknown",
           stepId: persistenceContext.stepId,
           status: "shutdown" as const,
           durationMs: Date.now() - runBeforeUpdate.startTime,
