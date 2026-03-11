@@ -448,35 +448,14 @@ export async function buildStructuredMockResult(
   }
 
   if (stepTemplate === "step2-confirm-decisions") {
+    // The real agent returns { version, metadata, decisions } matching the
+    // outputFormat schema. Materialization writes the entire payload as
+    // decisions.json, so the mock must return the same shape — no envelope.
     const decisions = await readJsonIfExists(
       path.join(outputsRoot, "step2", "context", "decisions.json"),
     );
     if (!decisions) return null;
-    const metadata =
-      decisions.metadata &&
-      typeof decisions.metadata === "object" &&
-      !Array.isArray(decisions.metadata)
-        ? (decisions.metadata as JsonObject)
-        : {};
-    const decisionsArray = Array.isArray(decisions.decisions)
-      ? decisions.decisions
-      : [];
-    const decisionCount =
-      typeof metadata.decision_count === "number"
-        ? metadata.decision_count
-        : decisionsArray.length;
-    const conflictsResolved =
-      typeof metadata.conflicts_resolved === "number"
-        ? metadata.conflicts_resolved
-        : 0;
-    const round = typeof metadata.round === "number" ? metadata.round : 1;
-    return {
-      status: "confirm_decisions_complete",
-      decision_count: decisionCount,
-      conflicts_resolved: conflictsResolved,
-      round,
-      decisions_json: decisions,
-    };
+    return decisions;
   }
 
   if (stepTemplate === "step3-generate-skill") {

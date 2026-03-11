@@ -258,14 +258,14 @@ describe("buildStructuredMockResult", () => {
   });
 
   it("returns structured payload for step2-confirm-decisions", async () => {
+    // The mock now returns the raw { version, metadata, decisions } fixture
+    // matching the real agent's outputFormat schema (no envelope wrapping).
     const result = await buildStructuredMockResult("step2-confirm-decisions");
     expect(result).not.toBeNull();
     const payload = result as Record<string, unknown>;
-    expect(payload.status).toBe("confirm_decisions_complete");
-    expect(typeof payload.decision_count).toBe("number");
-    expect(typeof payload.conflicts_resolved).toBe("number");
-    expect(typeof payload.round).toBe("number");
-    expect(typeof payload.decisions_json).toBe("object");
+    expect(payload.version).toBe("1");
+    expect(typeof payload.metadata).toBe("object");
+    expect(Array.isArray(payload.decisions)).toBe(true);
   });
 
   it("returns structured payload for gate-answer-evaluator", async () => {
