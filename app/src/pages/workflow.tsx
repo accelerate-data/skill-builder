@@ -630,10 +630,8 @@ export default function WorkflowPage() {
           }
         }
 
-        // Refresh disabled steps so the UI blocks advance to guarded steps.
-        // Step 0: scope-recommendation may disable steps 1-3.
-        // Step 2: contradictory decisions may disable step 3.
-        if ((step === 0 || step === 2) && skillName) {
+        // Check for disabled steps before marking complete (so first render has correct state)
+        if (step === 0 && skillName) {
           try {
             const disabled = await getDisabledSteps(skillName);
             useWorkflowStore.getState().setDisabledSteps(disabled);
