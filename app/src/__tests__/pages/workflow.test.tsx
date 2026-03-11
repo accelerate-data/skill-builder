@@ -2413,10 +2413,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     useWorkflowStore.getState().setCurrentStep(3);
     useWorkflowStore.getState().updateStepStatus(3, "error");
 
-    // Capture onResetStep
-    let capturedOnResetStep: (() => void) | undefined;
-    vi.mocked(WorkflowStepComplete).mockImplementation(({ onResetStep }) => {
-      capturedOnResetStep = onResetStep;
+    vi.mocked(WorkflowStepComplete).mockImplementation(() => {
       return <div data-testid="step-complete" />;
     });
 

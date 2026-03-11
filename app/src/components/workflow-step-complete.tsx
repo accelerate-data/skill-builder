@@ -11,7 +11,9 @@ import {
   getStepAgentRuns,
   getContextFileContent,
   saveDecisionsContent,
+  getDisabledSteps,
 } from "@/lib/tauri";
+import { useWorkflowStore } from "@/stores/workflow-store";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
@@ -238,6 +240,10 @@ export function WorkflowStepComplete({
         await saveDecisionsContent(skillName, workspacePath, decisionsEditContent);
         setDecisionsEditorDirty(false);
         setDecisionsSaveStatus("saved");
+        // Refresh guard state — user edits may clear contradictions
+        // (e.g. contradictory_inputs changed from true to "revised").
+        const disabled = await getDisabledSteps(skillName);
+        useWorkflowStore.getState().setDisabledSteps(disabled);
       } catch (err) {
         console.error("Failed to save decisions.json:", err);
       }
