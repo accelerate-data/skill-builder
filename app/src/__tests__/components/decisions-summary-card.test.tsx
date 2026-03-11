@@ -13,9 +13,9 @@ const sampleDecisions = JSON.stringify({
     round: 1,
   },
   decisions: [
-    { id: "D1", title: "Customer Hierarchy", originalQuestion: "How many levels should the customer hierarchy support?", decision: "Two levels — parent company and subsidiary", implication: "Need a self-referencing FK in dim_customer", status: "resolved" },
-    { id: "D2", title: "Revenue Recognition", originalQuestion: "When should revenue be recognized?", decision: "Track full lifecycle with invoice as primary event", implication: "PM said \"at invoicing\" but also answered \"track bookings\" — both imply lifecycle tracking", status: "conflict-resolved" },
-    { id: "D3", title: "Pipeline Entry", originalQuestion: "Which stage marks pipeline entry?", decision: "Any stage beyond Prospecting", implication: "Straightforward filter on stage sequence", status: "resolved" },
+    { id: "D1", title: "Customer Hierarchy", original_question: "How many levels should the customer hierarchy support?", decision: "Two levels — parent company and subsidiary", implication: "Need a self-referencing FK in dim_customer", status: "resolved" },
+    { id: "D2", title: "Revenue Recognition", original_question: "When should revenue be recognized?", decision: "Track full lifecycle with invoice as primary event", implication: "PM said \"at invoicing\" but also answered \"track bookings\" — both imply lifecycle tracking", status: "conflict-resolved" },
+    { id: "D3", title: "Pipeline Entry", original_question: "Which stage marks pipeline entry?", decision: "Any stage beyond Prospecting", implication: "Straightforward filter on stage sequence", status: "resolved" },
   ],
 }, null, 2);
 
@@ -28,8 +28,8 @@ const contradictoryDecisions = JSON.stringify({
     contradictory_inputs: true,
   },
   decisions: [
-    { id: "D1", title: "Revenue Model", originalQuestion: "Should we track revenue?", decision: "Track MRR", implication: "Contradicts Q5 answer which said \"don't track revenue\"", status: "needs-review" },
-    { id: "D2", title: "Pipeline Scope", originalQuestion: "What's in scope?", decision: "All deals", implication: "Clear scope", status: "resolved" },
+    { id: "D1", title: "Revenue Model", original_question: "Should we track revenue?", decision: "Track MRR", implication: "Contradicts Q5 answer which said \"don't track revenue\"", status: "needs-review" },
+    { id: "D2", title: "Pipeline Scope", original_question: "What's in scope?", decision: "All deals", implication: "Clear scope", status: "resolved" },
   ],
 }, null, 2);
 
@@ -42,9 +42,9 @@ const multiContradictoryDecisions = JSON.stringify({
     contradictory_inputs: true,
   },
   decisions: [
-    { id: "D1", title: "Revenue Model", originalQuestion: "Should we track revenue?", decision: "Track MRR", implication: "Contradicts Q5", status: "needs-review" },
-    { id: "D2", title: "Pipeline Scope", originalQuestion: "What pipeline stages?", decision: "All stages", implication: "Contradicts Q3 which said top-of-funnel only", status: "needs-review" },
-    { id: "D3", title: "Resolved Item", originalQuestion: "Format?", decision: "JSON", implication: "Clear", status: "resolved" },
+    { id: "D1", title: "Revenue Model", original_question: "Should we track revenue?", decision: "Track MRR", implication: "Contradicts Q5", status: "needs-review" },
+    { id: "D2", title: "Pipeline Scope", original_question: "What pipeline stages?", decision: "All stages", implication: "Contradicts Q3 which said top-of-funnel only", status: "needs-review" },
+    { id: "D3", title: "Resolved Item", original_question: "Format?", decision: "JSON", implication: "Clear", status: "resolved" },
   ],
 }, null, 2);
 
@@ -174,7 +174,7 @@ describe("serializeDecisions — round-trip", () => {
       expect(reparsed[i]).toMatchObject({
         id: decisions[i].id,
         title: decisions[i].title,
-        originalQuestion: decisions[i].originalQuestion,
+        original_question: decisions[i].original_question,
         decision: decisions[i].decision,
         implication: decisions[i].implication,
         status: decisions[i].status,

@@ -4,7 +4,7 @@ import { Switch } from "@/components/ui/switch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface DecisionFrontmatter {
+interface DecisionsMetadata {
   decision_count: number;
   conflicts_resolved: number;
   round: number;
@@ -15,7 +15,7 @@ interface DecisionFrontmatter {
 export interface Decision {
   id: string;
   title: string;
-  originalQuestion: string;
+  original_question: string;
   decision: string;
   implication: string;
   status: "resolved" | "conflict-resolved" | "needs-review";
@@ -33,14 +33,14 @@ interface DecisionsSummaryCardProps {
 
 interface DecisionsJsonFile {
   version?: string;
-  metadata?: DecisionFrontmatter;
+  metadata?: DecisionsMetadata;
   decisions?: Decision[];
 }
 
-const DEFAULT_METADATA: DecisionFrontmatter = { decision_count: 0, conflicts_resolved: 0, round: 1 };
+const DEFAULT_METADATA: DecisionsMetadata = { decision_count: 0, conflicts_resolved: 0, round: 1 };
 
 function parseDecisionsFile(content: string): {
-  metadata: DecisionFrontmatter;
+  metadata: DecisionsMetadata;
   decisions: Decision[];
 } {
   try {
@@ -63,7 +63,7 @@ export function parseDecisions(content: string): Decision[] {
  */
 export function serializeDecisions(decisions: Decision[], rawContent: string, allReviewed = false): string {
   const parsed = parseDecisionsFile(rawContent);
-  const metadata: DecisionFrontmatter = {
+  const metadata: DecisionsMetadata = {
     ...parsed.metadata,
     decision_count: decisions.length,
     conflicts_resolved: decisions.filter((d) => d.status === "conflict-resolved").length,
@@ -443,13 +443,13 @@ function DecisionCard({
       {expanded && (
         <div className="border-t bg-card p-4 space-y-3">
           {/* Original question */}
-          {decision.originalQuestion && (
+          {decision.original_question && (
             <div>
               <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 Original question
               </span>
               <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-                {decision.originalQuestion}
+                {decision.original_question}
               </p>
             </div>
           )}

@@ -190,7 +190,7 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
   const researchProps = {
     stepName: "Research",
     stepId: 0,
-    outputFiles: ["context/research-plan.md", "context/clarifications.json"],
+    outputFiles: ["context/clarifications.json"],
     skillName: "my-skill",
     skillsPath: "/skills",
   };
@@ -263,7 +263,7 @@ describe("missing-files error state", () => {
   const researchProps = {
     stepName: "Research",
     stepId: 0,
-    outputFiles: ["context/research-plan.md", "context/clarifications.json"],
+    outputFiles: ["context/clarifications.json"],
     skillName: "my-skill",
     skillsPath: "/skills",
   };

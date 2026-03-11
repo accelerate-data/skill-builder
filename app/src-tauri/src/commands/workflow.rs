@@ -1651,7 +1651,7 @@ fn read_workflow_settings(
     let industry = settings.industry;
     let function_role = settings.function_role;
 
-    // Validate prerequisites (step 3 requires decisions.md)
+    // Validate prerequisites (step 3 requires decisions.json)
     if step_id == 3 {
         validate_decisions_exist_inner(skill_name, workspace_path, &skills_path)?;
     }
@@ -2189,9 +2189,9 @@ pub fn save_workflow_state(
 /// Output files produced by each step, relative to the skill directory.
 pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
-        0 => vec!["context/clarifications.json"], // research-plan.md removed; plan embedded in clarifications metadata.research_plan
+        0 => vec!["context/clarifications.json"],
         1 => vec![], // Step 1 edits clarifications.json in-place (no unique artifact)
-        2 => vec!["context/decisions.json"], // was decisions.md; now structured JSON
+        2 => vec!["context/decisions.json"],
         3 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
         _ => vec![],
     }

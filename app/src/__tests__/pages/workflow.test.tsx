@@ -616,9 +616,6 @@ describe("WorkflowPage — clarifications loading on completed agent step", () =
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path.includes("research-plan.md")) {
-        return Promise.resolve("# Research Plan\nTest content");
-      }
       return Promise.reject("not found");
     });
 
@@ -1070,9 +1067,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path.includes("research-plan.md")) {
-        return Promise.resolve("# Research Plan\nTest content");
-      }
       return Promise.reject("not found");
     });
 
@@ -1104,9 +1098,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     vi.mocked(readFile).mockImplementation((path: string) => {
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
-      }
-      if (path.includes("research-plan.md")) {
-        return Promise.resolve("# Research Plan\nTest content");
       }
       return Promise.reject("not found");
     });
@@ -1170,9 +1161,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       }
       if (path === "/test/workspace/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
-      }
-      if (path.includes("research-plan.md")) {
-        return Promise.resolve("# Research Plan\nTest content");
       }
       return Promise.reject("not found");
     });
@@ -1240,9 +1228,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       if (path === "/test/workspace/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
-      if (path.includes("research-plan.md")) {
-        return Promise.resolve("# Research Plan\nTest content");
-      }
       return Promise.reject("not found");
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-missing-structured");
@@ -1297,9 +1282,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       }
       if (path === "/test/workspace/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
-      }
-      if (path.includes("research-plan.md")) {
-        return Promise.resolve("# Research Plan\nTest content");
       }
       return Promise.reject("not found");
     });
@@ -1365,9 +1347,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       }
       if (path === "/test/workspace/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
-      }
-      if (path.includes("research-plan.md")) {
-        return Promise.resolve("# Research Plan\nTest content");
       }
       return Promise.reject("not found");
     });
@@ -1444,9 +1423,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       }
       if (path === "/test/workspace/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
-      }
-      if (path.includes("research-plan.md")) {
-        return Promise.resolve("# Research Plan\nTest content");
       }
       return Promise.reject("not found");
     });
@@ -1533,9 +1509,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       }
       if (path === "/test/workspace/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(sufficientEvaluation));
-      }
-      if (path.includes("research-plan.md")) {
-        return Promise.resolve("# Research Plan\nTest content");
       }
       return Promise.reject("not found");
     });
@@ -1837,9 +1810,6 @@ describe("WorkflowPage — VD-615 clarifications editor on completed agent step"
     vi.mocked(readFile).mockImplementation((path: string) => {
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
-      }
-      if (path.includes("research-plan.md")) {
-        return Promise.resolve("# Research Plan\nTest content");
       }
       return Promise.reject("not found");
     });

@@ -107,7 +107,7 @@ describe("WorkflowStepComplete collapsible clarifications coverage", () => {
       <WorkflowStepComplete
         stepName="Research"
         stepId={0}
-        outputFiles={["context/research-plan.md", "context/clarifications.json"]}
+        outputFiles={["context/clarifications.json"]}
         skillName="my-skill"
         skillsPath="/skills"
         clarificationsEditable
@@ -125,7 +125,7 @@ describe("WorkflowStepComplete collapsible clarifications coverage", () => {
       <WorkflowStepComplete
         stepName="Research"
         stepId={0}
-        outputFiles={["context/research-plan.md", "context/clarifications.json"]}
+        outputFiles={["context/clarifications.json"]}
         skillName="my-skill"
         skillsPath="/skills"
         reviewMode
