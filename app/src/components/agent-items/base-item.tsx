@@ -47,12 +47,18 @@ interface BaseItemProps {
   children?: ReactNode;
 }
 
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
 export function BaseItem({
   icon,
   label,
   summary,
   tokenCount,
   status,
+  durationMs,
   borderColor,
   headerBg,
   defaultExpanded = false,
@@ -83,6 +89,11 @@ export function BaseItem({
         <Badge variant="secondary" className="text-[10px] font-mono px-1.5 py-0 h-4 shrink-0">
           {tokenCount >= 1000 ? `${Math.round(tokenCount / 1000)}K` : tokenCount}
         </Badge>
+      )}
+      {durationMs !== undefined && durationMs > 0 && (
+        <span className="text-[10px] font-mono text-muted-foreground/70 shrink-0">
+          {formatDuration(durationMs)}
+        </span>
       )}
       <StatusDot status={status} />
       {hasContent && (

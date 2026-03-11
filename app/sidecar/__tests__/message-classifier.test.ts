@@ -3,8 +3,8 @@ import { classifyRawMessage } from "../message-classifier.js";
 
 describe("classifyRawMessage", () => {
   // --- hardNoise ---
-  it("classifies config messages as hardNoise", () => {
-    expect(classifyRawMessage({ type: "config", config: {} })).toBe("hardNoise");
+  it("classifies config messages as system (forwarded for thinkingEnabled/agentName)", () => {
+    expect(classifyRawMessage({ type: "config", config: {} })).toBe("system");
   });
 
   it("classifies sdk_stderr as hardNoise", () => {

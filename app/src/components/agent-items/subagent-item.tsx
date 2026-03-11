@@ -23,14 +23,8 @@ export function SubagentItem({ item, depth = 0 }: { item: DisplayItem; depth?: n
     >
       <BaseItem
         icon={<Bot className="size-3.5" />}
-        label={subagentType ? "" : "Sub-agent"}
-        summary={
-          subagentType ? (
-            undefined
-          ) : (
-            description
-          )
-        }
+        label={subagentType ?? "Sub-agent"}
+        summary={description}
         tokenCount={item.subagentMetrics?.outputTokens}
         status={item.subagentStatus}
         borderColor="var(--chat-subagent-border)"

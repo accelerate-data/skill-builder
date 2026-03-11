@@ -537,7 +537,6 @@ export class MessageProcessor {
     this.toolCallTimestamps.clear();
     this.subagentMap.clear();
     this.subagentByToolUseId.clear();
-    this._pendingOrphans = [];
   }
 
   /** Get count of pending (unresolved) tool calls. For testing. */

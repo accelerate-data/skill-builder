@@ -28,26 +28,30 @@ pub struct AgentInitError {
 pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, line: &str) {
     match serde_json::from_str::<serde_json::Value>(line) {
         Ok(message) => {
-            // Detect system init progress events and emit on a dedicated channel
+            // Detect system init progress events and emit on a dedicated channel.
+            // Only intercept specific init subtypes — other system messages
+            // (e.g. compact_boundary) must fall through to agent-message.
             if message.get("type").and_then(|t| t.as_str()) == Some("system") {
                 if let Some(subtype) = message.get("subtype").and_then(|s| s.as_str()) {
-                    let timestamp = message
-                        .get("timestamp")
-                        .and_then(|t| t.as_u64())
-                        .unwrap_or(0);
-                    let progress = AgentInitProgress {
-                        agent_id: agent_id.to_string(),
-                        subtype: subtype.to_string(),
-                        timestamp,
-                    };
-                    log::debug!("[event:agent-init-progress:{}] {}", agent_id, subtype);
-                    if let Err(e) = app_handle.emit("agent-init-progress", &progress) {
-                        log::warn!(
-                            "Failed to emit agent-init-progress for {}: {}",
-                            agent_id, e
-                        );
+                    if matches!(subtype, "init_start" | "sdk_ready" | "init") {
+                        let timestamp = message
+                            .get("timestamp")
+                            .and_then(|t| t.as_u64())
+                            .unwrap_or(0);
+                        let progress = AgentInitProgress {
+                            agent_id: agent_id.to_string(),
+                            subtype: subtype.to_string(),
+                            timestamp,
+                        };
+                        log::debug!("[event:agent-init-progress:{}] {}", agent_id, subtype);
+                        if let Err(e) = app_handle.emit("agent-init-progress", &progress) {
+                            log::warn!(
+                                "Failed to emit agent-init-progress for {}: {}",
+                                agent_id, e
+                            );
+                        }
+                        return;
                     }
-                    return;
                 }
             }
 

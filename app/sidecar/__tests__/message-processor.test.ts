@@ -26,9 +26,11 @@ describe("MessageProcessor", () => {
   // =========================================================================
 
   describe("filtering", () => {
-    it("filters config messages (hardNoise)", () => {
-      const out = processor.process({ type: "config", config: { model: "sonnet" } });
-      expect(out).toHaveLength(0);
+    it("forwards config messages as pass-through (for thinkingEnabled/agentName)", () => {
+      const raw = { type: "config", config: { model: "sonnet" } };
+      const out = processor.process(raw);
+      expect(out).toHaveLength(1);
+      expect(out[0]).toBe(raw); // pass-through, not a display_item
     });
 
     it("filters sdk_stderr messages", () => {

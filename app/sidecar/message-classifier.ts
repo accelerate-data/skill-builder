@@ -36,8 +36,9 @@ export function classifyRawMessage(raw: Record<string, unknown>): MessageCategor
 
   if (!type) return "hardNoise";
 
-  // --- config messages are noise (already captured in transcript) ---
-  if (type === "config") return "hardNoise";
+  // --- config messages: forward as system so agent-store can extract
+  //     thinkingEnabled and agentName from config.thinking / config.agentName ---
+  if (type === "config") return "system";
 
   // --- system messages: split into noise vs. init-progress ---
   if (type === "system") {
