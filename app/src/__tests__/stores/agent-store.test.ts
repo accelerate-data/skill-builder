@@ -3,12 +3,14 @@ import { mockInvoke } from "@/test/mocks/tauri";
 import {
   useAgentStore,
   flushMessageBuffer,
+  _resetForTesting,
   type AgentMessage,
   formatModelName,
   formatTokenCount,
   getLatestContextTokens,
   getContextUtilization,
 } from "@/stores/agent-store";
+import type { RunMetadata } from "@/lib/display-types";
 
 describe("useAgentStore", () => {
   beforeEach(() => {
@@ -971,6 +973,135 @@ describe("modelUsageBreakdown", () => {
       cacheWriteTokens: 0,
       cost: 0,
     });
+  });
+});
+
+describe("updateMetadata buffering", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+    _resetForTesting();
+    vi.restoreAllMocks();
+  });
+
+  it("applies metadata immediately when run exists (normal path)", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    const metadata: RunMetadata = {
+      sessionInit: { sessionId: "sess-abc", model: "claude-sonnet-4-6" },
+    };
+    useAgentStore.getState().updateMetadata("agent-1", metadata);
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.sessionId).toBe("sess-abc");
+    expect(run.model).toBe("claude-sonnet-4-6");
+  });
+
+  it("buffers metadata when run doesn't exist yet before startRun", () => {
+    const metadata: RunMetadata = {
+      sessionInit: { sessionId: "sess-early", model: "claude-sonnet-4-6" },
+    };
+    useAgentStore.getState().updateMetadata("early-agent", metadata);
+
+    // Run should not be created just from metadata
+    expect(useAgentStore.getState().runs["early-agent"]).toBeUndefined();
+
+    // After startRun, buffered metadata should be drained and applied
+    useAgentStore.getState().startRun("early-agent", "sonnet");
+    const run = useAgentStore.getState().runs["early-agent"];
+    expect(run).toBeDefined();
+    expect(run.sessionId).toBe("sess-early");
+    expect(run.model).toBe("claude-sonnet-4-6");
+  });
+
+  it("buffers metadata when run doesn't exist yet before registerRun", () => {
+    const metadata: RunMetadata = {
+      config: { thinkingEnabled: true, agentName: "MyAgent" },
+    };
+    useAgentStore.getState().updateMetadata("refine-agent", metadata);
+
+    expect(useAgentStore.getState().runs["refine-agent"]).toBeUndefined();
+
+    useAgentStore.getState().registerRun("refine-agent", "sonnet", "my-skill", "refine");
+    const run = useAgentStore.getState().runs["refine-agent"];
+    expect(run).toBeDefined();
+    expect(run.thinkingEnabled).toBe(true);
+    expect(run.agentName).toBe("MyAgent");
+  });
+
+  it("drains multiple buffered metadata events in order after startRun", () => {
+    const meta1: RunMetadata = {
+      contextSnapshot: { turn: 1, inputTokens: 10000, outputTokens: 500 },
+    };
+    const meta2: RunMetadata = {
+      contextSnapshot: { turn: 2, inputTokens: 25000, outputTokens: 800 },
+    };
+
+    useAgentStore.getState().updateMetadata("agent-seq", meta1);
+    useAgentStore.getState().updateMetadata("agent-seq", meta2);
+
+    useAgentStore.getState().startRun("agent-seq", "sonnet");
+    const run = useAgentStore.getState().runs["agent-seq"];
+    expect(run.contextHistory).toHaveLength(2);
+    expect(run.contextHistory[0].turn).toBe(1);
+    expect(run.contextHistory[0].inputTokens).toBe(10000);
+    expect(run.contextHistory[1].turn).toBe(2);
+    expect(run.contextHistory[1].inputTokens).toBe(25000);
+  });
+
+  it("clearRuns clears the pending metadata buffer", () => {
+    const metadata: RunMetadata = {
+      sessionInit: { sessionId: "sess-orphan", model: "claude-sonnet-4-6" },
+    };
+    useAgentStore.getState().updateMetadata("orphan-agent", metadata);
+
+    // Clear before any run is registered
+    useAgentStore.getState().clearRuns();
+
+    // Now starting the run should NOT have the old metadata applied
+    useAgentStore.getState().startRun("orphan-agent", "sonnet");
+    const run = useAgentStore.getState().runs["orphan-agent"];
+    expect(run.sessionId).toBeUndefined();
+  });
+
+  it("does not apply buffered metadata twice when metadata arrives after startRun", () => {
+    useAgentStore.getState().startRun("agent-2", "sonnet");
+
+    const metadata: RunMetadata = {
+      contextSnapshot: { turn: 1, inputTokens: 5000, outputTokens: 200 },
+    };
+    useAgentStore.getState().updateMetadata("agent-2", metadata);
+
+    // Applied immediately — no double application on re-drain
+    const run = useAgentStore.getState().runs["agent-2"];
+    expect(run.contextHistory).toHaveLength(1);
+    expect(run.contextHistory[0].inputTokens).toBe(5000);
+  });
+
+  it("applies compaction events from buffered metadata", () => {
+    const meta: RunMetadata = {
+      compactionEvent: { turn: 3, preTokens: 190000, timestamp: 1700000000000 },
+    };
+    useAgentStore.getState().updateMetadata("compact-agent", meta);
+
+    useAgentStore.getState().startRun("compact-agent", "sonnet");
+    const run = useAgentStore.getState().runs["compact-agent"];
+    expect(run.compactionEvents).toHaveLength(1);
+    expect(run.compactionEvents[0]).toEqual({
+      turn: 3,
+      preTokens: 190000,
+      timestamp: 1700000000000,
+    });
+  });
+
+  it("applies contextWindow from buffered metadata when larger than default", () => {
+    // The updateMetadata impl uses Math.max to prevent shrinking; use a value
+    // larger than the default 200_000 to confirm the buffer is drained.
+    const meta: RunMetadata = { contextWindow: 400000 };
+    useAgentStore.getState().updateMetadata("cw-agent", meta);
+
+    useAgentStore.getState().registerRun("cw-agent", "sonnet", "my-skill", "test");
+    const run = useAgentStore.getState().runs["cw-agent"];
+    expect(run.contextWindow).toBe(400000);
   });
 });
 

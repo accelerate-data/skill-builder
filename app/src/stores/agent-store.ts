@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { useWorkflowStore } from "./workflow-store";
 import { persistAgentRun } from "@/lib/tauri";
-import type { DisplayItem } from "@/lib/display-types";
+import type { DisplayItem, RunMetadata } from "@/lib/display-types";
 
 // --- RAF-batched message buffer ---
 // Instead of calling set() per message (which copies the full state tree each
@@ -19,6 +19,7 @@ let _rafScheduled = false;
 let _rafId = 0;
 type PendingTerminalStatus = "completed" | "error" | "shutdown";
 let _pendingTerminalByAgent = new Map<string, PendingTerminalStatus>();
+let _pendingMetadataByAgent = new Map<string, RunMetadata[]>();
 
 function queuePendingTerminal(agentId: string, status: PendingTerminalStatus) {
   const existing = _pendingTerminalByAgent.get(agentId);
@@ -52,6 +53,31 @@ function drainPendingTerminal(agentId: string) {
   useAgentStore.getState().completeRun(agentId, pending === "completed");
 }
 
+function queuePendingMetadata(agentId: string, metadata: RunMetadata) {
+  const existing = _pendingMetadataByAgent.get(agentId) ?? [];
+  existing.push(metadata);
+  _pendingMetadataByAgent.set(agentId, existing);
+  console.warn(
+    "[agent-store] event=metadata_queued operation=queue_pending_metadata agent_id=%s",
+    agentId,
+  );
+}
+
+function drainPendingMetadata(agentId: string) {
+  const pending = _pendingMetadataByAgent.get(agentId);
+  if (!pending || pending.length === 0) return;
+  if (!useAgentStore.getState().runs[agentId]) return;
+  _pendingMetadataByAgent.delete(agentId);
+  console.log(
+    "[agent-store] event=metadata_replayed operation=drain_pending_metadata agent_id=%s count=%d",
+    agentId,
+    pending.length,
+  );
+  for (const metadata of pending) {
+    useAgentStore.getState().updateMetadata(agentId, metadata);
+  }
+}
+
 function _flushMessageBuffer() {
   _rafScheduled = false;
   if (_messageBuffer.length === 0) return;
@@ -73,6 +99,12 @@ export function flushMessageBuffer() {
     _rafScheduled = false;
   }
   _flushMessageBuffer();
+}
+
+/** Reset module-level buffers for testing. Clears both terminal and metadata pending maps. */
+export function _resetForTesting() {
+  _pendingTerminalByAgent.clear();
+  _pendingMetadataByAgent.clear();
 }
 
 /** Map model IDs and shorthands to human-readable display names with version. */
@@ -204,6 +236,8 @@ interface AgentState {
   addMessage: (agentId: string, message: AgentMessage) => void;
   /** Add a structured DisplayItem from the sidecar. Update-by-id for tool call status changes. */
   addDisplayItem: (agentId: string, item: DisplayItem) => void;
+  /** Apply structured metadata from an agent-metadata sidecar event. Buffered if run not yet registered. */
+  updateMetadata: (agentId: string, metadata: RunMetadata) => void;
   completeRun: (agentId: string, success: boolean) => void;
   shutdownRun: (agentId: string) => void;
   setActiveAgent: (agentId: string | null) => void;
@@ -349,6 +383,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     });
 
     drainPendingTerminal(agentId);
+    drainPendingMetadata(agentId);
   },
 
   registerRun: (agentId, model, skillName?, runSource = "refine", usageSessionId?) => {
@@ -386,6 +421,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       };
     });
     drainPendingTerminal(agentId);
+    drainPendingMetadata(agentId);
   },
 
   addMessage: (agentId, message) => {
@@ -456,6 +492,85 @@ export const useAgentStore = create<AgentState>((set) => ({
             ...run,
             displayItems: updatedItems,
           },
+        },
+      };
+    }),
+
+  updateMetadata: (agentId, metadata) =>
+    set((state) => {
+      const run = state.runs[agentId];
+      if (!run) {
+        queuePendingMetadata(agentId, metadata);
+        return state;
+      }
+
+      let updatedRun = { ...run };
+
+      if (metadata.contextSnapshot) {
+        const { turn, inputTokens, outputTokens } = metadata.contextSnapshot;
+        console.debug(
+          "[agent-store] event=context_snapshot agent_id=%s turn=%d input=%d output=%d",
+          agentId, turn, inputTokens, outputTokens,
+        );
+        updatedRun = {
+          ...updatedRun,
+          contextHistory: [
+            ...updatedRun.contextHistory,
+            { turn, inputTokens, outputTokens },
+          ],
+        };
+      }
+
+      if (metadata.compactionEvent) {
+        const { turn, preTokens, timestamp } = metadata.compactionEvent;
+        console.debug(
+          "[agent-store] event=compaction agent_id=%s turn=%d pre_tokens=%d",
+          agentId, turn, preTokens,
+        );
+        updatedRun = {
+          ...updatedRun,
+          compactionEvents: [
+            ...updatedRun.compactionEvents,
+            { turn, preTokens, timestamp },
+          ],
+        };
+      }
+
+      if (metadata.sessionInit) {
+        const { sessionId, model } = metadata.sessionInit;
+        console.debug(
+          "[agent-store] event=session_init agent_id=%s model=%s",
+          agentId, model,
+        );
+        updatedRun = { ...updatedRun, sessionId, model };
+      }
+
+      if (metadata.contextWindow !== undefined && metadata.contextWindow > 0) {
+        console.debug(
+          "[agent-store] event=context_window agent_id=%s window=%d",
+          agentId, metadata.contextWindow,
+        );
+        updatedRun = { ...updatedRun, contextWindow: Math.max(updatedRun.contextWindow, metadata.contextWindow) };
+      }
+
+      if (metadata.config) {
+        const { thinkingEnabled, agentName } = metadata.config;
+        console.debug(
+          "[agent-store] event=config agent_id=%s thinking=%s agent=%s",
+          agentId, thinkingEnabled, agentName,
+        );
+        if (thinkingEnabled !== undefined) {
+          updatedRun = { ...updatedRun, thinkingEnabled };
+        }
+        if (agentName !== undefined) {
+          updatedRun = { ...updatedRun, agentName };
+        }
+      }
+
+      return {
+        runs: {
+          ...state.runs,
+          [agentId]: updatedRun,
         },
       };
     }),
@@ -592,6 +707,13 @@ export const useAgentStore = create<AgentState>((set) => ({
         _pendingTerminalByAgent.size,
       );
       _pendingTerminalByAgent.clear();
+    }
+    if (_pendingMetadataByAgent.size > 0) {
+      console.warn(
+        "[agent-store] event=pending_metadata_cleared operation=clear_runs count=%d",
+        _pendingMetadataByAgent.size,
+      );
+      _pendingMetadataByAgent.clear();
     }
     set({ runs: {}, activeAgentId: null });
   },

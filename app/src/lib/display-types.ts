@@ -73,6 +73,17 @@ export interface DisplayItem {
   errorMessage?: string;
 }
 
+// RunMetadata — structured metadata forwarded from sidecar as agent-metadata events
+// ---------------------------------------------------------------------------
+
+export interface RunMetadata {
+  contextSnapshot?: { turn: number; inputTokens: number; outputTokens: number };
+  compactionEvent?: { turn: number; preTokens: number; timestamp: number };
+  sessionInit?: { sessionId: string; model: string };
+  config?: { thinkingEnabled?: boolean; agentName?: string };
+  contextWindow?: number;
+}
+
 // ---------------------------------------------------------------------------
 // Version tag for structural sync tests
 // ---------------------------------------------------------------------------
