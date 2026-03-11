@@ -212,7 +212,7 @@ export interface ModelUsageBreakdown {
   cost: number;
 }
 
-export interface AgentRun {
+interface AgentRun {
   agentId: string;
   model: string;
   status: "running" | "completed" | "error" | "shutdown";
@@ -267,6 +267,169 @@ interface AgentState {
   shutdownRun: (agentId: string) => void;
   setActiveAgent: (agentId: string | null) => void;
   clearRuns: () => void;
+  /** Internal: apply a batch of buffered messages in a single set() call. */
+  _applyMessageBatch: (batch: BufferedMessage[]) => void;
+}
+
+/**
+ * Validate persistence context before attempting to write.
+ * Returns true if context is valid; logs structured error and returns false otherwise.
+ */
+function validatePersistenceContext(
+  context: { stepId: number; workflowSessionId?: string },
+  agentId: string,
+): boolean {
+  if (!context || typeof context.stepId !== "number") {
+    console.error(
+      "[agent-store] event=persistence_validation_failed operation=validate_context agent_id=%s reason=invalid_step_id",
+      agentId,
+    );
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Persist one row per model entry with transaction-like semantics.
+ * All rows for the same agent run share the same session context. If any row fails,
+ * subsequent rows are still attempted (best-effort), but the failure is logged with context.
+ * Used by both completeRun and shutdownRun.
+ */
+function persistRunRows(
+  sharedParams: Record<string, unknown>,
+  modelEntries: Array<{ model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; totalCost: number }>,
+): void {
+  const agentId = sharedParams.agentId as string;
+
+  // Validate persistence context early
+  if (!validatePersistenceContext(
+    { stepId: sharedParams.stepId as number, workflowSessionId: sharedParams.workflowSessionId as string | undefined },
+    agentId,
+  )) {
+    return;
+  }
+
+  // Attempt to persist all model entries. Track failures but continue to attempt remaining rows.
+  let failureCount = 0;
+  for (const entry of modelEntries) {
+    persistAgentRun({
+      ...sharedParams,
+      model: entry.model,
+      inputTokens: entry.inputTokens,
+      outputTokens: entry.outputTokens,
+      cacheReadTokens: entry.cacheReadTokens,
+      cacheWriteTokens: entry.cacheWriteTokens,
+      totalCost: entry.totalCost,
+    } as Parameters<typeof persistAgentRun>[0]).catch((err: unknown) => {
+      failureCount++;
+      console.error(
+        "[agent-store] event=persistence_failed operation=persist_agent_run agent_id=%s model=%s error=%s row=%d/%d",
+        agentId,
+        entry.model,
+        err instanceof Error ? err.message : String(err),
+        failureCount,
+        modelEntries.length,
+      );
+    });
+  }
+
+  // Log transaction summary
+  if (failureCount > 0) {
+    console.warn(
+      "[agent-store] event=persistence_summary operation=persist_run_rows agent_id=%s status=partial_failure rows_attempted=%d rows_failed=%d",
+      agentId,
+      modelEntries.length,
+      failureCount,
+    );
+  } else {
+    console.log(
+      "[agent-store] event=persistence_summary operation=persist_run_rows agent_id=%s status=success rows=%d",
+      agentId,
+      modelEntries.length,
+    );
+  }
+}
+
+/** Build per-model entries from breakdown or fallback to a single aggregate row. */
+function buildModelEntries(
+  run: AgentRun,
+): Array<{ model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; totalCost: number }> {
+  const breakdown = run.modelUsageBreakdown;
+  if (breakdown && breakdown.length > 0) {
+    return breakdown.map((mu) => ({
+      model: mu.model,
+      inputTokens: mu.inputTokens,
+      outputTokens: mu.outputTokens,
+      cacheReadTokens: mu.cacheReadTokens,
+      cacheWriteTokens: mu.cacheWriteTokens,
+      totalCost: mu.cost,
+    }));
+  }
+
+  // Fallback: single-model persistence using aggregate totals.
+  // Extract cache tokens from the last assistant message's raw usage.
+  let cacheRead = 0;
+  let cacheWrite = 0;
+  const assistantMessages = run.messages.filter((m) => m.type === "assistant");
+  if (assistantMessages.length > 0) {
+    const lastMsg = assistantMessages[assistantMessages.length - 1];
+    const betaMsg = (lastMsg.raw as Record<string, unknown>).message as
+      | { usage?: { cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
+      | undefined;
+    cacheRead = betaMsg?.usage?.cache_read_input_tokens ?? 0;
+    cacheWrite = betaMsg?.usage?.cache_creation_input_tokens ?? 0;
+  }
+
+  return [{
+    model: run.model,
+    inputTokens: run.tokenUsage?.input ?? 0,
+    outputTokens: run.tokenUsage?.output ?? 0,
+    cacheReadTokens: cacheRead,
+    cacheWriteTokens: cacheWrite,
+    totalCost: run.totalCost ?? 0,
+  }];
+}
+
+function resolvePersistenceContext(
+  run: AgentRun | undefined,
+): { stepId: number; workflowSessionId?: string } {
+  const runSourceStepId = run?.runSource === "refine"
+    ? -10
+    : run?.runSource === "test"
+      ? -11
+      : -1;
+
+  const capturedWorkflowSessionId = run?.capturedWorkflowSessionId ?? null;
+  const capturedStepId = run?.capturedStepId ?? -1;
+
+  if (capturedWorkflowSessionId) {
+    return { stepId: capturedStepId, workflowSessionId: capturedWorkflowSessionId };
+  }
+
+  if (!run) return { stepId: -1 };
+
+  if (runSourceStepId !== -1 && run.usageSessionId) {
+    return {
+      stepId: runSourceStepId,
+      workflowSessionId: run.usageSessionId,
+    };
+  }
+
+  if (run.runSource === "refine") {
+    return {
+      stepId: -10,
+      workflowSessionId: `synthetic:refine:${run.skillName ?? "unknown"}:${run.agentId}`,
+    };
+  }
+
+  if (run.runSource === "test") {
+    return {
+      stepId: -11,
+      workflowSessionId: `synthetic:test:${run.skillName ?? "unknown"}:${run.agentId}`,
+    };
+  }
+
+  return { stepId: -1 };
 }
 
 /**
@@ -454,7 +617,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 model,
                 skillName,
                 status: "running" as const,
-                displayItems: [],
+                messages: [],
                 startTime: Date.now(),
                 contextHistory: [],
                 contextWindow: 200_000,
@@ -468,7 +631,6 @@ export const useAgentStore = create<AgentState>((set) => ({
     });
 
     drainPendingTerminal(agentId);
-    drainPendingMetadata(agentId);
   },
 
   registerRun: (agentId, model, skillName?, runSource = "refine", usageSessionId?) => {
@@ -496,7 +658,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 model,
                 skillName,
                 status: "running" as const,
-                displayItems: [],
+                messages: [],
                 startTime: Date.now(),
                 contextHistory: [],
                 contextWindow: 200_000,
@@ -510,7 +672,6 @@ export const useAgentStore = create<AgentState>((set) => ({
       };
     });
     drainPendingTerminal(agentId);
-    drainPendingMetadata(agentId);
   },
 
   addDisplayItem: (agentId, item) =>
@@ -820,4 +981,197 @@ export const useAgentStore = create<AgentState>((set) => ({
     resetAgentStoreInternals();
     set({ runs: {}, activeAgentId: null });
   },
+
+  _applyMessageBatch: (batch) =>
+    set((state) => {
+      const updatedRuns = { ...state.runs };
+
+      for (const { agentId, message } of batch) {
+        // Auto-create run for messages that arrive before startRun
+        const run: AgentRun = updatedRuns[agentId] ?? {
+          agentId,
+          model: "unknown",
+          status: "running" as const,
+          messages: [],
+          startTime: Date.now(),
+          contextHistory: [],
+          contextWindow: 200_000,
+          compactionEvents: [],
+          thinkingEnabled: false,
+        };
+
+        // Extract token usage and cost from result messages
+        const raw = message.raw;
+        let tokenUsage = run.tokenUsage;
+        let totalCost = run.totalCost;
+        let contextHistory = run.contextHistory;
+        let contextWindow = run.contextWindow;
+        let compactionEvents = run.compactionEvents;
+        let resultSubtype = run.resultSubtype;
+        let resultErrors = run.resultErrors;
+        let stopReason = run.stopReason;
+        let numTurns = run.numTurns;
+        let durationApiMs = run.durationApiMs;
+        let modelUsageBreakdown = run.modelUsageBreakdown;
+
+        if (message.type === "result") {
+          const usage = raw.usage as
+            | { input_tokens?: number; output_tokens?: number }
+            | undefined;
+          if (usage) {
+            tokenUsage = {
+              input: usage.input_tokens ?? 0,
+              output: usage.output_tokens ?? 0,
+            };
+          }
+          const cost = raw.total_cost_usd as number | undefined;
+          if (cost !== undefined) {
+            totalCost = cost;
+          }
+          // Extract contextWindow and per-model usage breakdown from modelUsage
+          const modelUsage = raw.modelUsage as
+            | Record<string, {
+                inputTokens?: number;
+                outputTokens?: number;
+                cacheReadInputTokens?: number;
+                cacheCreationInputTokens?: number;
+                cost?: number;
+                costUSD?: number;
+                contextWindow?: number;
+              }>
+            | undefined;
+          if (modelUsage) {
+            const breakdown: ModelUsageBreakdown[] = [];
+            for (const [modelId, mu] of Object.entries(modelUsage)) {
+              if (mu.contextWindow && mu.contextWindow > 0) {
+                contextWindow = Math.max(contextWindow, mu.contextWindow);
+              }
+              breakdown.push({
+                model: modelId,
+                inputTokens: mu.inputTokens ?? 0,
+                outputTokens: mu.outputTokens ?? 0,
+                cacheReadTokens: mu.cacheReadInputTokens ?? 0,
+                cacheWriteTokens: mu.cacheCreationInputTokens ?? 0,
+                cost: mu.costUSD ?? mu.cost ?? 0,
+              });
+            }
+            if (breakdown.length > 0) {
+              modelUsageBreakdown = breakdown;
+            }
+          }
+          // Extract result subtype, errors, and stop_reason
+          if (typeof raw.subtype === "string") {
+            resultSubtype = raw.subtype as ResultSubtype;
+          }
+          if (Array.isArray(raw.errors)) {
+            resultErrors = raw.errors as string[];
+          }
+          if (typeof raw.stop_reason === "string") {
+            stopReason = raw.stop_reason as StopReason;
+          }
+          if (typeof raw.num_turns === "number") {
+            numTurns = raw.num_turns;
+          }
+          if (typeof raw.duration_api_ms === "number") {
+            durationApiMs = raw.duration_api_ms;
+          }
+        }
+
+        // Extract per-turn context usage from assistant messages
+        if (message.type === "assistant") {
+          const betaMsg = (raw as Record<string, unknown>).message as
+            | { usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
+            | undefined;
+          if (betaMsg?.usage) {
+            const turn = run.messages.filter((m) => m.type === "assistant").length + 1;
+            // Total context = non-cached + cache-read + cache-creation tokens
+            const totalInput = (betaMsg.usage.input_tokens ?? 0)
+              + (betaMsg.usage.cache_read_input_tokens ?? 0)
+              + (betaMsg.usage.cache_creation_input_tokens ?? 0);
+            contextHistory = [
+              ...contextHistory,
+              {
+                turn,
+                inputTokens: totalInput,
+                outputTokens: betaMsg.usage.output_tokens ?? 0,
+              },
+            ];
+          }
+        }
+
+        // Detect compaction boundary messages
+        if (
+          message.type === "system" &&
+          (raw as Record<string, unknown>)?.subtype === "compact_boundary"
+        ) {
+          const metadata = (raw as Record<string, unknown>)?.compact_metadata as
+            | { pre_tokens?: number }
+            | undefined;
+          const turn = run.messages.filter((m) => m.type === "assistant").length;
+          compactionEvents = [
+            ...compactionEvents,
+            {
+              turn,
+              preTokens: metadata?.pre_tokens ?? 0,
+              timestamp: message.timestamp,
+            },
+          ];
+        }
+
+        // Extract thinkingEnabled and agentName from config messages
+        let thinkingEnabled = run.thinkingEnabled;
+        let agentName = run.agentName;
+        if (message.type === "config") {
+          const configObj = (raw as Record<string, unknown>).config as
+            | { thinking?: { type?: string; budgetTokens?: number }; agentName?: string }
+            | undefined;
+          if (
+            configObj?.thinking?.type === "enabled"
+            && typeof configObj.thinking.budgetTokens === "number"
+            && configObj.thinking.budgetTokens > 0
+          ) {
+            thinkingEnabled = true;
+          }
+          if (configObj?.agentName) {
+            agentName = configObj.agentName;
+          }
+        }
+
+        // Extract session_id and model from init messages
+        let sessionId = run.sessionId;
+        let model = run.model;
+        if (message.type === "system" && (raw as Record<string, unknown>)?.subtype === "init") {
+          const sid = (raw as Record<string, unknown>)?.session_id;
+          if (typeof sid === "string") {
+            sessionId = sid;
+          }
+          const initModel = (raw as Record<string, unknown>)?.model;
+          if (typeof initModel === "string" && initModel.length > 0) {
+            model = initModel;
+          }
+        }
+
+        updatedRuns[agentId] = {
+          ...run,
+          model,
+          messages: [...run.messages, message],
+          tokenUsage,
+          totalCost,
+          sessionId,
+          thinkingEnabled,
+          agentName,
+          contextHistory,
+          contextWindow,
+          compactionEvents,
+          resultSubtype,
+          resultErrors,
+          stopReason,
+          numTurns,
+          durationApiMs,
+          modelUsageBreakdown,
+        };
+      }
+
+      return { runs: updatedRuns };
+    }),
 }));
