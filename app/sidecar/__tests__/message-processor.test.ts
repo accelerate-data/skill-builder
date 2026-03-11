@@ -385,6 +385,7 @@ describe("MessageProcessor", () => {
       });
 
       // Step 2: Child assistant message with parent_tool_use_id
+      // Child items are nested inside the subagent update, not emitted top-level
       const childOut = processor.process({
         type: "assistant",
         parent_tool_use_id: "tu-parent-1",
@@ -393,8 +394,12 @@ describe("MessageProcessor", () => {
         },
       });
       const childItems = extractDisplayItems(childOut);
+      // Should emit an updated subagent with the child nested inside
       expect(childItems).toHaveLength(1);
-      expect(childItems[0].parentToolUseId).toBe("tu-parent-1");
+      expect(childItems[0].type).toBe("subagent");
+      expect(childItems[0].subagentItems).toHaveLength(1);
+      expect(childItems[0].subagentItems![0].type).toBe("output");
+      expect(childItems[0].subagentItems![0].parentToolUseId).toBe("tu-parent-1");
 
       // Step 3: Complete subagent via tool_result
       const completeOut = processor.process({

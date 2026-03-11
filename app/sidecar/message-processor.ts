@@ -228,7 +228,12 @@ export class MessageProcessor {
             `[message-processor] event=link_tool_result tool_use_id=${toolUseId} status=${updatedItem.toolStatus} duration_ms=${durationMs ?? "n/a"}\n`,
           );
 
-          results.push(this.makeEnvelope(updatedItem));
+          // If tool belongs to a subagent, update child in-place and re-emit subagent
+          if (updatedItem.parentToolUseId) {
+            this.updateSubagentChild(updatedItem.parentToolUseId, updatedItem, results);
+          } else {
+            results.push(this.makeEnvelope(updatedItem));
+          }
 
           // If this was a subagent (Task), update its status
           const subagentItem = this.subagentByToolUseId.get(toolUseId);
@@ -316,9 +321,10 @@ export class MessageProcessor {
         );
 
         if (parentToolUseId) {
-          this.addToSubagent(parentToolUseId, item);
+          this.addToSubagentAndEmitUpdate(parentToolUseId, item, results);
+        } else {
+          results.push(this.makeEnvelope(item));
         }
-        results.push(this.makeEnvelope(item));
       } else if (b.type === "text" && typeof b.text === "string") {
         const item: DisplayItem = {
           id: this.generateId(),
@@ -332,9 +338,10 @@ export class MessageProcessor {
         );
 
         if (parentToolUseId) {
-          this.addToSubagent(parentToolUseId, item);
+          this.addToSubagentAndEmitUpdate(parentToolUseId, item, results);
+        } else {
+          results.push(this.makeEnvelope(item));
         }
-        results.push(this.makeEnvelope(item));
       } else if (b.type === "tool_use") {
         const toolName = (b.name as string) ?? "unknown";
         const toolUseId = (b.id as string) ?? this.generateId();
@@ -381,9 +388,10 @@ export class MessageProcessor {
           );
 
           if (parentToolUseId) {
-            this.addToSubagent(parentToolUseId, item);
+            this.addToSubagentAndEmitUpdate(parentToolUseId, item, results);
+          } else {
+            results.push(this.makeEnvelope(item));
           }
-          results.push(this.makeEnvelope(item));
         } else {
           // Regular tool call
           const item: DisplayItem = {
@@ -406,9 +414,10 @@ export class MessageProcessor {
           );
 
           if (parentToolUseId) {
-            this.addToSubagent(parentToolUseId, item);
+            this.addToSubagentAndEmitUpdate(parentToolUseId, item, results);
+          } else {
+            results.push(this.makeEnvelope(item));
           }
-          results.push(this.makeEnvelope(item));
         }
       }
     }
@@ -497,10 +506,80 @@ export class MessageProcessor {
   // Helpers
   // -------------------------------------------------------------------------
 
-  private addToSubagent(parentToolUseId: string, item: DisplayItem): void {
+  /**
+   * Add a child item to a subagent's children list and emit an updated
+   * subagent envelope so the frontend can replace it in-place with the
+   * new child included. This gives live streaming of subagent activity
+   * nested under the parent subagent item.
+   */
+  private addToSubagentAndEmitUpdate(
+    parentToolUseId: string,
+    item: DisplayItem,
+    results: ProcessedMessage[],
+  ): void {
     const children = this.subagentMap.get(parentToolUseId);
-    if (children) {
-      children.push(item);
+    if (!children) {
+      // No known subagent — emit as top-level fallback
+      results.push(this.makeEnvelope(item));
+      return;
+    }
+    children.push(item);
+
+    // Re-emit the parent subagent item with updated children
+    const subagentItem = this.subagentByToolUseId.get(parentToolUseId);
+    if (subagentItem) {
+      const updatedSubagent: DisplayItem = {
+        ...subagentItem,
+        subagentItems: [...children],
+      };
+      // Update stored reference so future updates carry all children
+      this.subagentByToolUseId.set(parentToolUseId, updatedSubagent);
+      process.stderr.write(
+        `[message-processor] event=update_subagent tool_use_id=${parentToolUseId} child_count=${children.length}\n`,
+      );
+      results.push(this.makeEnvelope(updatedSubagent));
+    } else {
+      // Orphaned child — emit as top-level
+      results.push(this.makeEnvelope(item));
+    }
+  }
+
+  /**
+   * Update a child item inside a subagent (e.g. tool result arriving for a
+   * tool that was emitted as a subagent child). Replaces the child by id
+   * in the subagent's children array and re-emits the subagent envelope.
+   */
+  private updateSubagentChild(
+    parentToolUseId: string,
+    updatedChild: DisplayItem,
+    results: ProcessedMessage[],
+  ): void {
+    const children = this.subagentMap.get(parentToolUseId);
+    if (!children) {
+      // No subagent tracking — emit top-level
+      results.push(this.makeEnvelope(updatedChild));
+      return;
+    }
+
+    // Replace child by id
+    const idx = children.findIndex((c) => c.id === updatedChild.id);
+    if (idx >= 0) {
+      children[idx] = updatedChild;
+    } else {
+      children.push(updatedChild);
+    }
+
+    // Re-emit parent subagent with updated children
+    const subagentItem = this.subagentByToolUseId.get(parentToolUseId);
+    if (subagentItem) {
+      const updated: DisplayItem = {
+        ...subagentItem,
+        subagentItems: [...children],
+      };
+      this.subagentByToolUseId.set(parentToolUseId, updated);
+      results.push(this.makeEnvelope(updated));
+    } else {
+      results.push(this.makeEnvelope(updatedChild));
     }
   }
 
