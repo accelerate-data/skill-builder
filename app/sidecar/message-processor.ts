@@ -766,12 +766,24 @@ export class MessageProcessor {
     }
 
     // Extract structured output from SDK result for artifact materialization.
-    // Prefer structured_output (new SDK); fall back to result if it's an object.
+    // Prefer structured_output (new SDK); fall back to result (object or JSON string).
     let structuredOutput: unknown = undefined;
     if ("structured_output" in raw && raw.structured_output != null) {
       structuredOutput = raw.structured_output;
-    } else if ("result" in raw && raw.result != null && typeof raw.result !== "string") {
-      structuredOutput = raw.result;
+    } else if ("result" in raw && raw.result != null) {
+      if (typeof raw.result === "string") {
+        // Agent returned text — try to parse as JSON for agents that emit JSON as plain text
+        try {
+          const parsed = JSON.parse(raw.result);
+          if (typeof parsed === "object" && parsed !== null) {
+            structuredOutput = parsed;
+          }
+        } catch {
+          // Not JSON — leave structuredOutput undefined
+        }
+      } else {
+        structuredOutput = raw.result;
+      }
     }
 
     // Mark any remaining pending tool calls as orphaned
