@@ -8,8 +8,6 @@ import {
   resolvePromptPathsAsync,
   resolveStepTemplate,
 } from "../mock-agent.js";
-import * as os from "os";
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------------------
@@ -125,42 +123,31 @@ describe("parsePromptPaths", () => {
     expect(paths.skillDir).toBeNull();
   });
 
-  it("derives contextDir from workspaceDir when only workspace in prompt (SDK protocol)", () => {
+  it("extracts inline skill output dir from prompt", () => {
     const prompt =
       "The skill name is: my-skill. The workspace directory is: /Users/john/workspace/my-skill. " +
-      "Read user-context.md and .skill_output_dir from the workspace directory first. " +
+      "The skill output directory (SKILL.md and references/) is: /Users/john/skills/my-skill. " +
+      "Read user-context.md from the workspace directory. " +
       "Derive context_dir as workspace_dir/context.";
     const paths = parsePromptPaths(prompt);
     expect(paths.workspaceDir).toBe("/Users/john/workspace/my-skill");
     expect(paths.contextDir).toBe("/Users/john/workspace/my-skill/context");
-    expect(paths.skillOutputDir).toBeNull();
-    expect(paths.skillDir).toBeNull();
+    expect(paths.skillOutputDir).toBe("/Users/john/skills/my-skill");
+    expect(paths.skillDir).toBe("/Users/john/skills/my-skill");
   });
 });
 
 describe("resolvePromptPathsAsync", () => {
-  it("resolves skillOutputDir from .skill_output_dir when not in prompt", async () => {
+  it("resolves skillOutputDir from inline prompt path", async () => {
     const prompt =
       "The skill name is: x. The workspace directory is: /tmp/ws/x. " +
-      "Read user-context.md and .skill_output_dir first.";
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "mock-agent-"));
-    try {
-      const workspaceDir = path.join(tmp, "x");
-      await fs.mkdir(workspaceDir, { recursive: true });
-      const skillOutputPath = path.join(tmp, "skill-out", "x");
-      await fs.writeFile(
-        path.join(workspaceDir, ".skill_output_dir"),
-        skillOutputPath,
-      );
-      const promptWithTmp = prompt.replace("/tmp/ws/x", workspaceDir);
-      const paths = await resolvePromptPathsAsync(promptWithTmp);
-      expect(paths.workspaceDir).toBe(workspaceDir);
-      expect(paths.contextDir).toBe(path.join(workspaceDir, "context"));
-      expect(paths.skillOutputDir).toBe(skillOutputPath);
-      expect(paths.skillDir).toBe(skillOutputPath);
-    } finally {
-      await fs.rm(tmp, { recursive: true, force: true });
-    }
+      "The skill output directory (SKILL.md and references/) is: /tmp/skills/x. " +
+      "Read user-context.md from the workspace directory.";
+    const paths = await resolvePromptPathsAsync(prompt);
+    expect(paths.workspaceDir).toBe("/tmp/ws/x");
+    expect(paths.contextDir).toBe("/tmp/ws/x/context");
+    expect(paths.skillOutputDir).toBe("/tmp/skills/x");
+    expect(paths.skillDir).toBe("/tmp/skills/x");
   });
 });
 
