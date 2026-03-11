@@ -68,7 +68,7 @@ interface StepConfig {
 }
 
 const STEP_CONFIGS: Record<number, StepConfig> = {
-  0: { type: "agent", outputFiles: ["context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
+  0: { type: "agent", outputFiles: ["context/research-plan.md", "context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
   1: { type: "agent", outputFiles: ["context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
   2: { type: "reasoning", outputFiles: ["context/decisions.json"], model: "opus" },
   3: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
@@ -1123,7 +1123,7 @@ export default function WorkflowPage() {
         clarificationsData={clarificationsData}
         onClarificationsChange={handleClarificationsChange}
         onClarificationsContinue={() => handleReviewContinue()}
-        onReset={!reviewMode && stepConfig?.clarificationsEditable ? () => setResetTarget(0) : undefined}
+        onReset={!reviewMode && stepConfig?.clarificationsEditable ? () => setResetTarget(currentStep) : undefined}
         onResetStep={!reviewMode ? () => performStepReset(currentStep) : undefined}
         saveStatus={saveStatus}
         evaluating={!!gateLoading}
