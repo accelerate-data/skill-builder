@@ -65,7 +65,7 @@ export default function SettingsPage() {
   const [apiKey, setApiKey] = useState<string | null>(useSettingsStore.getState().anthropicApiKey ?? null)
   const workspacePath = useSettingsStore.getState().workspacePath ?? null
   const [skillsPath, setSkillsPath] = useState<string | null>(useSettingsStore.getState().skillsPath ?? null)
-  const [preferredModel, setPreferredModel] = useState<string>(useSettingsStore.getState().preferredModel ?? "")
+  const [preferredModel, setPreferredModel] = useState<string>(useSettingsStore.getState().preferredModel ?? "sonnet")
   const [logLevel, setLogLevel] = useState(useSettingsStore.getState().logLevel ?? "info")
   const [extendedThinking, setExtendedThinking] = useState(useSettingsStore.getState().extendedThinking ?? false)
   const [interleavedThinkingBeta, setInterleavedThinkingBeta] = useState(useSettingsStore.getState().interleavedThinkingBeta ?? true)
