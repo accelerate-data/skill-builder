@@ -30,6 +30,9 @@ jobs:
             app/package-lock.json
             app/sidecar/package-lock.json
 
+      - name: Upgrade npm to v11
+        run: npm install -g npm@11
+
       - name: Install npm dependencies
         working-directory: app
         run: npm ci
