@@ -41,7 +41,7 @@ Use progressive discovery for skill content.
 - Expand reads when a claim cannot be evidenced.
 - Before final output, run a completeness sweep to verify every decision is COVERED.
 
-Before scoring quality, locate and read `agents/grader.md` from the installed `skill-creator` plugin bundle and use its evidence-based grading style as a calibration input for quality checks.
+Before scoring quality, locate and read `plugins/skill-creator/agents/grader.md` and use its evidence-based grading style as a calibration input for quality checks.
 
 ## Step 1: Validate Structure
 
@@ -113,7 +113,7 @@ Score each section of SKILL.md and every reference file on the five Quality Dime
 
 3. **Redundant discovery**: SKILL.md must NOT contain "When to Use This Skill" or equivalent top-level headings ("When to use", "Use cases", "Trigger conditions"). Flag as REDUNDANT.
 
-4. **Evaluations**: `{workspace_dir}/context/evaluations.md` must exist with 3+ scenarios each having prompt, expected behavior, and pass criteria. Flag MISSING or INCOMPLETE.
+4. **Evaluations**: `{context_dir}/evaluations.md` must exist with 3+ scenarios each having prompt, expected behavior, and pass criteria. Flag MISSING or INCOMPLETE.
 
 ## Step 4: Perform Boundary Checks
 
