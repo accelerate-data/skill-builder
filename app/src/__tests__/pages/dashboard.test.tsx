@@ -114,6 +114,7 @@ function setupMocks(
 
   // Hydrate the Zustand settings store (normally done by app-layout.tsx)
   useSettingsStore.getState().setSettings({
+    workspacePath: settings.workspace_path,
     skillsPath: settings.skills_path,
   });
 }
@@ -126,10 +127,13 @@ describe("DashboardPage", () => {
   });
 
   it("shows loading skeletons while fetching skills", async () => {
-    // Make get_settings resolve immediately but list_skills hang
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
-      // list_skills hangs forever
+    // Setup store with workspace path
+    useSettingsStore.getState().setSettings({
+      workspacePath: defaultSettings.workspace_path,
+      skillsPath: defaultSettings.skills_path,
+    });
+    // Make list_skills hang forever
+    mockInvoke.mockImplementation(() => {
       return new Promise(() => {});
     });
     render(<DashboardPage />);
@@ -499,7 +503,7 @@ describe("DashboardPage", () => {
 
     // For the integration test, we verify the mocks are set up correctly
     // and the command handlers are available
-    expect(mockInvoke).toHaveBeenCalledWith("get_settings");
+    // With the store-based initialization, dashboard no longer calls get_settings on mount
     expect(mockInvoke).toHaveBeenCalledWith("list_skills", {
       workspacePath: "/home/user/workspace",
     });
