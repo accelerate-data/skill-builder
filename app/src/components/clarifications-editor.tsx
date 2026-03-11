@@ -668,7 +668,7 @@ function ChoiceList({
                   : "transparent",
               color: isSelected ? "var(--color-pacific)" : "var(--muted-foreground)",
             }}
-            onClick={() => onSelect(choice.id, choice.text)}
+            onClick={() => onSelect(choice.id, choice.is_other ? "" : choice.text)}
           >
             <span
               className="mt-px shrink-0 font-mono text-[11px] font-semibold tabular-nums"
