@@ -8,6 +8,7 @@ import type { DisplayItem } from "@/lib/display-types";
 
 export function OutputItem({ item }: { item: DisplayItem }) {
   const text = item.outputText ?? "";
+  if (text.length === 0) return null;
   const summary = text.length > 60 ? text.slice(0, 60) + "..." : text;
 
   return (

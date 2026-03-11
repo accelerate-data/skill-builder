@@ -308,6 +308,9 @@ export class MessageProcessor {
   /** Last top-level output text block — used as fallback for structured output extraction. */
   private lastOutputText: string | undefined;
 
+  /** ID of the last top-level output item — used to emit a replacement when consumed by result. */
+  private lastOutputItemId: string | undefined;
+
   /** Map from toolUseId → DisplayItem for pending tool calls. */
   private toolCallMap = new Map<string, DisplayItem>();
 
@@ -660,6 +663,7 @@ export class MessageProcessor {
           this.addToSubagentAndEmitUpdate(parentToolUseId, item, results);
         } else {
           this.lastOutputText = b.text;
+          this.lastOutputItemId = item.id;
           results.push(this.makeEnvelope(item));
         }
       } else if (b.type === "tool_use") {
@@ -825,10 +829,12 @@ export class MessageProcessor {
     // never needs to inspect structuredOutput directly.
     // Fallback: if structuredOutput is absent (e.g. agent returned JSON as a
     // text block via the Skill tool), try parsing the last output text as JSON.
+    let consumedOutputItemId: string | undefined;
     if (structuredOutput == null && this.lastOutputText) {
       const parsed = tryParseJsonFromText(this.lastOutputText);
       if (parsed != null && typeof parsed === "object") {
         structuredOutput = parsed;
+        consumedOutputItemId = this.lastOutputItemId;
       }
     }
     const resultMarkdown = extractResultMarkdown(structuredOutput);
@@ -857,10 +863,21 @@ export class MessageProcessor {
       `[message-processor] event=emit_run_summary skill=${runSummary.skillName} status=${runSummary.status}\n`,
     );
 
-    const results: ProcessedMessage[] = [
-      ...orphanedItems,
-      this.makeEnvelope(item),
-    ];
+    const results: ProcessedMessage[] = [...orphanedItems];
+
+    // If the result consumed the last output text for structured output,
+    // emit a replacement output item that hides the raw JSON so it's not
+    // displayed alongside the rendered resultMarkdown.
+    if (consumedOutputItemId && resultMarkdown) {
+      results.push(this.makeEnvelope({
+        id: consumedOutputItemId,
+        type: "output",
+        timestamp: now,
+        outputText: "",
+      }));
+    }
+
+    results.push(this.makeEnvelope(item));
 
     // Forward contextWindow to frontend via metadata so context utilization displays correctly
     if (runSummary.contextWindow > 0) {
@@ -1007,6 +1024,7 @@ export class MessageProcessor {
   reset(): void {
     this.idCounter = 0;
     this.lastOutputText = undefined;
+    this.lastOutputItemId = undefined;
     this.toolCallMap.clear();
     this.toolCallTimestamps.clear();
     this.subagentMap.clear();
