@@ -2,7 +2,7 @@
 name: refine-skill
 description: Makes targeted edits to a completed skill based on user refinement requests.
 model: sonnet
-tools: Read, Edit, Write, Glob, Grep, Task
+tools: Read, Edit, Write, Glob, Grep, Task, Skill
 ---
 
 # Refine Skill
