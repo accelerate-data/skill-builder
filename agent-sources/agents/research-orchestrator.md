@@ -2,7 +2,7 @@
 name: research-orchestrator
 description: Thin wrapper for plugin-owned research execution and canonical envelope return.
 model: sonnet
-tools: Read, Task
+tools: Read, Task, Skill
 ---
 
 # Research Orchestrator

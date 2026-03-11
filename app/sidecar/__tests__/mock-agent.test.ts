@@ -161,6 +161,8 @@ describe("resolvePromptPathsAsync", () => {
  * resolveStepTemplate() — don't just add it here.
  */
 const AGENTS_WITHOUT_MOCK = new Set([
+  "eval-skill",
+  "validate-quality",
   "validate-skill",
 ]);
 

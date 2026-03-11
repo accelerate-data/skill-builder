@@ -1860,17 +1860,10 @@ pub async fn run_workflow_step(
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
     // Deploy purpose-resolved bundled skills.
-    // Research is plugin-owned, so only validate and skill-building are deployed from bundled skills.
+    // Research is plugin-owned; validate-skill is agent-only (no SKILL.md to deploy).
     {
         let bundled_skills_dir = resolve_bundled_skills_dir(&app);
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        deploy_skill_for_workflow(
-            &conn,
-            &workspace_path,
-            &bundled_skills_dir,
-            "validate-skill",
-            "validate",
-        );
         deploy_skill_for_workflow(
             &conn,
             &workspace_path,
