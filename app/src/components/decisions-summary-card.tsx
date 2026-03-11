@@ -31,147 +31,57 @@ interface DecisionsSummaryCardProps {
 
 // ─── Parsers & Serializers ────────────────────────────────────────────────────
 
-function parseFrontmatter(content: string): DecisionFrontmatter {
-  const defaults: DecisionFrontmatter = { decision_count: 0, conflicts_resolved: 0, round: 1 };
-  const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!fmMatch) return defaults;
-  const fm = fmMatch[1];
-  for (const line of fm.split("\n")) {
-    const [key, ...rest] = line.split(":");
-    const value = rest.join(":").trim();
-    switch (key.trim()) {
-      case "decision_count": defaults.decision_count = parseInt(value) || 0; break;
-      case "conflicts_resolved": defaults.conflicts_resolved = parseInt(value) || 0; break;
-      case "round": defaults.round = parseInt(value) || 1; break;
-      case "contradictory_inputs":
-        if (value === "true") defaults.contradictory_inputs = true;
-        else if (value === "revised") defaults.contradictory_inputs = "revised";
-        break;
-      case "scope_recommendation":
-        if (value === "true") defaults.scope_recommendation = true;
-        break;
-    }
-  }
-  return defaults;
-}
-
 interface DecisionsJsonFile {
   version?: string;
   metadata?: DecisionFrontmatter;
   decisions?: Decision[];
 }
 
-function parseDecisionsFromMarkdown(content: string): Decision[] {
-  const decisions: Decision[] = [];
-  const body = content.replace(/^---[\s\S]*?---\n*/, "");
-  // Accept either ## or ### headings (both appear in generated decisions.md files).
-  const sections = body.split(/(?=^##+\s*D\d+\s*:)/m).filter((s) => s.trim());
-
-  for (const section of sections) {
-    const headingMatch = section.match(/^##+\s*(D\d+):\s*(.+)/);
-    if (!headingMatch) continue;
-
-    const id = headingMatch[1];
-    const title = headingMatch[2].trim();
-    const lines = section.split("\n");
-
-    let originalQuestion = "";
-    let decision = "";
-    let implication = "";
-    let status: Decision["status"] = "resolved";
-
-    for (const line of lines) {
-      const oq = line.match(/^\s*-?\s*\*\*Original question:\*\*\s*(.*)/);
-      if (oq) { originalQuestion = oq[1].trim(); continue; }
-      const dec = line.match(/^\s*-?\s*\*\*Decision:\*\*\s*(.*)/);
-      if (dec) { decision = dec[1].trim(); continue; }
-      const imp = line.match(/^\s*-?\s*\*\*Implication:\*\*\s*(.*)/);
-      if (imp) { implication = imp[1].trim(); continue; }
-      const st = line.match(/^\s*-?\s*\*\*Status:\*\*\s*(.*)/);
-      if (st) {
-        const val = st[1].trim();
-        if (val === "conflict-resolved" || val === "needs-review") status = val;
-        else status = "resolved";
-      }
-    }
-
-    decisions.push({ id, title, originalQuestion, decision, implication, status });
-  }
-  return decisions;
-}
+const DEFAULT_METADATA: DecisionFrontmatter = { decision_count: 0, conflicts_resolved: 0, round: 1 };
 
 function parseDecisionsFile(content: string): {
   metadata: DecisionFrontmatter;
   decisions: Decision[];
-  format: "json" | "markdown";
 } {
-  const trimmed = content.trim();
-  if (trimmed.startsWith("{")) {
-    try {
-      const parsed = JSON.parse(content) as DecisionsJsonFile;
-      const decisions = Array.isArray(parsed.decisions) ? parsed.decisions : [];
-      const metadata = parsed.metadata ?? { decision_count: decisions.length, conflicts_resolved: 0, round: 1 };
-      return { metadata, decisions, format: "json" };
-    } catch {
-      // Fall through to legacy markdown parser
-    }
+  try {
+    const parsed = JSON.parse(content) as DecisionsJsonFile;
+    const decisions = Array.isArray(parsed.decisions) ? parsed.decisions : [];
+    const metadata = parsed.metadata ?? { ...DEFAULT_METADATA, decision_count: decisions.length };
+    return { metadata, decisions };
+  } catch {
+    return { metadata: { ...DEFAULT_METADATA }, decisions: [] };
   }
-  return {
-    metadata: parseFrontmatter(content),
-    decisions: parseDecisionsFromMarkdown(content),
-    format: "markdown",
-  };
 }
 
 export function parseDecisions(content: string): Decision[] {
   return parseDecisionsFile(content).decisions;
 }
 
-/** Serialize Decision[] back to decisions content.
+/** Serialize Decision[] back to decisions JSON content.
  *  Upgrades `contradictory_inputs: true` → `contradictory_inputs: "revised"`
  *  only when `allReviewed` signals that the user has addressed all flagged decisions.
  */
 export function serializeDecisions(decisions: Decision[], rawContent: string, allReviewed = false): string {
   const parsed = parseDecisionsFile(rawContent);
-  if (parsed.format === "json") {
-    const metadata: DecisionFrontmatter = {
-      ...parsed.metadata,
-      decision_count: decisions.length,
-      conflicts_resolved: decisions.filter((d) => d.status === "conflict-resolved").length,
-    };
-    // When all needs-review decisions have been addressed, upgrade the guard
-    // and flip their status to "resolved" so the state survives round-trips.
-    const finalDecisions = allReviewed
-      ? decisions.map((d) => d.status === "needs-review" ? { ...d, status: "resolved" as const } : d)
-      : decisions;
-    if (metadata.contradictory_inputs === true && allReviewed) {
-      metadata.contradictory_inputs = "revised";
-    }
-    const payload: DecisionsJsonFile = {
-      version: "1",
-      metadata,
-      decisions: finalDecisions,
-    };
-    return `${JSON.stringify(payload, null, 2)}\n`;
-  }
-
-  const rawFrontmatter = rawContent.match(/^(---[\s\S]*?---)/)?.[1] ?? "";
-  const updatedFm = allReviewed
-    ? rawFrontmatter.replace(/contradictory_inputs:\s*true/, "contradictory_inputs: revised")
-    : rawFrontmatter;
-  const finalDecisionsMd = allReviewed
+  const metadata: DecisionFrontmatter = {
+    ...parsed.metadata,
+    decision_count: decisions.length,
+    conflicts_resolved: decisions.filter((d) => d.status === "conflict-resolved").length,
+  };
+  // When all needs-review decisions have been addressed, upgrade the guard
+  // and flip their status to "resolved" so the state survives round-trips.
+  const finalDecisions = allReviewed
     ? decisions.map((d) => d.status === "needs-review" ? { ...d, status: "resolved" as const } : d)
     : decisions;
-  const blocks = finalDecisionsMd.map((d) =>
-    [
-      `### ${d.id}: ${d.title}`,
-      `- **Original question:** ${d.originalQuestion}`,
-      `- **Decision:** ${d.decision}`,
-      `- **Implication:** ${d.implication}`,
-      `- **Status:** ${d.status}`,
-    ].join("\n")
-  );
-  return `${updatedFm}\n\n${blocks.join("\n\n")}\n`;
+  if (metadata.contradictory_inputs === true && allReviewed) {
+    metadata.contradictory_inputs = "revised";
+  }
+  const payload: DecisionsJsonFile = {
+    version: "1",
+    metadata,
+    decisions: finalDecisions,
+  };
+  return `${JSON.stringify(payload, null, 2)}\n`;
 }
 
 function formatDuration(ms: number): string {
