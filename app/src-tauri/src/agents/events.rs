@@ -51,12 +51,37 @@ pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
                 }
             }
 
+            // Log display_item routing at debug level for troubleshooting
+            if message.get("type").and_then(|t| t.as_str()) == Some("display_item") {
+                let item_type = message
+                    .get("item")
+                    .and_then(|i| i.get("type"))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("unknown");
+                let item_id = message
+                    .get("item")
+                    .and_then(|i| i.get("id"))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("unknown");
+                log::debug!(
+                    "[event:agent-message:{}] display_item type={} id={}",
+                    agent_id, item_type, item_id
+                );
+            } else {
+                let msg_type = message
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("unknown");
+                log::debug!(
+                    "[event:agent-message:{}] pass_through type={}",
+                    agent_id, msg_type
+                );
+            }
+
             let event = AgentEvent {
                 agent_id: agent_id.to_string(),
                 message,
             };
-            // Agent message content is captured in per-request JSONL transcripts —
-            // no need to dump it into the app log (even at DEBUG, it's enormous).
             if let Err(e) = app_handle.emit("agent-message", &event) {
                 log::warn!("Failed to emit agent-message for {}: {}", agent_id, e);
             }
