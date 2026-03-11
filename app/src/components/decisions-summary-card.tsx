@@ -128,10 +128,10 @@ export function parseDecisions(content: string): Decision[] {
 }
 
 /** Serialize Decision[] back to decisions content.
- *  Upgrades `contradictory_inputs: true` → `contradictory_inputs: revised`
- *  to signal the user has reviewed and accepted the flagged decisions.
+ *  Upgrades `contradictory_inputs: true` → `contradictory_inputs: "revised"`
+ *  only when `allReviewed` signals that the user has addressed all flagged decisions.
  */
-export function serializeDecisions(decisions: Decision[], rawContent: string): string {
+export function serializeDecisions(decisions: Decision[], rawContent: string, allReviewed = false): string {
   const parsed = parseDecisionsFile(rawContent);
   if (parsed.format === "json") {
     const metadata: DecisionFrontmatter = {
@@ -139,7 +139,7 @@ export function serializeDecisions(decisions: Decision[], rawContent: string): s
       decision_count: decisions.length,
       conflicts_resolved: decisions.filter((d) => d.status === "conflict-resolved").length,
     };
-    if (metadata.contradictory_inputs === true) {
+    if (metadata.contradictory_inputs === true && allReviewed) {
       metadata.contradictory_inputs = "revised";
     }
     const payload: DecisionsJsonFile = {
@@ -151,7 +151,9 @@ export function serializeDecisions(decisions: Decision[], rawContent: string): s
   }
 
   const rawFrontmatter = rawContent.match(/^(---[\s\S]*?---)/)?.[1] ?? "";
-  const updatedFm = rawFrontmatter.replace(/contradictory_inputs:\s*true/, "contradictory_inputs: revised");
+  const updatedFm = allReviewed
+    ? rawFrontmatter.replace(/contradictory_inputs:\s*true/, "contradictory_inputs: revised")
+    : rawFrontmatter;
   const blocks = decisions.map((d) =>
     [
       `### ${d.id}: ${d.title}`,
@@ -187,31 +189,44 @@ export function DecisionsSummaryCard({
   const [decisions, setDecisions] = useState<Decision[]>(() => parsedFile.decisions);
   const [summaryExpanded, setSummaryExpanded] = useState(true);
   const [showNeedsReviewOnly, setShowNeedsReviewOnly] = useState(false);
-  // Track whether the user has made any edit this session — used to show revised banner immediately
-  const [wasEdited, setWasEdited] = useState(false);
+  // Track which needs-review decisions the user has edited (by decision id).
+  const [editedIds, setEditedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setDecisions(parseDecisionsFile(decisionsContent).decisions);
-    setWasEdited(false);
+    setEditedIds(new Set());
   }, [decisionsContent]);
 
   const resolvedCount = decisions.filter((d) => d.status === "resolved").length;
   const conflictResolvedCount = decisions.filter((d) => d.status === "conflict-resolved").length;
-  const needsReviewCount = decisions.filter((d) => d.status === "needs-review").length;
+  const needsReviewDecisions = decisions.filter((d) => d.status === "needs-review");
+  const needsReviewCount = needsReviewDecisions.length;
   const visibleDecisions = showNeedsReviewOnly
-    ? decisions.filter((d) => d.status === "needs-review")
+    ? needsReviewDecisions
     : decisions;
 
-  // Effective contradictory state: upgrade true → "revised" once the user edits
-  const effectiveContradictory = wasEdited && fm.contradictory_inputs === true
+  // All needs-review decisions have been touched by the user.
+  const allNeedsReviewEdited = needsReviewCount > 0
+    ? needsReviewDecisions.every((d) => editedIds.has(d.id))
+    : editedIds.size > 0; // edge case: user edited last needs-review, count already 0 on re-parse
+
+  // Effective contradictory state: upgrade true → "revised" only once ALL
+  // needs-review decisions have been addressed by the user.
+  const effectiveContradictory = allNeedsReviewEdited && fm.contradictory_inputs === true
     ? "revised"
     : fm.contradictory_inputs;
 
   function handleDecisionChange(updated: Decision) {
     const next = decisions.map((d) => (d.id === updated.id ? updated : d));
+    const nextEditedIds = new Set(editedIds).add(updated.id);
     setDecisions(next);
-    setWasEdited(true);
-    onDecisionsChange?.(serializeDecisions(next, decisionsContent));
+    setEditedIds(nextEditedIds);
+    // Check if all needs-review decisions are now edited (including this one)
+    const nextNeedsReview = next.filter((d) => d.status === "needs-review");
+    const allEdited = nextNeedsReview.length > 0
+      ? nextNeedsReview.every((d) => nextEditedIds.has(d.id))
+      : true;
+    onDecisionsChange?.(serializeDecisions(next, decisionsContent, allEdited));
   }
 
   return (

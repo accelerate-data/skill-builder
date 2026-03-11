@@ -215,10 +215,18 @@ describe("serializeDecisions — round-trip", () => {
     expect(serialized).toContain("round: 1");
   });
 
-  it("upgrades contradictory_inputs: true → revised on serialize (user acknowledgement)", () => {
+  it("does NOT upgrade contradictory_inputs when allReviewed is false", () => {
     const decisions = parseDecisions(contradictoryDecisionsMd);
     const rawFm = contradictoryDecisionsMd.match(/^(---[\s\S]*?---)/)?.[1] ?? "";
-    const serialized = serializeDecisions(decisions, rawFm);
+    const serialized = serializeDecisions(decisions, rawFm); // allReviewed defaults to false
+    expect(serialized).toContain("contradictory_inputs: true");
+    expect(serialized).not.toContain("contradictory_inputs: revised");
+  });
+
+  it("upgrades contradictory_inputs: true → revised when allReviewed is true", () => {
+    const decisions = parseDecisions(contradictoryDecisionsMd);
+    const rawFm = contradictoryDecisionsMd.match(/^(---[\s\S]*?---)/)?.[1] ?? "";
+    const serialized = serializeDecisions(decisions, rawFm, true);
     expect(serialized).toContain("contradictory_inputs: revised");
     expect(serialized).not.toContain("contradictory_inputs: true");
   });
@@ -363,5 +371,103 @@ describe("DecisionsSummaryCard — Edge Cases", () => {
     const noFm = "### D1: Test\n- **Decision:** Something\n- **Status:** resolved";
     render(<DecisionsSummaryCard decisionsContent={noFm} />);
     expect(screen.getByText("D1")).toBeInTheDocument();
+  });
+});
+
+// ─── Multi-contradiction guard lifecycle ──────────────────────────────────────
+
+const multiContradictoryMd = `---
+decision_count: 3
+conflicts_resolved: 0
+round: 1
+contradictory_inputs: true
+---
+### D1: Revenue Model
+- **Original question:** Should we track revenue?
+- **Decision:** Track MRR
+- **Implication:** Contradicts Q5
+- **Status:** needs-review
+
+### D2: Pipeline Scope
+- **Original question:** What pipeline stages?
+- **Decision:** All stages
+- **Implication:** Contradicts Q3 which said top-of-funnel only
+- **Status:** needs-review
+
+### D3: Resolved Item
+- **Original question:** Format?
+- **Decision:** JSON
+- **Implication:** Clear
+- **Status:** resolved
+`;
+
+describe("DecisionsSummaryCard — multi-contradiction guard", () => {
+  it("keeps contradictions banner when only one of two needs-review decisions is edited", async () => {
+    const user = userEvent.setup();
+    render(
+      <DecisionsSummaryCard
+        decisionsContent={multiContradictoryMd}
+        allowEdit={true}
+        onDecisionsChange={vi.fn()}
+      />
+    );
+
+    // Before any edit: contradictions banner visible
+    expect(screen.getByText(/Contradictory inputs detected/)).toBeInTheDocument();
+    expect(screen.queryByText(/Contradictions reviewed/)).not.toBeInTheDocument();
+
+    // Edit only D1 (first needs-review) — D2 is still unreviewed
+    const textareas = screen.getAllByRole("textbox") as HTMLTextAreaElement[];
+    const d1Textarea = textareas.find((ta) => ta.value === "Track MRR");
+    expect(d1Textarea).toBeDefined();
+    await user.clear(d1Textarea!);
+    await user.type(d1Textarea!, "Track ARR instead.");
+
+    // Contradictions banner should STILL be visible (D2 not edited yet)
+    expect(screen.getByText(/Contradictory inputs detected/)).toBeInTheDocument();
+    expect(screen.queryByText(/Contradictions reviewed/)).not.toBeInTheDocument();
+  });
+
+  it("shows revised banner only after ALL needs-review decisions are edited", async () => {
+    const user = userEvent.setup();
+    render(
+      <DecisionsSummaryCard
+        decisionsContent={multiContradictoryMd}
+        allowEdit={true}
+        onDecisionsChange={vi.fn()}
+      />
+    );
+
+    const textareas = screen.getAllByRole("textbox") as HTMLTextAreaElement[];
+
+    // Edit D1
+    const d1Textarea = textareas.find((ta) => ta.value === "Track MRR");
+    await user.clear(d1Textarea!);
+    await user.type(d1Textarea!, "Track ARR.");
+
+    // Still shows contradictions (D2 unedited)
+    expect(screen.getByText(/Contradictory inputs detected/)).toBeInTheDocument();
+
+    // Edit D2
+    const d2Textarea = textareas.find((ta) => ta.value === "All stages");
+    await user.clear(d2Textarea!);
+    await user.type(d2Textarea!, "Top-of-funnel only.");
+
+    // NOW both needs-review decisions are edited → revised banner
+    expect(screen.queryByText(/Contradictory inputs detected/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Contradictions reviewed/)).toBeInTheDocument();
+  });
+
+  it("serializes contradictory_inputs as true when not all reviewed, revised when all reviewed", () => {
+    const decisions = parseDecisions(multiContradictoryMd);
+    const rawFm = multiContradictoryMd.match(/^(---[\s\S]*?---)/)?.[1] ?? "";
+
+    // Not all reviewed
+    const partial = serializeDecisions(decisions, rawFm, false);
+    expect(partial).toContain("contradictory_inputs: true");
+
+    // All reviewed
+    const full = serializeDecisions(decisions, rawFm, true);
+    expect(full).toContain("contradictory_inputs: revised");
   });
 });
