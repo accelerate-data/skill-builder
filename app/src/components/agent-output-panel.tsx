@@ -35,7 +35,7 @@ export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
   return (
     <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <ScrollArea className="min-h-0 flex-1">
-        <div ref={scrollRef} className="flex flex-col p-3">
+        <div ref={scrollRef} className="flex flex-col px-4 py-2">
           <DisplayItemList items={run.displayItems} />
           <div ref={bottomRef} />
         </div>
