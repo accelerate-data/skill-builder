@@ -206,6 +206,44 @@ describe("runAgentRequest", () => {
     expect(stderrMsg!.data).toBe("some debug output");
     expect(stderrMsg!.timestamp).toEqual(expect.any(Number));
   });
+
+  it("emits an error display item and run_summary when the async iterator throws after startup", async () => {
+    async function* failingConversation() {
+      yield {
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "step 1" }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      };
+      throw new Error("stream failed after startup");
+    }
+    mockQuery.mockReturnValue(failingConversation() as ReturnType<typeof query>);
+
+    const messages: Record<string, unknown>[] = [];
+    await runAgentRequest(baseConfig({ skillName: "sales-analysis", stepId: -10 }), (msg) =>
+      messages.push(msg),
+    );
+
+    const displayItems = messages.filter((m) => m.type === "display_item");
+    const runSummaryMsgs = messages.filter((m) => m.type === "run_summary");
+
+    expect(displayItems).toHaveLength(2);
+    expect(runSummaryMsgs).toHaveLength(1);
+
+    const errorItem = (displayItems[1] as Record<string, unknown>).item as Record<string, unknown>;
+    expect(errorItem.type).toBe("error");
+    expect(errorItem.errorMessage).toBe("stream failed after startup");
+
+    const summary = runSummaryMsgs[0].data as Record<string, unknown>;
+    expect(summary.skillName).toBe("sales-analysis");
+    expect(summary.stepId).toBe(-10);
+    expect(summary.status).toBe("error");
+    expect(summary.resultSubtype).toBe("error_during_execution");
+    expect(summary.resultErrors).toEqual(["stream failed after startup"]);
+    expect(summary.stopReason).toBe("error");
+    expect(summary.numTurns).toBe(1);
+  });
 });
 
 describe("result message error subtypes", () => {

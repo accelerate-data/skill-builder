@@ -718,20 +718,27 @@ describe("runPersistent", () => {
 
     capture.restore();
 
-    // The stuck request should have completed (via abort → error → request_complete)
+    // The stuck request should have completed (via abort → shutdown summary → request_complete)
     const reqComplete = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
       return parsed.request_id === "req_stuck" && parsed.type === "request_complete";
     });
     expect(reqComplete).toBeDefined();
 
-    // Should have an error from the abort
+    // Aborted requests should retain shutdown semantics, not execution-error semantics.
     const reqError = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.request_id === "req_stuck" && parsed.type === "error";
+      return parsed.request_id === "req_stuck" && parsed.type === "display_item" && parsed.item?.type === "error";
     });
-    expect(reqError).toBeDefined();
-    expect(JSON.parse(reqError!).message).toContain("aborted");
+    expect(reqError).toBeUndefined();
+
+    const reqSummary = capture.lines.find((l) => {
+      const parsed = JSON.parse(l);
+      return parsed.request_id === "req_stuck" && parsed.type === "run_summary";
+    });
+    expect(reqSummary).toBeDefined();
+    expect(JSON.parse(reqSummary!).data.status).toBe("shutdown");
+    expect(JSON.parse(reqSummary!).data.resultSubtype).toBeUndefined();
 
     expect(exitFn).toHaveBeenCalledWith(0);
   });

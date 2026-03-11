@@ -174,6 +174,15 @@ export class RunMetadataAccumulator {
     };
   }
 
+  buildExecutionErrorSummary(errorMessage: string): RunSummary {
+    return this.buildRunSummary({
+      subtype: "error_during_execution",
+      is_error: true,
+      errors: [errorMessage],
+      stop_reason: "error",
+    });
+  }
+
   buildRunSummary(raw: Record<string, unknown>): RunSummary {
     const usage = raw.usage as { input_tokens?: number; output_tokens?: number } | undefined;
     const modelUsage = raw.modelUsage as
@@ -958,6 +967,11 @@ export class MessageProcessor {
   /** Build a shutdown run_summary for aborted/cancelled runs. */
   buildShutdownSummary(): RunSummary {
     return this.accumulator.buildShutdownSummary();
+  }
+
+  /** Build an error run_summary for iterator failures after SDK startup. */
+  buildExecutionErrorSummary(errorMessage: string): RunSummary {
+    return this.accumulator.buildExecutionErrorSummary(errorMessage);
   }
 
   /** Get count of pending (unresolved) tool calls. For testing. */

@@ -100,16 +100,37 @@ export async function runAgentRequest(
     runSource: config.runSource,
   });
 
-  for await (const message of conversation) {
-    if (state.abortController.signal.aborted) break;
+  try {
+    for await (const message of conversation) {
+      if (state.abortController.signal.aborted) break;
 
-    const raw = message as Record<string, unknown>;
-    // Log raw message to transcript (debugging) — the raw message is still
-    // captured by persistent-mode's writeLine wrapping, so no separate log needed.
-    // Process into display items + pass-through messages
-    const items = processor.process(raw);
-    for (const item of items) {
-      onMessage(item as Record<string, unknown>);
+      const raw = message as Record<string, unknown>;
+      // Log raw message to transcript (debugging) — the raw message is still
+      // captured by persistent-mode's writeLine wrapping, so no separate log needed.
+      // Process into display items + pass-through messages
+      const items = processor.process(raw);
+      for (const item of items) {
+        onMessage(item as Record<string, unknown>);
+      }
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (state.abortController.signal.aborted) {
+      process.stderr.write("[sidecar] Query stream aborted during iteration\n");
+    } else {
+      process.stderr.write(`[sidecar] Query stream failed: ${errorMessage}\n`);
+
+      const errorItems = processor.process({
+        type: "error",
+        message: errorMessage,
+      });
+      for (const item of errorItems) {
+        onMessage(item as Record<string, unknown>);
+      }
+
+      const errorSummary = processor.buildExecutionErrorSummary(errorMessage);
+      onMessage({ type: "run_summary", data: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
+      return;
     }
   }
 
