@@ -49,7 +49,10 @@ pub struct SidecarModelUsageEntry {
 }
 
 /// Self-contained run summary from the sidecar.
+/// Some fields are deserialized for protocol completeness but not yet
+/// persisted to DB — suppress dead_code until the insert is wired up.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct SidecarRunSummary {
     #[serde(rename = "skillName")]
     pub skill_name: String,
