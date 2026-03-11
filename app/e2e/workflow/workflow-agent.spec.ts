@@ -4,6 +4,8 @@
  * These tests use the agent simulator to dispatch Tauri events through
  * `window.__TAURI_EVENT_HANDLERS__`, exercising the same code paths
  * the real sidecar would trigger.
+ *
+ * All events use the DisplayItem pipeline (no legacy assistant messages).
  */
 import { test, expect } from "@playwright/test";
 import {
@@ -28,7 +30,7 @@ const researchFixture: AgentFixture = JSON.parse(
   readFileSync(resolve(__dirname, "../fixtures/agent-responses/research-step.json"), "utf-8"),
 );
 
-/** Alias for backward compatibility — all agent lifecycle tests need update mode. */
+/** Alias — all agent lifecycle tests need update mode. */
 const navigateToWorkflow = navigateToWorkflowUpdateMode;
 
 test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
@@ -66,13 +68,16 @@ test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
       "Connecting to API",
     );
 
-    // Now send the first agent message — this should clear the initializing indicator
+    // Now send the first display item — this should clear the initializing indicator
     await emitTauriEvent(page, "agent-message", {
       agent_id: "agent-001",
       message: {
-        type: "assistant",
-        message: {
-          content: [{ type: "text", text: "Starting research..." }],
+        type: "display_item",
+        item: {
+          id: "di-output-0",
+          type: "output",
+          timestamp: Date.now(),
+          outputText: "Starting research...",
         },
       },
     });
@@ -85,32 +90,35 @@ test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
     await expect(page.getByText("Starting research...")).toBeVisible();
   });
 
-  test("assistant messages render in the output panel", async ({ page }) => {
+  test("display items render in the output panel", async ({ page }) => {
     await navigateToWorkflow(page);
 
     // Agent auto-starts — wait for init indicator
     await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
 
-    // Emit messages manually (without completing the run) so the agent
+    // Emit display items manually (without completing the run) so the agent
     // output panel stays visible and doesn't get replaced by the
     // completion screen.
-    for (const text of researchFixture.messages) {
+    for (let i = 0; i < researchFixture.messages.length; i++) {
       await emitTauriEvent(page, "agent-message", {
         agent_id: "agent-001",
         message: {
-          type: "assistant",
-          message: {
-            content: [{ type: "text", text }],
+          type: "display_item",
+          item: {
+            id: `di-output-${i}`,
+            type: "output",
+            timestamp: Date.now(),
+            outputText: researchFixture.messages[i],
           },
         },
       });
       await page.waitForTimeout(50);
     }
 
-    // Wait for messages to render
+    // Wait for items to render
     await page.waitForTimeout(200);
 
-    // Verify assistant messages rendered — check for distinctive text from each message.
+    // Verify display items rendered — check for distinctive text from each message.
     // These are rendered as markdown, so headings become visible text.
     await expect(page.getByText("Researching Domain Concepts")).toBeVisible();
     await expect(page.getByText("Key Findings")).toBeVisible();
@@ -165,7 +173,7 @@ test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
     // Agent auto-starts — wait for init indicator before simulating events
     await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
 
-    // Simulate a full agent run (init -> messages -> result -> exit)
+    // Simulate a full agent run (init -> display items -> result -> exit)
     await simulateAgentRun(page, {
       agentId: "agent-001",
       messages: ["Analyzing domain..."],
