@@ -12,6 +12,24 @@ import type { DisplayItem, DisplayItemEnvelope, ToolStatus, RunMetadata, RunSumm
 import { classifyRawMessage } from "./message-classifier.js";
 
 // ---------------------------------------------------------------------------
+// Result markdown extraction
+// ---------------------------------------------------------------------------
+
+/**
+ * Extracts display-ready markdown from a structured output payload.
+ * Joins all `*_markdown` string fields with a divider so the frontend
+ * never needs to inspect structuredOutput directly.
+ */
+export function extractResultMarkdown(structuredOutput: unknown): string | undefined {
+  if (typeof structuredOutput !== "object" || structuredOutput === null) return undefined;
+  const obj = structuredOutput as Record<string, unknown>;
+  const sections = Object.entries(obj)
+    .filter(([key, val]) => key.endsWith("_markdown") && typeof val === "string" && val.length > 0)
+    .map(([, val]) => val as string);
+  return sections.length > 0 ? sections.join("\n\n---\n\n") : undefined;
+}
+
+// ---------------------------------------------------------------------------
 // Tool summary helpers (moved from frontend agent-output-panel.tsx)
 // ---------------------------------------------------------------------------
 
@@ -785,6 +803,10 @@ export class MessageProcessor {
       structuredOutput = raw.result;
     }
 
+    // Extract display-ready markdown from structured output so the frontend
+    // never needs to inspect structuredOutput directly.
+    const resultMarkdown = extractResultMarkdown(structuredOutput);
+
     // Mark any remaining pending tool calls as orphaned
     const orphanedItems = this.markOrphanedToolCalls(now);
 
@@ -796,6 +818,7 @@ export class MessageProcessor {
       resultStatus,
       errorSubtype,
       structuredOutput,
+      ...(resultMarkdown != null && { resultMarkdown }),
     };
 
     process.stderr.write(

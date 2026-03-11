@@ -74,6 +74,8 @@ export interface DisplayItem {
   errorSubtype?: string;
   /** Structured output from the SDK result (JSON object), used for artifact materialization. */
   structuredOutput?: unknown;
+  /** Display-ready markdown extracted by the sidecar from structured output fields. */
+  resultMarkdown?: string;
 
   // --- error ---
   errorMessage?: string;

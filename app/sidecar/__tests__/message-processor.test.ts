@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { MessageProcessor } from "../message-processor.js";
+import { MessageProcessor, extractResultMarkdown } from "../message-processor.js";
 import type { DisplayItem, DisplayItemEnvelope } from "../display-types.js";
 
 /** Helper to extract DisplayItems from processed output. */
@@ -575,6 +575,93 @@ describe("MessageProcessor", () => {
       expect(data).toHaveProperty("resultSubtype", "success");
       expect(data).toHaveProperty("inputTokens", 10);
       expect(data).toHaveProperty("outputTokens", 5);
+    });
+
+    it("populates resultMarkdown when structured output has *_markdown fields", () => {
+      const raw = {
+        type: "result",
+        subtype: "success",
+        structured_output: {
+          status: "validation_complete",
+          validation_log_markdown: "# Validation Log\n\nAll checks passed.",
+          test_results_markdown: "# Test Results\n\n3/3 passed.",
+        },
+        usage: { input_tokens: 10, output_tokens: 5 },
+      };
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+
+      expect(items[0].resultMarkdown).toContain("# Validation Log");
+      expect(items[0].resultMarkdown).toContain("# Test Results");
+      expect(items[0].resultMarkdown).toContain("---");
+    });
+
+    it("does not set resultMarkdown when structured output has no *_markdown fields", () => {
+      const raw = {
+        type: "result",
+        subtype: "success",
+        structured_output: { status: "done", count: 3 },
+        usage: { input_tokens: 10, output_tokens: 5 },
+      };
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+
+      expect(items[0].resultMarkdown).toBeUndefined();
+    });
+
+    it("does not set resultMarkdown when there is no structured output", () => {
+      const raw = {
+        type: "result",
+        subtype: "success",
+        usage: { input_tokens: 10, output_tokens: 5 },
+      };
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+
+      expect(items[0].resultMarkdown).toBeUndefined();
+    });
+  });
+
+  // =========================================================================
+  // extractResultMarkdown helper
+  // =========================================================================
+
+  describe("extractResultMarkdown", () => {
+    it("returns undefined for non-object inputs", () => {
+      expect(extractResultMarkdown(null)).toBeUndefined();
+      expect(extractResultMarkdown(undefined)).toBeUndefined();
+      expect(extractResultMarkdown("string")).toBeUndefined();
+      expect(extractResultMarkdown(42)).toBeUndefined();
+    });
+
+    it("returns undefined when no *_markdown fields exist", () => {
+      expect(extractResultMarkdown({ status: "done", count: 3 })).toBeUndefined();
+    });
+
+    it("returns undefined when *_markdown fields are empty strings", () => {
+      expect(extractResultMarkdown({ validation_log_markdown: "" })).toBeUndefined();
+    });
+
+    it("returns single markdown field content directly", () => {
+      const result = extractResultMarkdown({ validation_log_markdown: "# Log\n\nOK" });
+      expect(result).toBe("# Log\n\nOK");
+    });
+
+    it("joins multiple *_markdown fields with divider", () => {
+      const result = extractResultMarkdown({
+        validation_log_markdown: "# Log",
+        test_results_markdown: "# Tests",
+        status: "validation_complete",
+      });
+      expect(result).toBe("# Log\n\n---\n\n# Tests");
+    });
+
+    it("ignores non-string *_markdown fields", () => {
+      const result = extractResultMarkdown({
+        validation_log_markdown: "# Log",
+        test_results_markdown: null,
+      });
+      expect(result).toBe("# Log");
     });
   });
 
