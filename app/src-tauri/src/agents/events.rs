@@ -102,7 +102,7 @@ pub struct SidecarRunSummary {
 
 #[derive(Debug)]
 enum SidecarMessageAction {
-    PersistRunSummary(SidecarRunSummary),
+    PersistRunSummary(Box<SidecarRunSummary>),
     EmitMetadata(AgentMetadataEvent),
     EmitInitProgress(AgentInitProgress),
     ForwardAgentMessage(AgentEvent),
@@ -121,7 +121,7 @@ fn route_sidecar_message(
         log::debug!("[event:run_summary:{}] intercepted", agent_id);
         return match message.get("data") {
             Some(data) => match serde_json::from_value::<SidecarRunSummary>(data.clone()) {
-                Ok(summary) => Some(SidecarMessageAction::PersistRunSummary(summary)),
+                Ok(summary) => Some(SidecarMessageAction::PersistRunSummary(Box::new(summary))),
                 Err(e) => {
                     log::error!(
                         "[event:run_summary:{}] Failed to deserialize: {}",
@@ -208,7 +208,7 @@ fn persist_run_summary_to_conn(
                 entry.cost
             );
             if let Err(e) = crate::db::persist_agent_run(
-                &conn,
+                conn,
                 agent_id,
                 &summary.skill_name,
                 summary.step_id,
@@ -248,7 +248,7 @@ fn persist_run_summary_to_conn(
             summary.total_cost_usd
         );
         if let Err(e) = crate::db::persist_agent_run(
-            &conn,
+            conn,
             agent_id,
             &summary.skill_name,
             summary.step_id,
