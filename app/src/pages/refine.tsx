@@ -77,6 +77,7 @@ export default function RefinePage() {
   const refinableSkills = useRefineStore((s) => s.refinableSkills);
   const isLoadingSkills = useRefineStore((s) => s.isLoadingSkills);
   const skillFiles = useRefineStore((s) => s.skillFiles);
+  const previewRevision = useRefineStore((s) => s.previewRevision);
   const isRunning = useRefineStore((s) => s.isRunning);
   const activeAgentId = useRefineStore((s) => s.activeAgentId);
 
@@ -518,7 +519,7 @@ export default function RefinePage() {
               scopeBlocked={scopeBlocked}
             />
           }
-          right={<PreviewPanel />}
+          right={<PreviewPanel key={previewRevision} />}
         />
       </div>
 

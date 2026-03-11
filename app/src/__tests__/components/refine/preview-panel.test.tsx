@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useRefineStore } from "@/stores/refine-store";
 import type { SkillFile } from "@/stores/refine-store";
@@ -101,6 +101,25 @@ describe("PreviewPanel", () => {
     await user.click(screen.getByText("references/glossary.md"));
 
     expect(useRefineStore.getState().activeFileTab).toBe("references/glossary.md");
+  });
+
+  it("reloads the file picker list when new files are added after render", async () => {
+    const user = userEvent.setup();
+    setStoreState({ skillFiles: SKILL_FILES, activeFileTab: "SKILL.md" });
+    render(<PreviewPanel />);
+
+    await act(async () => {
+      useRefineStore.getState().updateSkillFiles([
+        ...SKILL_FILES,
+        { filename: "references/new-guide.md", content: "# New guide" },
+      ]);
+    });
+
+    await user.click(screen.getByTestId("refine-file-picker"));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("references/new-guide.md").length).toBeGreaterThan(0);
+    });
   });
 
   // --- Diff toggle ---

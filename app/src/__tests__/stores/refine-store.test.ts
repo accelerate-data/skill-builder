@@ -13,6 +13,7 @@ const initialState = {
   diffMode: false,
   baselineFiles: [],
   gitDiff: null,
+  previewRevision: 0,
   messages: [],
   activeAgentId: null,
   isRunning: false,
@@ -35,6 +36,7 @@ describe("useRefineStore", () => {
     expect(state.diffMode).toBe(false);
     expect(state.baselineFiles).toEqual([]);
     expect(state.gitDiff).toBeNull();
+    expect(state.previewRevision).toBe(0);
     expect(state.messages).toEqual([]);
     expect(state.activeAgentId).toBeNull();
     expect(state.isRunning).toBe(false);
@@ -181,9 +183,10 @@ describe("useRefineStore", () => {
     const state = useRefineStore.getState();
     expect(state.skillFiles).toEqual(updated);
     expect(state.skillFiles).toHaveLength(2);
+    expect(state.previewRevision).toBe(1);
   });
 
-  it("updateSkillFiles preserves the active file when it still exists", () => {
+  it("updateSkillFiles preserves the active file when no new files were added", () => {
     useRefineStore.setState({
       activeFileTab: "references/glossary.md",
       skillFiles: [
@@ -195,15 +198,34 @@ describe("useRefineStore", () => {
     useRefineStore.getState().updateSkillFiles([
       { filename: "SKILL.md", content: "new" },
       { filename: "references/glossary.md", content: "new glossary" },
-      { filename: "references/api.md", content: "api docs" },
     ]);
 
     const state = useRefineStore.getState();
     expect(state.activeFileTab).toBe("references/glossary.md");
-    expect(state.skillFiles).toHaveLength(3);
+    expect(state.skillFiles).toHaveLength(2);
   });
 
-  it("updateSkillFiles falls back to the first file when the active file was removed", () => {
+  it("updateSkillFiles switches to the first newly added file after refine creates one", () => {
+    useRefineStore.setState({
+      activeFileTab: "SKILL.md",
+      skillFiles: [
+        { filename: "SKILL.md", content: "old" },
+        { filename: "references/glossary.md", content: "old glossary" },
+      ],
+    });
+
+    useRefineStore.getState().updateSkillFiles([
+      { filename: "SKILL.md", content: "new" },
+      { filename: "references/glossary.md", content: "new glossary" },
+      { filename: "references/new-guide.md", content: "new guide" },
+    ]);
+
+    const state = useRefineStore.getState();
+    expect(state.activeFileTab).toBe("references/new-guide.md");
+    expect(state.previewRevision).toBe(1);
+  });
+
+  it("updateSkillFiles prefers a newly added file when the previous active file was removed", () => {
     useRefineStore.setState({
       activeFileTab: "references/glossary.md",
       skillFiles: [
@@ -218,7 +240,17 @@ describe("useRefineStore", () => {
     ]);
 
     const state = useRefineStore.getState();
-    expect(state.activeFileTab).toBe("SKILL.md");
+    expect(state.activeFileTab).toBe("references/api.md");
+  });
+
+  it("setSkillFiles bumps previewRevision so the right panel can remount after reload", () => {
+    useRefineStore.getState().setSkillFiles([
+      { filename: "SKILL.md", content: "new" },
+    ]);
+
+    const state = useRefineStore.getState();
+    expect(state.previewRevision).toBe(1);
+    expect(state.skillFiles).toHaveLength(1);
   });
 
   it("clearSession resets messages, agent state, diff state, but preserves refinableSkills", () => {

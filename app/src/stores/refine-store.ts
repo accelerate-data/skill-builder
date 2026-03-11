@@ -34,6 +34,7 @@ interface RefineState {
   diffMode: boolean;
   baselineFiles: SkillFile[]; // snapshot before agent run
   gitDiff: RefineDiff | null;
+  previewRevision: number;
 
   // Chat messages
   messages: RefineMessage[];
@@ -77,6 +78,7 @@ const SESSION_DEFAULTS = {
   diffMode: false,
   baselineFiles: [] as SkillFile[],
   gitDiff: null as RefineDiff | null,
+  previewRevision: 0,
   skillFiles: [] as SkillFile[],
   activeFileTab: "SKILL.md",
   // pendingInitialMessage is intentionally excluded: it is cross-page navigation
@@ -102,7 +104,12 @@ export const useRefineStore = create<RefineState>((set, get) => ({
   selectSkill: (skill) =>
     set({ selectedSkill: skill, ...SESSION_DEFAULTS }),
 
-  setSkillFiles: (files) => set({ skillFiles: files, isLoadingFiles: false }),
+  setSkillFiles: (files) =>
+    set((state) => ({
+      skillFiles: files,
+      isLoadingFiles: false,
+      previewRevision: state.previewRevision + 1,
+    })),
   setLoadingFiles: (v) => set({ isLoadingFiles: v }),
   setActiveFileTab: (filename) => set({ activeFileTab: filename }),
   setDiffMode: (v) => set({ diffMode: v }),
@@ -137,12 +144,16 @@ export const useRefineStore = create<RefineState>((set, get) => ({
   },
 
   updateSkillFiles: (files) => set((state) => {
-    const nextActive = files.some((file) => file.filename === state.activeFileTab)
-      ? state.activeFileTab
-      : (files[0]?.filename ?? "SKILL.md");
+    const existingFiles = new Set(state.skillFiles.map((file) => file.filename));
+    const firstNewFile = files.find((file) => !existingFiles.has(file.filename))?.filename;
+    const nextActive = firstNewFile
+      ?? (files.some((file) => file.filename === state.activeFileTab)
+        ? state.activeFileTab
+        : (files[0]?.filename ?? "SKILL.md"));
     return {
       skillFiles: files,
       activeFileTab: nextActive,
+      previewRevision: state.previewRevision + 1,
     };
   }),
 
