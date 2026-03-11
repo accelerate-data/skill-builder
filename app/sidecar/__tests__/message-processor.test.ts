@@ -657,6 +657,123 @@ describe("MessageProcessor", () => {
   });
 
   // =========================================================================
+  // Execution error vs shutdown summary differentiation
+  // =========================================================================
+
+  describe("buildExecutionErrorSummary", () => {
+    it("produces resultStatus: 'error' with error message in raw errors array", () => {
+      const errorMsg = "SDK threw an unexpected error";
+      const out = processor.buildExecutionErrorSummary(errorMsg);
+
+      const items = extractDisplayItems(out);
+      const passThrough = extractPassThrough(out);
+
+      expect(items).toHaveLength(1);
+      expect(items[0].type).toBe("result");
+      expect(items[0].resultStatus).toBe("error");
+      expect(items[0].errorSubtype).toBe("error_during_execution");
+      expect(items[0].outputText_result).toBeDefined();
+
+      expect(passThrough).toHaveLength(1);
+      const raw = passThrough[0] as Record<string, unknown>;
+      expect(raw.type).toBe("result");
+      expect(raw.is_error).toBe(true);
+      expect(Array.isArray(raw.errors)).toBe(true);
+      expect((raw.errors as string[]).includes(errorMsg)).toBe(true);
+    });
+
+    it("orphans any pending tool calls before emitting the error summary", () => {
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "tu-pending-err", name: "Read", input: { file_path: "/x.ts" } },
+          ],
+        },
+      });
+      expect(processor.pendingToolCallCount).toBe(1);
+
+      const out = processor.buildExecutionErrorSummary("boom");
+      const items = extractDisplayItems(out);
+
+      const orphaned = items.filter((i) => i.toolStatus === "orphaned");
+      expect(orphaned).toHaveLength(1);
+      expect(processor.pendingToolCallCount).toBe(0);
+
+      const resultItems = items.filter((i) => i.type === "result");
+      expect(resultItems).toHaveLength(1);
+      expect(resultItems[0].resultStatus).toBe("error");
+    });
+  });
+
+  describe("buildShutdownSummary", () => {
+    it("produces resultStatus: 'success' with zeroed token usage in raw message", () => {
+      const out = processor.buildShutdownSummary();
+
+      const items = extractDisplayItems(out);
+      const passThrough = extractPassThrough(out);
+
+      expect(items).toHaveLength(1);
+      expect(items[0].type).toBe("result");
+      expect(items[0].resultStatus).toBe("success");
+
+      expect(passThrough).toHaveLength(1);
+      const raw = passThrough[0] as Record<string, unknown>;
+      expect(raw.type).toBe("result");
+      expect(raw.is_error).toBe(false);
+      const usage = raw.usage as Record<string, number>;
+      expect(usage.input_tokens).toBe(0);
+      expect(usage.output_tokens).toBe(0);
+    });
+
+    it("orphans any pending tool calls before emitting the shutdown summary", () => {
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "tu-pending-shutdown", name: "Bash", input: { command: "ls" } },
+          ],
+        },
+      });
+      expect(processor.pendingToolCallCount).toBe(1);
+
+      const out = processor.buildShutdownSummary();
+      const items = extractDisplayItems(out);
+
+      const orphaned = items.filter((i) => i.toolStatus === "orphaned");
+      expect(orphaned).toHaveLength(1);
+      expect(processor.pendingToolCallCount).toBe(0);
+
+      const resultItems = items.filter((i) => i.type === "result");
+      expect(resultItems[0].resultStatus).toBe("success");
+    });
+  });
+
+  describe("buildExecutionErrorSummary vs buildShutdownSummary are distinct", () => {
+    it("error summary has is_error=true; shutdown summary has is_error=false", () => {
+      const errorOut = processor.buildExecutionErrorSummary("network failure");
+      const errorRaw = extractPassThrough(errorOut)[0] as Record<string, unknown>;
+      expect(errorRaw.is_error).toBe(true);
+
+      processor.reset();
+
+      const shutdownOut = processor.buildShutdownSummary();
+      const shutdownRaw = extractPassThrough(shutdownOut)[0] as Record<string, unknown>;
+      expect(shutdownRaw.is_error).toBe(false);
+    });
+
+    it("error summary resultStatus is 'error'; shutdown summary resultStatus is 'success'", () => {
+      const errorItems = extractDisplayItems(processor.buildExecutionErrorSummary("oops"));
+      expect(errorItems[0].resultStatus).toBe("error");
+
+      processor.reset();
+
+      const shutdownItems = extractDisplayItems(processor.buildShutdownSummary());
+      expect(shutdownItems[0].resultStatus).toBe("success");
+    });
+  });
+
+  // =========================================================================
   // State machine integrity
   // =========================================================================
 

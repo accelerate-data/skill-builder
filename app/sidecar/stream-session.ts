@@ -207,6 +207,10 @@ export class StreamSession {
         type: "error",
         message: errorMessage,
       });
+      const summaryItems = processor.buildExecutionErrorSummary(errorMessage);
+      for (const item of summaryItems) {
+        onMessage(this.currentRequestId, item as Record<string, unknown>);
+      }
     }
 
     // Query finished — either all turns exhausted or generator closed

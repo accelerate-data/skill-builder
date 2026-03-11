@@ -608,6 +608,73 @@ export class MessageProcessor {
   }
 
   /**
+   * Build a result summary for an execution error (e.g. SDK throws during streaming).
+   *
+   * Emits a `result` DisplayItem with `resultStatus: "error"` and the error
+   * message in `resultErrors`, plus orphaned-tool-call cleanup. Returns an
+   * array of ProcessedMessages ready to forward to the caller.
+   */
+  buildExecutionErrorSummary(errorMessage: string): ProcessedMessage[] {
+    const now = Date.now();
+    const orphanedItems = this.markOrphanedToolCalls(now);
+
+    const item: DisplayItem = {
+      id: this.generateId(),
+      type: "result",
+      timestamp: now,
+      outputText_result: "An error occurred during agent execution.",
+      resultStatus: "error",
+      errorSubtype: "error_during_execution",
+    };
+
+    const raw: Record<string, unknown> = {
+      type: "result",
+      subtype: "error_during_execution",
+      is_error: true,
+      errors: [errorMessage],
+    };
+
+    process.stderr.write(
+      `[message-processor] event=emit_display_item item_type=result id=${item.id} status=error subtype=error_during_execution\n`,
+    );
+
+    return [...orphanedItems, this.makeEnvelope(item), raw];
+  }
+
+  /**
+   * Build a result summary for a user-initiated shutdown (abort/close).
+   *
+   * Emits a `result` DisplayItem with `resultStatus: "success"` and zeroed
+   * token metadata, indicating the session ended cleanly by request rather
+   * than an execution failure.
+   */
+  buildShutdownSummary(): ProcessedMessage[] {
+    const now = Date.now();
+    const orphanedItems = this.markOrphanedToolCalls(now);
+
+    const item: DisplayItem = {
+      id: this.generateId(),
+      type: "result",
+      timestamp: now,
+      outputText_result: "Agent session ended.",
+      resultStatus: "success",
+    };
+
+    const raw: Record<string, unknown> = {
+      type: "result",
+      subtype: "shutdown",
+      is_error: false,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    };
+
+    process.stderr.write(
+      `[message-processor] event=emit_display_item item_type=result id=${item.id} status=success subtype=shutdown\n`,
+    );
+
+    return [...orphanedItems, this.makeEnvelope(item), raw];
+  }
+
+  /**
    * Reset processor state. Useful for tests.
    */
   reset(): void {
