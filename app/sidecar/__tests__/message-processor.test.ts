@@ -368,6 +368,36 @@ describe("MessageProcessor", () => {
       expect(processor.activeSubagentCount).toBe(1);
     });
 
+    it('creates subagent DisplayItem for Agent tool_use (SDK "Agent" tool name)', () => {
+      const raw = {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tu-agent-1",
+              name: "Agent",
+              input: {
+                description: "Quality checker for sales-analysis skill",
+                subagent_type: "code-reviewer",
+                prompt: "Review the skill output",
+              },
+            },
+          ],
+        },
+      };
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+
+      expect(items).toHaveLength(1);
+      expect(items[0].type).toBe("subagent");
+      expect(items[0].subagentDescription).toBe("Quality checker for sales-analysis skill");
+      expect(items[0].subagentType).toBe("code-reviewer");
+      expect(items[0].subagentStatus).toBe("running");
+      expect(items[0].toolUseId).toBe("tu-agent-1");
+      expect(processor.activeSubagentCount).toBe(1);
+    });
+
     it("groups child messages under parent subagent", () => {
       // Step 1: Create subagent
       processor.process({

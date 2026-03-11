@@ -53,8 +53,8 @@ function computeToolSummary(
   if (name === "WebFetch" && input.url) {
     return `Fetching: ${truncate(String(input.url), 70)}`;
   }
-  if (name === "Task" && input.description) {
-    return `Sub-agent: ${truncate(String(input.description), 60)}`;
+  if ((name === "Task" || name === "Agent") && input.description) {
+    return `Agent: ${truncate(String(input.description), 60)}`;
   }
   if (name === "NotebookEdit" && input.notebook_path) {
     const path = String(input.notebook_path).split("/").pop();
@@ -347,7 +347,7 @@ export class MessageProcessor {
         const toolUseId = (b.id as string) ?? this.generateId();
         const toolInput = (b.input as Record<string, unknown>) ?? {};
 
-        if (toolName === "Task") {
+        if (toolName === "Task" || toolName === "Agent") {
           // Subagent tool call
           const description = typeof toolInput.description === "string"
             ? toolInput.description

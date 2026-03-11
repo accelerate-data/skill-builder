@@ -29,6 +29,7 @@ function getToolIcon(toolName: string) {
     case "WebFetch":
       return <Globe className="size-3.5" />;
     case "Task":
+    case "Agent":
       return <GitBranch className="size-3.5" />;
     default:
       return <Terminal className="size-3.5" />;
