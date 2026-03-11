@@ -13,7 +13,11 @@ export function ChatMessageList({ messages }: ChatMessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+      inline: "nearest",
+    });
   }, [messages.length]);
 
   if (messages.length === 0) {
@@ -25,8 +29,8 @@ export function ChatMessageList({ messages }: ChatMessageListProps) {
   }
 
   return (
-    <ScrollArea className="h-0 flex-1">
-      <div className="flex min-w-0 flex-col gap-3 p-4">
+    <ScrollArea className="h-0 flex-1 overflow-x-hidden">
+      <div className="flex min-w-0 flex-col gap-3 overflow-x-hidden p-4">
         {messages.map((msg) => {
           if (msg.role === "user") {
             return (
@@ -46,7 +50,7 @@ export function ChatMessageList({ messages }: ChatMessageListProps) {
                   </div>
                 )}
                 {msg.userText && (
-                  <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-2 text-primary-foreground">
+                  <div className="max-w-[80%] break-words rounded-2xl bg-primary px-4 py-2 text-primary-foreground">
                     {msg.userText}
                   </div>
                 )}

@@ -522,6 +522,25 @@
   text-underline-offset: 2px;
 }
 
+/* Left-panel agent output needs tighter wrapping than document preview. */
+.markdown-body.compact.agent-markdown {
+  overflow-x: hidden;
+}
+
+.markdown-body.compact.agent-markdown ul,
+.markdown-body.compact.agent-markdown ol {
+  padding-left: 1.2em;
+}
+
+.markdown-body.compact.agent-markdown li {
+  margin-bottom: 0.1em;
+}
+
+.markdown-body.compact.agent-markdown code:not(pre code) {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 /* Safety net for minimum dimensions (Tauri enforces via minWidth/minHeight) */
 html, body, #root {
   min-width: 900px;
