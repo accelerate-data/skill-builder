@@ -111,7 +111,13 @@ If insufficient, return:
       }
     },
     "sections": [],
-    "notes": ["User context insufficient — recommend narrowing scope or adding domain details."],
+    "notes": [
+      {
+        "type": "scope_recommendation",
+        "title": "Insufficient User Context",
+        "body": "User context is too vague or placeholder-only to produce meaningful research. Provide a substantive description before continuing."
+      }
+    ],
     "answer_evaluator_notes": []
   }
 }
