@@ -29,6 +29,20 @@ export function extractResultMarkdown(structuredOutput: unknown): string | undef
   return sections.length > 0 ? sections.join("\n\n---\n\n") : undefined;
 }
 
+/**
+ * Attempts to parse a text block as JSON, stripping markdown code fences
+ * (```json ... ``` or ``` ... ```) if present.
+ * Returns the parsed value or undefined if parsing fails.
+ */
+export function tryParseJsonFromText(text: string): unknown {
+  const stripped = text.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
+  try {
+    return JSON.parse(stripped);
+  } catch {
+    return undefined;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Tool summary helpers (moved from frontend agent-output-panel.tsx)
 // ---------------------------------------------------------------------------
@@ -290,6 +304,9 @@ export type ProcessedMessage = Record<string, unknown>;
 export class MessageProcessor {
   /** Counter for generating unique display item IDs. */
   private idCounter = 0;
+
+  /** Last top-level output text block — used as fallback for structured output extraction. */
+  private lastOutputText: string | undefined;
 
   /** Map from toolUseId → DisplayItem for pending tool calls. */
   private toolCallMap = new Map<string, DisplayItem>();
@@ -642,6 +659,7 @@ export class MessageProcessor {
         if (parentToolUseId) {
           this.addToSubagentAndEmitUpdate(parentToolUseId, item, results);
         } else {
+          this.lastOutputText = b.text;
           results.push(this.makeEnvelope(item));
         }
       } else if (b.type === "tool_use") {
@@ -805,6 +823,14 @@ export class MessageProcessor {
 
     // Extract display-ready markdown from structured output so the frontend
     // never needs to inspect structuredOutput directly.
+    // Fallback: if structuredOutput is absent (e.g. agent returned JSON as a
+    // text block via the Skill tool), try parsing the last output text as JSON.
+    if (structuredOutput == null && this.lastOutputText) {
+      const parsed = tryParseJsonFromText(this.lastOutputText);
+      if (parsed != null && typeof parsed === "object") {
+        structuredOutput = parsed;
+      }
+    }
     const resultMarkdown = extractResultMarkdown(structuredOutput);
 
     // Mark any remaining pending tool calls as orphaned
@@ -980,6 +1006,7 @@ export class MessageProcessor {
    */
   reset(): void {
     this.idCounter = 0;
+    this.lastOutputText = undefined;
     this.toolCallMap.clear();
     this.toolCallTimestamps.clear();
     this.subagentMap.clear();

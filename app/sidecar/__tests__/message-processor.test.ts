@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { MessageProcessor, extractResultMarkdown } from "../message-processor.js";
+import { MessageProcessor, extractResultMarkdown, tryParseJsonFromText } from "../message-processor.js";
 import type { DisplayItem, DisplayItemEnvelope } from "../display-types.js";
 
 /** Helper to extract DisplayItems from processed output. */
@@ -662,6 +662,111 @@ describe("MessageProcessor", () => {
         test_results_markdown: null,
       });
       expect(result).toBe("# Log");
+    });
+  });
+
+  // =========================================================================
+  // tryParseJsonFromText helper
+  // =========================================================================
+
+  describe("tryParseJsonFromText", () => {
+    it("parses plain JSON string", () => {
+      const result = tryParseJsonFromText('{"status":"ok","count":3}');
+      expect(result).toEqual({ status: "ok", count: 3 });
+    });
+
+    it("strips ```json code fence before parsing", () => {
+      const text = "```json\n{\"status\":\"validation_complete\",\"validation_log_markdown\":\"# Log\"}\n```";
+      const result = tryParseJsonFromText(text) as Record<string, unknown>;
+      expect(result.status).toBe("validation_complete");
+      expect(result.validation_log_markdown).toBe("# Log");
+    });
+
+    it("strips plain ``` code fence before parsing", () => {
+      const text = "```\n{\"key\":\"value\"}\n```";
+      expect(tryParseJsonFromText(text)).toEqual({ key: "value" });
+    });
+
+    it("returns undefined for non-JSON text", () => {
+      expect(tryParseJsonFromText("just some plain text")).toBeUndefined();
+    });
+
+    it("returns undefined for empty string", () => {
+      expect(tryParseJsonFromText("")).toBeUndefined();
+    });
+  });
+
+  // =========================================================================
+  // resultMarkdown fallback from output text block
+  // =========================================================================
+
+  describe("resultMarkdown fallback from output text", () => {
+    it("extracts resultMarkdown from last output text when structuredOutput is absent", () => {
+      const jsonText = JSON.stringify({
+        status: "validation_complete",
+        validation_log_markdown: "# Validation Log\n\nAll good.",
+        test_results_markdown: "# Tests\n\nAll pass.",
+      });
+
+      // Emit a text output block containing JSON
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: jsonText }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      });
+
+      // Emit a result with no structured_output
+      const out = processor.process({ type: "result", subtype: "success", stop_reason: "end_turn" });
+      const items = extractDisplayItems(out);
+      const resultItem = items.find((i) => i.type === "result");
+
+      expect(resultItem?.resultMarkdown).toContain("# Validation Log");
+      expect(resultItem?.resultMarkdown).toContain("# Tests");
+      expect(resultItem?.structuredOutput).toMatchObject({ status: "validation_complete" });
+    });
+
+    it("extracts resultMarkdown from output text with ```json code fence", () => {
+      const jsonText = "```json\n" + JSON.stringify({
+        status: "validation_complete",
+        validation_log_markdown: "# Log",
+      }) + "\n```";
+
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: jsonText }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      });
+
+      const out = processor.process({ type: "result", subtype: "success", stop_reason: "end_turn" });
+      const items = extractDisplayItems(out);
+      const resultItem = items.find((i) => i.type === "result");
+
+      expect(resultItem?.resultMarkdown).toBe("# Log");
+    });
+
+    it("does not override structuredOutput when already present", () => {
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: '{"validation_log_markdown":"# From text"}' }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      });
+
+      const out = processor.process({
+        type: "result",
+        subtype: "success",
+        stop_reason: "end_turn",
+        structured_output: { validation_log_markdown: "# From structured" },
+      });
+      const items = extractDisplayItems(out);
+      const resultItem = items.find((i) => i.type === "result");
+
+      expect(resultItem?.resultMarkdown).toBe("# From structured");
     });
   });
 
