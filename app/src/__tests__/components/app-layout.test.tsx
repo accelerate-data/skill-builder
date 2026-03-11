@@ -372,8 +372,8 @@ describe("AppLayout", () => {
     });
   });
 
-  it("does not call reconcile_startup until settings are loaded", async () => {
-    // Settings hang forever
+  it("calls reconcile_startup concurrently with get_settings on mount", async () => {
+    // Both calls hang forever — verifies they fire concurrently, not sequentially
     mockInvoke.mockImplementation(() => new Promise(() => {}));
 
     render(<AppLayout />);
@@ -381,10 +381,10 @@ describe("AppLayout", () => {
     // Give it a tick
     await new Promise((r) => setTimeout(r, 50));
 
-    // reconcile_startup should NOT have been called since settings haven't loaded
+    // reconcileStartup fires concurrently with getSettings (not gated on settings load)
     const calls = mockInvoke.mock.calls.map((c) => c[0]);
     expect(calls).toContain("get_settings");
-    expect(calls).not.toContain("reconcile_startup");
+    expect(calls).toContain("reconcile_startup");
   });
 
   it("shows setup screen when API key is missing", async () => {
