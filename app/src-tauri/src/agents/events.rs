@@ -100,26 +100,91 @@ pub struct SidecarRunSummary {
     pub status: String,
 }
 
-/// Persist a run summary directly to SQLite (fire-and-forget from the caller's perspective).
-pub fn persist_run_summary(app_handle: &tauri::AppHandle, agent_id: &str, summary: &SidecarRunSummary) {
-    use tauri::Manager;
+#[derive(Debug)]
+enum SidecarMessageAction {
+    PersistRunSummary(SidecarRunSummary),
+    EmitMetadata(AgentMetadataEvent),
+    EmitInitProgress(AgentInitProgress),
+    ForwardAgentMessage(AgentEvent),
+}
 
-    let db = match app_handle.try_state::<crate::db::Db>() {
-        Some(db) => db,
-        None => {
-            log::error!("[persist_run_summary] DB state not available for agent={}", agent_id);
-            return;
+fn route_sidecar_message(
+    agent_id: &str,
+    message: serde_json::Value,
+) -> Option<SidecarMessageAction> {
+    let msg_type = message
+        .get("type")
+        .and_then(|t| t.as_str())
+        .unwrap_or("unknown");
+
+    if msg_type == "run_summary" {
+        log::debug!("[event:run_summary:{}] intercepted", agent_id);
+        return match message.get("data") {
+            Some(data) => match serde_json::from_value::<SidecarRunSummary>(data.clone()) {
+                Ok(summary) => Some(SidecarMessageAction::PersistRunSummary(summary)),
+                Err(e) => {
+                    log::error!(
+                        "[event:run_summary:{}] Failed to deserialize: {}",
+                        agent_id, e
+                    );
+                    None
+                }
+            },
+            None => {
+                log::error!("[event:run_summary:{}] Missing 'data' field", agent_id);
+                None
+            }
+        };
+    }
+
+    if msg_type == "metadata" {
+        log::debug!("[event:agent-metadata:{}] forwarding metadata", agent_id);
+        return match message.get("data") {
+            Some(data) => {
+                let timestamp = message
+                    .get("timestamp")
+                    .and_then(|t| t.as_u64())
+                    .unwrap_or(0);
+                Some(SidecarMessageAction::EmitMetadata(AgentMetadataEvent {
+                    agent_id: agent_id.to_string(),
+                    data: data.clone(),
+                    timestamp,
+                }))
+            }
+            None => {
+                log::warn!("[event:metadata:{}] Missing 'data' field — skipping", agent_id);
+                None
+            }
+        };
+    }
+
+    if msg_type == "system" {
+        if let Some(subtype) = message.get("subtype").and_then(|s| s.as_str()) {
+            if matches!(subtype, "init_start" | "sdk_ready" | "init") {
+                let timestamp = message
+                    .get("timestamp")
+                    .and_then(|t| t.as_u64())
+                    .unwrap_or(0);
+                return Some(SidecarMessageAction::EmitInitProgress(AgentInitProgress {
+                    agent_id: agent_id.to_string(),
+                    subtype: subtype.to_string(),
+                    timestamp,
+                }));
+            }
         }
-    };
+    }
 
-    let conn = match db.0.lock() {
-        Ok(c) => c,
-        Err(e) => {
-            log::error!("[persist_run_summary] Failed to acquire DB lock for agent={}: {}", agent_id, e);
-            return;
-        }
-    };
+    Some(SidecarMessageAction::ForwardAgentMessage(AgentEvent {
+        agent_id: agent_id.to_string(),
+        message,
+    }))
+}
 
+fn persist_run_summary_to_conn(
+    conn: &rusqlite::Connection,
+    agent_id: &str,
+    summary: &SidecarRunSummary,
+) {
     // Determine the effective workflow_session_id (prefer workflowSessionId, fallback to usageSessionId)
     let effective_session_id = summary.workflow_session_id.as_deref()
         .or(summary.usage_session_id.as_deref());
@@ -185,114 +250,93 @@ pub fn persist_run_summary(app_handle: &tauri::AppHandle, agent_id: &str, summar
             summary.session_id.as_deref(),
             effective_session_id,
         ) {
-            log::error!(
-                "[persist_run_summary] Failed to persist aggregate for agent={}: {}",
-                agent_id, e
-            );
+                log::error!(
+                    "[persist_run_summary] Failed to persist aggregate for agent={}: {}",
+                    agent_id, e
+                );
         }
     }
+}
+
+/// Persist a run summary directly to SQLite (fire-and-forget from the caller's perspective).
+pub fn persist_run_summary(app_handle: &tauri::AppHandle, agent_id: &str, summary: &SidecarRunSummary) {
+    use tauri::Manager;
+
+    let db = match app_handle.try_state::<crate::db::Db>() {
+        Some(db) => db,
+        None => {
+            log::error!("[persist_run_summary] DB state not available for agent={}", agent_id);
+            return;
+        }
+    };
+
+    let conn = match db.0.lock() {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("[persist_run_summary] Failed to acquire DB lock for agent={}: {}", agent_id, e);
+            return;
+        }
+    };
+
+    persist_run_summary_to_conn(&conn, agent_id, summary);
 }
 
 pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, line: &str) {
     match serde_json::from_str::<serde_json::Value>(line) {
         Ok(message) => {
-            let msg_type = message.get("type").and_then(|t| t.as_str()).unwrap_or("unknown");
-
-            // --- run_summary: persist to DB, do NOT forward to frontend ---
-            if msg_type == "run_summary" {
-                log::debug!("[event:run_summary:{}] intercepted", agent_id);
-                if let Some(data) = message.get("data") {
-                    match serde_json::from_value::<SidecarRunSummary>(data.clone()) {
-                        Ok(summary) => persist_run_summary(app_handle, agent_id, &summary),
-                        Err(e) => log::error!(
-                            "[event:run_summary:{}] Failed to deserialize: {}",
-                            agent_id, e
-                        ),
-                    }
-                } else {
-                    log::error!("[event:run_summary:{}] Missing 'data' field", agent_id);
+            match route_sidecar_message(agent_id, message) {
+                Some(SidecarMessageAction::PersistRunSummary(summary)) => {
+                    persist_run_summary(app_handle, agent_id, &summary);
                 }
-                return; // Do NOT forward to frontend
-            }
-
-            // --- metadata: forward as agent-metadata event ---
-            if msg_type == "metadata" {
-                log::debug!("[event:agent-metadata:{}] forwarding metadata", agent_id);
-                if let Some(data) = message.get("data") {
-                    let timestamp = message.get("timestamp").and_then(|t| t.as_u64()).unwrap_or(0);
-                    let event = AgentMetadataEvent {
-                        agent_id: agent_id.to_string(),
-                        data: data.clone(),
-                        timestamp,
-                    };
+                Some(SidecarMessageAction::EmitMetadata(event)) => {
                     if let Err(e) = app_handle.emit("agent-metadata", &event) {
+                        log::warn!("Failed to emit agent-metadata for {}: {}", agent_id, e);
+                    }
+                }
+                Some(SidecarMessageAction::EmitInitProgress(progress)) => {
+                    log::debug!("[event:agent-init-progress:{}] {}", agent_id, progress.subtype);
+                    if let Err(e) = app_handle.emit("agent-init-progress", &progress) {
                         log::warn!(
-                            "Failed to emit agent-metadata for {}: {}",
+                            "Failed to emit agent-init-progress for {}: {}",
                             agent_id, e
                         );
                     }
-                } else {
-                    log::warn!("[event:metadata:{}] Missing 'data' field — skipping", agent_id);
                 }
-                return; // Do NOT forward as agent-message
-            }
+                Some(SidecarMessageAction::ForwardAgentMessage(event)) => {
+                    let msg_type = event
+                        .message
+                        .get("type")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("unknown");
+                    if msg_type == "display_item" {
+                        let item_type = event
+                            .message
+                            .get("item")
+                            .and_then(|i| i.get("type"))
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("unknown");
+                        let item_id = event
+                            .message
+                            .get("item")
+                            .and_then(|i| i.get("id"))
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("unknown");
+                        log::debug!(
+                            "[event:agent-message:{}] display_item type={} id={}",
+                            agent_id, item_type, item_id
+                        );
+                    } else {
+                        log::debug!(
+                            "[event:agent-message:{}] pass_through type={}",
+                            agent_id, msg_type
+                        );
+                    }
 
-            // Detect system init progress events and emit on a dedicated channel.
-            // Only intercept specific init subtypes — other system messages
-            // (e.g. compact_boundary) must fall through to agent-message.
-            if msg_type == "system" {
-                if let Some(subtype) = message.get("subtype").and_then(|s| s.as_str()) {
-                    if matches!(subtype, "init_start" | "sdk_ready" | "init") {
-                        let timestamp = message
-                            .get("timestamp")
-                            .and_then(|t| t.as_u64())
-                            .unwrap_or(0);
-                        let progress = AgentInitProgress {
-                            agent_id: agent_id.to_string(),
-                            subtype: subtype.to_string(),
-                            timestamp,
-                        };
-                        log::debug!("[event:agent-init-progress:{}] {}", agent_id, subtype);
-                        if let Err(e) = app_handle.emit("agent-init-progress", &progress) {
-                            log::warn!(
-                                "Failed to emit agent-init-progress for {}: {}",
-                                agent_id, e
-                            );
-                        }
-                        return;
+                    if let Err(e) = app_handle.emit("agent-message", &event) {
+                        log::warn!("Failed to emit agent-message for {}: {}", agent_id, e);
                     }
                 }
-            }
-
-            // Log display_item routing at debug level for troubleshooting
-            if msg_type == "display_item" {
-                let item_type = message
-                    .get("item")
-                    .and_then(|i| i.get("type"))
-                    .and_then(|t| t.as_str())
-                    .unwrap_or("unknown");
-                let item_id = message
-                    .get("item")
-                    .and_then(|i| i.get("id"))
-                    .and_then(|t| t.as_str())
-                    .unwrap_or("unknown");
-                log::debug!(
-                    "[event:agent-message:{}] display_item type={} id={}",
-                    agent_id, item_type, item_id
-                );
-            } else {
-                log::debug!(
-                    "[event:agent-message:{}] pass_through type={}",
-                    agent_id, msg_type
-                );
-            }
-
-            let event = AgentEvent {
-                agent_id: agent_id.to_string(),
-                message,
-            };
-            if let Err(e) = app_handle.emit("agent-message", &event) {
-                log::warn!("Failed to emit agent-message for {}: {}", agent_id, e);
+                None => {}
             }
         }
         Err(e) => {
@@ -348,5 +392,217 @@ pub fn emit_init_error(app_handle: &tauri::AppHandle, error: &SidecarStartupErro
             "Failed to emit agent-init-error [{}]: {}",
             payload.error_type, e
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn route_sidecar_message_returns_metadata_event() {
+        let message = serde_json::json!({
+            "type": "metadata",
+            "data": {
+                "sessionInit": {
+                    "sessionId": "sess-123",
+                    "model": "claude-sonnet-4-6"
+                }
+            },
+            "timestamp": 42_u64
+        });
+
+        let action = route_sidecar_message("agent-1", message);
+
+        match action {
+            Some(SidecarMessageAction::EmitMetadata(event)) => {
+                assert_eq!(event.agent_id, "agent-1");
+                assert_eq!(event.timestamp, 42);
+                assert_eq!(event.data["sessionInit"]["sessionId"], "sess-123");
+            }
+            other => panic!("expected metadata action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn route_sidecar_message_returns_init_progress_event() {
+        let message = serde_json::json!({
+            "type": "system",
+            "subtype": "sdk_ready",
+            "timestamp": 99_u64
+        });
+
+        let action = route_sidecar_message("agent-2", message);
+
+        match action {
+            Some(SidecarMessageAction::EmitInitProgress(progress)) => {
+                assert_eq!(progress.agent_id, "agent-2");
+                assert_eq!(progress.subtype, "sdk_ready");
+                assert_eq!(progress.timestamp, 99);
+            }
+            other => panic!("expected init progress action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn route_sidecar_message_intercepts_run_summary() {
+        let message = serde_json::json!({
+            "type": "run_summary",
+            "data": {
+                "skillName": "demo-skill",
+                "stepId": 2,
+                "workflowSessionId": "wf-123",
+                "usageSessionId": null,
+                "runSource": "workflow",
+                "sessionId": "sdk-session",
+                "model": "claude-sonnet-4-6",
+                "inputTokens": 120,
+                "outputTokens": 45,
+                "cacheReadTokens": 6,
+                "cacheWriteTokens": 2,
+                "totalCostUsd": 0.12,
+                "modelUsageBreakdown": [],
+                "contextWindow": 200000,
+                "resultSubtype": null,
+                "resultErrors": null,
+                "stopReason": "end_turn",
+                "numTurns": 3,
+                "durationMs": 4000,
+                "durationApiMs": 3500,
+                "toolUseCount": 2,
+                "compactionCount": 1,
+                "status": "completed"
+            }
+        });
+
+        let action = route_sidecar_message("agent-3", message);
+
+        match action {
+            Some(SidecarMessageAction::PersistRunSummary(summary)) => {
+                assert_eq!(summary.skill_name, "demo-skill");
+                assert_eq!(summary.step_id, 2);
+                assert_eq!(summary.workflow_session_id.as_deref(), Some("wf-123"));
+            }
+            other => panic!("expected run summary action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn route_sidecar_message_skips_metadata_without_data() {
+        let message = serde_json::json!({
+            "type": "metadata",
+            "timestamp": 7_u64
+        });
+
+        assert!(route_sidecar_message("agent-4", message).is_none());
+    }
+
+    #[test]
+    fn persist_run_summary_writes_aggregate_row_for_workflow_session() {
+        let conn = crate::db::create_test_db_for_tests();
+        crate::db::save_workflow_run(&conn, "demo-skill", 2, "in_progress", "domain").unwrap();
+        crate::db::create_workflow_session(&conn, "wf-aggregate", "demo-skill", 1000).unwrap();
+
+        let summary = SidecarRunSummary {
+            skill_name: "demo-skill".to_string(),
+            step_id: 2,
+            workflow_session_id: Some("wf-aggregate".to_string()),
+            usage_session_id: None,
+            run_source: Some("workflow".to_string()),
+            session_id: Some("sdk-session".to_string()),
+            model: "sonnet".to_string(),
+            input_tokens: 120,
+            output_tokens: 45,
+            cache_read_tokens: 6,
+            cache_write_tokens: 2,
+            total_cost_usd: 0.12,
+            model_usage_breakdown: vec![],
+            context_window: 200_000,
+            result_subtype: None,
+            result_errors: None,
+            stop_reason: Some("end_turn".to_string()),
+            num_turns: 3,
+            duration_ms: 4_000,
+            duration_api_ms: Some(3_500),
+            tool_use_count: 2,
+            compaction_count: 1,
+            status: "completed".to_string(),
+        };
+
+        persist_run_summary_to_conn(&conn, "agent-aggregate", &summary);
+
+        let runs = crate::db::get_session_agent_runs(&conn, "wf-aggregate").unwrap();
+        assert_eq!(runs.len(), 1);
+        let run = &runs[0];
+        assert_eq!(run.agent_id, "agent-aggregate");
+        assert_eq!(run.skill_name, "demo-skill");
+        assert_eq!(run.step_id, 2);
+        assert_eq!(run.model, "claude-sonnet-4-6");
+        assert_eq!(run.input_tokens, 120);
+        assert_eq!(run.output_tokens, 45);
+        assert_eq!(run.cache_read_tokens, 6);
+        assert_eq!(run.cache_write_tokens, 2);
+        assert!((run.total_cost - 0.12).abs() < 1e-10);
+        assert_eq!(run.session_id.as_deref(), Some("sdk-session"));
+    }
+
+    #[test]
+    fn persist_run_summary_writes_breakdown_rows_and_falls_back_to_usage_session() {
+        let conn = crate::db::create_test_db_for_tests();
+        crate::db::save_workflow_run(&conn, "demo-skill", -10, "in_progress", "domain").unwrap();
+
+        let summary = SidecarRunSummary {
+            skill_name: "demo-skill".to_string(),
+            step_id: -10,
+            workflow_session_id: None,
+            usage_session_id: Some("synthetic:refine:demo-skill:sess-1".to_string()),
+            run_source: Some("refine".to_string()),
+            session_id: Some("sdk-session".to_string()),
+            model: "unknown".to_string(),
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            total_cost_usd: 0.0,
+            model_usage_breakdown: vec![
+                SidecarModelUsageEntry {
+                    model: "sonnet".to_string(),
+                    input_tokens: 100,
+                    output_tokens: 20,
+                    cache_read_tokens: 5,
+                    cache_write_tokens: 1,
+                    cost: 0.10,
+                },
+                SidecarModelUsageEntry {
+                    model: "opus".to_string(),
+                    input_tokens: 50,
+                    output_tokens: 10,
+                    cache_read_tokens: 0,
+                    cache_write_tokens: 0,
+                    cost: 0.25,
+                },
+            ],
+            context_window: 200_000,
+            result_subtype: Some("completed".to_string()),
+            result_errors: None,
+            stop_reason: Some("end_turn".to_string()),
+            num_turns: 2,
+            duration_ms: 2_000,
+            duration_api_ms: Some(1_500),
+            tool_use_count: 1,
+            compaction_count: 0,
+            status: "completed".to_string(),
+        };
+
+        persist_run_summary_to_conn(&conn, "agent-breakdown", &summary);
+
+        let runs = crate::db::get_session_agent_runs(&conn, "synthetic:refine:demo-skill:sess-1")
+            .unwrap();
+        assert_eq!(runs.len(), 2);
+        let models: Vec<_> = runs.iter().map(|run| run.model.as_str()).collect();
+        assert!(models.contains(&"claude-sonnet-4-6"));
+        assert!(models.contains(&"claude-opus-4-6"));
+        assert!(runs.iter().all(|run| run.skill_name == "demo-skill"));
+        assert!(runs.iter().all(|run| run.step_id == -10));
     }
 }
