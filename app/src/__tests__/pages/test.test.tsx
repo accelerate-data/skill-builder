@@ -210,6 +210,7 @@ describe("startAgent call positions", () => {
     const spy = vi.mocked(startAgent);
 
     const transcriptLogDir = "/tmp/my-skill/logs";
+    const syntheticTestSessionId = "synthetic:test:my-skill:test-123";
 
     // Call as the evaluator does after the fix
     await startAgent(
@@ -220,26 +221,38 @@ describe("startAgent call positions", () => {
       [],
       15,
       "plan",
-      "__test_baseline__",
-      "test-eval",
+      syntheticTestSessionId,
+      "my-skill",
       "test-evaluator",
       undefined,           // agentName — evaluator has no plugin agent
       transcriptLogDir,    // transcriptLogDir at correct position
+      -11,
+      undefined,
+      syntheticTestSessionId,
+      "test",
     );
 
     expect(spy).toHaveBeenCalledOnce();
     const args = spy.mock.calls[0];
+    expect(args[7]).toBe(syntheticTestSessionId);
+    expect(args[8]).toBe("my-skill");
+    expect(args[9]).toBe("test-evaluator");
     // arg index 10 (agentName) must NOT be the transcript log dir path
     expect(args[10]).toBeUndefined();
     // arg index 11 (transcriptLogDir) must be the log dir
     expect(args[11]).toBe(transcriptLogDir);
+    expect(args[12]).toBe(-11);
+    expect(args[13]).toBeUndefined();
+    expect(args[14]).toBe(syntheticTestSessionId);
+    expect(args[15]).toBe("test");
   });
 
-  it("plan agents pass data-product-builder as agentName and transcriptLogDir at arg 11", async () => {
+  it("with-skill plan agents pass test persistence context into startAgent", async () => {
     const { startAgent } = await import("@/lib/tauri");
     const spy = vi.mocked(startAgent);
 
     const transcriptLogDir = "/tmp/my-skill/logs";
+    const syntheticTestSessionId = "synthetic:test:my-skill:test-123";
 
     // With-skill agent call pattern
     await startAgent(
@@ -250,15 +263,62 @@ describe("startAgent call positions", () => {
       [],
       15,
       "plan",
+      syntheticTestSessionId,
       "my-skill",
-      "test-with",
       "test-plan-with",
       "data-product-builder",  // agentName
       transcriptLogDir,        // transcriptLogDir
+      -11,
+      undefined,
+      syntheticTestSessionId,
+      "test",
     );
 
     const args = spy.mock.calls[0];
+    expect(args[7]).toBe(syntheticTestSessionId);
+    expect(args[8]).toBe("my-skill");
+    expect(args[9]).toBe("test-plan-with");
     expect(args[10]).toBe("data-product-builder");
     expect(args[11]).toBe(transcriptLogDir);
+    expect(args[12]).toBe(-11);
+    expect(args[13]).toBeUndefined();
+    expect(args[14]).toBe(syntheticTestSessionId);
+    expect(args[15]).toBe("test");
+  });
+
+  it("baseline plan agents keep the tested skill identity and test grouping context", async () => {
+    const { startAgent } = await import("@/lib/tauri");
+    const spy = vi.mocked(startAgent);
+
+    const transcriptLogDir = "/tmp/my-skill/logs";
+    const syntheticTestSessionId = "synthetic:test:my-skill:test-123";
+
+    await startAgent(
+      "without-id",
+      "build a churn model",
+      "sonnet",
+      "/tmp/baseline",
+      [],
+      15,
+      "plan",
+      syntheticTestSessionId,
+      "my-skill",
+      "test-plan-without",
+      "data-product-builder",
+      transcriptLogDir,
+      -11,
+      undefined,
+      syntheticTestSessionId,
+      "test",
+    );
+
+    const args = spy.mock.calls[0];
+    expect(args[7]).toBe(syntheticTestSessionId);
+    expect(args[8]).toBe("my-skill");
+    expect(args[9]).toBe("test-plan-without");
+    expect(args[10]).toBe("data-product-builder");
+    expect(args[12]).toBe(-11);
+    expect(args[14]).toBe(syntheticTestSessionId);
+    expect(args[15]).toBe("test");
   });
 });
