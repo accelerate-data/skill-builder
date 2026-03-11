@@ -2601,12 +2601,15 @@ mod tests {
         assert!(!other_has_pending, "Should not detect pending requests for other skill");
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn test_idle_check_skips_active_sidecars() {
         // Integration-style test of the idle detection logic:
         // When a sidecar has pending requests, it should be skipped regardless
         // of how long ago it was last active.
         let pool = SidecarPool::new();
+        // Advance the Tokio clock so subtracting large durations from Instant::now()
+        // does not overflow (on Windows CI the monotonic clock can be very young).
+        tokio::time::advance(std::time::Duration::from_secs(3600)).await;
         let idle_timeout = std::time::Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS);
 
         // Simulate: two skills in the pool
