@@ -598,3 +598,48 @@ export const importSkillFromFile = (params: {
     disableModelInvocation: params.disableModelInvocation ?? null,
     forceOverwrite: params.forceOverwrite,
   })
+
+// --- Agent Run Persistence ---
+
+export interface PersistAgentRunParams {
+  agentId: string;
+  skillName: string;
+  stepId: number;
+  model: string;
+  status: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalCost: number;
+  durationMs: number;
+  numTurns: number;
+  stopReason?: string | null;
+  durationApiMs?: number | null;
+  toolUseCount: number;
+  compactionCount: number;
+  sessionId?: string | null;
+  workflowSessionId?: string | null;
+}
+
+export const persistAgentRun = (params: PersistAgentRunParams): Promise<void> =>
+  invoke<void>("persist_agent_run", {
+    agentId: params.agentId,
+    skillName: params.skillName,
+    stepId: params.stepId,
+    model: params.model,
+    status: params.status,
+    inputTokens: params.inputTokens,
+    outputTokens: params.outputTokens,
+    cacheReadTokens: params.cacheReadTokens,
+    cacheWriteTokens: params.cacheWriteTokens,
+    totalCost: params.totalCost,
+    durationMs: params.durationMs,
+    numTurns: params.numTurns,
+    stopReason: params.stopReason ?? null,
+    durationApiMs: params.durationApiMs ?? null,
+    toolUseCount: params.toolUseCount,
+    compactionCount: params.compactionCount,
+    sessionId: params.sessionId ?? null,
+    workflowSessionId: params.workflowSessionId ?? null,
+  })

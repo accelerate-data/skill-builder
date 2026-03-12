@@ -6,8 +6,12 @@ import {
   formatTokenCount,
   getLatestContextTokens,
   getContextUtilization,
+  resetAgentStoreInternals,
+  getPendingTerminalCount,
+  getPendingMetadataCount,
 } from "@/stores/agent-store";
 import type { DisplayItem } from "@/lib/display-types";
+import { mockInvoke } from "@/test/mocks/tauri";
 
 function makeDisplayItem(overrides: Partial<DisplayItem> & { type: DisplayItem["type"] }): DisplayItem {
   return {
@@ -19,6 +23,7 @@ function makeDisplayItem(overrides: Partial<DisplayItem> & { type: DisplayItem["
 
 describe("useAgentStore", () => {
   beforeEach(() => {
+    resetAgentStoreInternals();
     useAgentStore.getState().clearRuns();
     vi.restoreAllMocks();
   });
@@ -634,29 +639,6 @@ describe("agent event buffering", () => {
     mockInvoke.mockResolvedValue(undefined);
 
     useAgentStore.getState().startRun("agent-summary", "sonnet");
-    const msg: AgentMessage = {
-      type: "result",
-      content: "Done",
-      raw: {
-        usage: {
-          input_tokens: 100,
-          output_tokens: 50,
-          cache_read_input_tokens: 10,
-          cache_creation_input_tokens: 5,
-        },
-        model_usage: {
-          model: "claude-sonnet-4-5-20250929",
-          input_tokens: 100,
-          output_tokens: 50,
-          cache_read_input_tokens: 10,
-          cache_creation_input_tokens: 5,
-        },
-      },
-      timestamp: Date.now(),
-    };
-    useAgentStore.getState().addMessage("agent-summary", msg);
-    flushMessageBuffer();
-
     useAgentStore.getState().completeRun("agent-summary", true);
 
     // Wait for async persistence to complete
@@ -690,5 +672,39 @@ describe("agent event buffering", () => {
     expect(errorCalls.length).toBeGreaterThan(0);
 
     consoleSpy.mockRestore();
+  });
+});
+
+describe("module-level internal state", () => {
+  beforeEach(() => {
+    resetAgentStoreInternals();
+    useAgentStore.getState().clearRuns();
+  });
+
+  it("getPendingTerminalCount returns 0 after reset", () => {
+    expect(getPendingTerminalCount()).toBe(0);
+  });
+
+  it("getPendingMetadataCount returns 0 after reset", () => {
+    expect(getPendingMetadataCount()).toBe(0);
+  });
+
+  it("completeRun queues a pending terminal event when run does not exist yet", () => {
+    useAgentStore.getState().completeRun("no-such-agent", true);
+    expect(getPendingTerminalCount()).toBe(1);
+  });
+
+  it("resetAgentStoreInternals clears a queued pending terminal event", () => {
+    useAgentStore.getState().completeRun("no-such-agent", true);
+    expect(getPendingTerminalCount()).toBe(1);
+    resetAgentStoreInternals();
+    expect(getPendingTerminalCount()).toBe(0);
+  });
+
+  it("clearRuns delegates to resetAgentStoreInternals, clearing pending terminal events", () => {
+    useAgentStore.getState().completeRun("no-such-agent", false);
+    expect(getPendingTerminalCount()).toBe(1);
+    useAgentStore.getState().clearRuns();
+    expect(getPendingTerminalCount()).toBe(0);
   });
 });
