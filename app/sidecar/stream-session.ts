@@ -27,6 +27,8 @@ export class StreamSession {
   private mockOnMessage:
     | ((requestId: string, message: Record<string, unknown>) => void)
     | null = null;
+  /** Shared MessageProcessor for mock streaming — persists across turns. */
+  private mockProcessor: MessageProcessor | null = null;
 
   constructor(
     sessionId: string,
@@ -68,9 +70,18 @@ export class StreamSession {
 
   /**
    * Close the streaming session. The generator exits, query() finishes.
+   * In mock mode, emits a shutdown run_result so Rust can persist the run.
    */
   close(): void {
     this.closed = true;
+    if (this.mockMode && this.mockProcessor && !this.mockProcessor.hasEmittedResult() && this.mockOnMessage) {
+      const summary = this.mockProcessor.buildShutdownSummary();
+      this.mockOnMessage(this.currentRequestId, {
+        type: "agent_event",
+        event: summary,
+        timestamp: Date.now(),
+      } as Record<string, unknown>);
+    }
     if (this.pendingResolve) {
       this.pendingResolve(CLOSE_SENTINEL);
       this.pendingResolve = null;
@@ -85,6 +96,13 @@ export class StreamSession {
     if (process.env.MOCK_AGENTS === "true") {
       this.mockMode = true;
       this.mockOnMessage = onMessage;
+      this.mockProcessor = new MessageProcessor({
+        skillName: config.skillName,
+        stepId: config.stepId,
+        workflowSessionId: config.workflowSessionId,
+        usageSessionId: config.usageSessionId,
+        runSource: config.runSource,
+      });
       emitSystemEvent((msg) => onMessage(this.currentRequestId, msg), "init_start");
       emitSystemEvent((msg) => onMessage(this.currentRequestId, msg), "sdk_ready");
       await this.emitMockTurn(config.prompt, onMessage);
@@ -213,8 +231,9 @@ export class StreamSession {
         }
       }
 
-      // Emit a shutdown run_result for aborted streaming runs
-      if (state.abortController.signal.aborted) {
+      // Emit a shutdown run_result for aborted streaming runs (guard in case
+      // the SDK itself emitted a result before the abort was processed).
+      if (state.abortController.signal.aborted && !processor.hasEmittedResult()) {
         process.stderr.write(`[stream-session] Session ${this.sessionId} aborted — emitting shutdown run_result\n`);
         const shutdownSummary = processor.buildShutdownSummary();
         onMessage(this.currentRequestId, { type: "agent_event", event: shutdownSummary, timestamp: Date.now() } as Record<string, unknown>);
@@ -228,12 +247,29 @@ export class StreamSession {
       });
       // Emit error run_result for persistence — use execution-error path so
       // failures are distinguishable from user-initiated shutdowns.
-      process.stderr.write(`[stream-session] Emitting error run_result for session ${this.sessionId}\n`);
-      const errorSummary = processor.buildExecutionErrorSummary(errorMessage);
-      onMessage(this.currentRequestId, { type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
+      if (!processor.hasEmittedResult()) {
+        process.stderr.write(`[stream-session] Emitting error run_result for session ${this.sessionId}\n`);
+        const errorSummary = processor.buildExecutionErrorSummary(errorMessage);
+        onMessage(this.currentRequestId, { type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
+      }
     }
 
-    // Query finished — either all turns exhausted or generator closed
+    // Query finished — either all turns exhausted or generator closed.
+    // Guard: if the SDK exhausted max turns without emitting a result message,
+    // emit a shutdown run_result now so Rust can persist the run before
+    // session_exhausted triggers frontend cleanup.
+    if (!processor.hasEmittedResult()) {
+      process.stderr.write(
+        `[stream-session] Session ${this.sessionId} ended without run_result — emitting shutdown summary\n`,
+      );
+      const exhaustionSummary = processor.buildShutdownSummary();
+      onMessage(this.currentRequestId, {
+        type: "agent_event",
+        event: exhaustionSummary,
+        timestamp: Date.now(),
+      } as Record<string, unknown>);
+    }
+
     if (!this.closed) {
       // Turns exhausted naturally (not user-initiated close)
       process.stderr.write(
@@ -280,13 +316,8 @@ export class StreamSession {
       },
     };
 
-    const processor = new MessageProcessor({
-      skillName: this.config.skillName,
-      stepId: this.config.stepId,
-      workflowSessionId: this.config.workflowSessionId,
-      usageSessionId: this.config.usageSessionId,
-      runSource: this.config.runSource,
-    });
+    // Reuse the session-scoped processor so context accumulates across turns
+    const processor = this.mockProcessor!;
     const items = processor.process(rawAssistant);
     for (const item of items) {
       onMessage(requestId, item as Record<string, unknown>);
