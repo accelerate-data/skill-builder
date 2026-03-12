@@ -199,11 +199,28 @@ export async function runPersistent(
     const message = parseIncomingMessage(line);
 
     if (!message) {
-      // Unrecognized input — emit an error line (no request_id since we couldn't parse one)
-      writeLine({
-        type: "error",
-        message: `Unrecognized input: ${line.trim().substring(0, 200)}`,
-      });
+      // Attempt to salvage a request_id from the raw JSON even though validation
+      // failed, so Rust can associate the error with an in-flight request and
+      // clean up pending state. If the line is not even parseable JSON, log to
+      // stderr and skip — emitting a keyless error would leave the request stuck.
+      let rawRequestId: string | undefined;
+      try {
+        const raw = JSON.parse(line.trim()) as Record<string, unknown>;
+        if (typeof raw.request_id === "string") rawRequestId = raw.request_id;
+      } catch {
+        // Not valid JSON — nothing we can emit
+      }
+      if (rawRequestId) {
+        writeLine({
+          type: "error",
+          request_id: rawRequestId,
+          message: `Unrecognized input: ${line.trim().substring(0, 200)}`,
+        });
+      } else {
+        process.stderr.write(
+          `[persistent-mode] Unparseable line with no request_id (dropping): ${line.trim().substring(0, 100)}\n`,
+        );
+      }
       continue;
     }
 
