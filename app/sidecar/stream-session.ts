@@ -215,20 +215,8 @@ export class StreamSession {
           onMessage(this.currentRequestId, item as Record<string, unknown>);
         }
 
-        // Detect turn completion: emit for any non-tool_use stop reason.
-        // This is more robust than checking only "end_turn" since the SDK
-        // may use other stop reasons (e.g., "max_tokens", "stop_sequence").
-        if (msg.type === "assistant" && msg.message) {
-          const innerMsg = msg.message as Record<string, unknown>;
-          const stopReason = innerMsg.stop_reason as string | undefined;
-          if (stopReason && stopReason !== "tool_use") {
-            onMessage(this.currentRequestId, {
-              type: "agent_event",
-              event: { type: "turn_complete" },
-              timestamp: Date.now(),
-            });
-          }
-        }
+        // turn_complete is now emitted by MessageProcessor.processAssistantMessage
+        // when stop_reason is set and not "tool_use". No raw SDK field inspection here.
       }
 
       // Emit a shutdown run_result for aborted streaming runs (guard in case
@@ -323,12 +311,8 @@ export class StreamSession {
       onMessage(requestId, item as Record<string, unknown>);
     }
 
+    // turn_complete is emitted by MessageProcessor when it processes the
+    // stop_reason in rawAssistant. No manual emission needed here.
     await new Promise((resolve) => setTimeout(resolve, 20));
-    if (this.closed) return;
-    onMessage(requestId, {
-      type: "agent_event",
-      event: { type: "turn_complete" },
-      timestamp: Date.now(),
-    });
   }
 }

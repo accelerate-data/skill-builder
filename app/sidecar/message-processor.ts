@@ -18,6 +18,7 @@ import type {
   RunConfigEvent,
   RunInitEvent,
   RunResultEvent,
+  TurnCompleteEvent,
   TurnUsageEvent,
 } from "./agent-events.js";
 import { classifyRawMessage } from "./message-classifier.js";
@@ -163,6 +164,10 @@ export class RunMetadataAccumulator {
 
   get currentTurnCount(): number {
     return this.turnCount;
+  }
+
+  getContext(): RequestContext {
+    return this.context;
   }
 
   recordTurn(): void {
@@ -814,6 +819,15 @@ export class MessageProcessor {
       );
     }
 
+    // Emit turn_complete for any non-tool_use stop reason so stream-session.ts
+    // doesn't need to inspect raw SDK fields. This covers "end_turn",
+    // "max_tokens", "stop_sequence", etc.
+    const stopReason = (outerMessage?.stop_reason as string | undefined);
+    if (stopReason && stopReason !== "tool_use") {
+      const turnCompleteEvent: TurnCompleteEvent = { type: "turn_complete" };
+      results.push(this.makeAgentEventEnvelope(turnCompleteEvent, now) as ProcessedMessage);
+    }
+
     return results;
   }
 
@@ -1065,7 +1079,9 @@ export class MessageProcessor {
   }
 
   /**
-   * Reset processor state. Useful for tests.
+   * Reset processor state. Preserves the original RequestContext so that a
+   * reset processor still emits run_result with the correct skillName/stepId.
+   * Useful for tests.
    */
   reset(): void {
     this.idCounter = 0;
@@ -1076,7 +1092,7 @@ export class MessageProcessor {
     this.toolCallTimestamps.clear();
     this.subagentMap.clear();
     this.subagentByToolUseId.clear();
-    this.accumulator = new RunMetadataAccumulator({});
+    this.accumulator = new RunMetadataAccumulator(this.accumulator.getContext());
   }
 
   /** Build a shutdown run_result for aborted/cancelled runs. */
