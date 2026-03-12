@@ -445,21 +445,19 @@ export function WorkflowStepComplete({
             <AgentStatsBar runs={agentRuns} />
           </div>
         )}
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="pr-4">
-            <DecisionsSummaryCard
-              decisionsContent={decisionsContent}
-              duration={reviewMode ? dbDuration : duration}
-              cost={displayCost}
-              allowEdit={!reviewMode}
-              onDecisionsChange={(serialized) => {
-                setDecisionsEditContent(serialized);
-                setDecisionsEditorDirty(true);
-                setDecisionsSaveStatus("saving");
-              }}
-            />
-          </div>
-        </ScrollArea>
+        <div className="min-h-0 flex-1 overflow-y-auto pr-4">
+          <DecisionsSummaryCard
+            decisionsContent={decisionsContent}
+            duration={reviewMode ? dbDuration : duration}
+            cost={displayCost}
+            allowEdit={!reviewMode}
+            onDecisionsChange={(serialized) => {
+              setDecisionsEditContent(serialized);
+              setDecisionsEditorDirty(true);
+              setDecisionsSaveStatus("saving");
+            }}
+          />
+        </div>
         {!reviewMode && decisionsSaveStatus !== "idle" && (
           <div className="flex justify-start">
             <span className="text-xs text-muted-foreground">
