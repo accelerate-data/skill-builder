@@ -5,6 +5,7 @@ use std::sync::Mutex;
 
 use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
+use crate::commands::agent::output_format_for_agent;
 use crate::commands::imported_skills::validate_skill_name;
 use crate::commands::workflow::resolve_model_id;
 use crate::db::{self, Db};
@@ -12,13 +13,17 @@ use crate::types::{
     RefineDiff, RefineFileDiff, RefineFinalizeResult, RefineSessionInfo, SkillFileContent,
 };
 
-/// Tools available to the refine-skill agent. Matches the agent's frontmatter
-/// `tools: Read, Edit, Write, Glob, Grep, Bash, Task, Skill`. Task is required for the
-/// `/rewrite` and `/validate` magic commands which spawn sub-agents. Skill is
-/// required for agents that delegate to installed skills via the Skill tool.
-const REFINE_TOOLS: &[&str] = &["Read", "Edit", "Write", "Glob", "Grep", "Bash", "Task", "Skill"];
+const REFINE_TOOLS: &[&str] = &[
+    "Read", "Edit", "Write", "Glob", "Grep", "Bash", "Task", "Skill",
+];
+const VALIDATE_DIRECT_TOOLS: &[&str] = &["Read", "Glob", "Grep", "Bash", "Task"];
+const GENERATE_DIRECT_TOOLS: &[&str] = &[
+    "Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task", "Skill",
+];
 
 const REFINE_AGENT_NAME: &str = "refine-skill";
+const VALIDATE_AGENT_NAME: &str = "validate-skill";
+const GENERATE_AGENT_NAME: &str = "generate-skill";
 /// Max agentic turns for the entire streaming session. Each user message may
 /// use multiple turns internally (tool calls, etc.). 400 covers ~20 messages
 /// × 20 turns each. When exhausted, the sidecar emits session_exhausted and
@@ -53,7 +58,112 @@ impl RefineSessionManager {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RefineDispatch {
+    Stream,
+    DirectValidate,
+    DirectRewrite,
+}
+
+struct RefineRuntimeSettings {
+    api_key: String,
+    extended_thinking: bool,
+    interleaved_thinking_beta: bool,
+    sdk_effort: Option<String>,
+    fallback_model: Option<String>,
+    refine_prompt_suggestions: bool,
+    model: String,
+    skills_path: String,
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+fn dispatch_for_refine_command(
+    command: Option<&str>,
+    target_files: Option<&[String]>,
+) -> RefineDispatch {
+    match command {
+        Some("validate") => RefineDispatch::DirectValidate,
+        Some("rewrite") if target_files.is_none_or(|files| files.is_empty()) => {
+            RefineDispatch::DirectRewrite
+        }
+        _ => RefineDispatch::Stream,
+    }
+}
+
+fn ensure_skill_workspace_dir(workspace_path: &str, skill_name: &str) {
+    let skill_workspace_dir = Path::new(workspace_path).join(skill_name);
+    if !skill_workspace_dir.exists() {
+        if let Err(e) = std::fs::create_dir_all(&skill_workspace_dir) {
+            log::warn!(
+                "[send_refine_message] failed to create skill workspace dir '{}': {}",
+                skill_workspace_dir.display(),
+                e
+            );
+        } else {
+            log::debug!(
+                "[send_refine_message] created skill workspace dir '{}'",
+                skill_workspace_dir.display()
+            );
+        }
+    }
+}
+
+fn load_refine_runtime_settings(
+    db: &Db,
+    workspace_path: &str,
+    skill_name: &str,
+) -> Result<RefineRuntimeSettings, String> {
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+    let settings = db::read_settings_hydrated(&conn).map_err(|e| {
+        log::error!("[send_refine_message] Failed to read settings: {}", e);
+        e
+    })?;
+    let api_key = settings
+        .anthropic_api_key
+        .ok_or_else(|| "Anthropic API key not configured".to_string())?;
+    let model = resolve_model_id(settings.preferred_model.as_deref().unwrap_or("sonnet"));
+    let skills_path = settings
+        .skills_path
+        .unwrap_or_else(|| workspace_path.to_string());
+
+    let run_row = db::get_workflow_run(&conn, skill_name).ok().flatten();
+    let purpose = run_row
+        .as_ref()
+        .map(|r| r.purpose.clone())
+        .unwrap_or_else(|| "domain".to_string());
+    let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
+
+    crate::commands::workflow::write_user_context_file(
+        workspace_path,
+        skill_name,
+        &[],
+        settings.industry.as_deref(),
+        settings.function_role.as_deref(),
+        intake_json.as_deref(),
+        None,
+        Some(purpose.as_str()),
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
+
+    Ok(RefineRuntimeSettings {
+        api_key,
+        extended_thinking: settings.extended_thinking,
+        interleaved_thinking_beta: settings.interleaved_thinking_beta,
+        sdk_effort: settings.sdk_effort.clone(),
+        fallback_model: Some(model.clone()),
+        refine_prompt_suggestions: settings.refine_prompt_suggestions,
+        model,
+        skills_path,
+    })
+}
 
 /// Build a SidecarConfig for the first refine message (stream_start).
 /// Extracted for testability — `send_refine_message` calls this then sends stream_start.
@@ -111,6 +221,75 @@ fn build_refine_config(
         prompt_suggestions: Some(refine_prompt_suggestions),
         path_to_claude_code_executable: None,
         agent_name: Some(REFINE_AGENT_NAME.to_string()),
+        required_plugins: None,
+        conversation_history: None,
+        skill_name: Some(skill_name.to_string()),
+        step_id: Some(-10),
+        workflow_session_id: None,
+        usage_session_id: Some(usage_session_id),
+        run_source: Some("refine".to_string()),
+    };
+
+    (config, agent_id)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_direct_refine_config(
+    prompt: String,
+    skill_name: &str,
+    refine_session_id: &str,
+    workspace_path: &str,
+    api_key: String,
+    model: String,
+    extended_thinking: bool,
+    interleaved_thinking_beta: bool,
+    sdk_effort: Option<String>,
+    fallback_model: Option<String>,
+    agent_name: &'static str,
+) -> (SidecarConfig, String) {
+    let thinking_budget = extended_thinking.then_some(16_000u32);
+    let usage_session_id = format!("synthetic:refine:{}:{}", skill_name, refine_session_id);
+    let agent_id = format!(
+        "refine-{}-{}",
+        skill_name,
+        chrono::Utc::now().timestamp_millis()
+    );
+    let allowed_tools = match agent_name {
+        VALIDATE_AGENT_NAME => VALIDATE_DIRECT_TOOLS,
+        GENERATE_AGENT_NAME => GENERATE_DIRECT_TOOLS,
+        _ => REFINE_TOOLS,
+    };
+    let max_turns = match agent_name {
+        VALIDATE_AGENT_NAME => 50,
+        GENERATE_AGENT_NAME => 80,
+        _ => REFINE_STREAM_MAX_TURNS,
+    };
+
+    let config = SidecarConfig {
+        prompt,
+        betas: crate::commands::workflow::build_betas(
+            thinking_budget,
+            &model,
+            interleaved_thinking_beta,
+        ),
+        model: None,
+        api_key,
+        cwd: workspace_path.to_string(),
+        allowed_tools: Some(allowed_tools.iter().map(|s| s.to_string()).collect()),
+        max_turns: Some(max_turns),
+        permission_mode: None,
+        thinking: thinking_budget.map(|budget| {
+            serde_json::json!({
+                "type": "enabled",
+                "budgetTokens": budget
+            })
+        }),
+        fallback_model,
+        effort: sdk_effort,
+        output_format: output_format_for_agent(skill_name, Some(agent_name)),
+        prompt_suggestions: Some(false),
+        path_to_claude_code_executable: None,
+        agent_name: Some(agent_name.to_string()),
         required_plugins: None,
         conversation_history: None,
         skill_name: Some(skill_name.to_string()),
@@ -194,6 +373,35 @@ fn build_refine_prompt(
 
     prompt.push_str(&format!("\n\nCurrent request: {}", user_message));
 
+    prompt
+}
+
+fn build_direct_agent_prompt(
+    agent_name: &'static str,
+    skill_name: &str,
+    workspace_path: &str,
+    skills_path: &str,
+    user_message: &str,
+) -> String {
+    let workspace_dir = Path::new(workspace_path).join(skill_name);
+    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let skill_output_dir = Path::new(skills_path).join(skill_name);
+    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
+
+    let mut prompt = format!(
+        "The skill name is: {}. The workspace directory is: {}. \
+         The skill output directory (SKILL.md and references/) is: {}. \
+         Read user-context.md from the workspace directory. \
+         Derive context_dir as workspace_dir/context. \
+         All directories already exist — never create directories with mkdir or any other method.",
+        skill_name, workspace_str, skill_output_str,
+    );
+
+    if agent_name == GENERATE_AGENT_NAME {
+        prompt.push_str("\n\nRun in /rewrite mode for this request.");
+    }
+
+    prompt.push_str(&format!("\n\nCurrent request: {}", user_message));
     prompt
 }
 
@@ -648,6 +856,7 @@ pub async fn send_refine_message(
         "[send_refine_message] session=[REDACTED] command={:?}",
         command
     );
+    let dispatch = dispatch_for_refine_command(command.as_deref(), target_files.as_deref());
 
     // 1. Look up session and check stream state
     let (skill_name, stream_started) = {
@@ -677,102 +886,69 @@ pub async fn send_refine_message(
         stream_started
     );
 
-    if !stream_started {
-        // ─── First message: start streaming session ───────────────────────
-        // 2. Read settings, workflow run data, and write user-context.md
-        let (
-            api_key,
-            extended_thinking,
-            interleaved_thinking_beta,
-            sdk_effort,
-            fallback_model,
-            refine_prompt_suggestions,
-            model,
-            skills_path,
-        ) = {
-            let conn = db.0.lock().map_err(|e| {
-                log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
-                e.to_string()
-            })?;
-            let settings = db::read_settings_hydrated(&conn).map_err(|e| {
-                log::error!("[send_refine_message] Failed to read settings: {}", e);
-                e
-            })?;
-            let key = match settings.anthropic_api_key {
-                Some(k) => k,
-                None => {
-                    log::error!("[send_refine_message] Anthropic API key not configured");
-                    return Err("Anthropic API key not configured".to_string());
-                }
-            };
-            let model = resolve_model_id(settings.preferred_model.as_deref().unwrap_or("sonnet"));
+    let runtime = load_refine_runtime_settings(&db, &workspace_path, &skill_name)?;
+    ensure_skill_workspace_dir(&workspace_path, &skill_name);
 
-            let skills_path = settings
-                .skills_path
-                .unwrap_or_else(|| workspace_path.clone());
-
-            let run_row = db::get_workflow_run(&conn, &skill_name).ok().flatten();
-            let purpose = run_row
-                .as_ref()
-                .map(|r| r.purpose.clone())
-                .unwrap_or_else(|| "domain".to_string());
-
-            let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
-
-            // Write user-context.md so the agent can read it (same as workflow steps)
-            crate::commands::workflow::write_user_context_file(
-                &workspace_path,
-                &skill_name,
-                &[], // tags not fetched in refine path — lightweight call
-                settings.industry.as_deref(),
-                settings.function_role.as_deref(),
-                intake_json.as_deref(),
-                None,
-                Some(purpose.as_str()),
-                None,
-                None,
-                None,
-                None,
-                None,
-            );
-
-            (
-                key,
-                settings.extended_thinking,
-                settings.interleaved_thinking_beta,
-                settings.sdk_effort.clone(),
-                Some(model.clone()),
-                settings.refine_prompt_suggestions,
-                model,
-                skills_path,
-            )
+    if matches!(
+        dispatch,
+        RefineDispatch::DirectValidate | RefineDispatch::DirectRewrite
+    ) {
+        let direct_agent_name = match dispatch {
+            RefineDispatch::DirectValidate => VALIDATE_AGENT_NAME,
+            RefineDispatch::DirectRewrite => GENERATE_AGENT_NAME,
+            RefineDispatch::Stream => unreachable!(),
         };
+        let prompt = build_direct_agent_prompt(
+            direct_agent_name,
+            &skill_name,
+            &workspace_path,
+            &runtime.skills_path,
+            &user_message,
+        );
+        log::debug!(
+            "[send_refine_message] direct prompt ({} chars) for skill '{}' command={:?}:\n{}",
+            prompt.len(),
+            skill_name,
+            command,
+            prompt
+        );
+        let (mut config, agent_id) = build_direct_refine_config(
+            prompt,
+            &skill_name,
+            &session_id,
+            &workspace_path,
+            runtime.api_key,
+            runtime.model,
+            runtime.extended_thinking,
+            runtime.interleaved_thinking_beta,
+            runtime.sdk_effort,
+            runtime.fallback_model,
+            direct_agent_name,
+        );
 
-        // 3. Ensure the skill's workspace dir exists before building the prompt.
-        // The prompt tells the agent "All directories already exist", so this must
-        // be true by the time the prompt is constructed. For marketplace skills,
-        // workspace_path/skill_name/ is not created during import.
-        let skill_workspace_dir = Path::new(&workspace_path).join(&skill_name);
-        if !skill_workspace_dir.exists() {
-            if let Err(e) = std::fs::create_dir_all(&skill_workspace_dir) {
-                log::warn!(
-                    "[send_refine_message] failed to create skill workspace dir '{}': {}",
-                    skill_workspace_dir.display(),
-                    e
-                );
-            } else {
-                log::debug!(
-                    "[send_refine_message] created skill workspace dir '{}'",
-                    skill_workspace_dir.display()
-                );
+        if config.path_to_claude_code_executable.is_none() {
+            if let Ok(cli_path) = sidecar::resolve_sdk_cli_path_public(&app) {
+                config.path_to_claude_code_executable = Some(cli_path);
             }
         }
 
-        // 4. Build prompt with skill name, workspace_dir, skill output path, and command.
+        pool.send_request(&skill_name, &agent_id, config, &app, None)
+            .await
+            .map_err(|e| {
+                log::error!("[send_refine_message] Failed to send direct request: {}", e);
+                e
+            })?;
+
+        return Ok(agent_id);
+    }
+
+    if !stream_started {
+        // ─── First message: start streaming session ───────────────────────
+        // 2. Build prompt with skill name, workspace_dir, skill output path, and command.
         let prompt = build_refine_prompt(
             &skill_name,
             &workspace_path,
-            &skills_path,
+            &runtime.skills_path,
             &user_message,
             target_files.as_deref(),
             command.as_deref(),
@@ -786,19 +962,23 @@ pub async fn send_refine_message(
         );
 
         // 5. Build config and agent_id
-        log::info!("[send_refine_message] skill={} model={}", skill_name, model);
+        log::info!(
+            "[send_refine_message] skill={} model={}",
+            skill_name,
+            runtime.model
+        );
         let (mut config, agent_id) = build_refine_config(
             prompt,
             &skill_name,
             &session_id,
             &workspace_path,
-            api_key,
-            model,
-            extended_thinking,
-            interleaved_thinking_beta,
-            sdk_effort,
-            fallback_model,
-            refine_prompt_suggestions,
+            runtime.api_key,
+            runtime.model,
+            runtime.extended_thinking,
+            runtime.interleaved_thinking_beta,
+            runtime.sdk_effort,
+            runtime.fallback_model,
+            runtime.refine_prompt_suggestions,
         );
 
         // Resolve SDK cli.js path
@@ -833,17 +1013,9 @@ pub async fn send_refine_message(
         Ok(agent_id)
     } else {
         // ─── Follow-up message: push into existing stream ─────────────────
-        let skills_path = {
-            let conn = db.0.lock().map_err(|e| e.to_string())?;
-            let settings = db::read_settings(&conn)?;
-            settings
-                .skills_path
-                .unwrap_or_else(|| workspace_path.clone())
-        };
-
         let prompt = build_followup_prompt(
             &user_message,
-            &skills_path,
+            &runtime.skills_path,
             &skill_name,
             target_files.as_deref(),
             command.as_deref(),
@@ -1366,22 +1538,72 @@ mod tests {
         )
     }
 
+    fn base_direct_config(agent_name: &'static str) -> (SidecarConfig, String) {
+        build_direct_refine_config(
+            "direct prompt".to_string(),
+            "my-skill",
+            "session-123",
+            "/home/user/.vibedata/skill-builder",
+            "sk-test-key".to_string(),
+            "sonnet".to_string(),
+            false,
+            true,
+            None,
+            None,
+            agent_name,
+        )
+    }
+
+    #[test]
+    fn test_dispatch_for_validate_is_direct() {
+        assert_eq!(
+            dispatch_for_refine_command(Some("validate"), None),
+            RefineDispatch::DirectValidate
+        );
+    }
+
+    #[test]
+    fn test_dispatch_for_unscoped_rewrite_is_direct() {
+        assert_eq!(
+            dispatch_for_refine_command(Some("rewrite"), None),
+            RefineDispatch::DirectRewrite
+        );
+        assert_eq!(
+            dispatch_for_refine_command(Some("rewrite"), Some(&[])),
+            RefineDispatch::DirectRewrite
+        );
+    }
+
+    #[test]
+    fn test_dispatch_for_scoped_rewrite_stays_streaming() {
+        let targets = vec!["SKILL.md".to_string()];
+        assert_eq!(
+            dispatch_for_refine_command(Some("rewrite"), Some(&targets)),
+            RefineDispatch::Stream
+        );
+    }
+
+    #[test]
+    fn test_dispatch_for_freeform_stays_streaming() {
+        assert_eq!(
+            dispatch_for_refine_command(None, None),
+            RefineDispatch::Stream
+        );
+    }
+
     #[test]
     fn test_refine_config_always_uses_refine_skill_agent() {
-        // agent_name must always be "refine-skill" — it handles /rewrite and /validate
-        // as magic commands internally
         let (config, _) = base_refine_config("improve metrics");
         assert_eq!(config.agent_name.as_deref(), Some("refine-skill"));
     }
 
     #[test]
-    fn test_refine_config_includes_task_tool_for_magic_commands() {
-        // /rewrite and /validate magic commands spawn sub-agents via Task
+    fn test_refine_config_includes_task_tool_for_streaming_edits() {
         let (config, _) = base_refine_config("test prompt");
         let tools = config.allowed_tools.unwrap();
         assert!(
             tools.contains(&"Task".to_string()),
-            "Task tool required for /rewrite and /validate magic commands"
+            "Task tool required for scoped rewrite delegation and installed skills"
         );
     }
 
@@ -1532,6 +1754,41 @@ mod tests {
         assert!(parsed.get("conversationHistory").is_none());
         assert!(parsed.get("maxThinkingTokens").is_none());
         assert!(parsed.get("permissionMode").is_none());
+    }
+
+    #[test]
+    fn test_direct_validate_config_uses_validate_agent_contract() {
+        let (config, _) = base_direct_config(VALIDATE_AGENT_NAME);
+        assert_eq!(config.agent_name.as_deref(), Some(VALIDATE_AGENT_NAME));
+        assert_eq!(config.max_turns, Some(50));
+        assert_eq!(
+            config.output_format.as_ref().unwrap()["schema"]["properties"]["status"]["const"],
+            "validation_complete"
+        );
+        let tools = config.allowed_tools.unwrap();
+        assert!(tools.contains(&"Read".to_string()));
+        assert!(!tools.contains(&"Write".to_string()));
+        assert!(!tools.contains(&"Skill".to_string()));
+    }
+
+    #[test]
+    fn test_direct_rewrite_config_uses_generate_agent_contract() {
+        let (config, _) = base_direct_config(GENERATE_AGENT_NAME);
+        assert_eq!(config.agent_name.as_deref(), Some(GENERATE_AGENT_NAME));
+        assert_eq!(config.max_turns, Some(80));
+        assert_eq!(
+            config.output_format.as_ref().unwrap()["schema"]["properties"]["status"]["const"],
+            "generated"
+        );
+        let tools = config.allowed_tools.unwrap();
+        assert!(tools.contains(&"Write".to_string()));
+        assert!(tools.contains(&"Skill".to_string()));
+    }
+
+    #[test]
+    fn test_direct_config_disables_prompt_suggestions() {
+        let (config, _) = base_direct_config(VALIDATE_AGENT_NAME);
+        assert_eq!(config.prompt_suggestions, Some(false));
     }
 
     #[test]
@@ -1747,6 +2004,36 @@ mod tests {
         assert!(!prompt.contains("**Industry**:"));
         assert!(!prompt.contains("**Target Audience**:"));
         assert!(!prompt.contains("**Function**:"));
+    }
+
+    #[test]
+    fn test_direct_validate_prompt_includes_required_paths() {
+        let prompt = build_direct_agent_prompt(
+            VALIDATE_AGENT_NAME,
+            "my-skill",
+            "/ws",
+            "/skills",
+            "Run validation now",
+        );
+        assert!(prompt.contains("The workspace directory is: /ws/my-skill"));
+        assert!(prompt.contains(
+            "The skill output directory (SKILL.md and references/) is: /skills/my-skill"
+        ));
+        assert!(prompt.contains("Current request: Run validation now"));
+        assert!(!prompt.contains("/rewrite mode"));
+    }
+
+    #[test]
+    fn test_direct_rewrite_prompt_enables_rewrite_mode() {
+        let prompt = build_direct_agent_prompt(
+            GENERATE_AGENT_NAME,
+            "my-skill",
+            "/ws",
+            "/skills",
+            "Rewrite this skill for coherence",
+        );
+        assert!(prompt.contains("Run in /rewrite mode for this request."));
+        assert!(prompt.contains("Current request: Rewrite this skill for coherence"));
     }
 
     #[test]
@@ -1987,7 +2274,9 @@ mod tests {
         // remove the refine session or reset stream_started. Only close_refine_session
         // should end the chat session.
         let map = manager.0.lock().unwrap();
-        let session = map.get("s1").expect("session should remain open after a turn completes");
+        let session = map
+            .get("s1")
+            .expect("session should remain open after a turn completes");
         assert_eq!(session.skill_name, "my-skill");
         assert!(session.stream_started);
     }

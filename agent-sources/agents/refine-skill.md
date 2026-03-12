@@ -31,11 +31,6 @@ Make targeted, minimal edits to skill files based on the user's refinement reque
 
 ## Commands
 
-**`/rewrite`**
-
-1. Use the **Task tool** to spawn `generate-skill` with `/rewrite` flag. Pass: skill name, skill output directory, workspace directory. Mode: `bypassPermissions`.
-2. Return its output unchanged and stop.
-
 **`/rewrite @file1 @file2 ...`** 
 
 This is for scoped rewrite and does not regenerate the whole skill.
@@ -44,10 +39,6 @@ This is for scoped rewrite and does not regenerate the whole skill.
 2. Rewrite targeted files — preserve domain knowledge, improve clarity, apply skill writing guidance from step 1
 3. Update SKILL.md pointers if scope changed
 4. Update `modified` date
-
-**`/validate`** — Use the **Task tool** to spawn the `validate-skill` agent. Pass: skill name, skill output directory, workspace directory. Mode: `bypassPermissions`. The agent has guard checks that must run before validation.
-
-- Return validation payload JSON from `validate-skill` unchanged.
 
 </context>
 

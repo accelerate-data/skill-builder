@@ -5,6 +5,7 @@ use std::sync::Mutex;
 
 use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
+use crate::commands::agent::output_format_for_agent as shared_output_format_for_agent;
 use crate::db::Db;
 use crate::types::{PackageResult, StepConfig, StepStatusUpdate, WorkflowStateResponse};
 use serde_json;
@@ -714,6 +715,10 @@ fn derive_agent_name(workspace_path: &str, _purpose: &str, prompt_template: &str
 }
 
 fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Value> {
+    if let Some(format) = shared_output_format_for_agent("_workflow", Some(agent_name)) {
+        return Some(format);
+    }
+
     match agent_name {
         "research-orchestrator" => Some(serde_json::json!({
             "type": "json_schema",
@@ -764,18 +769,6 @@ fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Valu
                     "decisions": { "type": "array" }
                 },
                 "additionalProperties": false
-            }
-        })),
-        "generate-skill" => Some(serde_json::json!({
-            "type": "json_schema",
-            "schema": {
-                "type": "object",
-                "required": ["status", "evaluations_markdown"],
-                "properties": {
-                    "status": { "type": "string", "const": "generated" },
-                    "evaluations_markdown": { "type": "string", "minLength": 1 }
-                },
-                "additionalProperties": true
             }
         })),
         _ => None,
