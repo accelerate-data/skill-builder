@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { useScopeBlocked } from "@/hooks/use-scope-blocked";
 import { toast } from "@/lib/toast";
 import {
   Dialog,
@@ -27,7 +28,6 @@ import {
   cleanupSkillSidecar,
   acquireLock,
   releaseLock,
-  getDisabledSteps,
 } from "@/lib/tauri";
 import { useSkillStore } from "@/stores/skill-store";
 import type { SkillSummary } from "@/lib/types";
@@ -97,27 +97,12 @@ export default function RefinePage() {
   const autoSelectedRef = useRef<string | null>(null);
 
   // --- Scope recommendation guard ---
-  // When scope recommendation is active (disabledSteps non-empty), block refine commands.
-  const [scopeBlocked, setScopeBlocked] = useState(false);
+  const scopeBlocked = useScopeBlocked(selectedSkill, "refine");
 
   const extractStructuredResultPayload = useCallback((agentId: string) => {
     const run = useAgentStore.getState().runs[agentId];
     return extractStructuredResultFromDisplayItems(run?.displayItems);
   }, []);
-
-  useEffect(() => {
-    if (!selectedSkill) {
-      setScopeBlocked(false);
-      return;
-    }
-    getDisabledSteps(selectedSkill.name)
-      .then((disabled) => {
-        const blocked = disabled.length > 0;
-        setScopeBlocked(blocked);
-        if (blocked) console.warn("[refine] Scope recommendation active for skill '%s' — refine blocked", selectedSkill.name);
-      })
-      .catch(() => setScopeBlocked(false));
-  }, [selectedSkill]);
 
   // --- Navigation guard ---
   // Block navigation while an agent is running and show a confirmation dialog.
