@@ -5183,12 +5183,12 @@ mod tests {
 
         // Ordered by total_cost DESC: step 5 ($0.25) then step 1 ($0.18)
         assert_eq!(by_step[0].step_id, 5);
-        assert_eq!(by_step[0].step_name, "Generate Skill");
+        assert_eq!(by_step[0].step_name, "Step 5");
         assert_eq!(by_step[0].run_count, 1);
         assert!((by_step[0].total_cost - 0.25).abs() < 1e-10);
 
         assert_eq!(by_step[1].step_id, 1);
-        assert_eq!(by_step[1].step_name, "Review");
+        assert_eq!(by_step[1].step_name, "Detailed Research");
         assert_eq!(by_step[1].run_count, 2);
         assert!((by_step[1].total_cost - 0.18).abs() < 1e-10);
     }
