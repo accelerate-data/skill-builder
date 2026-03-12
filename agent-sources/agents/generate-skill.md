@@ -144,8 +144,6 @@ modified: <today's date>
 
 Write each reference file to `references/`. Keep files self-contained and reference them explicitly from SKILL.md with "when to read" guidance.
 
-Do not write `{context_dir}/evaluations.md` directly. Return it as `evaluations_markdown` in final JSON so the backend can materialize it.
-
 Self-review:
 
 - Verify every decision in `decisions.json` is addressed in at least one file
@@ -156,11 +154,11 @@ Self-review:
 
 ## Phase 4: Draft `evaluations_markdown`
 
-Create `evaluations_markdown` as the complete content for `{context_dir}/evaluations.md`.
+Create `evaluations_markdown` as the complete content for evaluating if the skill covers all the decisions in `decisions.json`. 
 
 Requirements:
 
-- Include at least 3 complete scenarios covering distinct topic areas in the skill.
+- Include at least 3 complete scenarios (more if needed to cover all the decisions) covering distinct topic areas in the skill.
 - Each scenario must include:
   - prompt
   - expected behavior
@@ -180,7 +178,7 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 
 **Phase 3:** Rewrite references in a staged, demand-driven order. Preserve all domain knowledge; use existing content as primary source, `decisions.json` as supplement. Before finalizing, perform a full preservation sweep to confirm no original domain knowledge was dropped; if coverage is incomplete, read additional references and close gaps.
 
-**Phase 4:** Refresh `evaluations_markdown` to match the rewritten skill. Preserve strong existing scenarios when still valid, rewrite stale ones, and add scenarios for any new or newly emphasized topics.
+**Phase 4:** Rewrite `evaluations_markdown` to match the rewritten skill. Preserve strong existing scenarios when still valid, rewrite stale ones, and add scenarios for any new or newly emphasized topics.
 
 Before finalizing rewrite mode, verify that the rewritten skill addresses `Current request` explicitly or record the gap in the rewritten content/evaluations.
 
