@@ -18,6 +18,13 @@ fn suppress_same_fallback_model(
     }
 }
 
+fn required_plugins_for_run_source(run_source: Option<&str>) -> Option<Vec<String>> {
+    match run_source {
+        Some("test") => Some(vec!["vd-agent".to_string()]),
+        _ => Some(vec![]),
+    }
+}
+
 pub(crate) fn output_format_for_agent(
     skill_name: &str,
     agent_name: Option<&str>,
@@ -168,6 +175,8 @@ pub async fn start_agent(
     }
     let fallback_model = suppress_same_fallback_model(model_for_config.as_deref(), fallback_model);
 
+    let required_plugins = required_plugins_for_run_source(run_source.as_deref());
+
     let config = SidecarConfig {
         prompt,
         model: model_for_config,
@@ -188,7 +197,7 @@ pub async fn start_agent(
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name,
-        required_plugins: None,
+        required_plugins,
         conversation_history: None,
         skill_name: Some(skill_name.clone()),
         step_id: Some(step_id.unwrap_or(-1)),
@@ -212,7 +221,9 @@ pub async fn start_agent(
 
 #[cfg(test)]
 mod tests {
-    use super::{output_format_for_agent, suppress_same_fallback_model};
+    use super::{
+        output_format_for_agent, required_plugins_for_run_source, suppress_same_fallback_model,
+    };
 
     #[test]
     fn test_output_format_for_feedback() {
@@ -284,5 +295,15 @@ mod tests {
     fn test_suppress_same_fallback_model_noop_when_no_fallback() {
         let result = suppress_same_fallback_model(Some("claude-sonnet-4-6"), None);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_required_plugins_for_test_run_source() {
+        assert_eq!(
+            required_plugins_for_run_source(Some("test")),
+            Some(vec!["vd-agent".to_string()])
+        );
+        assert_eq!(required_plugins_for_run_source(Some("workflow")), Some(vec![]));
+        assert_eq!(required_plugins_for_run_source(None), Some(vec![]));
     }
 }

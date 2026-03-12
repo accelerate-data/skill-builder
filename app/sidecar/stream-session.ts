@@ -2,7 +2,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
 import { buildQueryOptions } from "./options.js";
 import { createAbortState, linkExternalSignal } from "./shutdown.js";
-import { emitSystemEvent, discoverInstalledPlugins } from "./run-agent.js";
+import { emitSystemEvent, discoverInstalledPlugins, selectPluginPaths } from "./run-agent.js";
 import { MessageProcessor } from "./message-processor.js";
 
 /** Sentinel used to close the async generator cleanly. */
@@ -125,7 +125,8 @@ export class StreamSession {
       });
     };
 
-    const pluginPaths = await discoverInstalledPlugins(config.cwd);
+    const discoveredPluginPaths = await discoverInstalledPlugins(config.cwd);
+    const pluginPaths = selectPluginPaths(discoveredPluginPaths, config.requiredPlugins);
     const options = buildQueryOptions(config, state.abortController, pluginPaths, stderrHandler);
 
     // Build the async generator that feeds messages to the SDK

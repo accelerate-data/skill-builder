@@ -74,6 +74,15 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     }
 }
 
+fn required_plugins_for_workflow_step(step_id: u32) -> Option<Vec<String>> {
+    match step_id {
+        0 | 1 => Some(vec!["skill-content-researcher".to_string()]),
+        2 => Some(vec![]),
+        3 => Some(vec!["skill-creator".to_string()]),
+        _ => None,
+    }
+}
+
 /// Session-scoped set of workspaces whose prompts have already been copied.
 /// Prompts are bundled with the app and don't change during a session,
 /// so we only need to copy once per workspace.
@@ -1786,11 +1795,7 @@ async fn run_workflow_step_inner(
         settings.preferred_model
     );
 
-    let required_plugins = if agent_name == "research-orchestrator" {
-        Some(vec!["skill-content-researcher".to_string()])
-    } else {
-        None
-    };
+    let required_plugins = required_plugins_for_workflow_step(step_id);
 
     let config = SidecarConfig {
         prompt,
@@ -3099,6 +3104,24 @@ mod tests {
         assert!(files.is_empty());
         let files = get_step_output_files(99);
         assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_required_plugins_for_workflow_step_matches_policy() {
+        assert_eq!(
+            required_plugins_for_workflow_step(0),
+            Some(vec!["skill-content-researcher".to_string()])
+        );
+        assert_eq!(
+            required_plugins_for_workflow_step(1),
+            Some(vec!["skill-content-researcher".to_string()])
+        );
+        assert_eq!(required_plugins_for_workflow_step(2), Some(vec![]));
+        assert_eq!(
+            required_plugins_for_workflow_step(3),
+            Some(vec!["skill-creator".to_string()])
+        );
+        assert_eq!(required_plugins_for_workflow_step(99), None);
     }
 
     #[test]

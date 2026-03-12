@@ -225,7 +225,7 @@ fn build_refine_config(
         prompt_suggestions: Some(refine_prompt_suggestions),
         path_to_claude_code_executable: None,
         agent_name: Some(REFINE_AGENT_NAME.to_string()),
-        required_plugins: None,
+        required_plugins: Some(vec!["skill-creator".to_string()]),
         conversation_history: None,
         skill_name: Some(skill_name.to_string()),
         step_id: Some(-10),
@@ -293,7 +293,7 @@ fn build_direct_refine_config(
         prompt_suggestions: Some(false),
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name.to_string()),
-        required_plugins: None,
+        required_plugins: Some(vec!["skill-creator".to_string()]),
         conversation_history: None,
         skill_name: Some(skill_name.to_string()),
         step_id: Some(-10),
@@ -1755,6 +1755,24 @@ mod tests {
             Some("usage-session-123")
         );
         assert_eq!(config.run_source.as_deref(), Some("refine"));
+    }
+
+    #[test]
+    fn test_refine_config_requires_skill_creator_plugin() {
+        let (config, _) = base_refine_config("improve metrics");
+        assert_eq!(
+            config.required_plugins,
+            Some(vec!["skill-creator".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_direct_refine_config_requires_skill_creator_plugin() {
+        let (config, _) = base_direct_config(GENERATE_AGENT_NAME);
+        assert_eq!(
+            config.required_plugins,
+            Some(vec!["skill-creator".to_string()])
+        );
     }
 
     #[test]
