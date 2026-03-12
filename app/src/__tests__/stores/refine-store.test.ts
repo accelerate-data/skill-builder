@@ -319,6 +319,13 @@ describe("useRefineStore", () => {
     expect(useRefineStore.getState().isRunning).toBe(false);
   });
 
+  it("setSessionId sets and clears the session id", () => {
+    useRefineStore.getState().setSessionId("session-abc");
+    expect(useRefineStore.getState().sessionId).toBe("session-abc");
+    useRefineStore.getState().setSessionId(null);
+    expect(useRefineStore.getState().sessionId).toBeNull();
+  });
+
   it("setActiveAgentId sets and clears the active agent id", () => {
     useRefineStore.getState().setActiveAgentId("agent-xyz");
     expect(useRefineStore.getState().activeAgentId).toBe("agent-xyz");
