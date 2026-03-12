@@ -405,7 +405,8 @@ fn build_direct_agent_prompt(
          The skill output directory (SKILL.md and references/) is: {}. \
          Read user-context.md from the workspace directory. \
          Derive context_dir as workspace_dir/context. \
-         All directories already exist — never create directories with mkdir or any other method.",
+         All directories already exist — never create directories with mkdir or any other method. \
+         Treat Current request as an additional focus area for coverage, but do not ignore the agent's full workflow.",
         skill_name, workspace_str, skill_output_str,
     );
 
@@ -2044,6 +2045,9 @@ mod tests {
         assert!(prompt.contains(
             "The skill output directory (SKILL.md and references/) is: /skills/my-skill"
         ));
+        assert!(prompt.contains(
+            "Treat Current request as an additional focus area for coverage"
+        ));
         assert!(prompt.contains("Current request: Run validation now"));
         assert!(!prompt.contains("/rewrite mode"));
     }
@@ -2058,6 +2062,9 @@ mod tests {
             "Rewrite this skill for coherence",
         );
         assert!(prompt.contains("Run in /rewrite mode for this request."));
+        assert!(prompt.contains(
+            "Treat Current request as an additional focus area for coverage"
+        ));
         assert!(prompt.contains("Current request: Rewrite this skill for coherence"));
     }
 

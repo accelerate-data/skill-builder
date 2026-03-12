@@ -27,6 +27,7 @@ Do NOT evaluate skill viability, alternative approaches, domain correctness, or 
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
 - `skill_output_dir`: path where the skill to be validated (`SKILL.md` and `references/`) live
 - Derive `context_dir` as `workspace_dir/context`
+- `Current request`: optional user-provided validation focus area
 
 </context>
 
@@ -71,6 +72,12 @@ Read `{skill_output_dir}/SKILL.md`.
 ```
 
 `metadata.contradictory_inputs == "revised"` is NOT a block — proceed normally.
+
+Treat `Current request` as an additional focus area for validation coverage:
+
+- Do not narrow the overall validation scope; still run the full validation flow.
+- If `Current request` names a topic, verify that topic explicitly against the skill content and decisions.
+- Include a short request-specific coverage note in `validation_log_markdown`, even when coverage is missing or incomplete.
 
 ## Step 1: Launch Subagents to perform quality checks for the given skill
 
@@ -136,5 +143,4 @@ Include summary + coverage + structure + content quality + boundary + suggestion
 Include summary + per-scenario outcomes + skill content gaps + suggested PM prompts.
 
 </output_format>
-
 

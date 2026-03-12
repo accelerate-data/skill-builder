@@ -23,6 +23,7 @@ Make targeted, minimal edits to skill files based on the user's refinement reque
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
 - `skill_output_dir`: path where the skill to be refined (`SKILL.md` and `references/`) live
 - Derive `context_dir` as `workspace_dir/context`
+- `Current request`: the user's refinement request and optional focus area
 
 ## Skill Structure
 
@@ -61,6 +62,11 @@ If `metadata.contradictory_inputs == true` in `decisions.json`, return: "Contrad
 Tailor tone, examples, and emphasis accordingly as per `user-context.md`.
 
 Read `SKILL.md` before making changes. Read relevant reference files if the request mentions them. Use Glob when exact filenames are unclear.
+
+Treat `Current request` as an additional focus area for rewrite coverage:
+
+- Do not broaden the edit scope unnecessarily; keep changes minimal.
+- If the request names a topic, ensure the edited files address that topic explicitly or explain why no change was made.
 
 ## Step 2: Plan the Change
 

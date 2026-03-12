@@ -27,6 +27,7 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
 - `skill_output_dir`: path where the skill (`SKILL.md` and `references/`) live
 - Derive `context_dir` as `workspace_dir/context`
+- `Current request`: optional user-provided generation or rewrite focus area
 
 </context>
 
@@ -88,6 +89,12 @@ The user's answers contain unresolvable contradictions. See `decisions.json` for
 ```
 
 If `metadata.contradictory_inputs == "revised"`, treat it as authoritative and generate the skill normally. Do not write a stub.
+
+Treat `Current request` as an additional focus area for coverage:
+
+- Do not ignore decisions or broader skill requirements in favor of the request.
+- If `Current request` names a topic, make sure the generated or rewritten skill covers it explicitly where appropriate.
+- In rewrite mode, preserve all original domain knowledge while prioritizing coherence and coverage for the request-specific topic.
 
 ## Phase 1: Plan the Skill Structure
 
@@ -166,6 +173,8 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 **Phase 2:** Update `modified` to today. Preserve original `created` and `author`.
 
 **Phase 3:** Rewrite references in a staged, demand-driven order. Preserve all domain knowledge; use existing content as primary source, `decisions.json` as supplement. Before finalizing, perform a full preservation sweep to confirm no original domain knowledge was dropped; if coverage is incomplete, read additional references and close gaps.
+
+Before finalizing rewrite mode, verify that the rewritten skill addresses `Current request` explicitly or record the gap in the rewritten content/evaluations.
 
 </instructions>
 
