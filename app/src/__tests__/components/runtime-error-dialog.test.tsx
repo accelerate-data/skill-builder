@@ -10,7 +10,7 @@ describe("RuntimeErrorDialog", () => {
         error={{
           error_type: "node_incompatible",
           message: "Node.js v16.0.0 is not compatible.",
-          fix_hint: "Install Node.js 18-24 from https://nodejs.org",
+          fix_hint: "Install Node.js 18+ from https://nodejs.org",
         }}
         onDismiss={vi.fn()}
       />
@@ -44,7 +44,7 @@ describe("RuntimeErrorDialog", () => {
         error={{
           error_type: "node_missing",
           message: "Node.js is not installed or not in PATH.",
-          fix_hint: "Install Node.js 18-24 from https://nodejs.org",
+          fix_hint: "Install Node.js 18+ from https://nodejs.org",
         }}
         onDismiss={vi.fn()}
       />

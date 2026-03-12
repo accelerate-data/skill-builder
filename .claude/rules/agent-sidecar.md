@@ -7,7 +7,7 @@ paths:
 
 Node.js + TypeScript sidecar process that runs Claude agents via
 `@anthropic-ai/claude-agent-sdk`. No hot-reload — rebuild after edits:
-`npm run sidecar:build`. Requires Node.js 18–24 (Node 25+ crashes the SDK).
+`npm run sidecar:build`. Requires Node.js 18+.
 
 ## JSONL Protocol
 
