@@ -872,17 +872,20 @@ pub async fn send_refine_message(
             );
             e.to_string()
         })?;
-        let session = map.get(&session_id).ok_or_else(|| {
-            // Log active sessions to help diagnose stale-session or post-restart failures
-            let active: Vec<String> = map.values().map(|s| s.skill_name.clone()).collect();
-            let msg = format!(
-                "No refine session found. Active sessions ({}): [{}]",
-                map.len(),
-                active.join(", ")
-            );
-            log::error!("[send_refine_message] {}", msg);
-            msg
-        })?;
+        let session = match map.get(&session_id) {
+            Some(s) => s,
+            None => {
+                // Log active sessions to help diagnose stale-session or post-restart failures
+                let active: Vec<String> = map.values().map(|s| s.skill_name.clone()).collect();
+                let msg = format!(
+                    "No refine session found. Active sessions ({}): [{}]",
+                    map.len(),
+                    active.join(", ")
+                );
+                log::error!("[send_refine_message] {}", msg);
+                return Err(msg);
+            }
+        };
         (
             session.skill_name.clone(),
             session.usage_session_id.clone(),
