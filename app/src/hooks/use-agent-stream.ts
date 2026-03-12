@@ -191,6 +191,15 @@ export function initAgentStream() {
   listen<AgentShutdownPayload>("agent-shutdown", (event) => {
     useAgentStore.getState().shutdownRun(event.payload.agent_id);
   });
+
+  // agent-turn-complete fires at each turn boundary in a streaming refine session.
+  // agent-exit (triggered by sidecar_pool's turn_complete handler) already calls
+  // completeRun for the per-turn request. This listener is a hook for future
+  // refine-store turn-boundary UI state (e.g. "waiting for input" indicator).
+  listen<{ agent_id: string }>("agent-turn-complete", (event) => {
+    console.log("event=turn_complete component=use-agent-stream agent_id=%s", event.payload.agent_id);
+    // TODO(VU-539): dispatch refine-store turn-boundary action when implemented
+  });
 }
 
 // Initialize eagerly on module load

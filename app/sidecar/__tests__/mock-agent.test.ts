@@ -43,6 +43,17 @@ describe("resolveStepTemplate", () => {
     expect(resolveStepTemplate(undefined)).toBeNull();
   });
 
+  it("maps undefined agentName + runSource=test to test-evaluator (skill test evaluator)", () => {
+    expect(resolveStepTemplate(undefined, { runSource: "test" })).toBe("test-evaluator");
+    expect(resolveStepTemplate(undefined, { runSource: "test", skillName: "my-skill" })).toBe("test-evaluator");
+  });
+
+  it("returns null for undefined agentName without runSource=test", () => {
+    expect(resolveStepTemplate(undefined, { runSource: "workflow" })).toBeNull();
+    expect(resolveStepTemplate(undefined, { runSource: undefined })).toBeNull();
+    expect(resolveStepTemplate(undefined, {})).toBeNull();
+  });
+
   it("maps data-product-builder to test-plan-with for non-baseline skill names", () => {
     expect(resolveStepTemplate("data-product-builder", { skillName: "my-skill" })).toBe("test-plan-with");
     expect(resolveStepTemplate("data-product-builder", { skillName: "churn-analysis" })).toBe("test-plan-with");

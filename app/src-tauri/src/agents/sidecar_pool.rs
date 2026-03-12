@@ -15,7 +15,18 @@ use tokio::task::JoinHandle;
 use super::events;
 use super::sidecar::SidecarConfig;
 
-fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<bool> {
+/// The three possible terminal outcomes for a sidecar request.
+#[derive(Debug, PartialEq)]
+enum TerminalOutcome {
+    /// Agent completed successfully.
+    Completed,
+    /// Agent failed (SDK error, execution error).
+    Error,
+    /// Agent was shut down by user request.
+    Shutdown,
+}
+
+fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<TerminalOutcome> {
     match msg.get("type").and_then(|t| t.as_str()) {
         Some("agent_event") => {
             let event = msg.get("event")?;
@@ -27,11 +38,15 @@ fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<bool> {
                 .get("status")
                 .and_then(|status| status.as_str())
                 .unwrap_or("completed");
-            Some(status == "completed")
+            match status {
+                "completed" => Some(TerminalOutcome::Completed),
+                "shutdown" => Some(TerminalOutcome::Shutdown),
+                _ => Some(TerminalOutcome::Error),
+            }
         }
         // Raw error messages from sidecar protocol-error paths (e.g.
         // duplicate session, missing session) are terminal failures.
-        Some("error") => Some(false),
+        Some("error") => Some(TerminalOutcome::Error),
         _ => None,
     }
 }
@@ -858,15 +873,27 @@ impl SidecarPool {
                                         skill_name_stdout,
                                         request_id,
                                     );
-                                    {
+                                    // Guard: run_result (which precedes request_complete for
+                                    // one-shot runs) already removes pending and fires agent-exit.
+                                    // Only fire again if the request is still pending (e.g. the
+                                    // sidecar completed without emitting run_result).
+                                    let was_pending = {
                                         let mut pending = stdout_pending.lock().await;
-                                        pending.remove(request_id);
+                                        pending.remove(request_id).is_some()
+                                    };
+                                    if was_pending {
+                                        events::handle_sidecar_exit(
+                                            &app_handle_stdout,
+                                            request_id,
+                                            true,
+                                        );
+                                    } else {
+                                        log::debug!(
+                                            "[persistent-sidecar:{}] request_complete for '{}' — already cleaned up via run_result, skipping exit",
+                                            skill_name_stdout,
+                                            request_id,
+                                        );
                                     }
-                                    events::handle_sidecar_exit(
-                                        &app_handle_stdout,
-                                        request_id,
-                                        true,
-                                    );
                                     // Close JSONL log for this request
                                     let mut logs = stdout_request_logs.lock().await;
                                     logs.remove(request_id);
@@ -931,55 +958,91 @@ impl SidecarPool {
                                         None
                                     };
 
-                                    // turn_complete: streaming session finished one turn.
-                                    // Remove from pending and emit agent-exit so the frontend
-                                    // knows this turn is done. The session stays alive.
+                                    // turn_complete: signals end of one assistant turn.
+                                    // The event carries `streaming: bool` set by MessageProcessor:
+                                    //   streaming=true  → streaming refine session turn; remove
+                                    //                     pending and fire agent-exit so the
+                                    //                     frontend can enable the "send message"
+                                    //                     input for the next turn.
+                                    //   streaming=false → one-shot workflow step; turn_complete
+                                    //                     is informational only — run_result
+                                    //                     (which carries structured output) is
+                                    //                     the real terminal signal, and it always
+                                    //                     arrives after turn_complete in the SDK
+                                    //                     protocol. Firing agent-exit here would
+                                    //                     cause the frontend to try to complete
+                                    //                     the step before structured output
+                                    //                     arrives.
                                     if event_subtype == Some("turn_complete") {
-                                        log::info!(
-                                            "[persistent-sidecar:{}] Agent '{}' turn complete",
-                                            skill_name_stdout,
-                                            request_id,
-                                        );
-                                        {
-                                            let mut pending = stdout_pending.lock().await;
-                                            pending.remove(request_id);
+                                        let is_streaming = msg.get("event")
+                                            .and_then(|e| e.get("streaming"))
+                                            .and_then(|s| s.as_bool())
+                                            .unwrap_or(false);
+
+                                        if is_streaming {
+                                            log::info!(
+                                                "[persistent-sidecar:{}] Agent '{}' turn complete (streaming)",
+                                                skill_name_stdout,
+                                                request_id,
+                                            );
+                                            {
+                                                let mut pending = stdout_pending.lock().await;
+                                                pending.remove(request_id);
+                                            }
+                                            events::handle_sidecar_exit(
+                                                &app_handle_stdout,
+                                                request_id,
+                                                true,
+                                            );
+                                            // Close JSONL log for this turn
+                                            let mut logs = stdout_request_logs.lock().await;
+                                            logs.remove(request_id);
+                                        } else {
+                                            log::debug!(
+                                                "[persistent-sidecar:{}] Agent '{}' turn complete (one-shot, informational)",
+                                                skill_name_stdout,
+                                                request_id,
+                                            );
                                         }
-                                        events::handle_sidecar_exit(
-                                            &app_handle_stdout,
-                                            request_id,
-                                            true,
-                                        );
-                                        // Close JSONL log for this turn
-                                        let mut logs = stdout_request_logs.lock().await;
-                                        logs.remove(request_id);
                                         return;
                                     }
 
                                     // session_exhausted: streaming session ran out of turns.
-                                    // Emit agent-exit so the frontend can show "session limit reached" notice.
+                                    // Guard: run_result (emitted just before session_exhausted)
+                                    // already removed the request from pending and called
+                                    // handle_sidecar_exit. Only fire again if still pending.
                                     if event_subtype == Some("session_exhausted") {
                                         log::info!(
                                             "[persistent-sidecar:{}] Agent '{}' session exhausted",
                                             skill_name_stdout,
                                             request_id,
                                         );
-                                        {
+                                        let was_pending = {
                                             let mut pending = stdout_pending.lock().await;
-                                            pending.remove(request_id);
+                                            pending.remove(request_id).is_some()
+                                        };
+                                        if was_pending {
+                                            events::handle_sidecar_exit(
+                                                &app_handle_stdout,
+                                                request_id,
+                                                true,
+                                            );
+                                        } else {
+                                            log::debug!(
+                                                "[persistent-sidecar:{}] session_exhausted for '{}' — already cleaned up via run_result, skipping exit",
+                                                skill_name_stdout,
+                                                request_id,
+                                            );
                                         }
-                                        events::handle_sidecar_exit(
-                                            &app_handle_stdout,
-                                            request_id,
-                                            true,
-                                        );
                                         let mut logs = stdout_request_logs.lock().await;
                                         logs.remove(request_id);
                                         return;
                                     }
 
-                                    let is_terminal = stream_message_terminal_status(&msg).is_some();
+                                    let terminal_outcome = stream_message_terminal_status(&msg);
+                                    let is_terminal = terminal_outcome.is_some();
 
-                                    if let Some(success) = stream_message_terminal_status(&msg) {
+                                    if let Some(outcome) = terminal_outcome {
                                         // Guard: only process if this request is still pending.
                                         // The sidecar may emit both a raw error and a follow-up
                                         // agent_event(run_result) — the second must be a no-op.
@@ -996,27 +1059,38 @@ impl SidecarPool {
                                             );
                                         } else {
                                             if msg_type == "agent_event" {
-                                                if success {
-                                                    log::info!(
-                                                        "[persistent-sidecar:{}] Agent '{}' completed successfully via {}",
-                                                        skill_name_stdout,
-                                                        request_id,
-                                                        msg_type,
-                                                    );
-                                                } else {
-                                                    let detail = msg
-                                                        .get("event")
-                                                        .and_then(|event| event.get("status"))
-                                                        .and_then(|status| status.as_str())
-                                                        .unwrap_or("error")
-                                                        .to_string();
-                                                    log::warn!(
-                                                        "[persistent-sidecar:{}] Agent '{}' finished with error via {}: {}",
-                                                        skill_name_stdout,
-                                                        request_id,
-                                                        msg_type,
-                                                        detail,
-                                                    );
+                                                match &outcome {
+                                                    TerminalOutcome::Completed => {
+                                                        log::info!(
+                                                            "[persistent-sidecar:{}] Agent '{}' completed successfully via {}",
+                                                            skill_name_stdout,
+                                                            request_id,
+                                                            msg_type,
+                                                        );
+                                                    }
+                                                    TerminalOutcome::Shutdown => {
+                                                        log::info!(
+                                                            "[persistent-sidecar:{}] Agent '{}' shut down via {}",
+                                                            skill_name_stdout,
+                                                            request_id,
+                                                            msg_type,
+                                                        );
+                                                    }
+                                                    TerminalOutcome::Error => {
+                                                        let detail = msg
+                                                            .get("event")
+                                                            .and_then(|event| event.get("status"))
+                                                            .and_then(|status| status.as_str())
+                                                            .unwrap_or("error")
+                                                            .to_string();
+                                                        log::warn!(
+                                                            "[persistent-sidecar:{}] Agent '{}' finished with error via {}: {}",
+                                                            skill_name_stdout,
+                                                            request_id,
+                                                            msg_type,
+                                                            detail,
+                                                        );
+                                                    }
                                                 }
                                             }
 
@@ -1048,11 +1122,20 @@ impl SidecarPool {
                                                     *s.last_activity.lock().await = tokio::time::Instant::now();
                                                 }
                                             }
-                                            events::handle_sidecar_exit(
-                                                &app_handle_stdout,
-                                                request_id,
-                                                success,
-                                            );
+                                            // Dispatch based on outcome: shutdown uses handle_agent_shutdown
+                                            // so the frontend calls shutdownRun() instead of completeRun(false).
+                                            if outcome == TerminalOutcome::Shutdown {
+                                                events::handle_agent_shutdown(
+                                                    &app_handle_stdout,
+                                                    request_id,
+                                                );
+                                            } else {
+                                                events::handle_sidecar_exit(
+                                                    &app_handle_stdout,
+                                                    request_id,
+                                                    outcome == TerminalOutcome::Completed,
+                                                );
+                                            }
                                         }
                                     }
 
@@ -2429,10 +2512,22 @@ mod tests {
             "message": "No stream session found"
         });
 
-        assert_eq!(stream_message_terminal_status(&completed), Some(true));
-        assert_eq!(stream_message_terminal_status(&failed), Some(false));
-        assert_eq!(stream_message_terminal_status(&raw_error), Some(false));
+        assert_eq!(stream_message_terminal_status(&completed), Some(TerminalOutcome::Completed));
+        assert_eq!(stream_message_terminal_status(&failed), Some(TerminalOutcome::Error));
+        assert_eq!(stream_message_terminal_status(&raw_error), Some(TerminalOutcome::Error));
         assert_eq!(stream_message_terminal_status(&display_item), None);
+
+        // "shutdown" status must map to Shutdown, not Error, so the frontend
+        // calls shutdownRun() instead of completeRun(false).
+        let shutdown = serde_json::json!({
+            "type": "agent_event",
+            "request_id": "agent-1",
+            "event": {
+                "type": "run_result",
+                "status": "shutdown"
+            }
+        });
+        assert_eq!(stream_message_terminal_status(&shutdown), Some(TerminalOutcome::Shutdown));
     }
 
     // -----------------------------------------------------------------

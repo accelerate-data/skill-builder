@@ -832,7 +832,7 @@ export default function TestPage() {
           15,
           "plan",
           syntheticTestSessionId,
-          skillName,
+          "__test_baseline__",          // separate sidecar key — prevents abort race with with-skill agent
           "test-plan-without",
           "data-product-builder",       // agentName → --agent data-product-builder
           prepared.transcript_log_dir,  // transcriptLogDir
