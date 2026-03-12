@@ -88,6 +88,9 @@ export async function runAgentRequest(
     options,
   });
 
+  // SDK is loaded and connected — ready to stream messages
+  emitSystemEvent(onMessage, "sdk_ready");
+
   // Process raw SDK messages through MessageProcessor for structured display items
   const processor = new MessageProcessor({
     skillName: config.skillName,
@@ -98,16 +101,8 @@ export async function runAgentRequest(
   });
 
   try {
-    let sdkReadyEmitted = false;
     for await (const message of conversation) {
       if (state.abortController.signal.aborted) break;
-
-      // Emit sdk_ready on first actual message from the SDK so the
-      // "Connecting to API..." progress reflects real connection state.
-      if (!sdkReadyEmitted) {
-        emitSystemEvent(onMessage, "sdk_ready");
-        sdkReadyEmitted = true;
-      }
 
       const raw = message as Record<string, unknown>;
       // Log raw message to transcript (debugging) — the raw message is still

@@ -78,21 +78,6 @@ export interface DisplayItem {
 }
 
 // ---------------------------------------------------------------------------
-// Message classification categories
-// ---------------------------------------------------------------------------
-
-export type MessageCategory = "hardNoise" | "compact" | "system" | "user" | "ai";
-
-// ---------------------------------------------------------------------------
-// JSONL protocol envelope for display items
-// ---------------------------------------------------------------------------
-
-export interface DisplayItemEnvelope {
-  type: "display_item";
-  item: DisplayItem;
-}
-
-// ---------------------------------------------------------------------------
 // Version tag for structural sync tests
 // ---------------------------------------------------------------------------
 

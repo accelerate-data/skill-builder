@@ -15,18 +15,7 @@ use tokio::task::JoinHandle;
 use super::events;
 use super::sidecar::SidecarConfig;
 
-/// The three possible terminal outcomes for a sidecar request.
-#[derive(Debug, PartialEq)]
-enum TerminalOutcome {
-    /// Agent completed successfully.
-    Completed,
-    /// Agent failed (SDK error, execution error).
-    Error,
-    /// Agent was shut down by user request.
-    Shutdown,
-}
-
-fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<TerminalOutcome> {
+fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<bool> {
     match msg.get("type").and_then(|t| t.as_str()) {
         Some("agent_event") => {
             let event = msg.get("event")?;
@@ -38,15 +27,11 @@ fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<TerminalOut
                 .get("status")
                 .and_then(|status| status.as_str())
                 .unwrap_or("completed");
-            match status {
-                "completed" => Some(TerminalOutcome::Completed),
-                "shutdown" => Some(TerminalOutcome::Shutdown),
-                _ => Some(TerminalOutcome::Error),
-            }
+            Some(status == "completed")
         }
         // Raw error messages from sidecar protocol-error paths (e.g.
         // duplicate session, missing session) are terminal failures.
-        Some("error") => Some(TerminalOutcome::Error),
+        Some("error") => Some(false),
         _ => None,
     }
 }
@@ -971,41 +956,30 @@ impl SidecarPool {
                                     }
 
                                     // session_exhausted: streaming session ran out of turns.
-                                    // Guard: run_result (emitted just before session_exhausted)
-                                    // already removed the request from pending and called
-                                    // handle_sidecar_exit. Only fire again if still pending.
+                                    // Emit agent-exit so the frontend can show "session limit reached" notice.
                                     if event_subtype == Some("session_exhausted") {
                                         log::info!(
                                             "[persistent-sidecar:{}] Agent '{}' session exhausted",
                                             skill_name_stdout,
                                             request_id,
                                         );
-                                        let was_pending = {
+                                        {
                                             let mut pending = stdout_pending.lock().await;
-                                            pending.remove(request_id).is_some()
-                                        };
-                                        if was_pending {
-                                            events::handle_sidecar_exit(
-                                                &app_handle_stdout,
-                                                request_id,
-                                                true,
-                                            );
-                                        } else {
-                                            log::debug!(
-                                                "[persistent-sidecar:{}] session_exhausted for '{}' — already cleaned up via run_result, skipping exit",
-                                                skill_name_stdout,
-                                                request_id,
-                                            );
+                                            pending.remove(request_id);
                                         }
+                                        events::handle_sidecar_exit(
+                                            &app_handle_stdout,
+                                            request_id,
+                                            true,
+                                        );
                                         let mut logs = stdout_request_logs.lock().await;
                                         logs.remove(request_id);
                                         return;
                                     }
 
-                                    let terminal_outcome = stream_message_terminal_status(&msg);
-                                    let is_terminal = terminal_outcome.is_some();
+                                    let is_terminal = stream_message_terminal_status(&msg).is_some();
 
-                                    if let Some(outcome) = terminal_outcome {
+                                    if let Some(success) = stream_message_terminal_status(&msg) {
                                         // Guard: only process if this request is still pending.
                                         // The sidecar may emit both a raw error and a follow-up
                                         // agent_event(run_result) — the second must be a no-op.
@@ -1022,38 +996,27 @@ impl SidecarPool {
                                             );
                                         } else {
                                             if msg_type == "agent_event" {
-                                                match &outcome {
-                                                    TerminalOutcome::Completed => {
-                                                        log::info!(
-                                                            "[persistent-sidecar:{}] Agent '{}' completed successfully via {}",
-                                                            skill_name_stdout,
-                                                            request_id,
-                                                            msg_type,
-                                                        );
-                                                    }
-                                                    TerminalOutcome::Shutdown => {
-                                                        log::info!(
-                                                            "[persistent-sidecar:{}] Agent '{}' shut down via {}",
-                                                            skill_name_stdout,
-                                                            request_id,
-                                                            msg_type,
-                                                        );
-                                                    }
-                                                    TerminalOutcome::Error => {
-                                                        let detail = msg
-                                                            .get("event")
-                                                            .and_then(|event| event.get("status"))
-                                                            .and_then(|status| status.as_str())
-                                                            .unwrap_or("error")
-                                                            .to_string();
-                                                        log::warn!(
-                                                            "[persistent-sidecar:{}] Agent '{}' finished with error via {}: {}",
-                                                            skill_name_stdout,
-                                                            request_id,
-                                                            msg_type,
-                                                            detail,
-                                                        );
-                                                    }
+                                                if success {
+                                                    log::info!(
+                                                        "[persistent-sidecar:{}] Agent '{}' completed successfully via {}",
+                                                        skill_name_stdout,
+                                                        request_id,
+                                                        msg_type,
+                                                    );
+                                                } else {
+                                                    let detail = msg
+                                                        .get("event")
+                                                        .and_then(|event| event.get("status"))
+                                                        .and_then(|status| status.as_str())
+                                                        .unwrap_or("error")
+                                                        .to_string();
+                                                    log::warn!(
+                                                        "[persistent-sidecar:{}] Agent '{}' finished with error via {}: {}",
+                                                        skill_name_stdout,
+                                                        request_id,
+                                                        msg_type,
+                                                        detail,
+                                                    );
                                                 }
                                             }
 
@@ -1085,20 +1048,11 @@ impl SidecarPool {
                                                     *s.last_activity.lock().await = tokio::time::Instant::now();
                                                 }
                                             }
-                                            // Dispatch based on outcome: shutdown uses handle_agent_shutdown
-                                            // so the frontend calls shutdownRun() instead of completeRun(false).
-                                            if outcome == TerminalOutcome::Shutdown {
-                                                events::handle_agent_shutdown(
-                                                    &app_handle_stdout,
-                                                    request_id,
-                                                );
-                                            } else {
-                                                events::handle_sidecar_exit(
-                                                    &app_handle_stdout,
-                                                    request_id,
-                                                    outcome == TerminalOutcome::Completed,
-                                                );
-                                            }
+                                            events::handle_sidecar_exit(
+                                                &app_handle_stdout,
+                                                request_id,
+                                                success,
+                                            );
                                         }
                                     }
 
@@ -2475,22 +2429,10 @@ mod tests {
             "message": "No stream session found"
         });
 
-        assert_eq!(stream_message_terminal_status(&completed), Some(TerminalOutcome::Completed));
-        assert_eq!(stream_message_terminal_status(&failed), Some(TerminalOutcome::Error));
-        assert_eq!(stream_message_terminal_status(&raw_error), Some(TerminalOutcome::Error));
+        assert_eq!(stream_message_terminal_status(&completed), Some(true));
+        assert_eq!(stream_message_terminal_status(&failed), Some(false));
+        assert_eq!(stream_message_terminal_status(&raw_error), Some(false));
         assert_eq!(stream_message_terminal_status(&display_item), None);
-
-        // "shutdown" status must map to Shutdown, not Error, so the frontend
-        // calls shutdownRun() instead of completeRun(false).
-        let shutdown = serde_json::json!({
-            "type": "agent_event",
-            "request_id": "agent-1",
-            "event": {
-                "type": "run_result",
-                "status": "shutdown"
-            }
-        });
-        assert_eq!(stream_message_terminal_status(&shutdown), Some(TerminalOutcome::Shutdown));
     }
 
     // -----------------------------------------------------------------

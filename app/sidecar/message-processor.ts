@@ -18,7 +18,6 @@ import type {
   RunConfigEvent,
   RunInitEvent,
   RunResultEvent,
-  TurnCompleteEvent,
   TurnUsageEvent,
 } from "./agent-events.js";
 import { classifyRawMessage } from "./message-classifier.js";
@@ -164,10 +163,6 @@ export class RunMetadataAccumulator {
 
   get currentTurnCount(): number {
     return this.turnCount;
-  }
-
-  getContext(): RequestContext {
-    return this.context;
   }
 
   recordTurn(): void {
@@ -322,9 +317,6 @@ export type ProcessedMessage = Record<string, unknown>;
 export class MessageProcessor {
   /** Counter for generating unique display item IDs. */
   private idCounter = 0;
-
-  /** True once processResultMessage has emitted a run_result event. */
-  private resultEmitted = false;
 
   /** Last top-level output text block — used as fallback for structured output extraction. */
   private lastOutputText: string | undefined;
@@ -705,10 +697,6 @@ export class MessageProcessor {
         }
       } else if (b.type === "tool_use") {
         const toolName = (b.name as string) ?? "unknown";
-        // NOTE: id should always be present per SDK contract. If absent (malformed
-        // SDK output), a synthetic ID is generated — but the subsequent tool_result
-        // will carry the real SDK ID and will NOT match, leaving the tool call
-        // orphaned. This fallback is intentionally unresolvable; treat as a no-op.
         const toolUseId = (b.id as string) ?? this.generateId();
         const toolInput = (b.input as Record<string, unknown>) ?? {};
 
@@ -823,15 +811,6 @@ export class MessageProcessor {
       );
     }
 
-    // Emit turn_complete for any non-tool_use stop reason so stream-session.ts
-    // doesn't need to inspect raw SDK fields. This covers "end_turn",
-    // "max_tokens", "stop_sequence", etc.
-    const stopReason = (outerMessage?.stop_reason as string | undefined);
-    if (stopReason && stopReason !== "tool_use") {
-      const turnCompleteEvent: TurnCompleteEvent = { type: "turn_complete" };
-      results.push(this.makeAgentEventEnvelope(turnCompleteEvent, now) as ProcessedMessage);
-    }
-
     return results;
   }
 
@@ -939,7 +918,6 @@ export class MessageProcessor {
     }
 
     results.push(this.makeAgentEventEnvelope(runSummary, now) as ProcessedMessage);
-    this.resultEmitted = true;
 
     return results;
   }
@@ -1074,40 +1052,26 @@ export class MessageProcessor {
   }
 
   /**
-   * Returns true if processResultMessage has already emitted a run_result for
-   * this processor instance. Used by callers to avoid emitting duplicate
-   * run_results on session exit paths (e.g. natural turn exhaustion).
-   */
-  hasEmittedResult(): boolean {
-    return this.resultEmitted;
-  }
-
-  /**
-   * Reset processor state. Preserves the original RequestContext so that a
-   * reset processor still emits run_result with the correct skillName/stepId.
-   * Useful for tests.
+   * Reset processor state. Useful for tests.
    */
   reset(): void {
     this.idCounter = 0;
-    this.resultEmitted = false;
     this.lastOutputText = undefined;
     this.lastOutputItemId = undefined;
     this.toolCallMap.clear();
     this.toolCallTimestamps.clear();
     this.subagentMap.clear();
     this.subagentByToolUseId.clear();
-    this.accumulator = new RunMetadataAccumulator(this.accumulator.getContext());
+    this.accumulator = new RunMetadataAccumulator({});
   }
 
   /** Build a shutdown run_result for aborted/cancelled runs. */
   buildShutdownSummary(): RunResultEvent {
-    this.resultEmitted = true;
     return this.accumulator.buildShutdownSummary();
   }
 
   /** Build an error run_result for iterator failures after SDK startup. */
   buildExecutionErrorSummary(errorMessage: string): RunResultEvent {
-    this.resultEmitted = true;
     return this.accumulator.buildExecutionErrorSummary(errorMessage);
   }
 
