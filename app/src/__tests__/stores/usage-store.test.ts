@@ -105,6 +105,7 @@ describe("useUsageStore", () => {
       skillFilter: null,
       modelFamilyFilter: null,
       skillNames: [],
+      loadGeneration: 0,
     });
     mockInvoke.mockReset();
   });
@@ -179,6 +180,87 @@ describe("useUsageStore", () => {
       expect(state.loading).toBe(false);
       expect(state.error).toBe("Error: DB connection failed");
       expect(state.summary).toBeNull();
+    });
+
+    it("discards stale response when a newer fetch completes first", async () => {
+      const staleSummary: UsageSummary = { total_cost: 0.01, total_runs: 1, avg_cost_per_run: 0.01 };
+      const freshSummary: UsageSummary = { total_cost: 99.99, total_runs: 100, avg_cost_per_run: 0.9999 };
+
+      let resolveBarrier!: () => void;
+      const barrier = new Promise<void>((resolve) => { resolveBarrier = resolve; });
+
+      let callCount = 0;
+      mockInvoke.mockImplementation((cmd: string) => {
+        callCount++;
+        const batchIndex = callCount;
+        switch (cmd) {
+          case "get_usage_summary":
+            // First batch (calls 1-6): block on barrier and return stale data
+            // Second batch (calls 7-12): resolve immediately with fresh data
+            if (batchIndex <= 6) {
+              return barrier.then(() => staleSummary);
+            }
+            return Promise.resolve(freshSummary);
+          case "get_recent_workflow_sessions":
+            return Promise.resolve(mockSessions);
+          case "get_agent_runs":
+            return Promise.resolve(mockAgentRuns);
+          case "get_usage_by_step":
+            return Promise.resolve(mockByStep);
+          case "get_usage_by_model":
+            return Promise.resolve(mockByModel);
+          case "get_usage_by_day":
+            return Promise.resolve(mockByDay);
+          default:
+            return Promise.reject(new Error(`Unmocked command: ${cmd}`));
+        }
+      });
+
+      // Start fetch #1 (slow — blocked on barrier)
+      const fetch1 = useUsageStore.getState().fetchUsage();
+
+      // Start and await fetch #2 (fast — resolves immediately with freshSummary)
+      await useUsageStore.getState().fetchUsage();
+
+      // Unblock fetch #1 (stale data)
+      resolveBarrier();
+      await fetch1;
+
+      // fetch #2's data should win
+      expect(useUsageStore.getState().summary).toEqual(freshSummary);
+    });
+
+    it("applies latest response when fetches complete in order", async () => {
+      const firstSummary: UsageSummary = { total_cost: 1.00, total_runs: 5, avg_cost_per_run: 0.20 };
+      const secondSummary: UsageSummary = { total_cost: 2.00, total_runs: 10, avg_cost_per_run: 0.20 };
+
+      let callCount = 0;
+      mockInvoke.mockImplementation((cmd: string) => {
+        callCount++;
+        const batchIndex = callCount;
+        switch (cmd) {
+          case "get_usage_summary":
+            return Promise.resolve(batchIndex <= 6 ? firstSummary : secondSummary);
+          case "get_recent_workflow_sessions":
+            return Promise.resolve(mockSessions);
+          case "get_agent_runs":
+            return Promise.resolve(mockAgentRuns);
+          case "get_usage_by_step":
+            return Promise.resolve(mockByStep);
+          case "get_usage_by_model":
+            return Promise.resolve(mockByModel);
+          case "get_usage_by_day":
+            return Promise.resolve(mockByDay);
+          default:
+            return Promise.reject(new Error(`Unmocked command: ${cmd}`));
+        }
+      });
+
+      await useUsageStore.getState().fetchUsage();
+      expect(useUsageStore.getState().summary).toEqual(firstSummary);
+
+      await useUsageStore.getState().fetchUsage();
+      expect(useUsageStore.getState().summary).toEqual(secondSummary);
     });
   });
 
