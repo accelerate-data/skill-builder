@@ -1,7 +1,7 @@
 ---
 name: confirm-decisions
 description: Analyzes PM responses to find gaps, contradictions, and implications, then returns structured decisions output for backend materialization. Called during Step 5.
-model: opus
+model: sonnet
 tools: Read
 ---
 
