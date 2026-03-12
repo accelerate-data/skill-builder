@@ -17,25 +17,20 @@ use super::sidecar::SidecarConfig;
 
 fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<bool> {
     match msg.get("type").and_then(|t| t.as_str()) {
-        Some("run_summary") => {
-            let status = msg
-                .get("data")
-                .and_then(|data| data.get("status"))
+        Some("agent_event") => {
+            let event = msg.get("event")?;
+            let event_type = event.get("type").and_then(|t| t.as_str())?;
+            if event_type != "run_result" {
+                return None;
+            }
+            let status = event
+                .get("status")
                 .and_then(|status| status.as_str())
                 .unwrap_or("completed");
             Some(status == "completed")
         }
-        Some("result") => {
-            let subtype = msg
-                .get("subtype")
-                .and_then(|s| s.as_str())
-                .unwrap_or("success");
-            let is_error = msg
-                .get("is_error")
-                .and_then(|e| e.as_bool())
-                .unwrap_or(false);
-            Some(!is_error && !subtype.starts_with("error_"))
-        }
+        // Raw error messages from sidecar protocol-error paths (e.g.
+        // duplicate session, missing session) are terminal failures.
         Some("error") => Some(false),
         _ => None,
     }
@@ -927,10 +922,19 @@ impl SidecarPool {
 
                                 // Check if this is a terminal or turn-boundary message.
                                 if let Some(msg_type) = msg.get("type").and_then(|t| t.as_str()) {
+                                    // Extract agent_event subtype for turn_complete / session_exhausted detection.
+                                    let event_subtype = if msg_type == "agent_event" {
+                                        msg.get("event")
+                                            .and_then(|e| e.get("type"))
+                                            .and_then(|t| t.as_str())
+                                    } else {
+                                        None
+                                    };
+
                                     // turn_complete: streaming session finished one turn.
                                     // Remove from pending and emit agent-exit so the frontend
                                     // knows this turn is done. The session stays alive.
-                                    if msg_type == "turn_complete" {
+                                    if event_subtype == Some("turn_complete") {
                                         log::info!(
                                             "[persistent-sidecar:{}] Agent '{}' turn complete",
                                             skill_name_stdout,
@@ -952,17 +956,13 @@ impl SidecarPool {
                                     }
 
                                     // session_exhausted: streaming session ran out of turns.
-                                    // Emit agent-exit with the exhausted flag so the frontend
-                                    // can show "session limit reached" notice.
-                                    if msg_type == "session_exhausted" {
+                                    // Emit agent-exit so the frontend can show "session limit reached" notice.
+                                    if event_subtype == Some("session_exhausted") {
                                         log::info!(
                                             "[persistent-sidecar:{}] Agent '{}' session exhausted",
                                             skill_name_stdout,
                                             request_id,
                                         );
-                                        // The raw line was already forwarded at line 808,
-                                        // so the frontend already has the session_exhausted message.
-                                        // Just remove from pending and emit exit.
                                         {
                                             let mut pending = stdout_pending.lock().await;
                                             pending.remove(request_id);
@@ -980,83 +980,80 @@ impl SidecarPool {
                                     let is_terminal = stream_message_terminal_status(&msg).is_some();
 
                                     if let Some(success) = stream_message_terminal_status(&msg) {
-                                        if msg_type == "result" || msg_type == "run_summary" {
-                                            if success {
-                                                log::info!(
-                                                    "[persistent-sidecar:{}] Agent '{}' completed successfully via {}",
-                                                    skill_name_stdout,
-                                                    request_id,
-                                                    msg_type,
-                                                );
-                                            } else {
-                                                let detail = if msg_type == "run_summary" {
-                                                    msg.get("data")
-                                                        .and_then(|data| data.get("status"))
+                                        // Guard: only process if this request is still pending.
+                                        // The sidecar may emit both a raw error and a follow-up
+                                        // agent_event(run_result) — the second must be a no-op.
+                                        let was_pending = {
+                                            let mut pending = stdout_pending.lock().await;
+                                            pending.remove(request_id).is_some()
+                                        };
+
+                                        if !was_pending {
+                                            log::debug!(
+                                                "[persistent-sidecar:{}] Ignoring duplicate terminal for '{}' (already cleaned up)",
+                                                skill_name_stdout,
+                                                request_id,
+                                            );
+                                        } else {
+                                            if msg_type == "agent_event" {
+                                                if success {
+                                                    log::info!(
+                                                        "[persistent-sidecar:{}] Agent '{}' completed successfully via {}",
+                                                        skill_name_stdout,
+                                                        request_id,
+                                                        msg_type,
+                                                    );
+                                                } else {
+                                                    let detail = msg
+                                                        .get("event")
+                                                        .and_then(|event| event.get("status"))
                                                         .and_then(|status| status.as_str())
                                                         .unwrap_or("error")
-                                                        .to_string()
-                                                } else {
-                                                    msg.get("subtype")
-                                                        .and_then(|s| s.as_str())
-                                                        .unwrap_or("error")
-                                                        .to_string()
-                                                };
-                                                log::warn!(
-                                                    "[persistent-sidecar:{}] Agent '{}' finished with error via {}: {}",
+                                                        .to_string();
+                                                    log::warn!(
+                                                        "[persistent-sidecar:{}] Agent '{}' finished with error via {}: {}",
+                                                        skill_name_stdout,
+                                                        request_id,
+                                                        msg_type,
+                                                        detail,
+                                                    );
+                                                }
+                                            }
+
+                                            if msg_type == "error" {
+                                                let error_detail = msg.get("message")
+                                                    .and_then(|m| m.as_str())
+                                                    .unwrap_or("(no message)");
+                                                log::info!(
+                                                    "[persistent-sidecar:{}] Agent error for '{}': {}",
                                                     skill_name_stdout,
                                                     request_id,
-                                                    msg_type,
-                                                    detail,
+                                                    error_detail,
+                                                );
+                                                // Emit the error detail as an agent-message so the
+                                                // frontend can display it (instead of "Unknown error").
+                                                events::handle_sidecar_message(
+                                                    &app_handle_stdout,
+                                                    request_id,
+                                                    &serde_json::json!({
+                                                        "type": "error",
+                                                        "error": error_detail,
+                                                    }).to_string(),
                                                 );
                                             }
-                                        }
 
-                                        if msg_type == "error" {
-                                            let error_detail = msg.get("message")
-                                                .and_then(|m| m.as_str())
-                                                .unwrap_or("(no message)");
-                                            log::info!(
-                                                "[persistent-sidecar:{}] Agent error for '{}': {}",
-                                                skill_name_stdout,
-                                                request_id,
-                                                error_detail,
-                                            );
-                                            // Emit the error detail as an agent-message so the
-                                            // frontend can display it (instead of "Unknown error").
-                                            events::handle_sidecar_message(
+                                            {
+                                                let pool = stdout_pool.lock().await;
+                                                if let Some(s) = pool.get(&skill_name_stdout) {
+                                                    *s.last_activity.lock().await = tokio::time::Instant::now();
+                                                }
+                                            }
+                                            events::handle_sidecar_exit(
                                                 &app_handle_stdout,
                                                 request_id,
-                                                &serde_json::json!({
-                                                    "type": "error",
-                                                    "error": error_detail,
-                                                }).to_string(),
+                                                success,
                                             );
                                         }
-
-                                        let error_detail = msg.get("message")
-                                            .and_then(|m| m.as_str());
-                                        if msg_type == "error" && error_detail.is_none() {
-                                            log::warn!(
-                                                "[persistent-sidecar:{}] Agent '{}' emitted terminal error without message",
-                                                skill_name_stdout,
-                                                request_id,
-                                            );
-                                        }
-                                        {
-                                            let mut pending = stdout_pending.lock().await;
-                                            pending.remove(request_id);
-                                        }
-                                        {
-                                            let pool = stdout_pool.lock().await;
-                                            if let Some(s) = pool.get(&skill_name_stdout) {
-                                                *s.last_activity.lock().await = tokio::time::Instant::now();
-                                            }
-                                        }
-                                        events::handle_sidecar_exit(
-                                            &app_handle_stdout,
-                                            request_id,
-                                            success,
-                                        );
                                     }
 
                                     // Close and remove the JSONL log file on terminal messages
@@ -2401,18 +2398,20 @@ mod tests {
     }
 
     #[test]
-    fn test_stream_message_terminal_status_recognizes_run_summary() {
+    fn test_stream_message_terminal_status_recognizes_run_result_agent_event() {
         let completed = serde_json::json!({
-            "type": "run_summary",
+            "type": "agent_event",
             "request_id": "agent-1",
-            "data": {
+            "event": {
+                "type": "run_result",
                 "status": "completed"
             }
         });
         let failed = serde_json::json!({
-            "type": "run_summary",
+            "type": "agent_event",
             "request_id": "agent-1",
-            "data": {
+            "event": {
+                "type": "run_result",
                 "status": "error"
             }
         });
@@ -2424,8 +2423,15 @@ mod tests {
             }
         });
 
+        let raw_error = serde_json::json!({
+            "type": "error",
+            "request_id": "agent-1",
+            "message": "No stream session found"
+        });
+
         assert_eq!(stream_message_terminal_status(&completed), Some(true));
         assert_eq!(stream_message_terminal_status(&failed), Some(false));
+        assert_eq!(stream_message_terminal_status(&raw_error), Some(false));
         assert_eq!(stream_message_terminal_status(&display_item), None);
     }
 

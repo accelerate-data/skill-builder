@@ -1,6 +1,13 @@
 import { create } from "zustand";
 import { useWorkflowStore } from "./workflow-store";
-import type { DisplayItem, RunMetadata } from "@/lib/display-types";
+import type { DisplayItem } from "@/lib/display-types";
+import type {
+  CompactionEvent,
+  ContextWindowEvent,
+  RunConfigEvent,
+  RunInitEvent,
+  TurnUsageEvent,
+} from "@/lib/agent-events";
 
 // ---------------------------------------------------------------------------
 // Pending terminal tracking (for agent-exit arriving before startRun)
@@ -10,14 +17,21 @@ type PendingTerminalStatus = "completed" | "error" | "shutdown";
 let _pendingTerminalByAgent = new Map<string, PendingTerminalStatus>();
 
 // ---------------------------------------------------------------------------
-// Pending metadata buffer (for agent-metadata arriving before run registration)
+// Pending agent event buffer (for typed events arriving before run registration)
 // ---------------------------------------------------------------------------
 
-let _pendingMetadataByAgent = new Map<string, RunMetadata[]>();
+type PendingAgentEvent =
+  | RunConfigEvent
+  | RunInitEvent
+  | TurnUsageEvent
+  | CompactionEvent
+  | ContextWindowEvent;
 
-function queuePendingMetadata(agentId: string, metadata: RunMetadata) {
+let _pendingMetadataByAgent = new Map<string, PendingAgentEvent[]>();
+
+function queuePendingMetadata(agentId: string, event: PendingAgentEvent) {
   const existing = _pendingMetadataByAgent.get(agentId) ?? [];
-  existing.push(metadata);
+  existing.push(event);
   _pendingMetadataByAgent.set(agentId, existing);
   console.warn(
     "[agent-store] event=metadata_queued operation=queue_pending_metadata agent_id=%s",
@@ -35,8 +49,25 @@ function drainPendingMetadata(agentId: string) {
     agentId,
     pending.length,
   );
-  for (const metadata of pending) {
-    useAgentStore.getState().updateMetadata(agentId, metadata);
+  for (const event of pending) {
+    const store = useAgentStore.getState();
+    switch (event.type) {
+      case "run_config":
+        store.applyRunConfig(agentId, event);
+        break;
+      case "run_init":
+        store.applyRunInit(agentId, event);
+        break;
+      case "turn_usage":
+        store.applyTurnUsage(agentId, event);
+        break;
+      case "compaction":
+        store.applyCompaction(agentId, event);
+        break;
+      case "context_window":
+        store.applyContextWindow(agentId, event);
+        break;
+    }
   }
 }
 
@@ -75,7 +106,7 @@ function drainPendingTerminal(agentId: string) {
 /** No-op: kept for backward compatibility with test code that calls flushMessageBuffer(). */
 export function flushMessageBuffer() {
   // No-op: RAF message buffer has been removed.
-  // Messages now arrive directly via addDisplayItem / updateMetadata.
+  // Messages now arrive directly via addDisplayItem / typed apply actions.
 }
 
 /** Map model IDs and shorthands to human-readable display names with version. */
@@ -123,7 +154,7 @@ interface ContextSnapshot {
   outputTokens: number;
 }
 
-interface CompactionEvent {
+interface CompactionRecord {
   turn: number;
   preTokens: number;
   timestamp: number;
@@ -152,7 +183,7 @@ export interface AgentRun {
   skillName?: string;
   contextHistory: ContextSnapshot[];
   contextWindow: number;
-  compactionEvents: CompactionEvent[];
+  compactionEvents: CompactionRecord[];
   thinkingEnabled: boolean;
   agentName?: string;
   runSource?: "workflow" | "refine" | "test";
@@ -176,8 +207,11 @@ interface AgentState {
   ) => void;
   /** Add a structured DisplayItem from the sidecar. Update-by-id for tool call status changes. */
   addDisplayItem: (agentId: string, item: DisplayItem) => void;
-  /** Apply a metadata event from the sidecar (context snapshot, compaction, config, session init). */
-  updateMetadata: (agentId: string, metadata: RunMetadata) => void;
+  applyRunConfig: (agentId: string, event: RunConfigEvent) => void;
+  applyRunInit: (agentId: string, event: RunInitEvent) => void;
+  applyTurnUsage: (agentId: string, event: TurnUsageEvent) => void;
+  applyCompaction: (agentId: string, event: CompactionEvent) => void;
+  applyContextWindow: (agentId: string, event: ContextWindowEvent) => void;
   completeRun: (agentId: string, success: boolean) => void;
   shutdownRun: (agentId: string) => void;
   setActiveAgent: (agentId: string | null) => void;
@@ -322,82 +356,142 @@ export const useAgentStore = create<AgentState>((set) => ({
       };
     }),
 
-  updateMetadata: (agentId, metadata) =>
+  applyRunConfig: (agentId, event) =>
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        // Run not yet registered — buffer for drain on startRun/registerRun
-        queuePendingMetadata(agentId, metadata);
+        queuePendingMetadata(agentId, event);
         return state;
       }
 
-      let updatedRun = { ...run };
-
-      if (metadata.contextSnapshot) {
-        const { turn, inputTokens, outputTokens } = metadata.contextSnapshot;
-        console.debug(
-          "[agent-store] event=context_snapshot agent_id=%s turn=%d input=%d output=%d",
-          agentId, turn, inputTokens, outputTokens,
-        );
-        updatedRun = {
-          ...updatedRun,
-          contextHistory: [
-            ...updatedRun.contextHistory,
-            { turn, inputTokens, outputTokens },
-          ],
-        };
-      }
-
-      if (metadata.compactionEvent) {
-        const { turn, preTokens, timestamp } = metadata.compactionEvent;
-        console.debug(
-          "[agent-store] event=compaction agent_id=%s turn=%d pre_tokens=%d",
-          agentId, turn, preTokens,
-        );
-        updatedRun = {
-          ...updatedRun,
-          compactionEvents: [
-            ...updatedRun.compactionEvents,
-            { turn, preTokens, timestamp },
-          ],
-        };
-      }
-
-      if (metadata.sessionInit) {
-        const { sessionId, model } = metadata.sessionInit;
-        console.debug(
-          "[agent-store] event=session_init agent_id=%s model=%s",
-          agentId, model,
-        );
-        updatedRun = { ...updatedRun, sessionId, model };
-      }
-
-      if (metadata.contextWindow !== undefined && metadata.contextWindow > 0) {
-        console.debug(
-          "[agent-store] event=context_window agent_id=%s window=%d",
-          agentId, metadata.contextWindow,
-        );
-        updatedRun = { ...updatedRun, contextWindow: Math.max(updatedRun.contextWindow, metadata.contextWindow) };
-      }
-
-      if (metadata.config) {
-        const { thinkingEnabled, agentName } = metadata.config;
-        console.debug(
-          "[agent-store] event=config agent_id=%s thinking=%s agent=%s",
-          agentId, thinkingEnabled, agentName,
-        );
-        if (thinkingEnabled !== undefined) {
-          updatedRun = { ...updatedRun, thinkingEnabled };
-        }
-        if (agentName !== undefined) {
-          updatedRun = { ...updatedRun, agentName };
-        }
-      }
+      console.debug(
+        "[agent-store] event=run_config agent_id=%s thinking=%s agent=%s",
+        agentId, event.thinkingEnabled, event.agentName,
+      );
 
       return {
         runs: {
           ...state.runs,
-          [agentId]: updatedRun,
+          [agentId]: {
+            ...run,
+            thinkingEnabled: event.thinkingEnabled,
+            agentName: event.agentName ?? run.agentName,
+          },
+        },
+      };
+    }),
+
+  applyRunInit: (agentId, event) =>
+    set((state) => {
+      const run = state.runs[agentId];
+      if (!run) {
+        queuePendingMetadata(agentId, event);
+        return state;
+      }
+
+      console.debug(
+        "[agent-store] event=run_init agent_id=%s model=%s",
+        agentId, event.model,
+      );
+
+      return {
+        runs: {
+          ...state.runs,
+          [agentId]: {
+            ...run,
+            sessionId: event.sessionId,
+            model: event.model,
+          },
+        },
+      };
+    }),
+
+  applyTurnUsage: (agentId, event) =>
+    set((state) => {
+      const run = state.runs[agentId];
+      if (!run) {
+        queuePendingMetadata(agentId, event);
+        return state;
+      }
+
+      console.debug(
+        "[agent-store] event=turn_usage agent_id=%s turn=%d input=%d output=%d",
+        agentId, event.turn, event.inputTokens, event.outputTokens,
+      );
+
+      return {
+        runs: {
+          ...state.runs,
+          [agentId]: {
+            ...run,
+            contextHistory: [
+              ...run.contextHistory,
+              {
+                turn: event.turn,
+                inputTokens: event.inputTokens,
+                outputTokens: event.outputTokens,
+              },
+            ],
+          },
+        },
+      };
+    }),
+
+  applyCompaction: (agentId, event) =>
+    set((state) => {
+      const run = state.runs[agentId];
+      if (!run) {
+        queuePendingMetadata(agentId, event);
+        return state;
+      }
+
+      console.debug(
+        "[agent-store] event=compaction agent_id=%s turn=%d pre_tokens=%d",
+        agentId, event.turn, event.preTokens,
+      );
+
+      return {
+        runs: {
+          ...state.runs,
+          [agentId]: {
+            ...run,
+            compactionEvents: [
+              ...run.compactionEvents,
+              {
+                turn: event.turn,
+                preTokens: event.preTokens,
+                timestamp: event.timestamp,
+              },
+            ],
+          },
+        },
+      };
+    }),
+
+  applyContextWindow: (agentId, event) =>
+    set((state) => {
+      const run = state.runs[agentId];
+      if (!run) {
+        queuePendingMetadata(agentId, event);
+        return state;
+      }
+
+      if (event.contextWindow <= 0) {
+        return state;
+      }
+
+      console.debug(
+        "[agent-store] event=context_window agent_id=%s window=%d",
+        agentId, event.contextWindow,
+      );
+
+      return {
+        runs: {
+          ...state.runs,
+          [agentId]: {
+            ...run,
+            contextWindow: Math.max(run.contextWindow, event.contextWindow),
+          },
         },
       };
     }),

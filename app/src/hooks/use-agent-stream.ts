@@ -1,7 +1,18 @@
 import { listen } from "@tauri-apps/api/event";
+import { toast } from "sonner";
 import { useAgentStore } from "@/stores/agent-store";
+import { useRefineStore } from "@/stores/refine-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
-import type { DisplayItem, RunMetadata } from "@/lib/display-types";
+import type { DisplayItem } from "@/lib/display-types";
+import type {
+  CompactionEvent,
+  ContextWindowEvent,
+  InitProgressEvent,
+  RunConfigEvent,
+  RunInitEvent,
+  SessionExhaustedEvent,
+  TurnUsageEvent,
+} from "@/lib/agent-events";
 
 interface AgentMessagePayload {
   agent_id: string;
@@ -12,22 +23,19 @@ interface AgentMessagePayload {
   };
 }
 
-interface AgentMetadataPayload {
-  agent_id: string;
-  data: RunMetadata;
-  timestamp: number;
-}
+type AgentRunConfigPayload = { agent_id: string; timestamp: number } & RunConfigEvent;
+type AgentRunInitPayload = { agent_id: string; timestamp: number } & RunInitEvent;
+type AgentTurnUsagePayload = { agent_id: string; timestamp: number } & TurnUsageEvent;
+type AgentCompactionPayload = { agent_id: string; timestamp: number } & CompactionEvent;
+type AgentContextWindowPayload = { agent_id: string; timestamp: number } & ContextWindowEvent;
 
 interface AgentExitPayload {
   agent_id: string;
   success: boolean;
 }
 
-interface AgentInitProgressPayload {
-  agent_id: string;
-  subtype: string;
-  timestamp: number;
-}
+type AgentInitProgressPayload = { agent_id: string; timestamp: number } & InitProgressEvent;
+type AgentSessionExhaustedPayload = { agent_id: string; timestamp: number } & SessionExhaustedEvent;
 
 interface AgentInitErrorPayload {
   error_type: string;
@@ -56,14 +64,33 @@ export function initAgentStream() {
   initialized = true;
 
   listen<AgentInitProgressPayload>("agent-init-progress", (event) => {
-    const { subtype } = event.payload;
-    const progressMessage = INIT_PROGRESS_MESSAGES[subtype];
+    const { agent_id, stage } = event.payload;
+    console.debug(
+      "[use-agent-stream] event=agent_init_progress component=ipc agent_id=%s stage=%s",
+      agent_id,
+      stage,
+    );
+    const progressMessage = INIT_PROGRESS_MESSAGES[stage];
     if (progressMessage) {
       const workflowState = useWorkflowStore.getState();
       if (workflowState.isInitializing) {
         workflowState.setInitProgressMessage(progressMessage);
       }
     }
+  });
+
+  listen<AgentSessionExhaustedPayload>("agent-session-exhausted", (event) => {
+    const { agent_id, sessionId } = event.payload;
+    console.debug(
+      "[use-agent-stream] event=agent_session_exhausted component=ipc agent_id=%s session_id=%s",
+      agent_id,
+      sessionId,
+    );
+    useRefineStore.getState().setSessionExhausted(true);
+    toast.info(
+      "This refine session has reached its limit. Please start a new session to continue.",
+      { duration: 5000 },
+    );
   });
 
   listen<AgentInitErrorPayload>("agent-init-error", (event) => {
@@ -76,13 +103,51 @@ export function initAgentStream() {
     });
   });
 
-  listen<AgentMetadataPayload>("agent-metadata", (event) => {
-    const { agent_id, data } = event.payload;
+  listen<AgentRunConfigPayload>("agent-run-config", (event) => {
+    const { agent_id, ...runConfig } = event.payload;
     console.debug(
-      "[use-agent-stream] event=agent_metadata agent_id=%s",
+      "[use-agent-stream] event=agent_run_config component=ipc agent_id=%s",
       agent_id,
     );
-    useAgentStore.getState().updateMetadata(agent_id, data);
+    useAgentStore.getState().applyRunConfig(agent_id, runConfig);
+  });
+
+  listen<AgentRunInitPayload>("agent-run-init", (event) => {
+    const { agent_id, ...runInit } = event.payload;
+    console.debug(
+      "[use-agent-stream] event=agent_run_init component=ipc agent_id=%s",
+      agent_id,
+    );
+    useAgentStore.getState().applyRunInit(agent_id, runInit);
+  });
+
+  listen<AgentTurnUsagePayload>("agent-turn-usage", (event) => {
+    const { agent_id, ...turnUsage } = event.payload;
+    console.debug(
+      "[use-agent-stream] event=agent_turn_usage component=ipc agent_id=%s turn=%d",
+      agent_id,
+      turnUsage.turn,
+    );
+    useAgentStore.getState().applyTurnUsage(agent_id, turnUsage);
+  });
+
+  listen<AgentCompactionPayload>("agent-compaction", (event) => {
+    const { agent_id, ...compaction } = event.payload;
+    console.debug(
+      "[use-agent-stream] event=agent_compaction component=ipc agent_id=%s turn=%d",
+      agent_id,
+      compaction.turn,
+    );
+    useAgentStore.getState().applyCompaction(agent_id, compaction);
+  });
+
+  listen<AgentContextWindowPayload>("agent-context-window", (event) => {
+    const { agent_id, ...contextWindow } = event.payload;
+    console.debug(
+      "[use-agent-stream] event=agent_context_window component=ipc agent_id=%s",
+      agent_id,
+    );
+    useAgentStore.getState().applyContextWindow(agent_id, contextWindow);
   });
 
   listen<AgentMessagePayload>("agent-message", (event) => {

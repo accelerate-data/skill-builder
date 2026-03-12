@@ -194,11 +194,13 @@ describe("useAgentStore", () => {
     expect(useAgentStore.getState().activeAgentId).toBeNull();
   });
 
-  it("updateMetadata with sessionInit updates model and sessionId", () => {
+  it("applyRunInit updates model and sessionId", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
-    useAgentStore.getState().updateMetadata("agent-1", {
-      sessionInit: { sessionId: "sess-123", model: "claude-sonnet-4-5-20250929" },
+    useAgentStore.getState().applyRunInit("agent-1", {
+      type: "run_init",
+      sessionId: "sess-123",
+      model: "claude-sonnet-4-5-20250929",
     });
 
     const run = useAgentStore.getState().runs["agent-1"];
@@ -268,7 +270,7 @@ describe("shutdownRun", () => {
   });
 });
 
-describe("context tracking via updateMetadata", () => {
+describe("context tracking via agent events", () => {
   beforeEach(() => {
     useAgentStore.getState().clearRuns();
   });
@@ -281,11 +283,14 @@ describe("context tracking via updateMetadata", () => {
     expect(run.compactionEvents).toEqual([]);
   });
 
-  it("adds context snapshot from metadata event", () => {
+  it("adds context snapshot from turn usage event", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
-    useAgentStore.getState().updateMetadata("agent-1", {
-      contextSnapshot: { turn: 1, inputTokens: 15000, outputTokens: 500 },
+    useAgentStore.getState().applyTurnUsage("agent-1", {
+      type: "turn_usage",
+      turn: 1,
+      inputTokens: 15000,
+      outputTokens: 500,
     });
 
     const run = useAgentStore.getState().runs["agent-1"];
@@ -300,11 +305,17 @@ describe("context tracking via updateMetadata", () => {
   it("tracks multiple turns of context usage", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
-    useAgentStore.getState().updateMetadata("agent-1", {
-      contextSnapshot: { turn: 1, inputTokens: 10000, outputTokens: 200 },
+    useAgentStore.getState().applyTurnUsage("agent-1", {
+      type: "turn_usage",
+      turn: 1,
+      inputTokens: 10000,
+      outputTokens: 200,
     });
-    useAgentStore.getState().updateMetadata("agent-1", {
-      contextSnapshot: { turn: 2, inputTokens: 25000, outputTokens: 800 },
+    useAgentStore.getState().applyTurnUsage("agent-1", {
+      type: "turn_usage",
+      turn: 2,
+      inputTokens: 25000,
+      outputTokens: 800,
     });
 
     const run = useAgentStore.getState().runs["agent-1"];
@@ -315,11 +326,14 @@ describe("context tracking via updateMetadata", () => {
     expect(run.contextHistory[1].inputTokens).toBe(25000);
   });
 
-  it("records compaction events from metadata", () => {
+  it("records compaction events", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
-    useAgentStore.getState().updateMetadata("agent-1", {
-      compactionEvent: { turn: 5, preTokens: 190000, timestamp: 1700000000000 },
+    useAgentStore.getState().applyCompaction("agent-1", {
+      type: "compaction",
+      turn: 5,
+      preTokens: 190000,
+      timestamp: 1700000000000,
     });
 
     const run = useAgentStore.getState().runs["agent-1"];
@@ -331,22 +345,25 @@ describe("context tracking via updateMetadata", () => {
     });
   });
 
-  it("updates thinkingEnabled from config metadata", () => {
+  it("updates thinkingEnabled from run config", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
-    useAgentStore.getState().updateMetadata("agent-1", {
-      config: { thinkingEnabled: true },
+    useAgentStore.getState().applyRunConfig("agent-1", {
+      type: "run_config",
+      thinkingEnabled: true,
     });
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.thinkingEnabled).toBe(true);
   });
 
-  it("updates agentName from config metadata", () => {
+  it("updates agentName from run config", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
-    useAgentStore.getState().updateMetadata("agent-1", {
-      config: { agentName: "research-orchestrator" },
+    useAgentStore.getState().applyRunConfig("agent-1", {
+      type: "run_config",
+      thinkingEnabled: false,
+      agentName: "research-orchestrator",
     });
 
     const run = useAgentStore.getState().runs["agent-1"];
@@ -355,8 +372,11 @@ describe("context tracking via updateMetadata", () => {
 
   it("no-ops when run does not exist", () => {
     // Should not throw
-    useAgentStore.getState().updateMetadata("nonexistent", {
-      contextSnapshot: { turn: 1, inputTokens: 1000, outputTokens: 100 },
+    useAgentStore.getState().applyTurnUsage("nonexistent", {
+      type: "turn_usage",
+      turn: 1,
+      inputTokens: 1000,
+      outputTokens: 100,
     });
     expect(useAgentStore.getState().runs["nonexistent"]).toBeUndefined();
   });
@@ -384,11 +404,17 @@ describe("context helper functions", () => {
   it("getLatestContextTokens returns latest input tokens", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
-    useAgentStore.getState().updateMetadata("agent-1", {
-      contextSnapshot: { turn: 1, inputTokens: 10000, outputTokens: 200 },
+    useAgentStore.getState().applyTurnUsage("agent-1", {
+      type: "turn_usage",
+      turn: 1,
+      inputTokens: 10000,
+      outputTokens: 200,
     });
-    useAgentStore.getState().updateMetadata("agent-1", {
-      contextSnapshot: { turn: 2, inputTokens: 50000, outputTokens: 800 },
+    useAgentStore.getState().applyTurnUsage("agent-1", {
+      type: "turn_usage",
+      turn: 2,
+      inputTokens: 50000,
+      outputTokens: 800,
     });
 
     const run = useAgentStore.getState().runs["agent-1"];
@@ -398,8 +424,11 @@ describe("context helper functions", () => {
   it("getContextUtilization computes percentage correctly", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
-    useAgentStore.getState().updateMetadata("agent-1", {
-      contextSnapshot: { turn: 1, inputTokens: 100000, outputTokens: 500 },
+    useAgentStore.getState().applyTurnUsage("agent-1", {
+      type: "turn_usage",
+      turn: 1,
+      inputTokens: 100000,
+      outputTokens: 500,
     });
 
     const run = useAgentStore.getState().runs["agent-1"];
@@ -409,8 +438,11 @@ describe("context helper functions", () => {
   it("getContextUtilization caps at 100%", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
-    useAgentStore.getState().updateMetadata("agent-1", {
-      contextSnapshot: { turn: 1, inputTokens: 250000, outputTokens: 500 },
+    useAgentStore.getState().applyTurnUsage("agent-1", {
+      type: "turn_usage",
+      turn: 1,
+      inputTokens: 250000,
+      outputTokens: 500,
     });
 
     const run = useAgentStore.getState().runs["agent-1"];
@@ -505,22 +537,26 @@ describe("displayItems management", () => {
 // Pending metadata buffer (VU-507)
 // =============================================================================
 
-describe("updateMetadata buffering", () => {
+describe("agent event buffering", () => {
   beforeEach(() => {
     useAgentStore.getState().clearRuns();
   });
 
-  it("applies metadata immediately when run already exists", () => {
+  it("applies run init immediately when run already exists", () => {
     useAgentStore.getState().startRun("agent-buf-1", "sonnet");
-    useAgentStore.getState().updateMetadata("agent-buf-1", {
-      sessionInit: { sessionId: "s1", model: "sonnet" },
+    useAgentStore.getState().applyRunInit("agent-buf-1", {
+      type: "run_init",
+      sessionId: "s1",
+      model: "sonnet",
     });
     expect(useAgentStore.getState().runs["agent-buf-1"].sessionId).toBe("s1");
   });
 
-  it("buffers metadata arriving before startRun and drains after", () => {
-    useAgentStore.getState().updateMetadata("agent-buf-2", {
-      sessionInit: { sessionId: "early-session", model: "sonnet" },
+  it("buffers run init arriving before startRun and drains after", () => {
+    useAgentStore.getState().applyRunInit("agent-buf-2", {
+      type: "run_init",
+      sessionId: "early-session",
+      model: "sonnet",
     });
     expect(useAgentStore.getState().runs["agent-buf-2"]).toBeUndefined();
 
@@ -528,9 +564,11 @@ describe("updateMetadata buffering", () => {
     expect(useAgentStore.getState().runs["agent-buf-2"].sessionId).toBe("early-session");
   });
 
-  it("buffers metadata arriving before registerRun and drains after", () => {
-    useAgentStore.getState().updateMetadata("agent-buf-3", {
-      config: { thinkingEnabled: true, agentName: "researcher" },
+  it("buffers run config arriving before registerRun and drains after", () => {
+    useAgentStore.getState().applyRunConfig("agent-buf-3", {
+      type: "run_config",
+      thinkingEnabled: true,
+      agentName: "researcher",
     });
     expect(useAgentStore.getState().runs["agent-buf-3"]).toBeUndefined();
 
@@ -540,11 +578,17 @@ describe("updateMetadata buffering", () => {
   });
 
   it("drains multiple buffered events in order", () => {
-    useAgentStore.getState().updateMetadata("agent-buf-4", {
-      contextSnapshot: { turn: 1, inputTokens: 100, outputTokens: 10 },
+    useAgentStore.getState().applyTurnUsage("agent-buf-4", {
+      type: "turn_usage",
+      turn: 1,
+      inputTokens: 100,
+      outputTokens: 10,
     });
-    useAgentStore.getState().updateMetadata("agent-buf-4", {
-      contextSnapshot: { turn: 2, inputTokens: 200, outputTokens: 20 },
+    useAgentStore.getState().applyTurnUsage("agent-buf-4", {
+      type: "turn_usage",
+      turn: 2,
+      inputTokens: 200,
+      outputTokens: 20,
     });
     useAgentStore.getState().startRun("agent-buf-4", "sonnet");
     const history = useAgentStore.getState().runs["agent-buf-4"].contextHistory;
@@ -553,9 +597,11 @@ describe("updateMetadata buffering", () => {
     expect(history[1].turn).toBe(2);
   });
 
-  it("clearRuns discards the pending metadata buffer", () => {
-    useAgentStore.getState().updateMetadata("agent-buf-5", {
-      sessionInit: { sessionId: "should-be-gone", model: "sonnet" },
+  it("clearRuns discards the pending agent event buffer", () => {
+    useAgentStore.getState().applyRunInit("agent-buf-5", {
+      type: "run_init",
+      sessionId: "should-be-gone",
+      model: "sonnet",
     });
     useAgentStore.getState().clearRuns();
     useAgentStore.getState().startRun("agent-buf-5", "sonnet");

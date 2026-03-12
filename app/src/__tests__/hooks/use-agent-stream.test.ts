@@ -23,12 +23,17 @@ describe("initAgentStream", () => {
     });
   });
 
-  it("subscribes to agent-message, agent-exit, agent-init-progress, agent-metadata, and agent-shutdown events", () => {
+  it("subscribes to display and discrete agent event channels", () => {
     initAgentStream();
 
     expect(mockListen).toHaveBeenCalledWith("agent-init-progress", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-init-error", expect.any(Function));
-    expect(mockListen).toHaveBeenCalledWith("agent-metadata", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("agent-run-config", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("agent-run-init", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("agent-turn-usage", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("agent-compaction", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("agent-context-window", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("agent-session-exhausted", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-message", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-exit", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-shutdown", expect.any(Function));
@@ -58,16 +63,16 @@ describe("initAgentStream", () => {
     expect(run.displayItems[0].outputText).toBe("Hello world");
   });
 
-  it("updates metadata via agent-metadata event", () => {
+  it("updates run init via agent-run-init event", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
     initAgentStream();
 
-    listeners["agent-metadata"]({
+    listeners["agent-run-init"]({
       payload: {
         agent_id: "agent-1",
-        data: {
-          sessionInit: { sessionId: "sess-123", model: "claude-sonnet-4-5-20250929" },
-        },
+        type: "run_init",
+        sessionId: "sess-123",
+        model: "claude-sonnet-4-5-20250929",
         timestamp: Date.now(),
       },
     });
@@ -75,6 +80,155 @@ describe("initAgentStream", () => {
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.model).toBe("claude-sonnet-4-5-20250929");
     expect(run.sessionId).toBe("sess-123");
+  });
+
+  it("applies the full typed agent event lifecycle to a run", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    initAgentStream();
+
+    listeners["agent-run-config"]({
+      payload: {
+        agent_id: "agent-1",
+        type: "run_config",
+        thinkingEnabled: true,
+        agentName: "researcher",
+        timestamp: Date.now(),
+      },
+    });
+
+    listeners["agent-run-init"]({
+      payload: {
+        agent_id: "agent-1",
+        type: "run_init",
+        sessionId: "sess-123",
+        model: "claude-sonnet-4-5-20250929",
+        timestamp: Date.now(),
+      },
+    });
+
+    listeners["agent-turn-usage"]({
+      payload: {
+        agent_id: "agent-1",
+        type: "turn_usage",
+        turn: 1,
+        inputTokens: 1200,
+        outputTokens: 130,
+        timestamp: Date.now(),
+      },
+    });
+
+    listeners["agent-compaction"]({
+      payload: {
+        agent_id: "agent-1",
+        type: "compaction",
+        turn: 2,
+        preTokens: 8000,
+        timestamp: 123456,
+      },
+    });
+
+    listeners["agent-context-window"]({
+      payload: {
+        agent_id: "agent-1",
+        type: "context_window",
+        contextWindow: 200000,
+        timestamp: Date.now(),
+      },
+    });
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.thinkingEnabled).toBe(true);
+    expect(run.agentName).toBe("researcher");
+    expect(run.model).toBe("claude-sonnet-4-5-20250929");
+    expect(run.sessionId).toBe("sess-123");
+    expect(run.contextHistory).toEqual([
+      {
+        turn: 1,
+        inputTokens: 1200,
+        outputTokens: 130,
+      },
+    ]);
+    expect(run.compactionEvents).toEqual([
+      {
+        turn: 2,
+        preTokens: 8000,
+        timestamp: 123456,
+      },
+    ]);
+    expect(run.contextWindow).toBe(200000);
+  });
+
+  it("replays queued typed agent events when they arrive before run registration", () => {
+    initAgentStream();
+
+    listeners["agent-run-config"]({
+      payload: {
+        agent_id: "late-agent",
+        type: "run_config",
+        thinkingEnabled: true,
+        agentName: "late-runner",
+        timestamp: Date.now(),
+      },
+    });
+    listeners["agent-run-init"]({
+      payload: {
+        agent_id: "late-agent",
+        type: "run_init",
+        sessionId: "sess-late",
+        model: "claude-opus-4-1",
+        timestamp: Date.now(),
+      },
+    });
+    listeners["agent-turn-usage"]({
+      payload: {
+        agent_id: "late-agent",
+        type: "turn_usage",
+        turn: 4,
+        inputTokens: 2400,
+        outputTokens: 210,
+        timestamp: Date.now(),
+      },
+    });
+    listeners["agent-compaction"]({
+      payload: {
+        agent_id: "late-agent",
+        type: "compaction",
+        turn: 5,
+        preTokens: 10000,
+        timestamp: 999,
+      },
+    });
+    listeners["agent-context-window"]({
+      payload: {
+        agent_id: "late-agent",
+        type: "context_window",
+        contextWindow: 200000,
+        timestamp: Date.now(),
+      },
+    });
+
+    useAgentStore.getState().startRun("late-agent", "sonnet");
+
+    const run = useAgentStore.getState().runs["late-agent"];
+    expect(run.thinkingEnabled).toBe(true);
+    expect(run.agentName).toBe("late-runner");
+    expect(run.model).toBe("claude-opus-4-1");
+    expect(run.sessionId).toBe("sess-late");
+    expect(run.contextHistory).toEqual([
+      {
+        turn: 4,
+        inputTokens: 2400,
+        outputTokens: 210,
+      },
+    ]);
+    expect(run.compactionEvents).toEqual([
+      {
+        turn: 5,
+        preTokens: 10000,
+        timestamp: 999,
+      },
+    ]);
+    expect(run.contextWindow).toBe(200000);
   });
 
   it("completes run on agent-exit with success=true", () => {
@@ -106,8 +260,7 @@ describe("initAgentStream", () => {
     initAgentStream();
     initAgentStream();
 
-    // listen should only be called 6 times (agent-init-progress, agent-init-error, agent-metadata, agent-message, agent-exit, agent-shutdown)
-    expect(mockListen).toHaveBeenCalledTimes(6);
+    expect(mockListen).toHaveBeenCalledTimes(11);
   });
 
   it("auto-creates run for display_item messages arriving before startRun", () => {
@@ -251,7 +404,8 @@ describe("initAgentStream", () => {
     listeners["agent-init-progress"]({
       payload: {
         agent_id: "agent-1",
-        subtype: "init_start",
+        type: "init_progress",
+        stage: "init_start",
         timestamp: Date.now(),
       },
     });
@@ -268,7 +422,8 @@ describe("initAgentStream", () => {
     listeners["agent-init-progress"]({
       payload: {
         agent_id: "agent-1",
-        subtype: "sdk_ready",
+        type: "init_progress",
+        stage: "sdk_ready",
         timestamp: Date.now(),
       },
     });
@@ -285,7 +440,8 @@ describe("initAgentStream", () => {
     listeners["agent-init-progress"]({
       payload: {
         agent_id: "agent-1",
-        subtype: "init_start",
+        type: "init_progress",
+        stage: "init_start",
         timestamp: Date.now(),
       },
     });
@@ -301,7 +457,8 @@ describe("initAgentStream", () => {
     listeners["agent-init-progress"]({
       payload: {
         agent_id: "agent-1",
-        subtype: "unknown_subtype",
+        type: "init_progress",
+        stage: "unknown_subtype",
         timestamp: Date.now(),
       },
     });
@@ -318,7 +475,8 @@ describe("initAgentStream", () => {
     listeners["agent-init-progress"]({
       payload: {
         agent_id: "agent-1",
-        subtype: "init_start",
+        type: "init_progress",
+        stage: "init_start",
         timestamp: Date.now(),
       },
     });
@@ -354,7 +512,8 @@ describe("initAgentStream", () => {
     listeners["agent-init-progress"]({
       payload: {
         agent_id: "agent-1",
-        subtype: "init_start",
+        type: "init_progress",
+        stage: "init_start",
         timestamp: Date.now(),
       },
     });
@@ -366,7 +525,8 @@ describe("initAgentStream", () => {
     listeners["agent-init-progress"]({
       payload: {
         agent_id: "agent-1",
-        subtype: "sdk_ready",
+        type: "init_progress",
+        stage: "sdk_ready",
         timestamp: Date.now(),
       },
     });

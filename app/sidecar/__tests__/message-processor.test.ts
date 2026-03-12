@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { MessageProcessor, extractResultMarkdown, tryParseJsonFromText } from "../message-processor.js";
 import type { DisplayItem, DisplayItemEnvelope } from "../display-types.js";
+import type { AgentEventEnvelope } from "../agent-events.js";
 
 /** Helper to extract DisplayItems from processed output. */
 function extractDisplayItems(output: Record<string, unknown>[]): DisplayItem[] {
@@ -12,6 +13,12 @@ function extractDisplayItems(output: Record<string, unknown>[]): DisplayItem[] {
 /** Helper to extract pass-through messages (non-display_item). */
 function extractPassThrough(output: Record<string, unknown>[]): Record<string, unknown>[] {
   return output.filter((o) => o.type !== "display_item");
+}
+
+function extractAgentEvents(output: Record<string, unknown>[]): AgentEventEnvelope["event"][] {
+  return output
+    .filter((o) => o.type === "agent_event")
+    .map((o) => (o as AgentEventEnvelope).event);
 }
 
 describe("MessageProcessor", () => {
@@ -26,13 +33,13 @@ describe("MessageProcessor", () => {
   // =========================================================================
 
   describe("filtering", () => {
-    it("emits config as metadata message (for thinkingEnabled/agentName)", () => {
+    it("emits config as a run_config agent event", () => {
       const raw = { type: "config", config: { model: "sonnet" } };
       const out = processor.process(raw);
       expect(out).toHaveLength(1);
-      expect(out[0]).toMatchObject({ type: "metadata" });
-      const data = (out[0] as Record<string, unknown>).data as Record<string, unknown>;
-      expect(data).toHaveProperty("config");
+      expect(out[0]).toMatchObject({ type: "agent_event" });
+      const event = (out[0] as Record<string, unknown>).event as Record<string, unknown>;
+      expect(event).toHaveProperty("type", "run_config");
     });
 
     it("filters sdk_stderr messages", () => {
@@ -49,18 +56,24 @@ describe("MessageProcessor", () => {
       expect(out).toHaveLength(0);
     });
 
-    it("forwards system init messages as-is", () => {
+    it("emits init_progress agent_event for init_start", () => {
       const raw = { type: "system", subtype: "init_start", timestamp: 123 };
       const out = processor.process(raw);
       expect(out).toHaveLength(1);
-      expect(out[0]).toBe(raw);
+      expect(out[0]).toMatchObject({
+        type: "agent_event",
+        event: { type: "init_progress", stage: "init_start" },
+      });
     });
 
-    it("forwards sdk_ready as-is", () => {
+    it("emits init_progress agent_event for sdk_ready", () => {
       const raw = { type: "system", subtype: "sdk_ready", timestamp: 456 };
       const out = processor.process(raw);
       expect(out).toHaveLength(1);
-      expect(out[0]).toBe(raw);
+      expect(out[0]).toMatchObject({
+        type: "agent_event",
+        event: { type: "init_progress", stage: "sdk_ready" },
+      });
     });
   });
 
@@ -177,7 +190,7 @@ describe("MessageProcessor", () => {
       expect(items[1].type).toBe("tool_call");
     });
 
-    it("emits metadata with contextSnapshot instead of raw assistant pass-through", () => {
+    it("emits turn_usage agent events instead of raw assistant pass-through", () => {
       const raw = {
         type: "assistant",
         message: {
@@ -186,14 +199,14 @@ describe("MessageProcessor", () => {
         },
       };
       const out = processor.process(raw);
-      const metadataMsgs = out.filter((o) => o.type === "metadata");
+      const events = extractAgentEvents(out);
 
-      expect(metadataMsgs).toHaveLength(1);
-      const data = (metadataMsgs[0] as Record<string, unknown>).data as Record<string, unknown>;
-      expect(data).toHaveProperty("contextSnapshot");
-      const snapshot = data.contextSnapshot as Record<string, unknown>;
-      expect(snapshot.inputTokens).toBe(100);
-      expect(snapshot.outputTokens).toBe(50);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: "turn_usage",
+        inputTokens: 100,
+        outputTokens: 50,
+      });
     });
   });
 
@@ -504,7 +517,7 @@ describe("MessageProcessor", () => {
   // =========================================================================
 
   describe("result messages", () => {
-    it("dual-emits display_item and run_summary for success", () => {
+    it("dual-emits display_item and run_result agent event for success", () => {
       const raw = {
         type: "result",
         subtype: "success",
@@ -516,17 +529,19 @@ describe("MessageProcessor", () => {
       const out = processor.process(raw);
 
       const items = extractDisplayItems(out);
-      const runSummaryMsgs = out.filter((o) => o.type === "run_summary");
+      const events = extractAgentEvents(out);
 
       expect(items).toHaveLength(1);
       expect(items[0].type).toBe("result");
       expect(items[0].resultStatus).toBe("success");
       expect(items[0].outputText_result).toBe("Agent completed");
 
-      expect(runSummaryMsgs).toHaveLength(1);
-      const data = (runSummaryMsgs[0] as Record<string, unknown>).data as Record<string, unknown>;
-      expect(data).toHaveProperty("resultSubtype", "success");
-      expect(data).toHaveProperty("stopReason", "end_turn");
+      const runResult = events.find((event) => event.type === "run_result");
+      expect(runResult).toMatchObject({
+        type: "run_result",
+        resultSubtype: "success",
+        stopReason: "end_turn",
+      });
     });
 
     it("handles error result with error_max_turns", () => {
@@ -559,7 +574,7 @@ describe("MessageProcessor", () => {
       expect(items[0].resultStatus).toBe("refusal");
     });
 
-    it("emits run_summary instead of raw result pass-through", () => {
+    it("emits run_result agent event instead of raw result pass-through", () => {
       const raw = {
         type: "result",
         subtype: "success",
@@ -568,13 +583,13 @@ describe("MessageProcessor", () => {
         total_cost_usd: 0.001,
       };
       const out = processor.process(raw);
-      const runSummaryMsgs = out.filter((o) => o.type === "run_summary");
+      const events = extractAgentEvents(out);
+      const runResult = events.find((event) => event.type === "run_result") as Record<string, unknown> | undefined;
 
-      expect(runSummaryMsgs).toHaveLength(1);
-      const data = (runSummaryMsgs[0] as Record<string, unknown>).data as Record<string, unknown>;
-      expect(data).toHaveProperty("resultSubtype", "success");
-      expect(data).toHaveProperty("inputTokens", 10);
-      expect(data).toHaveProperty("outputTokens", 5);
+      expect(runResult).toBeDefined();
+      expect(runResult).toHaveProperty("resultSubtype", "success");
+      expect(runResult).toHaveProperty("inputTokens", 10);
+      expect(runResult).toHaveProperty("outputTokens", 5);
     });
 
     it("populates resultMarkdown when structured output has *_markdown fields", () => {
@@ -803,7 +818,7 @@ describe("MessageProcessor", () => {
   // =========================================================================
 
   describe("compact boundary", () => {
-    it("emits compact_boundary DisplayItem and metadata compactionEvent", () => {
+    it("emits compact_boundary DisplayItem and compaction agent event", () => {
       const raw = {
         type: "system",
         subtype: "compact_boundary",
@@ -813,16 +828,16 @@ describe("MessageProcessor", () => {
       const out = processor.process(raw);
 
       const items = extractDisplayItems(out);
-      const metadataMsgs = out.filter((o) => o.type === "metadata");
+      const events = extractAgentEvents(out);
 
       expect(items).toHaveLength(1);
       expect(items[0].type).toBe("compact_boundary");
 
-      expect(metadataMsgs).toHaveLength(1);
-      const data = (metadataMsgs[0] as Record<string, unknown>).data as Record<string, unknown>;
-      expect(data).toHaveProperty("compactionEvent");
-      const event = data.compactionEvent as Record<string, unknown>;
-      expect(event.preTokens).toBe(50000);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: "compaction",
+        preTokens: 50000,
+      });
     });
   });
 

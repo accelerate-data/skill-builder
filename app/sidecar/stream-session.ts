@@ -204,16 +204,20 @@ export class StreamSession {
           const innerMsg = msg.message as Record<string, unknown>;
           const stopReason = innerMsg.stop_reason as string | undefined;
           if (stopReason && stopReason !== "tool_use") {
-            onMessage(this.currentRequestId, { type: "turn_complete" });
+            onMessage(this.currentRequestId, {
+              type: "agent_event",
+              event: { type: "turn_complete" },
+              timestamp: Date.now(),
+            });
           }
         }
       }
 
-      // Emit a shutdown run_summary for aborted streaming runs
+      // Emit a shutdown run_result for aborted streaming runs
       if (state.abortController.signal.aborted) {
-        process.stderr.write(`[stream-session] Session ${this.sessionId} aborted — emitting shutdown run_summary\n`);
+        process.stderr.write(`[stream-session] Session ${this.sessionId} aborted — emitting shutdown run_result\n`);
         const shutdownSummary = processor.buildShutdownSummary();
-        onMessage(this.currentRequestId, { type: "run_summary", data: shutdownSummary, timestamp: Date.now() } as Record<string, unknown>);
+        onMessage(this.currentRequestId, { type: "agent_event", event: shutdownSummary, timestamp: Date.now() } as Record<string, unknown>);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -222,11 +226,11 @@ export class StreamSession {
         type: "error",
         message: errorMessage,
       });
-      // Emit error run_summary for persistence — use execution-error path so
+      // Emit error run_result for persistence — use execution-error path so
       // failures are distinguishable from user-initiated shutdowns.
-      process.stderr.write(`[stream-session] Emitting error run_summary for session ${this.sessionId}\n`);
+      process.stderr.write(`[stream-session] Emitting error run_result for session ${this.sessionId}\n`);
       const errorSummary = processor.buildExecutionErrorSummary(errorMessage);
-      onMessage(this.currentRequestId, { type: "run_summary", data: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
+      onMessage(this.currentRequestId, { type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
     }
 
     // Query finished — either all turns exhausted or generator closed
@@ -236,8 +240,9 @@ export class StreamSession {
         `[stream-session] Session ${this.sessionId} exhausted (query completed without close)\n`,
       );
       onMessage(this.currentRequestId, {
-        type: "session_exhausted",
-        session_id: this.sessionId,
+        type: "agent_event",
+        event: { type: "session_exhausted", sessionId: this.sessionId },
+        timestamp: Date.now(),
       });
     }
 
@@ -289,6 +294,10 @@ export class StreamSession {
 
     await new Promise((resolve) => setTimeout(resolve, 20));
     if (this.closed) return;
-    onMessage(requestId, { type: "turn_complete" });
+    onMessage(requestId, {
+      type: "agent_event",
+      event: { type: "turn_complete" },
+      timestamp: Date.now(),
+    });
   }
 }

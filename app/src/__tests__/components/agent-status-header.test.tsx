@@ -110,8 +110,9 @@ describe("AgentStatusHeader", () => {
 
   it("shows Thinking badge when thinkingEnabled is true", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
-    useAgentStore.getState().updateMetadata("test-agent", {
-      config: { thinkingEnabled: true },
+    useAgentStore.getState().applyRunConfig("test-agent", {
+      type: "run_config",
+      thinkingEnabled: true,
     });
     render(<AgentStatusHeader agentId="test-agent" />);
 
@@ -120,8 +121,9 @@ describe("AgentStatusHeader", () => {
 
   it("does NOT show Thinking badge when thinkingEnabled is false", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
-    useAgentStore.getState().updateMetadata("test-agent", {
-      config: { thinkingEnabled: false },
+    useAgentStore.getState().applyRunConfig("test-agent", {
+      type: "run_config",
+      thinkingEnabled: false,
     });
     render(<AgentStatusHeader agentId="test-agent" />);
 

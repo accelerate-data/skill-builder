@@ -17,7 +17,6 @@ const EXPECTED_AGENTS = [
 
 const EXPECTED_MODELS: Record<string, string> = {
   "answer-evaluator": "haiku",
-  "confirm-decisions": "opus",
 };
 const DEFAULT_MODEL = "sonnet";
 

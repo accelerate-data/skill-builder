@@ -11,6 +11,14 @@ import type { SidecarConfig } from "../config.js";
 
 const mockQuery = vi.mocked(query);
 
+function findRunResult(messages: Record<string, unknown>[]) {
+  return messages.find(
+    (message) =>
+      message.type === "agent_event"
+      && (message.event as Record<string, unknown> | undefined)?.type === "run_result",
+  );
+}
+
 function baseConfig(overrides: Partial<SidecarConfig> = {}): SidecarConfig {
   return {
     prompt: "test prompt",
@@ -67,18 +75,18 @@ describe("runAgentRequest", () => {
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
     // Messages: system events (sdk_plugins_debug filtered, init_start, sdk_ready),
-    // then processed display items + metadata/run_summary messages
+    // then processed display items + agent_event messages
     // init_start and sdk_ready are forwarded as-is (system category)
     // sdk_plugins_debug is filtered (hardNoise)
-    // assistant → display_item(output) + metadata(contextSnapshot)
-    // result → display_item(result) + run_summary
+    // assistant → display_item(output) + agent_event(turn_usage)
+    // result → display_item(result) + agent_event(context_window/run_result)
     const displayItems = messages.filter((m) => m.type === "display_item");
     const systemMsgs = messages.filter((m) => m.type === "system");
-    const runSummaryMsgs = messages.filter((m) => m.type === "run_summary");
+    const runResult = findRunResult(messages);
 
     expect(systemMsgs.length).toBeGreaterThanOrEqual(2); // init_start + sdk_ready
     expect(displayItems).toHaveLength(2); // output + result
-    expect(runSummaryMsgs).toHaveLength(1); // run_summary instead of raw result
+    expect(runResult).toBeDefined();
 
     // Verify display items
     const outputItem = (displayItems[0] as Record<string, unknown>).item as Record<string, unknown>;
@@ -207,7 +215,7 @@ describe("runAgentRequest", () => {
     expect(stderrMsg!.timestamp).toEqual(expect.any(Number));
   });
 
-  it("emits an error display item and run_summary when the async iterator throws after startup", async () => {
+  it("emits an error display item and run_result when the async iterator throws after startup", async () => {
     async function* failingConversation() {
       yield {
         type: "assistant",
@@ -226,16 +234,16 @@ describe("runAgentRequest", () => {
     );
 
     const displayItems = messages.filter((m) => m.type === "display_item");
-    const runSummaryMsgs = messages.filter((m) => m.type === "run_summary");
+    const runResult = findRunResult(messages);
 
     expect(displayItems).toHaveLength(2);
-    expect(runSummaryMsgs).toHaveLength(1);
+    expect(runResult).toBeDefined();
 
     const errorItem = (displayItems[1] as Record<string, unknown>).item as Record<string, unknown>;
     expect(errorItem.type).toBe("error");
     expect(errorItem.errorMessage).toBe("stream failed after startup");
 
-    const summary = runSummaryMsgs[0].data as Record<string, unknown>;
+    const summary = runResult!.event as Record<string, unknown>;
     expect(summary.skillName).toBe("sales-analysis");
     expect(summary.stepId).toBe(-10);
     expect(summary.status).toBe("error");
@@ -251,7 +259,7 @@ describe("result message error subtypes", () => {
     vi.clearAllMocks();
   });
 
-  it("emits run_summary with error_max_turns subtype, errors, and stop_reason", async () => {
+  it("emits run_result with error_max_turns subtype, errors, and stop_reason", async () => {
     const errorResult = {
       type: "result",
       subtype: "error_max_turns",
@@ -271,17 +279,16 @@ describe("result message error subtypes", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    // Find the run_summary message (replaces raw result pass-through)
-    const summary = messages.find((m) => m.type === "run_summary");
+    const summary = findRunResult(messages);
     expect(summary).toBeDefined();
-    const data = summary!.data as Record<string, unknown>;
+    const data = summary!.event as Record<string, unknown>;
     expect(data.resultSubtype).toBe("error_max_turns");
     expect(data.resultErrors).toEqual(["Max turns reached"]);
     expect(data.stopReason).toBe("end_turn");
     expect(data.status).toBe("error");
   });
 
-  it("emits run_summary with error_max_budget_usd subtype", async () => {
+  it("emits run_result with error_max_budget_usd subtype", async () => {
     async function* fakeConversation() {
       yield {
         type: "result",
@@ -296,14 +303,14 @@ describe("result message error subtypes", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    const summary = messages.find((m) => m.type === "run_summary");
+    const summary = findRunResult(messages);
     expect(summary).toBeDefined();
-    const data = summary!.data as Record<string, unknown>;
+    const data = summary!.event as Record<string, unknown>;
     expect(data.resultSubtype).toBe("error_max_budget_usd");
     expect(data.status).toBe("error");
   });
 
-  it("emits run_summary with refusal stop_reason on success result", async () => {
+  it("emits run_result with refusal stop_reason on success result", async () => {
     async function* fakeConversation() {
       yield {
         type: "result",
@@ -318,14 +325,14 @@ describe("result message error subtypes", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    const summary = messages.find((m) => m.type === "run_summary");
+    const summary = findRunResult(messages);
     expect(summary).toBeDefined();
-    const data = summary!.data as Record<string, unknown>;
+    const data = summary!.event as Record<string, unknown>;
     expect(data.stopReason).toBe("refusal");
     expect(data.resultSubtype).toBe("success");
   });
 
-  it("emits run_summary with clean success fields", async () => {
+  it("emits run_result with clean success fields", async () => {
     async function* fakeConversation() {
       yield {
         type: "result",
@@ -341,9 +348,9 @@ describe("result message error subtypes", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    const summary = messages.find((m) => m.type === "run_summary");
+    const summary = findRunResult(messages);
     expect(summary).toBeDefined();
-    const data = summary!.data as Record<string, unknown>;
+    const data = summary!.event as Record<string, unknown>;
     expect(data.resultSubtype).toBe("success");
     expect(data.status).toBe("completed");
     expect(data.stopReason).toBe("end_turn");
