@@ -35,6 +35,10 @@ Do NOT evaluate skill viability, alternative approaches, domain correctness, or 
 
 <instruction>
 
+## Narration
+
+Before each step, write one short status line (≤ 10 words). Write it before tool calls. Examples: "Reading skill inputs…", "Launching quality and eval sub-agents…", "Consolidating validation results…"
+
 ## Step 0: Read the inputs
 
 Read `{context_dir}/decisions.json`. Parse the JSON. Missing `decisions.json` is not an error — skip and proceed.

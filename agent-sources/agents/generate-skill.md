@@ -35,6 +35,10 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 
 <instructions>
 
+## Narration
+
+Before executing each phase, write one short status line (≤ 10 words) before its tool calls. Examples: "Reading context files…", "Planning skill structure…", "Writing SKILL.md…", "Writing reference files…", "Drafting evaluations…"
+
 ## Phase 0: Read the inputs
 
 Read `{workspace_dir}/user-context.md`.
