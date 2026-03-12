@@ -212,7 +212,7 @@ export interface ModelUsageBreakdown {
   cost: number;
 }
 
-interface AgentRun {
+export interface AgentRun {
   agentId: string;
   model: string;
   status: "running" | "completed" | "error" | "shutdown";
@@ -267,8 +267,6 @@ interface AgentState {
   shutdownRun: (agentId: string) => void;
   setActiveAgent: (agentId: string | null) => void;
   clearRuns: () => void;
-  /** Internal: apply a batch of buffered messages in a single set() call. */
-  _applyMessageBatch: (batch: BufferedMessage[]) => void;
 }
 
 /**
@@ -370,7 +368,7 @@ function buildModelEntries(
   // Extract cache tokens from the last assistant message's raw usage.
   let cacheRead = 0;
   let cacheWrite = 0;
-  const assistantMessages = run.messages.filter((m) => m.type === "assistant");
+  const assistantMessages = (run.messages ?? []).filter((m) => m.type === "assistant");
   if (assistantMessages.length > 0) {
     const lastMsg = assistantMessages[assistantMessages.length - 1];
     const betaMsg = (lastMsg.raw as Record<string, unknown>).message as
@@ -398,13 +396,6 @@ function resolvePersistenceContext(
     : run?.runSource === "test"
       ? -11
       : -1;
-
-  const capturedWorkflowSessionId = run?.capturedWorkflowSessionId ?? null;
-  const capturedStepId = run?.capturedStepId ?? -1;
-
-  if (capturedWorkflowSessionId) {
-    return { stepId: capturedStepId, workflowSessionId: capturedWorkflowSessionId };
-  }
 
   if (!run) return { stepId: -1 };
 
@@ -617,7 +608,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 model,
                 skillName,
                 status: "running" as const,
-                messages: [],
+                displayItems: [],
                 startTime: Date.now(),
                 contextHistory: [],
                 contextWindow: 200_000,
@@ -631,6 +622,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     });
 
     drainPendingTerminal(agentId);
+    drainPendingMetadata(agentId);
   },
 
   registerRun: (agentId, model, skillName?, runSource = "refine", usageSessionId?) => {
@@ -658,7 +650,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 model,
                 skillName,
                 status: "running" as const,
-                messages: [],
+                displayItems: [],
                 startTime: Date.now(),
                 contextHistory: [],
                 contextWindow: 200_000,
@@ -672,6 +664,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       };
     });
     drainPendingTerminal(agentId);
+    drainPendingMetadata(agentId);
   },
 
   addDisplayItem: (agentId, item) =>
@@ -981,197 +974,4 @@ export const useAgentStore = create<AgentState>((set) => ({
     resetAgentStoreInternals();
     set({ runs: {}, activeAgentId: null });
   },
-
-  _applyMessageBatch: (batch) =>
-    set((state) => {
-      const updatedRuns = { ...state.runs };
-
-      for (const { agentId, message } of batch) {
-        // Auto-create run for messages that arrive before startRun
-        const run: AgentRun = updatedRuns[agentId] ?? {
-          agentId,
-          model: "unknown",
-          status: "running" as const,
-          messages: [],
-          startTime: Date.now(),
-          contextHistory: [],
-          contextWindow: 200_000,
-          compactionEvents: [],
-          thinkingEnabled: false,
-        };
-
-        // Extract token usage and cost from result messages
-        const raw = message.raw;
-        let tokenUsage = run.tokenUsage;
-        let totalCost = run.totalCost;
-        let contextHistory = run.contextHistory;
-        let contextWindow = run.contextWindow;
-        let compactionEvents = run.compactionEvents;
-        let resultSubtype = run.resultSubtype;
-        let resultErrors = run.resultErrors;
-        let stopReason = run.stopReason;
-        let numTurns = run.numTurns;
-        let durationApiMs = run.durationApiMs;
-        let modelUsageBreakdown = run.modelUsageBreakdown;
-
-        if (message.type === "result") {
-          const usage = raw.usage as
-            | { input_tokens?: number; output_tokens?: number }
-            | undefined;
-          if (usage) {
-            tokenUsage = {
-              input: usage.input_tokens ?? 0,
-              output: usage.output_tokens ?? 0,
-            };
-          }
-          const cost = raw.total_cost_usd as number | undefined;
-          if (cost !== undefined) {
-            totalCost = cost;
-          }
-          // Extract contextWindow and per-model usage breakdown from modelUsage
-          const modelUsage = raw.modelUsage as
-            | Record<string, {
-                inputTokens?: number;
-                outputTokens?: number;
-                cacheReadInputTokens?: number;
-                cacheCreationInputTokens?: number;
-                cost?: number;
-                costUSD?: number;
-                contextWindow?: number;
-              }>
-            | undefined;
-          if (modelUsage) {
-            const breakdown: ModelUsageBreakdown[] = [];
-            for (const [modelId, mu] of Object.entries(modelUsage)) {
-              if (mu.contextWindow && mu.contextWindow > 0) {
-                contextWindow = Math.max(contextWindow, mu.contextWindow);
-              }
-              breakdown.push({
-                model: modelId,
-                inputTokens: mu.inputTokens ?? 0,
-                outputTokens: mu.outputTokens ?? 0,
-                cacheReadTokens: mu.cacheReadInputTokens ?? 0,
-                cacheWriteTokens: mu.cacheCreationInputTokens ?? 0,
-                cost: mu.costUSD ?? mu.cost ?? 0,
-              });
-            }
-            if (breakdown.length > 0) {
-              modelUsageBreakdown = breakdown;
-            }
-          }
-          // Extract result subtype, errors, and stop_reason
-          if (typeof raw.subtype === "string") {
-            resultSubtype = raw.subtype as ResultSubtype;
-          }
-          if (Array.isArray(raw.errors)) {
-            resultErrors = raw.errors as string[];
-          }
-          if (typeof raw.stop_reason === "string") {
-            stopReason = raw.stop_reason as StopReason;
-          }
-          if (typeof raw.num_turns === "number") {
-            numTurns = raw.num_turns;
-          }
-          if (typeof raw.duration_api_ms === "number") {
-            durationApiMs = raw.duration_api_ms;
-          }
-        }
-
-        // Extract per-turn context usage from assistant messages
-        if (message.type === "assistant") {
-          const betaMsg = (raw as Record<string, unknown>).message as
-            | { usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
-            | undefined;
-          if (betaMsg?.usage) {
-            const turn = run.messages.filter((m) => m.type === "assistant").length + 1;
-            // Total context = non-cached + cache-read + cache-creation tokens
-            const totalInput = (betaMsg.usage.input_tokens ?? 0)
-              + (betaMsg.usage.cache_read_input_tokens ?? 0)
-              + (betaMsg.usage.cache_creation_input_tokens ?? 0);
-            contextHistory = [
-              ...contextHistory,
-              {
-                turn,
-                inputTokens: totalInput,
-                outputTokens: betaMsg.usage.output_tokens ?? 0,
-              },
-            ];
-          }
-        }
-
-        // Detect compaction boundary messages
-        if (
-          message.type === "system" &&
-          (raw as Record<string, unknown>)?.subtype === "compact_boundary"
-        ) {
-          const metadata = (raw as Record<string, unknown>)?.compact_metadata as
-            | { pre_tokens?: number }
-            | undefined;
-          const turn = run.messages.filter((m) => m.type === "assistant").length;
-          compactionEvents = [
-            ...compactionEvents,
-            {
-              turn,
-              preTokens: metadata?.pre_tokens ?? 0,
-              timestamp: message.timestamp,
-            },
-          ];
-        }
-
-        // Extract thinkingEnabled and agentName from config messages
-        let thinkingEnabled = run.thinkingEnabled;
-        let agentName = run.agentName;
-        if (message.type === "config") {
-          const configObj = (raw as Record<string, unknown>).config as
-            | { thinking?: { type?: string; budgetTokens?: number }; agentName?: string }
-            | undefined;
-          if (
-            configObj?.thinking?.type === "enabled"
-            && typeof configObj.thinking.budgetTokens === "number"
-            && configObj.thinking.budgetTokens > 0
-          ) {
-            thinkingEnabled = true;
-          }
-          if (configObj?.agentName) {
-            agentName = configObj.agentName;
-          }
-        }
-
-        // Extract session_id and model from init messages
-        let sessionId = run.sessionId;
-        let model = run.model;
-        if (message.type === "system" && (raw as Record<string, unknown>)?.subtype === "init") {
-          const sid = (raw as Record<string, unknown>)?.session_id;
-          if (typeof sid === "string") {
-            sessionId = sid;
-          }
-          const initModel = (raw as Record<string, unknown>)?.model;
-          if (typeof initModel === "string" && initModel.length > 0) {
-            model = initModel;
-          }
-        }
-
-        updatedRuns[agentId] = {
-          ...run,
-          model,
-          messages: [...run.messages, message],
-          tokenUsage,
-          totalCost,
-          sessionId,
-          thinkingEnabled,
-          agentName,
-          contextHistory,
-          contextWindow,
-          compactionEvents,
-          resultSubtype,
-          resultErrors,
-          stopReason,
-          numTurns,
-          durationApiMs,
-          modelUsageBreakdown,
-        };
-      }
-
-      return { runs: updatedRuns };
-    }),
 }));
