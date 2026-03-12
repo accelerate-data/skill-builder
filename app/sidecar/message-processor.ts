@@ -140,6 +140,11 @@ export interface RequestContext {
   workflowSessionId?: string;
   usageSessionId?: string;
   runSource?: "workflow" | "refine" | "test";
+  /** Whether this processor is being used in a streaming session (refine chat).
+   * Controls the `streaming` flag on TurnCompleteEvent — Rust uses it to decide
+   * whether turn_complete is a per-turn terminal (streaming) or informational only
+   * (one-shot). Defaults to false. */
+  streaming?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -828,7 +833,7 @@ export class MessageProcessor {
     // "max_tokens", "stop_sequence", etc.
     const stopReason = (outerMessage?.stop_reason as string | undefined);
     if (stopReason && stopReason !== "tool_use") {
-      const turnCompleteEvent: TurnCompleteEvent = { type: "turn_complete" };
+      const turnCompleteEvent: TurnCompleteEvent = { type: "turn_complete", streaming: this.accumulator.getContext().streaming ?? false };
       results.push(this.makeAgentEventEnvelope(turnCompleteEvent, now) as ProcessedMessage);
     }
 

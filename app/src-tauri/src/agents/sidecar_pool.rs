@@ -873,15 +873,27 @@ impl SidecarPool {
                                         skill_name_stdout,
                                         request_id,
                                     );
-                                    {
+                                    // Guard: run_result (which precedes request_complete for
+                                    // one-shot runs) already removes pending and fires agent-exit.
+                                    // Only fire again if the request is still pending (e.g. the
+                                    // sidecar completed without emitting run_result).
+                                    let was_pending = {
                                         let mut pending = stdout_pending.lock().await;
-                                        pending.remove(request_id);
+                                        pending.remove(request_id).is_some()
+                                    };
+                                    if was_pending {
+                                        events::handle_sidecar_exit(
+                                            &app_handle_stdout,
+                                            request_id,
+                                            true,
+                                        );
+                                    } else {
+                                        log::debug!(
+                                            "[persistent-sidecar:{}] request_complete for '{}' — already cleaned up via run_result, skipping exit",
+                                            skill_name_stdout,
+                                            request_id,
+                                        );
                                     }
-                                    events::handle_sidecar_exit(
-                                        &app_handle_stdout,
-                                        request_id,
-                                        true,
-                                    );
                                     // Close JSONL log for this request
                                     let mut logs = stdout_request_logs.lock().await;
                                     logs.remove(request_id);
@@ -946,27 +958,52 @@ impl SidecarPool {
                                         None
                                     };
 
-                                    // turn_complete: streaming session finished one turn.
-                                    // Remove from pending and emit agent-exit so the frontend
-                                    // knows this turn is done. The session stays alive.
+                                    // turn_complete: signals end of one assistant turn.
+                                    // The event carries `streaming: bool` set by MessageProcessor:
+                                    //   streaming=true  → streaming refine session turn; remove
+                                    //                     pending and fire agent-exit so the
+                                    //                     frontend can enable the "send message"
+                                    //                     input for the next turn.
+                                    //   streaming=false → one-shot workflow step; turn_complete
+                                    //                     is informational only — run_result
+                                    //                     (which carries structured output) is
+                                    //                     the real terminal signal, and it always
+                                    //                     arrives after turn_complete in the SDK
+                                    //                     protocol. Firing agent-exit here would
+                                    //                     cause the frontend to try to complete
+                                    //                     the step before structured output
+                                    //                     arrives.
                                     if event_subtype == Some("turn_complete") {
-                                        log::info!(
-                                            "[persistent-sidecar:{}] Agent '{}' turn complete",
-                                            skill_name_stdout,
-                                            request_id,
-                                        );
-                                        {
-                                            let mut pending = stdout_pending.lock().await;
-                                            pending.remove(request_id);
+                                        let is_streaming = msg.get("event")
+                                            .and_then(|e| e.get("streaming"))
+                                            .and_then(|s| s.as_bool())
+                                            .unwrap_or(false);
+
+                                        if is_streaming {
+                                            log::info!(
+                                                "[persistent-sidecar:{}] Agent '{}' turn complete (streaming)",
+                                                skill_name_stdout,
+                                                request_id,
+                                            );
+                                            {
+                                                let mut pending = stdout_pending.lock().await;
+                                                pending.remove(request_id);
+                                            }
+                                            events::handle_sidecar_exit(
+                                                &app_handle_stdout,
+                                                request_id,
+                                                true,
+                                            );
+                                            // Close JSONL log for this turn
+                                            let mut logs = stdout_request_logs.lock().await;
+                                            logs.remove(request_id);
+                                        } else {
+                                            log::debug!(
+                                                "[persistent-sidecar:{}] Agent '{}' turn complete (one-shot, informational)",
+                                                skill_name_stdout,
+                                                request_id,
+                                            );
                                         }
-                                        events::handle_sidecar_exit(
-                                            &app_handle_stdout,
-                                            request_id,
-                                            true,
-                                        );
-                                        // Close JSONL log for this turn
-                                        let mut logs = stdout_request_logs.lock().await;
-                                        logs.remove(request_id);
                                         return;
                                     }
 

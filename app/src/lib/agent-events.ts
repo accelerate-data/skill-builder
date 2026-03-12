@@ -60,6 +60,7 @@ export interface InitProgressEvent {
 
 export interface TurnCompleteEvent {
   type: "turn_complete";
+  streaming: boolean;
 }
 
 export interface RunResultEvent {

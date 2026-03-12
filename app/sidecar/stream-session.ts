@@ -102,6 +102,7 @@ export class StreamSession {
         workflowSessionId: config.workflowSessionId,
         usageSessionId: config.usageSessionId,
         runSource: config.runSource,
+        streaming: true,
       });
       emitSystemEvent((msg) => onMessage(this.currentRequestId, msg), "init_start");
       emitSystemEvent((msg) => onMessage(this.currentRequestId, msg), "sdk_ready");
@@ -196,6 +197,7 @@ export class StreamSession {
       workflowSessionId: config.workflowSessionId,
       usageSessionId: config.usageSessionId,
       runSource: config.runSource,
+      streaming: true,
     });
 
     try {
