@@ -25,6 +25,7 @@ interface UsageState {
   skillFilter: string | null;
   modelFamilyFilter: string | null;
   skillNames: string[];
+  loadGeneration: number;
 
   fetchUsage: () => Promise<void>;
   fetchSkillNames: () => Promise<void>;
@@ -49,11 +50,13 @@ export const useUsageStore = create<UsageState>((set, get) => ({
   skillFilter: null,
   modelFamilyFilter: null,
   skillNames: [],
+  loadGeneration: 0,
 
   fetchUsage: async () => {
     const { hideCancelled, dateRange, skillFilter, modelFamilyFilter } = get();
     const startDate = toStartDate(dateRange);
-    set({ loading: true, error: null });
+    const generation = get().loadGeneration + 1;
+    set({ loading: true, error: null, loadGeneration: generation });
     try {
       const [summary, recentSessions, agentRuns, byStep, byModel, byDay] = await Promise.all([
         getUsageSummary(hideCancelled, startDate, skillFilter),
@@ -63,8 +66,10 @@ export const useUsageStore = create<UsageState>((set, get) => ({
         getUsageByModel(hideCancelled, startDate, skillFilter),
         getUsageByDay(hideCancelled, startDate, skillFilter),
       ]);
+      if (get().loadGeneration !== generation) return;
       set({ summary, recentSessions, agentRuns, byStep, byModel, byDay, loading: false });
     } catch (err) {
+      if (get().loadGeneration !== generation) return;
       set({ error: String(err), loading: false });
     }
   },
