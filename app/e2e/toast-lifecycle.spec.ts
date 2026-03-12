@@ -174,7 +174,6 @@ test.describe("Toast lifecycle policy", { tag: "@toast" }, () => {
         ],
       },
       run_answer_evaluator: "gate-agent-001",
-      autofill_clarifications: 3,
       read_file: {
         [SKILLS_CLARIFICATIONS_PATH]: CLARIFICATIONS_JSON,
         "*": CLARIFICATIONS_JSON,

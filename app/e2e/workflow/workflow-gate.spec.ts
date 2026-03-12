@@ -95,7 +95,6 @@ const GATE1_OVERRIDES: Record<string, unknown> = {
     "*": RESEARCH_PLAN_CONTENT,
   },
   run_answer_evaluator: "gate-agent-001",
-  autofill_clarifications: 3,
 };
 
 /** Gate 2 context: step 1 completed, continue from Detailed Research clarifications. */
@@ -113,7 +112,6 @@ const GATE2_OVERRIDES: Record<string, unknown> = {
     "*": RESEARCH_PLAN_CONTENT,
   },
   run_answer_evaluator: "gate-agent-001",
-  autofill_clarifications: 3,
 };
 
 /** Swap read_file to return the evaluation JSON so finishGateEvaluation can parse it. */

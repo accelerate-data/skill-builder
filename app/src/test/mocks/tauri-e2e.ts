@@ -183,7 +183,6 @@ const mockResponses: Record<string, unknown> = {
   reset_usage: undefined,
   // Transition gate (answer evaluator)
   run_answer_evaluator: "gate-agent-001",
-  autofill_clarifications: 0,
   log_gate_decision: undefined,
   // Workflow extras
   write_file: undefined,

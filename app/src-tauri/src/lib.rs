@@ -323,8 +323,6 @@ pub fn run() {
             commands::workflow::get_decisions_content,
             commands::workflow::save_decisions_content,
             commands::workflow::get_context_file_content,
-            commands::workflow::autofill_clarifications,
-            commands::workflow::autofill_refinements,
             commands::workflow::log_gate_decision,
             commands::workflow::scan_legacy_clarifications,
             commands::workflow::reset_legacy_skills,
