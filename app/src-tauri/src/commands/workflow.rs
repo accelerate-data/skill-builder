@@ -1064,8 +1064,9 @@ pub fn materialize_workflow_step_output(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!(
-        "[materialize_workflow_step_output] skill={} step={}",
+        "[materialize_workflow_step_output] skill={} step={} step_id={}",
         skill_name,
+        workflow_step_log_name(step_id as i32),
         step_id
     );
     let workspace_path = read_workspace_path(&db)
@@ -1073,8 +1074,9 @@ pub fn materialize_workflow_step_output(
     let skill_root = Path::new(&workspace_path).join(&skill_name);
     materialize_workflow_step_output_value(&skill_root, step_id, &structured_output).map_err(|e| {
         log::error!(
-            "[materialize_workflow_step_output] skill={} step={} failed: {}",
+            "[materialize_workflow_step_output] skill={} step={} step_id={} failed: {}",
             skill_name,
+            workflow_step_log_name(step_id as i32),
             step_id,
             e
         );
@@ -1587,6 +1589,10 @@ fn workflow_step_runtime_label(step: &StepConfig) -> String {
     step.name.to_ascii_lowercase().replace(' ', "-")
 }
 
+fn workflow_step_log_name(step_id: i32) -> String {
+    crate::db::step_name(step_id)
+}
+
 /// Core logic for validating decisions.json existence — testable without tauri::State.
 /// Checks in order: skill output dir (skillsPath), workspace dir.
 /// Returns Ok(()) if found, Err with a clear message if missing.
@@ -1764,7 +1770,8 @@ async fn run_workflow_step_inner(
         settings.max_dimensions,
     );
     log::debug!(
-        "[run_workflow_step] prompt for step {}: {}",
+        "[run_workflow_step] prompt for step={} step_id={}: {}",
+        workflow_step_log_name(step_id as i32),
         step_id,
         prompt
     );
@@ -1772,8 +1779,9 @@ async fn run_workflow_step_inner(
     let agent_name = derive_agent_name(workspace_path, &settings.purpose, &step.prompt_template);
     let agent_id = make_agent_id(skill_name, &workflow_step_runtime_label(&step));
     log::info!(
-        "run_workflow_step: skill={} step={} model={}",
+        "run_workflow_step: skill={} step={} step_id={} model={}",
         skill_name,
+        workflow_step_log_name(step_id as i32),
         step_id,
         settings.preferred_model
     );
@@ -1843,8 +1851,9 @@ pub async fn run_workflow_step(
     workflow_session_id: Option<String>,
 ) -> Result<String, String> {
     log::info!(
-        "[run_workflow_step] skill={} step={} session={}",
+        "[run_workflow_step] skill={} step={} step_id={} session={}",
         skill_name,
+        workflow_step_log_name(step_id as i32),
         step_id,
         if workflow_session_id.is_some() { "[present]" } else { "[none]" }
     );
@@ -1885,10 +1894,10 @@ pub async fn run_workflow_step(
         let clarifications_path = context_dir.join("clarifications.json");
         if parse_scope_recommendation(&clarifications_path) {
             return Err(format!(
-                "Step {} is disabled: the research phase determined the skill scope is too broad. \
+                "{} is disabled: the research phase determined the skill scope is too broad. \
                  Review the scope recommendations in clarifications.json, then reset to step 0 \
                  and start with a narrower focus.",
-                step_id
+                workflow_step_log_name(step_id as i32)
             ));
         }
     }
@@ -1897,10 +1906,10 @@ pub async fn run_workflow_step(
         let decisions_path = context_dir.join("decisions.json");
         if parse_decisions_guard(&decisions_path) {
             return Err(format!(
-                "Step {} is disabled: the reasoning agent found unresolvable \
+                "{} is disabled: the reasoning agent found unresolvable \
                  contradictions in decisions.json. Reset to step 2 and revise \
                  your answers before retrying.",
-                step_id
+                workflow_step_log_name(step_id as i32)
             ));
         }
     }
@@ -1910,7 +1919,8 @@ pub async fn run_workflow_step(
     // Context lives in workspace_path.
     if step_id == 0 && context_dir.is_dir() {
         log::debug!(
-            "[run_workflow_step] step 0: wiping context dir {}",
+            "[run_workflow_step] step={} step_id=0 wiping context dir {}",
+            workflow_step_log_name(0),
             context_dir.display()
         );
         let _ = std::fs::remove_dir_all(&context_dir);
@@ -1929,8 +1939,9 @@ pub async fn run_workflow_step(
     .await
     .map_err(|e| {
         log::error!(
-            "[run_workflow_step] skill={} step={} failed: {}",
+            "[run_workflow_step] skill={} step={} step_id={} failed: {}",
             skill_name,
+            workflow_step_log_name(step_id as i32),
             step_id,
             e
         );
@@ -2099,8 +2110,9 @@ pub fn save_workflow_state(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!(
-        "[save_workflow_state] skill={} step={} status={}",
+        "[save_workflow_state] skill={} step={} step_id={} status={}",
         skill_name,
+        workflow_step_log_name(current_step),
         current_step,
         status
     );
@@ -2148,8 +2160,9 @@ pub fn save_workflow_state(
         crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status).map_err(
             |e| {
                 log::error!(
-                    "[save_workflow_state] save_workflow_step failed skill={} step={}: {}",
+                    "[save_workflow_state] save_workflow_step failed skill={} step={} step_id={}: {}",
                     skill_name,
+                    workflow_step_log_name(step.step_id),
                     step.step_id,
                     e
                 );
@@ -2178,11 +2191,11 @@ pub fn save_workflow_state(
                     .map(|s| s.step_id)
                     .collect();
                 let msg = format!(
-                    "{}: step {} completed",
+                    "{}: {} completed",
                     skill_name,
                     completed_steps
                         .iter()
-                        .map(|id| id.to_string())
+                        .map(|id| workflow_step_log_name(*id))
                         .collect::<Vec<_>>()
                         .join(", ")
                 );
@@ -2224,7 +2237,12 @@ pub fn verify_step_output(
     step_id: u32,
     db: tauri::State<'_, Db>,
 ) -> Result<bool, String> {
-    log::info!("[verify_step_output] skill={} step={}", skill_name, step_id);
+    log::info!(
+        "[verify_step_output] skill={} step={} step_id={}",
+        skill_name,
+        workflow_step_log_name(step_id as i32),
+        step_id
+    );
     let files = get_step_output_files(step_id);
     // Steps with no expected output files are always valid
     if files.is_empty() {
@@ -2713,8 +2731,9 @@ pub fn reset_workflow_step(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!(
-        "[reset_workflow_step] CALLED skill={} from_step={} workspace={}",
+        "[reset_workflow_step] CALLED skill={} from_step={} from_step_id={} workspace={}",
         skill_name,
+        workflow_step_log_name(from_step_id as i32),
         from_step_id,
         workspace_path
     );
@@ -2724,8 +2743,9 @@ pub fn reset_workflow_step(
 
     // Auto-commit: checkpoint before artifacts are deleted
     let msg = format!(
-        "{}: checkpoint before reset to step {}",
-        skill_name, from_step_id
+        "{}: checkpoint before reset to {}",
+        skill_name,
+        workflow_step_log_name(from_step_id as i32)
     );
     if let Err(e) = crate::git::commit_all(std::path::Path::new(&skills_path), &msg) {
         log::warn!("Git auto-commit failed ({}): {}", msg, e);
@@ -2767,8 +2787,9 @@ pub fn navigate_back_to_step(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!(
-        "[navigate_back_to_step] CALLED skill={} target_step={} workspace={}",
+        "[navigate_back_to_step] CALLED skill={} target_step={} target_step_id={} workspace={}",
         skill_name,
+        workflow_step_log_name(target_step_id as i32),
         target_step_id,
         workspace_path
     );
@@ -2778,8 +2799,9 @@ pub fn navigate_back_to_step(
 
     // Auto-commit: checkpoint before artifacts are deleted
     let msg = format!(
-        "{}: checkpoint before navigate back to step {}",
-        skill_name, target_step_id
+        "{}: checkpoint before navigate back to {}",
+        skill_name,
+        workflow_step_log_name(target_step_id as i32)
     );
     if let Err(e) = crate::git::commit_all(std::path::Path::new(&skills_path), &msg) {
         log::warn!("Git auto-commit failed ({}): {}", msg, e);
@@ -2813,8 +2835,9 @@ pub fn navigate_back_to_step(
     }
 
     log::info!(
-        "[navigate_back_to_step] done skill={} current_step={}",
+        "[navigate_back_to_step] done skill={} current_step={} current_step_id={}",
         skill_name,
+        workflow_step_log_name(target_step_id as i32),
         target_step_id
     );
     Ok(())
@@ -2931,8 +2954,9 @@ pub fn preview_step_reset(
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<crate::types::StepResetPreview>, String> {
     log::info!(
-        "[preview_step_reset] skill={} from_step={}",
+        "[preview_step_reset] skill={} from_step={} from_step_id={}",
         skill_name,
+        workflow_step_log_name(from_step_id as i32),
         from_step_id
     );
     let skills_path = read_skills_path(&db)

@@ -229,9 +229,10 @@ fn persist_run_summary_to_conn(
     if !summary.model_usage_breakdown.is_empty() {
         for entry in &summary.model_usage_breakdown {
             log::info!(
-                "[persist_run_summary] agent={} skill={} step={} model={} status={} cost={:.4}",
+                "[persist_run_summary] agent={} skill={} step={} step_id={} model={} status={} cost={:.4}",
                 agent_id,
                 summary.skill_name,
+                crate::db::step_name(summary.step_id),
                 summary.step_id,
                 entry.model,
                 summary.status,
@@ -269,9 +270,10 @@ fn persist_run_summary_to_conn(
     } else {
         // Single aggregate row
         log::info!(
-            "[persist_run_summary] agent={} skill={} step={} model={} status={} cost={:.4}",
+            "[persist_run_summary] agent={} skill={} step={} step_id={} model={} status={} cost={:.4}",
             agent_id,
             summary.skill_name,
+            crate::db::step_name(summary.step_id),
             summary.step_id,
             summary.model,
             summary.status,
