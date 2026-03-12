@@ -27,9 +27,10 @@ pub fn persist_agent_run(
     workflow_session_id: Option<String>,
 ) -> Result<(), String> {
     log::info!(
-        "[persist_agent_run] agent={} skill={} step={} model={} status={}",
+        "[persist_agent_run] agent={} skill={} step={} step_id={} model={} status={}",
         agent_id,
         skill_name,
+        crate::db::step_name(step_id),
         step_id,
         model,
         status
@@ -272,8 +273,9 @@ pub fn get_step_agent_runs(
     step_id: i32,
 ) -> Result<Vec<AgentRunRecord>, String> {
     log::info!(
-        "[get_step_agent_runs] skill={} step={}",
+        "[get_step_agent_runs] skill={} step={} step_id={}",
         skill_name,
+        crate::db::step_name(step_id),
         step_id
     );
     let conn = db.0.lock().map_err(|e| {

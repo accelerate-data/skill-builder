@@ -133,8 +133,8 @@ export function DecisionsSummaryCard({
     ? {
         icon: AlertTriangle,
         iconClassName: "text-amber-600 dark:text-amber-400",
-        panelClassName: "border-amber-200/60 bg-amber-50/70 dark:border-amber-900/60 dark:bg-amber-950/20",
-        chipClassName: "border-amber-300/60 bg-amber-100/80 text-amber-700 dark:border-amber-800/60 dark:bg-amber-900/30 dark:text-amber-300",
+        panelClassName: "border-border",
+        chipClassName: "border-border",
       }
     : {
         icon: CheckCircle2,
@@ -218,6 +218,13 @@ export function DecisionsSummaryCard({
               {needsReviewCount > 0 && (
                 <StatusChip
                   className={headerTone.chipClassName}
+                  style={headerState === "review-required"
+                    ? {
+                        borderColor: "color-mix(in oklch, currentColor, transparent 70%)",
+                        background: "color-mix(in oklch, currentColor, transparent 92%)",
+                        color: "rgb(217 119 6)",
+                      }
+                    : undefined}
                   label={`${needsReviewCount} ${needsReviewCount === 1 ? "needs" : "need"} review`}
                 />
               )}
@@ -254,9 +261,9 @@ export function DecisionsSummaryCard({
   );
 }
 
-function StatusChip({ label, className }: { label: string; className?: string }) {
+function StatusChip({ label, className, style }: { label: string; className?: string; style?: React.CSSProperties }) {
   return (
-    <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${className ?? ""}`}>
+    <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${className ?? ""}`} style={style}>
       {label}
     </span>
   );
@@ -294,6 +301,7 @@ function AutoResizeTextarea({
   className,
   style,
   placeholder,
+  ariaLabel,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -301,6 +309,7 @@ function AutoResizeTextarea({
   className?: string;
   style?: React.CSSProperties;
   placeholder?: string;
+  ariaLabel?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -338,6 +347,7 @@ function AutoResizeTextarea({
     <textarea
       ref={ref}
       value={value}
+      aria-label={ariaLabel}
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
       onBlur={onBlur}
@@ -450,6 +460,7 @@ function DecisionCard({
                 onChange={(v) => handleDraftChange("decision", v)}
                 onBlur={handleBlur}
                 placeholder="Enter decision…"
+                ariaLabel={`Decision for ${decision.title}`}
                 className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm text-foreground leading-relaxed focus:outline-none focus:ring-1 focus:ring-offset-0"
               />
             ) : (
@@ -477,6 +488,7 @@ function DecisionCard({
                   onChange={(v) => handleDraftChange("implication", v)}
                   onBlur={handleBlur}
                   placeholder="Enter implication…"
+                  ariaLabel={`Implication for ${decision.title}`}
                   className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-offset-0"
                   style={{ color: "var(--color-ocean)" }}
                 />

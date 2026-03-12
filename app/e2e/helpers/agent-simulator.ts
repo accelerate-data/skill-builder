@@ -16,7 +16,7 @@ import type { Page } from "@playwright/test";
 
 interface AgentInitProgressPayload {
   agent_id: string;
-  subtype: string;
+  stage: string;
   timestamp: number;
 }
 
@@ -122,7 +122,7 @@ export async function simulateAgentRun(
   // 1. Init progress: init_start
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
-    subtype: "init_start",
+    stage: "init_start",
     timestamp: Date.now(),
   } satisfies AgentInitProgressPayload);
   await wait(delays);
@@ -130,7 +130,7 @@ export async function simulateAgentRun(
   // 2. Init progress: sdk_ready
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
-    subtype: "sdk_ready",
+    stage: "sdk_ready",
     timestamp: Date.now(),
   } satisfies AgentInitProgressPayload);
   await wait(delays);
@@ -241,14 +241,14 @@ export async function simulateAgentRunWithDisplayItems(
   // Init progress
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
-    subtype: "init_start",
+    stage: "init_start",
     timestamp: Date.now(),
   } satisfies AgentInitProgressPayload);
   await wait(delays);
 
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
-    subtype: "sdk_ready",
+    stage: "sdk_ready",
     timestamp: Date.now(),
   } satisfies AgentInitProgressPayload);
   await wait(delays);
@@ -297,14 +297,14 @@ export async function simulateAgentError(
   // Init sequence
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
-    subtype: "init_start",
+    stage: "init_start",
     timestamp: Date.now(),
   } satisfies AgentInitProgressPayload);
   await wait(delays);
 
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
-    subtype: "sdk_ready",
+    stage: "sdk_ready",
     timestamp: Date.now(),
   } satisfies AgentInitProgressPayload);
   await wait(delays);

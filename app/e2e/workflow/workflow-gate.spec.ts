@@ -408,7 +408,7 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
     // Simulate agent that starts then exits with error
     await emitTauriEvent(page, "agent-init-progress", {
       agent_id: "gate-agent-001",
-      subtype: "init_start",
+      stage: "init_start",
       timestamp: Date.now(),
     });
     await page.waitForTimeout(50);
