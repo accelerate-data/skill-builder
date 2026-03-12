@@ -23,7 +23,10 @@ fn cleanup_legacy_vibedata(home: &Path) {
         return;
     }
     match fs::remove_dir_all(&legacy_root) {
-        Ok(()) => log::info!("[init_workspace] removed legacy path {}", legacy_root.display()),
+        Ok(()) => log::info!(
+            "[init_workspace] removed legacy path {}",
+            legacy_root.display()
+        ),
         Err(e) => log::warn!(
             "[init_workspace] failed to remove legacy path {}: {}",
             legacy_root.display(),
@@ -202,11 +205,9 @@ pub fn init_workspace(
         ) {
             log::warn!("purge_stale_bundled_skills: failed: {}", e);
         }
-        if let Err(e) = super::imported_skills::seed_bundled_skills(
-            &workspace_path,
-            &conn,
-            &bundled_skills_dir,
-        ) {
+        if let Err(e) =
+            super::imported_skills::seed_bundled_skills(&workspace_path, &conn, &bundled_skills_dir)
+        {
             log::warn!("seed_bundled_skills: failed: {}", e);
         }
     }
@@ -216,7 +217,9 @@ pub fn init_workspace(
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let (_, claude_md_src) = super::workflow::resolve_prompt_source_dirs_public(app);
         if claude_md_src.is_file() {
-            if let Err(e) = super::workflow::rebuild_claude_md(&claude_md_src, &workspace_path, &conn) {
+            if let Err(e) =
+                super::workflow::rebuild_claude_md(&claude_md_src, &workspace_path, &conn)
+            {
                 log::warn!("Failed to rebuild CLAUDE.md on startup: {}", e);
             }
         } else {
@@ -265,17 +268,15 @@ pub fn get_workspace_path(db: tauri::State<'_, Db>) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn clear_workspace(
-    app: tauri::AppHandle,
-    db: tauri::State<'_, Db>,
-) -> Result<(), String> {
+pub fn clear_workspace(app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Result<(), String> {
     log::info!("[clear_workspace]");
     let conn = db.0.lock().map_err(|e| {
         log::error!("[clear_workspace] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
     let settings = crate::db::read_settings(&conn)?;
-    let workspace_path = settings.workspace_path
+    let workspace_path = settings
+        .workspace_path
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
     drop(conn);
 
@@ -297,7 +298,9 @@ pub fn clear_workspace(
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let (_, claude_md_src) = super::workflow::resolve_prompt_source_dirs_public(&app);
         if claude_md_src.is_file() {
-            if let Err(e) = super::workflow::rebuild_claude_md(&claude_md_src, &workspace_path, &conn) {
+            if let Err(e) =
+                super::workflow::rebuild_claude_md(&claude_md_src, &workspace_path, &conn)
+            {
                 log::warn!("Failed to rebuild CLAUDE.md on clear: {}", e);
             }
         }
@@ -316,7 +319,10 @@ pub fn reconcile_startup(
     apply: Option<bool>,
 ) -> Result<ReconciliationResult, String> {
     let apply = apply.unwrap_or(false);
-    log::info!("[reconcile_startup] mode={}", if apply { "apply" } else { "preview" });
+    log::info!(
+        "[reconcile_startup] mode={}",
+        if apply { "apply" } else { "preview" }
+    );
     let conn = db.0.lock().map_err(|e| {
         log::error!("[reconcile_startup] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -325,9 +331,14 @@ pub fn reconcile_startup(
     let workspace_path = settings
         .workspace_path
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
-    let skills_path = settings.skills_path
+    let skills_path = settings
+        .skills_path
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
-    log::debug!("[reconcile_startup] workspace={} skills_path={}", workspace_path, skills_path);
+    log::debug!(
+        "[reconcile_startup] workspace={} skills_path={}",
+        workspace_path,
+        skills_path
+    );
 
     let result = if apply {
         // Reconcile orphaned workflow sessions from crashed instances
@@ -341,7 +352,8 @@ pub fn reconcile_startup(
             _ => {}
         }
 
-        let result = crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
+        let result =
+            crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
 
         // Auto-commit new skill folders added while offline.
         // This is non-fatal: log warnings but don't block startup.
@@ -353,14 +365,22 @@ pub fn reconcile_startup(
                     match crate::git::commit_all(output_path, &msg) {
                         Ok(Some(_)) => log::info!("[reconcile_startup] {}", msg),
                         Ok(None) => {
-                            log::debug!("[reconcile_startup] No changes after staging untracked folders")
+                            log::debug!(
+                                "[reconcile_startup] No changes after staging untracked folders"
+                            )
                         }
                         Err(e) => {
-                            log::warn!("[reconcile_startup] Failed to commit untracked folders: {}", e)
+                            log::warn!(
+                                "[reconcile_startup] Failed to commit untracked folders: {}",
+                                e
+                            )
                         }
                     }
                 }
-                Err(e) => log::warn!("[reconcile_startup] Failed to detect untracked folders: {}", e),
+                Err(e) => log::warn!(
+                    "[reconcile_startup] Failed to detect untracked folders: {}",
+                    e
+                ),
                 _ => {}
             }
         }
@@ -372,7 +392,10 @@ pub fn reconcile_startup(
         }))
         .unwrap_or_else(|_| "{\"error\":\"failed_to_serialize\"}".to_string());
         if let Err(e) = crate::db::record_reconciliation_event(&conn, "applied", &details) {
-            log::warn!("[reconcile_startup] failed to record reconciliation event: {}", e);
+            log::warn!(
+                "[reconcile_startup] failed to record reconciliation event: {}",
+                e
+            );
         }
 
         result
@@ -421,7 +444,8 @@ pub fn resolve_orphan(
         e.to_string()
     })?;
     let settings = crate::db::read_settings(&conn)?;
-    let skills_path = settings.skills_path
+    let skills_path = settings
+        .skills_path
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
 
     crate::reconciliation::resolve_orphan(&conn, &skill_name, &action, &skills_path)
@@ -435,14 +459,27 @@ fn validate_path_within(parent: &Path, skill_name: &str, label: &str) -> Result<
     let child = parent.join(skill_name);
     if child.exists() {
         let canonical_parent = fs::canonicalize(parent).map_err(|e| {
-            format!("[resolve_discovery] Failed to canonicalize {}: {}", label, e)
+            format!(
+                "[resolve_discovery] Failed to canonicalize {}: {}",
+                label, e
+            )
         })?;
         let canonical_child = fs::canonicalize(&child).map_err(|e| {
-            format!("[resolve_discovery] Failed to canonicalize {} child: {}", label, e)
+            format!(
+                "[resolve_discovery] Failed to canonicalize {} child: {}",
+                label, e
+            )
         })?;
         if !canonical_child.starts_with(&canonical_parent) {
-            log::error!("[resolve_discovery] Path traversal attempt on {}: {}", label, skill_name);
-            return Err(format!("Invalid skill path: path traversal not allowed on {}", label));
+            log::error!(
+                "[resolve_discovery] Path traversal attempt on {}: {}",
+                label,
+                skill_name
+            );
+            return Err(format!(
+                "Invalid skill path: path traversal not allowed on {}",
+                label
+            ));
         }
     }
     Ok(())
@@ -464,9 +501,11 @@ pub fn resolve_discovery(
         e.to_string()
     })?;
     let settings = crate::db::read_settings(&conn)?;
-    let skills_path = settings.skills_path
+    let skills_path = settings
+        .skills_path
         .ok_or_else(|| "Skills path not configured".to_string())?;
-    let workspace_path = settings.workspace_path
+    let workspace_path = settings
+        .workspace_path
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
 
     match action.as_str() {
@@ -525,7 +564,10 @@ pub fn create_workflow_session(
     session_id: String,
     skill_name: String,
 ) -> Result<(), String> {
-    log::info!("[create_workflow_session] session=[REDACTED] skill={}", skill_name);
+    log::info!(
+        "[create_workflow_session] session=[REDACTED] skill={}",
+        skill_name
+    );
     let conn = db.0.lock().map_err(|e| {
         log::error!("[create_workflow_session] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -539,10 +581,7 @@ pub fn create_workflow_session(
 }
 
 #[tauri::command]
-pub fn end_workflow_session(
-    db: tauri::State<'_, Db>,
-    session_id: String,
-) -> Result<(), String> {
+pub fn end_workflow_session(db: tauri::State<'_, Db>, session_id: String) -> Result<(), String> {
     log::info!("[end_workflow_session] session=[REDACTED]");
     let conn = db.0.lock().map_err(|e| {
         log::error!("[end_workflow_session] Failed to acquire DB lock: {}", e);
@@ -609,7 +648,10 @@ mod tests {
 
         // Non-existent child: no validation happens (path doesn't exist yet)
         let result = validate_path_within(&parent, "does-not-exist", "test");
-        assert!(result.is_ok(), "Non-existent path should be accepted (not yet created)");
+        assert!(
+            result.is_ok(),
+            "Non-existent path should be accepted (not yet created)"
+        );
     }
 
     // --- cleanup_legacy_vibedata tests ---
@@ -630,7 +672,10 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
 
         cleanup_legacy_vibedata(home.path());
-        assert!(!home.path().join(".vibedata").exists(), "absent legacy path should remain absent");
+        assert!(
+            !home.path().join(".vibedata").exists(),
+            "absent legacy path should remain absent"
+        );
     }
 
     #[test]
@@ -732,7 +777,11 @@ mod tests {
 
         let legacy_context = skills_root.path().join("skill-a").join("context");
         fs::create_dir_all(&legacy_context).unwrap();
-        fs::write(legacy_context.join("clarifications.json"), r#"{"first":"run"}"#).unwrap();
+        fs::write(
+            legacy_context.join("clarifications.json"),
+            r#"{"first":"run"}"#,
+        )
+        .unwrap();
 
         let workspace_path = workspace_root.path().to_string_lossy().to_string();
         let skills_path = skills_root.path().to_string_lossy().to_string();
@@ -744,7 +793,10 @@ mod tests {
             .join("skill-a")
             .join("context")
             .join("clarifications.json");
-        assert_eq!(fs::read_to_string(target_file).unwrap(), r#"{"first":"run"}"#);
+        assert_eq!(
+            fs::read_to_string(target_file).unwrap(),
+            r#"{"first":"run"}"#
+        );
         assert!(
             !legacy_context.exists(),
             "legacy context should stay removed after repeated migration"

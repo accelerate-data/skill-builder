@@ -229,12 +229,8 @@ mod tests {
             let past = std::time::SystemTime::now()
                 - std::time::Duration::from_secs(days_ago as u64 * 86400);
             let file = fs::File::options().write(true).open(&file_path).unwrap();
-            file.set_times(
-                fs::FileTimes::new()
-                    .set_accessed(past)
-                    .set_modified(past),
-            )
-            .unwrap();
+            file.set_times(fs::FileTimes::new().set_accessed(past).set_modified(past))
+                .unwrap();
         }
     }
 
@@ -252,9 +248,7 @@ mod tests {
 
         let logs_dir = workspace.join("my-skill").join("logs");
         assert!(
-            !logs_dir
-                .join("step0-research-2025-01-01.jsonl")
-                .exists(),
+            !logs_dir.join("step0-research-2025-01-01.jsonl").exists(),
             "Old JSONL file should be pruned"
         );
         assert!(
@@ -317,9 +311,21 @@ mod tests {
 
         prune_transcript_files(workspace.to_str().unwrap());
 
-        assert!(!workspace.join("skill-a").join("logs").join("old.jsonl").exists());
-        assert!(!workspace.join("skill-b").join("logs").join("old.jsonl").exists());
-        assert!(workspace.join("skill-b").join("logs").join("today.jsonl").exists());
+        assert!(!workspace
+            .join("skill-a")
+            .join("logs")
+            .join("old.jsonl")
+            .exists());
+        assert!(!workspace
+            .join("skill-b")
+            .join("logs")
+            .join("old.jsonl")
+            .exists());
+        assert!(workspace
+            .join("skill-b")
+            .join("logs")
+            .join("today.jsonl")
+            .exists());
     }
 
     #[test]

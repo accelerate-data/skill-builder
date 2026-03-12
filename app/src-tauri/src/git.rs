@@ -30,11 +30,12 @@ Desktop.ini
 pub fn ensure_repo(path: &Path) -> Result<Repository, String> {
     if path.join(".git").exists() {
         log::debug!("[git] Opening existing repo at {}", path.display());
-        Repository::open(path).map_err(|e| format!("Failed to open git repo at {}: {}", path.display(), e))
+        Repository::open(path)
+            .map_err(|e| format!("Failed to open git repo at {}: {}", path.display(), e))
     } else {
         log::debug!("[git] Initializing new repo at {}", path.display());
-        let repo =
-            Repository::init(path).map_err(|e| format!("Failed to init git repo at {}: {}", path.display(), e))?;
+        let repo = Repository::init(path)
+            .map_err(|e| format!("Failed to init git repo at {}: {}", path.display(), e))?;
 
         // Write .gitignore for the skills output folder
         std::fs::write(path.join(".gitignore"), GITIGNORE_CONTENT)
@@ -42,13 +43,17 @@ pub fn ensure_repo(path: &Path) -> Result<Repository, String> {
 
         // Stage .gitignore and create initial commit so HEAD exists
         {
-            let mut index = repo.index()
+            let mut index = repo
+                .index()
                 .map_err(|e| format!("Failed to get index: {}", e))?;
-            index.add_path(Path::new(".gitignore"))
+            index
+                .add_path(Path::new(".gitignore"))
                 .map_err(|e| format!("Failed to stage .gitignore: {}", e))?;
-            index.write()
+            index
+                .write()
                 .map_err(|e| format!("Failed to write index: {}", e))?;
-            let tree_id = index.write_tree()
+            let tree_id = index
+                .write_tree()
                 .map_err(|e| format!("Failed to write initial tree: {}", e))?;
             let tree = repo
                 .find_tree(tree_id)
@@ -103,10 +108,7 @@ pub fn commit_all(path: &Path, message: &str) -> Result<Option<String>, String> 
         .map_err(|e| format!("Failed to find tree: {}", e))?;
 
     // Check if there are actual changes vs HEAD
-    let head_commit = repo
-        .head()
-        .ok()
-        .and_then(|h| h.peel_to_commit().ok());
+    let head_commit = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
 
     if let Some(ref parent) = head_commit {
         let parent_tree = parent
@@ -137,16 +139,11 @@ pub fn get_untracked_dirs(path: &Path) -> Result<Vec<String>, String> {
     if !path.join(".git").exists() {
         return Ok(vec![]);
     }
-    let repo = Repository::open(path)
-        .map_err(|e| format!("Failed to open git repo: {}", e))?;
+    let repo = Repository::open(path).map_err(|e| format!("Failed to open git repo: {}", e))?;
 
-    let head_tree = repo
-        .head()
-        .ok()
-        .and_then(|h| h.peel_to_tree().ok());
+    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
 
-    let entries = std::fs::read_dir(path)
-        .map_err(|e| format!("Failed to read dir: {e}"))?;
+    let entries = std::fs::read_dir(path).map_err(|e| format!("Failed to read dir: {e}"))?;
 
     let mut untracked = Vec::new();
     for entry in entries.flatten() {
@@ -178,8 +175,7 @@ pub fn get_history(
     limit: usize,
 ) -> Result<Vec<SkillCommit>, String> {
     log::debug!("[git] get_history for '{}' (limit {})", skill_name, limit);
-    let repo = Repository::open(repo_path)
-        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 
     let mut revwalk = repo
         .revwalk()
@@ -226,14 +222,16 @@ pub fn get_diff(
     sha_b: &str,
     skill_name: &str,
 ) -> Result<SkillDiff, String> {
-    log::debug!("[git] get_diff for '{}': {}..{}", skill_name, &sha_a[..8.min(sha_a.len())], &sha_b[..8.min(sha_b.len())]);
-    let repo = Repository::open(repo_path)
-        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    log::debug!(
+        "[git] get_diff for '{}': {}..{}",
+        skill_name,
+        &sha_a[..8.min(sha_a.len())],
+        &sha_b[..8.min(sha_b.len())]
+    );
+    let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 
-    let oid_a = git2::Oid::from_str(sha_a)
-        .map_err(|e| format!("Invalid SHA {}: {}", sha_a, e))?;
-    let oid_b = git2::Oid::from_str(sha_b)
-        .map_err(|e| format!("Invalid SHA {}: {}", sha_b, e))?;
+    let oid_a = git2::Oid::from_str(sha_a).map_err(|e| format!("Invalid SHA {}: {}", sha_a, e))?;
+    let oid_b = git2::Oid::from_str(sha_b).map_err(|e| format!("Invalid SHA {}: {}", sha_b, e))?;
 
     let commit_a = repo
         .find_commit(oid_a)
@@ -297,17 +295,15 @@ pub fn get_diff(
 }
 
 /// Restore a skill's files to the state at a given commit.
-pub fn restore_version(
-    repo_path: &Path,
-    sha: &str,
-    skill_name: &str,
-) -> Result<(), String> {
-    log::info!("[git] Restoring '{}' to commit {}", skill_name, &sha[..8.min(sha.len())]);
-    let repo = Repository::open(repo_path)
-        .map_err(|e| format!("Failed to open repo: {}", e))?;
+pub fn restore_version(repo_path: &Path, sha: &str, skill_name: &str) -> Result<(), String> {
+    log::info!(
+        "[git] Restoring '{}' to commit {}",
+        skill_name,
+        &sha[..8.min(sha.len())]
+    );
+    let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 
-    let oid = git2::Oid::from_str(sha)
-        .map_err(|e| format!("Invalid SHA {}: {}", sha, e))?;
+    let oid = git2::Oid::from_str(sha).map_err(|e| format!("Invalid SHA {}: {}", sha, e))?;
     let commit = repo
         .find_commit(oid)
         .map_err(|e| format!("Commit {} not found: {}", sha, e))?;
@@ -349,7 +345,11 @@ pub fn restore_version(
     })
     .map_err(|e| format!("Failed to walk tree: {}", e))?;
 
-    log::info!("[git] Restored '{}' to {}", skill_name, &sha[..8.min(sha.len())]);
+    log::info!(
+        "[git] Restored '{}' to {}",
+        skill_name,
+        &sha[..8.min(sha.len())]
+    );
     Ok(())
 }
 
@@ -372,10 +372,7 @@ fn commit_touches_path(
         .tree()
         .map_err(|e| format!("Failed to get tree: {}", e))?;
 
-    let parent_tree = commit
-        .parent(0)
-        .ok()
-        .and_then(|p| p.tree().ok());
+    let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
 
     let mut opts = DiffOptions::new();
     opts.pathspec(prefix);
@@ -561,7 +558,11 @@ mod tests {
         let diff = get_diff(dir.path(), &sha_a, &sha_b, "my-skill").unwrap();
         assert_eq!(diff.files.len(), 2);
 
-        let skill_diff = diff.files.iter().find(|f| f.path == "my-skill/SKILL.md").unwrap();
+        let skill_diff = diff
+            .files
+            .iter()
+            .find(|f| f.path == "my-skill/SKILL.md")
+            .unwrap();
         assert_eq!(skill_diff.status, "modified");
         assert_eq!(skill_diff.old_content.as_deref(), Some("# V1"));
         assert_eq!(skill_diff.new_content.as_deref(), Some("# V2"));

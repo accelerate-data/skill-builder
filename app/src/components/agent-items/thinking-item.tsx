@@ -20,8 +20,8 @@ export function ThinkingItem({ item }: { item: DisplayItem }) {
       headerBg="var(--chat-thinking-bg)"
       defaultExpanded={false}
     >
-      <ErrorBoundary fallback={<pre className="whitespace-pre-wrap text-xs">{text}</pre>}>
-        <div className="markdown-body compact">
+      <ErrorBoundary fallback={<pre className="whitespace-pre-wrap break-words text-xs">{text}</pre>}>
+        <div className="markdown-body compact agent-markdown">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
             {text}
           </ReactMarkdown>

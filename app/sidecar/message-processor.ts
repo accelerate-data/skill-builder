@@ -3,12 +3,45 @@
  *
  * Transforms raw SDK messages into structured DisplayItem objects.
  * Maintains state for tool call → result linking and subagent grouping.
+ * Accumulates run-level metadata for structured run_summary emission.
  *
  * @module message-processor
  */
 
-import type { DisplayItem, DisplayItemEnvelope, ToolStatus } from "./display-types.js";
+import type { DisplayItem, DisplayItemEnvelope, ToolStatus, RunMetadata, RunSummary, ModelUsageEntry } from "./display-types.js";
 import { classifyRawMessage } from "./message-classifier.js";
+
+// ---------------------------------------------------------------------------
+// Result markdown extraction
+// ---------------------------------------------------------------------------
+
+/**
+ * Extracts display-ready markdown from a structured output payload.
+ * Joins all `*_markdown` string fields with a divider so the frontend
+ * never needs to inspect structuredOutput directly.
+ */
+export function extractResultMarkdown(structuredOutput: unknown): string | undefined {
+  if (typeof structuredOutput !== "object" || structuredOutput === null) return undefined;
+  const obj = structuredOutput as Record<string, unknown>;
+  const sections = Object.entries(obj)
+    .filter(([key, val]) => key.endsWith("_markdown") && typeof val === "string" && val.length > 0)
+    .map(([, val]) => val as string);
+  return sections.length > 0 ? sections.join("\n\n---\n\n") : undefined;
+}
+
+/**
+ * Attempts to parse a text block as JSON, stripping markdown code fences
+ * (```json ... ``` or ``` ... ```) if present.
+ * Returns the parsed value or undefined if parsing fails.
+ */
+export function tryParseJsonFromText(text: string): unknown {
+  const stripped = text.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
+  try {
+    return JSON.parse(stripped);
+  } catch {
+    return undefined;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Tool summary helpers (moved from frontend agent-output-panel.tsx)
@@ -86,15 +119,197 @@ const RESULT_ERROR_LABELS: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// RequestContext — carries persistence context for run_summary building
+// ---------------------------------------------------------------------------
+
+export interface RequestContext {
+  skillName?: string;
+  stepId?: number;
+  workflowSessionId?: string;
+  usageSessionId?: string;
+  runSource?: "workflow" | "refine" | "test";
+}
+
+// ---------------------------------------------------------------------------
+// RunMetadataAccumulator — accumulates state across SDK messages
+// ---------------------------------------------------------------------------
+
+/**
+ * Accumulates run-level metadata across SDK messages.
+ * Used to construct the self-contained run_summary on result.
+ */
+export class RunMetadataAccumulator {
+  private startTime = Date.now();
+  private turnCount = 0;
+  private toolUseCount = 0;
+  private compactionCount = 0;
+  private sessionId?: string;
+  private model = "unknown";
+  private thinkingEnabled = false;
+  private agentName?: string;
+
+  constructor(private context: RequestContext) {}
+
+  get currentTurnCount(): number {
+    return this.turnCount;
+  }
+
+  recordTurn(): void {
+    this.turnCount++;
+  }
+
+  recordToolUse(): void {
+    this.toolUseCount++;
+  }
+
+  recordCompaction(): void {
+    this.compactionCount++;
+  }
+
+  recordSessionInit(sessionId: string, model: string): void {
+    this.sessionId = sessionId;
+    this.model = model;
+    process.stderr.write(
+      `[accumulator] event=session_init session_id=${sessionId} model=${model}\n`,
+    );
+  }
+
+  recordConfig(thinkingEnabled: boolean, agentName?: string): void {
+    this.thinkingEnabled = thinkingEnabled;
+    if (agentName) this.agentName = agentName;
+    process.stderr.write(
+      `[accumulator] event=config thinking=${thinkingEnabled} agent=${agentName ?? "none"}\n`,
+    );
+  }
+
+  buildShutdownSummary(): RunSummary {
+    return {
+      skillName: this.context.skillName ?? "unknown",
+      stepId: this.context.stepId ?? -1,
+      workflowSessionId: this.context.workflowSessionId,
+      usageSessionId: this.context.usageSessionId,
+      runSource: this.context.runSource,
+      sessionId: this.sessionId,
+      model: this.model,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      totalCostUsd: 0,
+      modelUsageBreakdown: [],
+      contextWindow: 0,
+      numTurns: this.turnCount,
+      durationMs: Date.now() - this.startTime,
+      toolUseCount: this.toolUseCount,
+      compactionCount: this.compactionCount,
+      status: "shutdown",
+    };
+  }
+
+  buildExecutionErrorSummary(errorMessage: string): RunSummary {
+    return this.buildRunSummary({
+      subtype: "error_during_execution",
+      is_error: true,
+      errors: [errorMessage],
+      stop_reason: "error",
+    });
+  }
+
+  buildRunSummary(raw: Record<string, unknown>): RunSummary {
+    const usage = raw.usage as { input_tokens?: number; output_tokens?: number } | undefined;
+    const modelUsage = raw.modelUsage as
+      | Record<string, {
+          inputTokens?: number; outputTokens?: number;
+          cacheReadInputTokens?: number; cacheCreationInputTokens?: number;
+          cost?: number; costUSD?: number; contextWindow?: number;
+        }>
+      | undefined;
+
+    let inputTokens = usage?.input_tokens ?? 0;
+    let outputTokens = usage?.output_tokens ?? 0;
+    let totalCostUsd = (raw.total_cost_usd as number | undefined) ?? 0;
+    let contextWindow = 0;
+    const breakdown: ModelUsageEntry[] = [];
+    let cacheReadTokens = 0;
+    let cacheWriteTokens = 0;
+
+    if (modelUsage) {
+      for (const [modelId, mu] of Object.entries(modelUsage)) {
+        const entryContextWindow = mu.contextWindow ?? 0;
+        if (entryContextWindow > contextWindow) contextWindow = entryContextWindow;
+        breakdown.push({
+          model: modelId,
+          inputTokens: mu.inputTokens ?? 0,
+          outputTokens: mu.outputTokens ?? 0,
+          cacheReadTokens: mu.cacheReadInputTokens ?? 0,
+          cacheWriteTokens: mu.cacheCreationInputTokens ?? 0,
+          cost: mu.costUSD ?? mu.cost ?? 0,
+        });
+      }
+      if (breakdown.length > 0) {
+        inputTokens = breakdown.reduce((s, e) => s + e.inputTokens, 0);
+        outputTokens = breakdown.reduce((s, e) => s + e.outputTokens, 0);
+        cacheReadTokens = breakdown.reduce((s, e) => s + e.cacheReadTokens, 0);
+        cacheWriteTokens = breakdown.reduce((s, e) => s + e.cacheWriteTokens, 0);
+        totalCostUsd = breakdown.reduce((s, e) => s + e.cost, 0);
+      }
+    }
+
+    const subtype = raw.subtype as string | undefined;
+    const isError = raw.is_error === true;
+    const status: RunSummary["status"] =
+      isError || (subtype && subtype.startsWith("error_")) ? "error" : "completed";
+
+    const summary: RunSummary = {
+      skillName: this.context.skillName ?? "unknown",
+      stepId: this.context.stepId ?? -1,
+      workflowSessionId: this.context.workflowSessionId,
+      usageSessionId: this.context.usageSessionId,
+      runSource: this.context.runSource,
+      sessionId: this.sessionId,
+      model: this.model,
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
+      totalCostUsd,
+      modelUsageBreakdown: breakdown,
+      contextWindow,
+      resultSubtype: subtype,
+      resultErrors: Array.isArray(raw.errors) ? (raw.errors as string[]) : undefined,
+      stopReason: typeof raw.stop_reason === "string" ? raw.stop_reason : undefined,
+      numTurns: typeof raw.num_turns === "number" ? raw.num_turns : this.turnCount,
+      durationMs: Date.now() - this.startTime,
+      durationApiMs: typeof raw.duration_api_ms === "number" ? raw.duration_api_ms : undefined,
+      toolUseCount: this.toolUseCount,
+      compactionCount: this.compactionCount,
+      status,
+    };
+
+    process.stderr.write(
+      `[accumulator] event=build_run_summary skill=${summary.skillName} step=${summary.stepId} status=${status} turns=${summary.numTurns} tool_use=${summary.toolUseCount} compaction=${summary.compactionCount} cost=${totalCostUsd.toFixed(4)}\n`,
+    );
+
+    return summary;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // MessageProcessor
 // ---------------------------------------------------------------------------
 
-/** A processed output item — either a display_item envelope or a pass-through raw message. */
+/** A processed output item — either a display_item envelope, metadata, run_summary, or a pass-through raw message. */
 export type ProcessedMessage = Record<string, unknown>;
 
 export class MessageProcessor {
   /** Counter for generating unique display item IDs. */
   private idCounter = 0;
+
+  /** Last top-level output text block — used as fallback for structured output extraction. */
+  private lastOutputText: string | undefined;
+
+  /** ID of the last top-level output item — used to emit a replacement when consumed by result. */
+  private lastOutputItemId: string | undefined;
 
   /** Map from toolUseId → DisplayItem for pending tool calls. */
   private toolCallMap = new Map<string, DisplayItem>();
@@ -107,6 +322,13 @@ export class MessageProcessor {
 
   /** Map from toolUseId → subagent DisplayItem (Task tool calls). */
   private subagentByToolUseId = new Map<string, DisplayItem>();
+
+  /** Accumulates run-level state for run_summary. */
+  private accumulator: RunMetadataAccumulator;
+
+  constructor(context?: RequestContext) {
+    this.accumulator = new RunMetadataAccumulator(context ?? {});
+  }
 
   private generateId(): string {
     return `di-${++this.idCounter}`;
@@ -121,7 +343,9 @@ export class MessageProcessor {
    *
    * Returns an array of JSONL-ready objects:
    * - `{ type: "display_item", item: DisplayItem }` for rendering
-   * - Raw pass-through messages for result/system/error handling
+   * - `{ type: "metadata", data: RunMetadata }` for context/config tracking
+   * - `{ type: "run_summary", data: RunSummary }` on result (intercepted by Rust, not forwarded to frontend)
+   * - Raw pass-through messages for error handling
    */
   process(raw: Record<string, unknown>): ProcessedMessage[] {
     const category = classifyRawMessage(raw);
@@ -143,11 +367,7 @@ export class MessageProcessor {
         return this.processCompactBoundary(raw, now);
 
       case "system":
-        // Forward system messages as-is (Rust routes init-progress)
-        process.stderr.write(
-          `[message-processor] event=forward_system subtype=${(raw as Record<string, unknown>).subtype ?? "unknown"}\n`,
-        );
-        return [raw];
+        return this.processSystemMessage(raw, now);
 
       case "user":
         return this.processUserMessage(raw, now);
@@ -158,6 +378,88 @@ export class MessageProcessor {
       default:
         return [];
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // System messages
+  // -------------------------------------------------------------------------
+
+  private processSystemMessage(raw: Record<string, unknown>, now: number): ProcessedMessage[] {
+    const rawType = raw.type as string;
+    const subtype = raw.subtype as string | undefined;
+
+    // config messages → extract thinkingEnabled and agentName
+    if (rawType === "config") {
+      return this.processConfigMessage(raw, now);
+    }
+
+    // system/init → extract sessionId and model
+    if (subtype === "init") {
+      return this.processSystemInit(raw, now);
+    }
+
+    // init_start, sdk_ready → forward for Rust init-progress routing
+    if (subtype === "init_start" || subtype === "sdk_ready") {
+      process.stderr.write(
+        `[message-processor] event=forward_init_progress subtype=${subtype}\n`,
+      );
+      return [raw];
+    }
+
+    // Other system messages → forward
+    process.stderr.write(
+      `[message-processor] event=forward_system subtype=${subtype ?? "unknown"}\n`,
+    );
+    return [raw];
+  }
+
+  private processConfigMessage(raw: Record<string, unknown>, now: number): ProcessedMessage[] {
+    const configObj = raw.config as
+      | { thinking?: { type?: string; budgetTokens?: number }; agentName?: string }
+      | undefined;
+
+    const thinkingEnabled =
+      configObj?.thinking?.type === "enabled" &&
+      typeof configObj.thinking.budgetTokens === "number" &&
+      configObj.thinking.budgetTokens > 0;
+    const agentName = configObj?.agentName;
+
+    this.accumulator.recordConfig(thinkingEnabled, agentName);
+
+    const metadata: RunMetadata = {
+      config: {
+        thinkingEnabled,
+        agentName,
+      },
+    };
+
+    process.stderr.write(
+      `[message-processor] event=emit_metadata subtype=config thinking=${thinkingEnabled} agent=${agentName ?? "none"}\n`,
+    );
+
+    return [{ type: "metadata", data: metadata, timestamp: now } as ProcessedMessage];
+  }
+
+  private processSystemInit(raw: Record<string, unknown>, now: number): ProcessedMessage[] {
+    const sid = raw.session_id;
+    const initModel = raw.model;
+
+    if (typeof sid === "string" && sid.length > 0) {
+      const model = typeof initModel === "string" && initModel.length > 0 ? initModel : "unknown";
+      this.accumulator.recordSessionInit(sid, model);
+
+      const metadata: RunMetadata = {
+        sessionInit: { sessionId: sid, model },
+      };
+
+      process.stderr.write(
+        `[message-processor] event=emit_metadata subtype=session_init session_id=${sid} model=${model}\n`,
+      );
+
+      return [{ type: "metadata", data: metadata, timestamp: now } as ProcessedMessage];
+    }
+
+    return [];
   }
 
   // -------------------------------------------------------------------------
@@ -173,11 +475,28 @@ export class MessageProcessor {
       type: "compact_boundary",
       timestamp: now,
     };
+
+    const turn = this.accumulator.currentTurnCount;
+    this.accumulator.recordCompaction();
+
+    const compactionMetadata = raw.compact_metadata as { pre_tokens?: number } | undefined;
+    const preTokens = compactionMetadata?.pre_tokens ?? 0;
+
+    const metadata: RunMetadata = {
+      compactionEvent: { turn, preTokens, timestamp: now },
+    };
+
     process.stderr.write(
       `[message-processor] event=emit_display_item item_type=compact_boundary id=${item.id}\n`,
     );
-    // Forward the raw system message so agent-store can track compaction events
-    return [this.makeEnvelope(item), raw];
+    process.stderr.write(
+      `[message-processor] event=emit_metadata subtype=compaction turn=${turn} pre_tokens=${preTokens}\n`,
+    );
+
+    return [
+      this.makeEnvelope(item),
+      { type: "metadata", data: metadata, timestamp: now } as ProcessedMessage,
+    ];
   }
 
   // -------------------------------------------------------------------------
@@ -295,8 +614,11 @@ export class MessageProcessor {
     const parentToolUseId = raw.parent_tool_use_id as string | undefined;
 
     if (!Array.isArray(content)) {
-      // Forward the raw message so agent-store can extract usage/context tokens
-      results.push(raw);
+      // No content array — still increment turn count
+      this.accumulator.recordTurn();
+      process.stderr.write(
+        `[message-processor] event=turn_no_content turn=${this.accumulator.currentTurnCount}\n`,
+      );
       return results;
     }
 
@@ -340,6 +662,8 @@ export class MessageProcessor {
         if (parentToolUseId) {
           this.addToSubagentAndEmitUpdate(parentToolUseId, item, results);
         } else {
+          this.lastOutputText = b.text;
+          this.lastOutputItemId = item.id;
           results.push(this.makeEnvelope(item));
         }
       } else if (b.type === "tool_use") {
@@ -383,6 +707,9 @@ export class MessageProcessor {
           });
           this.toolCallTimestamps.set(toolUseId, now);
 
+          // Count Task/Agent tool uses
+          this.accumulator.recordToolUse();
+
           process.stderr.write(
             `[message-processor] event=emit_display_item item_type=subagent id=${item.id} tool_use_id=${toolUseId} description="${truncate(description, 40)}"\n`,
           );
@@ -394,6 +721,8 @@ export class MessageProcessor {
           }
         } else {
           // Regular tool call
+          this.accumulator.recordToolUse();
+
           const item: DisplayItem = {
             id: this.generateId(),
             type: "tool_call",
@@ -422,15 +751,43 @@ export class MessageProcessor {
       }
     }
 
-    // Always forward the raw assistant message so agent-store can extract
-    // per-turn context tokens and usage data
-    results.push(raw);
+    // Extract per-turn context usage and emit as metadata
+    const outerUsage = outerMessage?.usage as
+      | { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
+      | undefined;
+
+    if (outerUsage) {
+      const totalInput = (outerUsage.input_tokens ?? 0)
+        + (outerUsage.cache_read_input_tokens ?? 0)
+        + (outerUsage.cache_creation_input_tokens ?? 0);
+
+      this.accumulator.recordTurn();
+      const metadata: RunMetadata = {
+        contextSnapshot: {
+          turn: this.accumulator.currentTurnCount,
+          inputTokens: totalInput,
+          outputTokens: outerUsage.output_tokens ?? 0,
+        },
+      };
+
+      process.stderr.write(
+        `[message-processor] event=emit_metadata subtype=context_snapshot turn=${this.accumulator.currentTurnCount} input=${totalInput}\n`,
+      );
+
+      results.push({ type: "metadata", data: metadata, timestamp: now } as ProcessedMessage);
+    } else {
+      // No usage data available — still increment turn count
+      this.accumulator.recordTurn();
+      process.stderr.write(
+        `[message-processor] event=turn_no_usage turn=${this.accumulator.currentTurnCount}\n`,
+      );
+    }
 
     return results;
   }
 
   // -------------------------------------------------------------------------
-  // Result messages — dual-emit
+  // Result messages — emit display_item + run_summary
   // -------------------------------------------------------------------------
 
   private processResultMessage(
@@ -457,6 +814,31 @@ export class MessageProcessor {
         ?? "Agent ended with an error";
     }
 
+    // Extract structured output from SDK result for artifact materialization.
+    // When outputFormat is configured, the SDK returns the parsed JSON in
+    // structured_output and a text summary in result. Fall back to result
+    // if it's already an object (older SDK versions).
+    let structuredOutput: unknown = undefined;
+    if ("structured_output" in raw && raw.structured_output != null) {
+      structuredOutput = raw.structured_output;
+    } else if ("result" in raw && raw.result != null && typeof raw.result !== "string") {
+      structuredOutput = raw.result;
+    }
+
+    // Extract display-ready markdown from structured output so the frontend
+    // never needs to inspect structuredOutput directly.
+    // Fallback: if structuredOutput is absent (e.g. agent returned JSON as a
+    // text block via the Skill tool), try parsing the last output text as JSON.
+    let consumedOutputItemId: string | undefined;
+    if (structuredOutput == null && this.lastOutputText) {
+      const parsed = tryParseJsonFromText(this.lastOutputText);
+      if (parsed != null && typeof parsed === "object") {
+        structuredOutput = parsed;
+        consumedOutputItemId = this.lastOutputItemId;
+      }
+    }
+    const resultMarkdown = extractResultMarkdown(structuredOutput);
+
     // Mark any remaining pending tool calls as orphaned
     const orphanedItems = this.markOrphanedToolCalls(now);
 
@@ -467,14 +849,44 @@ export class MessageProcessor {
       outputText_result: outputText,
       resultStatus,
       errorSubtype,
+      structuredOutput,
+      ...(resultMarkdown != null && { resultMarkdown }),
     };
 
     process.stderr.write(
       `[message-processor] event=emit_display_item item_type=result id=${item.id} status=${resultStatus} subtype=${subtype ?? "none"} orphaned_tools=${orphanedItems.length}\n`,
     );
 
-    // Emit orphaned tool updates first, then display item + raw result
-    return [...orphanedItems, this.makeEnvelope(item), raw];
+    // Build run_summary from accumulated state
+    const runSummary = this.accumulator.buildRunSummary(raw);
+    process.stderr.write(
+      `[message-processor] event=emit_run_summary skill=${runSummary.skillName} status=${runSummary.status}\n`,
+    );
+
+    const results: ProcessedMessage[] = [...orphanedItems];
+
+    // If the result consumed the last output text for structured output,
+    // emit a replacement output item that hides the raw JSON so it's not
+    // displayed alongside the rendered resultMarkdown.
+    if (consumedOutputItemId && resultMarkdown) {
+      results.push(this.makeEnvelope({
+        id: consumedOutputItemId,
+        type: "output",
+        timestamp: now,
+        outputText: "",
+      }));
+    }
+
+    results.push(this.makeEnvelope(item));
+
+    // Forward contextWindow to frontend via metadata so context utilization displays correctly
+    if (runSummary.contextWindow > 0) {
+      results.push({ type: "metadata", data: { contextWindow: runSummary.contextWindow } as RunMetadata, timestamp: now } as ProcessedMessage);
+    }
+
+    results.push({ type: "run_summary", data: runSummary, timestamp: now } as ProcessedMessage);
+
+    return results;
   }
 
   // -------------------------------------------------------------------------
@@ -498,8 +910,7 @@ export class MessageProcessor {
       `[message-processor] event=emit_display_item item_type=error id=${item.id} message="${truncate(errorMsg, 60)}"\n`,
     );
 
-    // Forward error for existing error handling in agent-store
-    return [this.makeEnvelope(item), raw];
+    return [this.makeEnvelope(item)];
   }
 
   // -------------------------------------------------------------------------
@@ -612,10 +1023,23 @@ export class MessageProcessor {
    */
   reset(): void {
     this.idCounter = 0;
+    this.lastOutputText = undefined;
+    this.lastOutputItemId = undefined;
     this.toolCallMap.clear();
     this.toolCallTimestamps.clear();
     this.subagentMap.clear();
     this.subagentByToolUseId.clear();
+    this.accumulator = new RunMetadataAccumulator({});
+  }
+
+  /** Build a shutdown run_summary for aborted/cancelled runs. */
+  buildShutdownSummary(): RunSummary {
+    return this.accumulator.buildShutdownSummary();
+  }
+
+  /** Build an error run_summary for iterator failures after SDK startup. */
+  buildExecutionErrorSummary(errorMessage: string): RunSummary {
+    return this.accumulator.buildExecutionErrorSummary(errorMessage);
   }
 
   /** Get count of pending (unresolved) tool calls. For testing. */

@@ -1,5 +1,7 @@
 use crate::db::Db;
-use crate::types::{AgentRunRecord, UsageByDay, UsageByModel, UsageByStep, UsageSummary, WorkflowSessionRecord};
+use crate::types::{
+    AgentRunRecord, UsageByDay, UsageByModel, UsageByStep, UsageSummary, WorkflowSessionRecord,
+};
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -24,35 +26,74 @@ pub fn persist_agent_run(
     session_id: Option<String>,
     workflow_session_id: Option<String>,
 ) -> Result<(), String> {
-    log::info!("[persist_agent_run] agent={} skill={} step={} model={} status={}", agent_id, skill_name, step_id, model, status);
+    log::info!(
+        "[persist_agent_run] agent={} skill={} step={} model={} status={}",
+        agent_id,
+        skill_name,
+        step_id,
+        model,
+        status
+    );
     let conn = db.0.lock().map_err(|e| {
         log::error!("[persist_agent_run] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
     crate::db::persist_agent_run(
-        &conn, &agent_id, &skill_name, step_id, &model, &status,
-        input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-        total_cost, duration_ms, num_turns, stop_reason.as_deref(), duration_api_ms,
-        tool_use_count, compaction_count,
-        session_id.as_deref(), workflow_session_id.as_deref(),
+        &conn,
+        &agent_id,
+        &skill_name,
+        step_id,
+        &model,
+        &status,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_write_tokens,
+        total_cost,
+        duration_ms,
+        num_turns,
+        stop_reason.as_deref(),
+        duration_api_ms,
+        tool_use_count,
+        compaction_count,
+        session_id.as_deref(),
+        workflow_session_id.as_deref(),
     )
 }
 
 #[tauri::command]
-pub fn get_usage_summary(db: tauri::State<'_, Db>, hide_cancelled: bool, start_date: Option<String>, skill_name: Option<String>) -> Result<UsageSummary, String> {
-    log::info!("[get_usage_summary] hide_cancelled={} start_date={:?} skill_name={:?}", hide_cancelled, start_date, skill_name);
+pub fn get_usage_summary(
+    db: tauri::State<'_, Db>,
+    hide_cancelled: bool,
+    start_date: Option<String>,
+    skill_name: Option<String>,
+) -> Result<UsageSummary, String> {
+    log::info!(
+        "[get_usage_summary] hide_cancelled={} start_date={:?} skill_name={:?}",
+        hide_cancelled,
+        start_date,
+        skill_name
+    );
     let conn = db.0.lock().map_err(|e| {
         log::error!("[get_usage_summary] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::get_usage_summary(&conn, hide_cancelled, start_date.as_deref(), skill_name.as_deref())
+    crate::db::get_usage_summary(
+        &conn,
+        hide_cancelled,
+        start_date.as_deref(),
+        skill_name.as_deref(),
+    )
 }
 
 #[tauri::command]
 pub fn get_workflow_skill_names(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
     log::info!("[get_workflow_skill_names]");
     let conn = db.0.lock().map_err(|e| {
-        log::error!("[get_workflow_skill_names] Failed to acquire DB lock: {}", e);
+        log::error!(
+            "[get_workflow_skill_names] Failed to acquire DB lock: {}",
+            e
+        );
         e.to_string()
     })?;
     crate::db::get_workflow_skill_names(&conn)
@@ -72,33 +113,78 @@ pub fn get_recent_runs(
 }
 
 #[tauri::command]
-pub fn get_usage_by_step(db: tauri::State<'_, Db>, hide_cancelled: bool, start_date: Option<String>, skill_name: Option<String>) -> Result<Vec<UsageByStep>, String> {
-    log::info!("[get_usage_by_step] hide_cancelled={} start_date={:?} skill_name={:?}", hide_cancelled, start_date, skill_name);
+pub fn get_usage_by_step(
+    db: tauri::State<'_, Db>,
+    hide_cancelled: bool,
+    start_date: Option<String>,
+    skill_name: Option<String>,
+) -> Result<Vec<UsageByStep>, String> {
+    log::info!(
+        "[get_usage_by_step] hide_cancelled={} start_date={:?} skill_name={:?}",
+        hide_cancelled,
+        start_date,
+        skill_name
+    );
     let conn = db.0.lock().map_err(|e| {
         log::error!("[get_usage_by_step] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::get_usage_by_step(&conn, hide_cancelled, start_date.as_deref(), skill_name.as_deref())
+    crate::db::get_usage_by_step(
+        &conn,
+        hide_cancelled,
+        start_date.as_deref(),
+        skill_name.as_deref(),
+    )
 }
 
 #[tauri::command]
-pub fn get_usage_by_model(db: tauri::State<'_, Db>, hide_cancelled: bool, start_date: Option<String>, skill_name: Option<String>) -> Result<Vec<UsageByModel>, String> {
-    log::info!("[get_usage_by_model] hide_cancelled={} start_date={:?} skill_name={:?}", hide_cancelled, start_date, skill_name);
+pub fn get_usage_by_model(
+    db: tauri::State<'_, Db>,
+    hide_cancelled: bool,
+    start_date: Option<String>,
+    skill_name: Option<String>,
+) -> Result<Vec<UsageByModel>, String> {
+    log::info!(
+        "[get_usage_by_model] hide_cancelled={} start_date={:?} skill_name={:?}",
+        hide_cancelled,
+        start_date,
+        skill_name
+    );
     let conn = db.0.lock().map_err(|e| {
         log::error!("[get_usage_by_model] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::get_usage_by_model(&conn, hide_cancelled, start_date.as_deref(), skill_name.as_deref())
+    crate::db::get_usage_by_model(
+        &conn,
+        hide_cancelled,
+        start_date.as_deref(),
+        skill_name.as_deref(),
+    )
 }
 
 #[tauri::command]
-pub fn get_usage_by_day(db: tauri::State<'_, Db>, hide_cancelled: bool, start_date: Option<String>, skill_name: Option<String>) -> Result<Vec<UsageByDay>, String> {
-    log::info!("[get_usage_by_day] hide_cancelled={} start_date={:?} skill_name={:?}", hide_cancelled, start_date, skill_name);
+pub fn get_usage_by_day(
+    db: tauri::State<'_, Db>,
+    hide_cancelled: bool,
+    start_date: Option<String>,
+    skill_name: Option<String>,
+) -> Result<Vec<UsageByDay>, String> {
+    log::info!(
+        "[get_usage_by_day] hide_cancelled={} start_date={:?} skill_name={:?}",
+        hide_cancelled,
+        start_date,
+        skill_name
+    );
     let conn = db.0.lock().map_err(|e| {
         log::error!("[get_usage_by_day] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::get_usage_by_day(&conn, hide_cancelled, start_date.as_deref(), skill_name.as_deref())
+    crate::db::get_usage_by_day(
+        &conn,
+        hide_cancelled,
+        start_date.as_deref(),
+        skill_name.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -119,12 +205,27 @@ pub fn get_recent_workflow_sessions(
     start_date: Option<String>,
     skill_name: Option<String>,
 ) -> Result<Vec<WorkflowSessionRecord>, String> {
-    log::info!("[get_recent_workflow_sessions] limit={} hide_cancelled={} start_date={:?} skill_name={:?}", limit, hide_cancelled, start_date, skill_name);
+    log::info!(
+        "[get_recent_workflow_sessions] limit={} hide_cancelled={} start_date={:?} skill_name={:?}",
+        limit,
+        hide_cancelled,
+        start_date,
+        skill_name
+    );
     let conn = db.0.lock().map_err(|e| {
-        log::error!("[get_recent_workflow_sessions] Failed to acquire DB lock: {}", e);
+        log::error!(
+            "[get_recent_workflow_sessions] Failed to acquire DB lock: {}",
+            e
+        );
         e.to_string()
     })?;
-    crate::db::get_recent_workflow_sessions(&conn, limit, hide_cancelled, start_date.as_deref(), skill_name.as_deref())
+    crate::db::get_recent_workflow_sessions(
+        &conn,
+        limit,
+        hide_cancelled,
+        start_date.as_deref(),
+        skill_name.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -154,7 +255,14 @@ pub fn get_agent_runs(
         log::error!("[get_agent_runs] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::get_agent_runs(&conn, hide_cancelled, start_date.as_deref(), skill_name.as_deref(), model_family.as_deref(), limit)
+    crate::db::get_agent_runs(
+        &conn,
+        hide_cancelled,
+        start_date.as_deref(),
+        skill_name.as_deref(),
+        model_family.as_deref(),
+        limit,
+    )
 }
 
 #[tauri::command]
@@ -163,7 +271,11 @@ pub fn get_step_agent_runs(
     skill_name: String,
     step_id: i32,
 ) -> Result<Vec<AgentRunRecord>, String> {
-    log::info!("[get_step_agent_runs] skill={} step={}", skill_name, step_id);
+    log::info!(
+        "[get_step_agent_runs] skill={} step={}",
+        skill_name,
+        step_id
+    );
     let conn = db.0.lock().map_err(|e| {
         log::error!("[get_step_agent_runs] Failed to acquire DB lock: {}", e);
         e.to_string()

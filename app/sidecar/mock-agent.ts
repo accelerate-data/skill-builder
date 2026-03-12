@@ -144,12 +144,19 @@ export async function runMockAgent(
   const stepTemplate = resolveStepTemplate(config.agentName, config);
 
   if (!stepTemplate) {
-    // Unknown agent — emit a simple success result
+    // Unknown agent — emit a simple success result through processor for run_summary
     onMessage({ type: "system", subtype: "init_start", timestamp: Date.now() });
     await delay(50);
     onMessage({ type: "system", subtype: "sdk_ready", timestamp: Date.now() });
     await delay(50);
-    onMessage({
+    const unknownProcessor = new MessageProcessor({
+      skillName: config.skillName,
+      stepId: config.stepId,
+      workflowSessionId: config.workflowSessionId,
+      usageSessionId: config.usageSessionId,
+      runSource: config.runSource,
+    });
+    const resultMsg: Record<string, unknown> = {
       type: "result",
       subtype: "success",
       result: "Mock: unknown agent, skipped",
@@ -159,7 +166,10 @@ export async function runMockAgent(
       num_turns: 0,
       total_cost_usd: 0,
       usage: { input_tokens: 0, output_tokens: 0 },
-    });
+    };
+    for (const item of unknownProcessor.process(resultMsg)) {
+      onMessage(item as Record<string, unknown>);
+    }
     return;
   }
 
@@ -174,12 +184,19 @@ export async function runMockAgent(
   );
 
   if (!(await pathExists(templatePath))) {
-    // No template file — emit minimal success
+    // No template file — emit minimal success through processor for run_summary
     onMessage({ type: "system", subtype: "init_start", timestamp: Date.now() });
     await delay(50);
     onMessage({ type: "system", subtype: "sdk_ready", timestamp: Date.now() });
     await delay(50);
-    onMessage({
+    const noTemplateProcessor = new MessageProcessor({
+      skillName: config.skillName,
+      stepId: config.stepId,
+      workflowSessionId: config.workflowSessionId,
+      usageSessionId: config.usageSessionId,
+      runSource: config.runSource,
+    });
+    const resultMsg: Record<string, unknown> = {
       type: "result",
       subtype: "success",
       result: `Mock: ${stepTemplate} completed (no template file)`,
@@ -189,7 +206,10 @@ export async function runMockAgent(
       num_turns: 0,
       total_cost_usd: 0,
       usage: { input_tokens: 0, output_tokens: 0 },
-    });
+    };
+    for (const item of noTemplateProcessor.process(resultMsg)) {
+      onMessage(item as Record<string, unknown>);
+    }
     return;
   }
 
@@ -198,7 +218,13 @@ export async function runMockAgent(
   const structuredResultOverride = await buildStructuredMockResult(stepTemplate);
 
   // Process mock template messages through MessageProcessor identically to live SDK
-  const processor = new MessageProcessor();
+  const processor = new MessageProcessor({
+    skillName: config.skillName,
+    stepId: config.stepId,
+    workflowSessionId: config.workflowSessionId,
+    usageSessionId: config.usageSessionId,
+    runSource: config.runSource,
+  });
 
   let emittedResult = false;
   for (const line of lines) {
@@ -422,35 +448,14 @@ export async function buildStructuredMockResult(
   }
 
   if (stepTemplate === "step2-confirm-decisions") {
+    // The real agent returns { version, metadata, decisions } matching the
+    // outputFormat schema. Materialization writes the entire payload as
+    // decisions.json, so the mock must return the same shape — no envelope.
     const decisions = await readJsonIfExists(
       path.join(outputsRoot, "step2", "context", "decisions.json"),
     );
     if (!decisions) return null;
-    const metadata =
-      decisions.metadata &&
-      typeof decisions.metadata === "object" &&
-      !Array.isArray(decisions.metadata)
-        ? (decisions.metadata as JsonObject)
-        : {};
-    const decisionsArray = Array.isArray(decisions.decisions)
-      ? decisions.decisions
-      : [];
-    const decisionCount =
-      typeof metadata.decision_count === "number"
-        ? metadata.decision_count
-        : decisionsArray.length;
-    const conflictsResolved =
-      typeof metadata.conflicts_resolved === "number"
-        ? metadata.conflicts_resolved
-        : 0;
-    const round = typeof metadata.round === "number" ? metadata.round : 1;
-    return {
-      status: "confirm_decisions_complete",
-      decision_count: decisionCount,
-      conflicts_resolved: conflictsResolved,
-      round,
-      decisions_json: decisions,
-    };
+    return decisions;
   }
 
   if (stepTemplate === "step3-generate-skill") {

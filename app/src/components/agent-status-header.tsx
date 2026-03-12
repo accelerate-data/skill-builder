@@ -87,7 +87,7 @@ export function AgentStatusHeader({
   const workflowInitStartTime = useWorkflowStore((s) => s.initStartTime);
 
   const displayStatus = run
-    ? getDisplayStatus(run.status, run.messages.length, workflowIsInitializing)
+    ? getDisplayStatus(run.status, run.displayItems.length, workflowIsInitializing)
     : null;
 
   // Force re-render every second while running or initializing so elapsed time updates
@@ -126,7 +126,7 @@ export function AgentStatusHeader({
   };
 
   const currentStatus = displayStatus ?? "running";
-  const turnCount = run.messages.filter((m) => m.type === "assistant").length;
+  const turnCount = run.contextHistory.length;
 
   return (
     <CardHeader className="shrink-0 flex-row items-center justify-between space-y-0 pb-3">

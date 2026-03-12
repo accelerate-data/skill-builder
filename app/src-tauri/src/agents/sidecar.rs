@@ -44,6 +44,18 @@ pub struct SidecarConfig {
     /// to discriminate template selection (e.g. with-skill vs. baseline runs).
     #[serde(rename = "skillName", skip_serializing_if = "Option::is_none")]
     pub skill_name: Option<String>,
+    /// Step ID for persistence (-1=unknown, -10=refine, -11=test, 0-3=workflow steps).
+    #[serde(rename = "stepId", skip_serializing_if = "Option::is_none")]
+    pub step_id: Option<i32>,
+    /// Workflow session ID.
+    #[serde(rename = "workflowSessionId", skip_serializing_if = "Option::is_none")]
+    pub workflow_session_id: Option<String>,
+    /// Synthetic usage session ID for non-workflow runs.
+    #[serde(rename = "usageSessionId", skip_serializing_if = "Option::is_none")]
+    pub usage_session_id: Option<String>,
+    /// Run source: "workflow", "refine", or "test".
+    #[serde(rename = "runSource", skip_serializing_if = "Option::is_none")]
+    pub run_source: Option<String>,
 }
 
 impl std::fmt::Debug for SidecarConfig {
@@ -87,8 +99,14 @@ pub async fn spawn_sidecar(
         }
     }
 
-    pool.send_request(&skill_name, &agent_id, config, &app_handle, transcript_log_dir.as_deref())
-        .await?;
+    pool.send_request(
+        &skill_name,
+        &agent_id,
+        config,
+        &app_handle,
+        transcript_log_dir.as_deref(),
+    )
+    .await?;
 
     Ok(())
 }
@@ -105,7 +123,11 @@ fn resolve_sdk_cli_path(app_handle: &tauri::AppHandle) -> Result<String, String>
 
     // Try resource directory first (production)
     if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        let cli = resource_dir.join("sidecar").join("dist").join("sdk").join("cli.js");
+        let cli = resource_dir
+            .join("sidecar")
+            .join("dist")
+            .join("sdk")
+            .join("cli.js");
         if cli.exists() {
             return cli
                 .to_str()
@@ -168,6 +190,10 @@ mod tests {
             required_plugins: None,
             conversation_history: None,
             skill_name: None,
+            step_id: None,
+            workflow_session_id: None,
+            usage_session_id: None,
+            run_source: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -210,6 +236,10 @@ mod tests {
             required_plugins: None,
             conversation_history: None,
             skill_name: None,
+            step_id: None,
+            workflow_session_id: None,
+            usage_session_id: None,
+            run_source: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -242,11 +272,21 @@ mod tests {
             required_plugins: None,
             conversation_history: None,
             skill_name: Some("my-skill".to_string()),
+            step_id: None,
+            workflow_session_id: None,
+            usage_session_id: None,
+            run_source: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed["skillName"], "my-skill", "skill_name must be camelCase 'skillName' in JSON");
-        assert!(parsed.get("skill_name").is_none(), "snake_case key must not appear in JSON");
+        assert_eq!(
+            parsed["skillName"], "my-skill",
+            "skill_name must be camelCase 'skillName' in JSON"
+        );
+        assert!(
+            parsed.get("skill_name").is_none(),
+            "snake_case key must not appear in JSON"
+        );
     }
 
     #[test]
@@ -271,9 +311,16 @@ mod tests {
             required_plugins: None,
             conversation_history: None,
             skill_name: None,
+            step_id: None,
+            workflow_session_id: None,
+            usage_session_id: None,
+            run_source: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert!(parsed.get("skillName").is_none(), "skillName must be absent when None");
+        assert!(
+            parsed.get("skillName").is_none(),
+            "skillName must be absent when None"
+        );
     }
 }

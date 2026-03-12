@@ -74,7 +74,11 @@ pub async fn create_github_issue(
 
     if !status.is_success() {
         let message = body["message"].as_str().unwrap_or("Unknown error");
-        log::error!("[create_github_issue] GitHub API error ({}): {}", status, message);
+        log::error!(
+            "[create_github_issue] GitHub API error ({}): {}",
+            status,
+            message
+        );
         return Err(format!("GitHub API error ({}): {}", status, message));
     }
 
@@ -90,11 +94,7 @@ pub async fn create_github_issue(
 }
 
 /// Ensure a label exists on the repo (best-effort, 422 = already exists).
-async fn ensure_label(
-    client: &reqwest::Client,
-    token: &str,
-    label: &str,
-) -> Result<(), String> {
+async fn ensure_label(client: &reqwest::Client, token: &str, label: &str) -> Result<(), String> {
     let response = client
         .post(format!(
             "https://api.github.com/repos/{}/labels",
@@ -119,4 +119,3 @@ async fn ensure_label(
         Err(format!("Failed to create label: {}", status))
     }
 }
-

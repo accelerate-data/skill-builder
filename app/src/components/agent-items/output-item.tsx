@@ -8,6 +8,7 @@ import type { DisplayItem } from "@/lib/display-types";
 
 export function OutputItem({ item }: { item: DisplayItem }) {
   const text = item.outputText ?? "";
+  if (text.length === 0) return null;
   const summary = text.length > 60 ? text.slice(0, 60) + "..." : text;
 
   return (
@@ -19,8 +20,8 @@ export function OutputItem({ item }: { item: DisplayItem }) {
       borderColor="var(--color-pacific)"
       defaultExpanded={true}
     >
-      <ErrorBoundary fallback={<pre className="whitespace-pre-wrap text-sm">{text}</pre>}>
-        <div className="markdown-body compact">
+      <ErrorBoundary fallback={<pre className="whitespace-pre-wrap break-words text-sm">{text}</pre>}>
+        <div className="markdown-body compact agent-markdown">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
             {text}
           </ReactMarkdown>

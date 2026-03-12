@@ -7,9 +7,11 @@ const EXPECTED_AGENTS = [
   "answer-evaluator",
   "confirm-decisions",
   "detailed-research",
+  "eval-skill",
   "generate-skill",
   "refine-skill",
   "research-orchestrator",
+  "validate-quality",
   "validate-skill",
 ];
 
@@ -91,19 +93,10 @@ describe("canonical format compliance", () => {
 // ── Read-directive compliance ───────────────────────────────────────────────
 
 describe("read directive compliance", () => {
-  // validate-skill/SKILL.md is excluded: it is a pure orchestrator that
-  // spawns sub-agents for all file reads. Progressive discovery is enforced
-  // by the spec files below, not by the orchestrator itself.
   const TARGET_FILES = [
     path.join(AGENTS_DIR, "generate-skill.md"),
-    path.join(
-      REPO_ROOT,
-      "agent-sources/skills/validate-skill/references/validate-quality.md"
-    ),
-    path.join(
-      REPO_ROOT,
-      "agent-sources/skills/validate-skill/references/eval-skill.md"
-    ),
+    path.join(AGENTS_DIR, "validate-quality.md"),
+    path.join(AGENTS_DIR, "eval-skill.md"),
   ];
 
   const bannedPatterns: Array<[string, RegExp]> = [

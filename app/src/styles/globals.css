@@ -522,6 +522,53 @@
   text-underline-offset: 2px;
 }
 
+/* Left-panel agent output needs tighter wrapping than document preview. */
+.markdown-body.compact.agent-markdown {
+  overflow-x: hidden;
+}
+
+.markdown-body.compact.agent-markdown ul,
+.markdown-body.compact.agent-markdown ol {
+  padding-left: 1.2em;
+}
+
+.markdown-body.compact.agent-markdown li {
+  margin-bottom: 0.1em;
+}
+
+.markdown-body.compact.agent-markdown code:not(pre code) {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Code blocks and tables must not push the chat panel wider */
+.markdown-body.compact.agent-markdown pre {
+  overflow-x: auto;
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.markdown-body.compact.agent-markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/*
+ * Radix ScrollArea viewport wraps children in <div style="display: table; min-width: 100%">.
+ * Table layout expands to content width, making w-full children wider than the panel.
+ * Override to block layout for the chat scroll area so children stay within panel bounds.
+ * Also force overflowX: hidden since Radix sets it via inline style that beats classes.
+ */
+.chat-scroll-viewport > [data-radix-scroll-area-viewport] > div {
+  display: block !important;
+  min-width: 0 !important;
+}
+.chat-scroll-viewport > [data-radix-scroll-area-viewport] {
+  overflow-x: hidden !important;
+}
+
 /* Safety net for minimum dimensions (Tauri enforces via minWidth/minHeight) */
 html, body, #root {
   min-width: 900px;

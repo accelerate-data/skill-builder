@@ -36,7 +36,12 @@ pub fn get_skill_diff(
     sha_b: String,
     db: tauri::State<'_, Db>,
 ) -> Result<SkillDiff, String> {
-    log::info!("[get_skill_diff] skill={} sha_a={} sha_b={}", skill_name, sha_a, sha_b);
+    log::info!(
+        "[get_skill_diff] skill={} sha_a={} sha_b={}",
+        skill_name,
+        sha_a,
+        sha_b
+    );
     let output_root = resolve_output_root(&db, &workspace_path)?;
     crate::git::get_diff(Path::new(&output_root), &sha_a, &sha_b, &skill_name)
 }

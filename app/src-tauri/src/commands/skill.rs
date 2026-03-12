@@ -56,10 +56,7 @@ fn list_skills_inner(
     let mut skills: Vec<SkillSummary> = master_skills
         .into_iter()
         .map(|master| {
-            let tags = tags_map
-                .get(&master.name)
-                .cloned()
-                .unwrap_or_default();
+            let tags = tags_map.get(&master.name).cloned().unwrap_or_default();
 
             if master.skill_source == "skill-builder" {
                 // For skill-builder: workflow_runs provides step state and workflow-specific fields.
@@ -228,7 +225,14 @@ pub fn create_skill(
     disable_model_invocation: Option<bool>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[create_skill] name={} purpose={:?} tags={:?} intake={} description={}", name, purpose, tags, intake_json.is_some(), description.is_some());
+    log::info!(
+        "[create_skill] name={} purpose={:?} tags={:?} intake={} description={}",
+        name,
+        purpose,
+        tags,
+        intake_json.is_some(),
+        description.is_some()
+    );
     super::imported_skills::validate_skill_name(&name)?;
     let conn = db.0.lock().map_err(|e| {
         log::error!("[create_skill] Failed to acquire DB lock: {}", e);
@@ -385,15 +389,13 @@ pub fn delete_skill(
 
     // DB cleanup works even without skills_path; only filesystem cleanup needs it
     if skills_path.is_none() {
-        log::warn!("[delete_skill] skills_path not configured; skipping filesystem cleanup for '{}'", name);
+        log::warn!(
+            "[delete_skill] skills_path not configured; skipping filesystem cleanup for '{}'",
+            name
+        );
     }
 
-    delete_skill_inner(
-        &workspace_path,
-        &name,
-        Some(&conn),
-        skills_path.as_deref(),
-    )
+    delete_skill_inner(&workspace_path, &name, Some(&conn), skills_path.as_deref())
 }
 
 fn delete_skill_inner(
@@ -404,7 +406,9 @@ fn delete_skill_inner(
 ) -> Result<(), String> {
     log::info!(
         "[delete_skill] skill={} workspace={} skills_path={:?}",
-        name, workspace_path, skills_path
+        name,
+        workspace_path,
+        skills_path
     );
 
     let base = Path::new(workspace_path).join(name);
@@ -430,15 +434,20 @@ fn delete_skill_inner(
             let canonical_sp = fs::canonicalize(sp).map_err(|e| e.to_string())?;
             let canonical_out = fs::canonicalize(&output_dir).map_err(|e| e.to_string())?;
             if !canonical_out.starts_with(&canonical_sp) {
-                log::error!("[delete_skill] Path traversal attempt on skills_path: {}", name);
+                log::error!(
+                    "[delete_skill] Path traversal attempt on skills_path: {}",
+                    name
+                );
                 return Err("Invalid skill path: path traversal not allowed".to_string());
             }
-            fs::remove_dir_all(&output_dir).map_err(|e| {
-                format!("Failed to delete skill output for '{}': {}", name, e)
-            })?;
+            fs::remove_dir_all(&output_dir)
+                .map_err(|e| format!("Failed to delete skill output for '{}': {}", name, e))?;
             log::info!("[delete_skill] deleted output dir {}", output_dir.display());
         } else {
-            log::info!("[delete_skill] output dir not found: {}", output_dir.display());
+            log::info!(
+                "[delete_skill] output dir not found: {}",
+                output_dir.display()
+            );
         }
     } else {
         log::info!("[delete_skill] no skills_path configured, skipping output dir cleanup");
@@ -460,11 +469,17 @@ fn delete_skill_inner(
             .is_some();
         if has_workflow_run {
             crate::db::delete_workflow_run(conn, name)?;
-            log::info!("[delete_skill] workflow run DB records cleaned for {}", name);
+            log::info!(
+                "[delete_skill] workflow run DB records cleaned for {}",
+                name
+            );
         } else {
             crate::db::delete_imported_skill_by_name(conn, name)?;
             crate::db::delete_skill(conn, name)?;
-            log::info!("[delete_skill] imported skill DB records cleaned for {}", name);
+            log::info!(
+                "[delete_skill] imported skill DB records cleaned for {}",
+                name
+            );
         }
     }
 
@@ -496,12 +511,13 @@ pub fn get_all_tags(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-pub fn get_installed_skill_names(
-    db: tauri::State<'_, Db>,
-) -> Result<Vec<String>, String> {
+pub fn get_installed_skill_names(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
     log::info!("[get_installed_skill_names]");
     let conn = db.0.lock().map_err(|e| {
-        log::error!("[get_installed_skill_names] Failed to acquire DB lock: {}", e);
+        log::error!(
+            "[get_installed_skill_names] Failed to acquire DB lock: {}",
+            e
+        );
         e.to_string()
     })?;
     crate::db::get_all_installed_skill_names(&conn)
@@ -536,9 +552,7 @@ pub fn release_lock(
 }
 
 #[tauri::command]
-pub fn get_locked_skills(
-    db: tauri::State<'_, Db>,
-) -> Result<Vec<crate::types::SkillLock>, String> {
+pub fn get_locked_skills(db: tauri::State<'_, Db>) -> Result<Vec<crate::types::SkillLock>, String> {
     log::info!("[get_locked_skills]");
     let conn = db.0.lock().map_err(|e| {
         log::error!("[get_locked_skills] Failed to acquire DB lock: {}", e);
@@ -590,7 +604,14 @@ pub fn update_skill_metadata(
     disable_model_invocation: Option<bool>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[update_skill_metadata] skill={} purpose={:?} tags={:?} intake={} description={}", skill_name, purpose, tags, intake_json.is_some(), description.is_some());
+    log::info!(
+        "[update_skill_metadata] skill={} purpose={:?} tags={:?} intake={} description={}",
+        skill_name,
+        purpose,
+        tags,
+        intake_json.is_some(),
+        description.is_some()
+    );
     let conn = db.0.lock().map_err(|e| {
         log::error!("[update_skill_metadata] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -608,8 +629,12 @@ pub fn update_skill_metadata(
         conn.execute(
             "UPDATE skills SET purpose = ?2, updated_at = datetime('now') WHERE name = ?1",
             rusqlite::params![skill_name, p],
-        ).map_err(|e| {
-            log::error!("[update_skill_metadata] Failed to update skills.purpose: {}", e);
+        )
+        .map_err(|e| {
+            log::error!(
+                "[update_skill_metadata] Failed to update skills.purpose: {}",
+                e
+            );
             e.to_string()
         })?;
     }
@@ -641,8 +666,12 @@ pub fn update_skill_metadata(
             argument_hint.as_deref(),
             user_invocable,
             disable_model_invocation,
-        ).map_err(|e| {
-            log::error!("[update_skill_metadata] Failed to set behaviour fields: {}", e);
+        )
+        .map_err(|e| {
+            log::error!(
+                "[update_skill_metadata] Failed to set behaviour fields: {}",
+                e
+            );
             e
         })?;
     }
@@ -655,7 +684,9 @@ fn is_valid_kebab(name: &str) -> bool {
         && !name.starts_with('-')
         && !name.ends_with('-')
         && !name.contains("--")
-        && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 #[tauri::command]
@@ -669,7 +700,9 @@ pub fn rename_skill(
 
     if !is_valid_kebab(&new_name) {
         log::error!("[rename_skill] Invalid kebab-case name: {}", new_name);
-        return Err("Skill name must be kebab-case (lowercase letters, numbers, hyphens)".to_string());
+        return Err(
+            "Skill name must be kebab-case (lowercase letters, numbers, hyphens)".to_string(),
+        );
     }
 
     if old_name == new_name {
@@ -685,7 +718,13 @@ pub fn rename_skill(
     let settings = crate::db::read_settings(&conn).ok();
     let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
 
-    rename_skill_inner(&old_name, &new_name, &workspace_path, &mut conn, skills_path.as_deref())?;
+    rename_skill_inner(
+        &old_name,
+        &new_name,
+        &workspace_path,
+        &mut conn,
+        skills_path.as_deref(),
+    )?;
 
     // Auto-commit: skill renamed
     if let Some(ref sp) = skills_path {
@@ -733,7 +772,8 @@ fn rename_skill_inner(
         tx.execute(
             "UPDATE skills SET name = ?2, updated_at = datetime('now') WHERE name = ?1",
             rusqlite::params![old_name, new_name],
-        ).map_err(&tx_err)?;
+        )
+        .map_err(&tx_err)?;
 
         // workflow_runs.skill_name is TEXT UNIQUE NOT NULL used for display/lookup — update it.
         tx.execute(
@@ -745,33 +785,40 @@ fn rename_skill_inner(
         tx.execute(
             "UPDATE workflow_sessions SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
-        ).map_err(&tx_err)?;
+        )
+        .map_err(&tx_err)?;
 
         // These child tables still carry skill_name TEXT for read queries — keep them in sync.
         tx.execute(
             "UPDATE workflow_steps SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
-        ).map_err(&tx_err)?;
+        )
+        .map_err(&tx_err)?;
         tx.execute(
             "UPDATE workflow_artifacts SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
-        ).map_err(&tx_err)?;
+        )
+        .map_err(&tx_err)?;
         tx.execute(
             "UPDATE agent_runs SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
-        ).map_err(&tx_err)?;
+        )
+        .map_err(&tx_err)?;
         tx.execute(
             "UPDATE skill_tags SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
-        ).map_err(&tx_err)?;
+        )
+        .map_err(&tx_err)?;
         tx.execute(
             "UPDATE imported_skills SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
-        ).map_err(&tx_err)?;
+        )
+        .map_err(&tx_err)?;
         tx.execute(
             "UPDATE skill_locks SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
-        ).map_err(&tx_err)?;
+        )
+        .map_err(&tx_err)?;
 
         tx.commit().map_err(&tx_err)?;
     }
@@ -846,7 +893,9 @@ pub async fn generate_suggestions(
 ) -> Result<FieldSuggestions, String> {
     log::info!(
         "[generate_suggestions] skill={} purpose={} fields={:?}",
-        skill_name, purpose, fields
+        skill_name,
+        purpose,
+        fields
     );
 
     let api_key = {
@@ -870,8 +919,14 @@ pub async fn generate_suggestions(
     let readable_name = skill_name.replace('-', " ");
 
     let context_parts: Vec<String> = [
-        industry.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Industry: {}", s)),
-        function_role.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Role: {}", s)),
+        industry
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(|s| format!("Industry: {}", s)),
+        function_role
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(|s| format!("Role: {}", s)),
     ]
     .into_iter()
     .flatten()
@@ -885,10 +940,22 @@ pub async fn generate_suggestions(
 
     // Build skill detail context from prior fields
     let detail_parts: Vec<String> = [
-        domain.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Domain: {}", s)),
-        scope.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Scope: {}", s)),
-        audience.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Target audience: {}", s)),
-        challenges.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Key challenges: {}", s)),
+        domain
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(|s| format!("Domain: {}", s)),
+        scope
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(|s| format!("Scope: {}", s)),
+        audience
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(|s| format!("Target audience: {}", s)),
+        challenges
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(|s| format!("Key challenges: {}", s)),
     ]
     .into_iter()
     .flatten()
@@ -916,7 +983,16 @@ pub async fn generate_suggestions(
     };
 
     // Determine which fields to generate (default: all)
-    let all_fields = vec!["description", "domain", "scope", "audience", "challenges", "unique_setup", "claude_mistakes", "context_questions"];
+    let all_fields = vec![
+        "description",
+        "domain",
+        "scope",
+        "audience",
+        "challenges",
+        "unique_setup",
+        "claude_mistakes",
+        "context_questions",
+    ];
     let requested: Vec<&str> = fields
         .as_ref()
         .map(|f| f.iter().map(|s| s.as_str()).collect())
@@ -1000,15 +1076,16 @@ pub async fn generate_suggestions(
     }
 
     let body: serde_json::Value = resp.json().await.map_err(|e| {
-        log::error!("[generate_suggestions] Failed to parse response JSON: {}", e);
+        log::error!(
+            "[generate_suggestions] Failed to parse response JSON: {}",
+            e
+        );
         e.to_string()
     })?;
-    let text = body["content"][0]["text"]
-        .as_str()
-        .ok_or_else(|| {
-            log::error!("[generate_suggestions] No text in API response");
-            "No text in API response".to_string()
-        })?;
+    let text = body["content"][0]["text"].as_str().ok_or_else(|| {
+        log::error!("[generate_suggestions] No text in API response");
+        "No text in API response".to_string()
+    })?;
 
     log::debug!("[generate_suggestions] raw response={}", text);
 
@@ -1020,15 +1097,15 @@ pub async fn generate_suggestions(
         .unwrap_or(cleaned);
     let cleaned = cleaned.strip_suffix("```").unwrap_or(cleaned).trim();
 
-    let suggestions: serde_json::Value =
-        serde_json::from_str(cleaned).map_err(|e| {
-            log::error!("[generate_suggestions] Failed to parse suggestions: raw text={}", text);
-            format!("Failed to parse suggestions: {}", e)
-        })?;
+    let suggestions: serde_json::Value = serde_json::from_str(cleaned).map_err(|e| {
+        log::error!(
+            "[generate_suggestions] Failed to parse suggestions: raw text={}",
+            text
+        );
+        format!("Failed to parse suggestions: {}", e)
+    })?;
 
-    let field = |key: &str| -> String {
-        suggestions[key].as_str().unwrap_or("").to_string()
-    };
+    let field = |key: &str| -> String { suggestions[key].as_str().unwrap_or("").to_string() };
 
     Ok(FieldSuggestions {
         description: field("description"),
@@ -1054,24 +1131,22 @@ mod tests {
     #[test]
     fn test_list_skills_db_primary_returns_db_records() {
         let conn = create_test_db();
-        crate::db::save_workflow_run(&conn, "skill-a", 3, "in_progress", "domain")
-            .unwrap();
-        crate::db::save_workflow_run(&conn, "skill-b", 0, "pending", "platform")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "skill-a", 3, "in_progress", "domain").unwrap();
+        crate::db::save_workflow_run(&conn, "skill-b", 0, "pending", "platform").unwrap();
 
         let skills = list_skills_inner("/unused", None, &conn).unwrap();
         assert_eq!(skills.len(), 2);
 
         // Find skill-a
         let a = skills.iter().find(|s| s.name == "skill-a").unwrap();
-        
+
         assert_eq!(a.current_step.as_deref(), Some("Step 3"));
         assert_eq!(a.status.as_deref(), Some("in_progress"));
         assert_eq!(a.purpose.as_deref(), Some("domain"));
 
         // Find skill-b
         let b = skills.iter().find(|s| s.name == "skill-b").unwrap();
-        
+
         assert_eq!(b.current_step.as_deref(), Some("Step 0"));
         assert_eq!(b.status.as_deref(), Some("pending"));
         assert_eq!(b.purpose.as_deref(), Some("platform"));
@@ -1087,8 +1162,7 @@ mod tests {
     #[test]
     fn test_list_skills_db_primary_includes_tags() {
         let conn = create_test_db();
-        crate::db::save_workflow_run(&conn, "tagged-skill", 2, "pending", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "tagged-skill", 2, "pending", "domain").unwrap();
         crate::db::set_skill_tags(
             &conn,
             "tagged-skill",
@@ -1117,14 +1191,12 @@ mod tests {
         // This test proves that list_skills_inner works without any filesystem
         // by using a nonexistent workspace path. The DB is the sole data source.
         let conn = create_test_db();
-        crate::db::save_workflow_run(&conn, "no-disk-skill", 5, "completed", "source")
-        .unwrap();
+        crate::db::save_workflow_run(&conn, "no-disk-skill", 5, "completed", "source").unwrap();
 
-        let skills =
-            list_skills_inner("/this/path/does/not/exist/at/all", None, &conn).unwrap();
+        let skills = list_skills_inner("/this/path/does/not/exist/at/all", None, &conn).unwrap();
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "no-disk-skill");
-        
+
         assert_eq!(skills[0].current_step.as_deref(), Some("Step 5"));
     }
 
@@ -1152,13 +1224,29 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
         let conn = create_test_db();
 
-        create_skill_inner(workspace, "my-skill", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None)
-            .unwrap();
+        create_skill_inner(
+            workspace,
+            "my-skill",
+            None,
+            None,
+            Some(&conn),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         let skills = list_skills_inner(workspace, None, &conn).unwrap();
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "my-skill");
-        
+
         assert_eq!(skills[0].status.as_deref(), Some("pending"));
     }
 
@@ -1167,8 +1255,41 @@ mod tests {
         let dir = tempdir().unwrap();
         let workspace = dir.path().to_str().unwrap();
 
-        create_skill_inner(workspace, "dup-skill", None, None, None, None, None, None, None, None, None, None, None, None, None).unwrap();
-        let result = create_skill_inner(workspace, "dup-skill", None, None, None, None, None, None, None, None, None, None, None, None, None);
+        create_skill_inner(
+            workspace,
+            "dup-skill",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let result = create_skill_inner(
+            workspace,
+            "dup-skill",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("already exists"));
     }
@@ -1205,21 +1326,8 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
 
         let result = create_skill_inner(
-            workspace,
-            "bad/name",
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
+            workspace, "bad/name", None, None, None, None, None, None, None, None, None, None,
+            None, None, None,
         );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid skill name"));
@@ -1231,20 +1339,7 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
 
         let result = create_skill_inner(
-            workspace,
-            "",
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
+            workspace, "", None, None, None, None, None, None, None, None, None, None, None, None,
             None,
         );
         assert!(result.is_err());
@@ -1257,20 +1352,7 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
 
         let result = create_skill_inner(
-            workspace,
-            ".",
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
+            workspace, ".", None, None, None, None, None, None, None, None, None, None, None, None,
             None,
         );
         assert!(result.is_err());
@@ -1311,8 +1393,24 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
         let conn = create_test_db();
 
-        create_skill_inner(workspace, "to-delete", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None)
-            .unwrap();
+        create_skill_inner(
+            workspace,
+            "to-delete",
+            None,
+            None,
+            Some(&conn),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         let skills = list_skills_inner(workspace, None, &conn).unwrap();
         assert_eq!(skills.len(), 1);
@@ -1337,7 +1435,9 @@ mod tests {
 
         // Create skill in workspace
         create_skill_inner(
-            workspace, "full-delete", None,
+            workspace,
+            "full-delete",
+            None,
             None,
             Some(&conn),
             Some(skills_path),
@@ -1378,7 +1478,9 @@ mod tests {
 
         // Create skill with DB records
         create_skill_inner(
-            workspace, "db-cleanup", Some(&["tag1".into(), "tag2".into()]),
+            workspace,
+            "db-cleanup",
+            Some(&["tag1".into(), "tag2".into()]),
             Some("platform"),
             Some(&conn),
             None,
@@ -1398,11 +1500,13 @@ mod tests {
         crate::db::save_workflow_step(&conn, "db-cleanup", 0, "completed").unwrap();
 
         // Add workflow artifact with FK populated
-        let wr_id: i64 = conn.query_row(
-            "SELECT id FROM workflow_runs WHERE skill_name = 'db-cleanup'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let wr_id: i64 = conn
+            .query_row(
+                "SELECT id FROM workflow_runs WHERE skill_name = 'db-cleanup'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         conn.execute(
             "INSERT INTO workflow_artifacts (skill_name, workflow_run_id, step_id, relative_path, content, size_bytes) VALUES ('db-cleanup', ?1, 0, 'test.md', '# Test', 6)",
             rusqlite::params![wr_id],
@@ -1410,11 +1514,13 @@ mod tests {
         .unwrap();
 
         // Add skill lock with skill_id FK populated
-        let s_id: i64 = conn.query_row(
-            "SELECT id FROM skills WHERE name = 'db-cleanup'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let s_id: i64 = conn
+            .query_row(
+                "SELECT id FROM skills WHERE name = 'db-cleanup'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         conn.execute(
             "INSERT INTO skill_locks (skill_name, skill_id, instance_id, pid) VALUES ('db-cleanup', ?1, 'inst-1', 12345)",
             rusqlite::params![s_id],
@@ -1430,8 +1536,7 @@ mod tests {
         assert!(crate::db::get_workflow_steps(&conn, "db-cleanup")
             .unwrap()
             .is_empty());
-        let tags = crate::db::get_tags_for_skills(&conn, &["db-cleanup".into()])
-            .unwrap();
+        let tags = crate::db::get_tags_for_skills(&conn, &["db-cleanup".into()]).unwrap();
         assert!(tags.get("db-cleanup").is_none());
 
         // Verify workflow artifacts are cleaned up
@@ -1470,8 +1575,7 @@ mod tests {
         fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
         // Add DB record
-        crate::db::save_workflow_run(&conn, "orphan-output", 7, "completed", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "orphan-output", 7, "completed", "domain").unwrap();
 
         delete_skill_inner(workspace, "orphan-output", Some(&conn), Some(skills_path)).unwrap();
 
@@ -1513,7 +1617,24 @@ mod tests {
         // Create a symlink or sibling that the ".." traversal would resolve to
         // The workspace has a dir that resolves outside via ".."
         // workspace/legit is a real skill
-        create_skill_inner(workspace_str, "legit", None, None, None, None, None, None, None, None, None, None, None, None, None).unwrap();
+        create_skill_inner(
+            workspace_str,
+            "legit",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         // Attempt to delete using ".." to escape the workspace
         // This creates workspace/../outside-target which resolves to outside_dir
@@ -1543,7 +1664,10 @@ mod tests {
         // Attempt to delete using ".." to escape the skills_path
         // This creates skills/../outside-target which resolves to outside_dir
         let result = delete_skill_inner(workspace, "../outside-target", None, Some(skills_path));
-        assert!(result.is_err(), "Directory traversal on skills_path should be rejected");
+        assert!(
+            result.is_err(),
+            "Directory traversal on skills_path should be rejected"
+        );
         assert!(
             result.unwrap_err().contains("path traversal not allowed"),
             "Error message should mention path traversal"
@@ -1585,30 +1709,43 @@ mod tests {
 
         // Verify setup: no workflow_run, but skills + imported_skills rows exist
         let wf_id = crate::db::get_workflow_run_id(&conn, "mkt-skill").unwrap();
-        assert!(wf_id.is_none(), "Marketplace skill should have no workflow_run");
+        assert!(
+            wf_id.is_none(),
+            "Marketplace skill should have no workflow_run"
+        );
 
-        let skill_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM skills WHERE name = 'mkt-skill'", [], |r| r.get(0)
-        ).unwrap();
+        let skill_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM skills WHERE name = 'mkt-skill'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(skill_count, 1);
 
         // Delete via delete_skill_inner
         delete_skill_inner(workspace, "mkt-skill", Some(&conn), None).unwrap();
 
         // skills master row is soft-deleted (deleted_at set), imported_skills row is removed
-        let deleted_at: Option<String> = conn.query_row(
-            "SELECT deleted_at FROM skills WHERE name = 'mkt-skill'",
-            [],
-            |r| r.get(0),
-        ).unwrap();
+        let deleted_at: Option<String> = conn
+            .query_row(
+                "SELECT deleted_at FROM skills WHERE name = 'mkt-skill'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert!(
             deleted_at.as_deref().is_some_and(|v| !v.is_empty()),
             "skills master row should be soft-deleted",
         );
 
-        let imported_after: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'mkt-skill'", [], |r| r.get(0)
-        ).unwrap();
+        let imported_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'mkt-skill'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(imported_after, 0, "imported_skills row should be deleted");
     }
 
@@ -1619,11 +1756,31 @@ mod tests {
         let conn = create_test_db();
 
         // create_skill_inner inserts into skills (skill_source="skill-builder") + workflow_runs
-        create_skill_inner(workspace, "builder-skill", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None).unwrap();
+        create_skill_inner(
+            workspace,
+            "builder-skill",
+            None,
+            None,
+            Some(&conn),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         // Verify setup: workflow_run exists
         let wf_id = crate::db::get_workflow_run_id(&conn, "builder-skill").unwrap();
-        assert!(wf_id.is_some(), "skill-builder skill should have workflow_run");
+        assert!(
+            wf_id.is_some(),
+            "skill-builder skill should have workflow_run"
+        );
 
         delete_skill_inner(workspace, "builder-skill", Some(&conn), None).unwrap();
 
@@ -1632,11 +1789,13 @@ mod tests {
         assert!(wf_after.is_none(), "workflow_run should be deleted");
 
         // skills master row should be soft-deleted
-        let deleted_at: Option<String> = conn.query_row(
-            "SELECT deleted_at FROM skills WHERE name = 'builder-skill'",
-            [],
-            |r| r.get(0),
-        ).unwrap();
+        let deleted_at: Option<String> = conn
+            .query_row(
+                "SELECT deleted_at FROM skills WHERE name = 'builder-skill'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert!(
             deleted_at.as_deref().is_some_and(|v| !v.is_empty()),
             "skills master row should be soft-deleted",
@@ -1665,21 +1824,36 @@ mod tests {
         rename_skill_inner("imp-skill", "imp-skill-renamed", workspace, &mut conn, None).unwrap();
 
         // skills master should be renamed
-        let master_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM skills WHERE name = 'imp-skill-renamed'", [], |r| r.get(0)
-        ).unwrap();
+        let master_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM skills WHERE name = 'imp-skill-renamed'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(master_count, 1, "skills master should have new name");
 
         // imported_skills.skill_name should also be updated
-        let imported_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'imp-skill-renamed'", [], |r| r.get(0)
-        ).unwrap();
-        assert_eq!(imported_count, 1, "imported_skills.skill_name should be updated");
+        let imported_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'imp-skill-renamed'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            imported_count, 1,
+            "imported_skills.skill_name should be updated"
+        );
 
         // Old name should be gone from imported_skills
-        let old_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'imp-skill'", [], |r| r.get(0)
-        ).unwrap();
+        let old_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'imp-skill'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(old_count, 0, "old imported_skills name should be gone");
     }
 
@@ -1696,7 +1870,9 @@ mod tests {
         fs::create_dir_all(Path::new(workspace).join("colliding-skill")).unwrap();
 
         let result = create_skill_inner(
-            workspace, "colliding-skill", None,
+            workspace,
+            "colliding-skill",
+            None,
             None,
             None,
             Some(skills_path),
@@ -1712,8 +1888,16 @@ mod tests {
         );
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("already exists"), "Error should mention 'already exists': {}", err);
-        assert!(err.contains("workspace directory"), "Error should mention 'workspace directory': {}", err);
+        assert!(
+            err.contains("already exists"),
+            "Error should mention 'already exists': {}",
+            err
+        );
+        assert!(
+            err.contains("workspace directory"),
+            "Error should mention 'workspace directory': {}",
+            err
+        );
     }
 
     #[test]
@@ -1727,7 +1911,9 @@ mod tests {
         fs::create_dir_all(Path::new(skills_path).join("colliding-skill")).unwrap();
 
         let result = create_skill_inner(
-            workspace, "colliding-skill", None,
+            workspace,
+            "colliding-skill",
+            None,
             None,
             None,
             Some(skills_path),
@@ -1743,8 +1929,16 @@ mod tests {
         );
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("already exists"), "Error should mention 'already exists': {}", err);
-        assert!(err.contains("skills output directory"), "Error should mention 'skills output directory': {}", err);
+        assert!(
+            err.contains("already exists"),
+            "Error should mention 'already exists': {}",
+            err
+        );
+        assert!(
+            err.contains("skills output directory"),
+            "Error should mention 'skills output directory': {}",
+            err
+        );
     }
 
     #[test]
@@ -1756,7 +1950,9 @@ mod tests {
 
         // Neither workspace nor skills_path has the skill directory
         let result = create_skill_inner(
-            workspace, "new-skill", None,
+            workspace,
+            "new-skill",
+            None,
             None,
             None,
             Some(skills_path),
@@ -1779,7 +1975,10 @@ mod tests {
         let skill_output = Path::new(skills_path).join("new-skill");
         assert!(skill_output.join("references").exists());
         // Context is workspace-owned.
-        assert!(Path::new(workspace).join("new-skill").join("context").exists());
+        assert!(Path::new(workspace)
+            .join("new-skill")
+            .join("context")
+            .exists());
     }
 
     #[test]
@@ -1788,7 +1987,24 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
 
         // Create a skill
-        create_skill_inner(workspace, "skill-with-logs", None, None, None, None, None, None, None, None, None, None, None, None, None).unwrap();
+        create_skill_inner(
+            workspace,
+            "skill-with-logs",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         // Add a logs/ subdirectory with a fake log file inside the skill directory
         let skill_dir = dir.path().join("skill-with-logs");
@@ -1824,7 +2040,9 @@ mod tests {
 
         crate::db::set_skill_display_name(&conn, "meta-skill", Some("Pretty Name")).unwrap();
 
-        let row = crate::db::get_workflow_run(&conn, "meta-skill").unwrap().unwrap();
+        let row = crate::db::get_workflow_run(&conn, "meta-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(row.display_name.as_deref(), Some("Pretty Name"));
     }
 
@@ -1838,7 +2056,9 @@ mod tests {
             rusqlite::params!["type-skill", "platform"],
         ).unwrap();
 
-        let row = crate::db::get_workflow_run(&conn, "type-skill").unwrap().unwrap();
+        let row = crate::db::get_workflow_run(&conn, "type-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(row.purpose, "platform");
     }
 
@@ -1861,7 +2081,9 @@ mod tests {
         let json = r#"{"audience":"Engineers","challenges":"Scale","scope":"Backend"}"#;
         crate::db::set_skill_intake(&conn, "intake-skill", Some(json)).unwrap();
 
-        let row = crate::db::get_workflow_run(&conn, "intake-skill").unwrap().unwrap();
+        let row = crate::db::get_workflow_run(&conn, "intake-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(row.intake_json.as_deref(), Some(json));
     }
 
@@ -1879,7 +2101,9 @@ mod tests {
         crate::db::set_skill_tags(&conn, "full-meta", &["api".into(), "rest".into()]).unwrap();
         crate::db::set_skill_intake(&conn, "full-meta", Some(r#"{"audience":"Devs"}"#)).unwrap();
 
-        let row = crate::db::get_workflow_run(&conn, "full-meta").unwrap().unwrap();
+        let row = crate::db::get_workflow_run(&conn, "full-meta")
+            .unwrap()
+            .unwrap();
         assert_eq!(row.display_name.as_deref(), Some("Full Metadata"));
         assert_eq!(row.purpose, "source");
         assert_eq!(row.intake_json.as_deref(), Some(r#"{"audience":"Devs"}"#));
@@ -1897,15 +2121,13 @@ mod tests {
         let conn = create_test_db();
 
         // Create a completed skill with SKILL.md on disk
-        crate::db::save_workflow_run(&conn, "ready-skill", 7, "completed", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "ready-skill", 7, "completed", "domain").unwrap();
         let skill_dir = dir.path().join("ready-skill");
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(skill_dir.join("SKILL.md"), "# Ready").unwrap();
 
         // Create an in-progress skill (should be excluded)
-        crate::db::save_workflow_run(&conn, "wip-skill", 3, "in_progress", "domain")
-        .unwrap();
+        crate::db::save_workflow_run(&conn, "wip-skill", 3, "in_progress", "domain").unwrap();
 
         let result = list_refinable_skills_inner("/unused", skills_path, &conn).unwrap();
         assert_eq!(result.len(), 1);
@@ -1919,8 +2141,7 @@ mod tests {
         let conn = create_test_db();
 
         // Completed in DB but no SKILL.md on disk
-        crate::db::save_workflow_run(&conn, "no-file", 7, "completed", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "no-file", 7, "completed", "domain").unwrap();
 
         let result = list_refinable_skills_inner("/unused", skills_path, &conn).unwrap();
         assert!(result.is_empty());
@@ -1950,7 +2171,9 @@ mod tests {
         assert!(result.unwrap_err().contains("not found in skills master"));
 
         // No row should exist
-        assert!(crate::db::get_workflow_run(&conn, "ghost").unwrap().is_none());
+        assert!(crate::db::get_workflow_run(&conn, "ghost")
+            .unwrap()
+            .is_none());
     }
 
     // ===== rename_skill tests =====
@@ -1976,14 +2199,34 @@ mod tests {
 
         // Create skill with workspace dir, skills dir, DB record, tags, and steps
         create_skill_inner(
-            workspace, "old-name", Some(&["tag-a".into(), "tag-b".into()]),
-            Some("domain"), Some(&conn), Some(skills_path),
-            None, None, None, None, None, None, None, None, None,
-        ).unwrap();
+            workspace,
+            "old-name",
+            Some(&["tag-a".into(), "tag-b".into()]),
+            Some("domain"),
+            Some(&conn),
+            Some(skills_path),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         crate::db::save_workflow_step(&conn, "old-name", 0, "completed").unwrap();
 
         // Rename
-        rename_skill_inner("old-name", "new-name", workspace, &mut conn, Some(skills_path)).unwrap();
+        rename_skill_inner(
+            "old-name",
+            "new-name",
+            workspace,
+            &mut conn,
+            Some(skills_path),
+        )
+        .unwrap();
 
         // Workspace dirs moved
         assert!(!Path::new(workspace).join("old-name").exists());
@@ -1994,9 +2237,13 @@ mod tests {
         assert!(Path::new(skills_path).join("new-name").exists());
 
         // DB: old record gone, new record present with same data
-        assert!(crate::db::get_workflow_run(&conn, "old-name").unwrap().is_none());
-        let row = crate::db::get_workflow_run(&conn, "new-name").unwrap().unwrap();
-        
+        assert!(crate::db::get_workflow_run(&conn, "old-name")
+            .unwrap()
+            .is_none());
+        let row = crate::db::get_workflow_run(&conn, "new-name")
+            .unwrap()
+            .unwrap();
+
         assert_eq!(row.purpose, "domain");
 
         // Tags migrated
@@ -2056,19 +2303,56 @@ mod tests {
         let mut conn = create_test_db();
 
         // Create two skills in DB
-        create_skill_inner(workspace, "skill-a", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None).unwrap();
-        create_skill_inner(workspace, "skill-b", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None).unwrap();
+        create_skill_inner(
+            workspace,
+            "skill-a",
+            None,
+            None,
+            Some(&conn),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        create_skill_inner(
+            workspace,
+            "skill-b",
+            None,
+            None,
+            Some(&conn),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         // Attempt to rename skill-a to skill-b (collision)
         let result = rename_skill_inner("skill-a", "skill-b", workspace, &mut conn, None);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("already exists"), "Error should mention collision: {}", err);
+        assert!(
+            err.contains("already exists"),
+            "Error should mention collision: {}",
+            err
+        );
 
         // Original skill should be untouched
         let row = crate::db::get_workflow_run(&conn, "skill-a").unwrap();
         assert!(row.is_some(), "skill-a workflow row should still exist");
-        
     }
 
     #[test]
@@ -2084,7 +2368,24 @@ mod tests {
         let mut conn = create_test_db();
         let workspace_dir = tempdir().unwrap();
         let workspace = workspace_dir.path().to_str().unwrap();
-        create_skill_inner(workspace, "same-name", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None).unwrap();
+        create_skill_inner(
+            workspace,
+            "same-name",
+            None,
+            None,
+            Some(&conn),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         // rename_skill_inner with same name hits the "already exists" check in DB,
         // confirming the early-return in the wrapper is necessary.
@@ -2100,7 +2401,24 @@ mod tests {
         let mut conn = create_test_db();
 
         // Create the skill on disk (workspace dir) and in DB
-        create_skill_inner(workspace, "will-rollback", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None).unwrap();
+        create_skill_inner(
+            workspace,
+            "will-rollback",
+            None,
+            None,
+            Some(&conn),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         assert!(Path::new(workspace).join("will-rollback").exists());
 
         // To force the DB transaction to fail, we drop the workflow_runs table
@@ -2143,9 +2461,20 @@ mod tests {
             [],
         ).unwrap();
 
-        let result = rename_skill_inner("will-rollback", "rollback-target", workspace, &mut conn, None);
-        assert!(result.is_err(), "Rename should fail due to DB constraint violation");
-        assert!(result.unwrap_err().contains("Failed to rename skill in database"));
+        let result = rename_skill_inner(
+            "will-rollback",
+            "rollback-target",
+            workspace,
+            &mut conn,
+            None,
+        );
+        assert!(
+            result.is_err(),
+            "Rename should fail due to DB constraint violation"
+        );
+        assert!(result
+            .unwrap_err()
+            .contains("Failed to rename skill in database"));
 
         // Workspace dir should be rolled back to original name
         assert!(
@@ -2166,6 +2495,9 @@ mod tests {
         // However, the INSERT of "rollback-target" into workflow_runs succeeded before
         // the workflow_steps UPDATE failed. The ROLLBACK undoes the entire transaction.
         // So the original "will-rollback" row should still exist.
-        assert!(row.unwrap().is_some(), "Original DB row should survive after rollback");
+        assert!(
+            row.unwrap().is_some(),
+            "Original DB row should survive after rollback"
+        );
     }
 }

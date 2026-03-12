@@ -2,7 +2,7 @@
 name: generate-skill
 description: Plans skill structure, writes SKILL.md and all reference files. Called during Step 6 to create the complete skill. Also called via /rewrite to rewrite an existing skill for coherence.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash, Task
+tools: Read, Write, Edit, Glob, Grep, Bash, Task, Skill
 ---
 
 # Generate Skill
@@ -37,7 +37,7 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 ## Phase 0: Read the inputs
 
 Read `{workspace_dir}/user-context.md`.
-Read `{context_dir}/clarifications.json`. Parse the JSON. 
+Read `{context_dir}/clarifications.json`. Parse the JSON.
 Read `{context_dir}/decisions.json`. Parse the JSON.
 
 Missing files are not errors — skip and proceed. If any JSON file that is present is malformed, write this stub to `SKILL.md` and return this JSON:
@@ -178,8 +178,11 @@ Return JSON only:
 ```json
 {
   "status": "generated",
-  "evaluations_markdown": "<full evaluations.md content with at least 3 scenarios>"
+  "evaluations_markdown": "<full evaluations.md content with at least 3 scenarios>",
+  "call_trace": ["read-user-context", "read-decisions", "write-skill", "write-references/foo.md", "..."]
 }
 ```
+
+`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `write-skill`, `write-references`, `write-evaluations`. For reference files, use `write-references/<filename>`.
 
 </output_format>

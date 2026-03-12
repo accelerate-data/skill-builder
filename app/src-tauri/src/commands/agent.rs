@@ -84,10 +84,14 @@ pub async fn start_agent(
     _step_label: String,
     agent_name: Option<String>,
     transcript_log_dir: Option<String>,
+    step_id: Option<i32>,
+    workflow_session_id: Option<String>,
+    usage_session_id: Option<String>,
+    run_source: Option<String>,
 ) -> Result<String, String> {
     log::info!(
-        "[start_agent] agent_id={} model={} skill_name={} agent_name={:?}",
-        agent_id, model, skill_name, agent_name
+        "[start_agent] agent_id={} model={} skill_name={} agent_name={:?} step_id={:?} run_source={:?}",
+        agent_id, model, skill_name, agent_name, step_id, run_source
     );
     log::debug!(
         "[start_agent] cwd={} transcript_log_dir={:?} prompt_prefix={:?}",
@@ -172,6 +176,10 @@ pub async fn start_agent(
         required_plugins: None,
         conversation_history: None,
         skill_name: Some(skill_name.clone()),
+        step_id: Some(step_id.unwrap_or(-1)),
+        workflow_session_id,
+        usage_session_id,
+        run_source,
     };
 
     sidecar::spawn_sidecar(
@@ -201,7 +209,10 @@ mod tests {
         let fmt = output_format_for_agent("my-skill", Some("validate-skill"));
         assert!(fmt.is_some());
         let schema = fmt.expect("schema");
-        assert_eq!(schema["schema"]["properties"]["status"]["const"], "validation_complete");
+        assert_eq!(
+            schema["schema"]["properties"]["status"]["const"],
+            "validation_complete"
+        );
     }
 
     #[test]
@@ -219,7 +230,10 @@ mod tests {
             Some("claude-haiku-4-5-20251001"),
             Some("claude-haiku-4-5-20251001".to_string()),
         );
-        assert!(result.is_none(), "fallback must be suppressed when equal to main model");
+        assert!(
+            result.is_none(),
+            "fallback must be suppressed when equal to main model"
+        );
     }
 
     #[test]
@@ -235,10 +249,8 @@ mod tests {
     #[test]
     fn test_suppress_same_fallback_model_keeps_when_no_explicit_model() {
         // agent_name is set → model_for_config = None; fallback is preserved
-        let result = suppress_same_fallback_model(
-            None,
-            Some("claude-haiku-4-5-20251001".to_string()),
-        );
+        let result =
+            suppress_same_fallback_model(None, Some("claude-haiku-4-5-20251001".to_string()));
         assert_eq!(result.as_deref(), Some("claude-haiku-4-5-20251001"));
     }
 
