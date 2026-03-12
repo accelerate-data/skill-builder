@@ -476,6 +476,88 @@ mod tests {
     use super::*;
 
     #[test]
+    fn route_sidecar_message_maps_all_agent_events_to_expected_frontend_channels() {
+        let cases = vec![
+            (
+                serde_json::json!({
+                    "type": "run_config",
+                    "thinkingEnabled": true,
+                    "agentName": "researcher"
+                }),
+                "agent-run-config",
+                42_u64,
+                "thinkingEnabled",
+                serde_json::json!(true),
+            ),
+            (
+                serde_json::json!({
+                    "type": "run_init",
+                    "sessionId": "sess-123",
+                    "model": "claude-sonnet-4-6"
+                }),
+                "agent-run-init",
+                42_u64,
+                "sessionId",
+                serde_json::json!("sess-123"),
+            ),
+            (
+                serde_json::json!({
+                    "type": "turn_usage",
+                    "turn": 2,
+                    "inputTokens": 1200,
+                    "outputTokens": 130
+                }),
+                "agent-turn-usage",
+                42_u64,
+                "turn",
+                serde_json::json!(2),
+            ),
+            (
+                serde_json::json!({
+                    "type": "compaction",
+                    "turn": 3,
+                    "preTokens": 8000,
+                    "timestamp": 55_u64
+                }),
+                "agent-compaction",
+                55_u64,
+                "preTokens",
+                serde_json::json!(8000),
+            ),
+            (
+                serde_json::json!({
+                    "type": "context_window",
+                    "contextWindow": 200000
+                }),
+                "agent-context-window",
+                42_u64,
+                "contextWindow",
+                serde_json::json!(200000),
+            ),
+        ];
+
+        for (event, expected_name, expected_timestamp, expected_field, expected_value) in cases {
+            let message = serde_json::json!({
+                "type": "agent_event",
+                "event": event,
+                "timestamp": 42_u64
+            });
+
+            let action = route_sidecar_message("agent-1", message);
+
+            match action {
+                Some(SidecarMessageAction::EmitFrontendEvent { event_name, payload }) => {
+                    assert_eq!(event_name, expected_name);
+                    assert_eq!(payload["agent_id"], "agent-1");
+                    assert_eq!(payload["timestamp"], expected_timestamp);
+                    assert_eq!(payload[expected_field], expected_value);
+                }
+                other => panic!("expected frontend event action, got {:?}", other),
+            }
+        }
+    }
+
+    #[test]
     fn route_sidecar_message_returns_run_init_frontend_event() {
         let message = serde_json::json!({
             "type": "agent_event",

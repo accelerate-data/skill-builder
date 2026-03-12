@@ -81,6 +81,155 @@ describe("initAgentStream", () => {
     expect(run.sessionId).toBe("sess-123");
   });
 
+  it("applies the full typed agent event lifecycle to a run", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    initAgentStream();
+
+    listeners["agent-run-config"]({
+      payload: {
+        agent_id: "agent-1",
+        type: "run_config",
+        thinkingEnabled: true,
+        agentName: "researcher",
+        timestamp: Date.now(),
+      },
+    });
+
+    listeners["agent-run-init"]({
+      payload: {
+        agent_id: "agent-1",
+        type: "run_init",
+        sessionId: "sess-123",
+        model: "claude-sonnet-4-5-20250929",
+        timestamp: Date.now(),
+      },
+    });
+
+    listeners["agent-turn-usage"]({
+      payload: {
+        agent_id: "agent-1",
+        type: "turn_usage",
+        turn: 1,
+        inputTokens: 1200,
+        outputTokens: 130,
+        timestamp: Date.now(),
+      },
+    });
+
+    listeners["agent-compaction"]({
+      payload: {
+        agent_id: "agent-1",
+        type: "compaction",
+        turn: 2,
+        preTokens: 8000,
+        timestamp: 123456,
+      },
+    });
+
+    listeners["agent-context-window"]({
+      payload: {
+        agent_id: "agent-1",
+        type: "context_window",
+        contextWindow: 200000,
+        timestamp: Date.now(),
+      },
+    });
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.thinkingEnabled).toBe(true);
+    expect(run.agentName).toBe("researcher");
+    expect(run.model).toBe("claude-sonnet-4-5-20250929");
+    expect(run.sessionId).toBe("sess-123");
+    expect(run.contextHistory).toEqual([
+      {
+        turn: 1,
+        inputTokens: 1200,
+        outputTokens: 130,
+      },
+    ]);
+    expect(run.compactionEvents).toEqual([
+      {
+        turn: 2,
+        preTokens: 8000,
+        timestamp: 123456,
+      },
+    ]);
+    expect(run.contextWindow).toBe(200000);
+  });
+
+  it("replays queued typed agent events when they arrive before run registration", () => {
+    initAgentStream();
+
+    listeners["agent-run-config"]({
+      payload: {
+        agent_id: "late-agent",
+        type: "run_config",
+        thinkingEnabled: true,
+        agentName: "late-runner",
+        timestamp: Date.now(),
+      },
+    });
+    listeners["agent-run-init"]({
+      payload: {
+        agent_id: "late-agent",
+        type: "run_init",
+        sessionId: "sess-late",
+        model: "claude-opus-4-1",
+        timestamp: Date.now(),
+      },
+    });
+    listeners["agent-turn-usage"]({
+      payload: {
+        agent_id: "late-agent",
+        type: "turn_usage",
+        turn: 4,
+        inputTokens: 2400,
+        outputTokens: 210,
+        timestamp: Date.now(),
+      },
+    });
+    listeners["agent-compaction"]({
+      payload: {
+        agent_id: "late-agent",
+        type: "compaction",
+        turn: 5,
+        preTokens: 10000,
+        timestamp: 999,
+      },
+    });
+    listeners["agent-context-window"]({
+      payload: {
+        agent_id: "late-agent",
+        type: "context_window",
+        contextWindow: 200000,
+        timestamp: Date.now(),
+      },
+    });
+
+    useAgentStore.getState().startRun("late-agent", "sonnet");
+
+    const run = useAgentStore.getState().runs["late-agent"];
+    expect(run.thinkingEnabled).toBe(true);
+    expect(run.agentName).toBe("late-runner");
+    expect(run.model).toBe("claude-opus-4-1");
+    expect(run.sessionId).toBe("sess-late");
+    expect(run.contextHistory).toEqual([
+      {
+        turn: 4,
+        inputTokens: 2400,
+        outputTokens: 210,
+      },
+    ]);
+    expect(run.compactionEvents).toEqual([
+      {
+        turn: 5,
+        preTokens: 10000,
+        timestamp: 999,
+      },
+    ]);
+    expect(run.contextWindow).toBe(200000);
+  });
+
   it("completes run on agent-exit with success=true", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
     initAgentStream();
