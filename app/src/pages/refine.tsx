@@ -224,7 +224,7 @@ export default function RefinePage() {
         // Rust resolves skills_path from DB for file lookups.
         try {
           const session = await startRefineSession(skill.name, workspacePath);
-          useRefineStore.setState({ sessionId: session.session_id });
+          useRefineStore.getState().setSessionId(session.session_id);
         } catch (err) {
           console.error("[refine] Failed to start refine session:", err);
           toast.error("Failed to start refine session", { duration: Infinity });
