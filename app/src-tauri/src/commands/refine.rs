@@ -12,6 +12,7 @@ use crate::db::{self, Db};
 use crate::types::{
     RefineDiff, RefineFileDiff, RefineFinalizeResult, RefineSessionInfo, SkillFileContent,
 };
+use sha2::{Digest, Sha256};
 
 const REFINE_TOOLS: &[&str] = &[
     "Read", "Edit", "Write", "Glob", "Grep", "Bash", "Task", "Skill",
@@ -89,6 +90,17 @@ fn dispatch_for_refine_command(
         }
         _ => RefineDispatch::Stream,
     }
+}
+
+fn build_refine_usage_session_id(skill_name: &str, refine_session_id: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(refine_session_id.as_bytes());
+
+    format!(
+        "synthetic:refine:{}:{}",
+        skill_name,
+        hex::encode(hasher.finalize())
+    )
 }
 
 fn ensure_skill_workspace_dir(workspace_path: &str, skill_name: &str) {
@@ -182,7 +194,7 @@ fn build_refine_config(
     refine_prompt_suggestions: bool,
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
-    let usage_session_id = format!("synthetic:refine:{}:{}", skill_name, refine_session_id);
+    let usage_session_id = build_refine_usage_session_id(skill_name, refine_session_id);
 
     // CWD is the workspace root (.vibedata) so the sidecar can find
     // .claude/agents/ and workspace-root CLAUDE.md. Skill files are accessed via
@@ -248,7 +260,7 @@ fn build_direct_refine_config(
     agent_name: &'static str,
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
-    let usage_session_id = format!("synthetic:refine:{}:{}", skill_name, refine_session_id);
+    let usage_session_id = build_refine_usage_session_id(skill_name, refine_session_id);
     let agent_id = format!(
         "refine-{}-{}",
         skill_name,
@@ -1710,6 +1722,8 @@ mod tests {
     fn test_refine_config_serialization_matches_sidecar_schema() {
         // End-to-end: build config, serialize to JSON, verify the sidecar sees correct fields
         let (config, _) = base_refine_config("full prompt here");
+        let expected_usage_session_id =
+            build_refine_usage_session_id("my-skill", "session-123");
 
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -1723,10 +1737,7 @@ mod tests {
             .unwrap()
             .contains(&serde_json::json!("Task")));
         assert_eq!(parsed["skillName"], "my-skill");
-        assert_eq!(
-            parsed["usageSessionId"],
-            "synthetic:refine:my-skill:session-123"
-        );
+        assert_eq!(parsed["usageSessionId"], expected_usage_session_id);
         // Streaming mode: no conversation history in config
         assert!(parsed.get("conversationHistory").is_none());
         // sessionId must NOT be set — the SDK interprets it as "resume" and fails
@@ -1736,12 +1747,26 @@ mod tests {
     #[test]
     fn test_refine_config_includes_persistence_identity_for_run_summary() {
         let (config, _) = base_refine_config("improve metrics");
+        let expected_usage_session_id =
+            build_refine_usage_session_id("my-skill", "session-123");
         assert_eq!(config.skill_name.as_deref(), Some("my-skill"));
         assert_eq!(
             config.usage_session_id.as_deref(),
-            Some("synthetic:refine:my-skill:session-123")
+            Some(expected_usage_session_id.as_str())
         );
         assert_eq!(config.run_source.as_deref(), Some("refine"));
+    }
+
+    #[test]
+    fn test_refine_usage_session_id_is_hashed_and_stable() {
+        let usage_session_id = build_refine_usage_session_id("my-skill", "session-123");
+
+        assert_eq!(
+            usage_session_id,
+            build_refine_usage_session_id("my-skill", "session-123")
+        );
+        assert!(usage_session_id.starts_with("synthetic:refine:my-skill:"));
+        assert!(!usage_session_id.contains("session-123"));
     }
 
     #[test]
