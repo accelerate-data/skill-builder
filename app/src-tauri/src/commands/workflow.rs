@@ -1583,6 +1583,10 @@ fn make_agent_id(skill_name: &str, label: &str) -> String {
     format!("{}-{}-{}", skill_name, label, ts)
 }
 
+fn workflow_step_runtime_label(step: &StepConfig) -> String {
+    step.name.to_ascii_lowercase().replace(' ', "-")
+}
+
 /// Core logic for validating decisions.json existence — testable without tauri::State.
 /// Checks in order: skill output dir (skillsPath), workspace dir.
 /// Returns Ok(()) if found, Err with a clear message if missing.
@@ -1766,7 +1770,7 @@ async fn run_workflow_step_inner(
     );
 
     let agent_name = derive_agent_name(workspace_path, &settings.purpose, &step.prompt_template);
-    let agent_id = make_agent_id(skill_name, &format!("step{}", step_id));
+    let agent_id = make_agent_id(skill_name, &workflow_step_runtime_label(&step));
     log::info!(
         "run_workflow_step: skill={} step={} model={}",
         skill_name,
@@ -3784,10 +3788,16 @@ mod tests {
 
     #[test]
     fn test_make_agent_id() {
-        let id = make_agent_id("test-skill", "step0");
-        assert!(id.starts_with("test-skill-step0-"));
+        let id = make_agent_id("test-skill", "research");
+        assert!(id.starts_with("test-skill-research-"));
         let parts: Vec<&str> = id.rsplitn(2, '-').collect();
         assert!(parts[0].parse::<u128>().is_ok());
+    }
+
+    #[test]
+    fn test_workflow_step_runtime_label_uses_step_name_slug() {
+        let step = get_step_config(2).expect("step config");
+        assert_eq!(workflow_step_runtime_label(&step), "confirm-decisions");
     }
 
     #[test]

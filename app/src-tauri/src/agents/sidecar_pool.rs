@@ -2454,6 +2454,17 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_extract_step_label_named_workflow_step() {
+        assert_eq!(
+            extract_step_label(
+                "my-skill-confirm-decisions-1707654321000",
+                "my-skill"
+            ),
+            "confirm-decisions"
+        );
+    }
+
     // -----------------------------------------------------------------
     // request_logs tests
     // -----------------------------------------------------------------

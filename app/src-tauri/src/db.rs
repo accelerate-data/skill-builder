@@ -1307,9 +1307,9 @@ fn step_name(step_id: i32) -> String {
         -11 => "Test".to_string(),
         -10 => "Refine".to_string(),
         0 => "Research".to_string(),
-        1 => "Review".to_string(),
-        2 => "Detailed Research".to_string(),
-        3 => "Review".to_string(),
+        1 => "Detailed Research".to_string(),
+        2 => "Confirm Decisions".to_string(),
+        3 => "Generate Skill".to_string(),
         4 => "Confirm Decisions".to_string(),
         5 => "Generate Skill".to_string(),
         _ => format!("Step {}", step_id),
@@ -5849,9 +5849,9 @@ mod tests {
     #[test]
     fn test_step_name_mapping() {
         assert_eq!(step_name(0), "Research");
-        assert_eq!(step_name(1), "Review");
-        assert_eq!(step_name(2), "Detailed Research");
-        assert_eq!(step_name(3), "Review");
+        assert_eq!(step_name(1), "Detailed Research");
+        assert_eq!(step_name(2), "Confirm Decisions");
+        assert_eq!(step_name(3), "Generate Skill");
         assert_eq!(step_name(4), "Confirm Decisions");
         assert_eq!(step_name(5), "Generate Skill");
         assert_eq!(step_name(6), "Step 6");
