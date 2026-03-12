@@ -1,7 +1,14 @@
 import { listen } from "@tauri-apps/api/event";
 import { useAgentStore } from "@/stores/agent-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
-import type { DisplayItem, RunMetadata } from "@/lib/display-types";
+import type { DisplayItem } from "@/lib/display-types";
+import type {
+  CompactionEvent,
+  ContextWindowEvent,
+  RunConfigEvent,
+  RunInitEvent,
+  TurnUsageEvent,
+} from "@/lib/agent-events";
 
 interface AgentMessagePayload {
   agent_id: string;
@@ -12,11 +19,11 @@ interface AgentMessagePayload {
   };
 }
 
-interface AgentMetadataPayload {
-  agent_id: string;
-  data: RunMetadata;
-  timestamp: number;
-}
+type AgentRunConfigPayload = { agent_id: string; timestamp: number } & RunConfigEvent;
+type AgentRunInitPayload = { agent_id: string; timestamp: number } & RunInitEvent;
+type AgentTurnUsagePayload = { agent_id: string; timestamp: number } & TurnUsageEvent;
+type AgentCompactionPayload = { agent_id: string; timestamp: number } & CompactionEvent;
+type AgentContextWindowPayload = { agent_id: string; timestamp: number } & ContextWindowEvent;
 
 interface AgentExitPayload {
   agent_id: string;
@@ -76,13 +83,29 @@ export function initAgentStream() {
     });
   });
 
-  listen<AgentMetadataPayload>("agent-metadata", (event) => {
-    const { agent_id, data } = event.payload;
-    console.debug(
-      "[use-agent-stream] event=agent_metadata agent_id=%s",
-      agent_id,
-    );
-    useAgentStore.getState().updateMetadata(agent_id, data);
+  listen<AgentRunConfigPayload>("agent-run-config", (event) => {
+    const { agent_id, ...runConfig } = event.payload;
+    useAgentStore.getState().applyRunConfig(agent_id, runConfig);
+  });
+
+  listen<AgentRunInitPayload>("agent-run-init", (event) => {
+    const { agent_id, ...runInit } = event.payload;
+    useAgentStore.getState().applyRunInit(agent_id, runInit);
+  });
+
+  listen<AgentTurnUsagePayload>("agent-turn-usage", (event) => {
+    const { agent_id, ...turnUsage } = event.payload;
+    useAgentStore.getState().applyTurnUsage(agent_id, turnUsage);
+  });
+
+  listen<AgentCompactionPayload>("agent-compaction", (event) => {
+    const { agent_id, ...compaction } = event.payload;
+    useAgentStore.getState().applyCompaction(agent_id, compaction);
+  });
+
+  listen<AgentContextWindowPayload>("agent-context-window", (event) => {
+    const { agent_id, ...contextWindow } = event.payload;
+    useAgentStore.getState().applyContextWindow(agent_id, contextWindow);
   });
 
   listen<AgentMessagePayload>("agent-message", (event) => {

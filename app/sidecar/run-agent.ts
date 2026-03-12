@@ -129,15 +129,15 @@ export async function runAgentRequest(
       }
 
       const errorSummary = processor.buildExecutionErrorSummary(errorMessage);
-      onMessage({ type: "run_summary", data: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
+      onMessage({ type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
       return;
     }
   }
 
-  // Emit a shutdown run_summary for aborted runs so Rust can persist partial data
+  // Emit a shutdown run_result for aborted runs so Rust can persist partial data
   if (state.abortController.signal.aborted) {
-    process.stderr.write("[sidecar] Run aborted — emitting shutdown run_summary\n");
+    process.stderr.write("[sidecar] Run aborted — emitting shutdown run_result\n");
     const shutdownSummary = processor.buildShutdownSummary();
-    onMessage({ type: "run_summary", data: shutdownSummary, timestamp: Date.now() } as Record<string, unknown>);
+    onMessage({ type: "agent_event", event: shutdownSummary, timestamp: Date.now() } as Record<string, unknown>);
   }
 }

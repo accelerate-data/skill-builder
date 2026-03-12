@@ -17,26 +17,18 @@ use super::sidecar::SidecarConfig;
 
 fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<bool> {
     match msg.get("type").and_then(|t| t.as_str()) {
-        Some("run_summary") => {
-            let status = msg
-                .get("data")
-                .and_then(|data| data.get("status"))
+        Some("agent_event") => {
+            let event = msg.get("event")?;
+            let event_type = event.get("type").and_then(|t| t.as_str())?;
+            if event_type != "run_result" {
+                return None;
+            }
+            let status = event
+                .get("status")
                 .and_then(|status| status.as_str())
                 .unwrap_or("completed");
             Some(status == "completed")
         }
-        Some("result") => {
-            let subtype = msg
-                .get("subtype")
-                .and_then(|s| s.as_str())
-                .unwrap_or("success");
-            let is_error = msg
-                .get("is_error")
-                .and_then(|e| e.as_bool())
-                .unwrap_or(false);
-            Some(!is_error && !subtype.starts_with("error_"))
-        }
-        Some("error") => Some(false),
         _ => None,
     }
 }
@@ -980,7 +972,7 @@ impl SidecarPool {
                                     let is_terminal = stream_message_terminal_status(&msg).is_some();
 
                                     if let Some(success) = stream_message_terminal_status(&msg) {
-                                        if msg_type == "result" || msg_type == "run_summary" {
+                                        if msg_type == "agent_event" {
                                             if success {
                                                 log::info!(
                                                     "[persistent-sidecar:{}] Agent '{}' completed successfully via {}",
@@ -989,18 +981,12 @@ impl SidecarPool {
                                                     msg_type,
                                                 );
                                             } else {
-                                                let detail = if msg_type == "run_summary" {
-                                                    msg.get("data")
-                                                        .and_then(|data| data.get("status"))
-                                                        .and_then(|status| status.as_str())
-                                                        .unwrap_or("error")
-                                                        .to_string()
-                                                } else {
-                                                    msg.get("subtype")
-                                                        .and_then(|s| s.as_str())
-                                                        .unwrap_or("error")
-                                                        .to_string()
-                                                };
+                                                let detail = msg
+                                                    .get("event")
+                                                    .and_then(|event| event.get("status"))
+                                                    .and_then(|status| status.as_str())
+                                                    .unwrap_or("error")
+                                                    .to_string();
                                                 log::warn!(
                                                     "[persistent-sidecar:{}] Agent '{}' finished with error via {}: {}",
                                                     skill_name_stdout,
@@ -2401,18 +2387,20 @@ mod tests {
     }
 
     #[test]
-    fn test_stream_message_terminal_status_recognizes_run_summary() {
+    fn test_stream_message_terminal_status_recognizes_run_result_agent_event() {
         let completed = serde_json::json!({
-            "type": "run_summary",
+            "type": "agent_event",
             "request_id": "agent-1",
-            "data": {
+            "event": {
+                "type": "run_result",
                 "status": "completed"
             }
         });
         let failed = serde_json::json!({
-            "type": "run_summary",
+            "type": "agent_event",
             "request_id": "agent-1",
-            "data": {
+            "event": {
+                "type": "run_result",
                 "status": "error"
             }
         });

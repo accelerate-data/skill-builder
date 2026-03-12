@@ -535,10 +535,11 @@ describe("runPersistent", () => {
     });
     expect(reqAComplete).toBeDefined();
 
-    // req_b should have completed successfully — result is now a run_summary or display_item
+    // req_b should have completed successfully — result is now an agent_event(run_result) or display_item
     const reqBResult = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.request_id === "req_b" && (parsed.type === "run_summary" || parsed.type === "display_item");
+      return parsed.request_id === "req_b"
+        && ((parsed.type === "agent_event" && parsed.event?.type === "run_result") || parsed.type === "display_item");
     });
     expect(reqBResult).toBeDefined();
 
@@ -598,19 +599,19 @@ describe("runPersistent", () => {
 
     capture.restore();
 
-    // Both requests should have succeeded — result messages are now run_summary
+    // Both requests should have succeeded — result messages are now agent_event(run_result)
     const runSummaries = capture.lines
       .filter((l) => {
         const parsed = JSON.parse(l);
-        return parsed.request_id && parsed.type === "run_summary";
+        return parsed.request_id && parsed.type === "agent_event" && parsed.event?.type === "run_result";
       })
       .map((l) => JSON.parse(l));
 
     expect(runSummaries).toHaveLength(2);
     expect(runSummaries[0].request_id).toBe("req_a");
-    expect(runSummaries[0].data).toHaveProperty("resultSubtype", "success");
+    expect(runSummaries[0].event).toHaveProperty("resultSubtype", "success");
     expect(runSummaries[1].request_id).toBe("req_b");
-    expect(runSummaries[1].data).toHaveProperty("resultSubtype", "success");
+    expect(runSummaries[1].event).toHaveProperty("resultSubtype", "success");
     expect(exitFn).toHaveBeenCalledWith(0);
   });
 
@@ -734,11 +735,11 @@ describe("runPersistent", () => {
 
     const reqSummary = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.request_id === "req_stuck" && parsed.type === "run_summary";
+      return parsed.request_id === "req_stuck" && parsed.type === "agent_event" && parsed.event?.type === "run_result";
     });
     expect(reqSummary).toBeDefined();
-    expect(JSON.parse(reqSummary!).data.status).toBe("shutdown");
-    expect(JSON.parse(reqSummary!).data.resultSubtype).toBeUndefined();
+    expect(JSON.parse(reqSummary!).event.status).toBe("shutdown");
+    expect(JSON.parse(reqSummary!).event.resultSubtype).toBeUndefined();
 
     expect(exitFn).toHaveBeenCalledWith(0);
   });
@@ -791,10 +792,12 @@ describe("runPersistent", () => {
     capture.restore();
 
     // The real request should have completed normally (not aborted)
-    // Result is now processed through MessageProcessor — look for run_summary or display_item(result)
+    // Result is now processed through MessageProcessor — look for agent_event(run_result) or display_item(result)
     const resultLine = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.request_id === "req_real" && (parsed.type === "run_summary" || (parsed.type === "display_item" && parsed.item?.type === "result"));
+      return parsed.request_id === "req_real"
+        && ((parsed.type === "agent_event" && parsed.event?.type === "run_result")
+          || (parsed.type === "display_item" && parsed.item?.type === "result"));
     });
     expect(resultLine).toBeDefined();
 

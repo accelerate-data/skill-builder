@@ -3,12 +3,22 @@
  *
  * Transforms raw SDK messages into structured DisplayItem objects.
  * Maintains state for tool call → result linking and subagent grouping.
- * Accumulates run-level metadata for structured run_summary emission.
+ * Accumulates run-level metadata for structured run_result emission.
  *
  * @module message-processor
  */
 
-import type { DisplayItem, DisplayItemEnvelope, ToolStatus, RunMetadata, RunSummary, ModelUsageEntry } from "./display-types.js";
+import type { DisplayItem, DisplayItemEnvelope, ToolStatus } from "./display-types.js";
+import type {
+  AgentEventEnvelope,
+  CompactionEvent,
+  ContextWindowEvent,
+  ModelUsageEntry,
+  RunConfigEvent,
+  RunInitEvent,
+  RunResultEvent,
+  TurnUsageEvent,
+} from "./agent-events.js";
 import { classifyRawMessage } from "./message-classifier.js";
 
 // ---------------------------------------------------------------------------
@@ -119,7 +129,7 @@ const RESULT_ERROR_LABELS: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// RequestContext — carries persistence context for run_summary building
+// RequestContext — carries persistence context for run_result building
 // ---------------------------------------------------------------------------
 
 export interface RequestContext {
@@ -136,7 +146,7 @@ export interface RequestContext {
 
 /**
  * Accumulates run-level metadata across SDK messages.
- * Used to construct the self-contained run_summary on result.
+ * Used to construct the self-contained run_result event on result.
  */
 export class RunMetadataAccumulator {
   private startTime = Date.now();
@@ -182,8 +192,9 @@ export class RunMetadataAccumulator {
     );
   }
 
-  buildShutdownSummary(): RunSummary {
+  buildShutdownSummary(): RunResultEvent {
     return {
+      type: "run_result",
       skillName: this.context.skillName ?? "unknown",
       stepId: this.context.stepId ?? -1,
       workflowSessionId: this.context.workflowSessionId,
@@ -206,7 +217,7 @@ export class RunMetadataAccumulator {
     };
   }
 
-  buildExecutionErrorSummary(errorMessage: string): RunSummary {
+  buildExecutionErrorSummary(errorMessage: string): RunResultEvent {
     return this.buildRunSummary({
       subtype: "error_during_execution",
       is_error: true,
@@ -215,7 +226,7 @@ export class RunMetadataAccumulator {
     });
   }
 
-  buildRunSummary(raw: Record<string, unknown>): RunSummary {
+  buildRunSummary(raw: Record<string, unknown>): RunResultEvent {
     const usage = raw.usage as { input_tokens?: number; output_tokens?: number } | undefined;
     const modelUsage = raw.modelUsage as
       | Record<string, {
@@ -257,10 +268,11 @@ export class RunMetadataAccumulator {
 
     const subtype = raw.subtype as string | undefined;
     const isError = raw.is_error === true;
-    const status: RunSummary["status"] =
+    const status: RunResultEvent["status"] =
       isError || (subtype && subtype.startsWith("error_")) ? "error" : "completed";
 
-    const summary: RunSummary = {
+    const summary: RunResultEvent = {
+      type: "run_result",
       skillName: this.context.skillName ?? "unknown",
       stepId: this.context.stepId ?? -1,
       workflowSessionId: this.context.workflowSessionId,
@@ -287,7 +299,7 @@ export class RunMetadataAccumulator {
     };
 
     process.stderr.write(
-      `[accumulator] event=build_run_summary skill=${summary.skillName} step=${summary.stepId} status=${status} turns=${summary.numTurns} tool_use=${summary.toolUseCount} compaction=${summary.compactionCount} cost=${totalCostUsd.toFixed(4)}\n`,
+      `[accumulator] event=build_run_result skill=${summary.skillName} step=${summary.stepId} status=${status} turns=${summary.numTurns} tool_use=${summary.toolUseCount} compaction=${summary.compactionCount} cost=${totalCostUsd.toFixed(4)}\n`,
     );
 
     return summary;
@@ -298,7 +310,7 @@ export class RunMetadataAccumulator {
 // MessageProcessor
 // ---------------------------------------------------------------------------
 
-/** A processed output item — either a display_item envelope, metadata, run_summary, or a pass-through raw message. */
+/** A processed output item — either a display_item envelope, agent_event envelope, or a pass-through raw message. */
 export type ProcessedMessage = Record<string, unknown>;
 
 export class MessageProcessor {
@@ -323,7 +335,7 @@ export class MessageProcessor {
   /** Map from toolUseId → subagent DisplayItem (Task tool calls). */
   private subagentByToolUseId = new Map<string, DisplayItem>();
 
-  /** Accumulates run-level state for run_summary. */
+  /** Accumulates run-level state for run_result events. */
   private accumulator: RunMetadataAccumulator;
 
   constructor(context?: RequestContext) {
@@ -338,13 +350,19 @@ export class MessageProcessor {
     return { type: "display_item", item };
   }
 
+  private makeAgentEventEnvelope(
+    event: AgentEventEnvelope["event"],
+    timestamp: number,
+  ): AgentEventEnvelope {
+    return { type: "agent_event", event, timestamp };
+  }
+
   /**
    * Process one raw SDK message into 0 or more output messages.
    *
    * Returns an array of JSONL-ready objects:
    * - `{ type: "display_item", item: DisplayItem }` for rendering
-   * - `{ type: "metadata", data: RunMetadata }` for context/config tracking
-   * - `{ type: "run_summary", data: RunSummary }` on result (intercepted by Rust, not forwarded to frontend)
+   * - `{ type: "agent_event", event: AgentEvent }` for typed protocol state
    * - Raw pass-through messages for error handling
    */
   process(raw: Record<string, unknown>): ProcessedMessage[] {
@@ -426,18 +444,17 @@ export class MessageProcessor {
 
     this.accumulator.recordConfig(thinkingEnabled, agentName);
 
-    const metadata: RunMetadata = {
-      config: {
-        thinkingEnabled,
-        agentName,
-      },
+    const event: RunConfigEvent = {
+      type: "run_config",
+      thinkingEnabled,
+      agentName,
     };
 
     process.stderr.write(
-      `[message-processor] event=emit_metadata subtype=config thinking=${thinkingEnabled} agent=${agentName ?? "none"}\n`,
+      `[message-processor] event=emit_agent_event subtype=run_config thinking=${thinkingEnabled} agent=${agentName ?? "none"}\n`,
     );
 
-    return [{ type: "metadata", data: metadata, timestamp: now } as ProcessedMessage];
+    return [this.makeAgentEventEnvelope(event, now) as ProcessedMessage];
   }
 
   private processSystemInit(raw: Record<string, unknown>, now: number): ProcessedMessage[] {
@@ -448,15 +465,17 @@ export class MessageProcessor {
       const model = typeof initModel === "string" && initModel.length > 0 ? initModel : "unknown";
       this.accumulator.recordSessionInit(sid, model);
 
-      const metadata: RunMetadata = {
-        sessionInit: { sessionId: sid, model },
+      const event: RunInitEvent = {
+        type: "run_init",
+        sessionId: sid,
+        model,
       };
 
       process.stderr.write(
-        `[message-processor] event=emit_metadata subtype=session_init session_id=${sid} model=${model}\n`,
+        `[message-processor] event=emit_agent_event subtype=run_init session_id=${sid} model=${model}\n`,
       );
 
-      return [{ type: "metadata", data: metadata, timestamp: now } as ProcessedMessage];
+      return [this.makeAgentEventEnvelope(event, now) as ProcessedMessage];
     }
 
     return [];
@@ -482,20 +501,23 @@ export class MessageProcessor {
     const compactionMetadata = raw.compact_metadata as { pre_tokens?: number } | undefined;
     const preTokens = compactionMetadata?.pre_tokens ?? 0;
 
-    const metadata: RunMetadata = {
-      compactionEvent: { turn, preTokens, timestamp: now },
+    const event: CompactionEvent = {
+      type: "compaction",
+      turn,
+      preTokens,
+      timestamp: now,
     };
 
     process.stderr.write(
       `[message-processor] event=emit_display_item item_type=compact_boundary id=${item.id}\n`,
     );
     process.stderr.write(
-      `[message-processor] event=emit_metadata subtype=compaction turn=${turn} pre_tokens=${preTokens}\n`,
+      `[message-processor] event=emit_agent_event subtype=compaction turn=${turn} pre_tokens=${preTokens}\n`,
     );
 
     return [
       this.makeEnvelope(item),
-      { type: "metadata", data: metadata, timestamp: now } as ProcessedMessage,
+      this.makeAgentEventEnvelope(event, now) as ProcessedMessage,
     ];
   }
 
@@ -751,7 +773,7 @@ export class MessageProcessor {
       }
     }
 
-    // Extract per-turn context usage and emit as metadata
+    // Extract per-turn context usage and emit as a typed service event
     const outerUsage = outerMessage?.usage as
       | { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
       | undefined;
@@ -762,19 +784,18 @@ export class MessageProcessor {
         + (outerUsage.cache_creation_input_tokens ?? 0);
 
       this.accumulator.recordTurn();
-      const metadata: RunMetadata = {
-        contextSnapshot: {
-          turn: this.accumulator.currentTurnCount,
-          inputTokens: totalInput,
-          outputTokens: outerUsage.output_tokens ?? 0,
-        },
+      const event: TurnUsageEvent = {
+        type: "turn_usage",
+        turn: this.accumulator.currentTurnCount,
+        inputTokens: totalInput,
+        outputTokens: outerUsage.output_tokens ?? 0,
       };
 
       process.stderr.write(
-        `[message-processor] event=emit_metadata subtype=context_snapshot turn=${this.accumulator.currentTurnCount} input=${totalInput}\n`,
+        `[message-processor] event=emit_agent_event subtype=turn_usage turn=${this.accumulator.currentTurnCount} input=${totalInput}\n`,
       );
 
-      results.push({ type: "metadata", data: metadata, timestamp: now } as ProcessedMessage);
+      results.push(this.makeAgentEventEnvelope(event, now) as ProcessedMessage);
     } else {
       // No usage data available — still increment turn count
       this.accumulator.recordTurn();
@@ -787,7 +808,7 @@ export class MessageProcessor {
   }
 
   // -------------------------------------------------------------------------
-  // Result messages — emit display_item + run_summary
+  // Result messages — emit display_item + run_result agent event
   // -------------------------------------------------------------------------
 
   private processResultMessage(
@@ -857,10 +878,10 @@ export class MessageProcessor {
       `[message-processor] event=emit_display_item item_type=result id=${item.id} status=${resultStatus} subtype=${subtype ?? "none"} orphaned_tools=${orphanedItems.length}\n`,
     );
 
-    // Build run_summary from accumulated state
+    // Build run_result from accumulated state.
     const runSummary = this.accumulator.buildRunSummary(raw);
     process.stderr.write(
-      `[message-processor] event=emit_run_summary skill=${runSummary.skillName} status=${runSummary.status}\n`,
+      `[message-processor] event=emit_agent_event subtype=run_result skill=${runSummary.skillName} status=${runSummary.status}\n`,
     );
 
     const results: ProcessedMessage[] = [...orphanedItems];
@@ -879,12 +900,17 @@ export class MessageProcessor {
 
     results.push(this.makeEnvelope(item));
 
-    // Forward contextWindow to frontend via metadata so context utilization displays correctly
+    // Forward contextWindow via a discrete agent event so context utilization
+    // can update without the frontend inspecting run_result.
     if (runSummary.contextWindow > 0) {
-      results.push({ type: "metadata", data: { contextWindow: runSummary.contextWindow } as RunMetadata, timestamp: now } as ProcessedMessage);
+      const contextWindowEvent: ContextWindowEvent = {
+        type: "context_window",
+        contextWindow: runSummary.contextWindow,
+      };
+      results.push(this.makeAgentEventEnvelope(contextWindowEvent, now) as ProcessedMessage);
     }
 
-    results.push({ type: "run_summary", data: runSummary, timestamp: now } as ProcessedMessage);
+    results.push(this.makeAgentEventEnvelope(runSummary, now) as ProcessedMessage);
 
     return results;
   }
@@ -1032,13 +1058,13 @@ export class MessageProcessor {
     this.accumulator = new RunMetadataAccumulator({});
   }
 
-  /** Build a shutdown run_summary for aborted/cancelled runs. */
-  buildShutdownSummary(): RunSummary {
+  /** Build a shutdown run_result for aborted/cancelled runs. */
+  buildShutdownSummary(): RunResultEvent {
     return this.accumulator.buildShutdownSummary();
   }
 
-  /** Build an error run_summary for iterator failures after SDK startup. */
-  buildExecutionErrorSummary(errorMessage: string): RunSummary {
+  /** Build an error run_result for iterator failures after SDK startup. */
+  buildExecutionErrorSummary(errorMessage: string): RunResultEvent {
     return this.accumulator.buildExecutionErrorSummary(errorMessage);
   }
 

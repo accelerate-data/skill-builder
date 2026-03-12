@@ -23,12 +23,16 @@ describe("initAgentStream", () => {
     });
   });
 
-  it("subscribes to agent-message, agent-exit, agent-init-progress, agent-metadata, and agent-shutdown events", () => {
+  it("subscribes to display and discrete agent event channels", () => {
     initAgentStream();
 
     expect(mockListen).toHaveBeenCalledWith("agent-init-progress", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-init-error", expect.any(Function));
-    expect(mockListen).toHaveBeenCalledWith("agent-metadata", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("agent-run-config", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("agent-run-init", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("agent-turn-usage", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("agent-compaction", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("agent-context-window", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-message", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-exit", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-shutdown", expect.any(Function));
@@ -58,16 +62,16 @@ describe("initAgentStream", () => {
     expect(run.displayItems[0].outputText).toBe("Hello world");
   });
 
-  it("updates metadata via agent-metadata event", () => {
+  it("updates run init via agent-run-init event", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
     initAgentStream();
 
-    listeners["agent-metadata"]({
+    listeners["agent-run-init"]({
       payload: {
         agent_id: "agent-1",
-        data: {
-          sessionInit: { sessionId: "sess-123", model: "claude-sonnet-4-5-20250929" },
-        },
+        type: "run_init",
+        sessionId: "sess-123",
+        model: "claude-sonnet-4-5-20250929",
         timestamp: Date.now(),
       },
     });
@@ -106,8 +110,7 @@ describe("initAgentStream", () => {
     initAgentStream();
     initAgentStream();
 
-    // listen should only be called 6 times (agent-init-progress, agent-init-error, agent-metadata, agent-message, agent-exit, agent-shutdown)
-    expect(mockListen).toHaveBeenCalledTimes(6);
+    expect(mockListen).toHaveBeenCalledTimes(10);
   });
 
   it("auto-creates run for display_item messages arriving before startRun", () => {
