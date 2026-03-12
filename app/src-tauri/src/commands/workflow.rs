@@ -1839,10 +1839,10 @@ pub async fn run_workflow_step(
     workflow_session_id: Option<String>,
 ) -> Result<String, String> {
     log::info!(
-        "[run_workflow_step] skill={} step={} session={:?}",
+        "[run_workflow_step] skill={} step={} session={}",
         skill_name,
         step_id,
-        workflow_session_id
+        if workflow_session_id.is_some() { "[present]" } else { "[none]" }
     );
     crate::commands::workflow_lifecycle::validate_run_request(
         &skill_name,
