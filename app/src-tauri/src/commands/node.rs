@@ -38,7 +38,7 @@ pub async fn check_node(app: tauri::AppHandle) -> Result<NodeStatus, String> {
             let error = if !meets_minimum {
                 resolution.version.as_ref().map(|v| {
                     format!(
-                        "Node.js {} found ({}) but version 18-24 is required",
+                        "Node.js {} found ({}) but version 18+ is required",
                         v, resolution.source
                     )
                 })
@@ -81,18 +81,18 @@ pub async fn check_startup_deps(app: tauri::AppHandle) -> Result<StartupDeps, St
             "compatibility",
             "Node.js",
             format!(
-                "{} found ({}) — need 18-24",
+                "{} found ({}) — need 18+",
                 res.version.unwrap_or("unknown".to_string()),
                 res.source
             ),
-            "Install Node.js 18-24 from https://nodejs.org and restart Skill Builder.",
+            "Install Node.js 18+ from https://nodejs.org and restart Skill Builder.",
         ),
         Err(e) => dep_fail(
             "node_runtime",
             "missing_dependency",
             "Node.js",
             e,
-            "Install Node.js 18-24 from https://nodejs.org and restart Skill Builder.",
+            "Install Node.js 18+ from https://nodejs.org and restart Skill Builder.",
         ),
     };
     checks.push(node);
