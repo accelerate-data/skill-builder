@@ -18,7 +18,7 @@ fn suppress_same_fallback_model(
     }
 }
 
-fn output_format_for_agent(
+pub(crate) fn output_format_for_agent(
     skill_name: &str,
     agent_name: Option<&str>,
 ) -> Option<serde_json::Value> {
@@ -60,6 +60,21 @@ fn output_format_for_agent(
                     "test_results_markdown": { "type": "string", "minLength": 1 }
                 },
                 "additionalProperties": false
+            }
+        }));
+    }
+
+    if agent_name == Some("generate-skill") {
+        return Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status", "evaluations_markdown"],
+                "properties": {
+                    "status": { "type": "string", "const": "generated" },
+                    "evaluations_markdown": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": true
             }
         }));
     }
@@ -212,6 +227,17 @@ mod tests {
         assert_eq!(
             schema["schema"]["properties"]["status"]["const"],
             "validation_complete"
+        );
+    }
+
+    #[test]
+    fn test_output_format_for_generate_skill_agent() {
+        let fmt = output_format_for_agent("my-skill", Some("generate-skill"));
+        assert!(fmt.is_some());
+        let schema = fmt.expect("schema");
+        assert_eq!(
+            schema["schema"]["properties"]["status"]["const"],
+            "generated"
         );
     }
 

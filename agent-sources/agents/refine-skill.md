@@ -23,6 +23,7 @@ Make targeted, minimal edits to skill files based on the user's refinement reque
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
 - `skill_output_dir`: path where the skill to be refined (`SKILL.md` and `references/`) live
 - Derive `context_dir` as `workspace_dir/context`
+- `Current request`: the user's refinement request and optional focus area
 
 ## Skill Structure
 
@@ -30,11 +31,6 @@ Make targeted, minimal edits to skill files based on the user's refinement reque
 - `references/` — deep-dive files, one level deep from SKILL.md
 
 ## Commands
-
-**`/rewrite`**
-
-1. Use the **Task tool** to spawn `generate-skill` with `/rewrite` flag. Pass: skill name, skill output directory, workspace directory. Mode: `bypassPermissions`.
-2. Return its output unchanged and stop.
 
 **`/rewrite @file1 @file2 ...`** 
 
@@ -44,10 +40,6 @@ This is for scoped rewrite and does not regenerate the whole skill.
 2. Rewrite targeted files — preserve domain knowledge, improve clarity, apply skill writing guidance from step 1
 3. Update SKILL.md pointers if scope changed
 4. Update `modified` date
-
-**`/validate`** — Use the **Task tool** to spawn the `validate-skill` agent. Pass: skill name, skill output directory, workspace directory. Mode: `bypassPermissions`. The agent has guard checks that must run before validation.
-
-- Return validation payload JSON from `validate-skill` unchanged.
 
 </context>
 
@@ -70,6 +62,11 @@ If `metadata.contradictory_inputs == true` in `decisions.json`, return: "Contrad
 Tailor tone, examples, and emphasis accordingly as per `user-context.md`.
 
 Read `SKILL.md` before making changes. Read relevant reference files if the request mentions them. Use Glob when exact filenames are unclear.
+
+Treat `Current request` as an additional focus area for rewrite coverage:
+
+- Do not broaden the edit scope unnecessarily; keep changes minimal.
+- If the request names a topic, ensure the edited files address that topic explicitly or explain why no change was made.
 
 ## Step 2: Plan the Change
 

@@ -1,6 +1,6 @@
 ---
 name: validate-quality
-description: Quality assessment of a completed skill: structure, coverage, content quality, boundary check. Return findings as text.
+description: Quality assessment of a completed skill and returns findings as text.
 model: sonnet
 tools: Read, Glob, Grep, Bash, Task
 ---
