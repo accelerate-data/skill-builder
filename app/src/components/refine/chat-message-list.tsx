@@ -29,7 +29,7 @@ export function ChatMessageList({ messages }: ChatMessageListProps) {
   }
 
   return (
-    <ScrollArea className="chat-scroll-viewport h-0 flex-1">
+    <ScrollArea className="h-0 flex-1">
       <div className="flex min-w-0 w-full flex-col gap-3 overflow-x-hidden p-4">
         {messages.map((msg) => {
           if (msg.role === "user") {

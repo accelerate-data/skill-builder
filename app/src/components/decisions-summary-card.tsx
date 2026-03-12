@@ -141,7 +141,7 @@ export function DecisionsSummaryCard({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 min-w-0 overflow-hidden">
       {/* Summary Card */}
       <div className="rounded-lg border shadow-sm overflow-hidden">
         {/* Header — collapsible */}
@@ -429,7 +429,7 @@ function DecisionCard({
 
   return (
     <div
-      className="rounded-lg border shadow-sm overflow-hidden"
+      className="rounded-lg border shadow-sm overflow-hidden min-w-0"
       style={{ borderLeftWidth: "3px", borderLeftColor: colors.border }}
     >
       {/* Header — click to expand */}
@@ -458,8 +458,11 @@ function DecisionCard({
 
       {/* Collapsed preview — show decision text */}
       {!expanded && draft.decision && (
-        <div className="bg-muted/40 px-4 pb-2.5">
-          <span className="truncate text-xs italic" style={{ color: "var(--color-pacific)" }}>
+        <div className="flex items-center gap-2 bg-muted/40 px-4 pb-2.5">
+          <span
+            className="flex-1 truncate text-xs italic"
+            style={{ color: "var(--color-pacific)" }}
+          >
             {draft.decision}
           </span>
         </div>
@@ -467,7 +470,7 @@ function DecisionCard({
 
       {/* Expanded body */}
       {expanded && (
-        <div className="border-t bg-card p-4 space-y-3">
+        <div className="border-t bg-card p-4 space-y-3 min-w-0">
           {/* Original question */}
           {draft.original_question && (
             <div>
@@ -494,7 +497,7 @@ function DecisionCard({
                 className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm text-foreground leading-relaxed focus:outline-none focus:ring-1 focus:ring-offset-0"
               />
             ) : (
-              <p className="mt-0.5 text-sm text-foreground leading-relaxed">
+              <p className="mt-0.5 text-sm text-foreground leading-relaxed break-words">
                 {draft.decision}
               </p>
             )}
@@ -522,7 +525,7 @@ function DecisionCard({
                   style={{ color: "var(--color-ocean)" }}
                 />
               ) : (
-                <p className="mt-0.5 text-xs leading-relaxed" style={{ color: "var(--color-ocean)" }}>
+                <p className="mt-0.5 text-xs leading-relaxed break-words" style={{ color: "var(--color-ocean)" }}>
                   {draft.implication}
                 </p>
               )}
