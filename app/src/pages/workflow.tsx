@@ -1099,11 +1099,15 @@ export default function WorkflowPage() {
   /** Render completed agent/reasoning step with output files. */
   const renderCompletedStep = () => {
     const nextStep = currentStep + 1;
-    const isLastStep = disabledSteps.includes(nextStep) || currentStep >= steps.length - 1;
+    const isTerminalStep = currentStep >= steps.length - 1;
+    const nextStepBlocked = !isTerminalStep && disabledSteps.includes(nextStep);
+    const showDecisionConflictResolution = currentStep === 2 && nextStepBlocked;
+    const isLastStep = isTerminalStep || (nextStepBlocked && !showDecisionConflictResolution);
     const handleClose = () => navigate({ to: "/" });
     const handleRefine = () => {
       navigate({ to: "/refine", search: { skill: skillName } });
     };
+    const nextStepLabel = !isTerminalStep ? steps[nextStep]?.name ?? "Next Step" : undefined;
 
     return (
       <WorkflowStepComplete
@@ -1115,6 +1119,8 @@ export default function WorkflowPage() {
         onClose={handleClose}
         onRefine={disabledSteps.length > 0 ? undefined : handleRefine}
         isLastStep={isLastStep}
+        nextStepBlocked={showDecisionConflictResolution}
+        nextStepLabel={nextStepLabel}
         reviewMode={reviewMode}
         skillName={skillName}
         workspacePath={workspacePath ?? undefined}
