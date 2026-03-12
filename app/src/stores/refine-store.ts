@@ -61,6 +61,7 @@ interface RefineState {
   updateSkillFiles: (files: SkillFile[]) => void;
   setActiveAgentId: (id: string | null) => void;
   setRunning: (v: boolean) => void;
+  setSessionId: (id: string | null) => void;
   setSessionExhausted: (v: boolean) => void;
   clearSession: () => void;
 }
@@ -137,6 +138,7 @@ export const useRefineStore = create<RefineState>((set, get) => ({
 
   setActiveAgentId: (id) => set({ activeAgentId: id }),
   setRunning: (v) => set({ isRunning: v }),
+  setSessionId: (id) => set({ sessionId: id }),
   setSessionExhausted: (v) => set({ sessionExhausted: v }),
 
   clearSession: () => set(SESSION_DEFAULTS),
