@@ -918,11 +918,10 @@ pub async fn send_refine_message(
             &user_message,
         );
         log::debug!(
-            "[send_refine_message] direct prompt ({} chars) for skill '{}' command={:?}:\n{}",
+            "[send_refine_message] direct prompt ({} chars) for skill '{}' command={:?}",
             prompt.len(),
             skill_name,
-            command,
-            prompt
+            command
         );
         let (mut config, agent_id) = build_direct_refine_config(
             prompt,
@@ -966,11 +965,10 @@ pub async fn send_refine_message(
             command.as_deref(),
         );
         log::debug!(
-            "[send_refine_message] first message prompt ({} chars) for skill '{}' command={:?}:\n{}",
+            "[send_refine_message] first message prompt ({} chars) for skill '{}' command={:?}",
             prompt.len(),
             skill_name,
-            command,
-            prompt
+            command
         );
 
         // 5. Build config and agent_id
