@@ -204,7 +204,11 @@ export class StreamSession {
           const innerMsg = msg.message as Record<string, unknown>;
           const stopReason = innerMsg.stop_reason as string | undefined;
           if (stopReason && stopReason !== "tool_use") {
-            onMessage(this.currentRequestId, { type: "turn_complete" });
+            onMessage(this.currentRequestId, {
+              type: "agent_event",
+              event: { type: "turn_complete" },
+              timestamp: Date.now(),
+            });
           }
         }
       }
@@ -236,8 +240,9 @@ export class StreamSession {
         `[stream-session] Session ${this.sessionId} exhausted (query completed without close)\n`,
       );
       onMessage(this.currentRequestId, {
-        type: "session_exhausted",
-        session_id: this.sessionId,
+        type: "agent_event",
+        event: { type: "session_exhausted", sessionId: this.sessionId },
+        timestamp: Date.now(),
       });
     }
 
@@ -289,6 +294,10 @@ export class StreamSession {
 
     await new Promise((resolve) => setTimeout(resolve, 20));
     if (this.closed) return;
-    onMessage(requestId, { type: "turn_complete" });
+    onMessage(requestId, {
+      type: "agent_event",
+      event: { type: "turn_complete" },
+      timestamp: Date.now(),
+    });
   }
 }

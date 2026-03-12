@@ -37,6 +37,9 @@ Communicates with the Rust backend via stdin/stdout, one JSON object per line:
 | `turn_usage` | Forward | `agent-turn-usage` |
 | `compaction` | Forward | `agent-compaction` |
 | `context_window` | Forward | `agent-context-window` |
+| `session_exhausted` | Forward + lifecycle | `agent-session-exhausted` |
+| `init_progress` | Forward | `agent-init-progress` |
+| `turn_complete` | Forward + lifecycle | `agent-turn-complete` |
 | `run_result` | Persist to DB | Not forwarded (Rust-only) |
 
 ## Key Files

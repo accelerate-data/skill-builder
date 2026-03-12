@@ -13,6 +13,7 @@ import type {
   AgentEventEnvelope,
   CompactionEvent,
   ContextWindowEvent,
+  InitProgressEvent,
   ModelUsageEntry,
   RunConfigEvent,
   RunInitEvent,
@@ -418,12 +419,16 @@ export class MessageProcessor {
       return this.processSystemInit(raw, now);
     }
 
-    // init_start, sdk_ready → forward for Rust init-progress routing
+    // init_start, sdk_ready → emit as typed init_progress agent event
     if (subtype === "init_start" || subtype === "sdk_ready") {
+      const event: InitProgressEvent = {
+        type: "init_progress",
+        stage: subtype,
+      };
       process.stderr.write(
-        `[message-processor] event=forward_init_progress subtype=${subtype}\n`,
+        `[message-processor] event=emit_agent_event subtype=init_progress stage=${subtype}\n`,
       );
-      return [raw];
+      return [this.makeAgentEventEnvelope(event, now) as ProcessedMessage];
     }
 
     // Other system messages → forward

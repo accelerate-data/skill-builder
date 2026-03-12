@@ -1,12 +1,16 @@
 import { listen } from "@tauri-apps/api/event";
+import { toast } from "sonner";
 import { useAgentStore } from "@/stores/agent-store";
+import { useRefineStore } from "@/stores/refine-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import type { DisplayItem } from "@/lib/display-types";
 import type {
   CompactionEvent,
   ContextWindowEvent,
+  InitProgressEvent,
   RunConfigEvent,
   RunInitEvent,
+  SessionExhaustedEvent,
   TurnUsageEvent,
 } from "@/lib/agent-events";
 
@@ -30,11 +34,8 @@ interface AgentExitPayload {
   success: boolean;
 }
 
-interface AgentInitProgressPayload {
-  agent_id: string;
-  subtype: string;
-  timestamp: number;
-}
+type AgentInitProgressPayload = { agent_id: string; timestamp: number } & InitProgressEvent;
+type AgentSessionExhaustedPayload = { agent_id: string; timestamp: number } & SessionExhaustedEvent;
 
 interface AgentInitErrorPayload {
   error_type: string;
@@ -63,14 +64,33 @@ export function initAgentStream() {
   initialized = true;
 
   listen<AgentInitProgressPayload>("agent-init-progress", (event) => {
-    const { subtype } = event.payload;
-    const progressMessage = INIT_PROGRESS_MESSAGES[subtype];
+    const { agent_id, stage } = event.payload;
+    console.debug(
+      "[use-agent-stream] event=agent_init_progress component=ipc agent_id=%s stage=%s",
+      agent_id,
+      stage,
+    );
+    const progressMessage = INIT_PROGRESS_MESSAGES[stage];
     if (progressMessage) {
       const workflowState = useWorkflowStore.getState();
       if (workflowState.isInitializing) {
         workflowState.setInitProgressMessage(progressMessage);
       }
     }
+  });
+
+  listen<AgentSessionExhaustedPayload>("agent-session-exhausted", (event) => {
+    const { agent_id, sessionId } = event.payload;
+    console.debug(
+      "[use-agent-stream] event=agent_session_exhausted component=ipc agent_id=%s session_id=%s",
+      agent_id,
+      sessionId,
+    );
+    useRefineStore.getState().setSessionExhausted(true);
+    toast.info(
+      "This refine session has reached its limit. Please start a new session to continue.",
+      { duration: 5000 },
+    );
   });
 
   listen<AgentInitErrorPayload>("agent-init-error", (event) => {

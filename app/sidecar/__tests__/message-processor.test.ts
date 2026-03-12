@@ -56,18 +56,24 @@ describe("MessageProcessor", () => {
       expect(out).toHaveLength(0);
     });
 
-    it("forwards system init messages as-is", () => {
+    it("emits init_progress agent_event for init_start", () => {
       const raw = { type: "system", subtype: "init_start", timestamp: 123 };
       const out = processor.process(raw);
       expect(out).toHaveLength(1);
-      expect(out[0]).toBe(raw);
+      expect(out[0]).toMatchObject({
+        type: "agent_event",
+        event: { type: "init_progress", stage: "init_start" },
+      });
     });
 
-    it("forwards sdk_ready as-is", () => {
+    it("emits init_progress agent_event for sdk_ready", () => {
       const raw = { type: "system", subtype: "sdk_ready", timestamp: 456 };
       const out = processor.process(raw);
       expect(out).toHaveLength(1);
-      expect(out[0]).toBe(raw);
+      expect(out[0]).toMatchObject({
+        type: "agent_event",
+        event: { type: "init_progress", stage: "sdk_ready" },
+      });
     });
   });
 

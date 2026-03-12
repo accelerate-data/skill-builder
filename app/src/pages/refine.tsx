@@ -282,20 +282,9 @@ export default function RefinePage() {
       toast.error("Agent failed — check the chat for details", { duration: Infinity });
     }
 
-    // Check for session exhaustion — the SDK ran out of turns
+    // Track last turn cost for display
     const agentRun = useAgentStore.getState().runs[activeAgentId];
     setLastTurnCost(agentRun?.totalCost);
-    if (agentRun) {
-      // Check for session exhaustion via error display items
-      const hasExhausted = agentRun.displayItems.some(
-        (di) => di.type === "error" && di.errorMessage?.includes("session_exhausted"),
-      );
-      if (hasExhausted) {
-        console.warn("[refine] session exhausted for agent %s", activeAgentId);
-        useRefineStore.getState().setSessionExhausted(true);
-        toast.info("This refine session has reached its limit. Please start a new session to continue.", { duration: 5000 });
-      }
-    }
 
     const complete = async () => {
       const store = useRefineStore.getState();

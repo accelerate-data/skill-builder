@@ -54,6 +54,9 @@ describe("AgentEvent type sync", () => {
     "TurnUsageEvent",
     "CompactionEvent",
     "ContextWindowEvent",
+    "SessionExhaustedEvent",
+    "InitProgressEvent",
+    "TurnCompleteEvent",
     "RunResultEvent",
   ]) {
     it(`${interfaceName} fields match`, () => {

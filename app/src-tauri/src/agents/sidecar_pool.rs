@@ -922,10 +922,19 @@ impl SidecarPool {
 
                                 // Check if this is a terminal or turn-boundary message.
                                 if let Some(msg_type) = msg.get("type").and_then(|t| t.as_str()) {
+                                    // Extract agent_event subtype for turn_complete / session_exhausted detection.
+                                    let event_subtype = if msg_type == "agent_event" {
+                                        msg.get("event")
+                                            .and_then(|e| e.get("type"))
+                                            .and_then(|t| t.as_str())
+                                    } else {
+                                        None
+                                    };
+
                                     // turn_complete: streaming session finished one turn.
                                     // Remove from pending and emit agent-exit so the frontend
                                     // knows this turn is done. The session stays alive.
-                                    if msg_type == "turn_complete" {
+                                    if event_subtype == Some("turn_complete") {
                                         log::info!(
                                             "[persistent-sidecar:{}] Agent '{}' turn complete",
                                             skill_name_stdout,
@@ -947,17 +956,13 @@ impl SidecarPool {
                                     }
 
                                     // session_exhausted: streaming session ran out of turns.
-                                    // Emit agent-exit with the exhausted flag so the frontend
-                                    // can show "session limit reached" notice.
-                                    if msg_type == "session_exhausted" {
+                                    // Emit agent-exit so the frontend can show "session limit reached" notice.
+                                    if event_subtype == Some("session_exhausted") {
                                         log::info!(
                                             "[persistent-sidecar:{}] Agent '{}' session exhausted",
                                             skill_name_stdout,
                                             request_id,
                                         );
-                                        // The raw line was already forwarded at line 808,
-                                        // so the frontend already has the session_exhausted message.
-                                        // Just remove from pending and emit exit.
                                         {
                                             let mut pending = stdout_pending.lock().await;
                                             pending.remove(request_id);

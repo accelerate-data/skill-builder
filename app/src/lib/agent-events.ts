@@ -48,6 +48,20 @@ export interface ContextWindowEvent {
   contextWindow: number;
 }
 
+export interface SessionExhaustedEvent {
+  type: "session_exhausted";
+  sessionId: string;
+}
+
+export interface InitProgressEvent {
+  type: "init_progress";
+  stage: "init_start" | "sdk_ready";
+}
+
+export interface TurnCompleteEvent {
+  type: "turn_complete";
+}
+
 export interface RunResultEvent {
   type: "run_result";
   skillName: string;
@@ -81,6 +95,9 @@ export type AgentEvent =
   | TurnUsageEvent
   | CompactionEvent
   | ContextWindowEvent
+  | SessionExhaustedEvent
+  | InitProgressEvent
+  | TurnCompleteEvent
   | RunResultEvent;
 
-export const AGENT_EVENTS_VERSION = 1;
+export const AGENT_EVENTS_VERSION = 2;

@@ -9,14 +9,6 @@ pub struct AgentEvent {
     pub message: serde_json::Value,
 }
 
-/// Payload for early initialization progress events (`init_start`, `sdk_ready`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentInitProgress {
-    pub agent_id: String,
-    pub subtype: String,
-    pub timestamp: u64,
-}
-
 /// Payload for sidecar startup error events sent to the frontend.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentInitError {
@@ -99,7 +91,6 @@ enum SidecarMessageAction {
         event_name: &'static str,
         payload: serde_json::Value,
     },
-    EmitInitProgress(AgentInitProgress),
     ForwardAgentMessage(AgentEvent),
 }
 
@@ -182,6 +173,18 @@ fn route_sidecar_message(
                     event_name: "agent-context-window",
                     payload: build_frontend_event_payload(agent_id, timestamp, event),
                 }),
+                Some("session_exhausted") => Some(SidecarMessageAction::EmitFrontendEvent {
+                    event_name: "agent-session-exhausted",
+                    payload: build_frontend_event_payload(agent_id, timestamp, event),
+                }),
+                Some("init_progress") => Some(SidecarMessageAction::EmitFrontendEvent {
+                    event_name: "agent-init-progress",
+                    payload: build_frontend_event_payload(agent_id, timestamp, event),
+                }),
+                Some("turn_complete") => Some(SidecarMessageAction::EmitFrontendEvent {
+                    event_name: "agent-turn-complete",
+                    payload: build_frontend_event_payload(agent_id, timestamp, event),
+                }),
                 Some(other) => {
                     log::warn!(
                         "[event:agent_event:{}] Unsupported event type '{}' — skipping",
@@ -203,22 +206,6 @@ fn route_sidecar_message(
                 None
             }
         };
-    }
-
-    if msg_type == "system" {
-        if let Some(subtype) = message.get("subtype").and_then(|s| s.as_str()) {
-            if matches!(subtype, "init_start" | "sdk_ready") {
-                let timestamp = message
-                    .get("timestamp")
-                    .and_then(|t| t.as_u64())
-                    .unwrap_or(0);
-                return Some(SidecarMessageAction::EmitInitProgress(AgentInitProgress {
-                    agent_id: agent_id.to_string(),
-                    subtype: subtype.to_string(),
-                    timestamp,
-                }));
-            }
-        }
     }
 
     Some(SidecarMessageAction::ForwardAgentMessage(AgentEvent {
@@ -371,16 +358,6 @@ pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
                         agent_id,
                         e
                     );
-                }
-            }
-            Some(SidecarMessageAction::EmitInitProgress(progress)) => {
-                log::debug!(
-                    "[event:agent-init-progress:{}] {}",
-                    agent_id,
-                    progress.subtype
-                );
-                if let Err(e) = app_handle.emit("agent-init-progress", &progress) {
-                    log::warn!("Failed to emit agent-init-progress for {}: {}", agent_id, e);
                 }
             }
             Some(SidecarMessageAction::ForwardAgentMessage(event)) => {
@@ -544,6 +521,35 @@ mod tests {
                 "contextWindow",
                 serde_json::json!(200000),
             ),
+            (
+                serde_json::json!({
+                    "type": "session_exhausted",
+                    "sessionId": "sess-99"
+                }),
+                "agent-session-exhausted",
+                42_u64,
+                "sessionId",
+                serde_json::json!("sess-99"),
+            ),
+            (
+                serde_json::json!({
+                    "type": "init_progress",
+                    "stage": "init_start"
+                }),
+                "agent-init-progress",
+                42_u64,
+                "stage",
+                serde_json::json!("init_start"),
+            ),
+            (
+                serde_json::json!({
+                    "type": "turn_complete"
+                }),
+                "agent-turn-complete",
+                42_u64,
+                "type",
+                serde_json::json!("turn_complete"),
+            ),
         ];
 
         for (event, expected_name, expected_timestamp, expected_field, expected_value) in cases {
@@ -595,20 +601,68 @@ mod tests {
     #[test]
     fn route_sidecar_message_returns_init_progress_event() {
         let message = serde_json::json!({
-            "type": "system",
-            "subtype": "sdk_ready",
+            "type": "agent_event",
+            "event": {
+                "type": "init_progress",
+                "stage": "sdk_ready"
+            },
             "timestamp": 99_u64
         });
 
         let action = route_sidecar_message("agent-2", message);
 
         match action {
-            Some(SidecarMessageAction::EmitInitProgress(progress)) => {
-                assert_eq!(progress.agent_id, "agent-2");
-                assert_eq!(progress.subtype, "sdk_ready");
-                assert_eq!(progress.timestamp, 99);
+            Some(SidecarMessageAction::EmitFrontendEvent { event_name, payload }) => {
+                assert_eq!(event_name, "agent-init-progress");
+                assert_eq!(payload["agent_id"], "agent-2");
+                assert_eq!(payload["timestamp"], 99);
+                assert_eq!(payload["stage"], "sdk_ready");
             }
-            other => panic!("expected init progress action, got {:?}", other),
+            other => panic!("expected frontend event action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn route_sidecar_message_returns_session_exhausted_event() {
+        let message = serde_json::json!({
+            "type": "agent_event",
+            "event": {
+                "type": "session_exhausted",
+                "sessionId": "sess-456"
+            },
+            "timestamp": 100_u64
+        });
+
+        let action = route_sidecar_message("agent-5", message);
+
+        match action {
+            Some(SidecarMessageAction::EmitFrontendEvent { event_name, payload }) => {
+                assert_eq!(event_name, "agent-session-exhausted");
+                assert_eq!(payload["agent_id"], "agent-5");
+                assert_eq!(payload["sessionId"], "sess-456");
+            }
+            other => panic!("expected frontend event action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn route_sidecar_message_returns_turn_complete_event() {
+        let message = serde_json::json!({
+            "type": "agent_event",
+            "event": {
+                "type": "turn_complete"
+            },
+            "timestamp": 101_u64
+        });
+
+        let action = route_sidecar_message("agent-6", message);
+
+        match action {
+            Some(SidecarMessageAction::EmitFrontendEvent { event_name, payload }) => {
+                assert_eq!(event_name, "agent-turn-complete");
+                assert_eq!(payload["agent_id"], "agent-6");
+            }
+            other => panic!("expected frontend event action, got {:?}", other),
         }
     }
 

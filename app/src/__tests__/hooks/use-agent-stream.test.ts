@@ -33,6 +33,7 @@ describe("initAgentStream", () => {
     expect(mockListen).toHaveBeenCalledWith("agent-turn-usage", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-compaction", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-context-window", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("agent-session-exhausted", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-message", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-exit", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-shutdown", expect.any(Function));
@@ -259,7 +260,7 @@ describe("initAgentStream", () => {
     initAgentStream();
     initAgentStream();
 
-    expect(mockListen).toHaveBeenCalledTimes(10);
+    expect(mockListen).toHaveBeenCalledTimes(11);
   });
 
   it("auto-creates run for display_item messages arriving before startRun", () => {
@@ -403,7 +404,8 @@ describe("initAgentStream", () => {
     listeners["agent-init-progress"]({
       payload: {
         agent_id: "agent-1",
-        subtype: "init_start",
+        type: "init_progress",
+        stage: "init_start",
         timestamp: Date.now(),
       },
     });
@@ -420,7 +422,8 @@ describe("initAgentStream", () => {
     listeners["agent-init-progress"]({
       payload: {
         agent_id: "agent-1",
-        subtype: "sdk_ready",
+        type: "init_progress",
+        stage: "sdk_ready",
         timestamp: Date.now(),
       },
     });
@@ -437,7 +440,8 @@ describe("initAgentStream", () => {
     listeners["agent-init-progress"]({
       payload: {
         agent_id: "agent-1",
-        subtype: "init_start",
+        type: "init_progress",
+        stage: "init_start",
         timestamp: Date.now(),
       },
     });
@@ -453,7 +457,8 @@ describe("initAgentStream", () => {
     listeners["agent-init-progress"]({
       payload: {
         agent_id: "agent-1",
-        subtype: "unknown_subtype",
+        type: "init_progress",
+        stage: "unknown_subtype",
         timestamp: Date.now(),
       },
     });
@@ -470,7 +475,8 @@ describe("initAgentStream", () => {
     listeners["agent-init-progress"]({
       payload: {
         agent_id: "agent-1",
-        subtype: "init_start",
+        type: "init_progress",
+        stage: "init_start",
         timestamp: Date.now(),
       },
     });
@@ -506,7 +512,8 @@ describe("initAgentStream", () => {
     listeners["agent-init-progress"]({
       payload: {
         agent_id: "agent-1",
-        subtype: "init_start",
+        type: "init_progress",
+        stage: "init_start",
         timestamp: Date.now(),
       },
     });
@@ -518,7 +525,8 @@ describe("initAgentStream", () => {
     listeners["agent-init-progress"]({
       payload: {
         agent_id: "agent-1",
-        subtype: "sdk_ready",
+        type: "init_progress",
+        stage: "sdk_ready",
         timestamp: Date.now(),
       },
     });

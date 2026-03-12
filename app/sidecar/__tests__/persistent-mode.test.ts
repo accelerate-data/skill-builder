@@ -893,7 +893,10 @@ describe("runPersistent", () => {
     const turnCompleteForFollowUp = capture.lines
       .map((l) => JSON.parse(l))
       .some(
-        (msg: Record<string, unknown>) => msg.type === "turn_complete" && msg.request_id === "req_stream_2",
+        (msg: Record<string, unknown>) =>
+          msg.type === "agent_event" &&
+          (msg.event as Record<string, unknown>)?.type === "turn_complete" &&
+          msg.request_id === "req_stream_2",
       );
     expect(turnCompleteForFollowUp).toBe(true);
   });
