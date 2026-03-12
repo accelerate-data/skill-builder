@@ -203,13 +203,8 @@ export const useAgentStore = create<AgentState>((set) => ({
         runs: {
           ...state.runs,
           [agentId]: existing
-<<<<<<< HEAD
             ? // Run was auto-created by early messages — update model, keep displayItems
               { ...existing, model, skillName, status: "running" as const }
-=======
-            ? // Run was auto-created by early messages — update model, keep displayItems
-              { ...existing, model, skillName, status: "running" as const }
->>>>>>> 092b94abfeb4805240f9ff3e78dcc7494cfe3d00
             : {
                 agentId,
                 model,
