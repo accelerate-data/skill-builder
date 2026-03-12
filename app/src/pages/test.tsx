@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Play, Square } from "lucide-react";
 import { toast } from "@/lib/toast";
-import { useNavigate, useSearch, useBlocker } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -864,26 +865,18 @@ export default function TestPage() {
   // Sync phase to global test store so CloseGuard can detect running agents.
   useEffect(() => {
     useTestStore.getState().setRunning(isRunning);
-    return () => { useTestStore.getState().setRunning(false); };
   }, [isRunning]);
 
   // --- Navigation guard ---
-  const { proceed, reset: resetBlocker, status: blockerStatus } = useBlocker({
-    shouldBlockFn: () => useTestStore.getState().isRunning,
-    enableBeforeUnload: false,
-    withResolver: true,
+  const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
+    shouldBlock: () => useTestStore.getState().isRunning,
+    onLeave: (proceed) => {
+      useTestStore.getState().setRunning(false);
+      useAgentStore.getState().clearRuns();
+      cleanup(stateRef.current.testId);
+      proceed();
+    },
   });
-
-  const handleNavStay = useCallback(() => {
-    resetBlocker?.();
-  }, [resetBlocker]);
-
-  const handleNavLeave = useCallback(() => {
-    useTestStore.getState().setRunning(false);
-    useAgentStore.getState().clearRuns();
-    cleanup(stateRef.current.testId);
-    proceed?.();
-  }, [proceed, cleanup]);
 
   const elapsedStr = `${(elapsed / 1000).toFixed(1)}s`;
   const activeModel = useSettingsStore((s) => s.preferredModel ?? "sonnet");

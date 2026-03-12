@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useBlocker, useNavigate } from "@tanstack/react-router";
+import { useParams, useNavigate } from "@tanstack/react-router";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { type SaveStatus } from "@/components/clarifications-editor";
 import { type ClarificationsFile, type Note, parseClarifications } from "@/lib/clarifications-types";
 import {
@@ -28,7 +29,7 @@ import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import ResetStepDialog from "@/components/reset-step-dialog";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
-import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
+import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   runWorkflowStep,
@@ -110,19 +111,6 @@ export default function WorkflowPage() {
   const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
   const clearRuns = useAgentStore((s) => s.clearRuns);
 
-  // --- Navigation guard ---
-  // Block navigation while an agent is running and show a confirmation dialog.
-  // Key: shouldBlockFn reads directly from Zustand (not React state) so the
-  // value is current when the router re-evaluates after proceed().
-  const { proceed, reset: resetBlocker, status: blockerStatus } = useBlocker({
-    shouldBlockFn: () => {
-      const s = useWorkflowStore.getState();
-      return s.isRunning || s.gateLoading || hasUnsavedChangesRef.current;
-    },
-    enableBeforeUnload: false,
-    withResolver: true,
-  });
-
   /** End the active workflow session (fire-and-forget) and clear the store field. */
   const endActiveSession = useCallback(() => {
     const sessionId = useWorkflowStore.getState().workflowSessionId;
@@ -132,68 +120,39 @@ export default function WorkflowPage() {
     }
   }, []);
 
-  const handleNavStay = useCallback(() => {
-    resetBlocker?.();
-  }, [resetBlocker]);
-
-  const handleNavLeave = useCallback(() => {
-    const store = useWorkflowStore.getState();
-    const { currentStep: step, steps: curSteps } = store;
-    if (curSteps[step]?.status === "in_progress") {
-      useWorkflowStore.getState().updateStepStatus(step, "pending");
-    }
-
-    useWorkflowStore.getState().setRunning(false);
-    useWorkflowStore.getState().setGateLoading(false);
-    // Clear session ID so the next "Continue" starts a fresh session
-    useWorkflowStore.setState({ workflowSessionId: null });
-    useAgentStore.getState().clearRuns();
-
-    // Fire-and-forget: end workflow session
-    endActiveSession();
-
-    // Fire-and-forget: shut down persistent sidecar for this skill
-    cleanupSkillSidecar(skillName).catch(() => {});
-
-    // Fire-and-forget: release skill lock before leaving
-    releaseLock(skillName).catch(() => {});
-
-    proceed?.();
-  }, [proceed, skillName, endActiveSession]);
-
-  // Safety-net cleanup: revert running state on unmount (e.g. if the
-  // component is removed without going through the blocker dialog).
-  // Also flushes buffered agent messages, ends the workflow session,
-  // releases the skill lock, and shuts down the persistent sidecar.
-  useEffect(() => {
-    return () => {
-      // Flush any pending RAF-batched messages so they aren't lost
-      flushMessageBuffer();
-
+  // --- Navigation guard ---
+  // Block navigation while an agent is running and show a confirmation dialog.
+  const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
+    shouldBlock: () => {
+      const s = useWorkflowStore.getState();
+      return s.isRunning || s.gateLoading || hasUnsavedChangesRef.current;
+    },
+    onLeave: (proceed) => {
       const store = useWorkflowStore.getState();
-      if (store.isRunning) {
-        if (store.steps[store.currentStep]?.status === "in_progress") {
-          useWorkflowStore.getState().updateStepStatus(store.currentStep, "pending");
-        }
-        useWorkflowStore.getState().setRunning(false);
-        useAgentStore.getState().clearRuns();
+      const { currentStep: step, steps: curSteps } = store;
+      if (curSteps[step]?.status === "in_progress") {
+        useWorkflowStore.getState().updateStepStatus(step, "pending");
       }
+
+      useWorkflowStore.getState().setRunning(false);
       useWorkflowStore.getState().setGateLoading(false);
       // Clear session ID so the next "Continue" starts a fresh session
       useWorkflowStore.setState({ workflowSessionId: null });
+      useAgentStore.getState().clearRuns();
 
       // Fire-and-forget: end workflow session
-      const sessionId = store.workflowSessionId;
-      if (sessionId) {
-        endWorkflowSession(sessionId).catch(() => {});
-        useWorkflowStore.setState({ workflowSessionId: null });
-      }
+      endActiveSession();
 
-      // Fire-and-forget: release skill lock and shut down persistent sidecar
-      releaseLock(skillName).catch(() => {});
+      // Fire-and-forget: shut down persistent sidecar for this skill
       cleanupSkillSidecar(skillName).catch(() => {});
-    };
-  }, [skillName]);
+
+      // Fire-and-forget: release skill lock before leaving
+      releaseLock(skillName).catch(() => {});
+
+      proceed();
+    },
+  });
+
 
   const stepConfig = STEP_CONFIGS[currentStep];
 
@@ -347,6 +306,31 @@ export default function WorkflowPage() {
       releaseLock(skillName).catch(() => {});
     };
   }, [skillName, navigate]);
+
+  // --- Cleanup on unmount (without navigation) ---
+  // When component unmounts (e.g. via test unmount or in-app navigation),
+  // ensure session state is cleaned up even if the leave-guard dialog wasn't shown.
+  useEffect(() => {
+    return () => {
+      // Revert any in-progress step to pending
+      const store = useWorkflowStore.getState();
+      const { currentStep: step, steps: curSteps } = store;
+      if (curSteps[step]?.status === "in_progress") {
+        store.updateStepStatus(step, "pending");
+      }
+
+      // Clear running/gate state
+      store.setRunning(false);
+      store.setGateLoading(false);
+      useAgentStore.getState().clearRuns();
+
+      // Fire-and-forget: end workflow session
+      endActiveSession();
+
+      // Fire-and-forget: clean up persistent sidecar
+      cleanupSkillSidecar(skillName).catch(() => {});
+    };
+  }, [skillName, endActiveSession]);
 
   // Reset state when moving to a new step
   useEffect(() => {
