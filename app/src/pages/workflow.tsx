@@ -307,6 +307,31 @@ export default function WorkflowPage() {
     };
   }, [skillName, navigate]);
 
+  // --- Cleanup on unmount (without navigation) ---
+  // When component unmounts (e.g. via test unmount or in-app navigation),
+  // ensure session state is cleaned up even if the leave-guard dialog wasn't shown.
+  useEffect(() => {
+    return () => {
+      // Revert any in-progress step to pending
+      const store = useWorkflowStore.getState();
+      const { currentStep: step, steps: curSteps } = store;
+      if (curSteps[step]?.status === "in_progress") {
+        store.updateStepStatus(step, "pending");
+      }
+
+      // Clear running/gate state
+      store.setRunning(false);
+      store.setGateLoading(false);
+      useAgentStore.getState().clearRuns();
+
+      // Fire-and-forget: end workflow session
+      endActiveSession();
+
+      // Fire-and-forget: clean up persistent sidecar
+      cleanupSkillSidecar(skillName).catch(() => {});
+    };
+  }, [skillName, endActiveSession]);
+
   // Reset state when moving to a new step
   useEffect(() => {
     setErrorHasArtifacts(false);
