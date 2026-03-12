@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useLeaveGuard } from "./use-leave-guard";
-import { useWorkflowStore, useAgentStore } from "@/stores";
+import { useWorkflowStore } from "@/stores/workflow-store";
+import { useAgentStore } from "@/stores/agent-store";
 import {
   acquireLock,
   releaseLock,
@@ -37,8 +38,6 @@ export function useWorkflowSession({
   skillName,
   shouldBlock,
   hasUnsavedChanges,
-  currentStep,
-  steps,
 }: UseWorkflowSessionOptions) {
   const navigate = useNavigate();
   const hasUnsavedChangesRef = useRef(false);
@@ -87,7 +86,8 @@ export function useWorkflowSession({
       useAgentStore.getState().clearRuns();
 
       // Fire-and-forget: end workflow session
-      endWorkflowSession(skillName).catch(() => {});
+      const sessionId = useWorkflowStore.getState().workflowSessionId;
+      if (sessionId) endWorkflowSession(sessionId).catch(() => {});
 
       // Fire-and-forget: clean up persistent sidecar
       cleanupSkillSidecar(skillName).catch(() => {});
@@ -100,6 +100,7 @@ export function useWorkflowSession({
     onLeave: (proceed) => {
       const store = useWorkflowStore.getState();
       const { currentStep: step, steps: curSteps } = store;
+      const sessionId = store.workflowSessionId;
 
       // Revert any in-progress step to pending
       if (curSteps[step]?.status === "in_progress") {
@@ -115,7 +116,7 @@ export function useWorkflowSession({
       useAgentStore.getState().clearRuns();
 
       // Fire-and-forget: end workflow session
-      endWorkflowSession(skillName).catch(() => {});
+      if (sessionId) endWorkflowSession(sessionId).catch(() => {});
 
       // Fire-and-forget: shut down persistent sidecar for this skill
       cleanupSkillSidecar(skillName).catch(() => {});
