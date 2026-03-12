@@ -126,6 +126,7 @@ export default function RefinePage() {
     };
   }, []);
 
+
   // --- Navigation guard ---
   // Block navigation while an agent is running and show a confirmation dialog.
   const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
