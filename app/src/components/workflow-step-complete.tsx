@@ -48,23 +48,40 @@ interface WorkflowStepCompleteProps {
   onResetStep?: () => void;
   saveStatus?: "idle" | "dirty" | "saving" | "saved";
   evaluating?: boolean;
+  nextStepBlocked?: boolean;
+  nextStepLabel?: string;
 }
 
 /** Shared action bar: Refine/Done on last step, Next Step otherwise. Hidden in review mode. */
 function StepActionBar({
   isLastStep,
+  nextStepBlocked,
+  nextStepLabel,
   reviewMode,
   onRefine,
   onClose,
   onNextStep,
 }: {
   isLastStep: boolean;
+  nextStepBlocked?: boolean;
+  nextStepLabel?: string;
   reviewMode?: boolean;
   onRefine?: () => void;
   onClose?: () => void;
   onNextStep?: () => void;
 }) {
   if (reviewMode) return null;
+
+  if (nextStepBlocked) {
+    return (
+      <div className="flex items-center justify-end border-t pt-4">
+        <Button size="sm" disabled>
+          <ArrowRight className="size-3.5" />
+          {nextStepLabel ?? "Next Step"}
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center justify-end gap-2 border-t pt-4">
@@ -117,6 +134,8 @@ export function WorkflowStepComplete({
   onResetStep,
   saveStatus,
   evaluating,
+  nextStepBlocked = false,
+  nextStepLabel,
 }: WorkflowStepCompleteProps) {
   const [fileContents, setFileContents] = useState<Map<string, string>>(new Map());
   const [resolvedFiles, setResolvedFiles] = useState<string[]>([]);
@@ -304,7 +323,15 @@ export function WorkflowStepComplete({
               <p className="mt-1 text-sm">The agent wrote a file that is not valid JSON. Reset and re-run the step.</p>
             </div>
           </div>
-          <StepActionBar isLastStep={isLastStep} reviewMode={reviewMode} onRefine={onRefine} onClose={onClose} onNextStep={onNextStep} />
+          <StepActionBar
+            isLastStep={isLastStep}
+            nextStepBlocked={nextStepBlocked}
+            nextStepLabel={nextStepLabel}
+            reviewMode={reviewMode}
+            onRefine={onRefine}
+            onClose={onClose}
+            onNextStep={onNextStep}
+          />
         </div>
       );
     }
@@ -348,6 +375,8 @@ export function WorkflowStepComplete({
             </ScrollArea>
             <StepActionBar
               isLastStep={isLastStep}
+              nextStepBlocked={nextStepBlocked}
+              nextStepLabel={nextStepLabel}
               reviewMode={reviewMode}
               onRefine={onRefine}
               onClose={onClose}
@@ -396,6 +425,8 @@ export function WorkflowStepComplete({
               </div>
               <StepActionBar
                 isLastStep={isLastStep}
+                nextStepBlocked={nextStepBlocked}
+                nextStepLabel={nextStepLabel}
                 reviewMode={reviewMode}
                 onRefine={onRefine}
                 onClose={onClose}
@@ -471,6 +502,8 @@ export function WorkflowStepComplete({
         )}
         <StepActionBar
           isLastStep={isLastStep}
+          nextStepBlocked={nextStepBlocked}
+          nextStepLabel={nextStepLabel}
           reviewMode={reviewMode}
           onRefine={onRefine}
           onClose={onClose}
@@ -565,6 +598,8 @@ export function WorkflowStepComplete({
         </ScrollArea>
         <StepActionBar
           isLastStep={isLastStep}
+          nextStepBlocked={nextStepBlocked}
+          nextStepLabel={nextStepLabel}
           reviewMode={reviewMode}
           onRefine={onRefine}
           onClose={onClose}
@@ -616,6 +651,8 @@ export function WorkflowStepComplete({
       </div>
       <StepActionBar
         isLastStep={isLastStep}
+        nextStepBlocked={nextStepBlocked}
+        nextStepLabel={nextStepLabel}
         reviewMode={reviewMode}
         onRefine={onRefine}
         onClose={onClose}

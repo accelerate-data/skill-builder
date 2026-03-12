@@ -354,7 +354,7 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     // Simulate agent init then error exit
     await emitTauriEvent(page, "agent-init-progress", {
       agent_id: "agent-001",
-      subtype: "init_start",
+      stage: "init_start",
       timestamp: Date.now(),
     });
     await page.waitForTimeout(50);
@@ -697,15 +697,13 @@ test.describe("Contradictions guard — multi-decision", { tag: "@workflow" }, (
     await expect(page.getByText("Skipped")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("shows contradictions banner and 2 needs-review decisions", async ({ page }) => {
+  test("shows review-required header and 2 needs-review decisions", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, CONTRADICTION_GUARD_OVERRIDES);
     await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
 
-    // Contradictions banner visible
-    await expect(page.getByText(/Contradictory inputs detected/)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("2 decisions need your review")).toBeVisible({ timeout: 5_000 });
 
-    // 2 needs-review badges
-    const needsReviewBadges = page.locator("span").filter({ hasText: "needs-review" });
+    const needsReviewBadges = page.getByRole("button", { name: /needs review/i });
     await expect(needsReviewBadges).toHaveCount(2);
   });
 
@@ -722,11 +720,8 @@ test.describe("Contradictions guard — multi-decision", { tag: "@workflow" }, (
     // Wait for save debounce (300ms) + guard refresh
     await page.waitForTimeout(500);
 
-    // Contradictions banner should STILL be visible (D2 not yet edited)
-    await expect(page.getByText(/Contradictory inputs detected/)).toBeVisible();
-
-    // Revised banner should NOT be visible
-    await expect(page.getByText(/Contradictions reviewed/)).not.toBeVisible();
+    await expect(page.getByText("1 decision needs your review")).toBeVisible();
+    await expect(page.getByText(/All decisions reviewed/)).not.toBeVisible();
 
     // Step 4 should still show "Skipped"
     await expect(page.getByText("Skipped")).toBeVisible();
@@ -747,7 +742,7 @@ test.describe("Contradictions guard — multi-decision", { tag: "@workflow" }, (
     await expect(page.getByRole("button", { name: /Revenue Model.*revised/ })).toBeVisible({ timeout: 3_000 });
 
     // Edit D2 and blur
-    const d2Textarea = page.getByPlaceholder("Enter decision…").nth(1);
+    const d2Textarea = page.getByRole("textbox", { name: "Decision for Pipeline Scope" });
     await expect(d2Textarea).toBeVisible();
     await d2Textarea.click();
     await d2Textarea.fill("Top-of-funnel only.");
@@ -763,11 +758,8 @@ test.describe("Contradictions guard — multi-decision", { tag: "@workflow" }, (
     // Wait for save debounce (300ms) + guard refresh
     await page.waitForTimeout(500);
 
-    // Revised banner should appear
-    await expect(page.getByText(/Contradictions reviewed/)).toBeVisible({ timeout: 5_000 });
-
-    // Contradictions banner should be gone
-    await expect(page.getByText(/Contradictory inputs detected/)).not.toBeVisible();
+    await expect(page.getByText("All decisions reviewed")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/decision needs your review|decisions need your review/)).not.toBeVisible();
 
     // Step 4 should no longer show "Skipped"
     await expect(page.getByText("Skipped")).not.toBeVisible({ timeout: 5_000 });

@@ -32,8 +32,8 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
 
     // Step 1: Fill skill name + select purpose + description (all required to advance)
     await page.getByRole("textbox", { name: "Skill Name" }).fill("hr-analytics");
-    // Purpose is a native <select> element — select by option value
-    await page.getByLabel(/What are you trying to capture/i).selectOption("domain");
+    await page.getByRole("combobox", { name: /what are you trying to capture/i }).click();
+    await page.getByRole("option", { name: /business process knowledge/i }).click();
     await page.getByRole("textbox", { name: "Description" }).fill("HR analytics skill for workforce data.");
 
     // Next button should now be enabled — wait for it, then advance to Step 2
@@ -105,9 +105,9 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
     await deleteButton.click();
 
     // Delete confirmation dialog should appear
-    await expect(page.getByRole("heading", { name: "Delete Skill" })).toBeVisible();
-    // Verify skill name appears in the dialog description (scoped to avoid matching card title)
-    await expect(page.getByRole("dialog").getByText("my-skill")).toBeVisible();
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog.getByRole("heading", { name: "Delete Skill" })).toBeVisible();
+    await expect(dialog).toContainText("my-skill");
   });
 
   test("can confirm skill deletion", async ({ page }) => {

@@ -52,7 +52,6 @@ vi.mock("@/lib/tauri", () => ({
   previewStepReset: vi.fn(() => Promise.resolve([])),
   getDisabledSteps: vi.fn(() => Promise.resolve([])),
   runAnswerEvaluator: vi.fn(() => Promise.reject("not available")),
-  autofillClarifications: vi.fn(() => Promise.resolve(0)),
   logGateDecision: vi.fn(() => Promise.resolve()),
   navigateBackToStepDb: vi.fn(() => Promise.resolve()),
   getContextFileContent: vi.fn(() => Promise.resolve(null)),

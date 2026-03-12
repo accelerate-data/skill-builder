@@ -6,11 +6,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/on-prompt-submit.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/on-prompt-submit.sh\""
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/on-prompt-submit-log.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/on-prompt-submit-log.sh\""
           }
         ]
       }
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/on-subagent-start.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/on-subagent-start.sh\""
           }
         ]
       }
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/on-tool-use.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/on-tool-use.sh\""
           }
         ]
       }
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/on-tool-failure.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/on-tool-failure.sh\""
           }
         ]
       }
@@ -50,7 +50,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/on-subagent-stop.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/on-subagent-stop.sh\""
           }
         ]
       }
@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/on-stop.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/on-stop.sh\"",
             "async": true
           }
         ]
@@ -71,7 +71,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/on-task-completed.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/on-task-completed.sh\""
           }
         ]
       }
@@ -81,7 +81,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/on-config-change.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/on-config-change.sh\"",
             "async": true
           }
         ]
@@ -92,7 +92,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/on-session-end.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/on-session-end.sh\""
           }
         ]
       }

@@ -112,7 +112,8 @@ describe("toast lifecycle policy guard", () => {
     const required: Array<{ file: string; severities: Severity[] }> = [
       { file: "components/layout/app-layout.tsx", severities: ["info", "error"] },
       { file: "pages/workflow.tsx", severities: ["info", "warning", "error"] },
-      { file: "pages/refine.tsx", severities: ["info", "error"] },
+      { file: "pages/refine.tsx", severities: ["error"] },
+      { file: "hooks/use-agent-stream.ts", severities: ["info"] },
       { file: "components/feedback-dialog.tsx", severities: ["error"] },
       { file: "pages/test.tsx", severities: ["error"] },
       { file: "pages/settings.tsx", severities: ["error"] },

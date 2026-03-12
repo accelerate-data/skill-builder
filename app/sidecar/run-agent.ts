@@ -22,6 +22,27 @@ export async function discoverInstalledPlugins(cwd: string): Promise<string[]> {
 }
 
 /**
+ * Filter discovered plugin directories to the explicit required set.
+ * No fallback to "all plugins" is allowed; callers must request plugins intentionally.
+ */
+export function selectPluginPaths(
+  discoveredPluginPaths: string[],
+  requiredPlugins?: string[],
+): string[] {
+  if (!requiredPlugins || requiredPlugins.length === 0) {
+    return [];
+  }
+
+  const discoveredByName = new Map(
+    discoveredPluginPaths.map((pluginPath) => [path.basename(pluginPath), pluginPath] as const),
+  );
+
+  return requiredPlugins
+    .map((pluginName) => discoveredByName.get(pluginName))
+    .filter((pluginPath): pluginPath is string => typeof pluginPath === "string");
+}
+
+/**
  * Emit a system-level progress event (not an SDK message).
  * These events let the UI show granular status during initialization.
  */
@@ -60,7 +81,8 @@ export async function runAgentRequest(
   }
 
   // Discover all installed plugins so every plugin agent is available to the SDK.
-  const pluginPaths = await discoverInstalledPlugins(config.cwd);
+  const discoveredPluginPaths = await discoverInstalledPlugins(config.cwd);
+  const pluginPaths = selectPluginPaths(discoveredPluginPaths, config.requiredPlugins);
 
   // Route SDK subprocess stderr through onMessage so it gets wrapped with
   // request_id and written to the JSONL transcript (not the app log).

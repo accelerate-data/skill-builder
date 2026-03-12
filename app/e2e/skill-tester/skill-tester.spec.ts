@@ -16,6 +16,24 @@ const BASE_OVERRIDES = {
   has_running_agents: false,
 };
 
+async function waitForWithSkillAgentId(page: import("@playwright/test").Page): Promise<string> {
+  await expect
+    .poll(async () => page.evaluate(async () => {
+      const { useAgentStore } = await import("/src/stores/agent-store.ts");
+      const ids = Object.keys(useAgentStore.getState().runs);
+      return ids.find((id) => id.includes("-test-with-")) ?? null;
+    }), { timeout: 5_000 })
+    .not.toBeNull();
+
+  const agentId = await page.evaluate(async () => {
+    const { useAgentStore } = await import("/src/stores/agent-store.ts");
+    const ids = Object.keys(useAgentStore.getState().runs);
+    return ids.find((id) => id.includes("-test-with-")) ?? null;
+  });
+  expect(agentId).toBeTruthy();
+  return agentId!;
+}
+
 test.describe("Skill Tester", { tag: "@skill-tester" }, () => {
   test("runs test with wrapped prompt and workspace preparation", async ({ page }) => {
     await page.addInitScript((o) => {
@@ -59,8 +77,6 @@ test.describe("Skill Tester", { tag: "@skill-tester" }, () => {
   });
 
   test("streaming content shows tool_use and text blocks as they arrive", async ({ page }) => {
-    let capturedAgentIds: string[] = [];
-
     await page.addInitScript((o) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = o;
     }, {
@@ -72,11 +88,6 @@ test.describe("Skill Tester", { tag: "@skill-tester" }, () => {
         transcript_log_dir: "/tmp/test-workspace/my-skill/logs",
       },
       start_agent: "agent-id-stream",
-    });
-
-    // Capture the agent IDs assigned by startAgent calls
-    await page.exposeFunction("__captureAgentId__", (id: string) => {
-      capturedAgentIds.push(id);
     });
 
     await page.goto("/test");
@@ -92,44 +103,49 @@ test.describe("Skill Tester", { tag: "@skill-tester" }, () => {
     await expect(page.getByRole("button", { name: /running/i })).toBeVisible({ timeout: 5_000 });
 
     // Emit a tool_use block followed by a text block to the with-skill agent
-    const WITH_ID = "my-skill-test-with";
+    const withId = await waitForWithSkillAgentId(page);
     await emitTauriEvent(page, "agent-init-progress", {
-      agent_id: WITH_ID,
-      subtype: "init_start",
+      agent_id: withId,
+      stage: "init_start",
       timestamp: Date.now(),
     });
 
-    // Emit assistant message with tool_use block
+    // Emit tool call display item
     await emitTauriEvent(page, "agent-message", {
-      agent_id: WITH_ID,
+      agent_id: withId,
       message: {
-        type: "assistant",
-        message: {
-          content: [
-            { type: "tool_use", name: "Read", input: { file_path: "/data/schema.md" } },
-          ],
+        type: "display_item",
+        item: {
+          id: "di-tool-1",
+          type: "tool_call",
+          timestamp: Date.now(),
+          toolName: "Read",
+          toolSummary: "Reading schema.md",
+          toolStatus: "completed",
         },
       },
     });
 
     // tool_use header (tool name) should be visible in collapsed state
-    await expect(page.getByText("Read").first()).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText("Read").last()).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText("Reading schema.md").last()).toBeVisible({ timeout: 3_000 });
 
-    // Emit a text block
+    // Emit an output display item
     await emitTauriEvent(page, "agent-message", {
-      agent_id: WITH_ID,
+      agent_id: withId,
       message: {
-        type: "assistant",
-        message: {
-          content: [
-            { type: "text", text: "The schema has 12 columns including churn_flag." },
-          ],
+        type: "display_item",
+        item: {
+          id: "di-output-1",
+          type: "output",
+          timestamp: Date.now(),
+          outputText: "The schema has 12 columns including churn_flag.",
         },
       },
     });
 
     // Text content should be immediately visible (not collapsed)
-    await expect(page.getByText("The schema has 12 columns including churn_flag.")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText("The schema has 12 columns including churn_flag.").last()).toBeVisible({ timeout: 3_000 });
   });
 
   test("run test button is disabled without skill selected", async ({ page }) => {

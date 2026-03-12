@@ -6,7 +6,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 }));
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { runAgentRequest, emitSystemEvent } from "../run-agent.js";
+import { runAgentRequest, emitSystemEvent, selectPluginPaths } from "../run-agent.js";
 import type { SidecarConfig } from "../config.js";
 
 const mockQuery = vi.mocked(query);
@@ -251,6 +251,48 @@ describe("runAgentRequest", () => {
     expect(summary.resultErrors).toEqual(["stream failed after startup"]);
     expect(summary.stopReason).toBe("error");
     expect(summary.numTurns).toBe(1);
+  });
+});
+
+describe("selectPluginPaths", () => {
+  it("returns no plugins when none are explicitly required", () => {
+    expect(
+      selectPluginPaths(
+        ["/workspace/.claude/plugins/vd-agent", "/workspace/.claude/plugins/skill-creator"],
+        undefined,
+      ),
+    ).toEqual([]);
+    expect(
+      selectPluginPaths(
+        ["/workspace/.claude/plugins/vd-agent", "/workspace/.claude/plugins/skill-creator"],
+        [],
+      ),
+    ).toEqual([]);
+  });
+
+  it("filters discovered plugin paths to the explicit required set", () => {
+    expect(
+      selectPluginPaths(
+        [
+          "/workspace/.claude/plugins/vd-agent",
+          "/workspace/.claude/plugins/skill-creator",
+          "/workspace/.claude/plugins/skill-content-researcher",
+        ],
+        ["skill-content-researcher", "skill-creator"],
+      ),
+    ).toEqual([
+      "/workspace/.claude/plugins/skill-content-researcher",
+      "/workspace/.claude/plugins/skill-creator",
+    ]);
+  });
+
+  it("ignores requested plugins that are not installed", () => {
+    expect(
+      selectPluginPaths(
+        ["/workspace/.claude/plugins/vd-agent"],
+        ["skill-creator", "vd-agent"],
+      ),
+    ).toEqual(["/workspace/.claude/plugins/vd-agent"]);
   });
 });
 

@@ -47,7 +47,7 @@ test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
     // Simulate init progress events
     await emitTauriEvent(page, "agent-init-progress", {
       agent_id: "agent-001",
-      subtype: "init_start",
+      stage: "init_start",
       timestamp: Date.now(),
     });
     await page.waitForTimeout(50);
@@ -59,7 +59,7 @@ test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
 
     await emitTauriEvent(page, "agent-init-progress", {
       agent_id: "agent-001",
-      subtype: "sdk_ready",
+      stage: "sdk_ready",
       timestamp: Date.now(),
     });
     await page.waitForTimeout(50);
@@ -87,7 +87,7 @@ test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
     await expect(page.getByTestId("agent-initializing-indicator")).not.toBeVisible();
 
     // The agent output panel should now be showing
-    await expect(page.getByText("Starting research...")).toBeVisible();
+    await expect(page.getByText("Starting research...").last()).toBeVisible();
   });
 
   test("display items render in the output panel", async ({ page }) => {
@@ -120,9 +120,9 @@ test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
 
     // Verify display items rendered — check for distinctive text from each message.
     // These are rendered as markdown, so headings become visible text.
-    await expect(page.getByText("Researching Domain Concepts")).toBeVisible();
-    await expect(page.getByText("Key Findings")).toBeVisible();
-    await expect(page.getByText("Generating Clarification Questions")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Researching Domain Concepts" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Key Findings" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Generating Clarification Questions" })).toBeVisible();
   });
 
   test("runtime error dialog appears on agent-init-error", async ({ page }) => {

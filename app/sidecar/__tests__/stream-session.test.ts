@@ -9,6 +9,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 vi.mock("../run-agent.js", () => ({
   emitSystemEvent: vi.fn(),
   discoverInstalledPlugins: vi.fn().mockResolvedValue([]),
+  selectPluginPaths: vi.fn().mockReturnValue([]),
 }));
 
 // Mock options builder
