@@ -12,7 +12,6 @@ use crate::db::{self, Db};
 use crate::types::{
     RefineDiff, RefineFileDiff, RefineFinalizeResult, RefineSessionInfo, SkillFileContent,
 };
-use sha2::{Digest, Sha256};
 
 const REFINE_TOOLS: &[&str] = &[
     "Read", "Edit", "Write", "Glob", "Grep", "Bash", "Task", "Skill",
@@ -40,6 +39,7 @@ const REFINE_STREAM_MAX_TURNS: u32 = 400;
 /// across subsequent messages — the SDK preserves full conversation state.
 pub struct RefineSession {
     pub skill_name: String,
+    pub usage_session_id: String,
     /// Whether the sidecar streaming session has been started.
     /// First `send_refine_message` sends `stream_start`, subsequent sends `stream_message`.
     pub stream_started: bool,
@@ -92,15 +92,8 @@ fn dispatch_for_refine_command(
     }
 }
 
-fn build_refine_usage_session_id(skill_name: &str, refine_session_id: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(refine_session_id.as_bytes());
-
-    format!(
-        "synthetic:refine:{}:{}",
-        skill_name,
-        hex::encode(hasher.finalize())
-    )
+fn new_refine_usage_session_id(skill_name: &str) -> String {
+    format!("synthetic:refine:{}:{}", skill_name, uuid::Uuid::new_v4())
 }
 
 fn ensure_skill_workspace_dir(workspace_path: &str, skill_name: &str) {
@@ -183,7 +176,7 @@ fn load_refine_runtime_settings(
 fn build_refine_config(
     prompt: String,
     skill_name: &str,
-    refine_session_id: &str,
+    usage_session_id: &str,
     workspace_path: &str,
     api_key: String,
     model: String,
@@ -194,7 +187,6 @@ fn build_refine_config(
     refine_prompt_suggestions: bool,
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
-    let usage_session_id = build_refine_usage_session_id(skill_name, refine_session_id);
 
     // CWD is the workspace root (.vibedata) so the sidecar can find
     // .claude/agents/ and workspace-root CLAUDE.md. Skill files are accessed via
@@ -238,7 +230,7 @@ fn build_refine_config(
         skill_name: Some(skill_name.to_string()),
         step_id: Some(-10),
         workflow_session_id: None,
-        usage_session_id: Some(usage_session_id),
+        usage_session_id: Some(usage_session_id.to_string()),
         run_source: Some("refine".to_string()),
     };
 
@@ -249,7 +241,7 @@ fn build_refine_config(
 fn build_direct_refine_config(
     prompt: String,
     skill_name: &str,
-    refine_session_id: &str,
+    usage_session_id: &str,
     workspace_path: &str,
     api_key: String,
     model: String,
@@ -260,7 +252,6 @@ fn build_direct_refine_config(
     agent_name: &'static str,
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
-    let usage_session_id = build_refine_usage_session_id(skill_name, refine_session_id);
     let agent_id = format!(
         "refine-{}-{}",
         skill_name,
@@ -307,7 +298,7 @@ fn build_direct_refine_config(
         skill_name: Some(skill_name.to_string()),
         step_id: Some(-10),
         workflow_session_id: None,
-        usage_session_id: Some(usage_session_id),
+        usage_session_id: Some(usage_session_id.to_string()),
         run_source: Some("refine".to_string()),
     };
 
@@ -829,6 +820,7 @@ pub async fn start_refine_session(
         session_id.clone(),
         RefineSession {
             skill_name: skill_name.clone(),
+            usage_session_id: new_refine_usage_session_id(&skill_name),
             stream_started: false,
         },
     );
@@ -872,7 +864,7 @@ pub async fn send_refine_message(
     let dispatch = dispatch_for_refine_command(command.as_deref(), target_files.as_deref());
 
     // 1. Look up session and check stream state
-    let (skill_name, stream_started) = {
+    let (skill_name, usage_session_id, stream_started) = {
         let map = sessions.0.lock().map_err(|e| {
             log::error!(
                 "[send_refine_message] Failed to acquire session lock: {}",
@@ -891,7 +883,11 @@ pub async fn send_refine_message(
             log::error!("[send_refine_message] {}", msg);
             msg
         })?;
-        (session.skill_name.clone(), session.stream_started)
+        (
+            session.skill_name.clone(),
+            session.usage_session_id.clone(),
+            session.stream_started,
+        )
     };
     log::info!(
         "[send_refine_message] skill={} stream_started={}",
@@ -928,7 +924,7 @@ pub async fn send_refine_message(
         let (mut config, agent_id) = build_direct_refine_config(
             prompt,
             &skill_name,
-            &session_id,
+            &usage_session_id,
             &workspace_path,
             runtime.api_key,
             runtime.model,
@@ -983,7 +979,7 @@ pub async fn send_refine_message(
         let (mut config, agent_id) = build_refine_config(
             prompt,
             &skill_name,
-            &session_id,
+            &usage_session_id,
             &workspace_path,
             runtime.api_key,
             runtime.model,
@@ -1491,6 +1487,7 @@ mod tests {
                 session_id.clone(),
                 RefineSession {
                     skill_name: "my-skill".to_string(),
+                    usage_session_id: "usage-session-1".to_string(),
                     stream_started: false,
                 },
             );
@@ -1499,6 +1496,7 @@ mod tests {
         let map = manager.0.lock().unwrap();
         let session = map.get(&session_id).unwrap();
         assert_eq!(session.skill_name, "my-skill");
+        assert_eq!(session.usage_session_id, "usage-session-1");
     }
 
     #[test]
@@ -1511,6 +1509,7 @@ mod tests {
                 "session-1".to_string(),
                 RefineSession {
                     skill_name: "my-skill".to_string(),
+                    usage_session_id: "usage-session-1".to_string(),
                     stream_started: false,
                 },
             );
@@ -1539,7 +1538,7 @@ mod tests {
         build_refine_config(
             prompt.to_string(),
             "my-skill",
-            "session-123",
+            "usage-session-123",
             "/home/user/.vibedata/skill-builder",
             "sk-test-key".to_string(),
             "sonnet".to_string(),
@@ -1555,7 +1554,7 @@ mod tests {
         build_direct_refine_config(
             "direct prompt".to_string(),
             "my-skill",
-            "session-123",
+            "usage-session-123",
             "/home/user/.vibedata/skill-builder",
             "sk-test-key".to_string(),
             "sonnet".to_string(),
@@ -1641,7 +1640,7 @@ mod tests {
         let (config, _) = build_refine_config(
             "test".to_string(),
             "data-engineering",
-            "session-123",
+            "usage-session-123",
             "/home/user/.vibedata/skill-builder",
             "sk-key".to_string(),
             "sonnet".to_string(),
@@ -1723,8 +1722,7 @@ mod tests {
     fn test_refine_config_serialization_matches_sidecar_schema() {
         // End-to-end: build config, serialize to JSON, verify the sidecar sees correct fields
         let (config, _) = base_refine_config("full prompt here");
-        let expected_usage_session_id =
-            build_refine_usage_session_id("my-skill", "session-123");
+        let expected_usage_session_id = "usage-session-123";
 
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -1748,26 +1746,20 @@ mod tests {
     #[test]
     fn test_refine_config_includes_persistence_identity_for_run_summary() {
         let (config, _) = base_refine_config("improve metrics");
-        let expected_usage_session_id =
-            build_refine_usage_session_id("my-skill", "session-123");
         assert_eq!(config.skill_name.as_deref(), Some("my-skill"));
         assert_eq!(
             config.usage_session_id.as_deref(),
-            Some(expected_usage_session_id.as_str())
+            Some("usage-session-123")
         );
         assert_eq!(config.run_source.as_deref(), Some("refine"));
     }
 
     #[test]
-    fn test_refine_usage_session_id_is_hashed_and_stable() {
-        let usage_session_id = build_refine_usage_session_id("my-skill", "session-123");
+    fn test_new_refine_usage_session_id_is_opaque_and_scoped_to_skill() {
+        let usage_session_id = new_refine_usage_session_id("my-skill");
 
-        assert_eq!(
-            usage_session_id,
-            build_refine_usage_session_id("my-skill", "session-123")
-        );
         assert!(usage_session_id.starts_with("synthetic:refine:my-skill:"));
-        assert!(!usage_session_id.contains("session-123"));
+        assert_ne!(usage_session_id, new_refine_usage_session_id("my-skill"));
     }
 
     #[test]
@@ -2079,6 +2071,7 @@ mod tests {
                 session_id.clone(),
                 RefineSession {
                     skill_name: "my-skill".to_string(),
+                    usage_session_id: "usage-session-close".to_string(),
                     stream_started: false,
                 },
             );
@@ -2257,6 +2250,7 @@ mod tests {
                 "s1".to_string(),
                 RefineSession {
                     skill_name: "my-skill".to_string(),
+                    usage_session_id: "usage-session-stream".to_string(),
                     stream_started: false,
                 },
             );
@@ -2274,6 +2268,7 @@ mod tests {
                 "s1".to_string(),
                 RefineSession {
                     skill_name: "my-skill".to_string(),
+                    usage_session_id: "usage-session-stream".to_string(),
                     stream_started: false,
                 },
             );
@@ -2297,6 +2292,7 @@ mod tests {
                 "s1".to_string(),
                 RefineSession {
                     skill_name: "my-skill".to_string(),
+                    usage_session_id: "usage-session-stream".to_string(),
                     stream_started: true,
                 },
             );
