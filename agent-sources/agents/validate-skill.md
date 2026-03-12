@@ -39,6 +39,8 @@ Do NOT evaluate skill viability, alternative approaches, domain correctness, or 
 
 Read `{context_dir}/decisions.json`. Parse the JSON. Missing `decisions.json` is not an error — skip and proceed.
 
+Read `{context_dir}/clarifications.json`. Parse the JSON. Missing `clarifications.json` is not an error — skip and proceed.
+
 Read `{skill_output_dir}/SKILL.md`.
 
 1. **Parameter Guard**: If `SKILL.md` does not exist in `{skill_output_dir}`, return:
@@ -51,7 +53,7 @@ Read `{skill_output_dir}/SKILL.md`.
 }
 ```
 
-2. **Scope recommendation guard**: If `metadata.scope_recommendation == true` in `decisions.json`, return:
+2. **Scope recommendation guard**: If `metadata.scope_recommendation == true` in `clarifications.json`, return:
 
 ```json
 {
