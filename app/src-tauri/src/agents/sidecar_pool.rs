@@ -1002,9 +1002,10 @@ impl SidecarPool {
                                         return;
                                     }
 
-                                    let is_terminal = stream_message_terminal_status(&msg).is_some();
+                                    let terminal_outcome = stream_message_terminal_status(&msg);
+                                    let is_terminal = terminal_outcome.is_some();
 
-                                    if let Some(outcome) = stream_message_terminal_status(&msg) {
+                                    if let Some(outcome) = terminal_outcome {
                                         // Guard: only process if this request is still pending.
                                         // The sidecar may emit both a raw error and a follow-up
                                         // agent_event(run_result) — the second must be a no-op.
