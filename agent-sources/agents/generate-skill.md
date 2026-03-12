@@ -2,7 +2,7 @@
 name: generate-skill
 description: Plans skill structure, writes SKILL.md and all reference files. Called during Step 6 to create the complete skill. Also called via /rewrite to rewrite an existing skill for coherence.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Skill
+tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
 # Generate Skill

@@ -2,7 +2,7 @@
 name: eval-skill
 description: Run the evaluation scenarios from `evaluations.md` against the skill content. Score each scenario.
 model: sonnet
-tools: Read, Glob, Grep, Bash, Task
+tools: Read, Glob, Grep, Bash
 ---
 
 # Skill Evaluation
