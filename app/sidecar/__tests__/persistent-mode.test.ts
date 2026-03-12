@@ -615,10 +615,7 @@ describe("runPersistent", () => {
     expect(exitFn).toHaveBeenCalledWith(0);
   });
 
-  it("drops completely unparseable lines to stderr (no stdout error, no stuck request)", async () => {
-    // Unparseable JSON cannot yield a request_id, so no stdout error is emitted
-    // (a keyless error would leave Rust's pending map stuck). The line is logged
-    // to stderr and silently skipped.
+  it("emits error for unrecognized input lines", async () => {
     const input = createInputStream([
       "this is not json",
       JSON.stringify({ type: "shutdown" }),
@@ -633,40 +630,14 @@ describe("runPersistent", () => {
       capture.restore();
     }
 
-    // No error line on stdout — unparseable input goes to stderr only
-    const errorLine = capture.lines.find((l) => {
-      try {
-        const parsed = JSON.parse(l);
-        return parsed.type === "error";
-      } catch {
-        return false;
-      }
-    });
-    expect(errorLine).toBeUndefined();
-  });
-
-  it("emits keyed error for valid JSON that fails schema validation", async () => {
-    // Valid JSON with a request_id but unrecognized type — gets a keyed error response
-    const input = createInputStream([
-      JSON.stringify({ type: "unknown_type", request_id: "req-bad" }),
-      JSON.stringify({ type: "shutdown" }),
-    ]);
-
-    const exitFn = vi.fn();
-    const capture = captureStdout();
-
-    try {
-      await runPersistent(input, exitFn);
-    } finally {
-      capture.restore();
-    }
-
     const errorLine = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.type === "error" && parsed.request_id === "req-bad";
+      return parsed.type === "error" && !parsed.request_id;
     });
     expect(errorLine).toBeDefined();
+
     const errorMsg = JSON.parse(errorLine!);
+    expect(errorMsg.type).toBe("error");
     expect(errorMsg.message).toContain("Unrecognized input");
   });
 

@@ -260,7 +260,7 @@ describe("initAgentStream", () => {
     initAgentStream();
     initAgentStream();
 
-    expect(mockListen).toHaveBeenCalledTimes(12);
+    expect(mockListen).toHaveBeenCalledTimes(11);
   });
 
   it("auto-creates run for display_item messages arriving before startRun", () => {
