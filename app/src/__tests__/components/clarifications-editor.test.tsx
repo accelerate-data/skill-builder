@@ -338,7 +338,7 @@ describe("Need Review filter toggle", () => {
     expect(screen.queryByText("Optional Question")).not.toBeInTheDocument();
   });
 
-  it("hides answered MUST questions when no evaluator feedback remains", async () => {
+  it("hides answered questions even when they have evaluator feedback", async () => {
     const user = userEvent.setup();
     const data = makeClarifications([
       makeQuestion({ id: "Q1", title: "Required Question", must_answer: true, answer_choice: "A", answer_text: "Choice A" }),
@@ -355,8 +355,9 @@ describe("Need Review filter toggle", () => {
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
     await user.click(screen.getByRole("switch", { name: "Need Review" }));
 
+    // Both questions are answered — the toggle should hide them regardless of evaluator feedback
     expect(screen.queryByText("Required Question")).not.toBeInTheDocument();
-    expect(screen.getByText("Flagged Question")).toBeInTheDocument();
+    expect(screen.queryByText("Flagged Question")).not.toBeInTheDocument();
   });
 });
 
