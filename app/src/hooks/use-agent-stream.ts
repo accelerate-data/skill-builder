@@ -54,6 +54,7 @@ const INIT_PROGRESS_MESSAGES: Record<string, string> = {
 // the race condition where Tauri events arrive before a React effect sets up
 // the listener.
 let initialized = false;
+let _unlisteners: Array<() => void> = [];
 
 interface AgentShutdownPayload {
   agent_id: string;
@@ -63,7 +64,11 @@ export function initAgentStream() {
   if (initialized) return;
   initialized = true;
 
-  listen<AgentInitProgressPayload>("agent-init-progress", (event) => {
+  function reg<T>(event: string, handler: (e: { payload: T }) => void) {
+    listen<T>(event, handler).then((unlisten) => { _unlisteners.push(unlisten); });
+  }
+
+  reg<AgentInitProgressPayload>("agent-init-progress", (event) => {
     const { agent_id, stage } = event.payload;
     console.debug(
       "[use-agent-stream] event=agent_init_progress component=ipc agent_id=%s stage=%s",
@@ -79,7 +84,7 @@ export function initAgentStream() {
     }
   });
 
-  listen<AgentSessionExhaustedPayload>("agent-session-exhausted", (event) => {
+  reg<AgentSessionExhaustedPayload>("agent-session-exhausted", (event) => {
     const { agent_id, sessionId } = event.payload;
     console.debug(
       "[use-agent-stream] event=agent_session_exhausted component=ipc agent_id=%s session_id=%s",
@@ -93,7 +98,7 @@ export function initAgentStream() {
     );
   });
 
-  listen<AgentInitErrorPayload>("agent-init-error", (event) => {
+  reg<AgentInitErrorPayload>("agent-init-error", (event) => {
     const workflowState = useWorkflowStore.getState();
     workflowState.clearInitializing();
     workflowState.setRuntimeError({
@@ -103,7 +108,7 @@ export function initAgentStream() {
     });
   });
 
-  listen<AgentRunConfigPayload>("agent-run-config", (event) => {
+  reg<AgentRunConfigPayload>("agent-run-config", (event) => {
     const { agent_id, ...runConfig } = event.payload;
     console.debug(
       "[use-agent-stream] event=agent_run_config component=ipc agent_id=%s",
@@ -112,7 +117,7 @@ export function initAgentStream() {
     useAgentStore.getState().applyRunConfig(agent_id, runConfig);
   });
 
-  listen<AgentRunInitPayload>("agent-run-init", (event) => {
+  reg<AgentRunInitPayload>("agent-run-init", (event) => {
     const { agent_id, ...runInit } = event.payload;
     console.debug(
       "[use-agent-stream] event=agent_run_init component=ipc agent_id=%s",
@@ -121,7 +126,7 @@ export function initAgentStream() {
     useAgentStore.getState().applyRunInit(agent_id, runInit);
   });
 
-  listen<AgentTurnUsagePayload>("agent-turn-usage", (event) => {
+  reg<AgentTurnUsagePayload>("agent-turn-usage", (event) => {
     const { agent_id, ...turnUsage } = event.payload;
     console.debug(
       "[use-agent-stream] event=agent_turn_usage component=ipc agent_id=%s turn=%d",
@@ -131,7 +136,7 @@ export function initAgentStream() {
     useAgentStore.getState().applyTurnUsage(agent_id, turnUsage);
   });
 
-  listen<AgentCompactionPayload>("agent-compaction", (event) => {
+  reg<AgentCompactionPayload>("agent-compaction", (event) => {
     const { agent_id, ...compaction } = event.payload;
     console.debug(
       "[use-agent-stream] event=agent_compaction component=ipc agent_id=%s turn=%d",
@@ -141,7 +146,7 @@ export function initAgentStream() {
     useAgentStore.getState().applyCompaction(agent_id, compaction);
   });
 
-  listen<AgentContextWindowPayload>("agent-context-window", (event) => {
+  reg<AgentContextWindowPayload>("agent-context-window", (event) => {
     const { agent_id, ...contextWindow } = event.payload;
     console.debug(
       "[use-agent-stream] event=agent_context_window component=ipc agent_id=%s",
@@ -150,7 +155,7 @@ export function initAgentStream() {
     useAgentStore.getState().applyContextWindow(agent_id, contextWindow);
   });
 
-  listen<AgentMessagePayload>("agent-message", (event) => {
+  reg<AgentMessagePayload>("agent-message", (event) => {
     const { agent_id, message } = event.payload;
 
     // Clear the "initializing" spinner on the first message from the agent.
@@ -181,14 +186,14 @@ export function initAgentStream() {
     );
   });
 
-  listen<AgentExitPayload>("agent-exit", (event) => {
+  reg<AgentExitPayload>("agent-exit", (event) => {
     useAgentStore.getState().completeRun(
       event.payload.agent_id,
       event.payload.success
     );
   });
 
-  listen<AgentShutdownPayload>("agent-shutdown", (event) => {
+  reg<AgentShutdownPayload>("agent-shutdown", (event) => {
     useAgentStore.getState().shutdownRun(event.payload.agent_id);
   });
 }
@@ -197,6 +202,8 @@ export function initAgentStream() {
 initAgentStream();
 
 /** Reset module-level singleton state for tests. */
-export function _resetForTesting() {
+export async function _resetForTesting() {
+  await Promise.all(_unlisteners.map((fn) => fn()));
+  _unlisteners = [];
   initialized = false;
 }

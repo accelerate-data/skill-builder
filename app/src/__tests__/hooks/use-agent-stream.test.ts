@@ -9,10 +9,10 @@ type ListenCallback = (event: { payload: unknown }) => void;
 describe("initAgentStream", () => {
   let listeners: Record<string, ListenCallback>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     useAgentStore.getState().clearRuns();
     useWorkflowStore.getState().reset();
-    _resetForTesting();
+    await _resetForTesting();
     listeners = {};
 
     mockListen.mockReset();
@@ -573,5 +573,19 @@ describe("initAgentStream", () => {
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.status).toBe("completed"); // unchanged
+  });
+
+  it("_resetForTesting calls each unlisten function", async () => {
+    const unlisten = vi.fn().mockResolvedValue(undefined);
+    mockListen.mockReset();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockListen as any).mockResolvedValue(unlisten);
+
+    initAgentStream();
+    // Allow the listen() promises to resolve
+    await Promise.resolve();
+
+    await _resetForTesting();
+    expect(unlisten).toHaveBeenCalled();
   });
 });
