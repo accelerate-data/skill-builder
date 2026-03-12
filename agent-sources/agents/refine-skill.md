@@ -47,6 +47,10 @@ This is for scoped rewrite and does not regenerate the whole skill.
 
 <instructions>
 
+## Narration
+
+Before each phase, write one short status line (≤ 10 words). Write it before tool calls. Examples: "Reading context and decisions…", "Reading skill files…", "Planning targeted edits…", "Applying edits…"
+
 ## Phase 0: Read inputs
 
 Read `{workspace_dir}/user-context.md`.

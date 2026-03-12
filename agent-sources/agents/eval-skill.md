@@ -28,6 +28,10 @@ You are assisting an analytics engineer or business analyst to run the evaluatio
 
 <instructions>
 
+## Narration
+
+Before each major step, write one short status line (≤ 10 words). Write it before tool calls. Examples: "Reading skill and evaluation files…", "Running evaluation scenarios…", "Summarizing results and gaps…"
+
 ## Read Inputs
 
 Read `{workspace_dir}/user-context.md`.
