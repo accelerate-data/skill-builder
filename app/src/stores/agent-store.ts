@@ -17,7 +17,7 @@ type PendingTerminalStatus = "completed" | "error" | "shutdown";
 let _pendingTerminalByAgent = new Map<string, PendingTerminalStatus>();
 
 // ---------------------------------------------------------------------------
-// Pending metadata buffer (for agent-metadata arriving before run registration)
+// Pending agent event buffer (for typed events arriving before run registration)
 // ---------------------------------------------------------------------------
 
 type PendingAgentEvent =
@@ -106,7 +106,7 @@ function drainPendingTerminal(agentId: string) {
 /** No-op: kept for backward compatibility with test code that calls flushMessageBuffer(). */
 export function flushMessageBuffer() {
   // No-op: RAF message buffer has been removed.
-  // Messages now arrive directly via addDisplayItem / updateMetadata.
+  // Messages now arrive directly via addDisplayItem / typed apply actions.
 }
 
 /** Map model IDs and shorthands to human-readable display names with version. */

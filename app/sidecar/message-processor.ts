@@ -363,6 +363,8 @@ export class MessageProcessor {
    * Returns an array of JSONL-ready objects:
    * - `{ type: "display_item", item: DisplayItem }` for rendering
    * - `{ type: "agent_event", event: AgentEvent }` for typed protocol state
+   *   (Rust intercepts `run_result` for persistence — it is NOT forwarded to
+   *   the frontend. All other event subtypes are forwarded as discrete Tauri events.)
    * - Raw pass-through messages for error handling
    */
   process(raw: Record<string, unknown>): ProcessedMessage[] {
