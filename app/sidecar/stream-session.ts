@@ -189,11 +189,6 @@ export class StreamSession {
       options,
     });
 
-    emitSystemEvent(
-      (msg) => onMessage(this.currentRequestId, msg),
-      "sdk_ready",
-    );
-
     // Process raw SDK messages through MessageProcessor for structured display items
     const processor = new MessageProcessor({
       skillName: config.skillName,
@@ -204,8 +199,17 @@ export class StreamSession {
     });
 
     try {
+      let sdkReadyEmitted = false;
       for await (const message of conversation) {
         if (state.abortController.signal.aborted) break;
+
+        // Emit sdk_ready on first actual message so "Connecting to API..."
+        // reflects real connection state rather than firing before the
+        // async generator yields its first value.
+        if (!sdkReadyEmitted) {
+          emitSystemEvent((msg) => onMessage(this.currentRequestId, msg), "sdk_ready");
+          sdkReadyEmitted = true;
+        }
 
         const msg = message as Record<string, unknown>;
 

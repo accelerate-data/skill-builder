@@ -705,6 +705,10 @@ export class MessageProcessor {
         }
       } else if (b.type === "tool_use") {
         const toolName = (b.name as string) ?? "unknown";
+        // NOTE: id should always be present per SDK contract. If absent (malformed
+        // SDK output), a synthetic ID is generated — but the subsequent tool_result
+        // will carry the real SDK ID and will NOT match, leaving the tool call
+        // orphaned. This fallback is intentionally unresolvable; treat as a no-op.
         const toolUseId = (b.id as string) ?? this.generateId();
         const toolInput = (b.input as Record<string, unknown>) ?? {};
 
