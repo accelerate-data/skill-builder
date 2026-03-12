@@ -26,8 +26,11 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
 assert_file_exists() {
   local pattern="$1"
   local desc="$2"
-  # shellcheck disable=SC2086
-  if ls $pattern 2>/dev/null | grep -q .; then
+  local dir
+  local base
+  dir=$(dirname "$pattern")
+  base=$(basename "$pattern")
+  if find "$dir" -maxdepth 1 -name "$base" -print -quit 2>/dev/null | grep -q .; then
     pass "$desc"
   else
     fail "$desc (no file matching $pattern)"
@@ -84,6 +87,52 @@ run_hook() {
 
 echo "=== Write Hook Tests ==="
 
+echo ""
+echo "Testing hooks.json command quoting..."
+HOOKS_JSON="$HOOKS_DIR/hooks.json"
+HOOK_COMMANDS_TMP="$TMPDIR/hook-commands.txt"
+jq -r '.hooks | .. | objects | select(has("command")) | .command' "$HOOKS_JSON" > "$HOOK_COMMANDS_TMP"
+
+if [ ! -s "$HOOK_COMMANDS_TMP" ]; then
+  fail "hooks.json command quoting (no command hooks found)"
+else
+  QUOTING_OK=1
+  while IFS= read -r command; do
+    case "$command" in
+      '"${CLAUDE_PLUGIN_ROOT}/hooks/'*'.sh"') ;;
+      *)
+        QUOTING_OK=0
+        echo "  Unexpected hook command: $command"
+        ;;
+    esac
+  done < "$HOOK_COMMANDS_TMP"
+
+  if [ "$QUOTING_OK" -eq 1 ]; then
+    pass "hooks.json command quoting keeps CLAUDE_PLUGIN_ROOT paths shell-safe"
+  else
+    fail "hooks.json command quoting keeps CLAUDE_PLUGIN_ROOT paths shell-safe"
+  fi
+fi
+
+echo ""
+echo "Testing SessionEnd hook execution with spaces in CLAUDE_PLUGIN_ROOT..."
+SPACE_PLUGIN_ROOT="$TMPDIR/Application Support/vd-agent"
+SPACE_WORKSPACE="$TMPDIR/workspace with spaces"
+mkdir -p "$SPACE_PLUGIN_ROOT/hooks" "$SPACE_WORKSPACE"
+cp "$HOOKS_DIR/on-session-end.sh" "$SPACE_PLUGIN_ROOT/hooks/on-session-end.sh"
+SESSION_END_COMMAND=$(jq -r '.hooks.SessionEnd[0].hooks[0].command' "$HOOKS_JSON")
+SPACE_INPUT=$(jq -n \
+  --arg cwd "$SPACE_WORKSPACE" \
+  --arg transcript "$MOCK_TRANSCRIPT" \
+  '{cwd: $cwd, transcript_path: $transcript, session_id: "space-path-session"}')
+
+if echo "$SPACE_INPUT" | CLAUDE_PLUGIN_ROOT="$SPACE_PLUGIN_ROOT" /bin/sh -c "$SESSION_END_COMMAND"; then
+  assert_file_exists "$SPACE_WORKSPACE/vd-memory/learnings/learning-session-end-*.md" \
+    "SessionEnd hook executes when CLAUDE_PLUGIN_ROOT contains spaces"
+else
+  fail "SessionEnd hook executes when CLAUDE_PLUGIN_ROOT contains spaces"
+fi
+
 # Test auto-init (first hook creates MEMORY.md)
 echo ""
 echo "Testing auto-init..."
@@ -116,12 +165,12 @@ else
   fail "auto-init: MEMORY.md was overwritten"
 fi
 
-# Test timestamp format (YYYYMMDDTHHMMSSz)
+# Test timestamp format (YYYYMMDDTHHMMSSZ with optional -PID suffix)
 TIMESTAMP_FILE=$(ls "$INIT_DIR/vd-memory/learnings/learning-stop-"*.md | head -1)
 BASENAME=$(basename "$TIMESTAMP_FILE" .md)
 TIMESTAMP="${BASENAME#learning-stop-}"
-if echo "$TIMESTAMP" | grep -qE '^[0-9]{8}T[0-9]{6}Z$'; then
-  pass "timestamp format matches YYYYMMDDTHHMMSSz"
+if echo "$TIMESTAMP" | grep -qE '^[0-9]{8}T[0-9]{6}Z(-[0-9]+)?$'; then
+  pass "timestamp format matches YYYYMMDDTHHMMSSZ with optional PID suffix"
 else
   fail "timestamp format wrong: got $TIMESTAMP"
 fi
