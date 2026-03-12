@@ -168,6 +168,7 @@ export default function WorkflowPage() {
     setCurrentStep(targetStep!);
   }, [pendingStepSwitch, setPendingStepSwitch, setCurrentStep]);
 
+
   const currentStepDef = steps[currentStep];
 
   // --- Render helpers ---
