@@ -85,26 +85,48 @@ export function initAgentStream() {
 
   listen<AgentRunConfigPayload>("agent-run-config", (event) => {
     const { agent_id, ...runConfig } = event.payload;
+    console.debug(
+      "[use-agent-stream] event=agent_run_config component=ipc agent_id=%s",
+      agent_id,
+    );
     useAgentStore.getState().applyRunConfig(agent_id, runConfig);
   });
 
   listen<AgentRunInitPayload>("agent-run-init", (event) => {
     const { agent_id, ...runInit } = event.payload;
+    console.debug(
+      "[use-agent-stream] event=agent_run_init component=ipc agent_id=%s",
+      agent_id,
+    );
     useAgentStore.getState().applyRunInit(agent_id, runInit);
   });
 
   listen<AgentTurnUsagePayload>("agent-turn-usage", (event) => {
     const { agent_id, ...turnUsage } = event.payload;
+    console.debug(
+      "[use-agent-stream] event=agent_turn_usage component=ipc agent_id=%s turn=%d",
+      agent_id,
+      turnUsage.turn,
+    );
     useAgentStore.getState().applyTurnUsage(agent_id, turnUsage);
   });
 
   listen<AgentCompactionPayload>("agent-compaction", (event) => {
     const { agent_id, ...compaction } = event.payload;
+    console.debug(
+      "[use-agent-stream] event=agent_compaction component=ipc agent_id=%s turn=%d",
+      agent_id,
+      compaction.turn,
+    );
     useAgentStore.getState().applyCompaction(agent_id, compaction);
   });
 
   listen<AgentContextWindowPayload>("agent-context-window", (event) => {
     const { agent_id, ...contextWindow } = event.payload;
+    console.debug(
+      "[use-agent-stream] event=agent_context_window component=ipc agent_id=%s",
+      agent_id,
+    );
     useAgentStore.getState().applyContextWindow(agent_id, contextWindow);
   });
 

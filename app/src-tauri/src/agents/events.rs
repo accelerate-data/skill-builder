@@ -139,6 +139,16 @@ fn route_sidecar_message(
             .get("timestamp")
             .and_then(|t| t.as_u64())
             .unwrap_or(0);
+        let event_subtype = message
+            .get("event")
+            .and_then(|e| e.get("type"))
+            .and_then(|t| t.as_str())
+            .unwrap_or("unknown");
+        log::debug!(
+            "[event:agent_event:{}] routing subtype={}",
+            agent_id,
+            event_subtype
+        );
         return match message.get("event") {
             Some(event) => match event.get("type").and_then(|t| t.as_str()) {
                 Some("run_result") => match serde_json::from_value::<SidecarRunSummary>(event.clone()) {
