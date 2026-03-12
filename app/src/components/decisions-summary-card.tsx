@@ -198,17 +198,15 @@ export function DecisionsSummaryCard({
                 </p>
               </div>
 
-              {needsReviewCount > 0 && (
-                <div className="flex items-center gap-2 self-start rounded-full border border-border bg-background/80 px-3 py-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">Needs Review</span>
-                  <Switch
-                    size="sm"
-                    aria-label="Needs Review"
-                    checked={showNeedsReviewOnly}
-                    onCheckedChange={setShowNeedsReviewOnly}
-                  />
-                </div>
-              )}
+              <div className="flex items-center gap-2 self-start rounded-full border border-border bg-background/80 px-3 py-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Needs Review</span>
+                <Switch
+                  size="sm"
+                  aria-label="Needs Review"
+                  checked={showNeedsReviewOnly}
+                  onCheckedChange={setShowNeedsReviewOnly}
+                />
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 pl-7">

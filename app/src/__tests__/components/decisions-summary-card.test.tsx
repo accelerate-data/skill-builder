@@ -156,7 +156,7 @@ describe("DecisionsSummaryCard — Decision Cards", () => {
     expect(screen.queryByText("D2")).not.toBeInTheDocument();
   });
 
-  it("does not show revised decisions when Needs Review filter is enabled", async () => {
+  it("keeps the Needs Review toggle visible even when only revised decisions remain", async () => {
     const revisedOnlyContent = JSON.stringify({
       version: "1",
       metadata: {
@@ -173,7 +173,7 @@ describe("DecisionsSummaryCard — Decision Cards", () => {
 
     render(<DecisionsSummaryCard decisionsContent={revisedOnlyContent} />);
 
-    expect(screen.queryByLabelText("Needs Review")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Needs Review")).toBeInTheDocument();
   });
 });
 
@@ -359,6 +359,33 @@ describe("DecisionsSummaryCard — inline editing", () => {
     expect(screen.queryByText(/need(?:s)? your review/)).not.toBeInTheDocument();
     expect(screen.getByText("All decisions reviewed")).toBeInTheDocument();
     expect(screen.getByText("No blocking contradictions remain. You can generate the skill with your edits.")).toBeInTheDocument();
+  });
+
+  it("keeps the Needs Review toggle visible after the last needs-review decision is revised", async () => {
+    const user = userEvent.setup();
+    render(
+      <DecisionsSummaryCard
+        decisionsContent={contradictoryDecisions}
+        allowEdit={true}
+        onDecisionsChange={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByLabelText("Needs Review"));
+
+    const textareas = screen.getAllByRole("textbox") as HTMLTextAreaElement[];
+    const decisionTextarea = textareas.find((ta) => ta.value === "Track MRR");
+    await user.clear(decisionTextarea!);
+    await user.type(decisionTextarea!, "Track ARR instead.");
+    await user.tab();
+
+    expect(screen.getByLabelText("Needs Review")).toBeInTheDocument();
+    expect(screen.getByText("No decisions need review.")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Needs Review"));
+
+    expect(screen.getByText("D1")).toBeInTheDocument();
+    expect(screen.getByText("D2")).toBeInTheDocument();
   });
 
   it("serializes with revised status on blur", async () => {
