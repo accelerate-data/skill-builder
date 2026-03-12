@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SaveStatus } from "@/components/clarifications-editor";
 import type { ClarificationsFile } from "@/lib/clarifications-types";
-import { parseClarifications, getClarificationsContent, saveClarificationsContent, readFile } from "@/lib/tauri";
+import { parseClarifications } from "@/lib/clarifications-types";
+import { getClarificationsContent, saveClarificationsContent } from "@/lib/tauri";
 import { toast } from "@/lib/toast";
 
 interface UseWorkflowAutosaveOptions {
@@ -121,6 +122,15 @@ export function useWorkflowAutosave({
     };
   }, []);
 
+  // Expose a way to update clarifications state from outside (e.g., after gate evaluation)
+  const updateClarificationsState = useCallback((data: ClarificationsFile, content: string) => {
+    setClarificationsData(data);
+    setReviewContent(content);
+    setEditorDirty(false);
+    setSaveStatus("idle");
+    hasUnsavedChangesRef.current = false;
+  }, []);
+
   return {
     reviewContent,
     clarificationsData,
@@ -129,5 +139,6 @@ export function useWorkflowAutosave({
     hasUnsavedChangesRef,
     handleClarificationsChange,
     handleSave,
+    updateClarificationsState,
   };
 }

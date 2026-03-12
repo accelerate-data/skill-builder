@@ -238,55 +238,6 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(mockToast.success).toHaveBeenCalledWith("Step 1 completed");
   });
 
-  it("pauses on completion screen after step 3 (generate)", async () => {
-    // Simulate: steps 0-2 completed, step 3 running
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 3; i++) {
-      useWorkflowStore.getState().updateStepStatus(i, "completed");
-    }
-    useWorkflowStore.getState().setCurrentStep(3);
-    useWorkflowStore.getState().updateStepStatus(3, "in_progress");
-    useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-build", "sonnet");
-
-    render(<WorkflowPage />);
-
-    // Agent completes step 3 (generate) with required structured output via display item
-    act(() => {
-      useAgentStore.getState().addDisplayItem("agent-build", {
-        id: "result-build",
-        type: "result",
-        timestamp: Date.now(),
-        outputText_result: "Agent completed",
-        structuredOutput: {
-          status: "generated",
-          evaluations_markdown: "## Scenario 1\n- input\n- expected output\n",
-        },
-        resultStatus: "success",
-      });
-      useAgentStore.getState().completeRun("agent-build", true);
-    });
-
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[3].status).toBe("completed");
-    });
-
-    const wf = useWorkflowStore.getState();
-
-    // Step 3 completed
-    expect(wf.steps[3].status).toBe("completed");
-
-    // Stays on step 3 completion screen — user clicks "Next Step" to proceed
-    expect(wf.currentStep).toBe(3);
-
-    // Running flag cleared
-    expect(wf.isRunning).toBe(false);
-
-    expect(mockToast.success).toHaveBeenCalledWith("Step 4 completed");
-  });
-
-
   it("marks step as error when agent fails — no cascade", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -2302,9 +2253,19 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     mockBlocker.status = "idle";
 
     vi.mocked(saveWorkflowState).mockClear();
-    vi.mocked(getWorkflowState).mockClear();
-    vi.mocked(getDisabledSteps).mockClear();
     vi.mocked(resetWorkflowStep).mockClear();
+
+    // Reset named mocks whose implementations may have been persistently changed by earlier describes
+    vi.mocked(getWorkflowState).mockReset().mockRejectedValue("not found");
+    vi.mocked(getDisabledSteps).mockReset().mockResolvedValue([]);
+    vi.mocked(runAnswerEvaluator).mockRejectedValue("not available");
+    vi.mocked(materializeWorkflowStepOutput).mockResolvedValue(undefined);
+    vi.mocked(materializeAnswerEvaluationOutput).mockResolvedValue(undefined);
+    vi.mocked(runWorkflowStep).mockReset();
+    vi.mocked(readFile).mockRejectedValue("not found");
+
+    // Reset WorkflowStepComplete to default implementation so per-test overrides don't bleed through
+    vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
   });
 
   afterEach(() => {
@@ -2368,7 +2329,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     await waitFor(() => expect(screen.getByTestId("step-complete")).toBeTruthy());
 
     // Click "Next Step" — should NOT advance
-    act(() => capturedOnNextStep?.());
+    await act(async () => capturedOnNextStep?.());
 
     expect(useWorkflowStore.getState().currentStep).toBe(2);
   });
@@ -2642,3 +2603,86 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     expect(vi.mocked(getDisabledSteps)).toHaveBeenCalledWith("test-skill");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Isolated ordering test — moved to end to diagnose potential ordering issues
+// ---------------------------------------------------------------------------
+describe("WorkflowPage — step 3 generate completion (isolated)", () => {
+  beforeEach(() => {
+    resetTauriMocks();
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+
+    useSettingsStore.getState().setSettings({
+      workspacePath: "/test/workspace",
+      anthropicApiKey: "sk-test",
+    });
+
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
+    mockToast.info.mockClear();
+
+    mockBlocker.proceed.mockClear();
+    mockBlocker.reset.mockClear();
+    mockBlocker.status = "idle";
+
+    vi.mocked(saveWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockClear();
+  });
+
+  afterEach(() => {
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+  });
+
+  it("pauses on completion screen after step 3 (generate)", async () => {
+    // Simulate: steps 0-2 completed, step 3 running
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    for (let i = 0; i < 3; i++) {
+      useWorkflowStore.getState().updateStepStatus(i, "completed");
+    }
+    useWorkflowStore.getState().setCurrentStep(3);
+    useWorkflowStore.getState().updateStepStatus(3, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-build", "sonnet");
+
+    render(<WorkflowPage />);
+
+    // Agent completes step 3 (generate) with required structured output via display item
+    act(() => {
+      useAgentStore.getState().addDisplayItem("agent-build", {
+        id: "result-build",
+        type: "result",
+        timestamp: Date.now(),
+        outputText_result: "Agent completed",
+        structuredOutput: {
+          status: "generated",
+          evaluations_markdown: "## Scenario 1\n- input\n- expected output\n",
+        },
+        resultStatus: "success",
+      });
+      useAgentStore.getState().completeRun("agent-build", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[3].status).toBe("completed");
+    });
+
+    const wf = useWorkflowStore.getState();
+
+    // Step 3 completed
+    expect(wf.steps[3].status).toBe("completed");
+
+    // Stays on step 3 completion screen — user clicks "Next Step" to proceed
+    expect(wf.currentStep).toBe(3);
+
+    // Running flag cleared
+    expect(wf.isRunning).toBe(false);
+
+    expect(mockToast.success).toHaveBeenCalledWith("Step 4 completed");
+  });
+});
+

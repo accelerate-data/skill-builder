@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useWorkflowStore, useAgentStore } from "@/stores";
+import { useWorkflowStore } from "@/stores/workflow-store";
+import { useAgentStore } from "@/stores/agent-store";
 import {
   getWorkflowState,
   getDisabledSteps,
@@ -7,7 +8,6 @@ import {
   readFile,
   getContextFileContent,
 } from "@/lib/tauri";
-import { toast } from "@/lib/toast";
 
 interface UseWorkflowPersistenceOptions {
   /** Skill name from route params */
@@ -41,15 +41,18 @@ export function useWorkflowPersistence({
   const [errorHasArtifacts, setErrorHasArtifacts] = useState(false);
 
   // Get store actions
-  const { initWorkflow, loadWorkflowState, clearRuns, setDisabledSteps, consumeUpdateMode, setHydrated } =
-    useWorkflowStore((state) => ({
-      initWorkflow: state.initWorkflow,
-      loadWorkflowState: state.loadWorkflowState,
-      clearRuns: useAgentStore.getState().clearRuns,
-      setDisabledSteps: state.setDisabledSteps,
-      consumeUpdateMode: state.consumeUpdateMode,
-      setHydrated: state.setHydrated,
-    }));
+  const initWorkflow = useWorkflowStore((state) => state.initWorkflow);
+  const loadWorkflowState = useWorkflowStore((state) => state.loadWorkflowState);
+  const setHydrated = useWorkflowStore((state) => state.setHydrated);
+
+  const clearRuns = useAgentStore.getState().clearRuns;
+  const consumeUpdateMode = () => {
+    const store = useWorkflowStore.getState();
+    if (store.pendingUpdateMode) {
+      store.setPendingUpdateMode(false);
+      store.setReviewMode(false);
+    }
+  };
 
   // Initialize workflow from saved state on skill change
   useEffect(() => {

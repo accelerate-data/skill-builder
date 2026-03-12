@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useWorkflowStore, useAgentStore } from "@/stores";
+import { useWorkflowStore } from "@/stores/workflow-store";
+import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { GateVerdict } from "@/components/transition-gate-dialog";
-import type { AnswerEvaluation, Note, ClarificationsFile } from "@/lib/clarifications-types";
+import type { Note, ClarificationsFile } from "@/lib/clarifications-types";
+import type { AnswerEvaluation } from "@/lib/tauri";
 import {
   runWorkflowStep,
   runAnswerEvaluator,
@@ -16,20 +18,13 @@ import {
   saveWorkflowState,
   getClarificationsContent,
   saveClarificationsContent,
-  getContextFileContent,
   writeFile,
   endWorkflowSession,
 } from "@/lib/tauri";
 import { resolveModelId } from "@/lib/models";
 import { parseClarifications } from "@/lib/clarifications-types";
+import { type StepConfig } from "@/lib/workflow-step-configs";
 import { toast } from "@/lib/toast";
-
-interface StepConfig {
-  type?: "agent" | "reasoning";
-  outputFiles?: string[];
-  model?: string;
-  clarificationsEditable?: boolean;
-}
 
 interface UseWorkflowStateMachineOptions {
   /** Skill name from route params */
@@ -58,6 +53,8 @@ interface UseWorkflowStateMachineOptions {
   clarificationsData: ClarificationsFile | null;
   /** Step configurations for all steps */
   stepConfigs: Record<number, StepConfig>;
+  /** Optional callback to update clarifications editor state after gate writes feedback */
+  onClarificationsUpdated?: (data: ClarificationsFile, content: string) => void;
 }
 
 /**
@@ -73,35 +70,31 @@ interface UseWorkflowStateMachineOptions {
 export function useWorkflowStateMachine({
   skillName,
   workspacePath,
-  skillsPath,
+  skillsPath: _skillsPath,
   currentStep,
   steps,
   stepConfig,
   hydrated,
   reviewMode,
   disabledSteps,
-  errorHasArtifacts,
+  errorHasArtifacts: _errorHasArtifacts,
   purpose,
   clarificationsData,
   stepConfigs,
+  onClarificationsUpdated,
 }: UseWorkflowStateMachineOptions) {
-  // Get store actions
-  const { setCurrentStep, updateStepStatus, setRunning, setInitializing, clearInitializing, setGateLoading, resetToStep } =
-    useWorkflowStore((state) => ({
-      setCurrentStep: state.setCurrentStep,
-      updateStepStatus: state.updateStepStatus,
-      setRunning: state.setRunning,
-      setInitializing: state.setInitializing,
-      clearInitializing: state.clearInitializing,
-      setGateLoading: state.setGateLoading,
-      resetToStep: state.resetToStep,
-    }));
+  // Get store actions (individual selectors to avoid new object reference on every render)
+  const setCurrentStep = useWorkflowStore((s) => s.setCurrentStep);
+  const updateStepStatus = useWorkflowStore((s) => s.updateStepStatus);
+  const setRunning = useWorkflowStore((s) => s.setRunning);
+  const setInitializing = useWorkflowStore((s) => s.setInitializing);
+  const clearInitializing = useWorkflowStore((s) => s.clearInitializing);
+  const setGateLoading = useWorkflowStore((s) => s.setGateLoading);
+  const resetToStep = useWorkflowStore((s) => s.resetToStep);
 
-  const { setActiveAgent, clearRuns, agentStartRun } = useAgentStore((state) => ({
-    setActiveAgent: state.setActiveAgent,
-    clearRuns: state.clearRuns,
-    agentStartRun: state.startRun,
-  }));
+  const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
+  const clearRuns = useAgentStore((s) => s.clearRuns);
+  const agentStartRun = useAgentStore((s) => s.startRun);
 
   // Gate evaluation state
   const [showGateDialog, setShowGateDialog] = useState(false);
@@ -128,7 +121,6 @@ export function useWorkflowStateMachine({
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
   const runs = useAgentStore((s) => s.runs);
   const isRunning = useWorkflowStore((s) => s.isRunning);
-  const isInitializing = useWorkflowStore((s) => s.isInitializing);
   const gateLoading = useWorkflowStore((s) => s.gateLoading);
 
   const isAgentType = stepConfig?.type === "agent" || stepConfig?.type === "reasoning";
@@ -138,8 +130,12 @@ export function useWorkflowStateMachine({
   // --- Helper functions ---
 
   const endActiveSession = useCallback(() => {
-    endWorkflowSession(skillName).catch(() => {});
-  }, [skillName]);
+    const sessionId = useWorkflowStore.getState().workflowSessionId;
+    if (sessionId) {
+      endWorkflowSession(sessionId).catch(() => {});
+      useWorkflowStore.setState({ workflowSessionId: null });
+    }
+  }, []);
 
   const extractStructuredResultPayload = useCallback((agentId: string): unknown | null => {
     const run = useAgentStore.getState().runs[agentId];
@@ -208,7 +204,7 @@ export function useWorkflowStateMachine({
   // Reposition to first incomplete step when switching to Update mode
   useEffect(() => {
     if (!hydrated || reviewMode) return;
-    const currentCfg = STEP_CONFIGS[currentStep];
+    const currentCfg = stepConfigs[currentStep];
     if (currentCfg?.clarificationsEditable && steps[currentStep]?.status === "completed") {
       return;
     }
@@ -346,6 +342,7 @@ export function useWorkflowStateMachine({
 
     try {
       clearRuns();
+      useWorkflowStore.getState().clearRuntimeError();
       updateStepStatus(currentStep, "in_progress");
       setRunning(true);
       setInitializing();
@@ -461,6 +458,7 @@ export function useWorkflowStateMachine({
             };
             const serialized = JSON.stringify(next, null, 2);
             await saveClarificationsContent(skillName, workspacePath, serialized);
+            onClarificationsUpdated?.(next, serialized);
           }
         } catch (err) {
           console.warn("[workflow] Could not update clarifications notes from gate evaluation:", err);
@@ -607,6 +605,9 @@ export function useWorkflowStateMachine({
           return;
         }
 
+        // Update editor state with refreshed feedback
+        onClarificationsUpdated?.(parsed, content ?? "");
+
         const addedNotes = Math.max(0, (parsed.answer_evaluator_notes?.length ?? 0) - prevNoteCount);
         if (addedNotes > 0) {
           toast.success(`Loaded ${addedNotes} feedback note${addedNotes === 1 ? "" : "s"} for review.`);
@@ -658,6 +659,7 @@ export function useWorkflowStateMachine({
     pendingStepSwitch,
     showResetConfirm,
     resetTarget,
+    pendingAutoStartStep,
 
     // State setters
     setShowGateDialog,
