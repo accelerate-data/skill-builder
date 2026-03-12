@@ -16,9 +16,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** @internal Exported for testing only. */
 export function resolveStepTemplate(
   agentName: string | undefined,
-  config?: { skillName?: string },
+  config?: { skillName?: string; runSource?: string },
 ): string | null {
-  if (!agentName) return null;
+  if (!agentName) {
+    // Test evaluator: invoked without a plugin agentName; identified by runSource="test".
+    // The with/without plan agents always have agentName="data-product-builder", so this
+    // branch is only reached for the evaluator.
+    if (config?.runSource === "test") return "test-evaluator";
+    return null;
+  }
 
   // Exact matches first
   if (agentName === "detailed-research") return "step1-detailed-research";
@@ -305,6 +311,9 @@ async function writeMockOutputFiles(
   config: SidecarConfig,
 ): Promise<void> {
   const outputDir = getOutputDir(stepTemplate);
+  // No output directory mapped for this template (e.g. test-evaluator, test-plan-*) — nothing to copy.
+  if (!outputDir) return;
+
   const srcDir = path.join(__dirname, "mock-templates", "outputs", outputDir);
 
   if (!(await pathExists(srcDir))) return;
