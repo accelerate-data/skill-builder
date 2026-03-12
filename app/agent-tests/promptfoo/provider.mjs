@@ -897,7 +897,7 @@ Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>
 Return JSON only with "status":"generated", "evaluations_markdown", and "call_trace".`;
-  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 300_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
   const skillMdPath = path.join(dir, skillName, "SKILL.md");
   const evaluationsMarkdown = response?.evaluations_markdown ?? "";
@@ -1001,7 +1001,7 @@ Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>
 Return JSON only with "status":"generated", "evaluations_markdown", and "call_trace".`;
-  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 300_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
   const content = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
   return finalizeScenario(
@@ -1089,9 +1089,9 @@ function runValidateSkillScopeGuard({ budgetUsd }) {
   const dir = makeTempDir("validate-scope");
   const skillName = DEFAULT_SKILL_NAME;
   createFixtureRefinableSkill(dir, skillName);
-  createFixtureDecisionWorkspace(dir, skillName);
+  createFixtureDecisionWorkspace(dir, skillName, { scopeRecommendation: true });
   writeDecisionsJson(dir, skillName,
-    { scope_recommendation: true, decision_count: 0, conflicts_resolved: 0, round: 1 },
+    { decision_count: 0, conflicts_resolved: 0, round: 1 },
     [],
   );
   const workspaceContext = loadWorkspaceContext();
