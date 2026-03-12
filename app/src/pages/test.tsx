@@ -3,6 +3,7 @@ import { AlertTriangle, Play, Square } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { useScopeBlocked } from "@/hooks/use-scope-blocked";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +23,6 @@ import { useSettingsStore } from "@/stores/settings-store";
 import {
   listRefinableSkills,
   getWorkspacePath,
-  getDisabledSteps,
   startAgent,
   cleanupSkillSidecar,
   prepareSkillTest,
@@ -334,7 +334,7 @@ export default function TestPage() {
   const [state, setState] = useState<TestState>(INITIAL_STATE);
 
   // --- Scope recommendation guard ---
-  const [scopeBlocked, setScopeBlocked] = useState(false);
+  const scopeBlocked = useScopeBlocked(state.selectedSkill, "test");
 
   // --- Elapsed timer ---
   const [elapsed, setElapsed] = useState(0);
@@ -394,24 +394,6 @@ export default function TestPage() {
       setState((prev) => ({ ...prev, selectedSkill: match }));
     }
   }, [skillParam, skills]);
-
-  // ---------------------------------------------------------------------------
-  // Scope recommendation guard
-  // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    if (!state.selectedSkill) {
-      setScopeBlocked(false);
-      return;
-    }
-    getDisabledSteps(state.selectedSkill.name)
-      .then((disabled) => {
-        const blocked = disabled.length > 0;
-        setScopeBlocked(blocked);
-        if (blocked) console.warn("[test] Scope recommendation active for skill '%s' — testing blocked", state.selectedSkill!.name);
-      })
-      .catch(() => setScopeBlocked(false));
-  }, [state.selectedSkill]);
 
   // ---------------------------------------------------------------------------
   // Draggable dividers
