@@ -287,6 +287,7 @@ export default function RefinePage() {
             })),
           );
           store.setGitDiff(finalized.diff);
+          toast.info("Refinement complete");
         } catch (err) {
           try {
             if (hasStructuredObject && (structuredOutput as Record<string, unknown>).status === "validation_complete") {

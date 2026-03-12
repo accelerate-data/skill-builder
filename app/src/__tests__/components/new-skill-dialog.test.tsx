@@ -139,7 +139,7 @@ describe("SkillDialog (create mode)", () => {
   });
 
   it("opens dialog on Step 1 when trigger button is clicked", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
     await openDialog(user);
 
@@ -153,7 +153,7 @@ describe("SkillDialog (create mode)", () => {
   // --- Step 1: Name + Purpose (dropdown) + Description + Tags + Context ---
 
   it("renders skill name input and purpose dropdown on Step 1", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
     await openDialog(user);
 
@@ -164,7 +164,7 @@ describe("SkillDialog (create mode)", () => {
   });
 
   it("enforces kebab-case on skill name input", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
     await openDialog(user);
 
@@ -176,7 +176,7 @@ describe("SkillDialog (create mode)", () => {
   });
 
   it("disables Next button when name is empty", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
     await openDialog(user);
 
@@ -185,7 +185,7 @@ describe("SkillDialog (create mode)", () => {
   });
 
   it("disables Next button when purpose is not selected", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
     await openDialog(user);
 
@@ -197,7 +197,7 @@ describe("SkillDialog (create mode)", () => {
   });
 
   it("disables Next button when description is empty", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
     await openDialog(user);
 
@@ -209,7 +209,7 @@ describe("SkillDialog (create mode)", () => {
   });
 
   it("enables Next button when name, purpose, and description are all filled", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
     await openDialog(user);
 
@@ -222,7 +222,7 @@ describe("SkillDialog (create mode)", () => {
   });
 
   it("disables Next button when skill name already exists", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog({ existingNames: ["sales-pipeline", "my-skill"] });
     await openDialog(user);
 
@@ -236,7 +236,7 @@ describe("SkillDialog (create mode)", () => {
 
   it("shows skills output location on Step 1 when skillsPath is set", async () => {
     useSettingsStore.getState().setSettings({ skillsPath: "/my/skills" });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
     await openDialog(user);
 
@@ -246,7 +246,7 @@ describe("SkillDialog (create mode)", () => {
   });
 
   it("has Cancel button on Step 1 that closes dialog", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
     await openDialog(user);
 
@@ -262,7 +262,7 @@ describe("SkillDialog (create mode)", () => {
   // --- Step 2: Behaviour settings ---
 
   it("advances to Step 2 when Next is clicked", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
     await openDialog(user);
     await fillStep1AndAdvance(user);
@@ -273,7 +273,7 @@ describe("SkillDialog (create mode)", () => {
   });
 
   it("shows Back and Create buttons on Step 2 (no Next or Skip)", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
     await openDialog(user);
     await fillStep1AndAdvance(user);
@@ -285,7 +285,7 @@ describe("SkillDialog (create mode)", () => {
   });
 
   it("navigates back to Step 1 when Back is clicked on Step 2", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
     await openDialog(user);
     await fillStep1AndAdvance(user);
@@ -301,7 +301,7 @@ describe("SkillDialog (create mode)", () => {
   // --- Submit scenarios ---
 
   it("can submit from Step 2 with Create button", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onCreated = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     mockInvoke.mockResolvedValue(undefined);
     renderDialog({ onCreated });
@@ -337,7 +337,7 @@ describe("SkillDialog (create mode)", () => {
   });
 
   it("does not show Skip button on Step 2", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
 
     await openDialog(user);
@@ -347,7 +347,7 @@ describe("SkillDialog (create mode)", () => {
   });
 
   it("passes selected purpose to invoke on submit", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockInvoke.mockResolvedValue(undefined);
     renderDialog();
 
@@ -366,7 +366,7 @@ describe("SkillDialog (create mode)", () => {
   });
 
   it("passes tags to invoke when tags are added on Step 1", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockInvoke.mockResolvedValue(undefined);
     renderDialog();
 
@@ -397,7 +397,7 @@ describe("SkillDialog (create mode)", () => {
   });
 
   it("navigates to skill editor after successful creation", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onCreated = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     mockInvoke.mockResolvedValue(undefined);
     renderDialog({ onCreated });
@@ -421,7 +421,7 @@ describe("SkillDialog (create mode)", () => {
   // --- Error handling ---
 
   it("does not navigate on failed creation", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockInvoke.mockRejectedValue(new Error("Skill already exists"));
     renderDialog();
 
@@ -439,7 +439,7 @@ describe("SkillDialog (create mode)", () => {
   });
 
   it("shows error message and toast on failed submit", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockInvoke.mockRejectedValue(new Error("Skill already exists"));
     renderDialog();
 
@@ -460,7 +460,7 @@ describe("SkillDialog (create mode)", () => {
   // --- Tag autocomplete ---
 
   it("shows autocomplete dropdown and allows selecting a suggestion", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockInvoke.mockResolvedValue(undefined);
     renderDialog({ tagSuggestions: ["analytics", "salesforce", "workday"] });
 
@@ -502,7 +502,7 @@ describe("SkillDialog (create mode)", () => {
   });
 
   it("hides already-added tags from autocomplete suggestions", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog({ tagSuggestions: ["analytics", "anomaly"] });
 
     await openDialog(user);
