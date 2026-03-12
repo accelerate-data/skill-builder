@@ -264,8 +264,8 @@ export class StreamSession {
       } as Record<string, unknown>);
     }
 
-    if (!this.closed) {
-      // Turns exhausted naturally (not user-initiated close)
+    if (!this.closed && !state.abortController.signal.aborted) {
+      // Turns exhausted naturally (not user-initiated close, not externally aborted)
       process.stderr.write(
         `[stream-session] Session ${this.sessionId} exhausted (query completed without close)\n`,
       );
