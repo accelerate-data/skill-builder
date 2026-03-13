@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { useNavigate, useSearch, useBlocker } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { useScopeBlocked } from "@/hooks/use-scope-blocked";
 import { toast } from "@/lib/toast";
 import {
   Dialog,
@@ -14,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import type { RefineCommand, SkillFile } from "@/stores/refine-store";
-import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
+import { useAgentStore } from "@/stores/agent-store";
 import {
   listRefinableSkills,
   getSkillContentForRefine,
@@ -26,7 +28,6 @@ import {
   cleanupSkillSidecar,
   acquireLock,
   releaseLock,
-  getDisabledSteps,
 } from "@/lib/tauri";
 import { useSkillStore } from "@/stores/skill-store";
 import type { SkillSummary } from "@/lib/types";
@@ -96,65 +97,65 @@ export default function RefinePage() {
   const autoSelectedRef = useRef<string | null>(null);
 
   // --- Scope recommendation guard ---
-  // When scope recommendation is active (disabledSteps non-empty), block refine commands.
-  const [scopeBlocked, setScopeBlocked] = useState(false);
+  const scopeBlocked = useScopeBlocked(selectedSkill, "refine");
 
   const extractStructuredResultPayload = useCallback((agentId: string) => {
     const run = useAgentStore.getState().runs[agentId];
     return extractStructuredResultFromDisplayItems(run?.displayItems);
   }, []);
 
+  // Release skill lock on unmount — covers the case where the agent has already
+  // finished and the user navigates away without triggering the leave-guard dialog.
+  // The leave-guard onLeave also calls releaseSkillResources when the agent IS
+  // running; the double-release is safe (fire-and-forget, idempotent on the backend).
+  //
+  // IMPORTANT: close the backend session before clearing the React store's sessionId.
+  // If we clear sessionId first, handleSelectSkill's guard sees null and skips
+  // closeRefineSession on re-select — leaving a stale session in the Rust in-memory
+  // map which makes the next startRefineSession fail with "already exists".
   useEffect(() => {
-    if (!selectedSkill) {
-      setScopeBlocked(false);
-      return;
-    }
-    getDisabledSteps(selectedSkill.name)
-      .then((disabled) => {
-        const blocked = disabled.length > 0;
-        setScopeBlocked(blocked);
-        if (blocked) console.warn("[refine] Scope recommendation active for skill '%s' — refine blocked", selectedSkill.name);
-      })
-      .catch(() => setScopeBlocked(false));
-  }, [selectedSkill]);
+    return () => {
+      const store = useRefineStore.getState();
+      if (store.selectedSkill) {
+        if (store.sessionId) {
+          closeRefineSession(store.sessionId).catch(() => {});
+        }
+        releaseSkillResources(store.selectedSkill.name, "unmount");
+        store.clearSession();
+      }
+    };
+  }, []);
 
   // --- Navigation guard ---
   // Block navigation while an agent is running and show a confirmation dialog.
-  const { proceed, reset: resetBlocker, status: blockerStatus } = useBlocker({
-    shouldBlockFn: () => useRefineStore.getState().isRunning,
-    enableBeforeUnload: false,
-    withResolver: true,
+  const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
+    shouldBlock: () => useRefineStore.getState().isRunning,
+    onLeave: (proceed) => {
+      const store = useRefineStore.getState();
+
+      store.setRunning(false);
+      store.setActiveAgentId(null);
+      useAgentStore.getState().clearRuns();
+
+      // Fire-and-forget: close refine session
+      if (store.sessionId) {
+        closeRefineSession(store.sessionId).catch(() => {});
+      }
+
+      if (store.selectedSkill) {
+        releaseSkillResources(store.selectedSkill.name, "navigation");
+      }
+
+      // Clear session state so that returning to this page always creates a
+      // fresh session. Without this, the stale sessionId remains in the store
+      // and the auto-select guard skips session creation, causing send_refine_message
+      // to fail on the dead session.
+      store.clearSession();
+      autoSelectedRef.current = null;
+
+      proceed();
+    },
   });
-
-  const handleNavStay = useCallback(() => {
-    resetBlocker?.();
-  }, [resetBlocker]);
-
-  const handleNavLeave = useCallback(() => {
-    const store = useRefineStore.getState();
-
-    store.setRunning(false);
-    store.setActiveAgentId(null);
-    useAgentStore.getState().clearRuns();
-
-    // Fire-and-forget: close refine session
-    if (store.sessionId) {
-      closeRefineSession(store.sessionId).catch(() => {});
-    }
-
-    if (store.selectedSkill) {
-      releaseSkillResources(store.selectedSkill.name, "navigation");
-    }
-
-    // Clear session state so that returning to this page always creates a
-    // fresh session. Without this, the stale sessionId remains in the store
-    // and the auto-select guard skips session creation, causing send_refine_message
-    // to fail on the dead session.
-    store.clearSession();
-    autoSelectedRef.current = null;
-
-    proceed?.();
-  }, [proceed]);
 
   // Available filenames for @file autocomplete
   const availableFiles = useMemo(
@@ -230,7 +231,7 @@ export default function RefinePage() {
         // Rust resolves skills_path from DB for file lookups.
         try {
           const session = await startRefineSession(skill.name, workspacePath);
-          useRefineStore.setState({ sessionId: session.session_id });
+          useRefineStore.getState().setSessionId(session.session_id);
         } catch (err) {
           console.error("[refine] Failed to start refine session:", err);
           toast.error("Failed to start refine session", { duration: Infinity });
@@ -308,6 +309,7 @@ export default function RefinePage() {
             })),
           );
           store.setGitDiff(finalized.diff);
+          toast.info("Refinement complete");
         } catch (err) {
           try {
             if (hasStructuredObject && (structuredOutput as Record<string, unknown>).status === "validation_complete") {
@@ -345,35 +347,6 @@ export default function RefinePage() {
     void complete();
   }, [activeAgentId, activeRunStatus, workspacePath, selectedSkill, extractStructuredResultPayload]);
 
-  // --- Safety-net cleanup on unmount ---
-  // Catches cases where the component unmounts without going through the blocker dialog.
-  useEffect(() => {
-    return () => {
-      flushMessageBuffer();
-
-      const store = useRefineStore.getState();
-      if (store.isRunning) {
-        store.setRunning(false);
-        store.setActiveAgentId(null);
-        useAgentStore.getState().clearRuns();
-      }
-
-      // Fire-and-forget: close refine session
-      if (store.sessionId) {
-        closeRefineSession(store.sessionId).catch(() => {});
-      }
-
-      if (store.selectedSkill) {
-        releaseSkillResources(store.selectedSkill.name, "unmount");
-      }
-
-      // Clear session state so that remounting the page (e.g. navigating back
-      // from the test page) always creates a fresh session. Without this, the
-      // stale sessionId remains in the store and the auto-select guard in
-      // handleSelectSkill short-circuits before calling startRefineSession.
-      store.clearSession();
-    };
-  }, []);
 
   // --- Send a message ---
   const handleSend = useCallback(
@@ -387,8 +360,6 @@ export default function RefinePage() {
 
       const model = preferredModel ?? "sonnet";
 
-      // Snapshot baseline for diff
-      store.snapshotBaseline();
       store.setGitDiff(null);
 
       // Add user message

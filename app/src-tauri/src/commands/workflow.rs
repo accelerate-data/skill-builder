@@ -833,9 +833,9 @@ fn validate_clarifications_json(clarifications: &serde_json::Value) -> Result<()
                 section_idx
             )
         })?;
-        if section_obj.get("id").and_then(|v| v.as_str()).is_none() {
+        if section_obj.get("id").and_then(|v| v.as_u64()).is_none() {
             return Err(format!(
-                "clarifications_json.sections[{}].id must be a string",
+                "clarifications_json.sections[{}].id must be a number",
                 section_idx
             ));
         }
@@ -2845,7 +2845,7 @@ mod tests {
             },
             "sections": [
                 {
-                    "id": "S1",
+                    "id": 1,
                     "title": "Section",
                     "questions": [
                         {
@@ -2864,6 +2864,7 @@ mod tests {
             "notes": []
         })
     }
+
 
     #[test]
     fn test_get_step_config_valid_steps() {
@@ -3131,7 +3132,7 @@ mod tests {
                 },
                 "sections": [
                     {
-                        "id": "S1",
+                        "id": 1,
                         "title": "Section",
                         "questions": [
                             {
@@ -3241,7 +3242,7 @@ mod tests {
                 },
                 "sections": [
                     {
-                        "id": "S1",
+                        "id": 1,
                         "title": "Section",
                         "questions": [
                             {
@@ -3389,6 +3390,38 @@ mod tests {
         let err =
             super::materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
         assert!(err.contains("answer_evaluator_notes must be an array when present"));
+    }
+
+    #[test]
+    fn test_validate_clarifications_accepts_numeric_section_id() {
+        let v = valid_clarifications_value();
+        // numeric id (canonical agent output)
+        assert!(
+            super::validate_clarifications_json(&v).is_ok(),
+            "numeric section id should be accepted"
+        );
+    }
+
+    #[test]
+    fn test_validate_clarifications_rejects_string_section_id() {
+        let mut v = valid_clarifications_value();
+        v["sections"][0]["id"] = serde_json::json!("S1");
+        let err = super::validate_clarifications_json(&v).unwrap_err();
+        assert!(
+            err.contains("sections[0].id must be a number"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_validate_clarifications_rejects_null_section_id() {
+        let mut v = valid_clarifications_value();
+        v["sections"][0]["id"] = serde_json::json!(null);
+        let err = super::validate_clarifications_json(&v).unwrap_err();
+        assert!(
+            err.contains("sections[0].id must be a number"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

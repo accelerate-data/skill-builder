@@ -18,6 +18,13 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import type { AppSettings, MarketplaceRegistry } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useSettingsStore, type ModelInfo } from "@/stores/settings-store"
@@ -55,19 +62,18 @@ function RegistryTestIcon({ state }: { state: RegistryTestState }) {
 export default function SettingsPage() {
   const navigate = useNavigate()
   const [activeSection, setActiveSection] = useState<SectionId>("general")
-  const [apiKey, setApiKey] = useState<string | null>(null)
-  const [workspacePath, setWorkspacePath] = useState<string | null>(null)
-  const [skillsPath, setSkillsPath] = useState<string | null>(null)
-  const [preferredModel, setPreferredModel] = useState<string>("sonnet")
-  const [logLevel, setLogLevel] = useState("info")
-  const [extendedThinking, setExtendedThinking] = useState(false)
-  const [interleavedThinkingBeta, setInterleavedThinkingBeta] = useState(true)
-  const [sdkEffort, setSdkEffort] = useState<string>("")
-  const [refinePromptSuggestions, setRefinePromptSuggestions] = useState(true)
-  const [maxDimensions, setMaxDimensions] = useState(5)
-  const [industry, setIndustry] = useState("")
-  const [functionRole, setFunctionRole] = useState("")
-  const [loading, setLoading] = useState(true)
+  const [apiKey, setApiKey] = useState<string | null>(useSettingsStore.getState().anthropicApiKey ?? null)
+  const workspacePath = useSettingsStore.getState().workspacePath ?? null
+  const [skillsPath, setSkillsPath] = useState<string | null>(useSettingsStore.getState().skillsPath ?? null)
+  const [preferredModel, setPreferredModel] = useState<string>(useSettingsStore.getState().preferredModel ?? "")
+  const [logLevel, setLogLevel] = useState(useSettingsStore.getState().logLevel ?? "info")
+  const [extendedThinking, setExtendedThinking] = useState(useSettingsStore.getState().extendedThinking ?? false)
+  const [interleavedThinkingBeta, setInterleavedThinkingBeta] = useState(useSettingsStore.getState().interleavedThinkingBeta ?? true)
+  const [sdkEffort, setSdkEffort] = useState<string>(useSettingsStore.getState().sdkEffort ?? "")
+  const [refinePromptSuggestions, setRefinePromptSuggestions] = useState(useSettingsStore.getState().refinePromptSuggestions ?? true)
+  const [maxDimensions, setMaxDimensions] = useState(useSettingsStore.getState().maxDimensions ?? 5)
+  const [industry, setIndustry] = useState(useSettingsStore.getState().industry ?? "")
+  const [functionRole, setFunctionRole] = useState(useSettingsStore.getState().functionRole ?? "")
   const [saved, setSaved] = useState(false)
   const [testing, setTesting] = useState(false)
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null)
@@ -76,7 +82,7 @@ export default function SettingsPage() {
   const [dataDir, setDataDir] = useState<string | null>(null)
   const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const [aboutDialogOpen, setAboutDialogOpen] = useState(false)
-  const [autoUpdate, setAutoUpdate] = useState(false)
+  const [autoUpdate, setAutoUpdate] = useState(useSettingsStore.getState().autoUpdate ?? false)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
   const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
   const [addingRegistry, setAddingRegistry] = useState(false)
@@ -97,43 +103,11 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme()
 
   useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          const result = await invoke<AppSettings>("get_settings")
-          if (!cancelled) {
-            setApiKey(result.anthropic_api_key)
-            setWorkspacePath(result.workspace_path)
-            setSkillsPath(result.skills_path)
-            setPreferredModel(result.preferred_model || "sonnet")
-            setLogLevel(result.log_level ?? "info")
-            setExtendedThinking(result.extended_thinking ?? false)
-            setInterleavedThinkingBeta(result.interleaved_thinking_beta ?? true)
-            setSdkEffort(result.sdk_effort ?? "")
-            setRefinePromptSuggestions(result.refine_prompt_suggestions ?? true)
-            setMaxDimensions(result.max_dimensions ?? 5)
-            setIndustry(result.industry ?? "")
-            setFunctionRole(result.function_role ?? "")
-            setAutoUpdate(result.auto_update ?? false)
-            setStoreSettings({ marketplaceRegistries: result.marketplace_registries ?? [], marketplaceInitialized: result.marketplace_initialized ?? false })
-            setLoading(false)
-            // Fetch available models once we have an API key
-            if (result.anthropic_api_key) {
-              fetchModels(result.anthropic_api_key)
-            }
-          }
-          return
-        } catch (err) {
-          console.error(`Failed to load settings (attempt ${attempt}/3):`, err)
-          if (attempt < 3) await new Promise((r) => setTimeout(r, 500))
-        }
-      }
-      // All retries exhausted
-      if (!cancelled) setLoading(false)
+    // Fetch available models once (if we have an API key)
+    const key = apiKey || useSettingsStore.getState().anthropicApiKey
+    if (key) {
+      fetchModels(key)
     }
-    load()
-    return () => { cancelled = true }
   }, [])
 
   useEffect(() => {
@@ -304,11 +278,6 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      {loading ? (
-        <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-        </div>
-      ) : (
       <div className="flex flex-1 overflow-hidden">
         <nav className="flex w-48 shrink-0 flex-col space-y-1 overflow-y-auto border-r p-4">
           {sections.map(({ id, label }) => (
@@ -460,24 +429,19 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-3">
-                  <select
-                    value={preferredModel}
-                    onChange={(e) => { setPreferredModel(e.target.value); autoSave({ preferredModel: e.target.value }); }}
-                    className="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  <Select
+                    value={preferredModel || (availableModels.length > 0 ? availableModels[0].id : "")}
+                    onValueChange={(val) => { setPreferredModel(val); autoSave({ preferredModel: val }); }}
                   >
-                    {availableModels.length > 0
-                      ? availableModels.map((m) => (
-                          <option key={m.id} value={m.id}>{m.displayName}</option>
-                        ))
-                      : (
-                        <>
-                          <option value="haiku">Haiku — fastest, lowest cost</option>
-                          <option value="sonnet">Sonnet — balanced (default)</option>
-                          <option value="opus">Opus — most capable</option>
-                        </>
-                      )
-                    }
-                  </select>
+                    <SelectTrigger className="w-64">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableModels.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.displayName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </CardContent>
             </Card>
@@ -515,23 +479,26 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="grid gap-2">
-                  <Label htmlFor="sdk-effort">Reasoning effort</Label>
-                  <select
-                    id="sdk-effort"
-                    value={sdkEffort}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      setSdkEffort(value)
-                      autoSave({ sdkEffort: value || null })
+                  <Label>Reasoning effort</Label>
+                  <Select
+                    value={sdkEffort || "_default"}
+                    onValueChange={(val) => {
+                      const effort = val === "_default" ? "" : val
+                      setSdkEffort(effort)
+                      autoSave({ sdkEffort: effort || null })
                     }}
-                    className="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   >
-                    <option value="">Default</option>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="max">Max</option>
-                  </select>
+                    <SelectTrigger className="w-64">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_default">Default</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="max">Max</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -867,21 +834,24 @@ export default function SettingsPage() {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="log-level-select">Log Level</Label>
                   <div className="flex items-center gap-3">
-                    <select
-                      id="log-level-select"
+                    <Select
                       value={logLevel}
-                      onChange={(e) => {
-                        setLogLevel(e.target.value)
-                        autoSave({ logLevel: e.target.value })
-                        invoke("set_log_level", { level: e.target.value }).catch(() => {})
+                      onValueChange={(val) => {
+                        setLogLevel(val)
+                        autoSave({ logLevel: val })
+                        invoke("set_log_level", { level: val }).catch(() => {})
                       }}
-                      className="flex h-9 w-fit rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     >
-                      <option value="error">Error</option>
-                      <option value="warn">Warn</option>
-                      <option value="info">Info</option>
-                      <option value="debug">Debug</option>
-                    </select>
+                      <SelectTrigger id="log-level-select" className="w-fit">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="error">Error</SelectItem>
+                        <SelectItem value="warn">Warn</SelectItem>
+                        <SelectItem value="info">Info</SelectItem>
+                        <SelectItem value="debug">Debug</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <span className="text-sm text-muted-foreground">
                       {{ error: "Only errors", warn: "Errors + warnings", info: "Errors + warnings + lifecycle (default)", debug: "Everything (verbose)" }[logLevel]}
                     </span>
@@ -941,8 +911,6 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
-
-      )}
 
       <AboutDialog open={aboutDialogOpen} onOpenChange={setAboutDialogOpen} />
       <GitHubLoginDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />

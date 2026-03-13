@@ -22,9 +22,9 @@ const SKILL_FILES: SkillFile[] = [
   { filename: "references/glossary.md", content: "# Glossary\n\nTerms go here." },
 ];
 
-const BASELINE_FILES: SkillFile[] = [
-  { filename: "SKILL.md", content: "# My Skill\n\nOld content." },
-  { filename: "references/glossary.md", content: "# Glossary\n\nOld terms." },
+const SKILL_FILES_WITH_CONTEXT: SkillFile[] = [
+  ...SKILL_FILES,
+  { filename: "context/agent-validation-log.md", content: "# Validation\n\nAll good." },
 ];
 
 function setStoreState(overrides: Partial<ReturnType<typeof useRefineStore.getState>>) {
@@ -38,7 +38,6 @@ describe("PreviewPanel", () => {
       isLoadingFiles: false,
       activeFileTab: "SKILL.md",
       diffMode: false,
-      baselineFiles: [],
       gitDiff: null,
     });
   });
@@ -122,28 +121,33 @@ describe("PreviewPanel", () => {
     });
   });
 
+  it("does not show context artifacts in the file picker", async () => {
+    const user = userEvent.setup();
+    setStoreState({ skillFiles: SKILL_FILES_WITH_CONTEXT, activeFileTab: "SKILL.md" });
+    render(<PreviewPanel />);
+
+    await user.click(screen.getByTestId("refine-file-picker"));
+
+    await waitFor(() => {
+      expect(screen.getByText("references/glossary.md")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("context/agent-validation-log.md")).not.toBeInTheDocument();
+  });
+
   // --- Diff toggle ---
 
-  it("disables diff toggle when no baseline exists", () => {
-    setStoreState({ skillFiles: SKILL_FILES, baselineFiles: [], gitDiff: null });
+  it("disables diff toggle when no git diff exists", () => {
+    setStoreState({ skillFiles: SKILL_FILES, gitDiff: null });
     render(<PreviewPanel />);
 
     const diffBtn = screen.getByTestId("refine-diff-toggle");
     expect(diffBtn).toBeDisabled();
   });
 
-  it("enables diff toggle when baseline exists", () => {
-    setStoreState({ skillFiles: SKILL_FILES, baselineFiles: BASELINE_FILES });
-    render(<PreviewPanel />);
-
-    const diffBtn = screen.getByTestId("refine-diff-toggle");
-    expect(diffBtn).toBeEnabled();
-  });
-
   it("enables diff toggle when git diff exists", () => {
     setStoreState({
       skillFiles: SKILL_FILES,
-      baselineFiles: [],
       gitDiff: {
         stat: "1 file changed",
         files: [{ path: "my-skill/SKILL.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" }],
@@ -155,14 +159,28 @@ describe("PreviewPanel", () => {
   });
 
   it("shows 'Diff' label when not in diff mode", () => {
-    setStoreState({ skillFiles: SKILL_FILES, baselineFiles: BASELINE_FILES, diffMode: false });
+    setStoreState({
+      skillFiles: SKILL_FILES,
+      diffMode: false,
+      gitDiff: {
+        stat: "1 file changed",
+        files: [{ path: "my-skill/SKILL.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" }],
+      },
+    });
     render(<PreviewPanel />);
 
     expect(screen.getByTestId("refine-diff-toggle")).toHaveTextContent("Diff");
   });
 
   it("shows 'Preview' label when in diff mode", () => {
-    setStoreState({ skillFiles: SKILL_FILES, baselineFiles: BASELINE_FILES, diffMode: true });
+    setStoreState({
+      skillFiles: SKILL_FILES,
+      diffMode: true,
+      gitDiff: {
+        stat: "1 file changed",
+        files: [{ path: "my-skill/SKILL.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" }],
+      },
+    });
     render(<PreviewPanel />);
 
     expect(screen.getByTestId("refine-diff-toggle")).toHaveTextContent("Preview");
@@ -170,7 +188,14 @@ describe("PreviewPanel", () => {
 
   it("toggles diff mode when button is clicked", async () => {
     const user = userEvent.setup();
-    setStoreState({ skillFiles: SKILL_FILES, baselineFiles: BASELINE_FILES, diffMode: false });
+    setStoreState({
+      skillFiles: SKILL_FILES,
+      diffMode: false,
+      gitDiff: {
+        stat: "1 file changed",
+        files: [{ path: "my-skill/SKILL.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" }],
+      },
+    });
     render(<PreviewPanel />);
 
     await user.click(screen.getByTestId("refine-diff-toggle"));
@@ -178,43 +203,67 @@ describe("PreviewPanel", () => {
     expect(useRefineStore.getState().diffMode).toBe(true);
   });
 
-  it("renders DiffView instead of markdown when diff mode is on", () => {
-    setStoreState({
-      skillFiles: SKILL_FILES,
-      baselineFiles: BASELINE_FILES,
-      diffMode: true,
-      activeFileTab: "SKILL.md",
-    });
-    const { container } = render(<PreviewPanel />);
-
-    // DiffView renders a <pre>; markdown preview should NOT be shown
-    expect(screen.queryByTestId("markdown-preview")).not.toBeInTheDocument();
-    // DiffView should render diff rows inside a <pre>
-    const pre = container.querySelector("pre");
-    expect(pre).toBeTruthy();
-    // Should contain removed "Old content." from baseline
-    const rows = Array.from(pre!.querySelectorAll<HTMLDivElement>(":scope > div"));
-    const hasRemoved = rows.some((r) => r.className.includes("bg-destructive"));
-    const hasAdded = rows.some((r) => r.className.includes("bg-[color-mix"));
-    expect(hasRemoved).toBe(true);
-    expect(hasAdded).toBe(true);
-  });
-
-  it("renders git patch text when git-backed diff exists for the active file", () => {
+  it("shows an empty state when diff mode is on and the active file has no git patch", () => {
     setStoreState({
       skillFiles: SKILL_FILES,
       diffMode: true,
       activeFileTab: "SKILL.md",
       gitDiff: {
         stat: "1 file changed",
-        files: [{ path: "my-skill/SKILL.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" }],
+        files: [{ path: "my-skill/references/glossary.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" }],
+      },
+    });
+    render(<PreviewPanel />);
+
+    expect(screen.getByTestId("git-patch-empty")).toHaveTextContent("No git diff is available for this file.");
+    expect(screen.queryByTestId("markdown-preview")).not.toBeInTheDocument();
+  });
+
+  it("renders styled git patch lines when git-backed diff exists for the active file", () => {
+    setStoreState({
+      skillFiles: SKILL_FILES,
+      diffMode: true,
+      activeFileTab: "SKILL.md",
+      gitDiff: {
+        stat: "1 file changed",
+        files: [{
+          path: "my-skill/SKILL.md",
+          status: "modified",
+          diff: "diff --git a/SKILL.md b/SKILL.md\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1 +1 @@\n-old\n+new\n unchanged\n",
+        }],
       },
     });
 
     render(<PreviewPanel />);
 
-    expect(screen.getByTestId("git-patch-view")).toHaveTextContent("@@ -1 +1 @@");
-    expect(screen.getByTestId("git-patch-view")).toHaveTextContent("+new");
+    expect(screen.getByTestId("git-patch-view")).toHaveTextContent("diff --git a/SKILL.md b/SKILL.md");
+    expect(screen.getAllByTestId("git-patch-line-meta").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("git-patch-line-hunk").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("git-patch-line-added").some((node) => node.textContent?.includes("+new"))).toBe(true);
+    expect(screen.getAllByTestId("git-patch-line-removed").some((node) => node.textContent?.includes("-old"))).toBe(true);
+    expect(screen.getAllByTestId("git-patch-line-context").some((node) => node.textContent?.includes("unchanged"))).toBe(true);
     expect(screen.queryByTestId("markdown-preview")).not.toBeInTheDocument();
+  });
+
+  it("shows deleted authored files in the picker when they only exist in the git diff", async () => {
+    const user = userEvent.setup();
+    setStoreState({
+      skillFiles: SKILL_FILES,
+      activeFileTab: "SKILL.md",
+      gitDiff: {
+        stat: "2 files changed",
+        files: [
+          { path: "my-skill/SKILL.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" },
+          { path: "my-skill/references/deleted.md", status: "deleted", diff: "diff --git a/references/deleted.md b/references/deleted.md\n--- a/references/deleted.md\n+++ /dev/null\n@@ -1 +0,0 @@\n-removed\n" },
+        ],
+      },
+    });
+    render(<PreviewPanel />);
+
+    await user.click(screen.getByTestId("refine-file-picker"));
+
+    await waitFor(() => {
+      expect(screen.getByText("references/deleted.md")).toBeInTheDocument();
+    });
   });
 });

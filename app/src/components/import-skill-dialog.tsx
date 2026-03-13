@@ -23,13 +23,6 @@ import {
 import { importSkillFromFile } from "@/lib/tauri"
 import type { SkillFileMeta } from "@/lib/types"
 import { PURPOSE_OPTIONS } from "@/lib/types"
-import { useSettingsStore } from "@/stores/settings-store"
-
-const FALLBACK_MODEL_OPTIONS = [
-  { id: "claude-haiku-4-5", displayName: "Haiku -- fastest, lowest cost" },
-  { id: "claude-sonnet-4-6", displayName: "Sonnet -- balanced" },
-  { id: "claude-opus-4-6", displayName: "Opus -- most capable" },
-]
 
 export interface ImportConfirmParams {
   filePath: string
@@ -65,12 +58,9 @@ export function ImportSkillDialog({
   showPurpose = false,
   onConfirm,
 }: ImportSkillDialogProps) {
-  const availableModels = useSettingsStore((s) => s.availableModels)
-
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [version, setVersion] = useState("1.0.0")
-  const [model, setModel] = useState("")
   const [argumentHint, setArgumentHint] = useState("")
   const [userInvocable, setUserInvocable] = useState(false)
   const [disableModelInvocation, setDisableModelInvocation] = useState(false)
@@ -85,7 +75,6 @@ export function ImportSkillDialog({
       setName(meta.name ?? "")
       setDescription(meta.description ?? "")
       setVersion(meta.version ?? "1.0.0")
-      setModel(meta.model ?? "")
       setArgumentHint(meta.argument_hint ?? "")
       setUserInvocable(meta.user_invocable ?? false)
       setDisableModelInvocation(meta.disable_model_invocation ?? false)
@@ -113,7 +102,7 @@ export function ImportSkillDialog({
         name: name.trim(),
         description: description.trim(),
         version: version.trim(),
-        model: model || null,
+        model: null,
         argumentHint: argumentHint || null,
         userInvocable,
         disableModelInvocation,
@@ -147,7 +136,7 @@ export function ImportSkillDialog({
       }
     },
     [
-      filePath, name, description, version, model, argumentHint,
+      filePath, name, description, version, argumentHint,
       userInvocable, disableModelInvocation, purpose,
       showPurpose, onConfirm, onOpenChange, onImported,
     ]
@@ -261,22 +250,6 @@ export function ImportSkillDialog({
                 </Select>
               </div>
             )}
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="import-model">Model</Label>
-              <select
-                id="import-model"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                disabled={submitting}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <option value="">App default</option>
-                {(availableModels.length > 0 ? availableModels : FALLBACK_MODEL_OPTIONS).map((m) => (
-                  <option key={m.id} value={m.id}>{m.displayName}</option>
-                ))}
-              </select>
-            </div>
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="import-argument-hint">Argument Hint</Label>

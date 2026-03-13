@@ -89,10 +89,9 @@ describe("ImportSkillDialog", () => {
       expect(screen.getByDisplayValue("2.1.0")).toBeInTheDocument();
     });
 
-    it("renders with model pre-selected from meta", () => {
+    it("does not render a model selector from meta", () => {
       renderDialog();
-      const modelSelect = screen.getByRole("combobox") as HTMLSelectElement;
-      expect(modelSelect.value).toBe("claude-sonnet-4-6");
+      expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     });
   });
 

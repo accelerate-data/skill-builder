@@ -16,8 +16,8 @@ import {
 } from "@/components/ui/command";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useRefineStore } from "@/stores/refine-store";
-import { DiffView } from "./diff-view";
+import { isAuthoredSkillFile, useRefineStore } from "@/stores/refine-store";
+import { GitPatchView } from "./git-patch-view";
 
 const REMARK_PLUGINS = [remarkGfm];
 const REHYPE_PLUGINS = [rehypeHighlight];
@@ -25,6 +25,17 @@ const REHYPE_PLUGINS = [rehypeHighlight];
 function normalizeDiffPath(path: string): string {
   const parts = path.split("/");
   return parts.length > 1 ? parts.slice(1).join("/") : path;
+}
+
+function getDiffFileTabNames(skillFiles: string[], gitDiffPaths: string[]): string[] {
+  const names = new Set<string>(skillFiles);
+  for (const path of gitDiffPaths) {
+    const normalized = normalizeDiffPath(path);
+    if (isAuthoredSkillFile(normalized)) {
+      names.add(normalized);
+    }
+  }
+  return Array.from(names);
 }
 
 /** Memoized markdown renderer — only re-renders when content changes. */
@@ -42,16 +53,20 @@ export function PreviewPanel() {
   const skillFiles = useRefineStore((s) => s.skillFiles);
   const activeFileTab = useRefineStore((s) => s.activeFileTab);
   const diffMode = useRefineStore((s) => s.diffMode);
-  const baselineFiles = useRefineStore((s) => s.baselineFiles);
   const gitDiff = useRefineStore((s) => s.gitDiff);
   const isLoadingFiles = useRefineStore((s) => s.isLoadingFiles);
   const setActiveFileTab = useRefineStore((s) => s.setActiveFileTab);
   const setDiffMode = useRefineStore((s) => s.setDiffMode);
 
   const [filePickerOpen, setFilePickerOpen] = useState(false);
-  const fileListKey = skillFiles.map((file) => file.filename).join("|");
+  const previewFiles = skillFiles.filter((file) => isAuthoredSkillFile(file.filename));
+  const previewFileNames = getDiffFileTabNames(
+    previewFiles.map((file) => file.filename),
+    gitDiff?.files.map((file) => file.path) ?? [],
+  );
+  const fileListKey = previewFileNames.join("|");
 
-  if (skillFiles.length === 0 && !isLoadingFiles) {
+  if (previewFileNames.length === 0 && !isLoadingFiles) {
     return (
       <div data-testid="refine-preview-empty" className="flex h-full items-center justify-center text-muted-foreground">
         Select a skill to preview its files
@@ -68,10 +83,9 @@ export function PreviewPanel() {
     );
   }
 
-  const activeFile = skillFiles.find((f) => f.filename === activeFileTab);
-  const baselineFile = baselineFiles.find((f) => f.filename === activeFileTab);
+  const activeFile = previewFiles.find((f) => f.filename === activeFileTab);
   const gitDiffFile = gitDiff?.files.find((file) => normalizeDiffPath(file.path) === activeFileTab);
-  const hasDiff = (gitDiff?.files.length ?? 0) > 0 || baselineFiles.length > 0;
+  const hasDiff = (gitDiff?.files.length ?? 0) > 0;
 
   return (
     <div className="flex h-full flex-col">
@@ -90,17 +104,17 @@ export function PreviewPanel() {
               <CommandList>
                 <CommandEmpty>No files found</CommandEmpty>
                 <CommandGroup>
-                  {skillFiles.map((f) => (
-                    <CommandItem
-                      key={f.filename}
-                      value={f.filename}
+                    {previewFileNames.map((filename) => (
+                      <CommandItem
+                      key={filename}
+                      value={filename}
                       onSelect={() => {
-                        setActiveFileTab(f.filename);
+                        setActiveFileTab(filename);
                         setFilePickerOpen(false);
                       }}
                     >
                       <FileText className="mr-2 size-3.5 shrink-0" />
-                      <span className="truncate">{f.filename}</span>
+                      <span className="truncate">{filename}</span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -122,20 +136,19 @@ export function PreviewPanel() {
       </div>
       <div className="min-h-0 flex-1">
         {diffMode && gitDiffFile ? (
+          <GitPatchView patch={gitDiffFile.diff} />
+        ) : diffMode ? (
+          <div data-testid="git-patch-empty" className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            No git diff is available for this file.
+          </div>
+        ) : activeFile ? (
           <ScrollArea className="h-full">
-            <pre data-testid="git-patch-view" className="whitespace-pre-wrap break-all p-4 font-mono text-sm">
-              {gitDiffFile.diff}
-            </pre>
+            <MarkdownPreview content={activeFile.content} />
           </ScrollArea>
-        ) : diffMode && baselineFile ? (
-          <DiffView
-            before={baselineFile.content}
-            after={activeFile?.content ?? ""}
-          />
         ) : (
-          <ScrollArea className="h-full">
-            <MarkdownPreview content={activeFile?.content ?? ""} />
-          </ScrollArea>
+          <div data-testid="refine-preview-missing-file" className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            This file is only available in the git diff.
+          </div>
         )}
       </div>
     </div>

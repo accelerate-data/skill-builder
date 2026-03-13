@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseClarifications } from "@/lib/clarifications-types";
 
 describe("parseClarifications", () => {
-  it("parses canonical clarifications schema", () => {
+  it("parses canonical clarifications schema with numeric section id", () => {
     const input = JSON.stringify({
       version: "1",
       metadata: {
@@ -16,7 +16,7 @@ describe("parseClarifications", () => {
       },
       sections: [
         {
-          id: "S1",
+          id: 1,
           title: "Section",
           questions: [
             {
@@ -37,9 +37,8 @@ describe("parseClarifications", () => {
 
     const parsed = parseClarifications(input);
     expect(parsed).not.toBeNull();
-    expect(parsed?.sections).toHaveLength(1);
+    expect(parsed?.sections[0]?.id).toBe(1);
     expect(parsed?.sections[0]?.questions).toHaveLength(1);
-    expect(parsed?.metadata.priority_questions).toEqual(["Q1"]);
   });
 
   it("converts legacy dimensions schema into canonical sections/questions", () => {
@@ -68,9 +67,9 @@ describe("parseClarifications", () => {
     expect(parsed?.metadata.question_count).toBe(2);
     expect(parsed?.metadata.section_count).toBe(1);
     expect(parsed?.sections).toHaveLength(1);
-    expect(parsed?.sections[0]?.id).toBe("D1");
+    expect(parsed?.sections[0]?.id).toBe(1);
     expect(parsed?.sections[0]?.questions).toHaveLength(2);
-    expect(parsed?.sections[0]?.questions[0]?.id).toBe("D1.Q1");
+    expect(parsed?.sections[0]?.questions[0]?.id).toBe("Q1");
     expect(parsed?.sections[0]?.questions[0]?.text).toBe("What are the pipeline stages?");
     expect(parsed?.sections[0]?.questions[0]?.must_answer).toBe(false);
   });

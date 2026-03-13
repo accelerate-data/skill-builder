@@ -147,7 +147,7 @@ describe("Canonical format: clarifications.json structure", () => {
 
       it("sections have id, title, and questions", () => {
         for (const section of data.sections) {
-          expect(section.id).toMatch(/^S\d+$/);
+          expect(typeof section.id).toBe("number");
           expect(typeof section.title).toBe("string");
           expect(Array.isArray(section.questions)).toBe(true);
         }

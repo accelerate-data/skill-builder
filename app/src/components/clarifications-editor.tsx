@@ -125,7 +125,7 @@ export function ClarificationsEditor({
   evaluating = false,
 }: ClarificationsEditorProps) {
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set(data.sections.map((section) => section.id)));
+  const [expandedSections, setExpandedSections] = useState<Set<number>>(() => new Set(data.sections.map((section) => section.id)));
   const [notesExpanded, setNotesExpanded] = useState(true);
   const [showNeedsReviewOnly, setShowNeedsReviewOnly] = useState(false);
   const { answered, total, mustUnanswered } = getTotalCounts(data);
@@ -155,7 +155,7 @@ export function ClarificationsEditor({
     });
   }, []);
 
-  const toggleSection = useCallback((sectionId: string) => {
+  const toggleSection = useCallback((sectionId: number) => {
     setExpandedSections((prev) => {
       const next = new Set(prev);
       if (next.has(sectionId)) next.delete(sectionId);
@@ -389,7 +389,7 @@ function SectionBlock({
   section: Section;
   visibleQuestions: Question[];
   isExpanded: boolean;
-  toggleSection: (id: string) => void;
+  toggleSection: (id: number) => void;
   expandedCards: Set<string>;
   toggleCard: (id: string) => void;
   updateQuestion: (id: string, updater: (q: Question) => Question) => void;

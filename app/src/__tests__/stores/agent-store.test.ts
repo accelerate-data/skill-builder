@@ -6,8 +6,12 @@ import {
   formatTokenCount,
   getLatestContextTokens,
   getContextUtilization,
+  resetAgentStoreInternals,
+  getPendingTerminalCount,
+  getPendingMetadataCount,
 } from "@/stores/agent-store";
 import type { DisplayItem } from "@/lib/display-types";
+import { mockInvoke } from "@/test/mocks/tauri";
 
 function makeDisplayItem(overrides: Partial<DisplayItem> & { type: DisplayItem["type"] }): DisplayItem {
   return {
@@ -19,6 +23,7 @@ function makeDisplayItem(overrides: Partial<DisplayItem> & { type: DisplayItem["
 
 describe("useAgentStore", () => {
   beforeEach(() => {
+    resetAgentStoreInternals();
     useAgentStore.getState().clearRuns();
     vi.restoreAllMocks();
   });
@@ -141,6 +146,33 @@ describe("useAgentStore", () => {
     useAgentStore.getState().registerRun("late-shutdown", "sonnet", "my-skill", "test");
     const run = useAgentStore.getState().runs["late-shutdown"];
     expect(run.status).toBe("shutdown");
+  });
+
+  it("preserves completed status when registerRun races with agent-exit after auto-create", () => {
+    // Simulate fast/mock agent race:
+    // 1. display_item arrives → addDisplayItem auto-creates run (status "running")
+    // 2. agent-exit fires   → completeRun sets status "completed"
+    // 3. registerRun called  → must NOT revert status back to "running"
+    const item = makeDisplayItem({ type: "output", outputText: "hello" });
+    useAgentStore.getState().addDisplayItem("race-agent", item);
+    expect(useAgentStore.getState().runs["race-agent"].status).toBe("running");
+
+    useAgentStore.getState().completeRun("race-agent", true);
+    expect(useAgentStore.getState().runs["race-agent"].status).toBe("completed");
+
+    useAgentStore.getState().registerRun("race-agent", "sonnet", "my-skill", "refine");
+    expect(useAgentStore.getState().runs["race-agent"].status).toBe("completed");
+  });
+
+  it("preserves completed status when startRun races with agent-exit after auto-create", () => {
+    // Same race but via startRun (workflow path)
+    const item = makeDisplayItem({ type: "output", outputText: "hello" });
+    useAgentStore.getState().addDisplayItem("race-wf-agent", item);
+    useAgentStore.getState().completeRun("race-wf-agent", true);
+    expect(useAgentStore.getState().runs["race-wf-agent"].status).toBe("completed");
+
+    useAgentStore.getState().startRun("race-wf-agent", "sonnet");
+    expect(useAgentStore.getState().runs["race-wf-agent"].status).toBe("completed");
   });
 
   it("uses provided refine usageSessionId for usage grouping", () => {
@@ -606,5 +638,100 @@ describe("agent event buffering", () => {
     useAgentStore.getState().clearRuns();
     useAgentStore.getState().startRun("agent-buf-5", "sonnet");
     expect(useAgentStore.getState().runs["agent-buf-5"].sessionId).toBeUndefined();
+  });
+
+  it("completeRun logs structured error when persistence fails", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockInvoke.mockRejectedValue(new Error("Database connection failed"));
+
+    useAgentStore.getState().startRun("agent-persist-fail", "sonnet");
+    useAgentStore.getState().completeRun("agent-persist-fail", true);
+
+    // Wait for async persistence to complete
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const errorCalls = consoleSpy.mock.calls.filter((call) =>
+      String(call[0]).includes("event=persistence_failed")
+    );
+    expect(errorCalls.length).toBeGreaterThan(0);
+    expect(String(errorCalls[0][0])).toContain("operation=persist_agent_run");
+    // Check that the error log contains the format string and args
+    expect(errorCalls[0].length).toBeGreaterThan(1); // Has message + format args
+
+    consoleSpy.mockRestore();
+  });
+
+  it("completeRun logs persistence summary after all rows are attempted", async () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockInvoke.mockResolvedValue(undefined);
+
+    useAgentStore.getState().startRun("agent-summary", "sonnet");
+    useAgentStore.getState().completeRun("agent-summary", true);
+
+    // Wait for async persistence to complete
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const summaryCalls = consoleSpy.mock.calls.filter((call) =>
+      String(call[0]).includes("event=persistence_summary")
+    );
+    expect(summaryCalls.length).toBeGreaterThan(0);
+    expect(String(summaryCalls[0][0])).toContain("operation=persist_run_rows");
+    expect(String(summaryCalls[0][0])).toContain("status=success");
+    // Check that the log has format args
+    expect(summaryCalls[0].length).toBeGreaterThan(1);
+
+    consoleSpy.mockRestore();
+  });
+
+  it("shutdownRun logs structured errors on persistence failure", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockInvoke.mockRejectedValue(new Error("Write lock timeout"));
+
+    useAgentStore.getState().startRun("agent-shutdown-fail", "sonnet");
+    useAgentStore.getState().shutdownRun("agent-shutdown-fail");
+
+    // Wait for async persistence to complete
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const errorCalls = consoleSpy.mock.calls.filter((call) =>
+      String(call[0]).includes("event=persistence_failed")
+    );
+    expect(errorCalls.length).toBeGreaterThan(0);
+
+    consoleSpy.mockRestore();
+  });
+});
+
+describe("module-level internal state", () => {
+  beforeEach(() => {
+    resetAgentStoreInternals();
+    useAgentStore.getState().clearRuns();
+  });
+
+  it("getPendingTerminalCount returns 0 after reset", () => {
+    expect(getPendingTerminalCount()).toBe(0);
+  });
+
+  it("getPendingMetadataCount returns 0 after reset", () => {
+    expect(getPendingMetadataCount()).toBe(0);
+  });
+
+  it("completeRun queues a pending terminal event when run does not exist yet", () => {
+    useAgentStore.getState().completeRun("no-such-agent", true);
+    expect(getPendingTerminalCount()).toBe(1);
+  });
+
+  it("resetAgentStoreInternals clears a queued pending terminal event", () => {
+    useAgentStore.getState().completeRun("no-such-agent", true);
+    expect(getPendingTerminalCount()).toBe(1);
+    resetAgentStoreInternals();
+    expect(getPendingTerminalCount()).toBe(0);
+  });
+
+  it("clearRuns delegates to resetAgentStoreInternals, clearing pending terminal events", () => {
+    useAgentStore.getState().completeRun("no-such-agent", false);
+    expect(getPendingTerminalCount()).toBe(1);
+    useAgentStore.getState().clearRuns();
+    expect(getPendingTerminalCount()).toBe(0);
   });
 });

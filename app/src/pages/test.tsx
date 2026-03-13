@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Play, Square } from "lucide-react";
 import { toast } from "@/lib/toast";
-import { useNavigate, useSearch, useBlocker } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { useScopeBlocked } from "@/hooks/use-scope-blocked";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -20,8 +22,6 @@ import { useTestStore } from "@/stores/test-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   listRefinableSkills,
-  getWorkspacePath,
-  getDisabledSteps,
   startAgent,
   cleanupSkillSidecar,
   prepareSkillTest,
@@ -324,6 +324,7 @@ function PlanPanel({ scrollRef, text, agentId, phase, label, badgeText, badgeCla
 export default function TestPage() {
   const navigate = useNavigate();
   const { skill: skillParam } = useSearch({ from: "/test" });
+  const workspacePath = useSettingsStore((s) => s.workspacePath);
 
   // --- Skills list ---
   const [skills, setSkills] = useState<SkillSummary[]>([]);
@@ -333,7 +334,7 @@ export default function TestPage() {
   const [state, setState] = useState<TestState>(INITIAL_STATE);
 
   // --- Scope recommendation guard ---
-  const [scopeBlocked, setScopeBlocked] = useState(false);
+  const scopeBlocked = useScopeBlocked(state.selectedSkill, "test");
 
   // --- Elapsed timer ---
   const [elapsed, setElapsed] = useState(0);
@@ -364,9 +365,13 @@ export default function TestPage() {
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
+    if (!workspacePath) {
+      setSkills([]);
+      setIsLoadingSkills(false);
+      return;
+    }
     let cancelled = false;
-    getWorkspacePath()
-      .then((wp) => listRefinableSkills(wp))
+    listRefinableSkills(workspacePath)
       .then((list) => {
         if (!cancelled) {
           setSkills(list);
@@ -379,7 +384,7 @@ export default function TestPage() {
         toast.error("Failed to load skills", { duration: Infinity });
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [workspacePath]);
 
   // ---------------------------------------------------------------------------
   // Auto-select skill from search param
@@ -393,24 +398,6 @@ export default function TestPage() {
       setState((prev) => ({ ...prev, selectedSkill: match }));
     }
   }, [skillParam, skills]);
-
-  // ---------------------------------------------------------------------------
-  // Scope recommendation guard
-  // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    if (!state.selectedSkill) {
-      setScopeBlocked(false);
-      return;
-    }
-    getDisabledSteps(state.selectedSkill.name)
-      .then((disabled) => {
-        const blocked = disabled.length > 0;
-        setScopeBlocked(blocked);
-        if (blocked) console.warn("[test] Scope recommendation active for skill '%s' — testing blocked", state.selectedSkill!.name);
-      })
-      .catch(() => setScopeBlocked(false));
-  }, [state.selectedSkill]);
 
   // ---------------------------------------------------------------------------
   // Draggable dividers
@@ -770,7 +757,9 @@ export default function TestPage() {
 
     let preparedTestId: string | undefined;
     try {
-      const workspacePath = await getWorkspacePath();
+      if (!workspacePath) {
+        throw new Error("Workspace path not configured");
+      }
       const prepared = await prepareSkillTest(workspacePath, skillName);
       preparedTestId = prepared.test_id;
 
@@ -864,26 +853,18 @@ export default function TestPage() {
   // Sync phase to global test store so CloseGuard can detect running agents.
   useEffect(() => {
     useTestStore.getState().setRunning(isRunning);
-    return () => { useTestStore.getState().setRunning(false); };
   }, [isRunning]);
 
   // --- Navigation guard ---
-  const { proceed, reset: resetBlocker, status: blockerStatus } = useBlocker({
-    shouldBlockFn: () => useTestStore.getState().isRunning,
-    enableBeforeUnload: false,
-    withResolver: true,
+  const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
+    shouldBlock: () => useTestStore.getState().isRunning,
+    onLeave: (proceed) => {
+      useTestStore.getState().setRunning(false);
+      useAgentStore.getState().clearRuns();
+      cleanup(stateRef.current.testId);
+      proceed();
+    },
   });
-
-  const handleNavStay = useCallback(() => {
-    resetBlocker?.();
-  }, [resetBlocker]);
-
-  const handleNavLeave = useCallback(() => {
-    useTestStore.getState().setRunning(false);
-    useAgentStore.getState().clearRuns();
-    cleanup(stateRef.current.testId);
-    proceed?.();
-  }, [proceed, cleanup]);
 
   const elapsedStr = `${(elapsed / 1000).toFixed(1)}s`;
   const activeModel = useSettingsStore((s) => s.preferredModel ?? "sonnet");

@@ -20,7 +20,7 @@ const baseMetadata: ClarificationsFile["metadata"] = {
 };
 
 const baseSection: ClarificationsFile["sections"][0] = {
-  id: "S1",
+  id: 1,
   title: "Section",
   questions: [
     {

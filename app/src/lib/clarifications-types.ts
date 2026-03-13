@@ -58,7 +58,7 @@ export interface ClarificationsResearchPlan {
 }
 
 export interface Section {
-  id: string; // "S1", "S2", ...
+  id: number;
   title: string;
   description?: string;
   questions: Question[];
@@ -197,7 +197,7 @@ export function parseClarifications(content: string | null): ClarificationsFile 
     // Step 0/1 can still render and edit questions.
     if (rawQuestionCount === 0 && legacyDimensions.length > 0) {
       const convertedSections: Section[] = legacyDimensions.map((d, sectionIndex) => {
-        const sectionId = d.id || `S${sectionIndex + 1}`;
+        const sectionId = sectionIndex + 1;
         const sourceQuestions = Array.isArray(d.questions)
           ? d.questions
           : (Array.isArray((d as { clarifications_needed?: string[] }).clarifications_needed)
@@ -208,7 +208,7 @@ export function parseClarifications(content: string | null): ClarificationsFile 
           title: d.name || `Section ${sectionIndex + 1}`,
           description: d.description,
           questions: sourceQuestions.map((questionText, questionIndex) => ({
-            id: `${sectionId}.Q${questionIndex + 1}`,
+            id: `Q${questionIndex + 1}`,
             title: questionText,
             must_answer: false,
             text: questionText,

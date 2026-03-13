@@ -185,6 +185,18 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
 
     // Read agentId and simulate agent
     const agentId = await getAgentId(page);
+    await expect(page.getByTestId("refine-file-picker")).toContainText("SKILL.md");
+
+    await page.evaluate(() => {
+      const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
+      const files = [
+        { path: "SKILL.md", content: "# Test Skill\n\nA skill for testing.\n\n## Instructions\n\nFollow these steps..." },
+        { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
+      ];
+      overrides.get_skill_content_for_refine = files;
+      overrides.finalize_refine_run = { files, diff: { stat: "no changes", files: [] }, commit_sha: null };
+    });
+
     await simulateAgentRun(page, {
       agentId,
       messages: ["Validating skill files..."],
@@ -192,6 +204,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     });
 
     await expect(page.getByText("Validating skill files...").last()).toBeVisible();
+    await expect(page.getByTestId("refine-file-picker")).toContainText("SKILL.md");
   });
 
   test("@file targeting shows file badge", async ({ page }) => {
@@ -243,10 +256,10 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     await expect(page.getByTestId("refine-file-picker")).toContainText("references/glossary.md");
   });
 
-  test("diff toggle button disabled when no baseline", async ({ page }) => {
+  test("diff toggle button disabled when no git diff exists", async ({ page }) => {
     await navigateToRefineWithSkill(page);
 
-    // Diff toggle should exist but be disabled (no baseline snapshot)
+    // Diff toggle should exist but be disabled (no git patch available)
     const diffToggle = page.getByTestId("refine-diff-toggle");
     await expect(diffToggle).toBeVisible();
     await expect(diffToggle).toBeDisabled();
@@ -273,6 +286,13 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     // --- 4. Swap mock to return modified files (simulates agent edits) ---
     await page.evaluate(() => {
       const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
+      const files = [
+        {
+          path: "SKILL.md",
+          content: "# Test Skill\n\nA skill for testing.\n\n## Quick Start\n\nGet started in 3 steps.\n\n## Instructions\n\nFollow these steps...",
+        },
+        { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
+      ];
       overrides.get_skill_content_for_refine = [
         {
           path: "SKILL.md",
@@ -280,6 +300,18 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
         },
         { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
       ];
+      overrides.finalize_refine_run = {
+        files,
+        diff: {
+          stat: "1 file changed",
+          files: [{
+            path: "test-skill/SKILL.md",
+            status: "modified",
+            diff: "diff --git a/SKILL.md b/SKILL.md\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,5 +1,9 @@\n # Test Skill\n \n A skill for testing.\n+\n+## Quick Start\n+\n+Get started in 3 steps.\n \n ## Instructions\n",
+          }],
+        },
+        commit_sha: null,
+      };
     });
 
     // --- 5. Simulate agent run ---
@@ -300,7 +332,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     // Thinking indicator gone
     await expect(page.getByTestId("refine-agent-thinking")).not.toBeVisible();
 
-    // --- 7. Verify diff toggle is now enabled (baseline was snapshotted) ---
+    // --- 7. Verify diff toggle is now enabled (git diff is available) ---
     const diffToggle = page.getByTestId("refine-diff-toggle");
     await expect(diffToggle).toBeEnabled();
 
@@ -335,7 +367,18 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
         { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
       ];
       overrides.get_skill_content_for_refine = files;
-      overrides.finalize_refine_run = { files, diff: { stat: "1 file changed", files: [] }, commit_sha: null };
+      overrides.finalize_refine_run = {
+        files,
+        diff: {
+          stat: "1 file changed",
+          files: [{
+            path: "test-skill/SKILL.md",
+            status: "modified",
+            diff: "diff --git a/SKILL.md b/SKILL.md\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,5 +1,9 @@\n # Test Skill\n \n A skill for testing.\n+\n+## Quick Start\n+\n+Get started in 3 steps.\n \n ## Instructions\n",
+          }],
+        },
+        commit_sha: null,
+      };
     });
 
     await simulateAgentRun(page, {
@@ -351,7 +394,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     // Verify turn 1 diff
     const diffToggle = page.getByTestId("refine-diff-toggle");
     await diffToggle.click();
-    await expect(page.locator("text=+ ## Quick Start")).toBeVisible();
+    await expect(page.getByTestId("git-patch-line-added").filter({ hasText: "## Quick Start" })).toBeVisible();
     await diffToggle.click(); // Toggle diff off
 
     // --- Turn 2: Add Tips section ---
@@ -378,7 +421,18 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
         { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
       ];
       overrides.get_skill_content_for_refine = files;
-      overrides.finalize_refine_run = { files, diff: { stat: "1 file changed", files: [] }, commit_sha: null };
+      overrides.finalize_refine_run = {
+        files,
+        diff: {
+          stat: "1 file changed",
+          files: [{
+            path: "test-skill/SKILL.md",
+            status: "modified",
+            diff: "diff --git a/SKILL.md b/SKILL.md\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -5,5 +5,9 @@\n ## Quick Start\n \n Get started in 3 steps.\n+\n+## Tips\n+\n+Remember to test often.\n \n ## Instructions\n",
+          }],
+        },
+        commit_sha: null,
+      };
     });
 
     await simulateAgentRun(page, {
@@ -392,11 +446,11 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
 
     // Verify turn 2 diff shows only turn 2 changes
     await diffToggle.click();
-    await expect(page.locator("text=+ ## Tips")).toBeVisible();
-    await expect(page.locator("text=+ Remember to test often.")).toBeVisible();
+    await expect(page.getByTestId("git-patch-line-added").filter({ hasText: "## Tips" })).toBeVisible();
+    await expect(page.getByTestId("git-patch-line-added").filter({ hasText: "Remember to test often." })).toBeVisible();
 
     // Quick Start was already in baseline for turn 2, should NOT appear as added
-    await expect(page.locator("text=+ ## Quick Start")).not.toBeVisible();
+    await expect(page.getByTestId("git-patch-line-added").filter({ hasText: "## Quick Start" })).toHaveCount(0);
   });
 
   test("multi-file diff: switching files shows per-file changes", async ({ page }) => {
@@ -422,7 +476,25 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
         },
       ];
       overrides.get_skill_content_for_refine = files;
-      overrides.finalize_refine_run = { files, diff: { stat: "2 files changed", files: [] }, commit_sha: null };
+      overrides.finalize_refine_run = {
+        files,
+        diff: {
+          stat: "2 files changed",
+          files: [
+            {
+              path: "test-skill/SKILL.md",
+              status: "modified",
+              diff: "diff --git a/SKILL.md b/SKILL.md\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,5 +1,9 @@\n # Test Skill\n \n A skill for testing.\n+\n+## Quick Start\n+\n+Get started in 3 steps.\n \n ## Instructions\n",
+            },
+            {
+              path: "test-skill/references/glossary.md",
+              status: "modified",
+              diff: "diff --git a/references/glossary.md b/references/glossary.md\n--- a/references/glossary.md\n+++ b/references/glossary.md\n@@ -1,2 +1,3 @@\n # Glossary\n \n - **Term**: Definition\n+- **New Term**: New definition\n",
+            },
+          ],
+        },
+        commit_sha: null,
+      };
     });
 
     await simulateAgentRun(page, {
@@ -438,17 +510,17 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     // Toggle diff on — SKILL.md is the active file
     const diffToggle = page.getByTestId("refine-diff-toggle");
     await diffToggle.click();
-    await expect(page.locator("text=+ ## Quick Start")).toBeVisible();
+    await expect(page.getByTestId("git-patch-line-added").filter({ hasText: "## Quick Start" })).toBeVisible();
 
     // Switch to glossary file
     await page.getByTestId("refine-file-picker").click();
     await page.getByRole("option", { name: /references\/glossary\.md/ }).click();
 
     // Verify glossary diff shows glossary-specific changes
-    await expect(page.locator("text=+ - **New Term**: New definition")).toBeVisible();
+    await expect(page.getByTestId("git-patch-line-added").filter({ hasText: "- **New Term**: New definition" })).toBeVisible();
 
     // Verify glossary diff does NOT show SKILL.md-only changes
-    await expect(page.locator("text=+ ## Quick Start")).not.toBeVisible();
+    await expect(page.getByTestId("git-patch-line-added").filter({ hasText: "## Quick Start" })).toHaveCount(0);
   });
 
   test("agent error mid-refine: error renders, chat usable, diff preserved", async ({ page }) => {
@@ -472,7 +544,18 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
         { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
       ];
       overrides.get_skill_content_for_refine = files;
-      overrides.finalize_refine_run = { files, diff: { stat: "1 file changed", files: [] }, commit_sha: null };
+      overrides.finalize_refine_run = {
+        files,
+        diff: {
+          stat: "1 file changed",
+          files: [{
+            path: "test-skill/SKILL.md",
+            status: "modified",
+            diff: "diff --git a/SKILL.md b/SKILL.md\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,5 +1,9 @@\n # Test Skill\n \n A skill for testing.\n+\n+## Quick Start\n+\n+Get started in 3 steps.\n \n ## Instructions\n",
+          }],
+        },
+        commit_sha: null,
+      };
     });
 
     await simulateAgentRun(page, {
@@ -489,7 +572,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     const diffToggle = page.getByTestId("refine-diff-toggle");
     await expect(diffToggle).toBeEnabled();
     await diffToggle.click();
-    await expect(page.locator("text=+ ## Quick Start")).toBeVisible();
+    await expect(page.getByTestId("git-patch-line-added").filter({ hasText: "## Quick Start" })).toBeVisible();
     await diffToggle.click(); // Toggle diff off
 
     // --- Turn 2 (error): Agent fails before modifying files ---
@@ -515,12 +598,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     // Verify chat input is still enabled (user can retry)
     await expect(page.getByTestId("refine-chat-input")).toBeEnabled();
 
-    // Verify diff toggle is still enabled (baseline exists from turn 1)
-    await expect(diffToggle).toBeEnabled();
-
-    // Toggle diff on — should show NO added lines because baseline was
-    // re-snapshotted to post-turn-1 state and files are still in post-turn-1 state
-    await diffToggle.click();
-    await expect(page.locator("text=+ ## Quick Start")).not.toBeVisible();
+    // Turn 2 clears the stale turn 1 patch immediately, so diff mode is disabled
+    await expect(diffToggle).toBeDisabled();
   });
 });

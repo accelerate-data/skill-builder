@@ -1,3 +1,4 @@
+import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -29,6 +30,64 @@ vi.mock("next-themes", () => ({
 const mockNavigate = vi.fn();
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mockNavigate,
+}));
+
+// Mock shadcn Select with a native <select> so selectOptions works in jsdom.
+const SelectCtx = React.createContext<{
+  value: string;
+  onValueChange?: (v: string) => void;
+  disabled?: boolean;
+  idRef: React.MutableRefObject<string | undefined>;
+} | null>(null);
+
+vi.mock("@/components/ui/select", () => ({
+  Select: ({
+    children,
+    value,
+    onValueChange,
+    disabled,
+  }: {
+    children: React.ReactNode;
+    value: string;
+    onValueChange?: (v: string) => void;
+    disabled?: boolean;
+  }) => {
+    const idRef = React.useRef<string | undefined>(undefined);
+    return (
+      <SelectCtx.Provider value={{ value, onValueChange, disabled, idRef }}>
+        {children}
+      </SelectCtx.Provider>
+    );
+  },
+  SelectTrigger: ({ id }: { id?: string; children?: React.ReactNode }) => {
+    const ctx = React.useContext(SelectCtx);
+    if (ctx && id) ctx.idRef.current = id;
+    return null;
+  },
+  SelectValue: () => null,
+  SelectContent: ({ children }: { children: React.ReactNode }) => {
+    const ctx = React.useContext(SelectCtx);
+    return (
+      <select
+        id={ctx?.idRef.current}
+        value={ctx?.value ?? ""}
+        onChange={(e) => ctx?.onValueChange?.(e.target.value)}
+        disabled={ctx?.disabled}
+      >
+        {children}
+      </select>
+    );
+  },
+  SelectItem: ({
+    children,
+    value,
+  }: {
+    children: React.ReactNode;
+    value: string;
+  }) => <option value={value}>{children}</option>,
+  SelectGroup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SelectLabel: () => null,
+  SelectSeparator: () => null,
 }));
 
 
@@ -110,6 +169,30 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
     get_log_file_path: "/tmp/com.vibedata.skill-builder/skill-builder.log",
     set_log_level: undefined,
   });
+  // Populate the settings store with the mock settings
+  useSettingsStore.setState({
+    anthropicApiKey: settings.anthropic_api_key,
+    workspacePath: settings.workspace_path,
+    skillsPath: settings.skills_path,
+    preferredModel: settings.preferred_model,
+    logLevel: settings.log_level,
+    extendedThinking: settings.extended_thinking,
+    interleavedThinkingBeta: settings.interleaved_thinking_beta ?? true,
+    sdkEffort: settings.sdk_effort,
+    fallbackModel: settings.fallback_model,
+    refinePromptSuggestions: settings.refine_prompt_suggestions ?? true,
+    maxDimensions: settings.max_dimensions ?? 5,
+    industry: settings.industry,
+    functionRole: settings.function_role,
+    autoUpdate: settings.auto_update ?? false,
+    githubOauthToken: settings.github_oauth_token,
+    githubUserLogin: settings.github_user_login,
+    githubUserAvatar: settings.github_user_avatar,
+    githubUserEmail: settings.github_user_email,
+    marketplaceRegistries: settings.marketplace_registries ?? [],
+    marketplaceInitialized: settings.marketplace_initialized ?? false,
+    dashboardViewMode: settings.dashboard_view_mode,
+  });
 }
 
 /** Helper to switch to a specific settings section after page loads */
@@ -173,16 +256,19 @@ describe("SettingsPage", () => {
     expect(screen.getByText("User Profile")).toBeInTheDocument();
   });
 
-  it("shows loading spinner initially", () => {
-    // Don't resolve get_settings immediately - make it hang
-    mockInvoke.mockImplementation(
-      () => new Promise(() => {}) // never resolves
-    );
+  it("initializes settings from store snapshot", () => {
+    // Populate store with specific values
+    const testSettings: Partial<AppSettings> = {
+      anthropic_api_key: "sk-ant-test-key",
+      preferred_model: "opus",
+      log_level: "debug",
+    };
+    setupDefaultMocks(testSettings);
     render(<SettingsPage />);
 
-    // The page should show the loading spinner (Loader2 has animate-spin class)
-    const spinner = document.querySelector(".animate-spin");
-    expect(spinner).toBeInTheDocument();
+    // The page should load synchronously with no loading state,
+    // since settings are initialized from the store snapshot
+    expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 
   it("populates API key after settings load", async () => {

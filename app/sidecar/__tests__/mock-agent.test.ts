@@ -142,7 +142,7 @@ describe("parsePromptPaths", () => {
       "Derive context_dir as workspace_dir/context.";
     const paths = parsePromptPaths(prompt);
     expect(paths.workspaceDir).toBe("/Users/john/workspace/my-skill");
-    expect(paths.contextDir).toBe("/Users/john/workspace/my-skill/context");
+    expect(paths.contextDir).toBe(path.join("/Users/john/workspace/my-skill", "context"));
     expect(paths.skillOutputDir).toBe("/Users/john/skills/my-skill");
     expect(paths.skillDir).toBe("/Users/john/skills/my-skill");
   });
@@ -156,7 +156,7 @@ describe("resolvePromptPathsAsync", () => {
       "Read user-context.md from the workspace directory.";
     const paths = await resolvePromptPathsAsync(prompt);
     expect(paths.workspaceDir).toBe("/tmp/ws/x");
-    expect(paths.contextDir).toBe("/tmp/ws/x/context");
+    expect(paths.contextDir).toBe(path.join("/tmp/ws/x", "context"));
     expect(paths.skillOutputDir).toBe("/tmp/skills/x");
     expect(paths.skillDir).toBe("/tmp/skills/x");
   });

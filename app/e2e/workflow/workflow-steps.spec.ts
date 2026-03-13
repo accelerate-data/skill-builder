@@ -555,10 +555,8 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
   });
 
   test("resetting step 1 from step 2 via Re-run button preserves step 0 content", async ({ page }) => {
-    // Bug 1 regression: the Re-run button on ClarificationsEditor for step 1 must
-    // open the ResetStepDialog targeting step 1 (not step 0).
-    // After confirming, navigateBackToStep(1) keeps step 1 completed (navigate-back semantics)
-    // and resets subsequent steps. The dialog should target step 1 — NOT step 0.
+    // Detailed-research rerun now resets from step 0 so clarifications.json is
+    // regenerated from research instead of reusing stale output.
     await navigateToWorkflowUpdateMode(page, {
       ...WORKFLOW_OVERRIDES,
       get_workflow_state: {
@@ -596,8 +594,9 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
       page.getByRole("heading", { name: "Reset to Earlier Step" }),
     ).not.toBeVisible();
 
-    // We should still be on step 2 (Detailed Research) — NOT reset to step 0 (Research)
-    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+    // Resetting detailed research now returns the workflow to step 0.
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Step 2: Detailed Research")).not.toBeVisible();
   });
 
   test("missing-files error state shows Reset Step button", async ({ page }) => {

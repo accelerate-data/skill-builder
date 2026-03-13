@@ -62,7 +62,7 @@ The research skill returns the canonical `clarifications.json` object directly a
   },
   "sections": [
     {
-      "id": "S1",
+      "id": 1,
       "title": "Section Name",
       "description": "Brief section summary.",
       "questions": [
@@ -107,6 +107,7 @@ The research skill returns the canonical `clarifications.json` object directly a
 ### Invariants
 
 - `version` must be `"1"`.
+- `sections[].id` must be an integer (sequential: `1`, `2`, ...).
 - `metadata.question_count` equals total `sections[].questions[]` count.
 - `metadata.section_count` equals `sections.length`.
 - `metadata.must_answer_count` equals count of questions with `must_answer: true`.

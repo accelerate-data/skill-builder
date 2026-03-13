@@ -32,7 +32,6 @@ interface RefineState {
   // Preview panel
   activeFileTab: string; // filename key e.g. "SKILL.md"
   diffMode: boolean;
-  baselineFiles: SkillFile[]; // snapshot before agent run
   gitDiff: RefineDiff | null;
   previewRevision: number;
 
@@ -57,15 +56,19 @@ interface RefineState {
   setLoadingFiles: (v: boolean) => void;
   setActiveFileTab: (filename: string) => void;
   setDiffMode: (v: boolean) => void;
-  snapshotBaseline: () => void;
   addUserMessage: (text: string, targetFiles?: string[], command?: RefineCommand) => RefineMessage;
   addAgentTurn: (agentId: string) => RefineMessage;
   updateSkillFiles: (files: SkillFile[]) => void;
   setGitDiff: (diff: RefineDiff | null) => void;
   setActiveAgentId: (id: string | null) => void;
   setRunning: (v: boolean) => void;
+  setSessionId: (id: string | null) => void;
   setSessionExhausted: (v: boolean) => void;
   clearSession: () => void;
+}
+
+export function isAuthoredSkillFile(filename: string): boolean {
+  return filename === "SKILL.md" || filename.startsWith("references/");
 }
 
 /** Session state that resets when switching skills or clearing the session. */
@@ -76,7 +79,6 @@ const SESSION_DEFAULTS = {
   sessionId: null as string | null,
   sessionExhausted: false,
   diffMode: false,
-  baselineFiles: [] as SkillFile[],
   gitDiff: null as RefineDiff | null,
   previewRevision: 0,
   skillFiles: [] as SkillFile[],
@@ -87,7 +89,7 @@ const SESSION_DEFAULTS = {
   // to wipe the message before ChatInputBar could render and read it.
 } as const;
 
-export const useRefineStore = create<RefineState>((set, get) => ({
+export const useRefineStore = create<RefineState>((set) => ({
   // Initial state
   selectedSkill: null,
   refinableSkills: [],
@@ -113,11 +115,6 @@ export const useRefineStore = create<RefineState>((set, get) => ({
   setLoadingFiles: (v) => set({ isLoadingFiles: v }),
   setActiveFileTab: (filename) => set({ activeFileTab: filename }),
   setDiffMode: (v) => set({ diffMode: v }),
-
-  snapshotBaseline: () => {
-    const { skillFiles } = get();
-    set({ baselineFiles: skillFiles.map((f) => ({ ...f })) });
-  },
 
   addUserMessage: (text, targetFiles, command) => {
     const message: RefineMessage = {
@@ -145,11 +142,16 @@ export const useRefineStore = create<RefineState>((set, get) => ({
 
   updateSkillFiles: (files) => set((state) => {
     const existingFiles = new Set(state.skillFiles.map((file) => file.filename));
-    const firstNewFile = files.find((file) => !existingFiles.has(file.filename))?.filename;
-    const nextActive = firstNewFile
-      ?? (files.some((file) => file.filename === state.activeFileTab)
+    const firstNewAuthoredFile = files.find((file) =>
+      !existingFiles.has(file.filename) && isAuthoredSkillFile(file.filename)
+    )?.filename;
+    const activeStillExists = files.some((file) => file.filename === state.activeFileTab);
+    const activeStillEligible = isAuthoredSkillFile(state.activeFileTab);
+    const firstEligibleFile = files.find((file) => isAuthoredSkillFile(file.filename))?.filename;
+    const nextActive = firstNewAuthoredFile
+      ?? (activeStillExists && activeStillEligible
         ? state.activeFileTab
-        : (files[0]?.filename ?? "SKILL.md"));
+        : (firstEligibleFile ?? "SKILL.md"));
     return {
       skillFiles: files,
       activeFileTab: nextActive,
@@ -161,6 +163,7 @@ export const useRefineStore = create<RefineState>((set, get) => ({
 
   setActiveAgentId: (id) => set({ activeAgentId: id }),
   setRunning: (v) => set({ isRunning: v }),
+  setSessionId: (id) => set({ sessionId: id }),
   setSessionExhausted: (v) => set({ sessionExhausted: v }),
 
   clearSession: () => set(SESSION_DEFAULTS),
