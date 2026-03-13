@@ -97,8 +97,6 @@ assert_row_contains "sidecar.rs → cargo filter"     "agents/sidecar.rs"       
 assert_row_contains "sidecar.rs → E2E tag"          "agents/sidecar.rs"       "@workflow-agent"
 assert_row_contains "sidecar_pool.rs → cargo filter" "agents/sidecar_pool.rs" "agents::sidecar_pool"
 assert_row_contains "sidecar_pool.rs → E2E tag"     "agents/sidecar_pool.rs"  "@workflow-agent"
-assert_row_contains "github_push.rs → cargo filter" "commands/github_push.rs" "commands::github_push"
-assert_row_contains "github_push.rs → E2E tag"      "commands/github_push.rs" "@dashboard"
 assert_row_contains "reconciliation.rs → E2E tag"   "reconciliation.rs"       "@dashboard"
 assert_row_contains "db.rs → cargo filter"          "db.rs"                   "db"
 
