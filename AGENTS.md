@@ -37,21 +37,6 @@ Adapter files must not duplicate canonical policy unless they are adding agent-s
 - App database: `~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db` (macOS)
 - Full layout: [`docs/design/agent-specs/storage.md`](docs/design/agent-specs/storage.md)
 
-## Repository Folder Map
-
-Use this map before reasoning about implementation location:
-
-- `app/src/` — frontend runtime code (React/TypeScript surfaces, components, stores, hooks).
-- `app/src-tauri/src/` — Rust backend runtime code (Tauri commands, DB, logging, startup wiring).
-- `app/sidecar/` — Node/TypeScript sidecar runtime code.
-- `app/e2e/` — Playwright E2E tests only.
-- `app/src/__tests__/` and `app/sidecar/__tests__/` — unit/integration tests only.
-- `agent-sources/agents/` — agent prompts (flat directory, validated by `npm run test:agents:structural`).
-- `agent-sources/plugins/` — plugin definitions (skills, agents, MCP config, tooling).
-- `agent-sources/workspace/CLAUDE.md` — agent instructions shared by all agents (deployed to workspace `.claude/CLAUDE.md`).
-- `docs/` — documentation and design/reference material only; do not treat as executable source unless explicitly asked.
-- `scripts/` — developer/automation scripts.
-
 ## User Guide
 
 Source: `docs/user-guide/` (VitePress). Deployed via `docs.yml` on push to `main`. Route → URL map: `app/src/lib/help-urls.ts`. New docs link: import `getHelpUrl`/`getWorkflowStepUrl`, call `openUrl()` from `@tauri-apps/plugin-opener`. New page: add to `docs/user-guide/`, `docs/.vitepress/config.ts`, and `help-urls.ts`.
