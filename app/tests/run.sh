@@ -107,6 +107,16 @@ run_unit() {
   fi
 
   header "Unit Tests: Rust (cargo test)"
+  # Tauri's build script requires sidecar/dist to exist (resource path validation).
+  # Create a stub if it's missing so local runs don't fail at compile time.
+  mkdir -p "$APP_DIR/sidecar/dist"
+  # On Windows, RUSTUP_TOOLCHAIN=*-windows-gnu causes STATUS_ENTRYPOINT_NOT_FOUND in
+  # the test runner binary. Unset it so cargo falls back to the default MSVC toolchain,
+  # which matches what CI (windows-latest) uses.
+  if [[ "${RUSTUP_TOOLCHAIN:-}" == *"windows-gnu"* ]]; then
+    echo "Note: Unsetting RUSTUP_TOOLCHAIN (GNU toolchain causes test runner crash on Windows; using default MSVC)"
+    unset RUSTUP_TOOLCHAIN
+  fi
   if (cd "$APP_DIR" && cargo test --manifest-path src-tauri/Cargo.toml); then
     pass "Rust unit tests"
   else
