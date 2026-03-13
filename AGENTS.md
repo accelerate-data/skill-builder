@@ -79,43 +79,18 @@ _Add deployment- or operator-specific facts here (e.g. environment variables, in
 
 ### When to write tests
 
-**App:**
+- New state logic → store unit tests
+- New Rust command with logic → `#[cfg(test)]` tests
+- New UI interaction → component test
+- New page or major flow → E2E test (happy path)
+- Bug fix → regression test
+- Cosmetic changes and simple wiring don't need tests
 
-1. New state logic (store actions, derived state) → store unit tests
-2. New Rust command with testable logic → `#[cfg(test)]` tests
-3. New UI interaction (button states, form validation) → component test
-4. New page or major flow → E2E test (happy path)
-5. Bug fix → regression test
+Before writing tests, read existing ones for the files you changed: update broken tests, remove redundant ones, add only for genuinely new behavior.
 
-Purely cosmetic changes or simple wiring don't require tests. If unclear, ask the user.
+### Which tests to run
 
-### Test discipline
-
-Before writing any test code, read existing tests for the files you changed:
-
-1. Update tests that broke due to your changes
-2. Remove tests that are now redundant
-3. Add new tests only for genuinely new behavior
-4. Never add tests just to increase count — every test must catch a real regression
-
-### Choosing which tests to run
-
-Determine what you changed, then pick the right runner:
-
-| What changed | Agent tests | App tests |
-|---|---|---|
-| Frontend (store/hook/component/page) | — | `npm run test:changed` |
-| Rust command | — | `cargo test <module>` + E2E tag from `TEST_MANIFEST.md` |
-| Sidecar agent invocation (`app/sidecar/`) | `cd app && npm run test:agents:structural` (tell user to run Promptfoo `test:agents:smoke` manually) | `cd app/sidecar && npx vitest run` |
-| Agent prompt (`agents/`) | `cd app && npm run test:agents:structural` | `npm run test:unit` (canonical-format) |
-| Agent output format (`agents/`) | `cd app && npm run test:agents:structural` (tell user to run Promptfoo `test:agents:smoke` manually) | `npm run test:unit` (canonical-format) |
-| `agent-sources/workspace/CLAUDE.md` | `cd app && npm run test:agents:structural` | `npm run test:unit` |
-| Mock templates or E2E fixtures | — | `npm run test:unit` |
-| Shared infrastructure (`src/lib/tauri.ts`, test mocks) | — | `app/tests/run.sh` (all levels) |
-
-### Autonomous test triggers (coding agents)
-
-When changed files match these patterns, run the mapped tests automatically before reporting completion:
+Run these automatically before reporting completion when files match:
 
 | Changed files | Run |
 |---|---|
@@ -125,17 +100,11 @@ When changed files match these patterns, run the mapped tests automatically befo
 | `app/sidecar/mock-templates/**` | `cd app && npm run test:unit` |
 | `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` |
 
-`test:agents:smoke` (Promptfoo) is manual by default because it makes live API calls.
+For artifact format changes (agent output + app parser + mock templates): run `test:agents:structural` and `test:unit`, then tell the user to run `test:agents:smoke` manually. The `canonical-format.test.ts` suite is the canary for format drift.
 
-**Artifact format changes** (agent output format + app parser + mock templates): run `cd app && npm run test:agents:structural` and `npm run test:unit`, then tell the user to run `cd app && npm run test:agents:smoke` (Promptfoo evals) manually. The `canonical-format.test.ts` suite is the canary for format drift across the boundary.
+For Rust and cross-layer changes, consult `TEST_MANIFEST.md` for the correct cargo filter and E2E tag. Unsure? `app/tests/run.sh` runs everything.
 
-**Unsure?** `app/tests/run.sh` runs everything.
-
-### Agent test policy
-
-**Only `test:agents:structural` may be run autonomously** — it makes no API calls and is free.
-
-`test:agents:smoke` uses Promptfoo and makes real API calls. **Do not run it autonomously; tell the user to run it manually.**
+**Never run `test:agents:smoke` autonomously** — it makes live API calls. Tell the user to run it manually.
 
 ## Design Docs
 
