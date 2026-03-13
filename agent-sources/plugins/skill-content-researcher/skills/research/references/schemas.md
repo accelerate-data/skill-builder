@@ -107,7 +107,7 @@ The research skill returns the canonical `clarifications.json` object directly a
 ### Invariants
 
 - `version` must be `"1"`.
-- `sections[].id` must be an integer (sequential: `1`, `2`, ...). String IDs (e.g. `"S1"`) are accepted for backward compatibility but new agent output must use integers.
+- `sections[].id` must be an integer (sequential: `1`, `2`, ...).
 - `metadata.question_count` equals total `sections[].questions[]` count.
 - `metadata.section_count` equals `sections.length`.
 - `metadata.must_answer_count` equals count of questions with `must_answer: true`.

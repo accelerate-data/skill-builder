@@ -833,15 +833,11 @@ fn validate_clarifications_json(clarifications: &serde_json::Value) -> Result<()
                 section_idx
             )
         })?;
-        {
-            let id_val = section_obj.get("id");
-            let id_ok = id_val.map(|v| v.is_string() || v.is_number()).unwrap_or(false);
-            if !id_ok {
-                return Err(format!(
-                    "clarifications_json.sections[{}].id must be a string or number",
-                    section_idx
-                ));
-            }
+        if section_obj.get("id").and_then(|v| v.as_u64()).is_none() {
+            return Err(format!(
+                "clarifications_json.sections[{}].id must be a number",
+                section_idx
+            ));
         }
         if section_obj.get("title").and_then(|v| v.as_str()).is_none() {
             return Err(format!(
@@ -2869,11 +2865,6 @@ mod tests {
         })
     }
 
-    fn valid_clarifications_with_string_section_id() -> serde_json::Value {
-        let mut v = valid_clarifications_value();
-        v["sections"][0]["id"] = serde_json::json!("S1");
-        v
-    }
 
     #[test]
     fn test_get_step_config_valid_steps() {
@@ -3412,12 +3403,13 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_clarifications_accepts_string_section_id() {
-        let v = valid_clarifications_with_string_section_id();
-        // legacy string id ("S1") still accepted
+    fn test_validate_clarifications_rejects_string_section_id() {
+        let mut v = valid_clarifications_value();
+        v["sections"][0]["id"] = serde_json::json!("S1");
+        let err = super::validate_clarifications_json(&v).unwrap_err();
         assert!(
-            super::validate_clarifications_json(&v).is_ok(),
-            "string section id should be accepted for backward compat"
+            err.contains("sections[0].id must be a number"),
+            "unexpected error: {err}"
         );
     }
 
@@ -3427,7 +3419,7 @@ mod tests {
         v["sections"][0]["id"] = serde_json::json!(null);
         let err = super::validate_clarifications_json(&v).unwrap_err();
         assert!(
-            err.contains("sections[0].id must be a string or number"),
+            err.contains("sections[0].id must be a number"),
             "unexpected error: {err}"
         );
     }
