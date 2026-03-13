@@ -16,6 +16,10 @@ Run the embedded `skills/research` flow and return orchestrator-ready values.
 - `skill_name`
 - `user_context` (full text)
 
+## Narration
+
+Before each step, write one short status line (≤ 10 words). Write it before tool calls. Examples: "Loading user context…", "Running embedded research skill…", "Normalizing research output…", "Returning canonical counts…"
+
 ## Required behavior
 
 1. Use the embedded `research` skill to produce canonical clarifications output, using `user_context` as the full user context.
