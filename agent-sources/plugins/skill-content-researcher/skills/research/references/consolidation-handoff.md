@@ -61,7 +61,7 @@ Contradiction handling requirements:
 Produce the complete JSON content in a single pass as inline text.
 
 - Follow the JSON schema below exactly.
-- Number sections sequentially (S1, S2, ...).
+- Number sections sequentially (1, 2, ...).
 - Number questions sequentially (Q1, Q2, ...) within the section.
 - For consolidated questions from multiple dimensions, list the source dimension names in the `consolidated_from` array.
 - Apply all Consolidation Output Invariants above.
@@ -95,7 +95,7 @@ Use `references/schemas.md` as the only canonical schema source for `clarificati
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `id` | string | yes | Sequential section ID: `S1`, `S2`, ... |
+| `id` | integer | yes | Sequential section number: `1`, `2`, ... |
 | `title` | string | yes | Section name |
 | `description` | string | yes | Brief description of section scope |
 | `questions` | array | yes | Questions in this section |
@@ -172,7 +172,7 @@ Parent is embedded in the ID: `R1.1` refines **Q1**, `R12.2` refines **Q12**.
   },
   "sections": [
     {
-      "id": "S1",
+      "id": 1,
       "title": "Entity Model",
       "description": "Customer hierarchy and account classification decisions.",
       "questions": [
@@ -213,7 +213,7 @@ Parent is embedded in the ID: `R1.1` refines **Q1**, `R12.2` refines **Q12**.
       ]
     },
     {
-      "id": "S2",
+      "id": 2,
       "title": "Metrics",
       "description": "Metric definitions and calculation rules.",
       "questions": [
