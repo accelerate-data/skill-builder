@@ -174,6 +174,19 @@ describe("Research scope guard contract prompts", () => {
     expect(content).toMatch(/section_count": 0/);
     expect(content).toMatch(/canonical clarifications object \(unchanged\)/i);
   });
+
+  it("detailed-research preserves original questions and canonical metadata", () => {
+    const content = fs.readFileSync(
+      path.join(AGENTS_DIR, "detailed-research.md"),
+      "utf8"
+    );
+    expect(content).toMatch(/strictly additive/i);
+    expect(content).toMatch(/do \*\*not\*\* delete any existing `sections\[\]\.questions\[\]` item/i);
+    expect(content).toMatch(/every original top-level question ID captured before merge must still exist after merge/i);
+    expect(content).toMatch(/metadata\.priority_questions/);
+    expect(content).toMatch(/metadata\.duplicates_removed/);
+    expect(content).toMatch(/remove transient merge-helper fields/i);
+  });
 });
 
 // ── Agent output contracts (backend protocol alignment) ──────────────────────
