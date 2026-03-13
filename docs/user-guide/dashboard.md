@@ -8,7 +8,8 @@ The Dashboard is the home screen. It lists all your skills and is where you crea
 
 **Top bar** (visible when workspace and skills folder are configured)
 
-- **Marketplace** button — browse and import skills from GitHub-hosted registries
+- **Marketplace** button — browse and import skills from GitHub-hosted registries (disabled when no registry is enabled in Settings)
+- **Import** button — import a skill from a `.skill` package file on disk
 - **New Skill** button — opens the skill creation dialog
 
 **Filter and view bar** (visible when at least one skill exists)
@@ -22,7 +23,7 @@ The Dashboard is the home screen. It lists all your skills and is where you crea
 
 **Skill cards (grid view)** — each card shows name, purpose badge, source badge, tags, and a progress bar.
 
-**Skill table (list view)** — sortable columns: Name, Source, Status, Updated. Click any column header to sort; click again to reverse.
+**Skill table (list view)** — sortable columns: Name, Source, Status, Updated, Actions. Click any column header to sort; click again to reverse.
 
 ---
 
@@ -49,6 +50,15 @@ The Dashboard is the home screen. It lists all your skills and is where you crea
 
 ---
 
+## How to import from a file
+
+1. Click **Import**.
+2. Select a `.skill` or `.zip` package file.
+3. In the **Import Skill** dialog, review or edit the name and description.
+4. Click **Confirm Import**. The skill appears on the dashboard with an **Imported** badge.
+
+---
+
 ## How to search and filter
 
 - Type in the search field to filter by name, description, or type. Results update in real time.
@@ -60,8 +70,8 @@ The Dashboard is the home screen. It lists all your skills and is where you crea
 ## How to open or continue a skill
 
 - **Click** any card or row to open the skill.
-  - Skills built with Skill Builder open in the workflow (review mode).
-  - Marketplace skills open in the Refine page.
+  - Skills built with Skill Builder open in the [workflow](workflow/overview.md) in review mode. To make changes, switch to update mode using the **Review / Update** toggle in the header — see [Review and Update modes](workflow/overview.md#review-and-update-modes).
+  - Marketplace and imported skills open in the [Refine](refine.md) page.
 
 ---
 
@@ -108,7 +118,7 @@ Click the flask icon on any completed skill card or row. This opens the [Test](t
 Shows a centered card: *"No skills yet — Skills are knowledge packages that teach Claude your team's specific processes, systems, and standards."* A **New Skill** button appears if the workspace is configured.
 
 **Skills folder not configured**
-An amber banner appears: *"Skills folder not configured."* The **New Skill** and **Marketplace** buttons are hidden. Click **Settings** in the banner to configure the folder.
+An amber banner appears: *"Skills folder not configured."* The **New Skill**, **Import**, and **Marketplace** buttons are hidden. Click **Settings** in the banner to configure the folder.
 
 **No results from filter**
 Shows: *"No matching skills — Try a different search term or clear your filters."*

@@ -80,6 +80,21 @@ Two buttons appear:
 
 ---
 
+## Review and Update modes
+
+When you open a completed skill from the dashboard, the workflow starts in **Review** mode. A **Review / Update** toggle appears in the header bar.
+
+| Mode | What it does |
+|---|---|
+| **Review** | Read-only view of each step's output. Navigate between completed steps using the sidebar. Agents do not run. |
+| **Update** | Editable view. You can re-run steps, edit answers, and trigger agents. Clicking a completed step in the sidebar opens the reset dialog so you can re-run from that point. |
+
+The toggle is disabled while an agent is running or a gate evaluation is in progress.
+
+> Skills opened from the dashboard always start in Review mode. To make changes, switch to Update mode first.
+
+---
+
 ## Navigation guard
 
 If you try to leave the workflow while an agent is running, a dialog appears:
