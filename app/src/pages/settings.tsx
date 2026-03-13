@@ -65,7 +65,7 @@ export default function SettingsPage() {
   const [apiKey, setApiKey] = useState<string | null>(useSettingsStore.getState().anthropicApiKey ?? null)
   const workspacePath = useSettingsStore.getState().workspacePath ?? null
   const [skillsPath, setSkillsPath] = useState<string | null>(useSettingsStore.getState().skillsPath ?? null)
-  const [preferredModel, setPreferredModel] = useState<string>(useSettingsStore.getState().preferredModel ?? "sonnet")
+  const [preferredModel, setPreferredModel] = useState<string>(useSettingsStore.getState().preferredModel ?? "")
   const [logLevel, setLogLevel] = useState(useSettingsStore.getState().logLevel ?? "info")
   const [extendedThinking, setExtendedThinking] = useState(useSettingsStore.getState().extendedThinking ?? false)
   const [interleavedThinkingBeta, setInterleavedThinkingBeta] = useState(useSettingsStore.getState().interleavedThinkingBeta ?? true)
@@ -430,25 +430,16 @@ export default function SettingsPage() {
               <CardContent>
                 <div className="flex items-center gap-3">
                   <Select
-                    value={preferredModel}
+                    value={preferredModel || (availableModels.length > 0 ? availableModels[0].id : "")}
                     onValueChange={(val) => { setPreferredModel(val); autoSave({ preferredModel: val }); }}
                   >
                     <SelectTrigger className="w-64">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableModels.length > 0
-                        ? availableModels.map((m) => (
-                            <SelectItem key={m.id} value={m.id}>{m.displayName}</SelectItem>
-                          ))
-                        : (
-                          <>
-                            <SelectItem value="haiku">Haiku — fastest, lowest cost</SelectItem>
-                            <SelectItem value="sonnet">Sonnet — balanced (default)</SelectItem>
-                            <SelectItem value="opus">Opus — most capable</SelectItem>
-                          </>
-                        )
-                      }
+                      {availableModels.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.displayName}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
