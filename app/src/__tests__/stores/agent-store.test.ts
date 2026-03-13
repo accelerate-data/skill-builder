@@ -148,6 +148,33 @@ describe("useAgentStore", () => {
     expect(run.status).toBe("shutdown");
   });
 
+  it("preserves completed status when registerRun races with agent-exit after auto-create", () => {
+    // Simulate fast/mock agent race:
+    // 1. display_item arrives → addDisplayItem auto-creates run (status "running")
+    // 2. agent-exit fires   → completeRun sets status "completed"
+    // 3. registerRun called  → must NOT revert status back to "running"
+    const item = makeDisplayItem({ type: "output", outputText: "hello" });
+    useAgentStore.getState().addDisplayItem("race-agent", item);
+    expect(useAgentStore.getState().runs["race-agent"].status).toBe("running");
+
+    useAgentStore.getState().completeRun("race-agent", true);
+    expect(useAgentStore.getState().runs["race-agent"].status).toBe("completed");
+
+    useAgentStore.getState().registerRun("race-agent", "sonnet", "my-skill", "refine");
+    expect(useAgentStore.getState().runs["race-agent"].status).toBe("completed");
+  });
+
+  it("preserves completed status when startRun races with agent-exit after auto-create", () => {
+    // Same race but via startRun (workflow path)
+    const item = makeDisplayItem({ type: "output", outputText: "hello" });
+    useAgentStore.getState().addDisplayItem("race-wf-agent", item);
+    useAgentStore.getState().completeRun("race-wf-agent", true);
+    expect(useAgentStore.getState().runs["race-wf-agent"].status).toBe("completed");
+
+    useAgentStore.getState().startRun("race-wf-agent", "sonnet");
+    expect(useAgentStore.getState().runs["race-wf-agent"].status).toBe("completed");
+  });
+
   it("uses provided refine usageSessionId for usage grouping", () => {
     useAgentStore.getState().registerRun(
       "refine-session-agent",
