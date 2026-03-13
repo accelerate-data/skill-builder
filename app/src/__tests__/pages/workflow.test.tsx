@@ -109,6 +109,7 @@ import {
   materializeWorkflowStepOutput,
   materializeAnswerEvaluationOutput,
   getContextFileContent,
+  navigateBackToStepDb,
 } from "@/lib/tauri";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
@@ -2127,6 +2128,14 @@ describe("step reset behavior regressions", () => {
     await act(async () => {
       screen.getByRole("button", { name: "Reset" }).click();
     });
+
+    // navigateBackToStepDb must be called for step 0 so artifacts from step 1+
+    // are deleted from disk (regression for step-0 reset skipping file cleanup).
+    expect(vi.mocked(navigateBackToStepDb)).toHaveBeenCalledWith(
+      expect.anything(), // workspacePath
+      "test-skill",
+      0,
+    );
 
     // Step 0 must be pending — resetToStep(0) was called (not navigateBackToStep)
     await waitFor(() => {

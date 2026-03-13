@@ -58,7 +58,7 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Options:"
       echo "  --tag TAG     Filter E2E tests by tag"
-      echo "    @dashboard, @settings, @workflow, @workflow-agent, @navigation, @skills, @usage"
+      echo "    @dashboard, @settings, @workflow, @refine, @skill-tester, @integration, @desktop-smoke"
       echo ""
       echo "Examples:"
       echo "  ./tests/run.sh                           # Run everything"

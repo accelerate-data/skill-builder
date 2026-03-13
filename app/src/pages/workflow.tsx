@@ -369,12 +369,12 @@ export default function WorkflowPage() {
       {/* Reset step dialog — shown when clicking a prior completed step */}
       <ResetStepDialog
         targetStep={resetTarget}
-        deleteFromStep={resetTarget !== null && resetTarget > 0 ? resetTarget + 1 : undefined}
+        deleteFromStep={resetTarget !== null ? resetTarget + 1 : undefined}
         workspacePath={workspacePath ?? ""}
         skillName={skillName}
         open={resetTarget !== null}
         onOpenChange={(open) => { if (!open) setResetTarget(null) }}
-        executeReset={resetTarget !== null && resetTarget > 0
+        executeReset={resetTarget !== null
           ? () => navigateBackToStepDb(workspacePath ?? "", skillName, resetTarget)
           : undefined}
         onReset={() => {

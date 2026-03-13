@@ -1,28 +1,19 @@
-// Requires MOCK_AGENTS=true — run via: npx playwright test --grep @desktop-smoke
+// Requires MOCK_AGENTS=true sidecar — agent tests run via: npx playwright test --grep @desktop-smoke
 /**
  * Desktop smoke tests for the manual happy-path with MOCK_AGENTS=true mode.
  *
- * These tests cover end-to-end user flows at a coarse grain:
- * boot → dashboard → create → workflow → refine. They are meant to
- * catch startup regressions and cross-feature breakage rather than
- * exercising detailed component behavior (use workflow-integration
- * for that).
+ * Tests 1-2 cover basic UI flows (boot, create-skill) using the Tauri browser
+ * mock (TAURI_E2E=true). Tests 3-4 spawn the real Node.js sidecar with
+ * MOCK_AGENTS=true via createSidecarBridge so agent event routing flows
+ * through the actual sidecar implementation rather than the browser simulator.
  *
  * Tag: @desktop-smoke — runs in the nightly/post-merge project.
  */
 import { test, expect } from "@playwright/test";
 import { waitForAppReady } from "../helpers/app-helpers";
-import {
-  navigateToWorkflowUpdateMode,
-  WORKFLOW_OVERRIDES,
-} from "../helpers/workflow-helpers";
-import {
-  navigateToRefineWithSkill,
-  REFINE_OVERRIDES,
-} from "../helpers/refine-helpers";
-import {
-  simulateAgentRun,
-} from "../helpers/agent-simulator";
+import { navigateToWorkflowUpdateMode, WORKFLOW_OVERRIDES } from "../helpers/workflow-helpers";
+import { navigateToRefineWithSkill, REFINE_OVERRIDES } from "../helpers/refine-helpers";
+import { createSidecarBridge } from "../helpers/sidecar-bridge.js";
 
 const BASE_OVERRIDES = {
   get_settings: {
@@ -80,70 +71,72 @@ test.describe("Desktop Smoke", { tag: "@desktop-smoke" }, () => {
     await expect(page.getByRole("button", { name: "Create" })).toBeVisible({ timeout: 5_000 });
   });
 
-  test("workflow happy path with MOCK_AGENTS", async ({ page }) => {
-    // Navigate into update mode for test-skill (WORKFLOW_OVERRIDES sets up the skill)
-    await navigateToWorkflowUpdateMode(page);
+  test("workflow happy path with real MOCK_AGENTS sidecar", async ({ page }) => {
+    const agentId = "desktop-smoke-wf-001";
+    const bridge = await createSidecarBridge();
+    try {
+      // Navigate into update mode, overriding run_workflow_step to return our bridge agent ID
+      await navigateToWorkflowUpdateMode(page, { run_workflow_step: agentId });
 
-    // Verify the workflow page loaded
-    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 10_000 });
+      // Verify the workflow page loaded
+      await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 10_000 });
 
-    // Agent auto-starts in update mode — wait for the initializing indicator
-    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
+      // Agent auto-starts in update mode — wait for the initializing indicator
+      await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
 
-    // Simulate a complete mock agent run
-    await simulateAgentRun(page, {
-      agentId: "agent-001",
-      messages: ["Running research step..."],
-      result: "Research complete.",
-      delays: 50,
-    });
+      // Run the real sidecar with MOCK_AGENTS=true — events flow through actual sidecar
+      await bridge.runAgent(page, "research-orchestrator", agentId, { skillName: "test-skill" });
 
-    // Allow completion effect chain to settle
-    await page.waitForTimeout(500);
+      // Allow completion effect chain to settle
+      await page.waitForTimeout(500);
 
-    // Running state must be cleared
-    await expect(page.getByTestId("agent-initializing-indicator")).not.toBeVisible();
+      // Running state must be cleared
+      await expect(page.getByTestId("agent-initializing-indicator")).not.toBeVisible();
 
-    // Step 1 sidebar entry must remain accessible
-    const step1Button = page.locator("button").filter({ hasText: "1. Research" });
-    await expect(step1Button).toBeVisible();
+      // Step 1 sidebar entry must remain accessible
+      const step1Button = page.locator("button").filter({ hasText: "1. Research" });
+      await expect(step1Button).toBeVisible();
+    } finally {
+      bridge.cleanup();
+    }
   });
 
-  test("refine smoke path with MOCK_AGENTS", async ({ page }) => {
-    // Navigate to refine with test-skill pre-selected
-    await navigateToRefineWithSkill(page);
+  test("refine smoke path with real MOCK_AGENTS sidecar", async ({ page }) => {
+    const agentId = "desktop-smoke-refine-001";
+    const bridge = await createSidecarBridge();
+    try {
+      // Navigate to refine with test-skill pre-selected; override send_refine_message
+      // to return our bridge agent ID so event routing uses the real sidecar path.
+      await navigateToRefineWithSkill(page, { send_refine_message: agentId });
 
-    // Skill should be pre-selected via the URL param
-    await expect(page.getByRole("button", { name: /test-skill/i })).toBeVisible({ timeout: 5_000 });
+      // Skill should be pre-selected via the URL param
+      await expect(page.getByRole("button", { name: /test-skill/i })).toBeVisible({ timeout: 5_000 });
 
-    // Chat input must be visible and accepting text
-    const input = page.getByTestId("refine-chat-input");
-    await expect(input).toBeVisible({ timeout: 5_000 });
-    await input.fill("Update the skill with new context");
+      // Chat input must be visible and accepting text
+      const input = page.getByTestId("refine-chat-input");
+      await expect(input).toBeVisible({ timeout: 5_000 });
+      await input.fill("Update the skill with new context");
 
-    // Send the message
-    await input.press("Enter");
+      // Send the message
+      await input.press("Enter");
 
-    // User message should appear in the chat transcript
-    await expect(page.getByText("Update the skill with new context").last()).toBeVisible({ timeout: 5_000 });
+      // User message should appear in the chat transcript
+      await expect(page.getByText("Update the skill with new context").last()).toBeVisible({ timeout: 5_000 });
 
-    // Thinking indicator should appear while agent processes
-    const thinking = page.getByTestId("refine-agent-thinking");
-    await thinking.waitFor({ timeout: 5_000 });
+      // Thinking indicator should appear while agent processes
+      const thinking = page.getByTestId("refine-agent-thinking");
+      await thinking.waitFor({ timeout: 5_000 });
 
-    // Read the dynamically generated agent ID
-    const agentId = await thinking.getAttribute("data-agent-id");
-    expect(agentId).toBeTruthy();
+      // Run the real sidecar with MOCK_AGENTS=true for the refine agent
+      await bridge.runAgent(page, "refine-skill", agentId, { skillName: "test-skill", runSource: "refine" });
 
-    // Simulate mock agent responding
-    await simulateAgentRun(page, {
-      agentId: agentId!,
-      messages: ["Updating skill content..."],
-      result: "Skill updated.",
-      delays: 50,
-    });
+      // Allow completion effect chain to settle
+      await page.waitForTimeout(500);
 
-    // Agent output must appear in the chat
-    await expect(page.getByText("Updating skill content...").last()).toBeVisible({ timeout: 5_000 });
+      // Thinking indicator should be cleared
+      await expect(thinking).not.toBeVisible();
+    } finally {
+      bridge.cleanup();
+    }
   });
 });

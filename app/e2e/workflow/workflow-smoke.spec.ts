@@ -215,7 +215,103 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Scenario 5: Lock-acquisition failure
+  // Scenario 5: Step-switch guard while running
+  // Source: workflow-navigation.spec.ts — "blocks step switch while agent is running"
+  // ---------------------------------------------------------------------------
+  test("blocks step switch while agent is running — Stay and Leave", async ({ page }) => {
+    // Steps 0 and 1 completed, currently on step 2 so sidebar has completed steps to click.
+    await navigateToWorkflowUpdateMode(page, {
+      ...WORKFLOW_OVERRIDES,
+      get_workflow_state: {
+        run: { current_step: 2, purpose: "domain" },
+        steps: [
+          { step_id: 0, status: "completed" },
+          { step_id: 1, status: "completed" },
+        ],
+      },
+      read_file: "# Results\n\nAnalysis complete.",
+    });
+
+    // Agent auto-starts in update mode — wait for init indicator
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
+
+    // Simulate agent init so the UI is in running state
+    await emitTauriEvent(page, "agent-init-progress", {
+      agent_id: "agent-001",
+      stage: "init_start",
+      timestamp: Date.now(),
+    });
+    await page.waitForTimeout(100);
+
+    // Click a completed step in the workflow sidebar (step 1: Research)
+    const step1Button = page.locator("button").filter({ hasText: "1. Research" });
+    await step1Button.click();
+    await page.waitForTimeout(300);
+
+    // Step-switch guard dialog should appear
+    await expect(
+      page.getByRole("heading", { name: "Agent Running" }),
+    ).toBeVisible({ timeout: 5_000 });
+
+    // Click "Stay" — should dismiss dialog
+    await page.getByRole("button", { name: "Stay" }).click();
+    await page.waitForTimeout(200);
+    await expect(
+      page.getByRole("heading", { name: "Agent Running" }),
+    ).not.toBeVisible();
+
+    // Click the completed step again
+    await step1Button.click();
+    await page.waitForTimeout(300);
+
+    // Click "Leave" — should switch steps
+    await expect(
+      page.getByRole("heading", { name: "Agent Running" }),
+    ).toBeVisible({ timeout: 5_000 });
+    await page.getByRole("button", { name: "Leave" }).click();
+    await page.waitForTimeout(300);
+
+    // Should now be on step 1 (Research)
+    await expect(page.getByText("Step 1: Research")).toBeVisible();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Scenario 6: Review/update toggle disabled while running
+  // Source: workflow-navigation.spec.ts — "review/update toggle is disabled while agent is running"
+  // ---------------------------------------------------------------------------
+  test("review/update toggle is disabled while agent is running", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page);
+
+    // Agent auto-starts in update mode — wait for init indicator
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
+
+    // Simulate agent init so the UI is in running state
+    await emitTauriEvent(page, "agent-init-progress", {
+      agent_id: "agent-001",
+      stage: "init_start",
+      timestamp: Date.now(),
+    });
+    await page.waitForTimeout(100);
+
+    // The "Review" button in the toggle should be disabled while agent is running
+    const reviewToggleButton = page.locator("header").getByRole("button", { name: "Review" });
+    await expect(reviewToggleButton).toBeDisabled();
+
+    // The "Update" button should also be disabled (both sides locked)
+    const updateToggleButton = page.locator("header").getByRole("button", { name: "Update" });
+    await expect(updateToggleButton).toBeDisabled();
+
+    // Simulate agent completion
+    await emitTauriEvent(page, "agent-exit", { agent_id: "agent-001", success: true });
+    await page.waitForTimeout(500);
+
+    // After agent completes, the toggle should be enabled again
+    await expect(reviewToggleButton).toBeEnabled({ timeout: 5_000 });
+    await expect(updateToggleButton).toBeEnabled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Scenario 7: Lock-acquisition failure
   // Source: workflow-navigation.spec.ts — "lock acquisition failure redirects to
   //         dashboard with error toast"
   // ---------------------------------------------------------------------------

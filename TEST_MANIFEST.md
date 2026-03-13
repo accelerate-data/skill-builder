@@ -32,12 +32,12 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `src-tauri/src/commands/settings.rs` | `commands::settings` | `@settings` |
 | `src-tauri/src/commands/clarification.rs` | `commands::clarification` | `@workflow` |
 | `src-tauri/src/commands/github_auth.rs` | `commands::github_auth` | `@settings` |
-| `src-tauri/src/commands/imported_skills.rs` (`parse_skill_file`, `import_skill_from_file`) | `commands::imported_skills` | `@import` |
-| `src-tauri/src/commands/imported_skills.rs` | `commands::imported_skills` | `@skills` |
-| `src-tauri/src/commands/github_import.rs` | `commands::github_import` | `@skills` |
-| `src-tauri/src/commands/github_import.rs` (`check_marketplace_updates`) | `commands::github_import` | `@skills` |
-| `src-tauri/src/commands/github_import.rs` (`check_skill_customized`) | `commands::github_import` | `@skills` |
-| `src-tauri/src/commands/usage.rs` | `commands::usage` | `@usage` |
+| `src-tauri/src/commands/imported_skills.rs` (`parse_skill_file`, `import_skill_from_file`) | `commands::imported_skills` | -- |
+| `src-tauri/src/commands/imported_skills.rs` | `commands::imported_skills` | -- |
+| `src-tauri/src/commands/github_import.rs` | `commands::github_import` | -- |
+| `src-tauri/src/commands/github_import.rs` (`check_marketplace_updates`) | `commands::github_import` | -- |
+| `src-tauri/src/commands/github_import.rs` (`check_skill_customized`) | `commands::github_import` | -- |
+| `src-tauri/src/commands/usage.rs` | `commands::usage` | -- |
 | `src-tauri/src/commands/agent.rs` | -- | `@workflow` |
 | `src-tauri/src/commands/sidecar_lifecycle.rs` | -- | `@workflow` |
 | `src-tauri/src/commands/workflow_lifecycle.rs` | `commands::workflow_lifecycle` | `@workflow` |
@@ -74,7 +74,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `e2e/refine/refine.spec.ts` | `@refine` |
 | `e2e/skill-tester/skill-tester.spec.ts` | `@skill-tester` |
 | `e2e/skill-tester/test-to-refine.spec.ts` | `@skill-tester` |
-| `e2e/integration/workflow-integration.spec.ts` | `@workflow-agent` |
+| `e2e/integration/workflow-integration.spec.ts` | `@integration` |
 | `e2e/desktop-smoke/desktop-smoke.spec.ts` | `@desktop-smoke` |
 
 ## Cross-Boundary: Agent ↔ App Format Compliance
