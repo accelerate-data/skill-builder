@@ -97,7 +97,22 @@ Each sub-agent's task per question:
 - Create a **new top-level question** only when the missing decision is material, remains unanswered after reviewing the section's answered questions, and does **not** fit as a child of any existing question in that section.
 - Do **not** use a new top-level question to redo initial research, broaden scope casually, or ask for nice-to-have detail.
 - Do **not** auto-answer a new top-level question. Leave `answer_choice` and `answer_text` as `null`.
-- A new top-level question may set `must_answer: true` when the missing decision blocks downstream decisions or safe implementation.
+- Classify `must_answer` exactly like research consolidation:
+  - `must_answer: true` only when the missing decision is critical to producing a correct skill, blocks downstream decisions, or is required for safe implementation.
+  - `must_answer: false` when a reasonable default exists and the question only improves fidelity.
+
+### Additive-only invariant
+
+- Detailed research is **strictly additive** relative to the input `clarifications.json`.
+- Preserve every original top-level research question unchanged:
+  - do **not** delete any existing `sections[].questions[]` item
+  - do **not** rewrite or replace an existing top-level question with a new phrasing
+  - do **not** renumber or reorder existing top-level questions in a way that changes their identity
+- Detailed research may only:
+  - add refinements under existing questions
+  - add new top-level questions at the end of the target section
+  - update metadata to reflect the additions
+- If a candidate new question overlaps an existing research-authored top-level question, drop the **new** candidate. Never remove or mutate the original question.
 
 ### Purpose-aware refinement rules
 
@@ -114,38 +129,53 @@ Follow the format examples below. Return ONLY a JSON array of follow-up question
 - Number new top-level questions as the next available `Q{n}` in overall document order
 - Every generated object must include `detailed_research_type` with value `"refinement"` or `"new_top_level"`
 - Each refinement object has: `id`, `parent_question_id`, `detailed_research_type`, `title`, `text` (rationale), `choices` array, `recommendation` (recommended choice letter only, e.g., `"B"`), `must_answer` (false), `answer_choice` (null), `answer_text` (null), `refinements` (empty array `[]`)
-- Each new top-level question object has: `id`, `section_id`, `detailed_research_type`, `title`, `text` (rationale), `choices` array, `recommendation` (recommended choice letter only, e.g., `"B"`), `must_answer` (boolean), `answer_choice` (null), `answer_text` (null), `refinements` (empty array `[]`)
+- Each new top-level question object has: `id`, `section_id`, `detailed_research_type`, `title`, `text` (rationale), `choices` array, `recommendation` (recommended choice + rationale preferred; a choice letter only is acceptable), `must_answer` (boolean), `answer_choice` (null), `answer_text` (null), `refinements` (empty array `[]`)
+- Use the existing section identifier from the parsed `clarifications.json` for `section_id` when routing a new top-level question
 - 2-4 concrete choices (all `is_other: false`) plus one final "Other (please specify)" choice with `is_other: true` and text exactly `"Other (please specify)"` — never mark a concrete/specific choice as `is_other: true`, even if it is a negation like "No X exists"
 - Do NOT re-display original question text, choices, or recommendation
-- Keep the top-level/new-top-level distinction explicit in the JSON object itself, not just implied by where it will be merged
+- Keep the top-level/new-top-level distinction explicit in the JSON object itself while routing merge candidates
 
 ## Phase 3: Merge refinements into canonical payload
 
 1. Use the `clarifications.json` object already parsed in Phase 0.
-2. For each section's output from sub-agents: parse the JSON array and validate each follow-up object before merge. Reject objects that do not match one of these contracts:
+2. Record the original top-level question IDs before merge. These IDs are immutable and must all still exist after merge.
+3. For each section's output from sub-agents: parse the JSON array and validate each follow-up object before merge. Reject objects that do not match one of these contracts:
    - **Refinement** required keys: `id`, `parent_question_id`, `detailed_research_type`, `title`, `text`, `choices`, `recommendation`, `must_answer`, `answer_choice`, `answer_text`, `refinements`
    - **New top-level** required keys: `id`, `section_id`, `detailed_research_type`, `title`, `text`, `choices`, `recommendation`, `must_answer`, `answer_choice`, `answer_text`, `refinements`
    - `detailed_research_type` must be exactly `"refinement"` or `"new_top_level"`
    - `choices` is an array of objects with required keys `id`, `text`, `is_other`
-   - `recommendation` is a single uppercase choice ID string (for example `"A"`)
+   - `recommendation` is either a single uppercase choice ID string (for example `"A"`) or the canonical "choice + rationale" string from research consolidation
    - `must_answer` is boolean, `answer_choice`/`answer_text` are null, `refinements` is an array
    - Skip invalid objects and continue processing valid ones
-3. Merge valid objects by type:
+4. Merge valid objects by type:
    - Insert `"refinement"` objects into the matching `parent_question_id`'s `refinements[]`
    - Insert `"new_top_level"` objects into the matching `section_id`'s `questions[]`
-4. Deduplicate overlapping follow-up objects across sub-agents:
-   - For refinements, match by `parent_question_id` and similar `title`/`text`
-   - For new top-level questions, match by `section_id` and similar `title`/`text`
-5. Update metadata to stay canonical after merge:
+5. Deduplicate **newly proposed follow-up objects only**. Never deduplicate by deleting, rewriting, or replacing an existing research-authored top-level question.
+   - For refinements, dedupe only against other candidate refinements for the same `parent_question_id`
+   - For new top-level questions, dedupe only against other candidate new top-level questions in the same `section_id`
+   - Dedupe by underlying decision, not just text similarity:
+     - identify when two candidates resolve the same decision
+     - keep the strongest framing with the clearest choices and implications
+     - fold unique value from weaker versions into the retained candidate when helpful
+   - If a new candidate overlaps an existing top-level question, drop the candidate and count it as removed; preserve the original question unchanged
+   - If a contradiction appears in multiple candidates, represent it exactly once in the merged output
+6. Validate additive-only behavior after merge:
+   - every original top-level question ID captured before merge must still exist after merge
+   - top-level question count may increase but must never decrease
+   - section count must remain unchanged
+7. Update metadata to stay canonical after merge:
    - `metadata.refinement_count`: total number of inserted `"refinement"` objects
    - `metadata.question_count`: total number of top-level questions after inserting any `"new_top_level"` objects
-   - `metadata.section_count`: unchanged unless the original payload already changes it
+   - `metadata.section_count`: unchanged
    - `metadata.must_answer_count`: recount across top-level questions and refinements after merge
-6. Preserve note separation for UI:
+   - `metadata.priority_questions`: recount all question IDs where `must_answer: true`
+   - `metadata.duplicates_removed`: increment by the number of candidate follow-up objects dropped during deduplication
+8. Before returning final `clarifications_json`, remove transient merge-helper fields such as `detailed_research_type` and `section_id`/`parent_question_id` from any in-memory candidate objects. The returned payload must remain canonical clarifications JSON.
+9. Preserve note separation for UI:
    - Keep research/planning notes in `notes`.
    - Keep evaluator feedback in `answer_evaluator_notes` when present.
    - Do **not** merge `answer_evaluator_notes` into `notes`.
-7. Do **not** write files. Keep the updated JSON in memory as `clarifications_json` for the final structured response.
+10. Do **not** write files. Keep the updated JSON in memory as `clarifications_json` for the final structured response.
 
 ## Phase 4: Return
 
@@ -172,7 +202,8 @@ Return JSON only (no markdown) with this shape:
 - `answer-evaluation.json` verdicts used directly — no re-triage
 - Follow-up sub-agents spawn only for sections with non-clear items — all-clear sections skipped
 - New top-level questions are created only for material gaps that do not fit an existing parent
-- Canonical `clarifications_json` returned in structured output with updated metadata counts and explicit distinction between refinements and new top-level questions
+- Original research questions are preserved unchanged; detailed research is additive only
+- Canonical `clarifications_json` returned in structured output with updated metadata counts, canonical `priority_questions`/`duplicates_removed`, and no transient merge-helper fields
 
 </instructions>
 
