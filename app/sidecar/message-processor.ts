@@ -128,6 +128,17 @@ const RESULT_ERROR_LABELS: Record<string, string> = {
   error_during_execution: "An error occurred during agent execution.",
   error_max_structured_output_retries:
     "Agent failed to produce valid structured output after multiple retries.",
+  error_authentication:
+    "Authentication failed — check your API key in Settings.",
+};
+
+/** User-friendly labels for SDK assistant message error codes. */
+const ASSISTANT_ERROR_LABELS: Record<string, string> = {
+  authentication_failed: "Authentication failed — check your API key in Settings.",
+  billing_error: "Billing error — check your Anthropic account billing status.",
+  rate_limit: "Rate limit exceeded — try again in a few moments.",
+  invalid_request: "Invalid request sent to the API.",
+  server_error: "Anthropic API server error — try again shortly.",
 };
 
 // ---------------------------------------------------------------------------
@@ -638,6 +649,7 @@ export class MessageProcessor {
     if (type === "assistant") return this.processAssistantMessage(raw, now);
     if (type === "result") return this.processResultMessage(raw, now);
     if (type === "error") return this.processErrorMessage(raw, now);
+    if (type === "auth_status") return this.processAuthStatusMessage(raw, now);
 
     return [];
   }
@@ -654,6 +666,35 @@ export class MessageProcessor {
     const outerMessage = raw.message as Record<string, unknown> | undefined;
     const content = outerMessage?.content;
     const parentToolUseId = raw.parent_tool_use_id as string | undefined;
+
+    // SDK assistant messages carry an `error` field for auth/billing/rate-limit
+    // failures. Detect these before processing content so the run terminates
+    // immediately with an actionable error instead of silently continuing.
+    const assistantError = raw.error as string | undefined;
+    if (assistantError) {
+      const label = ASSISTANT_ERROR_LABELS[assistantError] ?? `Agent error: ${assistantError}`;
+      const isAuthError = assistantError === "authentication_failed";
+      const subtype = isAuthError ? "error_authentication" : "error_during_execution";
+
+      process.stderr.write(
+        `[message-processor] event=assistant_error error=${assistantError} subtype=${subtype}\n`,
+      );
+
+      const item: DisplayItem = {
+        id: this.generateId(),
+        type: "error",
+        timestamp: now,
+        errorMessage: label,
+      };
+      results.push(this.makeEnvelope(item));
+
+      // Emit a terminal run_result so the run stops and the frontend transitions
+      if (!this.resultEmitted) {
+        const summary = this.buildAssistantErrorSummary(label, subtype);
+        results.push(this.makeAgentEventEnvelope(summary, now) as ProcessedMessage);
+      }
+      return results;
+    }
 
     if (!Array.isArray(content)) {
       // No content array — still increment turn count
@@ -974,6 +1015,38 @@ export class MessageProcessor {
   }
 
   // -------------------------------------------------------------------------
+  // Auth status messages
+  // -------------------------------------------------------------------------
+
+  private processAuthStatusMessage(
+    raw: Record<string, unknown>,
+    now: number,
+  ): ProcessedMessage[] {
+    const errorStr = raw.error as string | undefined;
+    if (!errorStr) return [];
+
+    process.stderr.write(
+      `[message-processor] event=auth_status_error error="${truncate(errorStr, 60)}"\n`,
+    );
+
+    const label = "Authentication failed — check your API key in Settings.";
+    const item: DisplayItem = {
+      id: this.generateId(),
+      type: "error",
+      timestamp: now,
+      errorMessage: label,
+    };
+    const results: ProcessedMessage[] = [this.makeEnvelope(item)];
+
+    if (!this.resultEmitted) {
+      const summary = this.buildAssistantErrorSummary(label, "error_authentication");
+      results.push(this.makeAgentEventEnvelope(summary, now) as ProcessedMessage);
+    }
+
+    return results;
+  }
+
+  // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
 
@@ -1114,6 +1187,17 @@ export class MessageProcessor {
   buildExecutionErrorSummary(errorMessage: string): RunResultEvent {
     this.resultEmitted = true;
     return this.accumulator.buildExecutionErrorSummary(errorMessage);
+  }
+
+  /** Build an error run_result for assistant-level errors (auth, billing, etc.). */
+  private buildAssistantErrorSummary(errorMessage: string, subtype: string): RunResultEvent {
+    this.resultEmitted = true;
+    return this.accumulator.buildRunSummary({
+      subtype,
+      is_error: true,
+      errors: [errorMessage],
+      stop_reason: "error",
+    });
   }
 
   /** Get count of pending (unresolved) tool calls. For testing. */

@@ -397,6 +397,55 @@ describe("result message error subtypes", () => {
     expect(data.status).toBe("completed");
     expect(data.stopReason).toBe("end_turn");
   });
+
+  it("emits error run_result when SDK completes without result message (VU-531)", async () => {
+    // Simulate an SDK that yields an assistant message with an auth error
+    // but no result message — the iterator completes normally.
+    async function* noResultConversation() {
+      yield {
+        type: "assistant",
+        error: "authentication_failed",
+        message: { content: [], usage: null },
+      };
+      // No "result" message — iterator ends
+    }
+    mockQuery.mockReturnValue(noResultConversation() as ReturnType<typeof query>);
+
+    const messages: Record<string, unknown>[] = [];
+    await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
+
+    // The missing-result guard should emit an error run_result
+    const summary = findRunResult(messages);
+    expect(summary).toBeDefined();
+    const data = summary!.event as Record<string, unknown>;
+    expect(data.status).toBe("error");
+  });
+
+  it("does not double-emit run_result when auth error already emitted one (VU-531)", async () => {
+    // The assistant error handler in message-processor emits a run_result.
+    // The missing-result guard should NOT emit a second one.
+    async function* authErrorConversation() {
+      yield {
+        type: "assistant",
+        error: "authentication_failed",
+        message: { content: [], usage: null },
+      };
+    }
+    mockQuery.mockReturnValue(authErrorConversation() as ReturnType<typeof query>);
+
+    const messages: Record<string, unknown>[] = [];
+    await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
+
+    const runResults = messages.filter(
+      (m) => m.type === "agent_event"
+        && (m.event as Record<string, unknown>)?.type === "run_result",
+    );
+    // Exactly one run_result — from the assistant error handler
+    // (the missing-result guard should see resultEmitted=true and skip)
+    expect(runResults).toHaveLength(1);
+    const data = runResults[0].event as Record<string, unknown>;
+    expect(data.resultSubtype).toBe("error_authentication");
+  });
 });
 
 describe("emitSystemEvent", () => {
