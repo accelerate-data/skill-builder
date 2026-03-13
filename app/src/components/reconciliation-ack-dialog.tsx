@@ -89,7 +89,7 @@ export default function ReconciliationAckDialog({
 
   return (
     <AlertDialog open={open}>
-      <AlertDialogContent>
+      <AlertDialogContent className="max-w-2xl">
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <Info className="size-5" style={{ color: "var(--color-pacific)" }} />
