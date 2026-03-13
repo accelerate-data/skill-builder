@@ -6,10 +6,18 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 }));
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { runAgentRequest, emitSystemEvent } from "../run-agent.js";
+import { runAgentRequest, emitSystemEvent, selectPluginPaths } from "../run-agent.js";
 import type { SidecarConfig } from "../config.js";
 
 const mockQuery = vi.mocked(query);
+
+function findRunResult(messages: Record<string, unknown>[]) {
+  return messages.find(
+    (message) =>
+      message.type === "agent_event"
+      && (message.event as Record<string, unknown> | undefined)?.type === "run_result",
+  );
+}
 
 function baseConfig(overrides: Partial<SidecarConfig> = {}): SidecarConfig {
   return {
@@ -44,10 +52,16 @@ describe("runAgentRequest", () => {
   });
 
   it("streams all messages to the onMessage callback", async () => {
+    // Use proper SDK message shapes that MessageProcessor can process
     const sdkMessages = [
-      { type: "agent_message", content: "step 1" },
-      { type: "tool_use", name: "Read", input: {} },
-      { type: "result", content: "done" },
+      {
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "step 1" }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      },
+      { type: "result", subtype: "success", usage: { input_tokens: 50, output_tokens: 20 }, total_cost_usd: 0.01 },
     ];
 
     async function* fakeConversation() {
@@ -60,11 +74,28 @@ describe("runAgentRequest", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    // First three messages are system events (sdk_plugins_debug, init_start, sdk_ready), then SDK messages
-    expect(messages).toHaveLength(6);
-    expect(messages[3]).toEqual({ type: "agent_message", content: "step 1" });
-    expect(messages[4]).toEqual({ type: "tool_use", name: "Read", input: {} });
-    expect(messages[5]).toEqual({ type: "result", content: "done" });
+    // Messages: system events (sdk_plugins_debug filtered, init_start, sdk_ready),
+    // then processed display items + agent_event messages
+    // init_start and sdk_ready are forwarded as-is (system category)
+    // sdk_plugins_debug is filtered (hardNoise)
+    // assistant → display_item(output) + agent_event(turn_usage)
+    // result → display_item(result) + agent_event(context_window/run_result)
+    const displayItems = messages.filter((m) => m.type === "display_item");
+    const systemMsgs = messages.filter((m) => m.type === "system");
+    const runResult = findRunResult(messages);
+
+    expect(systemMsgs.length).toBeGreaterThanOrEqual(2); // init_start + sdk_ready
+    expect(displayItems).toHaveLength(2); // output + result
+    expect(runResult).toBeDefined();
+
+    // Verify display items
+    const outputItem = (displayItems[0] as Record<string, unknown>).item as Record<string, unknown>;
+    expect(outputItem.type).toBe("output");
+    expect(outputItem.outputText).toBe("step 1");
+
+    const resultItem = (displayItems[1] as Record<string, unknown>).item as Record<string, unknown>;
+    expect(resultItem.type).toBe("result");
+    expect(resultItem.resultStatus).toBe("success");
   });
 
   it("emits init_start and sdk_ready system events in order", async () => {
@@ -183,6 +214,86 @@ describe("runAgentRequest", () => {
     expect(stderrMsg!.data).toBe("some debug output");
     expect(stderrMsg!.timestamp).toEqual(expect.any(Number));
   });
+
+  it("emits an error display item and run_result when the async iterator throws after startup", async () => {
+    async function* failingConversation() {
+      yield {
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "step 1" }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      };
+      throw new Error("stream failed after startup");
+    }
+    mockQuery.mockReturnValue(failingConversation() as ReturnType<typeof query>);
+
+    const messages: Record<string, unknown>[] = [];
+    await runAgentRequest(baseConfig({ skillName: "sales-analysis", stepId: -10 }), (msg) =>
+      messages.push(msg),
+    );
+
+    const displayItems = messages.filter((m) => m.type === "display_item");
+    const runResult = findRunResult(messages);
+
+    expect(displayItems).toHaveLength(2);
+    expect(runResult).toBeDefined();
+
+    const errorItem = (displayItems[1] as Record<string, unknown>).item as Record<string, unknown>;
+    expect(errorItem.type).toBe("error");
+    expect(errorItem.errorMessage).toBe("stream failed after startup");
+
+    const summary = runResult!.event as Record<string, unknown>;
+    expect(summary.skillName).toBe("sales-analysis");
+    expect(summary.stepId).toBe(-10);
+    expect(summary.status).toBe("error");
+    expect(summary.resultSubtype).toBe("error_during_execution");
+    expect(summary.resultErrors).toEqual(["stream failed after startup"]);
+    expect(summary.stopReason).toBe("error");
+    expect(summary.numTurns).toBe(1);
+  });
+});
+
+describe("selectPluginPaths", () => {
+  it("returns no plugins when none are explicitly required", () => {
+    expect(
+      selectPluginPaths(
+        ["/workspace/.claude/plugins/vd-agent", "/workspace/.claude/plugins/skill-creator"],
+        undefined,
+      ),
+    ).toEqual([]);
+    expect(
+      selectPluginPaths(
+        ["/workspace/.claude/plugins/vd-agent", "/workspace/.claude/plugins/skill-creator"],
+        [],
+      ),
+    ).toEqual([]);
+  });
+
+  it("filters discovered plugin paths to the explicit required set", () => {
+    expect(
+      selectPluginPaths(
+        [
+          "/workspace/.claude/plugins/vd-agent",
+          "/workspace/.claude/plugins/skill-creator",
+          "/workspace/.claude/plugins/skill-content-researcher",
+        ],
+        ["skill-content-researcher", "skill-creator"],
+      ),
+    ).toEqual([
+      "/workspace/.claude/plugins/skill-content-researcher",
+      "/workspace/.claude/plugins/skill-creator",
+    ]);
+  });
+
+  it("ignores requested plugins that are not installed", () => {
+    expect(
+      selectPluginPaths(
+        ["/workspace/.claude/plugins/vd-agent"],
+        ["skill-creator", "vd-agent"],
+      ),
+    ).toEqual(["/workspace/.claude/plugins/vd-agent"]);
+  });
 });
 
 describe("result message error subtypes", () => {
@@ -190,7 +301,7 @@ describe("result message error subtypes", () => {
     vi.clearAllMocks();
   });
 
-  it("forwards error_max_turns result with subtype, is_error, and stop_reason intact", async () => {
+  it("emits run_result with error_max_turns subtype, errors, and stop_reason", async () => {
     const errorResult = {
       type: "result",
       subtype: "error_max_turns",
@@ -210,16 +321,16 @@ describe("result message error subtypes", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    // Find the result message (after system events)
-    const result = messages.find((m) => m.type === "result");
-    expect(result).toBeDefined();
-    expect(result!.subtype).toBe("error_max_turns");
-    expect(result!.is_error).toBe(true);
-    expect(result!.errors).toEqual(["Max turns reached"]);
-    expect(result!.stop_reason).toBe("end_turn");
+    const summary = findRunResult(messages);
+    expect(summary).toBeDefined();
+    const data = summary!.event as Record<string, unknown>;
+    expect(data.resultSubtype).toBe("error_max_turns");
+    expect(data.resultErrors).toEqual(["Max turns reached"]);
+    expect(data.stopReason).toBe("end_turn");
+    expect(data.status).toBe("error");
   });
 
-  it("forwards error_max_budget_usd result intact", async () => {
+  it("emits run_result with error_max_budget_usd subtype", async () => {
     async function* fakeConversation() {
       yield {
         type: "result",
@@ -234,12 +345,14 @@ describe("result message error subtypes", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    const result = messages.find((m) => m.type === "result");
-    expect(result!.subtype).toBe("error_max_budget_usd");
-    expect(result!.is_error).toBe(true);
+    const summary = findRunResult(messages);
+    expect(summary).toBeDefined();
+    const data = summary!.event as Record<string, unknown>;
+    expect(data.resultSubtype).toBe("error_max_budget_usd");
+    expect(data.status).toBe("error");
   });
 
-  it("forwards refusal stop_reason on success result", async () => {
+  it("emits run_result with refusal stop_reason on success result", async () => {
     async function* fakeConversation() {
       yield {
         type: "result",
@@ -254,12 +367,14 @@ describe("result message error subtypes", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    const result = messages.find((m) => m.type === "result");
-    expect(result!.stop_reason).toBe("refusal");
-    expect(result!.subtype).toBe("success");
+    const summary = findRunResult(messages);
+    expect(summary).toBeDefined();
+    const data = summary!.event as Record<string, unknown>;
+    expect(data.stopReason).toBe("refusal");
+    expect(data.resultSubtype).toBe("success");
   });
 
-  it("forwards clean success result with all fields", async () => {
+  it("emits run_result with clean success fields", async () => {
     async function* fakeConversation() {
       yield {
         type: "result",
@@ -275,10 +390,61 @@ describe("result message error subtypes", () => {
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    const result = messages.find((m) => m.type === "result");
-    expect(result!.subtype).toBe("success");
-    expect(result!.is_error).toBe(false);
-    expect(result!.stop_reason).toBe("end_turn");
+    const summary = findRunResult(messages);
+    expect(summary).toBeDefined();
+    const data = summary!.event as Record<string, unknown>;
+    expect(data.resultSubtype).toBe("success");
+    expect(data.status).toBe("completed");
+    expect(data.stopReason).toBe("end_turn");
+  });
+
+  it("emits error run_result when SDK completes without result message (VU-531)", async () => {
+    // Simulate an SDK that yields an assistant message with an auth error
+    // but no result message — the iterator completes normally.
+    async function* noResultConversation() {
+      yield {
+        type: "assistant",
+        error: "authentication_failed",
+        message: { content: [], usage: null },
+      };
+      // No "result" message — iterator ends
+    }
+    mockQuery.mockReturnValue(noResultConversation() as ReturnType<typeof query>);
+
+    const messages: Record<string, unknown>[] = [];
+    await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
+
+    // The missing-result guard should emit an error run_result
+    const summary = findRunResult(messages);
+    expect(summary).toBeDefined();
+    const data = summary!.event as Record<string, unknown>;
+    expect(data.status).toBe("error");
+  });
+
+  it("does not double-emit run_result when auth error already emitted one (VU-531)", async () => {
+    // The assistant error handler in message-processor emits a run_result.
+    // The missing-result guard should NOT emit a second one.
+    async function* authErrorConversation() {
+      yield {
+        type: "assistant",
+        error: "authentication_failed",
+        message: { content: [], usage: null },
+      };
+    }
+    mockQuery.mockReturnValue(authErrorConversation() as ReturnType<typeof query>);
+
+    const messages: Record<string, unknown>[] = [];
+    await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
+
+    const runResults = messages.filter(
+      (m) => m.type === "agent_event"
+        && (m.event as Record<string, unknown>)?.type === "run_result",
+    );
+    // Exactly one run_result — from the assistant error handler
+    // (the missing-result guard should see resultEmitted=true and skip)
+    expect(runResults).toHaveLength(1);
+    const data = runResults[0].event as Record<string, unknown>;
+    expect(data.resultSubtype).toBe("error_authentication");
   });
 });
 

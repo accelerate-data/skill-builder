@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronDown, ChevronRight, Play, Square, Wrench } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertTriangle, Play, Square } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { useNavigate, useSearch, useBlocker } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SkillPicker } from "@/components/refine/skill-picker";
-import { useAgentStore, flushMessageBuffer, type AgentMessage } from "@/stores/agent-store";
+import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useTestStore } from "@/stores/test-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -30,6 +30,8 @@ import {
 import { useWorkflowStore } from "@/stores/workflow-store";
 import type { SkillSummary } from "@/lib/types";
 import { cn, deriveModelLabel } from "@/lib/utils";
+import { DisplayItemList } from "@/components/agent-items/display-item-list";
+import type { DisplayItem } from "@/lib/display-types";
 
 // Ensure agent-stream listeners are registered
 import "@/hooks/use-agent-stream";
@@ -79,33 +81,20 @@ const INITIAL_STATE: TestState = {
 };
 
 const TERMINAL_STATUSES = new Set(["completed", "error", "shutdown"]);
+const TEST_RUN_STEP_ID = -11;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Extract accumulated assistant text content from agent store messages.
- * Includes text blocks and AskUserQuestion inputs so the evaluator can see
- * what clarification questions the agent asked. */
+/** Extract accumulated output text from agent display items.
+ * Collects text from output and tool_call display items. */
 function extractAssistantText(agentId: string): string {
   const run = useAgentStore.getState().runs[agentId];
   if (!run) return "";
-  return run.messages
-    .filter((m) => m.type === "assistant")
-    .map((m) => {
-      const textContent = m.content ?? "";
-      // Capture AskUserQuestion inputs so the evaluator sees what was asked
-      const apiBlocks = (
-        (m.raw?.message as Record<string, unknown> | undefined)?.content
-      ) as Array<{ type: string; name?: string; input?: Record<string, unknown> }> | undefined;
-      const questions = Array.isArray(apiBlocks)
-        ? apiBlocks
-            .filter((b) => b.type === "tool_use" && b.name === "AskUserQuestion")
-            .map((b) => (typeof b.input?.question === "string" ? b.input.question : ""))
-            .filter(Boolean)
-        : [];
-      return [textContent, ...questions].filter(Boolean).join("\n");
-    })
+  return run.displayItems
+    .filter((di) => di.type === "output" || di.type === "tool_call")
+    .map((di) => di.outputText ?? di.toolSummary ?? "")
     .filter(Boolean)
     .join("\n");
 }
@@ -230,6 +219,10 @@ function evalPlaceholder(phase: Phase, errorMessage: string | null): string {
   }
 }
 
+function buildSyntheticTestSessionId(skillName: string, testId: string): string {
+  return `synthetic:test:${skillName}:${testId}`;
+}
+
 /** Auto-scroll a container to the bottom. */
 function scrollToBottom(ref: React.RefObject<HTMLDivElement | null>): void {
   if (ref.current) {
@@ -241,17 +234,8 @@ function scrollToBottom(ref: React.RefObject<HTMLDivElement | null>): void {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Streaming content types
-// ---------------------------------------------------------------------------
-
-type ContentBlock =
-  | { type: "thinking"; thinking: string }
-  | { type: "tool_use"; name: string; input: Record<string, unknown> }
-  | { type: "text"; text: string };
-
 // Stable empty array — avoids Zustand re-render loop when selector returns []
-const NO_MESSAGES: AgentMessage[] = [];
+const NO_DISPLAY_ITEMS: DisplayItem[] = [];
 
 export function StreamingContent({
   agentId,
@@ -264,37 +248,15 @@ export function StreamingContent({
   idlePlaceholder: string;
   scrollRef: React.RefObject<HTMLDivElement | null>;
 }) {
-  const messages = useAgentStore((s) =>
-    agentId ? (s.runs[agentId]?.messages ?? NO_MESSAGES) : NO_MESSAGES,
-  );
-  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
-
-  const blocks = useMemo<ContentBlock[]>(
-    () =>
-      messages
-        .filter((m) => m.type === "assistant")
-        .flatMap((m) => {
-          const content = (
-            m.raw?.message as Record<string, unknown> | undefined
-          )?.content;
-          return Array.isArray(content) ? (content as ContentBlock[]) : [];
-        }),
-    [messages],
+  const displayItems = useAgentStore((s) =>
+    agentId ? (s.runs[agentId]?.displayItems ?? NO_DISPLAY_ITEMS) : NO_DISPLAY_ITEMS,
   );
 
   useEffect(() => {
     scrollToBottom(scrollRef);
-  }, [blocks.length, scrollRef]);
+  }, [displayItems.length, scrollRef]);
 
-  const toggle = useCallback((idx: number) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      next.has(idx) ? next.delete(idx) : next.add(idx);
-      return next;
-    });
-  }, []);
-
-  if (blocks.length === 0) {
+  if (displayItems.length === 0) {
     return (
       <p className="text-xs italic text-muted-foreground/40">
         {phase === "idle" ? idlePlaceholder : "Waiting for agent response..."}
@@ -302,74 +264,7 @@ export function StreamingContent({
     );
   }
 
-  return (
-    <div className="flex flex-col gap-2">
-      {blocks.map((block, idx) => {
-        const isExpanded = expanded.has(idx);
-
-        if (block.type === "thinking") {
-          return (
-            <div key={idx} className="rounded border border-border/40 bg-muted/20">
-              <button
-                onClick={() => toggle(idx)}
-                className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left"
-              >
-                {isExpanded ? (
-                  <ChevronDown className="size-3 shrink-0 text-muted-foreground/40" />
-                ) : (
-                  <ChevronRight className="size-3 shrink-0 text-muted-foreground/40" />
-                )}
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/40">
-                  Thinking
-                </span>
-              </button>
-              {isExpanded && (
-                <pre className="px-3 pb-2.5 whitespace-pre-wrap font-mono text-xs leading-relaxed text-muted-foreground/40 italic">
-                  {block.thinking}
-                </pre>
-              )}
-            </div>
-          );
-        }
-
-        if (block.type === "tool_use") {
-          return (
-            <div key={idx} className="rounded border border-border/40 bg-muted/25">
-              <button
-                onClick={() => toggle(idx)}
-                className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left"
-              >
-                {isExpanded ? (
-                  <ChevronDown className="size-3 shrink-0 text-muted-foreground/50" />
-                ) : (
-                  <ChevronRight className="size-3 shrink-0 text-muted-foreground/50" />
-                )}
-                <Wrench className="size-3 shrink-0 text-muted-foreground/50" />
-                <span className="font-mono text-[10px] text-muted-foreground/60">
-                  {block.name}
-                </span>
-              </button>
-              {isExpanded && (
-                <pre className="px-3 pb-2.5 whitespace-pre-wrap font-mono text-xs leading-relaxed text-muted-foreground/50">
-                  {JSON.stringify(block.input, null, 2)}
-                </pre>
-              )}
-            </div>
-          );
-        }
-
-        // text block — always visible
-        return (
-          <pre
-            key={idx}
-            className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground/85"
-          >
-            {block.text}
-          </pre>
-        );
-      })}
-    </div>
-  );
+  return <DisplayItemList items={displayItems} />;
 }
 
 interface PlanPanelProps {
@@ -742,12 +637,16 @@ export default function TestPage() {
     }
 
     const evalModel = useSettingsStore.getState().preferredModel ?? "sonnet";
+    const syntheticTestSessionId = buildSyntheticTestSessionId(
+      state.selectedSkill.name,
+      state.testId ?? "unknown",
+    );
     useAgentStore.getState().registerRun(
       evalId,
       evalModel,
       state.selectedSkill.name,
       "test",
-      `synthetic:test:${state.selectedSkill.name}:${state.testId ?? "unknown"}`,
+      syntheticTestSessionId,
     );
     startAgent(
       evalId,
@@ -757,11 +656,15 @@ export default function TestPage() {
       [],
       15,
       "plan",
-      "__test_baseline__",
-      "test-eval",
+      syntheticTestSessionId,
+      state.selectedSkill.name,
       "test-evaluator",
       undefined,                  // agentName — evaluator uses skill-test context, not a plugin agent
       state.transcriptLogDir ?? undefined,  // transcriptLogDir
+      TEST_RUN_STEP_ID,
+      undefined,
+      syntheticTestSessionId,
+      "test",
     ).catch((err) => {
       console.error("[test] Failed to start evaluator agent:", err);
       setState((prev) => ({
@@ -878,7 +781,10 @@ export default function TestPage() {
         transcriptLogDir: prepared.transcript_log_dir,
       }));
 
-      const syntheticTestSessionId = `synthetic:test:${skillName}:${prepared.test_id}`;
+      const syntheticTestSessionId = buildSyntheticTestSessionId(
+        skillName,
+        prepared.test_id,
+      );
 
       // Register runs in agent store
       const testModel = useSettingsStore.getState().preferredModel ?? "sonnet";
@@ -907,11 +813,15 @@ export default function TestPage() {
           [],
           15,
           "plan",
+          syntheticTestSessionId,
           skillName,
-          "test-with",
           "test-plan-with",
           "data-product-builder",       // agentName → --agent data-product-builder
           prepared.transcript_log_dir,  // transcriptLogDir
+          TEST_RUN_STEP_ID,
+          undefined,
+          syntheticTestSessionId,
+          "test",
         ),
         startAgent(
           withoutId,
@@ -921,11 +831,15 @@ export default function TestPage() {
           [],
           15,
           "plan",
-          "__test_baseline__",
-          "test-without",
+          syntheticTestSessionId,
+          "__test_baseline__",          // separate sidecar key — prevents abort race with with-skill agent
           "test-plan-without",
           "data-product-builder",       // agentName → --agent data-product-builder
           prepared.transcript_log_dir,  // transcriptLogDir
+          TEST_RUN_STEP_ID,
+          undefined,
+          syntheticTestSessionId,
+          "test",
         ),
       ]);
     } catch (err) {

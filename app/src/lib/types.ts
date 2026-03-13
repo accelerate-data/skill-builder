@@ -123,6 +123,12 @@ export interface RefineDiff {
   files: RefineFileDiff[]
 }
 
+export interface RefineFinalizeResult {
+  files: SkillFileContent[]
+  diff: RefineDiff
+  commit_sha: string | null
+}
+
 export interface RefineSessionInfo {
   session_id: string
   skill_name: string
@@ -341,4 +347,3 @@ export interface SkillFileMeta {
   user_invocable: boolean | null
   disable_model_invocation: boolean | null
 }
-

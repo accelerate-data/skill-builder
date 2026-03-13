@@ -5,6 +5,7 @@ use std::sync::Mutex;
 
 use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
+use crate::commands::agent::output_format_for_agent as shared_output_format_for_agent;
 use crate::db::Db;
 use crate::types::{PackageResult, StepConfig, StepStatusUpdate, WorkflowStateResponse};
 use serde_json;
@@ -70,6 +71,15 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             max_turns: 120,
         }),
         _ => Err(format!("Unknown step_id {}. Valid steps are 0-3.", step_id)),
+    }
+}
+
+fn required_plugins_for_workflow_step(step_id: u32) -> Option<Vec<String>> {
+    match step_id {
+        0 | 1 => Some(vec!["skill-content-researcher".to_string()]),
+        2 => Some(vec![]),
+        3 => Some(vec!["skill-creator".to_string()]),
+        _ => None,
     }
 }
 
@@ -559,14 +569,17 @@ fn copy_agents_to_claude_dir(agents_src: &Path, workspace_path: &str) -> Result<
 
 /// Replace only app-managed plugins in `.claude/plugins` from bundled source.
 /// User-added plugins are preserved when they do not have the managed marker.
-fn copy_managed_plugins_to_claude_dir(plugins_src: &Path, workspace_path: &str) -> Result<(), String> {
+fn copy_managed_plugins_to_claude_dir(
+    plugins_src: &Path,
+    workspace_path: &str,
+) -> Result<(), String> {
     const MANAGED_MARKER: &str = ".skill-builder-managed";
     let claude_plugins_dir = Path::new(workspace_path).join(".claude").join("plugins");
     std::fs::create_dir_all(&claude_plugins_dir)
         .map_err(|e| format!("Failed to create .claude/plugins dir: {}", e))?;
 
-    let source_entries = std::fs::read_dir(plugins_src)
-        .map_err(|e| format!("Failed to read plugins dir: {}", e))?;
+    let source_entries =
+        std::fs::read_dir(plugins_src).map_err(|e| format!("Failed to read plugins dir: {}", e))?;
     let mut source_plugin_names = std::collections::HashSet::new();
     for entry in source_entries {
         let entry = entry.map_err(|e| format!("Failed to read plugins entry: {}", e))?;
@@ -590,8 +603,13 @@ fn copy_managed_plugins_to_claude_dir(plugins_src: &Path, workspace_path: &str) 
         let name = entry.file_name().to_string_lossy().to_string();
         let is_managed = path.join(MANAGED_MARKER).is_file();
         if is_managed && !source_plugin_names.contains(&name) {
-            std::fs::remove_dir_all(&path)
-                .map_err(|e| format!("Failed to remove stale managed plugin {}: {}", path.display(), e))?;
+            std::fs::remove_dir_all(&path).map_err(|e| {
+                format!(
+                    "Failed to remove stale managed plugin {}: {}",
+                    path.display(),
+                    e
+                )
+            })?;
         }
     }
 
@@ -600,12 +618,25 @@ fn copy_managed_plugins_to_claude_dir(plugins_src: &Path, workspace_path: &str) 
         let src_plugin = plugins_src.join(&plugin_name);
         let dst_plugin = claude_plugins_dir.join(&plugin_name);
         if dst_plugin.exists() {
-            std::fs::remove_dir_all(&dst_plugin)
-                .map_err(|e| format!("Failed to replace managed plugin {}: {}", dst_plugin.display(), e))?;
+            std::fs::remove_dir_all(&dst_plugin).map_err(|e| {
+                format!(
+                    "Failed to replace managed plugin {}: {}",
+                    dst_plugin.display(),
+                    e
+                )
+            })?;
         }
         copy_directory_recursive(&src_plugin, &dst_plugin)?;
-        std::fs::write(dst_plugin.join(MANAGED_MARKER), "managed by skill-builder startup\n")
-            .map_err(|e| format!("Failed to write managed plugin marker for {}: {}", plugin_name, e))?;
+        std::fs::write(
+            dst_plugin.join(MANAGED_MARKER),
+            "managed by skill-builder startup\n",
+        )
+        .map_err(|e| {
+            format!(
+                "Failed to write managed plugin marker for {}: {}",
+                plugin_name, e
+            )
+        })?;
     }
     Ok(())
 }
@@ -693,6 +724,10 @@ fn derive_agent_name(workspace_path: &str, _purpose: &str, prompt_template: &str
 }
 
 fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Value> {
+    if let Some(format) = shared_output_format_for_agent("_workflow", Some(agent_name)) {
+        return Some(format);
+    }
+
     match agent_name {
         "research-orchestrator" => Some(serde_json::json!({
             "type": "json_schema",
@@ -741,18 +776,6 @@ fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Valu
                     "version": { "type": "string" },
                     "metadata": { "type": "object" },
                     "decisions": { "type": "array" }
-                },
-                "additionalProperties": false
-            }
-        })),
-        "generate-skill" => Some(serde_json::json!({
-            "type": "json_schema",
-            "schema": {
-                "type": "object",
-                "required": ["status", "evaluations_markdown"],
-                "properties": {
-                    "status": { "type": "string", "const": "generated" },
-                    "evaluations_markdown": { "type": "string", "minLength": 1 }
                 },
                 "additionalProperties": false
             }
@@ -1001,8 +1024,9 @@ fn materialize_workflow_step_output_value(
             Ok(())
         }
         2 => {
-            let decisions_pretty = serde_json::to_string_pretty(&serde_json::Value::Object(payload.clone()))
-                .map_err(|e| format!("Failed to serialize decisions: {}", e))?;
+            let decisions_pretty =
+                serde_json::to_string_pretty(&serde_json::Value::Object(payload.clone()))
+                    .map_err(|e| format!("Failed to serialize decisions: {}", e))?;
             let decisions_path = context_dir.join("decisions.json");
             std::fs::write(&decisions_path, decisions_pretty).map_err(|e| {
                 format!(
@@ -1049,24 +1073,24 @@ pub fn materialize_workflow_step_output(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!(
-        "[materialize_workflow_step_output] skill={} step={}",
+        "[materialize_workflow_step_output] skill={} step={} step_id={}",
         skill_name,
+        workflow_step_log_name(step_id as i32),
         step_id
     );
     let workspace_path = read_workspace_path(&db)
         .ok_or_else(|| "Workspace path not configured. Please set it in Settings.".to_string())?;
     let skill_root = Path::new(&workspace_path).join(&skill_name);
-    materialize_workflow_step_output_value(&skill_root, step_id, &structured_output).map_err(
-        |e| {
-            log::error!(
-                "[materialize_workflow_step_output] skill={} step={} failed: {}",
-                skill_name,
-                step_id,
-                e
-            );
+    materialize_workflow_step_output_value(&skill_root, step_id, &structured_output).map_err(|e| {
+        log::error!(
+            "[materialize_workflow_step_output] skill={} step={} step_id={} failed: {}",
+            skill_name,
+            workflow_step_log_name(step_id as i32),
+            step_id,
             e
-        },
-    )
+        );
+        e
+    })
 }
 
 fn answer_evaluator_output_format() -> serde_json::Value {
@@ -1476,44 +1500,27 @@ pub fn write_user_context_file(
     }
 }
 
-/// Writes `workspace_dir/.skill_output_dir` with the absolute path to the skill output directory.
-/// Agents read this file to derive the skill output path; call before every agent run so the
-/// prompt only needs skill name and workspace_dir.
-pub(crate) fn write_skill_output_dir_file(workspace_dir: &Path, skill_output_dir: &Path) {
-    let path = workspace_dir.join(".skill_output_dir");
-    let content = skill_output_dir.to_string_lossy().replace('\\', "/");
-    if let Err(e) = std::fs::write(&path, &content) {
-        log::warn!(
-            "[write_skill_output_dir_file] Failed to write {}: {}",
-            path.display(),
-            e
-        );
-    } else {
-        log::debug!(
-            "[write_skill_output_dir_file] Wrote .skill_output_dir ({} bytes) to {}",
-            content.len(),
-            workspace_dir.display()
-        );
-    }
-}
-
 fn build_prompt(
     skill_name: &str,
     workspace_path: &str,
-    _skills_path: &str,
+    skills_path: &str,
     author_login: Option<&str>,
     created_at: Option<&str>,
     max_dimensions: u32,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let skill_output_dir = Path::new(skills_path).join(skill_name);
+    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
     let mut prompt = format!(
         "The skill name is: {}. The workspace directory is: {}. \
-         Read user-context.md and .skill_output_dir from the workspace directory first. \
-         Derive context_dir as workspace_dir/context. The skill output directory (SKILL.md and references/) is the path in .skill_output_dir. \
+         The skill output directory (SKILL.md and references/) is: {}. \
+         Read user-context.md from the workspace directory. \
+         Derive context_dir as workspace_dir/context. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
         skill_name,
         workspace_str,
+        skill_output_str,
     );
 
     if let Some(author) = author_login {
@@ -1585,6 +1592,14 @@ fn make_agent_id(skill_name: &str, label: &str) -> String {
         .unwrap_or_default()
         .as_millis();
     format!("{}-{}-{}", skill_name, label, ts)
+}
+
+fn workflow_step_runtime_label(step: &StepConfig) -> String {
+    step.name.to_ascii_lowercase().replace(' ', "-")
+}
+
+fn workflow_step_log_name(step_id: i32) -> String {
+    crate::db::step_name(step_id)
 }
 
 /// Core logic for validating decisions.json existence — testable without tauri::State.
@@ -1667,7 +1682,7 @@ fn read_workflow_settings(
     let industry = settings.industry;
     let function_role = settings.function_role;
 
-    // Validate prerequisites (step 3 requires decisions.md)
+    // Validate prerequisites (step 3 requires decisions.json)
     if step_id == 3 {
         validate_decisions_exist_inner(skill_name, workspace_path, &skills_path)?;
     }
@@ -1729,6 +1744,7 @@ async fn run_workflow_step_inner(
     step_id: u32,
     workspace_path: &str,
     settings: &WorkflowSettings,
+    workflow_session_id: Option<String>,
 ) -> Result<String, String> {
     let step = get_step_config(step_id)?;
     let thinking_budget = if settings.extended_thinking {
@@ -1754,10 +1770,6 @@ async fn run_workflow_step_inner(
         settings.disable_model_invocation,
     );
 
-    let workspace_dir = Path::new(workspace_path).join(skill_name);
-    let skill_output_dir = Path::new(&settings.skills_path).join(skill_name);
-    write_skill_output_dir_file(&workspace_dir, &skill_output_dir);
-
     let prompt = build_prompt(
         skill_name,
         workspace_path,
@@ -1767,25 +1779,23 @@ async fn run_workflow_step_inner(
         settings.max_dimensions,
     );
     log::debug!(
-        "[run_workflow_step] prompt for step {}: {}",
+        "[run_workflow_step] prompt for step={} step_id={}: {}",
+        workflow_step_log_name(step_id as i32),
         step_id,
         prompt
     );
 
     let agent_name = derive_agent_name(workspace_path, &settings.purpose, &step.prompt_template);
-    let agent_id = make_agent_id(skill_name, &format!("step{}", step_id));
+    let agent_id = make_agent_id(skill_name, &workflow_step_runtime_label(&step));
     log::info!(
-        "run_workflow_step: skill={} step={} model={}",
+        "run_workflow_step: skill={} step={} step_id={} model={}",
         skill_name,
+        workflow_step_log_name(step_id as i32),
         step_id,
         settings.preferred_model
     );
 
-    let required_plugins = if agent_name == "research-orchestrator" {
-        Some(vec!["skill-content-researcher".to_string()])
-    } else {
-        None
-    };
+    let required_plugins = required_plugins_for_workflow_step(step_id);
 
     let config = SidecarConfig {
         prompt,
@@ -1814,7 +1824,11 @@ async fn run_workflow_step_inner(
         agent_name: Some(agent_name),
         required_plugins,
         conversation_history: None,
-        skill_name: None,
+        skill_name: Some(skill_name.to_string()),
+        step_id: Some(step_id as i32),
+        workflow_session_id,
+        usage_session_id: None,
+        run_source: Some("workflow".to_string()),
     };
 
     sidecar::spawn_sidecar(
@@ -1839,8 +1853,15 @@ pub async fn run_workflow_step(
     skill_name: String,
     step_id: u32,
     workspace_path: String,
+    workflow_session_id: Option<String>,
 ) -> Result<String, String> {
-    log::info!("[run_workflow_step] skill={} step={}", skill_name, step_id);
+    log::info!(
+        "[run_workflow_step] skill={} step={} step_id={} session={}",
+        skill_name,
+        workflow_step_log_name(step_id as i32),
+        step_id,
+        if workflow_session_id.is_some() { "[present]" } else { "[none]" }
+    );
     crate::commands::workflow_lifecycle::validate_run_request(
         &skill_name,
         step_id,
@@ -1850,17 +1871,10 @@ pub async fn run_workflow_step(
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
     // Deploy purpose-resolved bundled skills.
-    // Research is plugin-owned, so only validate and skill-building are deployed from bundled skills.
+    // Research is plugin-owned; validate-skill is agent-only (no SKILL.md to deploy).
     {
         let bundled_skills_dir = resolve_bundled_skills_dir(&app);
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        deploy_skill_for_workflow(
-            &conn,
-            &workspace_path,
-            &bundled_skills_dir,
-            "validate-skill",
-            "validate",
-        );
         deploy_skill_for_workflow(
             &conn,
             &workspace_path,
@@ -1879,18 +1893,16 @@ pub async fn run_workflow_step(
     );
 
     // Gate: reject disabled steps when guard conditions are active
-    let context_dir = Path::new(&workspace_path)
-        .join(&skill_name)
-        .join("context");
+    let context_dir = Path::new(&workspace_path).join(&skill_name).join("context");
 
     if step_id >= 1 {
         let clarifications_path = context_dir.join("clarifications.json");
         if parse_scope_recommendation(&clarifications_path) {
             return Err(format!(
-                "Step {} is disabled: the research phase determined the skill scope is too broad. \
+                "{} is disabled: the research phase determined the skill scope is too broad. \
                  Review the scope recommendations in clarifications.json, then reset to step 0 \
                  and start with a narrower focus.",
-                step_id
+                workflow_step_log_name(step_id as i32)
             ));
         }
     }
@@ -1899,10 +1911,10 @@ pub async fn run_workflow_step(
         let decisions_path = context_dir.join("decisions.json");
         if parse_decisions_guard(&decisions_path) {
             return Err(format!(
-                "Step {} is disabled: the reasoning agent found unresolvable \
+                "{} is disabled: the reasoning agent found unresolvable \
                  contradictions in decisions.json. Reset to step 2 and revise \
                  your answers before retrying.",
-                step_id
+                workflow_step_log_name(step_id as i32)
             ));
         }
     }
@@ -1912,7 +1924,8 @@ pub async fn run_workflow_step(
     // Context lives in workspace_path.
     if step_id == 0 && context_dir.is_dir() {
         log::debug!(
-            "[run_workflow_step] step 0: wiping context dir {}",
+            "[run_workflow_step] step={} step_id=0 wiping context dir {}",
+            workflow_step_log_name(0),
             context_dir.display()
         );
         let _ = std::fs::remove_dir_all(&context_dir);
@@ -1926,12 +1939,14 @@ pub async fn run_workflow_step(
         step_id,
         &workspace_path,
         &settings,
+        workflow_session_id,
     )
     .await
     .map_err(|e| {
         log::error!(
-            "[run_workflow_step] skill={} step={} failed: {}",
+            "[run_workflow_step] skill={} step={} step_id={} failed: {}",
             skill_name,
+            workflow_step_log_name(step_id as i32),
             step_id,
             e
         );
@@ -2100,8 +2115,9 @@ pub fn save_workflow_state(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!(
-        "[save_workflow_state] skill={} step={} status={}",
+        "[save_workflow_state] skill={} step={} step_id={} status={}",
         skill_name,
+        workflow_step_log_name(current_step),
         current_step,
         status
     );
@@ -2138,15 +2154,20 @@ pub fn save_workflow_state(
         &purpose,
     )
     .map_err(|e| {
-        log::error!("[save_workflow_state] save_workflow_run failed skill={}: {}", skill_name, e);
+        log::error!(
+            "[save_workflow_state] save_workflow_run failed skill={}: {}",
+            skill_name,
+            e
+        );
         e
     })?;
     for step in &step_statuses {
         crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status).map_err(
             |e| {
                 log::error!(
-                    "[save_workflow_state] save_workflow_step failed skill={} step={}: {}",
+                    "[save_workflow_state] save_workflow_step failed skill={} step={} step_id={}: {}",
                     skill_name,
+                    workflow_step_log_name(step.step_id),
                     step.step_id,
                     e
                 );
@@ -2175,11 +2196,11 @@ pub fn save_workflow_state(
                     .map(|s| s.step_id)
                     .collect();
                 let msg = format!(
-                    "{}: step {} completed",
+                    "{}: {} completed",
                     skill_name,
                     completed_steps
                         .iter()
-                        .map(|id| id.to_string())
+                        .map(|id| workflow_step_log_name(*id))
                         .collect::<Vec<_>>()
                         .join(", ")
                 );
@@ -2202,9 +2223,9 @@ pub fn save_workflow_state(
 /// Output files produced by each step, relative to the skill directory.
 pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
-        0 => vec!["context/clarifications.json"], // research-plan.md removed; plan embedded in clarifications metadata.research_plan
+        0 => vec!["context/clarifications.json"],
         1 => vec![], // Step 1 edits clarifications.json in-place (no unique artifact)
-        2 => vec!["context/decisions.json"], // was decisions.md; now structured JSON
+        2 => vec!["context/decisions.json"],
         3 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
         _ => vec![],
     }
@@ -2221,7 +2242,12 @@ pub fn verify_step_output(
     step_id: u32,
     db: tauri::State<'_, Db>,
 ) -> Result<bool, String> {
-    log::info!("[verify_step_output] skill={} step={}", skill_name, step_id);
+    log::info!(
+        "[verify_step_output] skill={} step={} step_id={}",
+        skill_name,
+        workflow_step_log_name(step_id as i32),
+        step_id
+    );
     let files = get_step_output_files(step_id);
     // Steps with no expected output files are always valid
     if files.is_empty() {
@@ -2287,16 +2313,25 @@ pub fn save_clarifications_content(
     workspace_path: String,
     content: String,
 ) -> Result<(), String> {
-    let parsed: serde_json::Value =
-        serde_json::from_str(&content).map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
+    let parsed: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
     validate_clarifications_json(&parsed)
         .map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
     let path = workspace_context_dir(&workspace_path, &skill_name).join("clarifications.json");
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create context directory '{}': {}", parent.display(), e))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create context directory '{}': {}",
+                parent.display(),
+                e
+            )
+        })?;
     }
-    std::fs::write(&path, serde_json::to_string_pretty(&parsed).unwrap_or(content)).map_err(|e| {
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&parsed).unwrap_or(content),
+    )
+    .map_err(|e| {
         format!(
             "Failed to write clarifications to '{}': {}",
             path.display(),
@@ -2323,8 +2358,13 @@ pub fn save_decisions_content(
     }
     let path = workspace_context_dir(&workspace_path, &skill_name).join("decisions.json");
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create context directory '{}': {}", parent.display(), e))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create context directory '{}': {}",
+                parent.display(),
+                e
+            )
+        })?;
     }
     std::fs::write(&path, content)
         .map_err(|e| format!("Failed to write decisions to '{}': {}", path.display(), e))
@@ -2378,7 +2418,9 @@ pub async fn run_answer_evaluator(
             log::error!("run_answer_evaluator: workspace_path not configured");
             "Workspace path not configured".to_string()
         })?;
-        let sp = settings.skills_path.unwrap_or_else(|| workspace_path.clone());
+        let sp = settings
+            .skills_path
+            .unwrap_or_else(|| workspace_path.clone());
         let run_row = crate::db::get_workflow_run(&conn, &skill_name)
             .ok()
             .flatten();
@@ -2413,20 +2455,20 @@ pub async fn run_answer_evaluator(
     );
 
     let workspace_dir = Path::new(&workspace_path).join(&skill_name);
-    let skill_output_dir = Path::new(&skills_path).join(&skill_name);
-    write_skill_output_dir_file(&workspace_dir, &skill_output_dir);
-
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let skill_output_str = Path::new(&skills_path)
+        .join(&skill_name)
+        .to_string_lossy()
+        .replace('\\', "/");
 
-    // SDK calling protocol: only skill name and workspace_dir; agent reads user-context and .skill_output_dir first.
     let prompt = format!(
         "The skill name is: {}. The workspace directory is: {}. \
-         Read user-context.md and .skill_output_dir from the workspace directory first. \
+         The skill output directory (SKILL.md and references/) is: {}. \
+         Read user-context.md from the workspace directory. \
          Derive context_dir as workspace_dir/context. \
          All directories already exist — do not create any directories. \
          Use user-context.md to evaluate answers in the user's specific domain.",
-        skill_name,
-        workspace_str,
+        skill_name, workspace_str, skill_output_str,
     );
 
     log::debug!("run_answer_evaluator: prompt={}", prompt);
@@ -2457,6 +2499,10 @@ pub async fn run_answer_evaluator(
         required_plugins: None,
         conversation_history: None,
         skill_name: None,
+        step_id: None,
+        workflow_session_id: None,
+        usage_session_id: None,
+        run_source: None,
     };
 
     sidecar::spawn_sidecar(
@@ -2472,56 +2518,6 @@ pub async fn run_answer_evaluator(
     Ok(agent_id)
 }
 
-/// Auto-fill empty top-level question answers in clarifications.json.
-/// For each question with no answer_choice and no answer_text, picks the
-/// first non-other choice. Returns the number of fields auto-filled.
-#[tauri::command]
-pub fn autofill_clarifications(
-    skill_name: String,
-    db: tauri::State<'_, Db>,
-) -> Result<u32, String> {
-    log::info!("autofill_clarifications: skill={}", skill_name);
-
-    let workspace_path =
-        read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
-
-    let clarifications_path = Path::new(&workspace_path)
-        .join(&skill_name)
-        .join("context")
-        .join("clarifications.json");
-
-    let content = std::fs::read_to_string(&clarifications_path).map_err(|e| {
-        log::error!(
-            "autofill_clarifications: failed to read {}: {}",
-            clarifications_path.display(),
-            e
-        );
-        format!("Failed to read clarifications.json: {}", e)
-    })?;
-
-    let (updated, count) = autofill_answers(&content);
-
-    if count > 0 {
-        std::fs::write(&clarifications_path, &updated).map_err(|e| {
-            log::error!(
-                "autofill_clarifications: failed to write {}: {}",
-                clarifications_path.display(),
-                e
-            );
-            format!("Failed to write clarifications.json: {}", e)
-        })?;
-        log::info!(
-            "autofill_clarifications: auto-filled {} answers in {}",
-            count,
-            clarifications_path.display()
-        );
-    } else {
-        log::info!("autofill_clarifications: no empty answers found");
-    }
-
-    Ok(count)
-}
-
 /// Log the user's gate decision so it appears in the backend log stream.
 #[tauri::command]
 pub fn log_gate_decision(skill_name: String, verdict: String, decision: String) {
@@ -2533,155 +2529,6 @@ pub fn log_gate_decision(skill_name: String, verdict: String, decision: String) 
     );
 }
 
-/// Auto-fill empty refinement answers in clarifications.json.
-/// Top-level Q-level answers are left untouched. Returns the number of fields auto-filled.
-#[tauri::command]
-pub fn autofill_refinements(skill_name: String, db: tauri::State<'_, Db>) -> Result<u32, String> {
-    log::info!("autofill_refinements: skill={}", skill_name);
-
-    let workspace_path =
-        read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
-
-    let clarifications_path = Path::new(&workspace_path)
-        .join(&skill_name)
-        .join("context")
-        .join("clarifications.json");
-
-    let content = std::fs::read_to_string(&clarifications_path).map_err(|e| {
-        log::error!(
-            "autofill_refinements: failed to read {}: {}",
-            clarifications_path.display(),
-            e
-        );
-        format!("Failed to read clarifications.json: {}", e)
-    })?;
-
-    let (updated, count) = autofill_refinement_answers(&content);
-
-    if count > 0 {
-        std::fs::write(&clarifications_path, &updated).map_err(|e| {
-            log::error!(
-                "autofill_refinements: failed to write {}: {}",
-                clarifications_path.display(),
-                e
-            );
-            format!("Failed to write clarifications.json: {}", e)
-        })?;
-        log::info!(
-            "autofill_refinements: auto-filled {} refinement answers in {}",
-            count,
-            clarifications_path.display()
-        );
-    } else {
-        log::info!("autofill_refinements: no empty refinement answers found");
-    }
-
-    Ok(count)
-}
-
-/// Parse clarifications.json and auto-fill empty refinement answers.
-/// For each refinement where answer_choice is null AND answer_text is null/empty,
-/// sets answer_choice to the first non-other choice's id and answer_text to its text.
-/// Top-level question answers are left untouched. Returns (updated_json_string, count_filled).
-fn autofill_refinement_answers(content: &str) -> (String, u32) {
-    let mut value: serde_json::Value = match serde_json::from_str(content) {
-        Ok(v) => v,
-        Err(_) => return (content.to_string(), 0),
-    };
-    let mut count: u32 = 0;
-
-    if let Some(sections) = value.get_mut("sections").and_then(|s| s.as_array_mut()) {
-        for section in sections.iter_mut() {
-            if let Some(questions) = section.get_mut("questions").and_then(|q| q.as_array_mut()) {
-                for question in questions.iter_mut() {
-                    if let Some(refinements) = question
-                        .get_mut("refinements")
-                        .and_then(|r| r.as_array_mut())
-                    {
-                        for refinement in refinements.iter_mut() {
-                            let answer_choice_empty =
-                                refinement.get("answer_choice").is_none_or(|v| v.is_null());
-                            let answer_text_empty = refinement.get("answer_text").is_none_or(|v| {
-                                v.is_null() || v.as_str().is_some_and(|s| s.is_empty())
-                            });
-
-                            if answer_choice_empty && answer_text_empty {
-                                if let Some(choices) =
-                                    refinement.get("choices").and_then(|c| c.as_array())
-                                {
-                                    if let Some(first_non_other) = choices.iter().find(|c| {
-                                        c.get("is_other").and_then(|v| v.as_bool()) != Some(true)
-                                    }) {
-                                        if let (Some(id), Some(text)) = (
-                                            first_non_other.get("id").cloned(),
-                                            first_non_other.get("text").cloned(),
-                                        ) {
-                                            refinement["answer_choice"] = id;
-                                            refinement["answer_text"] = text;
-                                            count += 1;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    let updated = serde_json::to_string_pretty(&value).unwrap_or_else(|_| content.to_string());
-    (updated, count)
-}
-
-/// Parse clarifications.json and auto-fill empty top-level question answers.
-/// For each question where answer_choice is null AND answer_text is null/empty,
-/// sets answer_choice to the first non-other choice's id and answer_text to its text.
-/// Does NOT touch refinements (that's autofill_refinement_answers).
-/// Returns (updated_json_string, count_filled).
-fn autofill_answers(content: &str) -> (String, u32) {
-    let mut value: serde_json::Value = match serde_json::from_str(content) {
-        Ok(v) => v,
-        Err(_) => return (content.to_string(), 0),
-    };
-    let mut count: u32 = 0;
-
-    if let Some(sections) = value.get_mut("sections").and_then(|s| s.as_array_mut()) {
-        for section in sections.iter_mut() {
-            if let Some(questions) = section.get_mut("questions").and_then(|q| q.as_array_mut()) {
-                for question in questions.iter_mut() {
-                    let answer_choice_empty =
-                        question.get("answer_choice").is_none_or(|v| v.is_null());
-                    let answer_text_empty = question
-                        .get("answer_text")
-                        .is_none_or(|v| v.is_null() || v.as_str().is_some_and(|s| s.is_empty()));
-
-                    if answer_choice_empty && answer_text_empty {
-                        if let Some(choices) = question.get("choices").and_then(|c| c.as_array()) {
-                            if let Some(first_non_other) = choices
-                                .iter()
-                                .find(|c| c.get("is_other").and_then(|v| v.as_bool()) != Some(true))
-                            {
-                                if let (Some(id), Some(text)) = (
-                                    first_non_other.get("id").cloned(),
-                                    first_non_other.get("text").cloned(),
-                                ) {
-                                    question["answer_choice"] = id;
-                                    question["answer_text"] = text;
-                                    count += 1;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    let updated = serde_json::to_string_pretty(&value).unwrap_or_else(|_| content.to_string());
-    (updated, count)
-}
-
 #[tauri::command]
 pub fn reset_workflow_step(
     workspace_path: String,
@@ -2690,8 +2537,9 @@ pub fn reset_workflow_step(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!(
-        "[reset_workflow_step] CALLED skill={} from_step={} workspace={}",
+        "[reset_workflow_step] CALLED skill={} from_step={} from_step_id={} workspace={}",
         skill_name,
+        workflow_step_log_name(from_step_id as i32),
         from_step_id,
         workspace_path
     );
@@ -2701,8 +2549,9 @@ pub fn reset_workflow_step(
 
     // Auto-commit: checkpoint before artifacts are deleted
     let msg = format!(
-        "{}: checkpoint before reset to step {}",
-        skill_name, from_step_id
+        "{}: checkpoint before reset to {}",
+        skill_name,
+        workflow_step_log_name(from_step_id as i32)
     );
     if let Err(e) = crate::git::commit_all(std::path::Path::new(&skills_path), &msg) {
         log::warn!("Git auto-commit failed ({}): {}", msg, e);
@@ -2744,8 +2593,9 @@ pub fn navigate_back_to_step(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!(
-        "[navigate_back_to_step] CALLED skill={} target_step={} workspace={}",
+        "[navigate_back_to_step] CALLED skill={} target_step={} target_step_id={} workspace={}",
         skill_name,
+        workflow_step_log_name(target_step_id as i32),
         target_step_id,
         workspace_path
     );
@@ -2755,8 +2605,9 @@ pub fn navigate_back_to_step(
 
     // Auto-commit: checkpoint before artifacts are deleted
     let msg = format!(
-        "{}: checkpoint before navigate back to step {}",
-        skill_name, target_step_id
+        "{}: checkpoint before navigate back to {}",
+        skill_name,
+        workflow_step_log_name(target_step_id as i32)
     );
     if let Err(e) = crate::git::commit_all(std::path::Path::new(&skills_path), &msg) {
         log::warn!("Git auto-commit failed ({}): {}", msg, e);
@@ -2790,8 +2641,9 @@ pub fn navigate_back_to_step(
     }
 
     log::info!(
-        "[navigate_back_to_step] done skill={} current_step={}",
+        "[navigate_back_to_step] done skill={} current_step={} current_step_id={}",
         skill_name,
+        workflow_step_log_name(target_step_id as i32),
         target_step_id
     );
     Ok(())
@@ -2908,8 +2760,9 @@ pub fn preview_step_reset(
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<crate::types::StepResetPreview>, String> {
     log::info!(
-        "[preview_step_reset] skill={} from_step={}",
+        "[preview_step_reset] skill={} from_step={} from_step_id={}",
         skill_name,
+        workflow_step_log_name(from_step_id as i32),
         from_step_id
     );
     let skills_path = read_skills_path(&db)
@@ -2932,7 +2785,10 @@ pub fn preview_step_reset(
             let exists = if step_id == 3 {
                 skill_output_dir.join(file).exists()
             } else {
-                Path::new(&workspace_path).join(&skill_name).join(file).exists()
+                Path::new(&workspace_path)
+                    .join(&skill_name)
+                    .join(file)
+                    .exists()
             };
             if exists {
                 existing_files.push(file.to_string());
@@ -3049,6 +2905,24 @@ mod tests {
         assert!(files.is_empty());
         let files = get_step_output_files(99);
         assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_required_plugins_for_workflow_step_matches_policy() {
+        assert_eq!(
+            required_plugins_for_workflow_step(0),
+            Some(vec!["skill-content-researcher".to_string()])
+        );
+        assert_eq!(
+            required_plugins_for_workflow_step(1),
+            Some(vec!["skill-content-researcher".to_string()])
+        );
+        assert_eq!(required_plugins_for_workflow_step(2), Some(vec![]));
+        assert_eq!(
+            required_plugins_for_workflow_step(3),
+            Some(vec!["skill-creator".to_string()])
+        );
+        assert_eq!(required_plugins_for_workflow_step(99), None);
     }
 
     #[test]
@@ -3285,8 +3159,9 @@ mod tests {
     fn test_materialize_step0_rejects_non_object_payload() {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
-        let err = super::materialize_workflow_step_output_value(&skill_root, 0, &serde_json::json!(null))
-            .unwrap_err();
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 0, &serde_json::json!(null))
+                .unwrap_err();
         assert!(err.contains("structured_output must be a JSON object"));
     }
 
@@ -3318,7 +3193,8 @@ mod tests {
         let err_missing_dimensions =
             super::materialize_workflow_step_output_value(&skill_root, 0, &missing_dimensions)
                 .unwrap_err();
-        assert!(err_missing_dimensions.contains("structured_output.dimensions_selected must be an integer"));
+        assert!(err_missing_dimensions
+            .contains("structured_output.dimensions_selected must be an integer"));
 
         let non_integer_question_count = serde_json::json!({
             "status": "research_complete",
@@ -3326,10 +3202,14 @@ mod tests {
             "question_count": "one",
             "research_output": valid_clarifications_value()
         });
-        let err_non_integer_question_count =
-            super::materialize_workflow_step_output_value(&skill_root, 0, &non_integer_question_count)
-                .unwrap_err();
-        assert!(err_non_integer_question_count.contains("structured_output.question_count must be an integer"));
+        let err_non_integer_question_count = super::materialize_workflow_step_output_value(
+            &skill_root,
+            0,
+            &non_integer_question_count,
+        )
+        .unwrap_err();
+        assert!(err_non_integer_question_count
+            .contains("structured_output.question_count must be an integer"));
     }
 
     #[test]
@@ -3410,10 +3290,14 @@ mod tests {
             "section_count": 1,
             "clarifications_json": valid_clarifications_value()
         });
-        let err_missing_refinement_count =
-            super::materialize_workflow_step_output_value(&skill_root, 1, &missing_refinement_count)
-                .unwrap_err();
-        assert!(err_missing_refinement_count.contains("structured_output.refinement_count must be an integer"));
+        let err_missing_refinement_count = super::materialize_workflow_step_output_value(
+            &skill_root,
+            1,
+            &missing_refinement_count,
+        )
+        .unwrap_err();
+        assert!(err_missing_refinement_count
+            .contains("structured_output.refinement_count must be an integer"));
 
         let non_integer_section_count = serde_json::json!({
             "status": "detailed_research_complete",
@@ -3421,10 +3305,14 @@ mod tests {
             "section_count": "one",
             "clarifications_json": valid_clarifications_value()
         });
-        let err_non_integer_section_count =
-            super::materialize_workflow_step_output_value(&skill_root, 1, &non_integer_section_count)
-                .unwrap_err();
-        assert!(err_non_integer_section_count.contains("structured_output.section_count must be an integer"));
+        let err_non_integer_section_count = super::materialize_workflow_step_output_value(
+            &skill_root,
+            1,
+            &non_integer_section_count,
+        )
+        .unwrap_err();
+        assert!(err_non_integer_section_count
+            .contains("structured_output.section_count must be an integer"));
     }
 
     #[test]
@@ -3498,8 +3386,8 @@ mod tests {
             }
         });
 
-        let err = super::materialize_workflow_step_output_value(&skill_root, 1, &payload)
-            .unwrap_err();
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
         assert!(err.contains("answer_evaluator_notes must be an array when present"));
     }
 
@@ -3571,7 +3459,9 @@ mod tests {
             "decisions": []
         });
         super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
-        assert!(parse_decisions_guard(&skill_root.join("context/decisions.json")));
+        assert!(parse_decisions_guard(
+            &skill_root.join("context/decisions.json")
+        ));
     }
 
     #[test]
@@ -3584,15 +3474,18 @@ mod tests {
             "decisions": []
         });
         super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
-        assert!(!parse_decisions_guard(&skill_root.join("context/decisions.json")));
+        assert!(!parse_decisions_guard(
+            &skill_root.join("context/decisions.json")
+        ));
     }
 
     #[test]
     fn test_materialize_step2_rejects_null_payload() {
         let tmp = tempfile::tempdir().unwrap();
         let skill_root = tmp.path().join("my-skill");
-        let err = super::materialize_workflow_step_output_value(&skill_root, 2, &serde_json::json!(null))
-            .unwrap_err();
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 2, &serde_json::json!(null))
+                .unwrap_err();
         assert!(err.contains("structured_output must be a JSON object"));
     }
 
@@ -3661,12 +3554,11 @@ mod tests {
             5,
         );
         assert!(prompt.contains("my-skill"));
-        // SDK protocol: only skill name and workspace_dir; agent derives context and reads .skill_output_dir
         assert!(prompt
             .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
-        assert!(prompt.contains("Read user-context.md and .skill_output_dir"));
+        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
+        assert!(prompt.contains("Read user-context.md from the workspace directory"));
         assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
-        assert!(prompt.contains("path in .skill_output_dir"));
     }
 
     #[test]
@@ -3714,35 +3606,46 @@ mod tests {
 
     #[test]
     fn test_answer_evaluator_prompt_uses_standard_paths() {
-        // The answer-evaluator prompt follows the SDK protocol: only skill name and workspace_dir.
         let workspace_path = "/home/user/.vibedata/skill-builder";
         let skill_name = "my-skill";
+        let skills_path = "/home/user/my-skills";
         let workspace_dir = std::path::Path::new(workspace_path).join(skill_name);
         let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+        let skill_output_str = std::path::Path::new(skills_path)
+            .join(skill_name)
+            .to_string_lossy()
+            .replace('\\', "/");
 
         let prompt = format!(
             "The skill name is: {}. The workspace directory is: {}. \
-             Read user-context.md and .skill_output_dir from the workspace directory first. \
+             The skill output directory (SKILL.md and references/) is: {}. \
+             Read user-context.md from the workspace directory. \
              Derive context_dir as workspace_dir/context. \
              All directories already exist — do not create any directories.",
-            skill_name,
-            workspace_str,
+            skill_name, workspace_str, skill_output_str,
         );
 
         assert!(prompt.contains("The skill name is: my-skill"));
         assert!(prompt
             .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
-        assert!(prompt.contains("Read user-context.md and .skill_output_dir"));
+        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
+        assert!(prompt.contains("Read user-context.md from the workspace directory"));
         assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
         assert!(prompt.contains("do not create any directories"));
     }
 
     #[test]
     fn test_make_agent_id() {
-        let id = make_agent_id("test-skill", "step0");
-        assert!(id.starts_with("test-skill-step0-"));
+        let id = make_agent_id("test-skill", "research");
+        assert!(id.starts_with("test-skill-research-"));
         let parts: Vec<&str> = id.rsplitn(2, '-').collect();
         assert!(parts[0].parse::<u128>().is_ok());
+    }
+
+    #[test]
+    fn test_workflow_step_runtime_label_uses_step_name_slug() {
+        let step = get_step_config(2).expect("step config");
+        assert_eq!(workflow_step_runtime_label(&step), "confirm-decisions");
     }
 
     #[test]
@@ -3761,11 +3664,7 @@ mod tests {
 
         // Extra files that should NOT be included in the zip
         std::fs::create_dir_all(source_dir.join("context")).unwrap();
-        std::fs::write(
-            source_dir.join("context").join("decisions.json"),
-            "{}",
-        )
-        .unwrap();
+        std::fs::write(source_dir.join("context").join("decisions.json"), "{}").unwrap();
         std::fs::write(source_dir.join("workflow.md"), "# Workflow").unwrap();
 
         let output_path = source_dir.join("my-skill.skill");
@@ -3838,7 +3737,10 @@ mod tests {
             .map(|p| p.join("agent-sources").join("agents"));
         assert!(dev_path.is_some());
         let agents_dir = dev_path.unwrap();
-        assert!(agents_dir.is_dir(), "Repo root agent-sources/agents/ should exist");
+        assert!(
+            agents_dir.is_dir(),
+            "Repo root agent-sources/agents/ should exist"
+        );
         // Verify flat agent files exist (no subdirectories)
         assert!(
             agents_dir.join("research-orchestrator.md").exists(),
@@ -3864,7 +3766,11 @@ mod tests {
 
         // Create output files for steps 0, 1, 2, 3
         // Steps 0 and 1 both use clarifications.json (unified artifact)
-        std::fs::write(workspace_skill_dir.join("context/clarifications.json"), "step0+step1").unwrap();
+        std::fs::write(
+            workspace_skill_dir.join("context/clarifications.json"),
+            "step0+step1",
+        )
+        .unwrap();
         std::fs::write(workspace_skill_dir.join("context/decisions.json"), "{}").unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "step3").unwrap();
         std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
@@ -3873,7 +3779,9 @@ mod tests {
         crate::cleanup::delete_step_output_files(workspace, "my-skill", 2, skills_path);
 
         // Steps 0, 1 output (unified clarifications.json) should still exist
-        assert!(workspace_skill_dir.join("context/clarifications.json").exists());
+        assert!(workspace_skill_dir
+            .join("context/clarifications.json")
+            .exists());
 
         // Steps 2+ outputs should be deleted
         assert!(!workspace_skill_dir.join("context/decisions.json").exists());
@@ -4168,11 +4076,7 @@ mod tests {
         std::fs::write(source_dir.join("references").join("ref.md"), "# Ref").unwrap();
         // These context files should be EXCLUDED from the zip
         std::fs::write(source_dir.join("context").join("clarifications.json"), "{}").unwrap();
-        std::fs::write(
-            source_dir.join("context").join("decisions.json"),
-            "{}",
-        )
-        .unwrap();
+        std::fs::write(source_dir.join("context").join("decisions.json"), "{}").unwrap();
 
         let output_path = source_dir.join("my-skill.skill");
         let result = create_skill_zip(&source_dir, &output_path).unwrap();
@@ -4213,7 +4117,10 @@ mod tests {
         let workspace = tmp.path().join("workspace");
         std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
         std::fs::write(
-            workspace.join("my-skill").join("context").join("decisions.json"),
+            workspace
+                .join("my-skill")
+                .join("context")
+                .join("decisions.json"),
             r#"{"metadata":{"decision_count":1}}"#,
         )
         .unwrap();
@@ -4230,7 +4137,10 @@ mod tests {
         std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
         // Write an empty decisions file
         std::fs::write(
-            workspace.join("my-skill").join("context").join("decisions.json"),
+            workspace
+                .join("my-skill")
+                .join("context")
+                .join("decisions.json"),
             "   \n\n  ",
         )
         .unwrap();
@@ -4779,11 +4689,7 @@ mod tests {
         // decision_count: 0 in decisions.json means no decisions were produced — block step 3
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("decisions.json");
-        std::fs::write(
-            &path,
-            r#"{"metadata":{"decision_count":0,"round":1}}"#,
-        )
-        .unwrap();
+        std::fs::write(&path, r#"{"metadata":{"decision_count":0,"round":1}}"#).unwrap();
         assert!(parse_decisions_guard(&path));
     }
 
@@ -4833,51 +4739,6 @@ mod tests {
         )
         .unwrap();
         assert!(!parse_decisions_guard(&path));
-    }
-
-    // --- autofill_answers tests (JSON) ---
-
-    /// Helper: build a minimal clarifications JSON with given questions.
-    fn make_clarifications_json(questions: Vec<serde_json::Value>) -> String {
-        serde_json::json!({
-            "metadata": {},
-            "sections": [{
-                "id": "s1",
-                "title": "Section 1",
-                "questions": questions
-            }]
-        })
-        .to_string()
-    }
-
-    /// Helper: build a question JSON object.
-    fn make_question(
-        id: &str,
-        choices: Vec<serde_json::Value>,
-        answer_choice: Option<&str>,
-        answer_text: Option<&str>,
-        refinements: Option<Vec<serde_json::Value>>,
-    ) -> serde_json::Value {
-        let mut q = serde_json::json!({
-            "id": id,
-            "text": format!("Question {}", id),
-            "choices": choices,
-            "answer_choice": answer_choice,
-            "answer_text": answer_text,
-        });
-        if let Some(refs) = refinements {
-            q["refinements"] = serde_json::json!(refs);
-        }
-        q
-    }
-
-    /// Helper: build a choice JSON object.
-    fn make_choice(id: &str, text: &str, is_other: bool) -> serde_json::Value {
-        serde_json::json!({
-            "id": id,
-            "text": text,
-            "is_other": is_other
-        })
     }
 
     #[test]
@@ -4931,285 +4792,10 @@ mod tests {
             "notes": []
         });
 
-        let err = save_clarifications_content(
-            "my-skill".to_string(),
-            workspace_str,
-            invalid.to_string(),
-        )
-        .unwrap_err();
+        let err =
+            save_clarifications_content("my-skill".to_string(), workspace_str, invalid.to_string())
+                .unwrap_err();
         assert!(err.contains("priority_questions must be an array"));
-    }
-
-    #[test]
-    fn test_autofill_copies_first_non_other_choice_to_empty_answer() {
-        let input = make_clarifications_json(vec![make_question(
-            "q1",
-            vec![
-                make_choice("c1", "Use X", false),
-                make_choice("c2", "Other", true),
-            ],
-            None,
-            None,
-            None,
-        )]);
-        let (out, count) = super::autofill_answers(&input);
-        assert_eq!(count, 1);
-        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let q = &v["sections"][0]["questions"][0];
-        assert_eq!(q["answer_choice"], "c1");
-        assert_eq!(q["answer_text"], "Use X");
-    }
-
-    #[test]
-    fn test_autofill_skips_already_answered() {
-        let input = make_clarifications_json(vec![make_question(
-            "q1",
-            vec![make_choice("c1", "Use X", false)],
-            Some("c1"),
-            Some("Use X"),
-            None,
-        )]);
-        let (_, count) = super::autofill_answers(&input);
-        assert_eq!(count, 0);
-    }
-
-    #[test]
-    fn test_autofill_handles_multiple_questions() {
-        let choices = vec![make_choice("c1", "Rec", false)];
-        let input = make_clarifications_json(vec![
-            make_question("q1", choices.clone(), None, None, None),
-            make_question("q2", choices.clone(), Some("c1"), Some("already"), None),
-            make_question("q3", choices.clone(), None, None, None),
-        ]);
-        let (out, count) = super::autofill_answers(&input);
-        assert_eq!(count, 2);
-        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        assert_eq!(v["sections"][0]["questions"][0]["answer_choice"], "c1");
-        assert_eq!(v["sections"][0]["questions"][1]["answer_text"], "already");
-        assert_eq!(v["sections"][0]["questions"][2]["answer_choice"], "c1");
-    }
-
-    #[test]
-    fn test_autofill_skips_other_only_choices() {
-        let input = make_clarifications_json(vec![make_question(
-            "q1",
-            vec![make_choice("c1", "Other option", true)],
-            None,
-            None,
-            None,
-        )]);
-        let (_, count) = super::autofill_answers(&input);
-        assert_eq!(
-            count, 0,
-            "Should not fill when only 'other' choices available"
-        );
-    }
-
-    #[test]
-    fn test_autofill_picks_first_non_other_choice() {
-        let input = make_clarifications_json(vec![make_question(
-            "q1",
-            vec![
-                make_choice("c1", "Other", true),
-                make_choice("c2", "Second Choice", false),
-                make_choice("c3", "Third Choice", false),
-            ],
-            None,
-            None,
-            None,
-        )]);
-        let (out, count) = super::autofill_answers(&input);
-        assert_eq!(count, 1);
-        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        assert_eq!(v["sections"][0]["questions"][0]["answer_choice"], "c2");
-        assert_eq!(
-            v["sections"][0]["questions"][0]["answer_text"],
-            "Second Choice"
-        );
-    }
-
-    #[test]
-    fn test_autofill_does_not_touch_refinements() {
-        let input = make_clarifications_json(vec![make_question(
-            "q1",
-            vec![make_choice("c1", "Use X", false)],
-            Some("c1"),
-            Some("Use X"),
-            Some(vec![make_question(
-                "r1",
-                vec![make_choice("rc1", "Refine Y", false)],
-                None,
-                None,
-                None,
-            )]),
-        )]);
-        let (out, count) = super::autofill_answers(&input);
-        assert_eq!(count, 0, "autofill_answers should not touch refinements");
-        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        assert!(v["sections"][0]["questions"][0]["refinements"][0]["answer_choice"].is_null());
-    }
-
-    #[test]
-    fn test_autofill_invalid_json_returns_unchanged() {
-        let input = "not valid json";
-        let (out, count) = super::autofill_answers(input);
-        assert_eq!(count, 0);
-        assert_eq!(out, input);
-    }
-
-    #[test]
-    fn test_autofill_empty_answer_text_treated_as_empty() {
-        let input = make_clarifications_json(vec![make_question(
-            "q1",
-            vec![make_choice("c1", "Use X", false)],
-            None,
-            Some(""),
-            None,
-        )]);
-        let (out, count) = super::autofill_answers(&input);
-        assert_eq!(count, 1);
-        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        assert_eq!(v["sections"][0]["questions"][0]["answer_choice"], "c1");
-    }
-
-    // --- autofill_refinement_answers tests (JSON) ---
-
-    #[test]
-    fn test_autofill_refinement_fills_empty_refinement_answer() {
-        let input = make_clarifications_json(vec![make_question(
-            "q1",
-            vec![make_choice("c1", "Q answer", false)],
-            Some("c1"),
-            Some("Q answer"),
-            Some(vec![make_question(
-                "r1",
-                vec![make_choice("rc1", "Refine Y", false)],
-                None,
-                None,
-                None,
-            )]),
-        )]);
-        let (out, count) = super::autofill_refinement_answers(&input);
-        assert_eq!(count, 1);
-        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let r = &v["sections"][0]["questions"][0]["refinements"][0];
-        assert_eq!(r["answer_choice"], "rc1");
-        assert_eq!(r["answer_text"], "Refine Y");
-        // Q-level answer should be unchanged
-        assert_eq!(v["sections"][0]["questions"][0]["answer_choice"], "c1");
-    }
-
-    #[test]
-    fn test_autofill_refinement_skips_answered() {
-        let input = make_clarifications_json(vec![make_question(
-            "q1",
-            vec![make_choice("c1", "Q answer", false)],
-            Some("c1"),
-            Some("Q answer"),
-            Some(vec![make_question(
-                "r1",
-                vec![make_choice("rc1", "Refine Y", false)],
-                Some("rc1"),
-                Some("Refine Y"),
-                None,
-            )]),
-        )]);
-        let (_, count) = super::autofill_refinement_answers(&input);
-        assert_eq!(count, 0);
-    }
-
-    #[test]
-    fn test_autofill_refinement_handles_multiple() {
-        let input = make_clarifications_json(vec![make_question(
-            "q1",
-            vec![make_choice("c1", "Q1 answer", false)],
-            Some("c1"),
-            Some("Q1 answer"),
-            Some(vec![
-                make_question(
-                    "r1",
-                    vec![make_choice("rc1", "R1 rec", false)],
-                    None,
-                    None,
-                    None,
-                ),
-                make_question(
-                    "r2",
-                    vec![make_choice("rc2", "R2 rec", false)],
-                    Some("rc2"),
-                    Some("Already"),
-                    None,
-                ),
-            ]),
-        )]);
-        let (out, count) = super::autofill_refinement_answers(&input);
-        assert_eq!(count, 1, "Only r1 should be filled");
-        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        assert_eq!(
-            v["sections"][0]["questions"][0]["refinements"][0]["answer_choice"],
-            "rc1"
-        );
-        assert_eq!(
-            v["sections"][0]["questions"][0]["refinements"][1]["answer_text"],
-            "Already"
-        );
-    }
-
-    #[test]
-    fn test_autofill_refinement_skips_other_only() {
-        let input = make_clarifications_json(vec![make_question(
-            "q1",
-            vec![make_choice("c1", "Q answer", false)],
-            Some("c1"),
-            Some("Q answer"),
-            Some(vec![make_question(
-                "r1",
-                vec![make_choice("rc1", "Other option", true)],
-                None,
-                None,
-                None,
-            )]),
-        )]);
-        let (_, count) = super::autofill_refinement_answers(&input);
-        assert_eq!(
-            count, 0,
-            "Should not fill when only 'other' choices available"
-        );
-    }
-
-    #[test]
-    fn test_autofill_refinement_does_not_touch_q_level() {
-        let input = make_clarifications_json(vec![make_question(
-            "q1",
-            vec![make_choice("c1", "Q rec", false)],
-            None,
-            None,
-            Some(vec![make_question(
-                "r1",
-                vec![make_choice("rc1", "R rec", false)],
-                None,
-                None,
-                None,
-            )]),
-        )]);
-        let (out, count) = super::autofill_refinement_answers(&input);
-        assert_eq!(count, 1);
-        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        // Q-level should still be null (untouched by refinement autofill)
-        assert!(v["sections"][0]["questions"][0]["answer_choice"].is_null());
-        // R-level should be filled
-        assert_eq!(
-            v["sections"][0]["questions"][0]["refinements"][0]["answer_choice"],
-            "rc1"
-        );
-    }
-
-    #[test]
-    fn test_autofill_refinement_invalid_json_returns_unchanged() {
-        let input = "not valid json";
-        let (out, count) = super::autofill_refinement_answers(input);
-        assert_eq!(count, 0);
-        assert_eq!(out, input);
     }
 
     // --- generate_skills_section tests ---

@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { CheckCircle2, Clock, DollarSign, GitBranch, Shield, AlertTriangle, ChevronRight, ChevronDown } from "lucide-react";
+import { CheckCircle2, GitBranch, AlertTriangle, ChevronRight } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface DecisionFrontmatter {
+interface DecisionsMetadata {
   decision_count: number;
   conflicts_resolved: number;
   round: number;
@@ -15,10 +15,10 @@ interface DecisionFrontmatter {
 export interface Decision {
   id: string;
   title: string;
-  originalQuestion: string;
+  original_question: string;
   decision: string;
   implication: string;
-  status: "resolved" | "conflict-resolved" | "needs-review";
+  status: "resolved" | "conflict-resolved" | "needs-review" | "revised";
 }
 
 interface DecisionsSummaryCardProps {
@@ -31,137 +31,55 @@ interface DecisionsSummaryCardProps {
 
 // ─── Parsers & Serializers ────────────────────────────────────────────────────
 
-function parseFrontmatter(content: string): DecisionFrontmatter {
-  const defaults: DecisionFrontmatter = { decision_count: 0, conflicts_resolved: 0, round: 1 };
-  const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!fmMatch) return defaults;
-  const fm = fmMatch[1];
-  for (const line of fm.split("\n")) {
-    const [key, ...rest] = line.split(":");
-    const value = rest.join(":").trim();
-    switch (key.trim()) {
-      case "decision_count": defaults.decision_count = parseInt(value) || 0; break;
-      case "conflicts_resolved": defaults.conflicts_resolved = parseInt(value) || 0; break;
-      case "round": defaults.round = parseInt(value) || 1; break;
-      case "contradictory_inputs":
-        if (value === "true") defaults.contradictory_inputs = true;
-        else if (value === "revised") defaults.contradictory_inputs = "revised";
-        break;
-      case "scope_recommendation":
-        if (value === "true") defaults.scope_recommendation = true;
-        break;
-    }
-  }
-  return defaults;
-}
-
 interface DecisionsJsonFile {
   version?: string;
-  metadata?: DecisionFrontmatter;
+  metadata?: DecisionsMetadata;
   decisions?: Decision[];
 }
 
-function parseDecisionsFromMarkdown(content: string): Decision[] {
-  const decisions: Decision[] = [];
-  const body = content.replace(/^---[\s\S]*?---\n*/, "");
-  // Accept either ## or ### headings (both appear in generated decisions.md files).
-  const sections = body.split(/(?=^##+\s*D\d+\s*:)/m).filter((s) => s.trim());
-
-  for (const section of sections) {
-    const headingMatch = section.match(/^##+\s*(D\d+):\s*(.+)/);
-    if (!headingMatch) continue;
-
-    const id = headingMatch[1];
-    const title = headingMatch[2].trim();
-    const lines = section.split("\n");
-
-    let originalQuestion = "";
-    let decision = "";
-    let implication = "";
-    let status: Decision["status"] = "resolved";
-
-    for (const line of lines) {
-      const oq = line.match(/^\s*-?\s*\*\*Original question:\*\*\s*(.*)/);
-      if (oq) { originalQuestion = oq[1].trim(); continue; }
-      const dec = line.match(/^\s*-?\s*\*\*Decision:\*\*\s*(.*)/);
-      if (dec) { decision = dec[1].trim(); continue; }
-      const imp = line.match(/^\s*-?\s*\*\*Implication:\*\*\s*(.*)/);
-      if (imp) { implication = imp[1].trim(); continue; }
-      const st = line.match(/^\s*-?\s*\*\*Status:\*\*\s*(.*)/);
-      if (st) {
-        const val = st[1].trim();
-        if (val === "conflict-resolved" || val === "needs-review") status = val;
-        else status = "resolved";
-      }
-    }
-
-    decisions.push({ id, title, originalQuestion, decision, implication, status });
-  }
-  return decisions;
-}
+const DEFAULT_METADATA: DecisionsMetadata = { decision_count: 0, conflicts_resolved: 0, round: 1 };
 
 function parseDecisionsFile(content: string): {
-  metadata: DecisionFrontmatter;
+  metadata: DecisionsMetadata;
   decisions: Decision[];
-  format: "json" | "markdown";
 } {
-  const trimmed = content.trim();
-  if (trimmed.startsWith("{")) {
-    try {
-      const parsed = JSON.parse(content) as DecisionsJsonFile;
-      const decisions = Array.isArray(parsed.decisions) ? parsed.decisions : [];
-      const metadata = parsed.metadata ?? { decision_count: decisions.length, conflicts_resolved: 0, round: 1 };
-      return { metadata, decisions, format: "json" };
-    } catch {
-      // Fall through to legacy markdown parser
-    }
+  try {
+    const parsed = JSON.parse(content) as DecisionsJsonFile;
+    const decisions = Array.isArray(parsed.decisions) ? parsed.decisions : [];
+    const metadata = parsed.metadata ?? { ...DEFAULT_METADATA, decision_count: decisions.length };
+    return { metadata, decisions };
+  } catch {
+    return { metadata: { ...DEFAULT_METADATA }, decisions: [] };
   }
-  return {
-    metadata: parseFrontmatter(content),
-    decisions: parseDecisionsFromMarkdown(content),
-    format: "markdown",
-  };
 }
 
 export function parseDecisions(content: string): Decision[] {
   return parseDecisionsFile(content).decisions;
 }
 
-/** Serialize Decision[] back to decisions content.
- *  Upgrades `contradictory_inputs: true` → `contradictory_inputs: revised`
- *  to signal the user has reviewed and accepted the flagged decisions.
+/** Serialize Decision[] back to decisions JSON content.
+ *  Decisions carry their own status ("revised", "resolved", etc.) — no mapping needed.
+ *  Upgrades `contradictory_inputs: true` → `"revised"` when no decisions are "needs-review".
  */
 export function serializeDecisions(decisions: Decision[], rawContent: string): string {
   const parsed = parseDecisionsFile(rawContent);
-  if (parsed.format === "json") {
-    const metadata: DecisionFrontmatter = {
-      ...parsed.metadata,
-      decision_count: decisions.length,
-      conflicts_resolved: decisions.filter((d) => d.status === "conflict-resolved").length,
-    };
-    if (metadata.contradictory_inputs === true) {
-      metadata.contradictory_inputs = "revised";
-    }
-    const payload: DecisionsJsonFile = {
-      version: "1",
-      metadata,
-      decisions,
-    };
-    return `${JSON.stringify(payload, null, 2)}\n`;
+  const metadata: DecisionsMetadata = {
+    ...parsed.metadata,
+    decision_count: decisions.length,
+    conflicts_resolved: decisions.filter((d) => d.status === "conflict-resolved").length,
+  };
+  // Upgrade contradictory_inputs when all needs-review have been addressed
+  const hasNeedsReview = decisions.some((d) => d.status === "needs-review");
+  const hasRevised = decisions.some((d) => d.status === "revised");
+  if (metadata.contradictory_inputs === true && !hasNeedsReview && hasRevised) {
+    metadata.contradictory_inputs = "revised";
   }
-
-  const rawFrontmatter = rawContent.match(/^(---[\s\S]*?---)/)?.[1] ?? "";
-  const updatedFm = rawFrontmatter.replace(/contradictory_inputs:\s*true/, "contradictory_inputs: revised");
-  const blocks = decisions.map((d) =>
-    [
-      `### ${d.id}: ${d.title}`,
-      `- **Original question:** ${d.originalQuestion}`,
-      `- **Decision:** ${d.decision}`,
-      `- **Implication:** ${d.implication}`,
-      `- **Status:** ${d.status}`,
-    ].join("\n")
-  );
-  return `${updatedFm}\n\n${blocks.join("\n\n")}\n`;
+  const payload: DecisionsJsonFile = {
+    version: "1",
+    metadata,
+    decisions,
+  };
+  return `${JSON.stringify(payload, null, 2)}\n`;
 }
 
 function formatDuration(ms: number): string {
@@ -185,179 +103,144 @@ export function DecisionsSummaryCard({
   const fm = parsedFile.metadata;
 
   const [decisions, setDecisions] = useState<Decision[]>(() => parsedFile.decisions);
-  const [summaryExpanded, setSummaryExpanded] = useState(true);
   const [showNeedsReviewOnly, setShowNeedsReviewOnly] = useState(false);
-  // Track whether the user has made any edit this session — used to show revised banner immediately
-  const [wasEdited, setWasEdited] = useState(false);
 
   useEffect(() => {
     setDecisions(parseDecisionsFile(decisionsContent).decisions);
-    setWasEdited(false);
   }, [decisionsContent]);
 
   const resolvedCount = decisions.filter((d) => d.status === "resolved").length;
   const conflictResolvedCount = decisions.filter((d) => d.status === "conflict-resolved").length;
-  const needsReviewCount = decisions.filter((d) => d.status === "needs-review").length;
+  const revisedCount = decisions.filter((d) => d.status === "revised").length;
+  const needsReviewDecisions = decisions.filter((d) => d.status === "needs-review");
+  const needsReviewCount = needsReviewDecisions.length;
   const visibleDecisions = showNeedsReviewOnly
-    ? decisions.filter((d) => d.status === "needs-review")
+    ? needsReviewDecisions
     : decisions;
 
-  // Effective contradictory state: upgrade true → "revised" once the user edits
-  const effectiveContradictory = wasEdited && fm.contradictory_inputs === true
-    ? "revised"
+  // Effective contradictory state: upgrade true → "revised" when no needs-review left
+  const effectiveContradictory = fm.contradictory_inputs === true
+    ? (needsReviewCount > 0 ? true : (revisedCount > 0 ? "revised" : true))
     : fm.contradictory_inputs;
 
-  function handleDecisionChange(updated: Decision) {
-    const next = decisions.map((d) => (d.id === updated.id ? updated : d));
+  const headerState = needsReviewCount > 0 || effectiveContradictory === true
+    ? "review-required"
+    : effectiveContradictory === "revised"
+      ? "ready-with-edits"
+      : "ready";
+
+  const headerTone = headerState === "review-required"
+    ? {
+        icon: AlertTriangle,
+        iconClassName: "text-amber-600 dark:text-amber-400",
+        panelClassName: "border-border",
+        chipClassName: "border-border",
+      }
+    : {
+        icon: CheckCircle2,
+        iconClassName: "",
+        panelClassName: "border-border bg-muted/30",
+        chipClassName: "border-border bg-background/80 text-muted-foreground",
+      };
+
+  const headerTitle = headerState === "review-required"
+    ? `${needsReviewCount} decision${needsReviewCount === 1 ? " needs" : "s need"} your review`
+    : headerState === "ready-with-edits"
+      ? "All decisions reviewed"
+      : "Decisions confirmed";
+
+  const headerDescription = headerState === "review-required"
+    ? "Review the highlighted decisions below. Changes save when you leave each field."
+    : headerState === "ready-with-edits"
+      ? "No blocking contradictions remain. You can generate the skill with your edits."
+      : "No contradictions were found. You can proceed to Generate Skill.";
+
+  const HeaderIcon = headerTone.icon;
+
+  // Called on every keystroke — update local decisions array only, no save
+  function handleDecisionDraftChange(updated: Decision) {
+    setDecisions((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+  }
+
+  // Called on blur — flip status to "revised", serialize, notify parent
+  function handleDecisionBlur(updated: Decision) {
+    const blurred: Decision = updated.status === "needs-review"
+      ? { ...updated, status: "revised" }
+      : updated;
+    const next = decisions.map((d) => (d.id === blurred.id ? blurred : d));
     setDecisions(next);
-    setWasEdited(true);
     onDecisionsChange?.(serializeDecisions(next, decisionsContent));
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 min-w-0 overflow-hidden">
       {/* Summary Card */}
-      <div className="rounded-lg border shadow-sm overflow-hidden">
-        {/* Header — collapsible */}
-        <button
-          type="button"
-          className="flex w-full items-center gap-3 px-5 py-3 border-b bg-muted/30 text-left cursor-pointer"
-          onClick={() => setSummaryExpanded((prev) => !prev)}
-        >
-          {summaryExpanded ? (
-            <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-150" />
-          ) : (
-            <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform duration-150" />
-          )}
-          <CheckCircle2 className="size-5 shrink-0" style={{ color: "var(--color-seafoam)" }} />
-          <span className="text-sm font-semibold tracking-tight text-foreground">
-            Decisions Complete
-          </span>
-          <div className="flex-1" />
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            {duration !== undefined && (
-              <span className="flex items-center gap-1">
-                <Clock className="size-3" />
-                {formatDuration(duration)}
-              </span>
-            )}
-            {cost !== undefined && cost > 0 && (
-              <span className="flex items-center gap-1">
-                <DollarSign className="size-3" />
-                ${cost.toFixed(4)}
-              </span>
-            )}
-          </div>
-        </button>
-
-        {/* Contradictory inputs banner */}
-        {effectiveContradictory === true && (
-          <div className="flex items-center gap-2 border-b bg-destructive/10 px-5 py-2 text-xs text-destructive font-medium">
-            <AlertTriangle className="size-3.5" />
-            Contradictory inputs detected — some answers are logically incompatible. Review decisions marked "needs-review" before generating the skill.
-          </div>
-        )}
-        {effectiveContradictory === "revised" && (
-          <div
-            className="flex items-center gap-2 border-b px-5 py-2 text-xs font-medium"
-            style={{
-              background: "color-mix(in oklch, var(--color-seafoam), transparent 90%)",
-              color: "var(--color-seafoam)",
-            }}
-          >
-            <CheckCircle2 className="size-3.5" />
-            Contradictions reviewed — skill will be generated with your edits.
-          </div>
-        )}
-
-        {/* needs-review editing hint — only shown before user has edited */}
-        {allowEdit && needsReviewCount > 0 && effectiveContradictory !== "revised" && (
-          <div className="flex items-center gap-2 border-b bg-amber-50 dark:bg-amber-950/20 px-5 py-2 text-xs text-amber-600 dark:text-amber-400 font-medium">
-            <AlertTriangle className="size-3.5" />
-            {needsReviewCount} decision{needsReviewCount > 1 ? "s" : ""} need your review — edit the text below, changes save automatically.
-          </div>
-        )}
-
-        {/* Stats Grid — collapsible */}
-        {summaryExpanded && <div className="grid grid-cols-2 divide-x">
-          {/* Decisions Column */}
-          <div className="p-4">
-            <div className="flex items-center gap-1.5 mb-3">
-              <GitBranch className="size-3.5" style={{ color: "var(--color-pacific)" }} />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Decisions
-              </span>
-            </div>
-            <div className="flex items-baseline gap-1.5 mb-2">
-              <span className="text-2xl font-semibold tracking-tight" style={{ color: "var(--color-pacific)" }}>
-                {fm.decision_count}
-              </span>
-              <span className="text-xs text-muted-foreground">total</span>
-            </div>
-            <div className="flex flex-col gap-1.5 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Resolved</span>
-                <span className="font-medium text-foreground">{resolvedCount}</span>
+      <div className={`rounded-lg border shadow-sm overflow-hidden ${headerTone.panelClassName}`}>
+        <div className="p-4">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5">
+                <HeaderIcon
+                  className={`size-4 shrink-0 ${headerTone.iconClassName}`}
+                  style={headerState === "review-required" ? undefined : { color: "var(--color-seafoam)" }}
+                />
               </div>
-              {conflictResolvedCount > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Conflict-resolved</span>
-                  <span className="font-medium" style={{ color: "var(--color-ocean)" }}>{conflictResolvedCount}</span>
+
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-base font-semibold tracking-tight text-foreground">
+                    {headerTitle}
+                  </p>
+                  <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
                 </div>
+                <p className="text-sm text-muted-foreground">
+                  {headerDescription}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 self-start rounded-full border border-border bg-background/80 px-3 py-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Needs Review</span>
+                <Switch
+                  size="sm"
+                  aria-label="Needs Review"
+                  checked={showNeedsReviewOnly}
+                  onCheckedChange={setShowNeedsReviewOnly}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pl-7">
+              <StatusChip className={headerTone.chipClassName} label={`${fm.decision_count} total`} />
+              <StatusChip className={headerTone.chipClassName} label={`${resolvedCount} resolved`} />
+              {conflictResolvedCount > 0 && (
+                <StatusChip className={headerTone.chipClassName} label={`${conflictResolvedCount} conflict resolved`} />
               )}
               {needsReviewCount > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Needs review</span>
-                  <span className="font-medium text-destructive">{needsReviewCount}</span>
-                </div>
+                <StatusChip
+                  className={headerTone.chipClassName}
+                  style={headerState === "review-required"
+                    ? {
+                        borderColor: "color-mix(in oklch, currentColor, transparent 70%)",
+                        background: "color-mix(in oklch, currentColor, transparent 92%)",
+                        color: "rgb(217 119 6)",
+                      }
+                    : undefined}
+                  label={`${needsReviewCount} ${needsReviewCount === 1 ? "needs" : "need"} review`}
+                />
+              )}
+              {revisedCount > 0 && (
+                <StatusChip className={headerTone.chipClassName} label={`${revisedCount} revised`} />
+              )}
+              {duration !== undefined && (
+                <StatusChip className={headerTone.chipClassName} label={formatDuration(duration)} />
+              )}
+              {cost !== undefined && cost > 0 && (
+                <StatusChip className={headerTone.chipClassName} label={`$${cost.toFixed(4)}`} />
               )}
             </div>
           </div>
-
-          {/* Quality Column */}
-          <div className="p-4">
-            <div className="flex items-center gap-1.5 mb-3">
-              <Shield className="size-3.5" style={{ color: "var(--color-ocean)" }} />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Quality
-              </span>
-            </div>
-            <div className="flex items-baseline gap-1.5 mb-2">
-              <span className="text-2xl font-semibold tracking-tight" style={{ color: "var(--color-ocean)" }}>
-                {fm.conflicts_resolved}
-              </span>
-              <span className="text-xs text-muted-foreground">reconciled</span>
-            </div>
-            {effectiveContradictory === true ? (
-              <div className="flex items-center gap-1.5 text-xs text-destructive font-medium">
-                <AlertTriangle className="size-3" />
-                Contradictions — review required
-              </div>
-            ) : effectiveContradictory === "revised" ? (
-              <div className="flex items-center gap-1.5 text-xs font-medium" style={{ color: "var(--color-seafoam)" }}>
-                <CheckCircle2 className="size-3" />
-                Reviewed — proceeding with edits
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">No unresolvable contradictions</p>
-            )}
-          </div>
-
-        </div>}
-      </div>
-
-      {/* Decision filter */}
-      {needsReviewCount > 0 && (
-        <div className="flex items-center justify-end gap-2 px-1">
-          <span className="text-xs text-muted-foreground">Needs Review</span>
-          <Switch
-            size="sm"
-            aria-label="Needs Review"
-            checked={showNeedsReviewOnly}
-            onCheckedChange={setShowNeedsReviewOnly}
-          />
         </div>
-      )}
+      </div>
 
       {/* Decision Cards */}
       {visibleDecisions.map((d) => (
@@ -365,7 +248,8 @@ export function DecisionsSummaryCard({
           key={d.id}
           decision={d}
           allowEdit={allowEdit}
-          onChange={handleDecisionChange}
+          onChange={handleDecisionDraftChange}
+          onBlur={handleDecisionBlur}
         />
       ))}
       {showNeedsReviewOnly && visibleDecisions.length === 0 && (
@@ -374,6 +258,14 @@ export function DecisionsSummaryCard({
         </div>
       )}
     </div>
+  );
+}
+
+function StatusChip({ label, className, style }: { label: string; className?: string; style?: React.CSSProperties }) {
+  return (
+    <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${className ?? ""}`} style={style}>
+      {label}
+    </span>
   );
 }
 
@@ -395,20 +287,29 @@ const statusColors: Record<Decision["status"], { border: string; badge: string; 
     badge: "var(--destructive)",
     badgeBg: "color-mix(in oklch, var(--destructive), transparent 85%)",
   },
+  revised: {
+    border: "var(--color-pacific)",
+    badge: "var(--color-pacific)",
+    badgeBg: "color-mix(in oklch, var(--color-pacific), transparent 85%)",
+  },
 };
 
 function AutoResizeTextarea({
   value,
   onChange,
+  onBlur,
   className,
   style,
   placeholder,
+  ariaLabel,
 }: {
   value: string;
   onChange: (v: string) => void;
+  onBlur?: () => void;
   className?: string;
   style?: React.CSSProperties;
   placeholder?: string;
+  ariaLabel?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -446,8 +347,10 @@ function AutoResizeTextarea({
     <textarea
       ref={ref}
       value={value}
+      aria-label={ariaLabel}
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
+      onBlur={onBlur}
       className={className}
       style={{ resize: "none", overflow: "hidden", ...style }}
       rows={1}
@@ -459,18 +362,36 @@ function DecisionCard({
   decision,
   allowEdit,
   onChange,
+  onBlur,
 }: {
   decision: Decision;
   allowEdit?: boolean;
   onChange?: (updated: Decision) => void;
+  onBlur?: (updated: Decision) => void;
 }) {
-  const isEditable = allowEdit && decision.status === "needs-review";
+  const isEditable = allowEdit && (decision.status === "needs-review" || decision.status === "revised");
   const [expanded, setExpanded] = useState(isEditable ?? false);
+  // Auto-expand when the card becomes editable (e.g. review → update mode switch)
+  useEffect(() => { if (isEditable) setExpanded(true); }, [isEditable]);
+  // Local draft state for typing — propagated on blur
+  const [draft, setDraft] = useState(decision);
+  useEffect(() => { setDraft(decision); }, [decision]);
+
   const colors = statusColors[decision.status];
+
+  function handleDraftChange(field: "decision" | "implication", value: string) {
+    const updated = { ...draft, [field]: value };
+    setDraft(updated);
+    onChange?.(updated);
+  }
+
+  function handleBlur() {
+    onBlur?.(draft);
+  }
 
   return (
     <div
-      className="rounded-lg border shadow-sm overflow-hidden"
+      className="rounded-lg border shadow-sm overflow-hidden min-w-0"
       style={{ borderLeftWidth: "3px", borderLeftColor: colors.border }}
     >
       {/* Header — click to expand */}
@@ -489,7 +410,11 @@ function DecisionCard({
           className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium"
           style={{ background: colors.badgeBg, color: colors.badge, border: `1px solid ${colors.badge}40` }}
         >
-          {decision.status === "conflict-resolved" ? "conflict" : decision.status}
+          {decision.status === "conflict-resolved"
+            ? "conflict resolved"
+            : decision.status === "needs-review"
+              ? "needs review"
+              : decision.status}
         </span>
         <ChevronRight
           className="mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform duration-150"
@@ -498,25 +423,28 @@ function DecisionCard({
       </button>
 
       {/* Collapsed preview — show decision text */}
-      {!expanded && decision.decision && (
-        <div className="bg-muted/40 px-4 pb-2.5">
-          <span className="truncate text-xs italic" style={{ color: "var(--color-pacific)" }}>
-            {decision.decision}
+      {!expanded && draft.decision && (
+        <div className="flex items-center gap-2 bg-muted/40 px-4 pb-2.5">
+          <span
+            className="flex-1 truncate text-xs italic"
+            style={{ color: "var(--color-pacific)" }}
+          >
+            {draft.decision}
           </span>
         </div>
       )}
 
       {/* Expanded body */}
       {expanded && (
-        <div className="border-t bg-card p-4 space-y-3">
+        <div className="border-t bg-card p-4 space-y-3 min-w-0">
           {/* Original question */}
-          {decision.originalQuestion && (
+          {draft.original_question && (
             <div>
               <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 Original question
               </span>
               <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-                {decision.originalQuestion}
+                {draft.original_question}
               </p>
             </div>
           )}
@@ -528,20 +456,22 @@ function DecisionCard({
             </span>
             {isEditable ? (
               <AutoResizeTextarea
-                value={decision.decision}
-                onChange={(v) => onChange?.({ ...decision, decision: v })}
+                value={draft.decision}
+                onChange={(v) => handleDraftChange("decision", v)}
+                onBlur={handleBlur}
                 placeholder="Enter decision…"
+                ariaLabel={`Decision for ${decision.title}`}
                 className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm text-foreground leading-relaxed focus:outline-none focus:ring-1 focus:ring-offset-0"
               />
             ) : (
-              <p className="mt-0.5 text-sm text-foreground leading-relaxed">
-                {decision.decision}
+              <p className="mt-0.5 text-sm text-foreground leading-relaxed break-words">
+                {draft.decision}
               </p>
             )}
           </div>
 
           {/* Implication */}
-          {(decision.implication || isEditable) && (
+          {(draft.implication || isEditable) && (
             <div
               className="rounded-md border px-3 py-2"
               style={{
@@ -554,15 +484,17 @@ function DecisionCard({
               </span>
               {isEditable ? (
                 <AutoResizeTextarea
-                  value={decision.implication}
-                  onChange={(v) => onChange?.({ ...decision, implication: v })}
+                  value={draft.implication}
+                  onChange={(v) => handleDraftChange("implication", v)}
+                  onBlur={handleBlur}
                   placeholder="Enter implication…"
+                  ariaLabel={`Implication for ${decision.title}`}
                   className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-offset-0"
                   style={{ color: "var(--color-ocean)" }}
                 />
               ) : (
-                <p className="mt-0.5 text-xs leading-relaxed" style={{ color: "var(--color-ocean)" }}>
-                  {decision.implication}
+                <p className="mt-0.5 text-xs leading-relaxed break-words" style={{ color: "var(--color-ocean)" }}>
+                  {draft.implication}
                 </p>
               )}
             </div>

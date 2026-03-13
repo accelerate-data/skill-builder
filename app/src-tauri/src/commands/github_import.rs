@@ -967,13 +967,15 @@ pub async fn import_github_skills(
                         errors.push(format!("{}: {}", skill.skill_name, e));
                     } else {
                         if ws_skill.is_active {
-                            if let Err(e) = super::imported_skills::apply_import_purpose_conflict_policy(
-                                &conn,
-                                &workspace_path,
-                                &ws_skill.skill_id,
-                                &ws_skill.skill_name,
-                                ws_skill.purpose.as_deref(),
-                            ) {
+                            if let Err(e) =
+                                super::imported_skills::apply_import_purpose_conflict_policy(
+                                    &conn,
+                                    &workspace_path,
+                                    &ws_skill.skill_id,
+                                    &ws_skill.skill_name,
+                                    ws_skill.purpose.as_deref(),
+                                )
+                            {
                                 errors.push(format!("{}: {}", skill.skill_name, e));
                                 continue;
                             }
@@ -998,13 +1000,15 @@ pub async fn import_github_skills(
                     match crate::db::insert_workspace_skill(&conn, &ws_skill) {
                         Ok(()) => {
                             if ws_skill.is_active {
-                                if let Err(e) = super::imported_skills::apply_import_purpose_conflict_policy(
-                                    &conn,
-                                    &workspace_path,
-                                    &ws_skill.skill_id,
-                                    &ws_skill.skill_name,
-                                    ws_skill.purpose.as_deref(),
-                                ) {
+                                if let Err(e) =
+                                    super::imported_skills::apply_import_purpose_conflict_policy(
+                                        &conn,
+                                        &workspace_path,
+                                        &ws_skill.skill_id,
+                                        &ws_skill.skill_name,
+                                        ws_skill.purpose.as_deref(),
+                                    )
+                                {
                                     errors.push(format!("{}: {}", skill.skill_name, e));
                                     continue;
                                 }
@@ -1728,7 +1732,13 @@ struct InstalledMarketplaceSkill {
 
 fn load_installed_marketplace_skills(
     conn: &rusqlite::Connection,
-) -> Result<(Vec<InstalledMarketplaceSkill>, Vec<InstalledMarketplaceSkill>), String> {
+) -> Result<
+    (
+        Vec<InstalledMarketplaceSkill>,
+        Vec<InstalledMarketplaceSkill>,
+    ),
+    String,
+> {
     let mut lib_stmt = conn
         .prepare(
             "SELECT skill_name, version, marketplace_source_url
@@ -1799,7 +1809,9 @@ fn collect_updates_for_installed(
 /// Check the marketplace for skills that have a newer version than those installed.
 /// This command is DB-driven and handles all enabled registries in one pass.
 #[tauri::command]
-pub async fn check_marketplace_updates(db: tauri::State<'_, Db>) -> Result<MarketplaceUpdateResult, String> {
+pub async fn check_marketplace_updates(
+    db: tauri::State<'_, Db>,
+) -> Result<MarketplaceUpdateResult, String> {
     log::info!("[check_marketplace_updates] checking all enabled registries");
 
     let (token, enabled_sources, library_rows, workspace_rows) = {
@@ -2064,11 +2076,8 @@ mod tests {
         let by_name: HashMap<String, &AvailableSkill> =
             listed.iter().map(|s| (s.name.clone(), s)).collect();
 
-        let updates = collect_updates_for_installed(
-            &installed,
-            &by_name,
-            "https://github.com/acme/skills",
-        );
+        let updates =
+            collect_updates_for_installed(&installed, &by_name, "https://github.com/acme/skills");
         assert_eq!(updates.len(), 1);
         assert_eq!(updates[0].name, "newer");
         assert_eq!(updates[0].version, "1.1.0");
@@ -2085,11 +2094,8 @@ mod tests {
         let by_name: HashMap<String, &AvailableSkill> =
             listed.iter().map(|s| (s.name.clone(), s)).collect();
 
-        let updates = collect_updates_for_installed(
-            &installed,
-            &by_name,
-            "https://github.com/acme/skills",
-        );
+        let updates =
+            collect_updates_for_installed(&installed, &by_name, "https://github.com/acme/skills");
         assert!(updates.is_empty());
     }
 

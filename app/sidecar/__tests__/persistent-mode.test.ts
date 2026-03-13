@@ -351,9 +351,16 @@ describe("runPersistent", () => {
   });
 
   it("processes an agent_request and wraps responses with request_id", async () => {
+    // Use proper SDK message shapes that MessageProcessor can process
     const sdkMessages = [
-      { type: "agent_message", content: "thinking..." },
-      { type: "result", content: "done", usage: { input: 100, output: 50 } },
+      {
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "thinking..." }],
+          usage: { input_tokens: 100, output_tokens: 50 },
+        },
+      },
+      { type: "result", subtype: "success", usage: { input_tokens: 100, output_tokens: 50 }, total_cost_usd: 0.01 },
     ];
 
     async function* fakeConversation() {
@@ -393,17 +400,22 @@ describe("runPersistent", () => {
       return parsed.type !== "sidecar_ready" && parsed.type !== "system" && parsed.type !== "request_complete";
     });
 
-    expect(responseLinesRaw).toHaveLength(2);
+    // Now we get: display_item(output), assistant(pass-through), display_item(result), result(pass-through)
+    // Filter to just display_items for easy assertions
+    const displayItemLines = responseLinesRaw.filter((l) => JSON.parse(l).type === "display_item");
+    expect(displayItemLines.length).toBeGreaterThanOrEqual(2);
 
-    const msg0 = JSON.parse(responseLinesRaw[0]);
-    expect(msg0.request_id).toBe("req_1");
-    expect(msg0.type).toBe("agent_message");
-    expect(msg0.content).toBe("thinking...");
+    const di0 = JSON.parse(displayItemLines[0]);
+    expect(di0.request_id).toBe("req_1");
+    expect(di0.type).toBe("display_item");
+    expect(di0.item.type).toBe("output");
+    expect(di0.item.outputText).toBe("thinking...");
 
-    const msg1 = JSON.parse(responseLinesRaw[1]);
-    expect(msg1.request_id).toBe("req_1");
-    expect(msg1.type).toBe("result");
-    expect(msg1.content).toBe("done");
+    const di1 = JSON.parse(displayItemLines[1]);
+    expect(di1.request_id).toBe("req_1");
+    expect(di1.type).toBe("display_item");
+    expect(di1.item.type).toBe("result");
+    expect(di1.item.resultStatus).toBe("success");
   });
 
   it("handles SDK errors per-request without crashing", async () => {
@@ -523,10 +535,11 @@ describe("runPersistent", () => {
     });
     expect(reqAComplete).toBeDefined();
 
-    // req_b should have completed successfully
+    // req_b should have completed successfully — result is now an agent_event(run_result) or display_item
     const reqBResult = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.request_id === "req_b" && parsed.content === "result_2";
+      return parsed.request_id === "req_b"
+        && ((parsed.type === "agent_event" && parsed.event?.type === "run_result") || parsed.type === "display_item");
     });
     expect(reqBResult).toBeDefined();
 
@@ -546,7 +559,7 @@ describe("runPersistent", () => {
       callCount++;
       const current = callCount;
       async function* fakeConversation() {
-        yield { type: "result", content: `result_${current}` };
+        yield { type: "result", subtype: "success", result: `result_${current}`, usage: { input_tokens: 10, output_tokens: 5 }, total_cost_usd: 0.001 };
       }
       return fakeConversation() as ReturnType<typeof query>;
     });
@@ -586,23 +599,26 @@ describe("runPersistent", () => {
 
     capture.restore();
 
-    // Both requests should have succeeded
-    const responses = capture.lines
+    // Both requests should have succeeded — result messages are now agent_event(run_result)
+    const runSummaries = capture.lines
       .filter((l) => {
         const parsed = JSON.parse(l);
-        return parsed.request_id && parsed.type !== "system" && parsed.type !== "error" && parsed.type !== "request_complete";
+        return parsed.request_id && parsed.type === "agent_event" && parsed.event?.type === "run_result";
       })
       .map((l) => JSON.parse(l));
 
-    expect(responses).toHaveLength(2);
-    expect(responses[0].request_id).toBe("req_a");
-    expect(responses[0].content).toBe("result_1");
-    expect(responses[1].request_id).toBe("req_b");
-    expect(responses[1].content).toBe("result_2");
+    expect(runSummaries).toHaveLength(2);
+    expect(runSummaries[0].request_id).toBe("req_a");
+    expect(runSummaries[0].event).toHaveProperty("resultSubtype", "success");
+    expect(runSummaries[1].request_id).toBe("req_b");
+    expect(runSummaries[1].event).toHaveProperty("resultSubtype", "success");
     expect(exitFn).toHaveBeenCalledWith(0);
   });
 
-  it("emits error for unrecognized input lines", async () => {
+  it("drops completely unparseable lines to stderr (no stdout error, no stuck request)", async () => {
+    // Unparseable JSON cannot yield a request_id, so no stdout error is emitted
+    // (a keyless error would leave Rust's pending map stuck). The line is logged
+    // to stderr and silently skipped.
     const input = createInputStream([
       "this is not json",
       JSON.stringify({ type: "shutdown" }),
@@ -617,14 +633,40 @@ describe("runPersistent", () => {
       capture.restore();
     }
 
+    // No error line on stdout — unparseable input goes to stderr only
+    const errorLine = capture.lines.find((l) => {
+      try {
+        const parsed = JSON.parse(l);
+        return parsed.type === "error";
+      } catch {
+        return false;
+      }
+    });
+    expect(errorLine).toBeUndefined();
+  });
+
+  it("emits keyed error for valid JSON that fails schema validation", async () => {
+    // Valid JSON with a request_id but unrecognized type — gets a keyed error response
+    const input = createInputStream([
+      JSON.stringify({ type: "unknown_type", request_id: "req-bad" }),
+      JSON.stringify({ type: "shutdown" }),
+    ]);
+
+    const exitFn = vi.fn();
+    const capture = captureStdout();
+
+    try {
+      await runPersistent(input, exitFn);
+    } finally {
+      capture.restore();
+    }
+
     const errorLine = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.type === "error" && !parsed.request_id;
+      return parsed.type === "error" && parsed.request_id === "req-bad";
     });
     expect(errorLine).toBeDefined();
-
     const errorMsg = JSON.parse(errorLine!);
-    expect(errorMsg.type).toBe("error");
     expect(errorMsg.message).toContain("Unrecognized input");
   });
 
@@ -706,20 +748,27 @@ describe("runPersistent", () => {
 
     capture.restore();
 
-    // The stuck request should have completed (via abort → error → request_complete)
+    // The stuck request should have completed (via abort → shutdown summary → request_complete)
     const reqComplete = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
       return parsed.request_id === "req_stuck" && parsed.type === "request_complete";
     });
     expect(reqComplete).toBeDefined();
 
-    // Should have an error from the abort
+    // Aborted requests should retain shutdown semantics, not execution-error semantics.
     const reqError = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.request_id === "req_stuck" && parsed.type === "error";
+      return parsed.request_id === "req_stuck" && parsed.type === "display_item" && parsed.item?.type === "error";
     });
-    expect(reqError).toBeDefined();
-    expect(JSON.parse(reqError!).message).toContain("aborted");
+    expect(reqError).toBeUndefined();
+
+    const reqSummary = capture.lines.find((l) => {
+      const parsed = JSON.parse(l);
+      return parsed.request_id === "req_stuck" && parsed.type === "agent_event" && parsed.event?.type === "run_result";
+    });
+    expect(reqSummary).toBeDefined();
+    expect(JSON.parse(reqSummary!).event.status).toBe("shutdown");
+    expect(JSON.parse(reqSummary!).event.resultSubtype).toBeUndefined();
 
     expect(exitFn).toHaveBeenCalledWith(0);
   });
@@ -772,9 +821,12 @@ describe("runPersistent", () => {
     capture.restore();
 
     // The real request should have completed normally (not aborted)
+    // Result is now processed through MessageProcessor — look for agent_event(run_result) or display_item(result)
     const resultLine = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.request_id === "req_real" && parsed.content === "completed normally";
+      return parsed.request_id === "req_real"
+        && ((parsed.type === "agent_event" && parsed.event?.type === "run_result")
+          || (parsed.type === "display_item" && parsed.item?.type === "result"));
     });
     expect(resultLine).toBeDefined();
 
@@ -851,24 +903,29 @@ describe("runPersistent", () => {
       capture.restore();
     }
 
-    const streamAssistantMessages = capture.lines
+    // Mock streaming now processes through MessageProcessor, so assistant messages
+    // become display_item envelopes with output items (not raw assistant pass-throughs)
+    const streamDisplayItems = capture.lines
       .map((l) => JSON.parse(l))
       .filter(
-        (msg) => msg.type === "assistant"
+        (msg: Record<string, unknown>) => msg.type === "display_item"
           && (msg.request_id === "req_stream_1" || msg.request_id === "req_stream_2"),
       );
-    expect(streamAssistantMessages.length).toBeGreaterThanOrEqual(2);
+    expect(streamDisplayItems.length).toBeGreaterThanOrEqual(2);
     expect(
-      streamAssistantMessages.some((msg) => msg.request_id === "req_stream_1"),
+      streamDisplayItems.some((msg: Record<string, unknown>) => msg.request_id === "req_stream_1"),
     ).toBe(true);
     expect(
-      streamAssistantMessages.some((msg) => msg.request_id === "req_stream_2"),
+      streamDisplayItems.some((msg: Record<string, unknown>) => msg.request_id === "req_stream_2"),
     ).toBe(true);
 
     const turnCompleteForFollowUp = capture.lines
       .map((l) => JSON.parse(l))
       .some(
-        (msg) => msg.type === "turn_complete" && msg.request_id === "req_stream_2",
+        (msg: Record<string, unknown>) =>
+          msg.type === "agent_event" &&
+          (msg.event as Record<string, unknown>)?.type === "turn_complete" &&
+          msg.request_id === "req_stream_2",
       );
     expect(turnCompleteForFollowUp).toBe(true);
   });

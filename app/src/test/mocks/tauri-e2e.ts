@@ -108,6 +108,14 @@ const mockResponses: Record<string, unknown> = {
     { path: "SKILL.md", content: "# Test Skill\n\nA skill for testing.\n\n## Instructions\n\nFollow these steps..." },
     { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
   ],
+  finalize_refine_run: {
+    files: [
+      { path: "SKILL.md", content: "# Test Skill\n\nA skill for testing.\n\n## Instructions\n\nFollow these steps..." },
+      { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
+    ],
+    diff: { stat: "no changes", files: [] },
+    commit_sha: null,
+  },
   // Auth
   github_get_user: null,
   github_logout: undefined,
@@ -175,7 +183,6 @@ const mockResponses: Record<string, unknown> = {
   reset_usage: undefined,
   // Transition gate (answer evaluator)
   run_answer_evaluator: "gate-agent-001",
-  autofill_clarifications: 0,
   log_gate_decision: undefined,
   // Workflow extras
   write_file: undefined,

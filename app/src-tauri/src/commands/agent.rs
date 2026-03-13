@@ -18,7 +18,14 @@ fn suppress_same_fallback_model(
     }
 }
 
-fn output_format_for_agent(
+fn required_plugins_for_run_source(run_source: Option<&str>) -> Option<Vec<String>> {
+    match run_source {
+        Some("test") => Some(vec!["vd-agent".to_string()]),
+        _ => Some(vec![]),
+    }
+}
+
+pub(crate) fn output_format_for_agent(
     skill_name: &str,
     agent_name: Option<&str>,
 ) -> Option<serde_json::Value> {
@@ -64,6 +71,21 @@ fn output_format_for_agent(
         }));
     }
 
+    if agent_name == Some("generate-skill") {
+        return Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status", "evaluations_markdown"],
+                "properties": {
+                    "status": { "type": "string", "const": "generated" },
+                    "evaluations_markdown": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": true
+            }
+        }));
+    }
+
     None
 }
 
@@ -84,10 +106,14 @@ pub async fn start_agent(
     _step_label: String,
     agent_name: Option<String>,
     transcript_log_dir: Option<String>,
+    step_id: Option<i32>,
+    workflow_session_id: Option<String>,
+    usage_session_id: Option<String>,
+    run_source: Option<String>,
 ) -> Result<String, String> {
     log::info!(
-        "[start_agent] agent_id={} model={} skill_name={} agent_name={:?}",
-        agent_id, model, skill_name, agent_name
+        "[start_agent] agent_id={} model={} skill_name={} agent_name={:?} step_id={:?} run_source={:?}",
+        agent_id, model, skill_name, agent_name, step_id, run_source
     );
     log::debug!(
         "[start_agent] cwd={} transcript_log_dir={:?} prompt_prefix={:?}",
@@ -149,6 +175,8 @@ pub async fn start_agent(
     }
     let fallback_model = suppress_same_fallback_model(model_for_config.as_deref(), fallback_model);
 
+    let required_plugins = required_plugins_for_run_source(run_source.as_deref());
+
     let config = SidecarConfig {
         prompt,
         model: model_for_config,
@@ -169,9 +197,13 @@ pub async fn start_agent(
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name,
-        required_plugins: None,
+        required_plugins,
         conversation_history: None,
         skill_name: Some(skill_name.clone()),
+        step_id: Some(step_id.unwrap_or(-1)),
+        workflow_session_id,
+        usage_session_id,
+        run_source,
     };
 
     sidecar::spawn_sidecar(
@@ -189,7 +221,9 @@ pub async fn start_agent(
 
 #[cfg(test)]
 mod tests {
-    use super::{output_format_for_agent, suppress_same_fallback_model};
+    use super::{
+        output_format_for_agent, required_plugins_for_run_source, suppress_same_fallback_model,
+    };
 
     #[test]
     fn test_output_format_for_feedback() {
@@ -201,7 +235,21 @@ mod tests {
         let fmt = output_format_for_agent("my-skill", Some("validate-skill"));
         assert!(fmt.is_some());
         let schema = fmt.expect("schema");
-        assert_eq!(schema["schema"]["properties"]["status"]["const"], "validation_complete");
+        assert_eq!(
+            schema["schema"]["properties"]["status"]["const"],
+            "validation_complete"
+        );
+    }
+
+    #[test]
+    fn test_output_format_for_generate_skill_agent() {
+        let fmt = output_format_for_agent("my-skill", Some("generate-skill"));
+        assert!(fmt.is_some());
+        let schema = fmt.expect("schema");
+        assert_eq!(
+            schema["schema"]["properties"]["status"]["const"],
+            "generated"
+        );
     }
 
     #[test]
@@ -219,7 +267,10 @@ mod tests {
             Some("claude-haiku-4-5-20251001"),
             Some("claude-haiku-4-5-20251001".to_string()),
         );
-        assert!(result.is_none(), "fallback must be suppressed when equal to main model");
+        assert!(
+            result.is_none(),
+            "fallback must be suppressed when equal to main model"
+        );
     }
 
     #[test]
@@ -235,10 +286,8 @@ mod tests {
     #[test]
     fn test_suppress_same_fallback_model_keeps_when_no_explicit_model() {
         // agent_name is set → model_for_config = None; fallback is preserved
-        let result = suppress_same_fallback_model(
-            None,
-            Some("claude-haiku-4-5-20251001".to_string()),
-        );
+        let result =
+            suppress_same_fallback_model(None, Some("claude-haiku-4-5-20251001".to_string()));
         assert_eq!(result.as_deref(), Some("claude-haiku-4-5-20251001"));
     }
 
@@ -246,5 +295,15 @@ mod tests {
     fn test_suppress_same_fallback_model_noop_when_no_fallback() {
         let result = suppress_same_fallback_model(Some("claude-sonnet-4-6"), None);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_required_plugins_for_test_run_source() {
+        assert_eq!(
+            required_plugins_for_run_source(Some("test")),
+            Some(vec!["vd-agent".to_string()])
+        );
+        assert_eq!(required_plugins_for_run_source(Some("workflow")), Some(vec![]));
+        assert_eq!(required_plugins_for_run_source(None), Some(vec![]));
     }
 }

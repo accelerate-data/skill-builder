@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta } from "@/lib/types";
 
 export interface WorkspaceSkillImportRequest {
   path: string;
@@ -113,7 +113,20 @@ export const startAgent = (
   stepLabel?: string,
   agentName?: string,
   transcriptLogDir?: string,
-) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns, permissionMode: permissionMode ?? null, sessionId, skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown", agentName: agentName ?? null, transcriptLogDir: transcriptLogDir ?? null });
+  stepId?: number,
+  workflowSessionId?: string,
+  usageSessionId?: string,
+  runSource?: string,
+) => invoke<string>("start_agent", {
+  agentId, prompt, model, cwd, allowedTools, maxTurns,
+  permissionMode: permissionMode ?? null, sessionId,
+  skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown",
+  agentName: agentName ?? null, transcriptLogDir: transcriptLogDir ?? null,
+  stepId: stepId ?? null,
+  workflowSessionId: workflowSessionId ?? null,
+  usageSessionId: usageSessionId ?? null,
+  runSource: runSource ?? null,
+});
 
 // --- Workflow ---
 
@@ -121,7 +134,8 @@ export const runWorkflowStep = (
   skillName: string,
   stepId: number,
   workspacePath: string,
-) => invoke<string>("run_workflow_step", { skillName, stepId, workspacePath });
+  workflowSessionId?: string,
+) => invoke<string>("run_workflow_step", { skillName, stepId, workspacePath, workflowSessionId: workflowSessionId ?? null });
 
 export const materializeWorkflowStepOutput = (
   skillName: string,
@@ -318,46 +332,6 @@ export const getLockedSkills = () =>
 
 // --- Usage Tracking ---
 
-export const persistAgentRun = (params: {
-  agentId: string;
-  skillName: string;
-  stepId: number;
-  model: string;
-  status: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-  totalCost: number;
-  durationMs: number;
-  numTurns?: number;
-  stopReason?: string | null;
-  durationApiMs?: number | null;
-  toolUseCount?: number;
-  compactionCount?: number;
-  sessionId?: string;
-  workflowSessionId?: string;
-}) => invoke<void>("persist_agent_run", {
-  agentId: params.agentId,
-  skillName: params.skillName,
-  stepId: params.stepId,
-  model: params.model,
-  status: params.status,
-  inputTokens: params.inputTokens,
-  outputTokens: params.outputTokens,
-  cacheReadTokens: params.cacheReadTokens,
-  cacheWriteTokens: params.cacheWriteTokens,
-  totalCost: params.totalCost,
-  durationMs: params.durationMs,
-  numTurns: params.numTurns ?? 0,
-  stopReason: params.stopReason ?? null,
-  durationApiMs: params.durationApiMs ?? null,
-  toolUseCount: params.toolUseCount ?? 0,
-  compactionCount: params.compactionCount ?? 0,
-  sessionId: params.sessionId ?? null,
-  workflowSessionId: params.workflowSessionId ?? null,
-});
-
 export const getUsageSummary = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
   invoke<UsageSummary>("get_usage_summary", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
 
@@ -475,6 +449,16 @@ export const materializeRefineValidationOutput = (
   structuredOutput,
 })
 
+export const finalizeRefineRun = (
+  skillName: string,
+  workspacePath: string,
+  structuredOutput?: unknown,
+) => invoke<RefineFinalizeResult>("finalize_refine_run", {
+  skillName,
+  workspacePath,
+  structuredOutput: structuredOutput ?? null,
+})
+
 // --- Answer Evaluation (Transition Gate) ---
 
 export type PerQuestionVerdict =
@@ -547,14 +531,6 @@ export const getContextFileContent = (
   workspacePath: string,
   fileName: string,
 ) => invoke<string>("get_context_file_content", { skillName, workspacePath, fileName });
-
-export const autofillClarifications = (
-  skillName: string,
-) => invoke<number>("autofill_clarifications", { skillName });
-
-export const autofillRefinements = (
-  skillName: string,
-) => invoke<number>("autofill_refinements", { skillName });
 
 export const logGateDecision = (
   skillName: string,

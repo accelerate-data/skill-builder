@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { CheckCircle2, Clock, DollarSign, Layers, MessageCircleQuestion, StickyNote, AlertTriangle, ChevronRight, Info, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, DollarSign, Layers, AlertTriangle, ChevronRight, XCircle } from "lucide-react";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
 import type { SaveStatus } from "@/components/clarifications-editor";
-import { type ClarificationsFile, getTotalCounts } from "@/lib/clarifications-types";
+import { type ClarificationsFile } from "@/lib/clarifications-types";
 import { formatElapsed } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -213,13 +213,10 @@ export function ResearchSummaryCard({
   saveStatus,
   evaluating,
 }: ResearchSummaryCardProps) {
-  const [planExpanded, setPlanExpanded] = useState(true);
+  const [planExpanded, setPlanExpanded] = useState(false);
   const plan = parseResearchPlanFromClarifications(clarificationsData)
     ?? parseResearchPlan(researchPlan ?? "");
-  const { answered, total } = getTotalCounts(clarificationsData);
   const meta = clarificationsData.metadata;
-  const noteCount = clarificationsData.notes.length;
-  const warnCount = clarificationsData.notes.filter((n) => n.type === "blocked" || n.type === "critical_gap").length;
 
   const sortedDimensions = [...plan.dimensions].sort((a, b) => b.score - a.score);
 
@@ -257,7 +254,6 @@ export function ResearchSummaryCard({
   // Dimensions column (shown for "ok" and "low_score")
   const showDimensions = outcome === "ok" || outcome === "low_score";
   // Full stats grid (Clarifications + Notes) only for happy path
-  const showFullStats = outcome === "ok";
 
   // Banner for non-happy-path outcomes
   const banner = isNonHappyPath ? (
@@ -333,9 +329,9 @@ export function ResearchSummaryCard({
       {planExpanded && banner}
 
       {/* Stats Grid — collapsible; hidden for error/scope_guard */}
-      {planExpanded && (showDimensions || showFullStats) && (
-        <div className={`grid divide-x ${showFullStats ? "grid-cols-3" : "grid-cols-1"}`}>
-          {/* Dimensions Column */}
+      {planExpanded && showDimensions && (
+        <div>
+          {/* Dimensions Row — full width */}
           {showDimensions && (
             <div className="p-4">
               <div className="flex items-center gap-1.5 mb-3">
@@ -434,90 +430,6 @@ export function ResearchSummaryCard({
             </div>
           )}
 
-          {/* Clarifications Column — happy path only */}
-          {showFullStats && (
-            <div className="p-4">
-              <div className="flex items-center gap-1.5 mb-3">
-                <MessageCircleQuestion className="size-3.5" style={{ color: "var(--color-ocean)" }} />
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Clarifications
-                </span>
-              </div>
-              <div className="flex items-baseline gap-1.5 mb-2">
-                <span className="text-2xl font-semibold tracking-tight" style={{ color: "var(--color-ocean)" }}>
-                  {meta.question_count}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  questions
-                </span>
-              </div>
-              <div className="flex flex-col gap-1.5 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Sections</span>
-                  <span className="font-medium text-foreground">{meta.section_count}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Must answer</span>
-                  <span className="font-medium" style={{ color: meta.must_answer_count > 0 ? "var(--destructive)" : "var(--foreground)" }}>
-                    {meta.must_answer_count}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Answered</span>
-                  <span className="font-medium" style={{ color: answered === total && total > 0 ? "var(--color-seafoam)" : "var(--foreground)" }}>
-                    {answered} / {total}
-                  </span>
-                </div>
-                {meta.duplicates_removed !== undefined && meta.duplicates_removed > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Deduped</span>
-                    <span className="font-medium text-foreground">{meta.duplicates_removed} removed</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Notes Column — happy path only */}
-          {showFullStats && (
-            <div className="p-4">
-              <div className="flex items-center gap-1.5 mb-3">
-                <StickyNote className="size-3.5 text-muted-foreground" />
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Notes
-                </span>
-              </div>
-              <div className="flex items-baseline gap-1.5 mb-2">
-                <span className="text-2xl font-semibold tracking-tight" style={{ color: noteCount > 0 ? "var(--color-ocean)" : "var(--muted-foreground)" }}>
-                  {noteCount}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {noteCount === 1 ? "note" : "notes"}
-                </span>
-              </div>
-              {noteCount > 0 && (
-                <div className="flex flex-col gap-1.5">
-                  {warnCount > 0 && (
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <AlertTriangle className="size-3 text-amber-600 dark:text-amber-400" />
-                      <span className="text-amber-600 dark:text-amber-400 font-medium">
-                        {warnCount} {warnCount === 1 ? "warning" : "warnings"}
-                      </span>
-                    </div>
-                  )}
-                  {noteCount - warnCount > 0 && (
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Info className="size-3" />
-                      <span>{noteCount - warnCount} informational</span>
-                    </div>
-                  )}
-                </div>
-              )}
-              {noteCount === 0 && (
-                <p className="text-xs text-muted-foreground">No issues flagged</p>
-              )}
-            </div>
-          )}
         </div>
       )}
 

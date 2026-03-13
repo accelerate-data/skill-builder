@@ -2,7 +2,8 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
 import { buildQueryOptions } from "./options.js";
 import { createAbortState, linkExternalSignal } from "./shutdown.js";
-import { emitSystemEvent, discoverInstalledPlugins } from "./run-agent.js";
+import { emitSystemEvent, discoverInstalledPlugins, selectPluginPaths } from "./run-agent.js";
+import { MessageProcessor } from "./message-processor.js";
 
 /** Sentinel used to close the async generator cleanly. */
 const CLOSE_SENTINEL = Symbol("close");
@@ -21,10 +22,13 @@ export class StreamSession {
   private messageQueue: string[] = [];
   private closed = false;
   private sessionId: string;
+  private config: SidecarConfig;
   private mockMode = false;
   private mockOnMessage:
     | ((requestId: string, message: Record<string, unknown>) => void)
     | null = null;
+  /** Shared MessageProcessor for mock streaming — persists across turns. */
+  private mockProcessor: MessageProcessor | null = null;
 
   constructor(
     sessionId: string,
@@ -34,6 +38,7 @@ export class StreamSession {
     externalSignal?: AbortSignal,
   ) {
     this.sessionId = sessionId;
+    this.config = config;
     this.currentRequestId = firstRequestId;
 
     // Start the streaming query in background — don't await
@@ -65,9 +70,18 @@ export class StreamSession {
 
   /**
    * Close the streaming session. The generator exits, query() finishes.
+   * In mock mode, emits a shutdown run_result so Rust can persist the run.
    */
   close(): void {
     this.closed = true;
+    if (this.mockMode && this.mockProcessor && !this.mockProcessor.hasEmittedResult() && this.mockOnMessage) {
+      const summary = this.mockProcessor.buildShutdownSummary();
+      this.mockOnMessage(this.currentRequestId, {
+        type: "agent_event",
+        event: summary,
+        timestamp: Date.now(),
+      } as Record<string, unknown>);
+    }
     if (this.pendingResolve) {
       this.pendingResolve(CLOSE_SENTINEL);
       this.pendingResolve = null;
@@ -82,6 +96,14 @@ export class StreamSession {
     if (process.env.MOCK_AGENTS === "true") {
       this.mockMode = true;
       this.mockOnMessage = onMessage;
+      this.mockProcessor = new MessageProcessor({
+        skillName: config.skillName,
+        stepId: config.stepId,
+        workflowSessionId: config.workflowSessionId,
+        usageSessionId: config.usageSessionId,
+        runSource: config.runSource,
+        streaming: true,
+      });
       emitSystemEvent((msg) => onMessage(this.currentRequestId, msg), "init_start");
       emitSystemEvent((msg) => onMessage(this.currentRequestId, msg), "sdk_ready");
       await this.emitMockTurn(config.prompt, onMessage);
@@ -103,7 +125,8 @@ export class StreamSession {
       });
     };
 
-    const pluginPaths = await discoverInstalledPlugins(config.cwd);
+    const discoveredPluginPaths = await discoverInstalledPlugins(config.cwd);
+    const pluginPaths = selectPluginPaths(discoveredPluginPaths, config.requiredPlugins);
     const options = buildQueryOptions(config, state.abortController, pluginPaths, stderrHandler);
 
     // Build the async generator that feeds messages to the SDK
@@ -168,28 +191,47 @@ export class StreamSession {
       options,
     });
 
-    emitSystemEvent(
-      (msg) => onMessage(this.currentRequestId, msg),
-      "sdk_ready",
-    );
+    // Process raw SDK messages through MessageProcessor for structured display items
+    const processor = new MessageProcessor({
+      skillName: config.skillName,
+      stepId: config.stepId,
+      workflowSessionId: config.workflowSessionId,
+      usageSessionId: config.usageSessionId,
+      runSource: config.runSource,
+      streaming: true,
+    });
 
     try {
+      let sdkReadyEmitted = false;
       for await (const message of conversation) {
         if (state.abortController.signal.aborted) break;
 
-        const msg = message as Record<string, unknown>;
-        onMessage(this.currentRequestId, msg);
-
-        // Detect turn completion: emit for any non-tool_use stop reason.
-        // This is more robust than checking only "end_turn" since the SDK
-        // may use other stop reasons (e.g., "max_tokens", "stop_sequence").
-        if (msg.type === "assistant" && msg.message) {
-          const innerMsg = msg.message as Record<string, unknown>;
-          const stopReason = innerMsg.stop_reason as string | undefined;
-          if (stopReason && stopReason !== "tool_use") {
-            onMessage(this.currentRequestId, { type: "turn_complete" });
-          }
+        // Emit sdk_ready on first actual message so "Connecting to API..."
+        // reflects real connection state rather than firing before the
+        // async generator yields its first value.
+        if (!sdkReadyEmitted) {
+          emitSystemEvent((msg) => onMessage(this.currentRequestId, msg), "sdk_ready");
+          sdkReadyEmitted = true;
         }
+
+        const msg = message as Record<string, unknown>;
+
+        // Process into display items + pass-through messages
+        const items = processor.process(msg);
+        for (const item of items) {
+          onMessage(this.currentRequestId, item as Record<string, unknown>);
+        }
+
+        // turn_complete is now emitted by MessageProcessor.processAssistantMessage
+        // when stop_reason is set and not "tool_use". No raw SDK field inspection here.
+      }
+
+      // Emit a shutdown run_result for aborted streaming runs (guard in case
+      // the SDK itself emitted a result before the abort was processed).
+      if (state.abortController.signal.aborted && !processor.hasEmittedResult()) {
+        process.stderr.write(`[stream-session] Session ${this.sessionId} aborted — emitting shutdown run_result\n`);
+        const shutdownSummary = processor.buildShutdownSummary();
+        onMessage(this.currentRequestId, { type: "agent_event", event: shutdownSummary, timestamp: Date.now() } as Record<string, unknown>);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -198,17 +240,40 @@ export class StreamSession {
         type: "error",
         message: errorMessage,
       });
+      // Emit error run_result for persistence — use execution-error path so
+      // failures are distinguishable from user-initiated shutdowns.
+      if (!processor.hasEmittedResult()) {
+        process.stderr.write(`[stream-session] Emitting error run_result for session ${this.sessionId}\n`);
+        const errorSummary = processor.buildExecutionErrorSummary(errorMessage);
+        onMessage(this.currentRequestId, { type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
+      }
     }
 
-    // Query finished — either all turns exhausted or generator closed
-    if (!this.closed) {
-      // Turns exhausted naturally (not user-initiated close)
+    // Query finished — either all turns exhausted or generator closed.
+    // Guard: if the SDK exhausted max turns without emitting a result message,
+    // emit a shutdown run_result now so Rust can persist the run before
+    // session_exhausted triggers frontend cleanup.
+    if (!processor.hasEmittedResult()) {
+      process.stderr.write(
+        `[stream-session] Session ${this.sessionId} ended without run_result — emitting shutdown summary\n`,
+      );
+      const exhaustionSummary = processor.buildShutdownSummary();
+      onMessage(this.currentRequestId, {
+        type: "agent_event",
+        event: exhaustionSummary,
+        timestamp: Date.now(),
+      } as Record<string, unknown>);
+    }
+
+    if (!this.closed && !state.abortController.signal.aborted) {
+      // Turns exhausted naturally (not user-initiated close, not externally aborted)
       process.stderr.write(
         `[stream-session] Session ${this.sessionId} exhausted (query completed without close)\n`,
       );
       onMessage(this.currentRequestId, {
-        type: "session_exhausted",
-        session_id: this.sessionId,
+        type: "agent_event",
+        event: { type: "session_exhausted", sessionId: this.sessionId },
+        timestamp: Date.now(),
       });
     }
 
@@ -227,7 +292,9 @@ export class StreamSession {
       ? `Mock streaming response received:\n\n${preview}`
       : "Mock streaming response received.";
 
-    onMessage(requestId, {
+    // Build a raw assistant message and process through MessageProcessor
+    // so the frontend receives display_item envelopes (not legacy raw messages).
+    const rawAssistant = {
       type: "assistant",
       message: {
         model: "mock-stream",
@@ -242,9 +309,17 @@ export class StreamSession {
           cache_read_input_tokens: 0,
         },
       },
-    });
+    };
+
+    // Reuse the session-scoped processor so context accumulates across turns
+    const processor = this.mockProcessor!;
+    const items = processor.process(rawAssistant);
+    for (const item of items) {
+      onMessage(requestId, item as Record<string, unknown>);
+    }
+
+    // turn_complete is emitted by MessageProcessor when it processes the
+    // stop_reason in rawAssistant. No manual emission needed here.
     await new Promise((resolve) => setTimeout(resolve, 20));
-    if (this.closed) return;
-    onMessage(requestId, { type: "turn_complete" });
   }
 }

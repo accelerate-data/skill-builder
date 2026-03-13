@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skill Builder — Mockup Navigator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: oklch(0.956 0 0);
+    --fg: oklch(0.145 0.005 250);
+    --card: oklch(1 0 0);
+    --muted: oklch(0.955 0.005 85);
+    --muted-fg: oklch(0.530 0.006 85);
+    --border: oklch(0.910 0.006 85);
+    --primary: oklch(0.680 0.120 210);
+    --primary-fg: oklch(1 0 0);
+    --destructive: oklch(0.570 0.180 25);
+    --sidebar-bg: oklch(0.965 0.004 85);
+    --seafoam: oklch(0.780 0.175 160);
+    --pacific: oklch(0.680 0.120 210);
+    --ocean: oklch(0.530 0.130 230);
+    --navy: oklch(0.215 0.105 265);
+    --amber: oklch(0.760 0.160 60);
+    --dot-red: oklch(0.570 0.180 25);
+    --dot-yellow: oklch(0.760 0.160 60);
+    --dot-green: oklch(0.780 0.175 160);
+  }
+  @keyframes dot-pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+  .dot-pulse { animation: dot-pulse 1.8s ease-in-out infinite; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); font-size: 13px; line-height: 1.5; display: flex; }
+
+  .nav-panel {
+    width: 220px;
+    flex-shrink: 0;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow-y: auto;
+  }
+
+  .nav-header {
+    padding: 18px 14px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .nav-logo-mark {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    background: var(--navy);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .nav-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--navy);
+  }
+
+  .nav-note {
+    font-size: 11px;
+    color: var(--muted-fg);
+    line-height: 1.55;
+    padding: 8px 10px;
+    background: color-mix(in oklch, var(--amber), transparent 88%);
+    border-radius: 6px;
+    border: 1px solid color-mix(in oklch, var(--amber), transparent 70%);
+  }
+
+  .nav-section {
+    padding: 12px 0 6px;
+    flex: 1;
+  }
+
+  .nav-section-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted-fg);
+    padding: 0 14px 6px;
+  }
+
+  .nav-link {
+    display: block;
+    padding: 8px 14px;
+    font-size: 12px;
+    color: var(--fg);
+    text-decoration: none;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: background 120ms, color 120ms;
+    line-height: 1.4;
+  }
+
+  .nav-link:hover {
+    background: var(--muted);
+    color: var(--navy);
+  }
+
+  .nav-link.active {
+    background: color-mix(in oklch, var(--pacific), transparent 90%);
+    border-left-color: var(--pacific);
+    color: var(--navy);
+    font-weight: 500;
+  }
+
+  .nav-link .link-desc {
+    display: block;
+    font-size: 10px;
+    color: var(--muted-fg);
+    font-weight: 400;
+    margin-top: 1px;
+    font-family: 'Courier New', monospace;
+  }
+
+  .nav-link.active .link-desc {
+    color: color-mix(in oklch, var(--pacific), var(--muted-fg) 30%);
+  }
+
+  .dot-legend {
+    padding: 12px 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .dot-legend-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted-fg);
+    margin-bottom: 8px;
+  }
+
+  .dot-legend-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 10px;
+    color: var(--muted-fg);
+    margin-bottom: 5px;
+    line-height: 1.4;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .iframe-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0;
+  }
+
+  iframe {
+    flex: 1;
+    border: none;
+    width: 100%;
+    height: 100%;
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav-panel">
+  <div class="nav-header">
+    <div class="nav-logo">
+      <div class="nav-logo-mark">SB</div>
+      <div class="nav-title">Mockup Navigator</div>
+    </div>
+    <div class="nav-note">
+      Nav model: green dot → Workspace · red/yellow → Workflow · pulsing = running (locks other rows)
+    </div>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-label">Screens</div>
+
+    <a class="nav-link" href="#" onclick="loadPage('01-dashboard.html', this); return false;">
+      Home · No Skill Selected
+      <span class="link-desc">01-dashboard.html</span>
+    </a>
+
+    <a class="nav-link" href="#" onclick="loadPage('02-workflow.html', this); return false;">
+      Workflow · In Progress
+      <span class="link-desc">02-workflow.html</span>
+    </a>
+
+    <a class="nav-link" href="#" onclick="loadPage('03-workspace-overview.html', this); return false;">
+      Workspace · Overview
+      <span class="link-desc">03-workspace-overview.html</span>
+    </a>
+
+    <a class="nav-link" href="#" onclick="loadPage('04-workspace-evals.html', this); return false;">
+      Workspace · Evals
+      <span class="link-desc">04-workspace-evals.html</span>
+    </a>
+
+    <a class="nav-link" href="#" onclick="loadPage('05-workspace-refine.html', this); return false;">
+      Workspace · Refine
+      <span class="link-desc">05-workspace-refine.html</span>
+    </a>
+
+    <a class="nav-link" href="#" onclick="loadPage('06-workspace-description.html', this); return false;">
+      Workspace · Description
+      <span class="link-desc">06-workspace-description.html</span>
+    </a>
+  </div>
+
+  <div class="dot-legend">
+    <div class="dot-legend-title">Status Dots</div>
+    <div class="dot-legend-row">
+      <span class="dot" style="background:var(--dot-red);"></span>
+      Red = pending clarifications
+    </div>
+    <div class="dot-legend-row">
+      <span class="dot" style="background:var(--dot-yellow);"></span>
+      Yellow = pending decisions
+    </div>
+    <div class="dot-legend-row">
+      <span class="dot" style="background:var(--dot-green);"></span>
+      Green = generated / imported
+    </div>
+    <div class="dot-legend-row">
+      <span class="dot dot-pulse" style="background:var(--dot-green);"></span>
+      Pulsing = agent running (locks rows)
+    </div>
+  </div>
+</nav>
+
+<div class="iframe-area">
+  <iframe id="preview" src="01-dashboard.html" title="Mockup Preview"></iframe>
+</div>
+
+<script>
+  function loadPage(url, el) {
+    document.getElementById('preview').src = url;
+    document.querySelectorAll('.nav-link').forEach(function(l) { l.classList.remove('active'); });
+    el.classList.add('active');
+  }
+  document.querySelector('.nav-link').classList.add('active');
+</script>
+</body>
+</html>

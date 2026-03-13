@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { SkillSummary } from "@/lib/types";
+import type { RefineDiff, SkillSummary } from "@/lib/types";
 
 export interface SkillFile {
   filename: string; // e.g. "SKILL.md", "references/domain-glossary.md"
@@ -33,6 +33,8 @@ interface RefineState {
   activeFileTab: string; // filename key e.g. "SKILL.md"
   diffMode: boolean;
   baselineFiles: SkillFile[]; // snapshot before agent run
+  gitDiff: RefineDiff | null;
+  previewRevision: number;
 
   // Chat messages
   messages: RefineMessage[];
@@ -59,6 +61,7 @@ interface RefineState {
   addUserMessage: (text: string, targetFiles?: string[], command?: RefineCommand) => RefineMessage;
   addAgentTurn: (agentId: string) => RefineMessage;
   updateSkillFiles: (files: SkillFile[]) => void;
+  setGitDiff: (diff: RefineDiff | null) => void;
   setActiveAgentId: (id: string | null) => void;
   setRunning: (v: boolean) => void;
   setSessionExhausted: (v: boolean) => void;
@@ -74,6 +77,8 @@ const SESSION_DEFAULTS = {
   sessionExhausted: false,
   diffMode: false,
   baselineFiles: [] as SkillFile[],
+  gitDiff: null as RefineDiff | null,
+  previewRevision: 0,
   skillFiles: [] as SkillFile[],
   activeFileTab: "SKILL.md",
   // pendingInitialMessage is intentionally excluded: it is cross-page navigation
@@ -99,7 +104,12 @@ export const useRefineStore = create<RefineState>((set, get) => ({
   selectSkill: (skill) =>
     set({ selectedSkill: skill, ...SESSION_DEFAULTS }),
 
-  setSkillFiles: (files) => set({ skillFiles: files, isLoadingFiles: false }),
+  setSkillFiles: (files) =>
+    set((state) => ({
+      skillFiles: files,
+      isLoadingFiles: false,
+      previewRevision: state.previewRevision + 1,
+    })),
   setLoadingFiles: (v) => set({ isLoadingFiles: v }),
   setActiveFileTab: (filename) => set({ activeFileTab: filename }),
   setDiffMode: (v) => set({ diffMode: v }),
@@ -133,7 +143,21 @@ export const useRefineStore = create<RefineState>((set, get) => ({
     return message;
   },
 
-  updateSkillFiles: (files) => set({ skillFiles: files }),
+  updateSkillFiles: (files) => set((state) => {
+    const existingFiles = new Set(state.skillFiles.map((file) => file.filename));
+    const firstNewFile = files.find((file) => !existingFiles.has(file.filename))?.filename;
+    const nextActive = firstNewFile
+      ?? (files.some((file) => file.filename === state.activeFileTab)
+        ? state.activeFileTab
+        : (files[0]?.filename ?? "SKILL.md"));
+    return {
+      skillFiles: files,
+      activeFileTab: nextActive,
+      previewRevision: state.previewRevision + 1,
+    };
+  }),
+
+  setGitDiff: (diff) => set({ gitDiff: diff }),
 
   setActiveAgentId: (id) => set({ activeAgentId: id }),
   setRunning: (v) => set({ isRunning: v }),

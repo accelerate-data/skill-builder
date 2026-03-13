@@ -178,10 +178,12 @@ export function AppLayout() {
   const [reconRequiresApply, setReconRequiresApply] = useState(false);
   const [reconApplying, setReconApplying] = useState(false);
 
-  // Hydrate settings store from Tauri backend on app startup
+  // Hydrate settings and run reconciliation in parallel on app startup.
+  // Both read from SQLite/filesystem independently — no frontend data dependency.
   useEffect(() => {
     const cancelledRef = { current: false };
 
+    // Settings load
     getSettings().then((s) => {
       if (cancelledRef.current) return;
       setSettings({
@@ -234,19 +236,10 @@ export function AppLayout() {
       if (!cancelledRef.current) setSettingsLoaded(true);
     });
 
-    // Load GitHub auth state
-    useAuthStore.getState().loadUser();
-
-    return () => { cancelledRef.current = true; };
-  }, [setSettings]);
-
-  // Run reconciliation after settings are loaded
-  useEffect(() => {
-    if (!settingsLoaded) return;
-
+    // Reconciliation — fires concurrently with settings (reads its own config from SQLite)
     reconcileStartup()
       .then((result) => {
-        // Preview mode: block dashboard until user applies or skips.
+        if (cancelledRef.current) return;
         if (result.notifications.length > 0 || result.discovered_skills.length > 0) {
           console.warn(
             "[app-layout] Reconciliation preview produced %d notifications, %d discovered skills",
@@ -259,7 +252,6 @@ export function AppLayout() {
           setAckDone(false);
         }
 
-        // Set orphans for dialog
         if (result.orphans.length > 0) {
           setOrphans(result.orphans);
         }
@@ -267,11 +259,15 @@ export function AppLayout() {
         setReconciled(true);
       })
       .catch((err) => {
-        // Reconciliation failed (e.g., workspace not set up yet) — proceed anyway
         console.warn("[app-layout] Reconciliation failed:", err);
-        setReconciled(true);
+        if (!cancelledRef.current) setReconciled(true);
       });
-  }, [settingsLoaded]);
+
+    // Load GitHub auth state
+    useAuthStore.getState().loadUser();
+
+    return () => { cancelledRef.current = true; };
+  }, [setSettings]);
 
   // Global keyboard shortcuts
   useEffect(() => {

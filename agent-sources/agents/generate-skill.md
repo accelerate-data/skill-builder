@@ -2,7 +2,7 @@
 name: generate-skill
 description: Plans skill structure, writes SKILL.md and all reference files. Called during Step 6 to create the complete skill. Also called via /rewrite to rewrite an existing skill for coherence.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash, Task
+tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
 # Generate Skill
@@ -25,8 +25,9 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 
 - `skill_name` : the skill being developed (slug/name)
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
-- `skill_output_dir`: path where the skill to be refined (`SKILL.md` and `references/`) live
+- `skill_output_dir`: path where the skill (`SKILL.md` and `references/`) live
 - Derive `context_dir` as `workspace_dir/context`
+- `Current request`: optional user-provided generation or rewrite focus area
 
 </context>
 
@@ -34,10 +35,14 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 
 <instructions>
 
+## Narration
+
+Before executing each phase, write one short status line (≤ 10 words) before its tool calls. Examples: "Reading context files…", "Planning skill structure…", "Writing SKILL.md…", "Writing reference files…", "Drafting evaluations…"
+
 ## Phase 0: Read the inputs
 
 Read `{workspace_dir}/user-context.md`.
-Read `{context_dir}/clarifications.json`. Parse the JSON. 
+Read `{context_dir}/clarifications.json`. Parse the JSON.
 Read `{context_dir}/decisions.json`. Parse the JSON.
 
 Missing files are not errors — skip and proceed. If any JSON file that is present is malformed, write this stub to `SKILL.md` and return this JSON:
@@ -89,9 +94,15 @@ The user's answers contain unresolvable contradictions. See `decisions.json` for
 
 If `metadata.contradictory_inputs == "revised"`, treat it as authoritative and generate the skill normally. Do not write a stub.
 
+Treat `Current request` as an additional focus area for coverage:
+
+- Do not ignore decisions or broader skill requirements in favor of the request.
+- If `Current request` names a topic, make sure the generated or rewritten skill covers it explicitly where appropriate.
+- In rewrite mode, preserve all original domain knowledge while prioritizing coherence and coverage for the request-specific topic.
+
 ## Phase 1: Plan the Skill Structure
 
-1. Locate and read `plugins/skill-creator/skills/skill-creator/SKILL.md` from the installed plugin bundle to apply the vendored skill-creator writing methodology.
+1. Read `plugins/skill-creator/skills/skill-creator/SKILL.md` to apply the writing methodology.
 2. Define the skill structure for the new skill using the decisions from the parsed `decisions.json`.
 
 - Each reference file covers a coherent topic area, not one file per decision
@@ -137,25 +148,29 @@ modified: <today's date>
 
 Write each reference file to `references/`. Keep files self-contained and reference them explicitly from SKILL.md with "when to read" guidance.
 
-Do not write `{context_dir}/evaluations.md` directly. Return it as `evaluations_markdown` in final JSON so the backend can materialize it.
-
 Self-review:
 
-- Re-read `decisions.json` — verify every decision is addressed in at least one file
+- Verify every decision in `decisions.json` is addressed in at least one file
 - Verify SKILL.md pointers match each reference file
 - Remove any 'Questions for your stakeholder', 'Open questions', or 'Pending clarifications' blocks
 - Remove over-constrained formatting rules that are not justified by the task
 - Ensure the skill does not refer to decisions by name (for example, "Decision: We convert all PS to MRR") or by number (for example, D13).
 
-## Success Criteria
+## Phase 4: Draft `evaluations_markdown`
 
-- Vendored skill-creator writing methodology applied
-- SKILL.md has metadata, overview, trigger conditions, quick reference, and pointers
-- Self-contained reference files
-- Every decision from `decisions.json` addressed in the skill.
-- Purpose-appropriate structure chosen without rigid templates
-- `evaluations_markdown` includes 3+ scenarios covering distinct topic areas (backend writes `{context_dir}/evaluations.md`)
-- **Rewrite mode:** All original domain knowledge preserved
+Create `evaluations_markdown` as the complete content for evaluating if the skill covers all the decisions in `decisions.json`. 
+
+Requirements:
+
+- Include at least 3 complete scenarios (more if needed to cover all the decisions) covering distinct topic areas in the skill.
+- Each scenario must include:
+  - prompt
+  - expected behavior
+  - pass criteria
+- Cover core decisions and high-risk topics from `decisions.json`, not just generic happy-path prompts.
+- If `Current request` names a topic, include at least one scenario that checks that topic explicitly.
+- Make scenarios concrete enough for `eval-skill` to judge PASS/PARTIAL/FAIL against the written skill content.
+- Keep the evaluations aligned to the final generated or rewritten skill, not to an earlier draft.
 
 ## Rewrite Mode
 
@@ -166,6 +181,22 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 **Phase 2:** Update `modified` to today. Preserve original `created` and `author`.
 
 **Phase 3:** Rewrite references in a staged, demand-driven order. Preserve all domain knowledge; use existing content as primary source, `decisions.json` as supplement. Before finalizing, perform a full preservation sweep to confirm no original domain knowledge was dropped; if coverage is incomplete, read additional references and close gaps.
+
+**Phase 4:** Rewrite `evaluations_markdown` to match the rewritten skill. Preserve strong existing scenarios when still valid, rewrite stale ones, and add scenarios for any new or newly emphasized topics.
+
+Before finalizing rewrite mode, verify that the rewritten skill addresses `Current request` explicitly or record the gap in the rewritten content/evaluations.
+
+## Success Criteria
+
+- Vendored skill-creator writing methodology applied
+- SKILL.md has metadata, overview, trigger conditions, quick reference, and pointers
+- Self-contained reference files
+- Every decision from `decisions.json` addressed in the skill.
+- Purpose-appropriate structure chosen without rigid templates
+- `evaluations_markdown` includes 3+ scenarios covering distinct topic areas
+- Every evaluation scenario includes prompt, expected behavior, and pass criteria
+- `Current request` is represented in evaluations when it names a concrete topic
+- **Rewrite mode:** All original domain knowledge preserved
 
 </instructions>
 
@@ -178,8 +209,11 @@ Return JSON only:
 ```json
 {
   "status": "generated",
-  "evaluations_markdown": "<full evaluations.md content with at least 3 scenarios>"
+  "evaluations_markdown": "<full evaluations.md content with at least 3 scenarios>",
+  "call_trace": ["read-user-context", "read-decisions", "write-skill", "write-references/foo.md", "..."]
 }
 ```
+
+`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `write-skill`, `write-references`, `write-evaluations`. For reference files, use `write-references/<filename>`.
 
 </output_format>

@@ -82,9 +82,13 @@ describe("ChatInputBar", () => {
 
     const input = screen.getByTestId("refine-chat-input");
     const sendBtn = screen.getByTestId("refine-send-button");
+    const rewriteBtn = screen.getByTestId("refine-action-rewrite");
+    const validateBtn = screen.getByTestId("refine-action-validate");
 
     expect(input).toBeDisabled();
     expect(sendBtn).toBeDisabled();
+    expect(rewriteBtn).toBeDisabled();
+    expect(validateBtn).toBeDisabled();
   });
 
   it("disables send button when input is empty", () => {
@@ -107,6 +111,44 @@ describe("ChatInputBar", () => {
 
   // --- Slash command picker ---
 
+  it("shows visible rewrite and validate action buttons", () => {
+    renderBar();
+
+    expect(screen.getByTestId("refine-action-rewrite")).toHaveAccessibleName(
+      "Rewrite skill",
+    );
+    expect(screen.getByTestId("refine-action-validate")).toHaveAccessibleName(
+      "Validate skill",
+    );
+  });
+
+  it("selects rewrite from the visible action button", async () => {
+    const user = userEvent.setup();
+    renderBar();
+
+    await user.click(screen.getByTestId("refine-action-rewrite"));
+
+    expect(screen.getByTestId("refine-command-badge")).toHaveTextContent(
+      "/rewrite",
+    );
+  });
+
+  it("toggles off the active action when clicked again", async () => {
+    const user = userEvent.setup();
+    renderBar();
+
+    const rewriteButton = screen.getByTestId("refine-action-rewrite");
+    await user.click(rewriteButton);
+    expect(screen.getByTestId("refine-command-badge")).toHaveTextContent(
+      "/rewrite",
+    );
+
+    await user.click(rewriteButton);
+    expect(
+      screen.queryByTestId("refine-command-badge"),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows command picker when / is typed", async () => {
     const user = userEvent.setup();
     renderBar();
@@ -115,8 +157,12 @@ describe("ChatInputBar", () => {
     await user.type(input, "/");
 
     await waitFor(() => {
-      expect(screen.getByText("Rewrite skill")).toBeInTheDocument();
-      expect(screen.getByText("Validate skill")).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "Rewrite skill" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "Validate skill" }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -128,13 +174,17 @@ describe("ChatInputBar", () => {
     await user.type(input, "/");
 
     await waitFor(() => {
-      expect(screen.getByText("Rewrite skill")).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "Rewrite skill" }),
+      ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Rewrite skill"));
+    await user.click(screen.getByRole("option", { name: "Rewrite skill" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("refine-command-badge")).toHaveTextContent("/rewrite");
+      expect(screen.getByTestId("refine-command-badge")).toHaveTextContent(
+        "/rewrite",
+      );
     });
   });
 
@@ -146,9 +196,11 @@ describe("ChatInputBar", () => {
     await user.type(input, "/");
 
     await waitFor(() => {
-      expect(screen.getByText("Validate skill")).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "Validate skill" }),
+      ).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Validate skill"));
+    await user.click(screen.getByRole("option", { name: "Validate skill" }));
 
     await waitFor(() => {
       expect(screen.getByTestId("refine-command-badge")).toBeInTheDocument();
@@ -172,9 +224,11 @@ describe("ChatInputBar", () => {
     await user.type(input, "/");
 
     await waitFor(() => {
-      expect(screen.getByText("Rewrite skill")).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "Rewrite skill" }),
+      ).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Rewrite skill"));
+    await user.click(screen.getByRole("option", { name: "Rewrite skill" }));
 
     await waitFor(() => {
       expect(screen.getByTestId("refine-command-badge")).toBeInTheDocument();
@@ -184,7 +238,9 @@ describe("ChatInputBar", () => {
     const removeBtn = badge.querySelector("button")!;
     await user.click(removeBtn);
 
-    expect(screen.queryByTestId("refine-command-badge")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("refine-command-badge"),
+    ).not.toBeInTheDocument();
   });
 
   // --- @file autocomplete ---
@@ -217,7 +273,9 @@ describe("ChatInputBar", () => {
 
     await waitFor(() => {
       // Badge element contains "@SKILL.md" — target the badge specifically
-      const badge = container.querySelector("[data-slot='badge'][data-variant='secondary']");
+      const badge = container.querySelector(
+        "[data-slot='badge'][data-variant='secondary']",
+      );
       expect(badge).toBeTruthy();
       expect(badge!.textContent).toContain("@SKILL.md");
     });
@@ -236,7 +294,9 @@ describe("ChatInputBar", () => {
     await user.click(screen.getByText("SKILL.md"));
 
     await waitFor(() => {
-      const badge = container.querySelector("[data-slot='badge'][data-variant='secondary']");
+      const badge = container.querySelector(
+        "[data-slot='badge'][data-variant='secondary']",
+      );
       expect(badge).toBeTruthy();
     });
 
@@ -263,17 +323,23 @@ describe("ChatInputBar", () => {
     await user.click(screen.getByText("SKILL.md"));
 
     await waitFor(() => {
-      const badge = container.querySelector("[data-slot='badge'][data-variant='secondary']");
+      const badge = container.querySelector(
+        "[data-slot='badge'][data-variant='secondary']",
+      );
       expect(badge).toBeTruthy();
     });
 
     // Find and click the remove button inside the badge
-    const badge = container.querySelector("[data-slot='badge'][data-variant='secondary']")!;
+    const badge = container.querySelector(
+      "[data-slot='badge'][data-variant='secondary']",
+    )!;
     const removeBtn = badge.querySelector("button")!;
     await user.click(removeBtn);
 
     // Badge should be gone
-    expect(container.querySelector("[data-slot='badge'][data-variant='secondary']")).toBeNull();
+    expect(
+      container.querySelector("[data-slot='badge'][data-variant='secondary']"),
+    ).toBeNull();
   });
 
   it("does not show file picker when no files are available", async () => {
@@ -298,7 +364,9 @@ describe("ChatInputBar", () => {
 
     // Wait for picker to be rendered before sending navigation keys
     await waitFor(() => {
-      expect(screen.getByText("Rewrite skill")).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "Rewrite skill" }),
+      ).toBeInTheDocument();
     });
 
     // Fire navigation directly on the textarea to bypass Radix focus guards
@@ -328,7 +396,9 @@ describe("ChatInputBar", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
-      const badge = container.querySelector("[data-slot='badge'][data-variant='secondary']");
+      const badge = container.querySelector(
+        "[data-slot='badge'][data-variant='secondary']",
+      );
       expect(badge).toBeTruthy();
       expect(badge!.textContent).toContain("@references/glossary.md");
     });
@@ -342,13 +412,17 @@ describe("ChatInputBar", () => {
     await user.type(input, "/");
 
     await waitFor(() => {
-      expect(screen.getByText("Rewrite skill")).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "Rewrite skill" }),
+      ).toBeInTheDocument();
     });
 
     fireEvent.keyDown(input, { key: "Escape" });
 
     await waitFor(() => {
-      expect(screen.queryByText("Rewrite skill")).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("option", { name: "Rewrite skill" }),
+      ).not.toBeInTheDocument();
     });
     // Should not have sent anything
     expect(defaultProps.onSend).not.toHaveBeenCalled();
@@ -362,7 +436,9 @@ describe("ChatInputBar", () => {
     await user.type(input, "/");
 
     await waitFor(() => {
-      expect(screen.getByText("Rewrite skill")).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "Rewrite skill" }),
+      ).toBeInTheDocument();
     });
 
     // Two commands: rewrite (0), validate (1). Start at rewrite (0).

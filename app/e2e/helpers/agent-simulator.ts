@@ -4,6 +4,9 @@
  * Dispatches Tauri events through `window.__TAURI_EVENT_HANDLERS__`
  * so the UI reacts through its existing Zustand stores exactly as it
  * would with a real agent sidecar.
+ *
+ * All simulators emit DisplayItem-based events (type=display_item).
+ * Legacy assistant-message format is not supported.
  */
 import type { Page } from "@playwright/test";
 
@@ -13,7 +16,7 @@ import type { Page } from "@playwright/test";
 
 interface AgentInitProgressPayload {
   agent_id: string;
-  subtype: string;
+  stage: string;
   timestamp: number;
 }
 
@@ -21,19 +24,6 @@ interface AgentInitErrorPayload {
   error_type: string;
   message: string;
   fix_hint: string;
-}
-
-interface AgentMessagePayload {
-  agent_id: string;
-  message: {
-    type: string;
-    message?: {
-      content?: Array<{ type: string; text?: string }>;
-    };
-    result?: string;
-    error?: string;
-    [key: string]: unknown;
-  };
 }
 
 interface AgentExitPayload {
@@ -71,26 +61,50 @@ export async function emitTauriEvent(
 }
 
 // ---------------------------------------------------------------------------
+// DisplayItem payload type (mirrors sidecar display-types.ts)
+// ---------------------------------------------------------------------------
+
+interface DisplayItemPayload {
+  id: string;
+  type: string;
+  timestamp: number;
+  thinkingText?: string;
+  outputText?: string;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+  toolUseId?: string;
+  toolStatus?: string;
+  toolSummary?: string;
+  toolDurationMs?: number;
+  toolResult?: { content: string; isError: boolean };
+  errorMessage?: string;
+  outputText_result?: string;
+  resultStatus?: string;
+  [key: string]: unknown;
+}
+
+// ---------------------------------------------------------------------------
 // High-level simulators
 // ---------------------------------------------------------------------------
 
 interface SimulateAgentRunOptions {
   agentId: string;
-  /** Text content for each assistant message. Defaults to a single generic message. */
+  /** Text content for each output display item. Defaults to a single generic message. */
   messages?: string[];
-  /** Result text for the final result message. */
+  /** Result text for the final result display item. */
   result?: string;
   /** Delay in ms between events. Defaults to 50. */
   delays?: number;
 }
 
 /**
- * Simulate a complete happy-path agent run:
+ * Simulate a complete happy-path agent run using DisplayItems:
  * 1. agent-init-progress (init_start)
  * 2. agent-init-progress (sdk_ready)
- * 3. N agent-message events (type=assistant)
- * 4. agent-message (type=result)
- * 5. agent-exit (success=true)
+ * 3. N agent-message events (type=display_item, item.type=output)
+ * 4. agent-message (type=display_item, item.type=result)
+ * 5. agent-message (type=result) — pass-through for usage tracking
+ * 6. agent-exit (success=true)
  */
 export async function simulateAgentRun(
   page: Page,
@@ -106,55 +120,70 @@ export async function simulateAgentRun(
   const wait = (ms: number) => page.waitForTimeout(ms);
 
   // 1. Init progress: init_start
-  const initStart: AgentInitProgressPayload = {
+  await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
-    subtype: "init_start",
+    stage: "init_start",
     timestamp: Date.now(),
-  };
-  await emitTauriEvent(page, "agent-init-progress", initStart);
+  } satisfies AgentInitProgressPayload);
   await wait(delays);
 
   // 2. Init progress: sdk_ready
-  const sdkReady: AgentInitProgressPayload = {
+  await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
-    subtype: "sdk_ready",
+    stage: "sdk_ready",
     timestamp: Date.now(),
-  };
-  await emitTauriEvent(page, "agent-init-progress", sdkReady);
+  } satisfies AgentInitProgressPayload);
   await wait(delays);
 
-  // 3. Assistant messages
-  for (const text of messages) {
-    const msgPayload: AgentMessagePayload = {
+  // 3. Output display items for each message
+  for (let i = 0; i < messages.length; i++) {
+    await emitTauriEvent(page, "agent-message", {
       agent_id: agentId,
       message: {
-        type: "assistant",
-        message: {
-          content: [{ type: "text", text }],
+        type: "display_item",
+        item: {
+          id: `di-output-${i}`,
+          type: "output",
+          timestamp: Date.now(),
+          outputText: messages[i],
         },
       },
-    };
-    await emitTauriEvent(page, "agent-message", msgPayload);
+    });
     await wait(delays);
   }
 
-  // 4. Result message
-  const resultPayload: AgentMessagePayload = {
+  // 4. Result display item
+  await emitTauriEvent(page, "agent-message", {
+    agent_id: agentId,
+    message: {
+      type: "display_item",
+      item: {
+        id: "di-result",
+        type: "result",
+        timestamp: Date.now(),
+        outputText_result: result,
+        resultStatus: "success",
+      },
+    },
+  });
+  await wait(delays);
+
+  // 5. Result message (pass-through for usage tracking)
+  await emitTauriEvent(page, "agent-message", {
     agent_id: agentId,
     message: {
       type: "result",
       result,
+      subtype: "success",
     },
-  };
-  await emitTauriEvent(page, "agent-message", resultPayload);
+  });
   await wait(delays);
 
-  // 5. Exit with success
-  const exitPayload: AgentExitPayload = {
+  // 6. Exit with success
+  await emitTauriEvent(page, "agent-exit", {
     agent_id: agentId,
     success: true,
-  };
-  await emitTauriEvent(page, "agent-exit", exitPayload);
+  } satisfies AgentExitPayload);
 }
 
 interface SimulateAgentInitErrorOptions {
@@ -179,6 +208,81 @@ export async function simulateAgentInitError(
   await emitTauriEvent(page, "agent-init-error", payload);
 }
 
+interface SimulateDisplayItemRunOptions {
+  agentId: string;
+  /** DisplayItem payloads to emit. */
+  items: DisplayItemPayload[];
+  /** Result text for the final result message. */
+  result?: string;
+  /** Delay in ms between events. Defaults to 50. */
+  delays?: number;
+}
+
+/**
+ * Simulate a complete agent run using explicit DisplayItem payloads:
+ * 1. agent-init-progress (init_start, sdk_ready)
+ * 2. N agent-message events (type=display_item)
+ * 3. agent-message (type=result) — pass-through for usage tracking
+ * 4. agent-exit (success=true)
+ */
+export async function simulateAgentRunWithDisplayItems(
+  page: Page,
+  options: SimulateDisplayItemRunOptions,
+): Promise<void> {
+  const {
+    agentId,
+    items,
+    result = "Agent completed.",
+    delays = 50,
+  } = options;
+
+  const wait = (ms: number) => page.waitForTimeout(ms);
+
+  // Init progress
+  await emitTauriEvent(page, "agent-init-progress", {
+    agent_id: agentId,
+    stage: "init_start",
+    timestamp: Date.now(),
+  } satisfies AgentInitProgressPayload);
+  await wait(delays);
+
+  await emitTauriEvent(page, "agent-init-progress", {
+    agent_id: agentId,
+    stage: "sdk_ready",
+    timestamp: Date.now(),
+  } satisfies AgentInitProgressPayload);
+  await wait(delays);
+
+  // Display items
+  for (const item of items) {
+    await emitTauriEvent(page, "agent-message", {
+      agent_id: agentId,
+      message: {
+        type: "display_item",
+        item,
+      },
+    });
+    await wait(delays);
+  }
+
+  // Result message (pass-through for usage tracking)
+  await emitTauriEvent(page, "agent-message", {
+    agent_id: agentId,
+    message: {
+      type: "result",
+      result,
+      subtype: "success",
+    },
+  });
+  await wait(delays);
+
+  // Exit
+  await emitTauriEvent(page, "agent-exit", {
+    agent_id: agentId,
+    success: true,
+  } satisfies AgentExitPayload);
+}
+
 /**
  * Simulate an agent that initializes but then exits with an error.
  * Emits the init sequence followed by agent-exit with success=false.
@@ -193,14 +297,14 @@ export async function simulateAgentError(
   // Init sequence
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
-    subtype: "init_start",
+    stage: "init_start",
     timestamp: Date.now(),
   } satisfies AgentInitProgressPayload);
   await wait(delays);
 
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
-    subtype: "sdk_ready",
+    stage: "sdk_ready",
     timestamp: Date.now(),
   } satisfies AgentInitProgressPayload);
   await wait(delays);

@@ -2,7 +2,7 @@
 name: detailed-research
 description: Reads answer-evaluation.json to skip clear items, spawns refinement sub-agents for non-clear and needs-refinement answers, and returns canonical clarifications payload. Called during Step 3.
 model: sonnet
-tools: Read, Glob, Grep, Bash, Task
+tools: Read, Task, Skill
 ---
 
 # Detailed Research Orchestrator
@@ -35,6 +35,10 @@ Do not write any files in this agent.
 ---
 
 <instructions>
+
+## Narration
+
+Before each phase and before spawning each sub-agent, write one short status line (≤ 10 words). Write it before tool calls. Examples: "Reading inputs…", "Loading evaluation verdicts…", "Spawning refinement sub-agents…", "Merging refinements…"
 
 ### Phase 0: Read inputs
 
@@ -97,7 +101,7 @@ Follow the format example below. Return ONLY a JSON array of refinement objects 
 
 - Number sub-questions as `R{n}.{m}` where `n` is the parent question number
 - Each refinement object has: `id`, `parent_question_id`, `title`, `text` (rationale), `choices` array, `recommendation` (recommended choice letter only, e.g., `"B"`), `must_answer` (false), `answer_choice` (null), `answer_text` (null), `refinements` (empty array `[]`)
-- 2-4 choices plus "Other (please specify)" with `is_other: true` — each choice must change the skill's design
+- 2-4 concrete choices (all `is_other: false`) plus one final "Other (please specify)" choice with `is_other: true` and text exactly `"Other (please specify)"` — never mark a concrete/specific choice as `is_other: true`, even if it is a negation like "No X exists"
 - Do NOT re-display original question text, choices, or recommendation
 
 ## Phase 3: Merge refinements into canonical payload

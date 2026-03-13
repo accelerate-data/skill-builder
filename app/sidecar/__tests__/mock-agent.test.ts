@@ -8,8 +8,6 @@ import {
   resolvePromptPathsAsync,
   resolveStepTemplate,
 } from "../mock-agent.js";
-import * as os from "os";
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------------------
@@ -43,6 +41,17 @@ describe("resolveStepTemplate", () => {
   it("returns null for unknown agents", () => {
     expect(resolveStepTemplate("unknown-agent")).toBeNull();
     expect(resolveStepTemplate(undefined)).toBeNull();
+  });
+
+  it("maps undefined agentName + runSource=test to test-evaluator (skill test evaluator)", () => {
+    expect(resolveStepTemplate(undefined, { runSource: "test" })).toBe("test-evaluator");
+    expect(resolveStepTemplate(undefined, { runSource: "test", skillName: "my-skill" })).toBe("test-evaluator");
+  });
+
+  it("returns null for undefined agentName without runSource=test", () => {
+    expect(resolveStepTemplate(undefined, { runSource: "workflow" })).toBeNull();
+    expect(resolveStepTemplate(undefined, { runSource: undefined })).toBeNull();
+    expect(resolveStepTemplate(undefined, {})).toBeNull();
   });
 
   it("maps data-product-builder to test-plan-with for non-baseline skill names", () => {
@@ -125,42 +134,31 @@ describe("parsePromptPaths", () => {
     expect(paths.skillDir).toBeNull();
   });
 
-  it("derives contextDir from workspaceDir when only workspace in prompt (SDK protocol)", () => {
+  it("extracts inline skill output dir from prompt", () => {
     const prompt =
       "The skill name is: my-skill. The workspace directory is: /Users/john/workspace/my-skill. " +
-      "Read user-context.md and .skill_output_dir from the workspace directory first. " +
+      "The skill output directory (SKILL.md and references/) is: /Users/john/skills/my-skill. " +
+      "Read user-context.md from the workspace directory. " +
       "Derive context_dir as workspace_dir/context.";
     const paths = parsePromptPaths(prompt);
     expect(paths.workspaceDir).toBe("/Users/john/workspace/my-skill");
     expect(paths.contextDir).toBe("/Users/john/workspace/my-skill/context");
-    expect(paths.skillOutputDir).toBeNull();
-    expect(paths.skillDir).toBeNull();
+    expect(paths.skillOutputDir).toBe("/Users/john/skills/my-skill");
+    expect(paths.skillDir).toBe("/Users/john/skills/my-skill");
   });
 });
 
 describe("resolvePromptPathsAsync", () => {
-  it("resolves skillOutputDir from .skill_output_dir when not in prompt", async () => {
+  it("resolves skillOutputDir from inline prompt path", async () => {
     const prompt =
       "The skill name is: x. The workspace directory is: /tmp/ws/x. " +
-      "Read user-context.md and .skill_output_dir first.";
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "mock-agent-"));
-    try {
-      const workspaceDir = path.join(tmp, "x");
-      await fs.mkdir(workspaceDir, { recursive: true });
-      const skillOutputPath = path.join(tmp, "skill-out", "x");
-      await fs.writeFile(
-        path.join(workspaceDir, ".skill_output_dir"),
-        skillOutputPath,
-      );
-      const promptWithTmp = prompt.replace("/tmp/ws/x", workspaceDir);
-      const paths = await resolvePromptPathsAsync(promptWithTmp);
-      expect(paths.workspaceDir).toBe(workspaceDir);
-      expect(paths.contextDir).toBe(path.join(workspaceDir, "context"));
-      expect(paths.skillOutputDir).toBe(skillOutputPath);
-      expect(paths.skillDir).toBe(skillOutputPath);
-    } finally {
-      await fs.rm(tmp, { recursive: true, force: true });
-    }
+      "The skill output directory (SKILL.md and references/) is: /tmp/skills/x. " +
+      "Read user-context.md from the workspace directory.";
+    const paths = await resolvePromptPathsAsync(prompt);
+    expect(paths.workspaceDir).toBe("/tmp/ws/x");
+    expect(paths.contextDir).toBe("/tmp/ws/x/context");
+    expect(paths.skillOutputDir).toBe("/tmp/skills/x");
+    expect(paths.skillDir).toBe("/tmp/skills/x");
   });
 });
 
@@ -174,6 +172,8 @@ describe("resolvePromptPathsAsync", () => {
  * resolveStepTemplate() — don't just add it here.
  */
 const AGENTS_WITHOUT_MOCK = new Set([
+  "eval-skill",
+  "validate-quality",
   "validate-skill",
 ]);
 
@@ -271,14 +271,14 @@ describe("buildStructuredMockResult", () => {
   });
 
   it("returns structured payload for step2-confirm-decisions", async () => {
+    // The mock now returns the raw { version, metadata, decisions } fixture
+    // matching the real agent's outputFormat schema (no envelope wrapping).
     const result = await buildStructuredMockResult("step2-confirm-decisions");
     expect(result).not.toBeNull();
     const payload = result as Record<string, unknown>;
-    expect(payload.status).toBe("confirm_decisions_complete");
-    expect(typeof payload.decision_count).toBe("number");
-    expect(typeof payload.conflicts_resolved).toBe("number");
-    expect(typeof payload.round).toBe("number");
-    expect(typeof payload.decisions_json).toBe("object");
+    expect(payload.version).toBe("1");
+    expect(typeof payload.metadata).toBe("object");
+    expect(Array.isArray(payload.decisions)).toBe(true);
   });
 
   it("returns structured payload for gate-answer-evaluator", async () => {

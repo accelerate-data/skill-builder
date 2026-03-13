@@ -21,6 +21,7 @@ import {
   startRefineSession,
   sendRefineMessage,
   closeRefineSession,
+  finalizeRefineRun,
   materializeRefineValidationOutput,
   cleanupSkillSidecar,
   acquireLock,
@@ -30,6 +31,7 @@ import {
 import { useSkillStore } from "@/stores/skill-store";
 import type { SkillSummary } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
+import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
 import { ResizableSplitPane } from "@/components/refine/resizable-split-pane";
 import { SkillPicker } from "@/components/refine/skill-picker";
 import { ChatPanel } from "@/components/refine/chat-panel";
@@ -75,6 +77,7 @@ export default function RefinePage() {
   const refinableSkills = useRefineStore((s) => s.refinableSkills);
   const isLoadingSkills = useRefineStore((s) => s.isLoadingSkills);
   const skillFiles = useRefineStore((s) => s.skillFiles);
+  const previewRevision = useRefineStore((s) => s.previewRevision);
   const isRunning = useRefineStore((s) => s.isRunning);
   const activeAgentId = useRefineStore((s) => s.activeAgentId);
 
@@ -98,14 +101,7 @@ export default function RefinePage() {
 
   const extractStructuredResultPayload = useCallback((agentId: string) => {
     const run = useAgentStore.getState().runs[agentId];
-    if (!run) return null;
-    for (let i = run.messages.length - 1; i >= 0; i -= 1) {
-      const msg = run.messages[i];
-      if (msg.type !== "result") continue;
-      const raw = msg.raw as Record<string, unknown>;
-      if ("result" in raw) return raw.result ?? null;
-    }
-    return null;
+    return extractStructuredResultFromDisplayItems(run?.displayItems);
   }, []);
 
   useEffect(() => {
@@ -243,8 +239,9 @@ export default function RefinePage() {
         }
 
         const files = await loadSkillFiles(workspacePath, skill.name);
-        if (files) {
+      if (files) {
           store.setSkillFiles(files);
+          store.setGitDiff(null);
           if (files.length > 0) {
             store.setActiveFileTab(files[0].filename);
           }
@@ -285,49 +282,60 @@ export default function RefinePage() {
       toast.error("Agent failed — check the chat for details", { duration: Infinity });
     }
 
-    // Check for session exhaustion — the SDK ran out of turns
+    // Track last turn cost for display
     const agentRun = useAgentStore.getState().runs[activeAgentId];
     setLastTurnCost(agentRun?.totalCost);
-    if (agentRun) {
-      const hasExhausted = agentRun.messages.some(
-        (m) => (m.raw as Record<string, unknown>)?.type === "session_exhausted",
-      );
-      if (hasExhausted) {
-        console.warn("[refine] session exhausted for agent %s", activeAgentId);
-        useRefineStore.getState().setSessionExhausted(true);
-        toast.info("This refine session has reached its limit. Please start a new session to continue.", { duration: 5000 });
-      }
-    }
 
     const complete = async () => {
       const store = useRefineStore.getState();
 
-      // Backend-owned context writes for /validate and /rewrite validate pass.
       if (activeRunStatus === "completed" && workspacePath && selectedSkill) {
         const structuredOutput = extractStructuredResultPayload(activeAgentId);
         const hasStructuredObject = !!structuredOutput
           && typeof structuredOutput === "object"
           && !Array.isArray(structuredOutput);
-        if (hasStructuredObject && (structuredOutput as Record<string, unknown>).status === "validation_complete") {
+
+        try {
+          const finalized = await finalizeRefineRun(
+            selectedSkill.name,
+            workspacePath,
+            hasStructuredObject ? structuredOutput : undefined,
+          );
+          store.updateSkillFiles(
+            finalized.files.map((file): SkillFile => ({
+              filename: file.path,
+              content: file.content,
+            })),
+          );
+          store.setGitDiff(finalized.diff);
+        } catch (err) {
           try {
-            await materializeRefineValidationOutput(
-              selectedSkill.name,
-              workspacePath,
-              structuredOutput,
-            );
+            if (hasStructuredObject && (structuredOutput as Record<string, unknown>).status === "validation_complete") {
+              await materializeRefineValidationOutput(
+                selectedSkill.name,
+                workspacePath,
+                structuredOutput,
+              );
+            }
+
+            const files = await loadSkillFiles(workspacePath, selectedSkill.name);
+            if (files) {
+              store.updateSkillFiles(files);
+              store.setGitDiff(null);
+            }
           } catch (err) {
             toast.error(
-              `Validation output materialization failed: ${err instanceof Error ? err.message : String(err)}`,
+              `Refine finalization failed: ${err instanceof Error ? err.message : String(err)}`,
               { duration: Infinity },
             );
           }
         }
-      }
-
-      // Re-read skill files to capture any changes the agent made
-      if (workspacePath && selectedSkill) {
+      } else if (workspacePath && selectedSkill) {
         const files = await loadSkillFiles(workspacePath, selectedSkill.name);
-        if (files) store.updateSkillFiles(files);
+        if (files) {
+          store.updateSkillFiles(files);
+          store.setGitDiff(null);
+        }
       }
 
       store.setRunning(false);
@@ -381,6 +389,7 @@ export default function RefinePage() {
 
       // Snapshot baseline for diff
       store.snapshotBaseline();
+      store.setGitDiff(null);
 
       // Add user message
       store.addUserMessage(text, targetFiles, command);
@@ -488,7 +497,7 @@ export default function RefinePage() {
       )}
 
       {/* Main split pane */}
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 w-full flex-1 overflow-hidden">
         <ResizableSplitPane
           left={
             <ChatPanel
@@ -499,7 +508,7 @@ export default function RefinePage() {
               scopeBlocked={scopeBlocked}
             />
           }
-          right={<PreviewPanel />}
+          right={<PreviewPanel key={previewRevision} />}
         />
       </div>
 

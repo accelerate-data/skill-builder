@@ -102,7 +102,11 @@ fn get_allowed_roots(db: &tauri::State<'_, Db>) -> Result<Vec<PathBuf>, String> 
     for root in roots {
         if root.exists() {
             let canonical = fs::canonicalize(&root).map_err(|e| {
-                format!("Failed to canonicalize allowed root '{}': {}", root.display(), e)
+                format!(
+                    "Failed to canonicalize allowed root '{}': {}",
+                    root.display(),
+                    e
+                )
             })?;
             if !canonical_roots.iter().any(|r| r == &canonical) {
                 canonical_roots.push(canonical);
@@ -125,10 +129,7 @@ fn reject_traversal(path: &Path) -> Result<(), String> {
     if !path.is_absolute() {
         return Err(format!("Path must be absolute: '{}'", path.display()));
     }
-    if path
-        .components()
-        .any(|c| matches!(c, Component::ParentDir))
-    {
+    if path.components().any(|c| matches!(c, Component::ParentDir)) {
         return Err(format!(
             "Path traversal segment ('..') is not allowed: '{}'",
             path.display()
@@ -150,12 +151,9 @@ fn canonicalize_for_write_target(path: &Path) -> Result<PathBuf, String> {
     // Walk up to the nearest existing ancestor, then rebuild forward.
     let mut existing = parent;
     while !existing.exists() {
-        existing = existing.parent().ok_or_else(|| {
-            format!(
-                "Cannot resolve existing ancestor for '{}'",
-                path.display()
-            )
-        })?;
+        existing = existing
+            .parent()
+            .ok_or_else(|| format!("Cannot resolve existing ancestor for '{}'", path.display()))?;
     }
     let canonical_existing = fs::canonicalize(existing)
         .map_err(|e| format!("Failed to canonicalize '{}': {}", existing.display(), e))?;
@@ -208,7 +206,11 @@ fn read_file_with_roots(file_path: &str, allowed_roots: &[PathBuf]) -> Result<St
         .map_err(|e| format!("Failed to read '{}': {}", canonical_path.display(), e))
 }
 
-fn write_file_with_roots(path: &str, content: &str, allowed_roots: &[PathBuf]) -> Result<(), String> {
+fn write_file_with_roots(
+    path: &str,
+    content: &str,
+    allowed_roots: &[PathBuf],
+) -> Result<(), String> {
     let input = Path::new(path);
     let canonical_target = canonicalize_for_write_target(input)?;
     if !is_within_allowed_roots(&canonical_target, allowed_roots) {
@@ -233,8 +235,13 @@ fn write_file_with_roots(path: &str, content: &str, allowed_roots: &[PathBuf]) -
 fn copy_file_with_roots(src: &str, dest: &str, allowed_roots: &[PathBuf]) -> Result<(), String> {
     let src_input = Path::new(src);
     reject_traversal(src_input)?;
-    let canonical_src = fs::canonicalize(src_input)
-        .map_err(|e| format!("Failed to canonicalize source '{}': {}", src_input.display(), e))?;
+    let canonical_src = fs::canonicalize(src_input).map_err(|e| {
+        format!(
+            "Failed to canonicalize source '{}': {}",
+            src_input.display(),
+            e
+        )
+    })?;
     if !is_within_allowed_roots(&canonical_src, allowed_roots) {
         return Err(format!(
             "Copy rejected: source '{}' is outside allowed roots",
@@ -374,12 +381,22 @@ pub fn read_file_as_base64(file_path: String, db: tauri::State<'_, Db>) -> Resul
 }
 
 #[tauri::command]
-pub fn write_base64_to_temp_file(file_name: String, base64_content: String) -> Result<String, String> {
+pub fn write_base64_to_temp_file(
+    file_name: String,
+    base64_content: String,
+) -> Result<String, String> {
     log::info!("[write_base64_to_temp_file] file_name={}", file_name);
 
     // Reject path traversal attempts: no separators, no "..", no leading "."
-    if file_name.contains('/') || file_name.contains('\\') || file_name.contains("..") || file_name.starts_with('.') {
-        log::error!("[write_base64_to_temp_file] Rejected invalid file name: {}", file_name);
+    if file_name.contains('/')
+        || file_name.contains('\\')
+        || file_name.contains("..")
+        || file_name.starts_with('.')
+    {
+        log::error!(
+            "[write_base64_to_temp_file] Rejected invalid file name: {}",
+            file_name
+        );
         return Err("Invalid file name: path traversal not allowed".to_string());
     }
 
@@ -406,12 +423,12 @@ mod tests {
         fs::create_dir_all(skill.join("context")).unwrap();
         fs::create_dir_all(skill.join("skill").join("references")).unwrap();
         fs::write(skill.join("skill").join("SKILL.md"), "# My Skill").unwrap();
-        fs::write(skill.join("skill").join("references").join("ref1.md"), "# Ref 1").unwrap();
         fs::write(
-            skill.join("context").join("clarifications.json"),
-            "{}",
+            skill.join("skill").join("references").join("ref1.md"),
+            "# Ref 1",
         )
         .unwrap();
+        fs::write(skill.join("context").join("clarifications.json"), "{}").unwrap();
     }
 
     #[test]
@@ -552,7 +569,11 @@ mod tests {
         let dir = tempdir().unwrap();
         let dest = dir.path().join("destination.txt");
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
-        let result = copy_file_with_roots("/tmp/nonexistent-source-abc123xyz", dest.to_str().unwrap(), &roots);
+        let result = copy_file_with_roots(
+            "/tmp/nonexistent-source-abc123xyz",
+            dest.to_str().unwrap(),
+            &roots,
+        );
         assert!(result.is_err());
     }
 

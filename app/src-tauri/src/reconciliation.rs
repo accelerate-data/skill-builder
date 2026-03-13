@@ -1,5 +1,7 @@
 use crate::cleanup::cleanup_future_steps;
-use crate::fs_validation::{detect_furthest_step, detect_furthest_step_with_options, has_skill_output};
+use crate::fs_validation::{
+    detect_furthest_step, detect_furthest_step_with_options, has_skill_output,
+};
 use crate::types::{DiscoveredSkill, ReconciliationResult};
 use std::collections::HashSet;
 use std::path::Path;
@@ -56,12 +58,7 @@ pub fn reconcile_on_startup(
                 )?;
             }
             "marketplace" => {
-                reconcile_marketplace(
-                    conn,
-                    &skill.name,
-                    skills_path,
-                    &mut notifications,
-                )?;
+                reconcile_marketplace(conn, &skill.name, skills_path, &mut notifications)?;
             }
             "imported" => {
                 // Imported skills have no reconciliation checks (per design doc)
@@ -73,7 +70,8 @@ pub fn reconcile_on_startup(
             other => {
                 log::warn!(
                     "[reconcile] '{}': unknown skill_source='{}', skipping",
-                    skill.name, other
+                    skill.name,
+                    other
                 );
             }
         }
@@ -84,14 +82,24 @@ pub fn reconcile_on_startup(
     let mut discovered_skills = Vec::new();
     let skills_dir = Path::new(skills_path);
     if skills_dir.exists() {
-        for entry in std::fs::read_dir(skills_dir).into_iter().flatten().flatten() {
+        for entry in std::fs::read_dir(skills_dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
             let path = entry.path();
-            if !path.is_dir() { continue; }
+            if !path.is_dir() {
+                continue;
+            }
             let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') { continue; } // skip dotfiles
+            if name.starts_with('.') {
+                continue;
+            } // skip dotfiles
 
             // Already in master? Skip.
-            if master_names.contains(&name) { continue; }
+            if master_names.contains(&name) {
+                continue;
+            }
 
             let skill_md = path.join("SKILL.md");
             log::debug!("[reconcile] '{}': discovered on disk, not in master", name);
@@ -126,7 +134,10 @@ pub fn reconcile_on_startup(
 
                 if detected == Some(3) {
                     // Scenario 9b: all artifacts -> user choice
-                    log::info!("[reconcile] '{}': full artifacts found (step 3), prompting user", name);
+                    log::info!(
+                        "[reconcile] '{}': full artifacts found (step 3), prompting user",
+                        name
+                    );
                     discovered_skills.push(DiscoveredSkill {
                         name: name.clone(),
                         detected_step: 3,
@@ -134,7 +145,11 @@ pub fn reconcile_on_startup(
                     });
                 } else {
                     // Scenario 9c: SKILL.md + partial/no context -> user choice
-                    log::info!("[reconcile] '{}': partial artifacts (step {}), prompting user", name, detected_step);
+                    log::info!(
+                        "[reconcile] '{}': partial artifacts (step {}), prompting user",
+                        name,
+                        detected_step
+                    );
                     discovered_skills.push(DiscoveredSkill {
                         name: name.clone(),
                         detected_step,
@@ -148,14 +163,23 @@ pub fn reconcile_on_startup(
     // Pass 3: Move any remaining orphaned folders (not in skills master) to .trash/
     // This catches anything missed by Pass 1 and Pass 2 — defensive catch-all.
     // Skip skills pending user action from Pass 2 discovery.
-    let discovered_names: HashSet<String> = discovered_skills.iter().map(|d| d.name.clone()).collect();
+    let discovered_names: HashSet<String> =
+        discovered_skills.iter().map(|d| d.name.clone()).collect();
     if skills_dir.exists() {
         let trash_dir = skills_dir.join(".trash");
-        for entry in std::fs::read_dir(skills_dir).into_iter().flatten().flatten() {
+        for entry in std::fs::read_dir(skills_dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
             let path = entry.path();
-            if !path.is_dir() { continue; }
+            if !path.is_dir() {
+                continue;
+            }
             let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') { continue; } // skip dotfiles, .git, .trash
+            if name.starts_with('.') {
+                continue;
+            } // skip dotfiles, .git, .trash
 
             if !master_names.contains(&name) && !discovered_names.contains(&name) {
                 // Not in master after all reconciliation — move to .trash/
@@ -180,15 +204,28 @@ pub fn reconcile_on_startup(
                                 log::debug!("[reconcile] '{}': removed from git index", name);
                             }
                             Ok(out) => {
-                                log::debug!("[reconcile] '{}': git rm --cached: {}", name,
-                                    String::from_utf8_lossy(&out.stderr).trim());
+                                log::debug!(
+                                    "[reconcile] '{}': git rm --cached: {}",
+                                    name,
+                                    String::from_utf8_lossy(&out.stderr).trim()
+                                );
                             }
                             Err(e) => {
-                                log::debug!("[reconcile] '{}': git rm --cached failed: {}", name, e);
+                                log::debug!(
+                                    "[reconcile] '{}': git rm --cached failed: {}",
+                                    name,
+                                    e
+                                );
                             }
                         }
-                        log::info!("[reconcile] '{}': moved to .trash (not in skills master)", name);
-                        notifications.push(format!("'{}' moved to .trash — not in skills catalog", name));
+                        log::info!(
+                            "[reconcile] '{}': moved to .trash (not in skills master)",
+                            name
+                        );
+                        notifications.push(format!(
+                            "'{}' moved to .trash — not in skills catalog",
+                            name
+                        ));
                     }
                     Err(e) => {
                         log::error!("[reconcile] '{}': failed to move to .trash: {}", name, e);
@@ -212,7 +249,11 @@ pub fn reconcile_on_startup(
         };
         if needs_trash_entry {
             use std::io::Write;
-            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&gitignore) {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&gitignore)
+            {
                 let _ = writeln!(f, ".trash/");
                 log::debug!("[reconcile] added .trash/ to .gitignore");
             }
@@ -220,13 +261,16 @@ pub fn reconcile_on_startup(
     }
 
     // Commit any git index changes from Pass 3 (removals + .gitignore update)
-    if let Err(e) = crate::git::commit_all(skills_dir, "reconcile: move orphaned folders to .trash") {
+    if let Err(e) = crate::git::commit_all(skills_dir, "reconcile: move orphaned folders to .trash")
+    {
         log::debug!("[reconcile] git commit after pass 3: {}", e);
     }
 
     log::info!(
         "[reconcile_on_startup] done: {} auto-cleaned, {} notifications, {} discovered",
-        0, notifications.len(), discovered_skills.len()
+        0,
+        notifications.len(),
+        discovered_skills.len()
     );
 
     Ok(ReconciliationResult {
@@ -273,14 +317,19 @@ pub fn preview_reconcile_on_startup(
                     .unwrap_or(0);
                     notifications.push(format!(
                         "'{}' workflow record recreated at step {}",
-                        skill.name, disk_step + 1
+                        skill.name,
+                        disk_step + 1
                     ));
                     continue;
                 }
 
                 let run = maybe_run.expect("checked above");
-                let maybe_disk_step =
-                    detect_furthest_step_with_options(workspace_path, &skill.name, skills_path, false);
+                let maybe_disk_step = detect_furthest_step_with_options(
+                    workspace_path,
+                    &skill.name,
+                    skills_path,
+                    false,
+                );
 
                 if let Some(disk_step) = maybe_disk_step.map(|s| s as i32) {
                     const DETECTABLE_STEPS: &[i32] = &[0, 2, 3];
@@ -297,19 +346,24 @@ pub fn preview_reconcile_on_startup(
                         if !db_valid {
                             notifications.push(format!(
                                 "'{}' was reset from step {} to step {} (disk state behind DB)",
-                                skill.name, run.current_step + 1, disk_step + 1
+                                skill.name,
+                                run.current_step + 1,
+                                disk_step + 1
                             ));
                         }
                     } else if disk_step > run.current_step {
                         notifications.push(format!(
                             "'{}' was advanced from step {} to step {} (disk state ahead of DB)",
-                            skill.name, run.current_step + 1, disk_step + 1
+                            skill.name,
+                            run.current_step + 1,
+                            disk_step + 1
                         ));
                     }
                 } else if run.current_step > 0 {
                     notifications.push(format!(
                         "'{}' was reset from step {} to step 1 (no output files found)",
-                        skill.name, run.current_step + 1
+                        skill.name,
+                        run.current_step + 1
                     ));
                 }
             }
@@ -330,7 +384,11 @@ pub fn preview_reconcile_on_startup(
     let master_names: HashSet<String> = all_skills.iter().map(|s| s.name.clone()).collect();
     let skills_dir = Path::new(skills_path);
     if skills_dir.exists() {
-        for entry in std::fs::read_dir(skills_dir).into_iter().flatten().flatten() {
+        for entry in std::fs::read_dir(skills_dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
             let path = entry.path();
             if !path.is_dir() {
                 continue;
@@ -427,21 +485,22 @@ fn reconcile_skill_builder(
         let disk_step = detect_furthest_step(workspace_path, name, skills_path)
             .map(|s| s as i32)
             .unwrap_or(0);
-        let status = if disk_step >= 3 { "completed" } else { "pending" };
+        let status = if disk_step >= 3 {
+            "completed"
+        } else {
+            "pending"
+        };
         log::info!(
             "[reconcile] '{}': skill_source=skill-builder, action=recreate_workflow (scenario 10, detected_step={})",
             name, disk_step
         );
         crate::db::save_workflow_run(
-            conn,
-            name,
-            disk_step,
-            status,
-            "domain", // conservative default
+            conn, name, disk_step, status, "domain", // conservative default
         )?;
         notifications.push(format!(
             "'{}' workflow record recreated at step {}",
-            name, disk_step + 1
+            name,
+            disk_step + 1
         ));
         return Ok(());
     }
@@ -468,7 +527,9 @@ fn reconcile_skill_builder(
 
     log::debug!(
         "[reconcile] '{}': skill_source=skill-builder, db_step={}, db_status={}",
-        name, run.current_step, run.status
+        name,
+        run.current_step,
+        run.status
     );
 
     // Reconcile DB step state against disk evidence
@@ -476,7 +537,8 @@ fn reconcile_skill_builder(
 
     log::debug!(
         "[reconcile] '{}': disk furthest step = {:?}",
-        name, maybe_disk_step
+        name,
+        maybe_disk_step
     );
 
     if let Some(disk_step) = maybe_disk_step.map(|s| s as i32) {
@@ -507,30 +569,30 @@ fn reconcile_skill_builder(
                     "[reconcile] '{}': skill_source=skill-builder, action=reset (step {} to {}, disk does not confirm {:?})",
                     name, run.current_step, disk_step, last_expected_detectable
                 );
-                crate::db::save_workflow_run(conn, name, disk_step,
-                    "pending",
-                    &run.purpose,
-                )?;
+                crate::db::save_workflow_run(conn, name, disk_step, "pending", &run.purpose)?;
                 crate::db::reset_workflow_steps_from(conn, name, disk_step)?;
                 did_reset = true;
                 notifications.push(format!(
                     "'{}' was reset from step {} to step {} (disk state behind DB)",
-                    name, run.current_step + 1, disk_step + 1
+                    name,
+                    run.current_step + 1,
+                    disk_step + 1
                 ));
             }
         } else if disk_step > run.current_step {
             // Scenario 3: Disk ahead of DB — advance
             log::info!(
                 "[reconcile] '{}': skill_source=skill-builder, action=advance (step {} to {})",
-                name, run.current_step, disk_step
+                name,
+                run.current_step,
+                disk_step
             );
-            crate::db::save_workflow_run(conn, name, disk_step,
-                "pending",
-                &run.purpose,
-            )?;
+            crate::db::save_workflow_run(conn, name, disk_step, "pending", &run.purpose)?;
             notifications.push(format!(
                 "'{}' was advanced from step {} to step {} (disk state ahead of DB)",
-                name, run.current_step + 1, disk_step + 1
+                name,
+                run.current_step + 1,
+                disk_step + 1
             ));
         } else {
             // Scenario 1: DB and disk agree
@@ -562,13 +624,11 @@ fn reconcile_skill_builder(
         if disk_step >= LAST_WORKFLOW_STEP && run.status != "completed" {
             log::info!(
                 "[reconcile] '{}': disk step {} >= last step, updating run status to 'completed'",
-                name, disk_step
+                name,
+                disk_step
             );
             let effective_step = std::cmp::max(disk_step, run.current_step);
-            crate::db::save_workflow_run(conn, name, effective_step,
-                "completed",
-                &run.purpose,
-            )?;
+            crate::db::save_workflow_run(conn, name, effective_step, "completed", &run.purpose)?;
         }
 
         // Clean up any files from steps beyond the reconciled disk point
@@ -579,15 +639,13 @@ fn reconcile_skill_builder(
             "[reconcile] '{}': skill_source=skill-builder, action=reset_to_zero (step {} to 0, no output files)",
             name, run.current_step
         );
-        crate::db::save_workflow_run(conn, name, 0,
-            "pending",
-            &run.purpose,
-        )?;
+        crate::db::save_workflow_run(conn, name, 0, "pending", &run.purpose)?;
         crate::db::reset_workflow_steps_from(conn, name, 0)?;
         cleanup_future_steps(workspace_path, name, -1, skills_path);
         notifications.push(format!(
             "'{}' was reset from step {} to step 1 (no output files found)",
-            name, run.current_step + 1
+            name,
+            run.current_step + 1
         ));
     } else {
         // Scenario 8: Fresh skill (step 0, no output).
@@ -653,7 +711,9 @@ pub fn resolve_orphan(
 ) -> Result<(), String> {
     log::debug!(
         "[resolve_orphan] skill='{}': action={} skills_path={}",
-        skill_name, action, skills_path
+        skill_name,
+        action,
+        skills_path
     );
     match action {
         "delete" => {
@@ -663,23 +723,24 @@ pub fn resolve_orphan(
             // Delete skill output directory on disk if it exists
             let output_dir = Path::new(skills_path).join(skill_name);
             if output_dir.exists() {
-                std::fs::remove_dir_all(&output_dir)
-                    .map_err(|e| format!("Failed to delete skill output for '{}': {}", skill_name, e))?;
+                std::fs::remove_dir_all(&output_dir).map_err(|e| {
+                    format!("Failed to delete skill output for '{}': {}", skill_name, e)
+                })?;
             }
             Ok(())
         }
         "keep" => {
             // Reset workflow to step 0, pending — preserve skill output files
             if let Some(run) = crate::db::get_workflow_run(conn, skill_name)? {
-                crate::db::save_workflow_run(conn, skill_name, 0,
-                    "pending",
-                    &run.purpose,
-                )?;
+                crate::db::save_workflow_run(conn, skill_name, 0, "pending", &run.purpose)?;
                 crate::db::reset_workflow_steps_from(conn, skill_name, 0)?;
             }
             Ok(())
         }
-        _ => Err(format!("Invalid orphan resolution action: '{}'. Expected 'delete' or 'keep'.", action)),
+        _ => Err(format!(
+            "Invalid orphan resolution action: '{}'. Expected 'delete' or 'keep'.",
+            action
+        )),
     }
 }
 
@@ -725,7 +786,9 @@ mod tests {
         assert_eq!(preview.notifications.len(), 1);
         assert!(preview.notifications[0].contains("reset from step 4 to step 1"));
 
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 3);
     }
 
@@ -759,8 +822,7 @@ mod tests {
         let conn = create_test_db();
 
         // Insert into skills master directly (skill-builder, but no workflow_runs row)
-        crate::db::upsert_skill(&conn, "orphan-skill", "skill-builder", "domain")
-            .unwrap();
+        crate::db::upsert_skill(&conn, "orphan-skill", "skill-builder", "domain").unwrap();
         // Create step 0 output on disk so detect_furthest_step finds it
         create_step_output(skills_tmp.path(), "orphan-skill", 0);
 
@@ -792,8 +854,7 @@ mod tests {
 
         // DB says step 3, but disk only has step 0 output
         // (Step 1 is non-detectable — it edits clarifications.json in-place)
-        crate::db::save_workflow_run(&conn, "my-skill", 3, "in_progress", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 3, "in_progress", "domain").unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
         create_step_output(skills_tmp.path(), "my-skill", 0);
 
@@ -824,8 +885,7 @@ mod tests {
 
         // DB says step 3 (last step), status "pending" — simulates the race where
         // the frontend debounced save never sent "completed"
-        crate::db::save_workflow_run(&conn, "done-skill", 3, "pending", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "done-skill", 3, "pending", "domain").unwrap();
         create_skill_dir(tmp.path(), "done-skill", "sales");
         // Create output for all detectable steps (0, 2, 3) in skills_path
         for step in [0, 2, 3] {
@@ -854,8 +914,7 @@ mod tests {
         let conn = create_test_db();
 
         // DB at step 2, status "pending" — not yet at the last step
-        crate::db::save_workflow_run(&conn, "mid-skill", 2, "pending", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "mid-skill", 2, "pending", "domain").unwrap();
         create_skill_dir(tmp.path(), "mid-skill", "sales");
         create_step_output(skills_tmp.path(), "mid-skill", 0);
         create_step_output(skills_tmp.path(), "mid-skill", 2);
@@ -898,7 +957,9 @@ mod tests {
         assert_eq!(master.skill_source, "marketplace");
 
         // No workflow_runs row should exist for marketplace skills
-        assert!(crate::db::get_workflow_run(&conn, "my-skill").unwrap().is_none());
+        assert!(crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .is_none());
     }
 
     #[test]
@@ -955,7 +1016,9 @@ mod tests {
         // No notification — just silently recreated the transient dir
 
         // DB record must still exist
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 0);
 
         // Workspace dir should have been recreated
@@ -973,8 +1036,7 @@ mod tests {
         let conn = create_test_db();
 
         // DB at step 2, disk has step 0 and 2 output
-        crate::db::save_workflow_run(&conn, "healthy-skill", 2, "in_progress", "domain")
-        .unwrap();
+        crate::db::save_workflow_run(&conn, "healthy-skill", 2, "in_progress", "domain").unwrap();
         create_skill_dir(tmp.path(), "healthy-skill", "analytics");
         create_step_output(tmp.path(), "healthy-skill", 0);
         // Step 2 output: decisions.json
@@ -1003,8 +1065,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "fresh-skill", 0, "pending", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "fresh-skill", 0, "pending", "domain").unwrap();
         // Only create the working directory — no output files
         std::fs::create_dir_all(tmp.path().join("fresh-skill")).unwrap();
 
@@ -1030,8 +1091,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "lost-skill", 2, "pending", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "lost-skill", 2, "pending", "domain").unwrap();
         std::fs::create_dir_all(tmp.path().join("lost-skill")).unwrap();
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -1039,7 +1099,9 @@ mod tests {
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("reset from step 3 to step 1"));
 
-        let run = crate::db::get_workflow_run(&conn, "lost-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "lost-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 0);
 
         // No steps should be marked completed
@@ -1073,14 +1135,19 @@ mod tests {
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.notifications[0].contains("reset from step 4 to step 1"));
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 0);
 
         // Only step 0 should be completed — step 1 must NOT be re-marked
         let steps = crate::db::get_workflow_steps(&conn, "my-skill").unwrap();
         for step in &steps {
             if step.step_id == 0 {
-                assert_eq!(step.status, "completed", "Step 0 should be completed (has output)");
+                assert_eq!(
+                    step.status, "completed",
+                    "Step 0 should be completed (has output)"
+                );
             } else {
                 assert_ne!(
                     step.status, "completed",
@@ -1101,8 +1168,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "done-skill", 4, "pending", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "done-skill", 4, "pending", "domain").unwrap();
         create_skill_dir(tmp.path(), "done-skill", "analytics");
         for step in [0, 2, 3] {
             create_step_output(skills_tmp.path(), "done-skill", step);
@@ -1112,7 +1178,9 @@ mod tests {
 
         // Should NOT reset — step 4 is beyond last step but step 3 output exists
         assert!(result.notifications.is_empty());
-        let run = crate::db::get_workflow_run(&conn, "done-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "done-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 4);
     }
 
@@ -1124,8 +1192,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "bad-skill", 4, "pending", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "bad-skill", 4, "pending", "domain").unwrap();
         create_skill_dir(tmp.path(), "bad-skill", "analytics");
         // Only steps 0-2 have output, step 3 is missing
         for step in [0, 2] {
@@ -1137,7 +1204,9 @@ mod tests {
         // Should reset — disk is genuinely behind
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("reset from step 5 to step 3"));
-        let run = crate::db::get_workflow_run(&conn, "bad-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "bad-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 2);
     }
 
@@ -1149,15 +1218,16 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "review-skill", 1, "pending", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "review-skill", 1, "pending", "domain").unwrap();
         create_skill_dir(tmp.path(), "review-skill", "sales");
         create_step_output(skills_tmp.path(), "review-skill", 0);
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.notifications.is_empty());
-        let run = crate::db::get_workflow_run(&conn, "review-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "review-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 1);
     }
 
@@ -1171,8 +1241,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "review-skill", 3, "pending", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "review-skill", 3, "pending", "domain").unwrap();
         create_skill_dir(tmp.path(), "review-skill", "sales");
         create_step_output(skills_tmp.path(), "review-skill", 0);
         create_step_output(skills_tmp.path(), "review-skill", 2);
@@ -1181,7 +1250,9 @@ mod tests {
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.notifications.is_empty());
-        let run = crate::db::get_workflow_run(&conn, "review-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "review-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 3);
     }
 
@@ -1190,8 +1261,8 @@ mod tests {
     #[test]
     fn test_step_completed_advances_to_next_not_reset() {
         for (db_step, disk_steps) in [
-            (1, vec![0u32]),          // step 0 completed -> on step 1 (non-detectable)
-            (4, vec![0, 2, 3]),       // step 3 completed -> on step 4 (beyond last step)
+            (1, vec![0u32]),    // step 0 completed -> on step 1 (non-detectable)
+            (4, vec![0, 2, 3]), // step 3 completed -> on step 4 (beyond last step)
         ] {
             let tmp = tempfile::tempdir().unwrap();
             let skills_tmp = tempfile::tempdir().unwrap();
@@ -1199,8 +1270,7 @@ mod tests {
             let skills_path = skills_tmp.path().to_str().unwrap();
             let conn = create_test_db();
 
-            crate::db::save_workflow_run(&conn, "my-skill", db_step, "pending", "domain")
-                .unwrap();
+            crate::db::save_workflow_run(&conn, "my-skill", db_step, "pending", "domain").unwrap();
             create_skill_dir(tmp.path(), "my-skill", "sales");
             for step in &disk_steps {
                 create_step_output(skills_tmp.path(), "my-skill", *step);
@@ -1211,10 +1281,18 @@ mod tests {
             assert!(
                 result.notifications.is_empty(),
                 "DB at step {}, disk through step {:?}: should NOT reset but got: {:?}",
-                db_step, disk_steps.last(), result.notifications
+                db_step,
+                disk_steps.last(),
+                result.notifications
             );
-            let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
-            assert_eq!(run.current_step, db_step, "current_step should remain {}", db_step);
+            let run = crate::db::get_workflow_run(&conn, "my-skill")
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                run.current_step, db_step,
+                "current_step should remain {}",
+                db_step
+            );
         }
     }
 
@@ -1228,15 +1306,16 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", 1, "pending", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 1, "pending", "domain").unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
         create_step_output(skills_tmp.path(), "my-skill", 0);
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.notifications.is_empty());
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 1);
     }
 
@@ -1251,8 +1330,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", 3, "pending", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 3, "pending", "domain").unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
         create_step_output(skills_tmp.path(), "my-skill", 0);
 
@@ -1260,7 +1338,9 @@ mod tests {
 
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("reset from step 4 to step 1"));
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 0);
     }
 
@@ -1284,7 +1364,9 @@ mod tests {
 
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("advanced from step 1 to step 4"));
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 3);
     }
 
@@ -1314,8 +1396,7 @@ mod tests {
         let conn = create_test_db();
 
         // Skill-builder skill with workspace dir missing — should recreate it
-        crate::db::save_workflow_run(&conn, "db-only", 0, "pending", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "db-only", 0, "pending", "domain").unwrap();
 
         // Normal — skill in skills_path with matching DB record
         crate::db::save_workflow_run(&conn, "normal", 0, "pending", "domain").unwrap();
@@ -1339,9 +1420,15 @@ mod tests {
         assert!(tmp.path().join("db-only").join("context").exists());
 
         // DB records for all skills should still be present
-        assert!(crate::db::get_workflow_run(&conn, "db-only").unwrap().is_some());
-        assert!(crate::db::get_workflow_run(&conn, "normal").unwrap().is_some());
-        assert!(crate::db::get_skill_master_id(&conn, "mkt-skill").unwrap().is_some());
+        assert!(crate::db::get_workflow_run(&conn, "db-only")
+            .unwrap()
+            .is_some());
+        assert!(crate::db::get_workflow_run(&conn, "normal")
+            .unwrap()
+            .is_some());
+        assert!(crate::db::get_skill_master_id(&conn, "mkt-skill")
+            .unwrap()
+            .is_some());
     }
 
     #[test]
@@ -1374,8 +1461,7 @@ mod tests {
         let conn = create_test_db();
 
         create_skill_dir(tmp.path(), "active-skill", "test");
-        crate::db::save_workflow_run(&conn, "active-skill", 3, "pending", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "active-skill", 3, "pending", "domain").unwrap();
         create_step_output(skills_tmp.path(), "active-skill", 0);
 
         let current_pid = std::process::id();
@@ -1402,8 +1488,7 @@ mod tests {
         let conn = create_test_db();
 
         create_skill_dir(tmp.path(), "crashed-skill", "test");
-        crate::db::save_workflow_run(&conn, "crashed-skill", 3, "pending", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "crashed-skill", 3, "pending", "domain").unwrap();
         create_step_output(skills_tmp.path(), "crashed-skill", 0);
 
         crate::db::create_workflow_session(&conn, "sess-dead", "crashed-skill", 999999).unwrap();
@@ -1433,7 +1518,9 @@ mod tests {
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 0, "should reconcile to step 0");
         assert!(!result.notifications.is_empty());
     }
@@ -1463,9 +1550,14 @@ mod tests {
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("advanced from step 2 to step 4"));
 
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 3);
-        assert_eq!(run.status, "completed", "status should be 'completed' when disk_step >= LAST_WORKFLOW_STEP");
+        assert_eq!(
+            run.status, "completed",
+            "status should be 'completed' when disk_step >= LAST_WORKFLOW_STEP"
+        );
     }
 
     #[test]
@@ -1489,9 +1581,14 @@ mod tests {
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("advanced from step 1 to step 3"));
 
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 2);
-        assert_eq!(run.status, "pending", "status should remain 'pending' when disk_step < LAST_WORKFLOW_STEP");
+        assert_eq!(
+            run.status, "pending",
+            "status should remain 'pending' when disk_step < LAST_WORKFLOW_STEP"
+        );
     }
 
     // --- Gap 2: Workspace dir recreated for in-progress skill ---
@@ -1522,7 +1619,11 @@ mod tests {
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         // No reset should occur — disk confirms last_expected_detectable (step 0)
-        assert!(result.notifications.is_empty(), "should not reset: {:?}", result.notifications);
+        assert!(
+            result.notifications.is_empty(),
+            "should not reset: {:?}",
+            result.notifications
+        );
 
         // Workspace dir should have been recreated
         assert!(
@@ -1531,7 +1632,9 @@ mod tests {
         );
 
         // current_step should remain at 1 (DB is valid)
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 1, "current_step should not be reset");
         assert_eq!(run.status, "pending");
     }
@@ -1571,7 +1674,9 @@ mod tests {
             result.notifications
         );
 
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 2, "should be reset to disk_step=2");
         // Status should not be completed since disk_step(2) < LAST_WORKFLOW_STEP(3)
         assert_eq!(run.status, "pending");
@@ -1614,7 +1719,11 @@ mod tests {
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         // No reset, no notification
-        assert!(result.notifications.is_empty(), "should not reset: {:?}", result.notifications);
+        assert!(
+            result.notifications.is_empty(),
+            "should not reset: {:?}",
+            result.notifications
+        );
 
         // Verify steps
         let steps = crate::db::get_workflow_steps(&conn, "my-skill").unwrap();
@@ -1627,7 +1736,9 @@ mod tests {
         );
 
         // DB current_step should remain 1
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 1);
     }
 
@@ -1711,8 +1822,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::upsert_skill(&conn, "real-skill", "skill-builder", "domain")
-            .unwrap();
+        crate::db::upsert_skill(&conn, "real-skill", "skill-builder", "domain").unwrap();
         // detect_furthest_step requires workspace dir to exist
         create_skill_dir(tmp.path(), "real-skill", "analytics");
         create_step_output(skills_tmp.path(), "real-skill", 0);
@@ -1740,8 +1850,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::upsert_skill(&conn, "done-skill", "skill-builder", "domain")
-            .unwrap();
+        crate::db::upsert_skill(&conn, "done-skill", "skill-builder", "domain").unwrap();
         // detect_furthest_step requires workspace dir to exist
         create_skill_dir(tmp.path(), "done-skill", "analytics");
         for step in [0u32, 2, 3] {
@@ -1769,8 +1878,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::upsert_skill(&conn, "bare-skill", "skill-builder", "domain")
-            .unwrap();
+        crate::db::upsert_skill(&conn, "bare-skill", "skill-builder", "domain").unwrap();
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
@@ -1810,7 +1918,9 @@ mod tests {
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("advanced from step 1 to step 4"));
 
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 3);
         assert_eq!(run.status, "completed"); // step 3 = last step → completed
     }
@@ -1822,15 +1932,16 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", 3, "in_progress", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 3, "in_progress", "domain").unwrap();
 
         create_skill_dir(tmp.path(), "my-skill", "test");
 
         let result = reconcile_on_startup(&conn, workspace, workspace).unwrap();
 
         // DB had step 3 → reset to step 1 (no output found)
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 0);
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("reset from step 4 to step 1"));
@@ -1844,8 +1955,7 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", 1, "in_progress", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 1, "in_progress", "domain").unwrap();
 
         create_skill_dir(tmp.path(), "my-skill", "test");
         create_step_output(tmp.path(), "my-skill", 0);
@@ -1859,7 +1969,9 @@ mod tests {
 
         // DB should be reconciled: disk has step 2, DB had step 1.
         // Step 1 is non-detectable, disk ahead → advance to step 2.
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert!(run.current_step >= 1);
     }
 
@@ -1870,8 +1982,7 @@ mod tests {
         let path = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", 3, "completed", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "my-skill", 3, "completed", "domain").unwrap();
 
         create_skill_dir(tmp.path(), "my-skill", "test");
         create_step_output(tmp.path(), "my-skill", 0);
@@ -1884,7 +1995,9 @@ mod tests {
         assert!(result.orphans.is_empty());
         assert_eq!(result.auto_cleaned, 0);
 
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.status, "completed");
     }
 
@@ -1927,8 +2040,7 @@ mod tests {
         let conn = create_test_db();
 
         // DB record + workspace folder, but nothing in skills_path
-        crate::db::save_workflow_run(&conn, "old-skill", 0, "pending", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "old-skill", 0, "pending", "domain").unwrap();
         create_skill_dir(&workspace, "old-skill", "test");
 
         let result = reconcile_on_startup(&conn, workspace_str, skills_str).unwrap();
@@ -1962,8 +2074,7 @@ mod tests {
         let conn = create_test_db();
 
         for name in &["skill-a", "skill-b", "skill-c"] {
-            crate::db::save_workflow_run(&conn, name, 5, "completed", "domain")
-                .unwrap();
+            crate::db::save_workflow_run(&conn, name, 5, "completed", "domain").unwrap();
             let output_dir = skills.join(name);
             std::fs::create_dir_all(output_dir.join("references")).unwrap();
             std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
@@ -1990,8 +2101,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::upsert_skill(&conn, "new-skill", "skill-builder", "domain")
-            .unwrap();
+        crate::db::upsert_skill(&conn, "new-skill", "skill-builder", "domain").unwrap();
         // No step output — just a master row
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -1999,7 +2109,9 @@ mod tests {
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("new-skill"));
 
-        let run = crate::db::get_workflow_run(&conn, "new-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "new-skill")
+            .unwrap()
+            .unwrap();
         // domain column dropped - no longer checking "unknown" // domain defaults to "unknown" when workflow_runs row is recreated
         assert_eq!(run.purpose, "domain"); // conservative default
         assert_eq!(run.current_step, 0);
@@ -2015,32 +2127,40 @@ mod tests {
         let conn = create_test_db();
 
         // Skill A: active session with current PID
-        crate::db::save_workflow_run(&conn, "protected", 3, "in_progress", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "protected", 3, "in_progress", "domain").unwrap();
         create_skill_dir(tmp.path(), "protected", "test");
         let pid = std::process::id();
         let session_id = uuid::Uuid::new_v4().to_string();
         crate::db::create_workflow_session(&conn, &session_id, "protected", pid).unwrap();
 
         // Skill B: DB at step 5, disk at step 0 → needs reset
-        crate::db::save_workflow_run(&conn, "reset-me", 5, "in_progress", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "reset-me", 5, "in_progress", "domain").unwrap();
         create_skill_dir(tmp.path(), "reset-me", "test");
         create_step_output(tmp.path(), "reset-me", 0);
 
         let result = reconcile_on_startup(&conn, workspace, workspace).unwrap();
 
         // A was skipped (notification says so), B was reset
-        assert!(result.notifications.iter().any(|n| n.contains("protected") && n.contains("skipped")));
-        assert!(result.notifications.iter().any(|n| n.contains("reset-me") && n.contains("reset from step 6")));
+        assert!(result
+            .notifications
+            .iter()
+            .any(|n| n.contains("protected") && n.contains("skipped")));
+        assert!(result
+            .notifications
+            .iter()
+            .any(|n| n.contains("reset-me") && n.contains("reset from step 6")));
 
         // A's DB state should be unchanged
-        let run_a = crate::db::get_workflow_run(&conn, "protected").unwrap().unwrap();
+        let run_a = crate::db::get_workflow_run(&conn, "protected")
+            .unwrap()
+            .unwrap();
         assert_eq!(run_a.current_step, 3);
         assert_eq!(run_a.status, "in_progress");
 
         // B should be reset
-        let run_b = crate::db::get_workflow_run(&conn, "reset-me").unwrap().unwrap();
+        let run_b = crate::db::get_workflow_run(&conn, "reset-me")
+            .unwrap()
+            .unwrap();
         assert_eq!(run_b.current_step, 0);
     }
 
@@ -2053,19 +2173,16 @@ mod tests {
         let conn = create_test_db();
 
         // Case 1: DB ahead of disk → reset notification
-        crate::db::save_workflow_run(&conn, "ahead-skill", 5, "in_progress", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "ahead-skill", 5, "in_progress", "domain").unwrap();
         create_skill_dir(tmp.path(), "ahead-skill", "test");
         create_step_output(skills_tmp.path(), "ahead-skill", 0);
 
         // Case 2: No output but DB past step 0 → reset to step 0
-        crate::db::save_workflow_run(&conn, "empty-skill", 3, "in_progress", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "empty-skill", 3, "in_progress", "domain").unwrap();
         create_skill_dir(tmp.path(), "empty-skill", "test");
 
         // Case 3: Scenario 10 — master row, no workflow_runs
-        crate::db::upsert_skill(&conn, "found-skill", "skill-builder", "domain")
-            .unwrap();
+        crate::db::upsert_skill(&conn, "found-skill", "skill-builder", "domain").unwrap();
         create_step_output(skills_tmp.path(), "found-skill", 0);
 
         // Case 4: Scenario 12 — marketplace SKILL.md missing
@@ -2074,14 +2191,22 @@ mod tests {
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         // Verify exact message formats
-        assert!(result.notifications.iter().any(|n|
-            n == "'ahead-skill' was reset from step 6 to step 1 (disk state behind DB)"));
-        assert!(result.notifications.iter().any(|n|
-            n == "'empty-skill' was reset from step 4 to step 1 (no output files found)"));
-        assert!(result.notifications.iter().any(|n|
-            n == "'found-skill' workflow record recreated at step 1"));
-        assert!(result.notifications.iter().any(|n|
-            n == "'gone-mkt' marketplace skill removed — SKILL.md not found on disk"));
+        assert!(result
+            .notifications
+            .iter()
+            .any(|n| n == "'ahead-skill' was reset from step 6 to step 1 (disk state behind DB)"));
+        assert!(result
+            .notifications
+            .iter()
+            .any(|n| n == "'empty-skill' was reset from step 4 to step 1 (no output files found)"));
+        assert!(result
+            .notifications
+            .iter()
+            .any(|n| n == "'found-skill' workflow record recreated at step 1"));
+        assert!(result
+            .notifications
+            .iter()
+            .any(|n| n == "'gone-mkt' marketplace skill removed — SKILL.md not found on disk"));
     }
 
     // =========================================================================
@@ -2109,7 +2234,10 @@ mod tests {
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         // Should be auto-deleted with a notification
-        assert!(!skills_tmp.path().join("orphan-folder").exists(), "folder should be deleted");
+        assert!(
+            !skills_tmp.path().join("orphan-folder").exists(),
+            "folder should be deleted"
+        );
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("orphan-folder"));
         assert!(result.notifications[0].contains("removed"));
@@ -2177,8 +2305,7 @@ mod tests {
         let conn = create_test_db();
 
         // Add skill to master and create it on disk
-        crate::db::save_workflow_run(&conn, "known-skill", 5, "completed", "domain")
-            .unwrap();
+        crate::db::save_workflow_run(&conn, "known-skill", 5, "completed", "domain").unwrap();
         create_skill_dir(tmp.path(), "known-skill", "test");
         create_step_output(skills_tmp.path(), "known-skill", 0);
         create_step_output(skills_tmp.path(), "known-skill", 4);
@@ -2211,7 +2338,8 @@ mod tests {
         std::fs::write(
             skills_tmp.path().join(".hidden").join("SKILL.md"),
             "# Hidden",
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
@@ -2266,8 +2394,12 @@ mod tests {
         // No skills in master → no notifications
         assert!(result.notifications.is_empty());
         assert!(result.discovered_skills.is_empty()); // disk-only-skill is in workspace, not skills_path
-        assert!(crate::db::get_workflow_run(&conn, "disk-only-skill").unwrap().is_none());
-        assert!(crate::db::get_workflow_run(&conn, ".git").unwrap().is_none());
+        assert!(crate::db::get_workflow_run(&conn, "disk-only-skill")
+            .unwrap()
+            .is_none());
+        assert!(crate::db::get_workflow_run(&conn, ".git")
+            .unwrap()
+            .is_none());
     }
 
     // =========================================================================
@@ -2289,15 +2421,16 @@ mod tests {
         std::fs::create_dir_all(skills.join(".git")).unwrap();
         std::fs::create_dir_all(skills.join(".trash")).unwrap();
 
-        let result = reconcile_on_startup(
-            &conn,
-            workspace.to_str().unwrap(),
-            skills.to_str().unwrap(),
-        ).unwrap();
+        let result =
+            reconcile_on_startup(&conn, workspace.to_str().unwrap(), skills.to_str().unwrap())
+                .unwrap();
 
         assert!(result.notifications.is_empty());
         // .git and .trash should still exist
         assert!(skills.join(".git").exists(), ".git should not be touched");
-        assert!(skills.join(".trash").exists(), ".trash should not be touched");
+        assert!(
+            skills.join(".trash").exists(),
+            ".trash should not be touched"
+        );
     }
 }

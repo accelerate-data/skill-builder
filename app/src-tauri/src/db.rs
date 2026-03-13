@@ -10,6 +10,46 @@ use std::sync::Mutex;
 
 pub struct Db(pub Mutex<Connection>);
 
+#[cfg(test)]
+pub(crate) fn create_test_db_for_tests() -> Connection {
+    let conn = Connection::open_in_memory().unwrap();
+    run_migrations(&conn).unwrap();
+    run_add_skill_type_migration(&conn).unwrap();
+    run_lock_table_migration(&conn).unwrap();
+    run_author_migration(&conn).unwrap();
+    run_usage_tracking_migration(&conn).unwrap();
+    run_workflow_session_migration(&conn).unwrap();
+    run_sessions_table_migration(&conn).unwrap();
+    run_trigger_text_migration(&conn).unwrap();
+    run_agent_stats_migration(&conn).unwrap();
+    run_intake_migration(&conn).unwrap();
+    run_composite_pk_migration(&conn).unwrap();
+    run_bundled_skill_migration(&conn).unwrap();
+    run_remove_validate_step_migration(&conn).unwrap();
+    run_source_migration(&conn).unwrap();
+    run_imported_skills_extended_migration(&conn).unwrap();
+    run_workflow_runs_extended_migration(&conn).unwrap();
+    run_skills_table_migration(&conn).unwrap();
+    run_skills_backfill_migration(&conn).unwrap();
+    run_rename_upload_migration(&conn).unwrap();
+    run_workspace_skills_migration(&conn).unwrap();
+    run_workflow_runs_id_migration(&conn).unwrap();
+    run_fk_columns_migration(&conn).unwrap();
+    run_frontmatter_to_skills_migration(&conn).unwrap();
+    run_workspace_skills_purpose_migration(&conn).unwrap();
+    run_content_hash_migration(&conn).unwrap();
+    run_backfill_null_versions_migration(&conn).unwrap();
+    run_rename_purpose_drop_domain_migration(&conn).unwrap();
+    run_skills_soft_delete_migration(&conn).unwrap();
+    run_marketplace_source_url_migration(&conn).unwrap();
+    run_skills_soft_delete_migration(&conn).unwrap();
+    run_backfill_synthetic_sessions_migration(&conn).unwrap();
+    run_normalize_model_names_migration(&conn).unwrap();
+    run_reconciliation_events_migration(&conn).unwrap();
+    run_ghost_running_rows_migration(&conn).unwrap();
+    conn
+}
+
 pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
     fs::create_dir_all(data_dir)?;
     let db_dir = data_dir.join("db");
@@ -90,7 +130,10 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
     Ok(Db(Mutex::new(conn)))
 }
 
-fn migrate_legacy_db_path(legacy_path: &Path, new_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn migrate_legacy_db_path(
+    legacy_path: &Path,
+    new_path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     if new_path.exists() || !legacy_path.exists() {
         return Ok(());
     }
@@ -665,7 +708,10 @@ fn run_ghost_running_rows_migration(conn: &Connection) -> Result<(), rusqlite::E
          WHERE status = 'running'",
         [],
     )?;
-    log::info!("migration 34: converted {} ghost running rows to shutdown", updated);
+    log::info!(
+        "migration 34: converted {} ghost running rows to shutdown",
+        updated
+    );
     Ok(())
 }
 
@@ -1256,16 +1302,14 @@ fn run_agent_stats_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
 
 // --- Usage Tracking ---
 
-fn step_name(step_id: i32) -> String {
+pub(crate) fn step_name(step_id: i32) -> String {
     match step_id {
         -11 => "Test".to_string(),
         -10 => "Refine".to_string(),
         0 => "Research".to_string(),
-        1 => "Review".to_string(),
-        2 => "Detailed Research".to_string(),
-        3 => "Review".to_string(),
-        4 => "Confirm Decisions".to_string(),
-        5 => "Generate Skill".to_string(),
+        1 => "Detailed Research".to_string(),
+        2 => "Confirm Decisions".to_string(),
+        3 => "Generate Skill".to_string(),
         _ => format!("Step {}", step_id),
     }
 }
@@ -1525,7 +1569,11 @@ pub fn get_agent_runs(
     model_family: Option<&str>,
     limit: usize,
 ) -> Result<Vec<AgentRunRecord>, String> {
-    let cost_clause = if hide_cancelled { " AND total_cost > 0" } else { "" };
+    let cost_clause = if hide_cancelled {
+        " AND total_cost > 0"
+    } else {
+        ""
+    };
     let mut p = 1usize;
     let date_clause = if start_date.is_some() {
         let s = format!(" AND started_at >= ?{p}");
@@ -1602,13 +1650,13 @@ pub fn get_agent_runs(
     }
     match (start_date, skill_name, model_family) {
         (Some(sd), Some(sn), Some(mf)) => collect_rows!(rusqlite::params![sd, sn, mf, limit_i64]),
-        (Some(sd), Some(sn), None)     => collect_rows!(rusqlite::params![sd, sn, limit_i64]),
-        (Some(sd), None, Some(mf))     => collect_rows!(rusqlite::params![sd, mf, limit_i64]),
-        (Some(sd), None, None)         => collect_rows!(rusqlite::params![sd, limit_i64]),
-        (None, Some(sn), Some(mf))     => collect_rows!(rusqlite::params![sn, mf, limit_i64]),
-        (None, Some(sn), None)         => collect_rows!(rusqlite::params![sn, limit_i64]),
-        (None, None, Some(mf))         => collect_rows!(rusqlite::params![mf, limit_i64]),
-        (None, None, None)             => collect_rows!(rusqlite::params![limit_i64]),
+        (Some(sd), Some(sn), None) => collect_rows!(rusqlite::params![sd, sn, limit_i64]),
+        (Some(sd), None, Some(mf)) => collect_rows!(rusqlite::params![sd, mf, limit_i64]),
+        (Some(sd), None, None) => collect_rows!(rusqlite::params![sd, limit_i64]),
+        (None, Some(sn), Some(mf)) => collect_rows!(rusqlite::params![sn, mf, limit_i64]),
+        (None, Some(sn), None) => collect_rows!(rusqlite::params![sn, limit_i64]),
+        (None, None, Some(mf)) => collect_rows!(rusqlite::params![mf, limit_i64]),
+        (None, None, None) => collect_rows!(rusqlite::params![limit_i64]),
     }
 }
 
@@ -3889,42 +3937,7 @@ mod tests {
     use super::*;
 
     fn create_test_db() -> Connection {
-        let conn = Connection::open_in_memory().unwrap();
-        run_migrations(&conn).unwrap();
-        run_add_skill_type_migration(&conn).unwrap();
-        run_lock_table_migration(&conn).unwrap();
-        run_author_migration(&conn).unwrap();
-        run_usage_tracking_migration(&conn).unwrap();
-        run_workflow_session_migration(&conn).unwrap();
-        run_sessions_table_migration(&conn).unwrap();
-        run_trigger_text_migration(&conn).unwrap();
-        run_agent_stats_migration(&conn).unwrap();
-        run_intake_migration(&conn).unwrap();
-        run_composite_pk_migration(&conn).unwrap();
-        run_bundled_skill_migration(&conn).unwrap();
-        run_remove_validate_step_migration(&conn).unwrap();
-        run_source_migration(&conn).unwrap();
-        run_imported_skills_extended_migration(&conn).unwrap();
-        run_workflow_runs_extended_migration(&conn).unwrap();
-        run_skills_table_migration(&conn).unwrap();
-        run_skills_backfill_migration(&conn).unwrap();
-        run_rename_upload_migration(&conn).unwrap();
-        run_workspace_skills_migration(&conn).unwrap();
-        run_workflow_runs_id_migration(&conn).unwrap();
-        run_fk_columns_migration(&conn).unwrap();
-        run_frontmatter_to_skills_migration(&conn).unwrap();
-        run_workspace_skills_purpose_migration(&conn).unwrap();
-        run_content_hash_migration(&conn).unwrap();
-        run_backfill_null_versions_migration(&conn).unwrap();
-        run_rename_purpose_drop_domain_migration(&conn).unwrap();
-        run_skills_soft_delete_migration(&conn).unwrap();
-        run_marketplace_source_url_migration(&conn).unwrap();
-        run_skills_soft_delete_migration(&conn).unwrap();
-        run_backfill_synthetic_sessions_migration(&conn).unwrap();
-        run_normalize_model_names_migration(&conn).unwrap();
-        run_reconciliation_events_migration(&conn).unwrap();
-        run_ghost_running_rows_migration(&conn).unwrap();
-        conn
+        create_test_db_for_tests()
     }
 
     #[test]
@@ -5170,12 +5183,12 @@ mod tests {
 
         // Ordered by total_cost DESC: step 5 ($0.25) then step 1 ($0.18)
         assert_eq!(by_step[0].step_id, 5);
-        assert_eq!(by_step[0].step_name, "Generate Skill");
+        assert_eq!(by_step[0].step_name, "Step 5");
         assert_eq!(by_step[0].run_count, 1);
         assert!((by_step[0].total_cost - 0.25).abs() < 1e-10);
 
         assert_eq!(by_step[1].step_id, 1);
-        assert_eq!(by_step[1].step_name, "Review");
+        assert_eq!(by_step[1].step_name, "Detailed Research");
         assert_eq!(by_step[1].run_count, 2);
         assert!((by_step[1].total_cost - 0.18).abs() < 1e-10);
     }
@@ -5274,12 +5287,72 @@ mod tests {
         let ws = Some("wf-session-mf");
         create_workflow_session(&conn, "wf-session-mf", "skill-a", 1000).unwrap();
 
-        persist_agent_run(&conn, "run-sonnet", "skill-a", 0, "claude-sonnet-4-6", "completed",
-            100, 50, 0, 0, 0.10, 1000, 1, None, None, 0, 0, None, ws).unwrap();
-        persist_agent_run(&conn, "run-opus", "skill-a", 4, "claude-opus-4-6", "completed",
-            200, 100, 0, 0, 0.50, 2000, 1, None, None, 0, 0, None, ws).unwrap();
-        persist_agent_run(&conn, "run-haiku", "skill-a", 1, "claude-haiku-4-5-20251001", "completed",
-            50, 25, 0, 0, 0.02, 500, 1, None, None, 0, 0, None, ws).unwrap();
+        persist_agent_run(
+            &conn,
+            "run-sonnet",
+            "skill-a",
+            0,
+            "claude-sonnet-4-6",
+            "completed",
+            100,
+            50,
+            0,
+            0,
+            0.10,
+            1000,
+            1,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn,
+            "run-opus",
+            "skill-a",
+            4,
+            "claude-opus-4-6",
+            "completed",
+            200,
+            100,
+            0,
+            0,
+            0.50,
+            2000,
+            1,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn,
+            "run-haiku",
+            "skill-a",
+            1,
+            "claude-haiku-4-5-20251001",
+            "completed",
+            50,
+            25,
+            0,
+            0,
+            0.02,
+            500,
+            1,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
+        )
+        .unwrap();
 
         // No filter: all three returned
         let all = get_agent_runs(&conn, false, None, None, None, 100).unwrap();
@@ -5309,16 +5382,78 @@ mod tests {
         let ws = Some("wf-norm");
         create_workflow_session(&conn, "wf-norm", "skill-x", 1000).unwrap();
 
-        persist_agent_run(&conn, "a-sonnet", "skill-x", 0, "sonnet", "completed",
-            10, 5, 0, 0, 0.01, 100, 1, None, None, 0, 0, None, ws).unwrap();
-        persist_agent_run(&conn, "a-haiku", "skill-x", 0, "Haiku", "completed",
-            10, 5, 0, 0, 0.01, 100, 1, None, None, 0, 0, None, ws).unwrap();
-        persist_agent_run(&conn, "a-opus", "skill-x", 0, "opus", "completed",
-            10, 5, 0, 0, 0.01, 100, 1, None, None, 0, 0, None, ws).unwrap();
+        persist_agent_run(
+            &conn,
+            "a-sonnet",
+            "skill-x",
+            0,
+            "sonnet",
+            "completed",
+            10,
+            5,
+            0,
+            0,
+            0.01,
+            100,
+            1,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn,
+            "a-haiku",
+            "skill-x",
+            0,
+            "Haiku",
+            "completed",
+            10,
+            5,
+            0,
+            0,
+            0.01,
+            100,
+            1,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn,
+            "a-opus",
+            "skill-x",
+            0,
+            "opus",
+            "completed",
+            10,
+            5,
+            0,
+            0,
+            0.01,
+            100,
+            1,
+            None,
+            None,
+            0,
+            0,
+            None,
+            ws,
+        )
+        .unwrap();
 
         let runs = get_agent_runs(&conn, false, None, None, None, 10).unwrap();
-        let models: std::collections::HashMap<&str, &str> =
-            runs.iter().map(|r| (r.agent_id.as_str(), r.model.as_str())).collect();
+        let models: std::collections::HashMap<&str, &str> = runs
+            .iter()
+            .map(|r| (r.agent_id.as_str(), r.model.as_str()))
+            .collect();
 
         assert_eq!(models["a-sonnet"], "claude-sonnet-4-6");
         assert_eq!(models["a-haiku"], "claude-haiku-4-5-20251001");
@@ -5347,8 +5482,10 @@ mod tests {
         run_normalize_model_names_migration(&conn).unwrap();
 
         let runs = get_agent_runs(&conn, false, None, None, None, 10).unwrap();
-        let models: std::collections::HashMap<&str, &str> =
-            runs.iter().map(|r| (r.agent_id.as_str(), r.model.as_str())).collect();
+        let models: std::collections::HashMap<&str, &str> = runs
+            .iter()
+            .map(|r| (r.agent_id.as_str(), r.model.as_str()))
+            .collect();
 
         assert_eq!(models["old-sonnet"], "claude-sonnet-4-6");
         assert_eq!(models["old-haiku"], "claude-haiku-4-5-20251001");
@@ -5710,11 +5847,11 @@ mod tests {
     #[test]
     fn test_step_name_mapping() {
         assert_eq!(step_name(0), "Research");
-        assert_eq!(step_name(1), "Review");
-        assert_eq!(step_name(2), "Detailed Research");
-        assert_eq!(step_name(3), "Review");
-        assert_eq!(step_name(4), "Confirm Decisions");
-        assert_eq!(step_name(5), "Generate Skill");
+        assert_eq!(step_name(1), "Detailed Research");
+        assert_eq!(step_name(2), "Confirm Decisions");
+        assert_eq!(step_name(3), "Generate Skill");
+        assert_eq!(step_name(4), "Step 4");
+        assert_eq!(step_name(5), "Step 5");
         assert_eq!(step_name(6), "Step 6");
         assert_eq!(step_name(-1), "Step -1");
         assert_eq!(step_name(99), "Step 99");
@@ -7083,7 +7220,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(ghost_status, "shutdown", "Ghost running row must become shutdown");
+        assert_eq!(
+            ghost_status, "shutdown",
+            "Ghost running row must become shutdown"
+        );
 
         let done_status: String = conn
             .query_row(
@@ -7092,7 +7232,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(done_status, "completed", "Completed row must not be touched by migration 34");
+        assert_eq!(
+            done_status, "completed",
+            "Completed row must not be touched by migration 34"
+        );
 
         // Idempotency: running again must not change anything
         run_ghost_running_rows_migration(&conn).unwrap();
@@ -7103,6 +7246,9 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(still_shutdown, "shutdown", "Re-running migration must be idempotent");
+        assert_eq!(
+            still_shutdown, "shutdown",
+            "Re-running migration must be idempotent"
+        );
     }
 }

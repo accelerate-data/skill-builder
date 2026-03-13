@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skill Builder — Home</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: oklch(0.956 0 0);
+    --fg: oklch(0.145 0.005 250);
+    --card: oklch(1 0 0);
+    --muted: oklch(0.955 0.005 85);
+    --muted-fg: oklch(0.530 0.006 85);
+    --border: oklch(0.910 0.006 85);
+    --primary: oklch(0.680 0.120 210);
+    --primary-fg: oklch(1 0 0);
+    --destructive: oklch(0.570 0.180 25);
+    --sidebar-bg: oklch(0.965 0.004 85);
+    --seafoam: oklch(0.780 0.175 160);
+    --pacific: oklch(0.680 0.120 210);
+    --ocean: oklch(0.530 0.130 230);
+    --navy: oklch(0.215 0.105 265);
+    --amber: oklch(0.760 0.160 60);
+    --dot-red: oklch(0.570 0.180 25);
+    --dot-yellow: oklch(0.760 0.160 60);
+    --dot-green: oklch(0.780 0.175 160);
+  }
+  @keyframes dot-pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+  .dot-pulse { animation: dot-pulse 1.8s ease-in-out infinite; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); font-size: 13px; line-height: 1.5; display: flex; }
+
+  /* App shell */
+  .icon-sidebar {
+    width: 52px;
+    flex-shrink: 0;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 0;
+    gap: 4px;
+    height: 100%;
+  }
+
+  .icon-logo {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--navy);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    cursor: default;
+    user-select: none;
+  }
+
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    border: none;
+    background: none;
+    color: var(--muted-fg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 120ms, color 120ms;
+  }
+  .icon-btn:hover { background: var(--muted); color: var(--fg); }
+  .icon-btn svg { width: 18px; height: 18px; }
+
+  .left-panel {
+    width: 260px;
+    flex-shrink: 0;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .panel-topbar {
+    height: 44px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .panel-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--navy);
+  }
+
+  .count-badge {
+    font-size: 11px;
+    background: var(--muted);
+    color: var(--muted-fg);
+    border-radius: 9999px;
+    padding: 1px 6px;
+    font-weight: 400;
+  }
+
+  .panel-topbar-right {
+    margin-left: auto;
+  }
+
+  .icon-btn-sm {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--pacific);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 120ms;
+  }
+  .icon-btn-sm:hover { background: color-mix(in oklch, var(--pacific), transparent 90%); }
+  .icon-btn-sm svg { width: 14px; height: 14px; }
+
+  .search-wrap {
+    padding: 6px 10px;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 12px;
+    height: 12px;
+    color: var(--muted-fg);
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+  }
+  .search-icon svg { width: 12px; height: 12px; }
+
+  .search-input {
+    width: 100%;
+    height: 28px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px 4px 28px;
+    font-size: 12px;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: inherit;
+    outline: none;
+    transition: border-color 120ms;
+  }
+  .search-input:focus { border-color: var(--pacific); }
+  .search-input::placeholder { color: var(--muted-fg); }
+
+  .skill-list {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .skill-row {
+    height: 46px;
+    padding: 6px 10px 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    position: relative;
+    transition: background 150ms;
+  }
+  .skill-row:hover { background: var(--muted); }
+  .skill-row:hover .more-btn { opacity: 1; }
+
+  .skill-row.selected {
+    background: color-mix(in oklch, var(--pacific), transparent 90%);
+    border-left: 2px solid var(--pacific);
+    padding-left: 10px;
+  }
+
+  .skill-row.locked {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .skill-row.locked:hover { background: transparent; }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .dot-none {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1.5px solid var(--border);
+    background: transparent;
+  }
+
+  .skill-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .skill-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--fg);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+    display: block;
+  }
+
+  .skill-purpose {
+    font-size: 11px;
+    color: var(--muted-fg);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+    display: block;
+  }
+
+  .skill-meta {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  .skill-time {
+    font-size: 10px;
+    font-family: 'Courier New', monospace;
+    color: var(--muted-fg);
+  }
+
+  .more-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    border: none;
+    background: none;
+    color: var(--muted-fg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms, background 120ms;
+    flex-shrink: 0;
+    margin-left: 4px;
+  }
+  .more-btn:hover { background: var(--border); }
+  .more-btn svg { width: 14px; height: 14px; }
+
+  .lock-icon {
+    width: 10px;
+    height: 10px;
+    color: var(--muted-fg);
+    flex-shrink: 0;
+    margin-left: 4px;
+  }
+  .lock-icon svg { width: 10px; height: 10px; }
+
+  .panel-bottom {
+    border-top: 1px solid var(--border);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .panel-bottom-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    background: none;
+    color: var(--muted-fg);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 0;
+    font-family: inherit;
+    transition: color 120ms;
+  }
+  .panel-bottom-btn:hover { color: var(--fg); }
+  .panel-bottom-btn svg { width: 14px; height: 14px; }
+
+  /* Main area */
+  .main-area {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Ccircle cx='1' cy='1' r='1' fill='%23000' fill-opacity='0.035'/%3E%3C/svg%3E");
+    overflow: hidden;
+  }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
+    max-width: 320px;
+  }
+
+  .empty-icon {
+    width: 40px;
+    height: 40px;
+    color: var(--muted-fg);
+  }
+  .empty-icon svg { width: 40px; height: 40px; }
+
+  .empty-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--navy);
+  }
+
+  .empty-desc {
+    font-size: 12px;
+    color: var(--muted-fg);
+    max-width: 300px;
+    line-height: 1.55;
+  }
+
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 16px;
+    background: var(--primary);
+    color: var(--primary-fg);
+    border: none;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity 120ms;
+    margin-top: 4px;
+  }
+  .btn-primary:hover { opacity: 0.88; }
+  .btn-primary svg { width: 14px; height: 14px; }
+</style>
+</head>
+<body>
+
+<!-- 52px icon sidebar -->
+<aside class="icon-sidebar">
+  <div class="icon-logo">SB</div>
+  <div style="margin-top: auto;">
+    <button class="icon-btn" title="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+</aside>
+
+<!-- 260px left panel -->
+<div class="left-panel">
+  <div class="panel-topbar">
+    <span class="panel-title">Skills</span>
+    <span class="count-badge">12</span>
+    <div class="panel-topbar-right">
+      <button class="icon-btn-sm" title="New Skill">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="search-wrap">
+    <span class="search-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </span>
+    <input type="text" class="search-input" placeholder="Search skills…">
+  </div>
+
+  <div class="skill-list">
+    <!-- 1. dbt-data-quality — green static — WORKSPACE -->
+    <div class="skill-row">
+      <span class="dot" style="background:var(--dot-green);"></span>
+      <div class="skill-info">
+        <span class="skill-name">dbt-data-quality</span>
+        <span class="skill-purpose">domain</span>
+      </div>
+      <div class="skill-meta">
+        <span class="skill-time">2h</span>
+        <button class="more-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 2. fabric-pipeline — yellow static — pending decisions -->
+    <div class="skill-row">
+      <span class="dot" style="background:var(--dot-yellow);"></span>
+      <div class="skill-info">
+        <span class="skill-name">fabric-pipeline</span>
+        <span class="skill-purpose">platform</span>
+      </div>
+      <div class="skill-meta">
+        <span class="skill-time">1d</span>
+        <button class="more-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 3. customer-segmentation — green pulsing — generation running -->
+    <div class="skill-row">
+      <span class="dot dot-pulse" style="background:var(--dot-green);"></span>
+      <div class="skill-info">
+        <span class="skill-name">customer-segmentation</span>
+        <span class="skill-purpose">data-eng</span>
+      </div>
+      <div class="skill-meta">
+        <span class="skill-time">3d</span>
+        <button class="more-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 4. sql-code-review — green static -->
+    <div class="skill-row">
+      <span class="dot" style="background:var(--dot-green);"></span>
+      <div class="skill-info">
+        <span class="skill-name">sql-code-review</span>
+        <span class="skill-purpose">domain</span>
+      </div>
+      <div class="skill-meta">
+        <span class="skill-time">4d</span>
+        <button class="more-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 5. salesforce-sync — green static — imported -->
+    <div class="skill-row">
+      <span class="dot" style="background:var(--dot-green);"></span>
+      <div class="skill-info">
+        <span class="skill-name">salesforce-sync</span>
+        <span class="skill-purpose">source</span>
+      </div>
+      <div class="skill-meta">
+        <span class="skill-time">5d</span>
+        <button class="more-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 6. cloud-deploy — no dot — never generated -->
+    <div class="skill-row">
+      <span class="dot-none"></span>
+      <div class="skill-info">
+        <span class="skill-name">cloud-deploy</span>
+        <span class="skill-purpose">platform</span>
+      </div>
+      <div class="skill-meta">
+        <span class="skill-time">1w</span>
+        <button class="more-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 7. spark-optimization — green static -->
+    <div class="skill-row">
+      <span class="dot" style="background:var(--dot-green);"></span>
+      <div class="skill-info">
+        <span class="skill-name">spark-optimization</span>
+        <span class="skill-purpose">data-eng</span>
+      </div>
+      <div class="skill-meta">
+        <span class="skill-time">1w</span>
+        <button class="more-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 8. airflow-dags — red static — pending clarifications -->
+    <div class="skill-row">
+      <span class="dot" style="background:var(--dot-red);"></span>
+      <div class="skill-info">
+        <span class="skill-name">airflow-dags</span>
+        <span class="skill-purpose">platform</span>
+      </div>
+      <div class="skill-meta">
+        <span class="skill-time">2w</span>
+        <button class="more-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 9. postgres-migrations — green static -->
+    <div class="skill-row">
+      <span class="dot" style="background:var(--dot-green);"></span>
+      <div class="skill-info">
+        <span class="skill-name">postgres-migrations</span>
+        <span class="skill-purpose">domain</span>
+      </div>
+      <div class="skill-meta">
+        <span class="skill-time">2w</span>
+        <button class="more-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 10. looker-dashboards — green static — marketplace -->
+    <div class="skill-row">
+      <span class="dot" style="background:var(--dot-green);"></span>
+      <div class="skill-info">
+        <span class="skill-name">looker-dashboards</span>
+        <span class="skill-purpose">source</span>
+      </div>
+      <div class="skill-meta">
+        <span class="skill-time">3w</span>
+        <button class="more-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 11. event-streaming — red pulsing — research running -->
+    <div class="skill-row">
+      <span class="dot dot-pulse" style="background:var(--dot-red);"></span>
+      <div class="skill-info">
+        <span class="skill-name">event-streaming</span>
+        <span class="skill-purpose">data-eng</span>
+      </div>
+      <div class="skill-meta">
+        <span class="skill-time">3w</span>
+        <button class="more-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 12. redshift-tuning — green static -->
+    <div class="skill-row">
+      <span class="dot" style="background:var(--dot-green);"></span>
+      <div class="skill-info">
+        <span class="skill-name">redshift-tuning</span>
+        <span class="skill-purpose">platform</span>
+      </div>
+      <div class="skill-meta">
+        <span class="skill-time">1mo</span>
+        <button class="more-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-bottom">
+    <button class="panel-bottom-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Settings
+    </button>
+  </div>
+</div>
+
+<!-- Main area: empty state -->
+<main class="main-area">
+  <div class="empty-state">
+    <div class="empty-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    </div>
+    <div class="empty-title">Select a skill</div>
+    <div class="empty-desc">Choose a skill from the list to open its workspace, or create a new one.</div>
+    <button class="btn-primary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New Skill
+    </button>
+  </div>
+</main>
+
+</body>
+</html>

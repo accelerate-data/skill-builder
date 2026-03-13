@@ -68,7 +68,7 @@ interface StepConfig {
 }
 
 const STEP_CONFIGS: Record<number, StepConfig> = {
-  0: { type: "agent", outputFiles: ["context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
+  0: { type: "agent", outputFiles: ["context/research-plan.md", "context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
   1: { type: "agent", outputFiles: ["context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
   2: { type: "reasoning", outputFiles: ["context/decisions.json"], model: "opus" },
   3: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
@@ -280,19 +280,25 @@ export default function WorkflowPage() {
     // don't pick up a completed run from another workflow.
     clearRuns();
 
-    // Reset immediately so stale state from another skill doesn't linger
-    initWorkflow(skillName);
-
-    // Read workflow state from SQLite
-    getWorkflowState(skillName)
-      .then((state) => {
+    // Read workflow state and disabled steps in parallel — they are independent
+    // IPC calls (SQLite vs filesystem reads).
+    Promise.all([
+      getWorkflowState(skillName),
+      getDisabledSteps(skillName).catch(() => [] as number[]),
+    ])
+      .then(([state, disabled]) => {
         if (cancelled) return;
+
+        // Initialize workflow with purpose from saved state (single init, no double render)
+        initWorkflow(skillName, state.run?.purpose);
+
+        // Apply disabled steps immediately
+        useWorkflowStore.getState().setDisabledSteps(disabled);
+
         if (!state.run) {
           setHydrated(true);
           return;
         }
-
-        initWorkflow(skillName, state.run.purpose);
 
         const completedIds = state.steps
           .filter((s) => s.status === "completed")
@@ -302,15 +308,6 @@ export default function WorkflowPage() {
         } else {
           setHydrated(true);
         }
-
-        // Restore disabled steps (scope recommendation) after hydration
-        getDisabledSteps(skillName)
-          .then((disabled) => {
-            if (!cancelled) {
-              useWorkflowStore.getState().setDisabledSteps(disabled);
-            }
-          })
-          .catch(() => {}); // Non-fatal
       })
       .catch(() => {
         setHydrated(true);
@@ -450,8 +447,10 @@ export default function WorkflowPage() {
   const isAgentType = stepConfig?.type === "agent" || stepConfig?.type === "reasoning";
 
   const autoStartAfterReset = (stepId: number) => {
+    const { reviewMode: isReview, disabledSteps: disabled } = useWorkflowStore.getState();
+    if (disabled.includes(stepId)) return; // never auto-start a disabled step
     const cfg = STEP_CONFIGS[stepId];
-    if ((cfg?.type === "agent" || cfg?.type === "reasoning") && !useWorkflowStore.getState().reviewMode) {
+    if ((cfg?.type === "agent" || cfg?.type === "reasoning") && !isReview) {
       setPendingAutoStartStep(stepId);
     }
   };
@@ -518,8 +517,9 @@ export default function WorkflowPage() {
     if (currentCfg?.clarificationsEditable && steps[currentStep]?.status === "completed") {
       return; // stay on this step for editing
     }
-    const first = steps.find((s) => s.status !== "completed");
-    const target = first ? first.id : steps.length - 1;
+    const { disabledSteps: disabled } = useWorkflowStore.getState();
+    const first = steps.find((s) => s.status !== "completed" && !disabled.includes(s.id));
+    const target = first ? first.id : currentStep; // stay put if all remaining steps are disabled
     if (target !== currentStep) {
       setCurrentStep(target);
     }
@@ -533,16 +533,10 @@ export default function WorkflowPage() {
   const extractStructuredResultPayload = useCallback((agentId: string): unknown | null => {
     const run = useAgentStore.getState().runs[agentId];
     if (!run) return null;
-    for (let i = run.messages.length - 1; i >= 0; i -= 1) {
-      const msg = run.messages[i];
-      if (msg.type !== "result") continue;
-      const raw = msg.raw as Record<string, unknown>;
-      // Prefer structured_output (new SDK behavior: text in result, JSON in structured_output).
-      // Fall back to result for older SDK versions where result held the JSON object directly.
-      if ("structured_output" in raw && raw.structured_output != null) return raw.structured_output;
-      if ("result" in raw && raw.result != null && typeof raw.result !== "string") return raw.result;
-    }
-    return null;
+    // Look for a result display item with structuredOutput from the SDK
+    const resultItem = [...run.displayItems].reverse().find((di) => di.type === "result");
+    if (!resultItem?.structuredOutput) return null;
+    return resultItem.structuredOutput;
   }, []);
 
   // Watch for gate agent (answer evaluator) completion — separate from workflow step agents
@@ -636,8 +630,11 @@ export default function WorkflowPage() {
           }
         }
 
-        // Check for disabled steps before marking complete (so first render has correct state)
-        if (step === 0 && skillName) {
+        // Refresh disabled steps so the UI blocks advance to guarded steps.
+        // Step 0: scope-recommendation may disable steps 1-3.
+        // Step 2: contradictory decisions may disable step 3.
+        // Called unconditionally — the backend call is cheap (two file reads).
+        if (skillName) {
           try {
             const disabled = await getDisabledSteps(skillName);
             useWorkflowStore.getState().setDisabledSteps(disabled);
@@ -698,10 +695,12 @@ export default function WorkflowPage() {
       setInitializing();
 
       console.log(`[workflow] Starting step ${currentStep} for skill "${skillName}"`);
+      const sessionId = useWorkflowStore.getState().workflowSessionId;
       const agentId = await runWorkflowStep(
         skillName,
         currentStep,
         workspacePath,
+        sessionId ?? undefined,
       );
       agentStartRun(
         agentId,
@@ -1025,7 +1024,23 @@ export default function WorkflowPage() {
     }
     clearRuns();
     resetToStep(stepId);
-    autoStartAfterReset(stepId);
+
+    // Re-evaluate guards after reset — disk state may still have guard conditions
+    // (e.g. resetting step 3 doesn't remove contradictory decisions.json).
+    let disabled: number[] = [];
+    if (skillName) {
+      try {
+        disabled = await getDisabledSteps(skillName);
+        useWorkflowStore.getState().setDisabledSteps(disabled);
+      } catch {
+        // non-fatal
+      }
+    }
+
+    // Only auto-start if the target step is not itself disabled
+    if (!disabled.includes(stepId)) {
+      autoStartAfterReset(stepId);
+    }
     toast.success(`Reset to step ${stepId + 1}`);
   };
 
@@ -1084,11 +1099,15 @@ export default function WorkflowPage() {
   /** Render completed agent/reasoning step with output files. */
   const renderCompletedStep = () => {
     const nextStep = currentStep + 1;
-    const isLastStep = disabledSteps.includes(nextStep) || currentStep >= steps.length - 1;
+    const isTerminalStep = currentStep >= steps.length - 1;
+    const nextStepBlocked = !isTerminalStep && disabledSteps.includes(nextStep);
+    const showDecisionConflictResolution = currentStep === 2 && nextStepBlocked;
+    const isLastStep = isTerminalStep || (nextStepBlocked && !showDecisionConflictResolution);
     const handleClose = () => navigate({ to: "/" });
     const handleRefine = () => {
       navigate({ to: "/refine", search: { skill: skillName } });
     };
+    const nextStepLabel = !isTerminalStep ? steps[nextStep]?.name ?? "Next Step" : undefined;
 
     return (
       <WorkflowStepComplete
@@ -1100,6 +1119,8 @@ export default function WorkflowPage() {
         onClose={handleClose}
         onRefine={disabledSteps.length > 0 ? undefined : handleRefine}
         isLastStep={isLastStep}
+        nextStepBlocked={showDecisionConflictResolution}
+        nextStepLabel={nextStepLabel}
         reviewMode={reviewMode}
         skillName={skillName}
         workspacePath={workspacePath ?? undefined}
@@ -1108,7 +1129,7 @@ export default function WorkflowPage() {
         clarificationsData={clarificationsData}
         onClarificationsChange={handleClarificationsChange}
         onClarificationsContinue={() => handleReviewContinue()}
-        onReset={!reviewMode && stepConfig?.clarificationsEditable ? () => setResetTarget(0) : undefined}
+        onReset={!reviewMode && stepConfig?.clarificationsEditable ? () => setResetTarget(currentStep) : undefined}
         onResetStep={!reviewMode ? () => performStepReset(currentStep) : undefined}
         saveStatus={saveStatus}
         evaluating={!!gateLoading}
@@ -1121,7 +1142,7 @@ export default function WorkflowPage() {
   const renderContent = () => {
     // 1. Agent running — show streaming output or init spinner
     if (activeAgentId) {
-      if (isInitializing && !runs[activeAgentId]?.messages.length) {
+      if (isInitializing && !runs[activeAgentId]?.displayItems.length) {
         return <AgentInitializingIndicator />;
       }
       return <AgentOutputPanel agentId={activeAgentId} />;
@@ -1285,6 +1306,13 @@ export default function WorkflowPage() {
               // Steps 1+: navigate_back_to_step already persisted the correct DB state;
               // sync Zustand to match (target stays "completed", subsequent steps "pending").
               navigateBackToStep(resetTarget);
+            }
+            // Re-evaluate guards — navigateBackToStep clears disabledSteps but
+            // guard conditions on disk (e.g. contradictory decisions) may persist.
+            if (skillName) {
+              getDisabledSteps(skillName)
+                .then((disabled) => useWorkflowStore.getState().setDisabledSteps(disabled))
+                .catch(() => { /* non-fatal */ });
             }
             setResetTarget(null);
           }

@@ -20,6 +20,14 @@ export interface SidecarConfig {
   pathToClaudeCodeExecutable?: string;
   /** Skill name this run is associated with. Used by mock agent for template discrimination. */
   skillName?: string;
+  /** Step ID for persistence (-1=unknown, -10=refine, -11=test, 0-3=workflow steps). */
+  stepId?: number;
+  /** Workflow session ID for persistence. */
+  workflowSessionId?: string;
+  /** Synthetic usage session ID (for non-workflow runs). */
+  usageSessionId?: string;
+  /** Run source for persistence attribution. */
+  runSource?: "workflow" | "refine" | "test";
 }
 
 /**

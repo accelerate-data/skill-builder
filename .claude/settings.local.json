@@ -1,5 +1,10 @@
 {
   "env": {
     "ANTHROPIC_API_KEY": "YOUR_API_KEY_HERE"
+  },
+  "permissions": {
+    "allow": [
+      "mcp__linear-server__get_issue"
+    ]
   }
 }

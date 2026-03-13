@@ -36,7 +36,7 @@ Purely cosmetic or wiring-only changes don't require tests. If unclear, ask.
 
 **Frontend:** Use `npm run test:changed` to auto-detect affected tests via `vitest --changed`.
 
-**Rust:** Run `cargo test <module>`. For UI-facing commands, consult `app/tests/TEST_MANIFEST.md` for the cross-layer E2E tag to also run.
+**Rust:** Run `cargo test <module>`. For UI-facing commands, consult `TEST_MANIFEST.md` for the cross-layer E2E tag to also run.
 
 ## Mocking Tauri APIs
 

@@ -40,7 +40,6 @@ vi.mock("@/lib/tauri", () => ({
   startAgent: mockStartAgent,
   getWorkspacePath: mockGetWorkspacePath,
   createGithubIssue: mockCreateGithubIssue,
-  persistAgentRun: vi.fn(() => Promise.resolve()),
   githubGetUser: vi.fn(() => Promise.resolve(null)),
   githubLogout: vi.fn(),
 }));
@@ -66,16 +65,17 @@ import {
 /** Simulate enrichment agent completing with a valid JSON response. */
 function simulateEnrichmentComplete(agentId: string) {
   const store = useAgentStore.getState();
-  store.addMessage(agentId, {
+  store.addDisplayItem(agentId, {
+    id: `result-${Date.now()}`,
     type: "result",
-    content: JSON.stringify({
+    timestamp: Date.now(),
+    outputText_result: JSON.stringify({
       type: "bug",
       title: "Refined: App crashes on startup",
       body: "## Problem\nThe application crashes immediately after launch.\n\n## Expected Behavior\nThe app should open normally.\n\n## Environment\n- App Version: 1.2.3",
       labels: "bug, crash",
     }),
-    raw: {},
-    timestamp: Date.now(),
+    resultStatus: "success",
   });
   store.completeRun(agentId, true);
 }

@@ -2,7 +2,7 @@
 name: research-orchestrator
 description: Thin wrapper for plugin-owned research execution and canonical envelope return.
 model: sonnet
-tools: Read, Task
+tools: Read, Task, Skill
 ---
 
 # Research Orchestrator
@@ -33,6 +33,10 @@ Do not write any files in this agent.
 ---
 
 <instructions>
+
+## Narration
+
+Before each step and before spawning a sub-agent, write one short status line (≤ 10 words). Write it before tool calls. Examples: "Reading user context…", "Calling research plugin…", "Returning research output…"
 
 ## Step 0: Read user context
 
@@ -77,7 +81,19 @@ If missing, return:
 }
 ```
 
-## Step 1: Call plugin research agent
+## Step 1: Insufficient context guard
+
+After reading `user-context.md`, check whether the description is clearly insufficient for research — e.g. fewer than 20 non-whitespace characters, contains only placeholder text like "just testing" or "test skill", or is not relevanr or lacks substantive domain detail.
+
+If any of these conditions exist , stop and return canonical minimal/scope-recommendation clarifications output per `references/schemas.md` with
+
+- `metadata.scope_recommendation: true`
+- `metadata.warning.code: "all_dimensions_low_score"`
+- `metadata.warning.message`: concise explanation for UI
+- `metadata.research_plan` present and schema-valid with minimal values per `references/schemas.md` Scope/Error Minimal Output (including `topic_relevance: "not_relevant"`, zero counts, and empty selected arrays)
+- zero selected dimensions.
+
+## Step 2: Call plugin research agent
 
 Call:
 
@@ -131,7 +147,7 @@ If the plugin result is malformed, return:
 }
 ```
 
-## Step 2: Return
+## Step 3: Return
 
 Return:
 

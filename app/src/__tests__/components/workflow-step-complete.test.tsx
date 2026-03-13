@@ -6,10 +6,16 @@ import type { AgentRunRecord } from "@/lib/types";
 // Mock tauri before importing the component
 const mockGetStepAgentRuns = vi.fn();
 const mockReadFile = vi.fn();
+const mockGetContextFileContent = vi.fn();
+const mockSaveDecisionsContent = vi.fn();
+const mockGetDisabledSteps = vi.fn();
 
 vi.mock("@/lib/tauri", () => ({
   getStepAgentRuns: (...args: unknown[]) => mockGetStepAgentRuns(...args),
   readFile: (...args: unknown[]) => mockReadFile(...args),
+  getContextFileContent: (...args: unknown[]) => mockGetContextFileContent(...args),
+  saveDecisionsContent: (...args: unknown[]) => mockSaveDecisionsContent(...args),
+  getDisabledSteps: (...args: unknown[]) => mockGetDisabledSteps(...args),
 }));
 
 // Mock react-markdown to avoid ESM issues in tests
@@ -86,6 +92,9 @@ const baseProps = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockReadFile.mockResolvedValue(null);
+  mockGetContextFileContent.mockResolvedValue(null);
+  mockSaveDecisionsContent.mockResolvedValue(undefined);
+  mockGetDisabledSteps.mockResolvedValue([]);
 });
 
 describe("WorkflowStepComplete — cost display", () => {
@@ -190,7 +199,7 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
   const researchProps = {
     stepName: "Research",
     stepId: 0,
-    outputFiles: ["context/research-plan.md", "context/clarifications.json"],
+    outputFiles: ["context/clarifications.json"],
     skillName: "my-skill",
     skillsPath: "/skills",
   };
@@ -263,7 +272,7 @@ describe("missing-files error state", () => {
   const researchProps = {
     stepName: "Research",
     stepId: 0,
-    outputFiles: ["context/research-plan.md", "context/clarifications.json"],
+    outputFiles: ["context/clarifications.json"],
     skillName: "my-skill",
     skillsPath: "/skills",
   };
@@ -319,5 +328,124 @@ describe("missing-files error state", () => {
     });
 
     expect(screen.queryByText("Next Step")).not.toBeInTheDocument();
+  });
+});
+
+describe("WorkflowStepComplete — decisions step conflict resolution flow", () => {
+  const decisionsJson = JSON.stringify({
+    version: "1",
+    metadata: {
+      decision_count: 2,
+      conflicts_resolved: 0,
+      round: 1,
+      contradictory_inputs: true,
+    },
+    decisions: [
+      {
+        id: "D1",
+        title: "Capability",
+        original_question: "What should this skill enable Claude to do?",
+        decision: "Draft capability text",
+        implication: "Needs user confirmation before generation",
+        status: "needs-review",
+      },
+      {
+        id: "D2",
+        title: "Trigger",
+        original_question: "When should this skill trigger?",
+        decision: "Trigger on planning requests",
+        implication: "Used to draft the skill description",
+        status: "resolved",
+      },
+    ],
+  });
+
+  const decisionsProps = {
+    stepName: "Confirm Decisions",
+    stepId: 2,
+    outputFiles: ["context/decisions.json"],
+    skillName: "my-skill",
+    workspacePath: "/workspace",
+    skillsPath: "/skills",
+  };
+
+  beforeEach(() => {
+    mockGetStepAgentRuns.mockResolvedValue([]);
+    mockGetContextFileContent.mockImplementation((_skillName: string, _workspacePath: string, relativePath: string) => {
+      if (relativePath === "decisions.json") return Promise.resolve(decisionsJson);
+      return Promise.resolve(null);
+    });
+  });
+
+  it("shows an explicit blocked Generate Skill action instead of Done when the next step is blocked", async () => {
+    render(
+      <WorkflowStepComplete
+        {...decisionsProps}
+        nextStepBlocked
+        nextStepLabel="Generate Skill"
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Generate Skill" })).toBeInTheDocument();
+    });
+
+    const lockedButton = screen.getByRole("button", { name: "Generate Skill" });
+    expect(lockedButton).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Done" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Generate Skill is blocked until you review the decisions marked needs-review below.")).not.toBeInTheDocument();
+  });
+
+  it("shows Next Step when the next step is available", async () => {
+    const onNextStep = vi.fn();
+
+    render(<WorkflowStepComplete {...decisionsProps} onNextStep={onNextStep} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Next Step" })).toBeInTheDocument();
+    });
+  });
+
+  it("persists reviewed decisions and can rerender into an unblocked next-step state", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <WorkflowStepComplete
+        {...decisionsProps}
+        nextStepBlocked
+        nextStepLabel="Generate Skill"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Draft capability text")).toBeInTheDocument();
+    });
+
+    const decisionField = screen.getByDisplayValue("Draft capability text");
+    await user.clear(decisionField);
+    await user.type(decisionField, "Confirmed capability text");
+    await user.tab();
+
+    await waitFor(() => {
+      expect(mockSaveDecisionsContent).toHaveBeenCalledWith(
+        "my-skill",
+        "/workspace",
+        expect.stringContaining("\"status\": \"revised\""),
+      );
+    });
+    expect(mockGetDisabledSteps).toHaveBeenCalledWith("my-skill");
+
+    rerender(
+      <WorkflowStepComplete
+        {...decisionsProps}
+        nextStepBlocked={false}
+        nextStepLabel="Generate Skill"
+        onNextStep={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Next Step" })).toBeInTheDocument();
+    });
   });
 });

@@ -49,7 +49,7 @@ test.describe("Workflow Navigation Guards", { tag: "@workflow" }, () => {
     // Simulate agent init so the UI is in running state
     await emitTauriEvent(page, "agent-init-progress", {
       agent_id: "agent-001",
-      subtype: "init_start",
+      stage: "init_start",
       timestamp: Date.now(),
     });
     await page.waitForTimeout(100);
@@ -107,7 +107,7 @@ test.describe("Workflow Navigation Guards", { tag: "@workflow" }, () => {
     // Simulate agent init
     await emitTauriEvent(page, "agent-init-progress", {
       agent_id: "agent-001",
-      subtype: "init_start",
+      stage: "init_start",
       timestamp: Date.now(),
     });
     await page.waitForTimeout(100);
@@ -157,7 +157,7 @@ test.describe("Workflow Navigation Guards", { tag: "@workflow" }, () => {
     // Simulate agent init so the UI is in running state
     await emitTauriEvent(page, "agent-init-progress", {
       agent_id: "agent-001",
-      subtype: "init_start",
+      stage: "init_start",
       timestamp: Date.now(),
     });
     await page.waitForTimeout(100);

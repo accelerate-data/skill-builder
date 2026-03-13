@@ -2,7 +2,7 @@
 name: refine-skill
 description: Makes targeted edits to a completed skill based on user refinement requests.
 model: sonnet
-tools: Read, Edit, Write, Glob, Grep, Task
+tools: Read, Edit, Write, Glob, Grep, Bash
 ---
 
 # Refine Skill
@@ -23,6 +23,7 @@ Make targeted, minimal edits to skill files based on the user's refinement reque
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
 - `skill_output_dir`: path where the skill to be refined (`SKILL.md` and `references/`) live
 - Derive `context_dir` as `workspace_dir/context`
+- `Current request`: the user's refinement request and optional focus area
 
 ## Skill Structure
 
@@ -30,11 +31,6 @@ Make targeted, minimal edits to skill files based on the user's refinement reque
 - `references/` — deep-dive files, one level deep from SKILL.md
 
 ## Commands
-
-**`/rewrite`**
-
-1. Spawn `generate-skill` with `/rewrite` flag. Pass: skill name, skill output directory, workspace directory. Mode: `bypassPermissions`.
-2. Return its output unchanged and stop.
 
 **`/rewrite @file1 @file2 ...`** 
 
@@ -45,31 +41,42 @@ This is for scoped rewrite and does not regenerate the whole skill.
 3. Update SKILL.md pointers if scope changed
 4. Update `modified` date
 
-**`/validate`** — Spawn `validate-skill`. Pass: skill name, skill output directory, workspace directory. Mode: `bypassPermissions`.
-
-- Return validation payload JSON from `validate-skill` unchanged.
-
 </context>
 
 ---
 
 <instructions>
 
-## Phase 0: Read inputs
+## Narration
+
+Before each phase, write one short status line (≤ 10 words). Write it before tool calls. Examples: "Reading context and decisions…", "Reading skill files…", "Planning targeted edits…", "Applying edits…"
+
+## Phase 0: Read inputs and guard checks
 
 Read `{workspace_dir}/user-context.md`.
 Read `{context_dir}/clarifications.json`.
 Read `{context_dir}/decisions.json`.
 
-If `metadata.scope_recommendation == true` in `clarifications.json` return: "Scope recommendation active. Blocked until resolved."
+**Scope guard (mandatory — check before any other work):**
 
-If `metadata.contradictory_inputs == true` in `decisions.json`, return: "Contradictory inputs detected. Blocked until resolved. See decisions.json."
+If `metadata.scope_recommendation == true` in `clarifications.json`, stop immediately. Do not read skill files, do not plan edits, do not edit any files. Output exactly this message and nothing else:
+
+> Scope recommendation active. Blocked until resolved.
+
+If `metadata.contradictory_inputs == true` in `decisions.json`, stop immediately. Do not read skill files, do not plan edits, do not edit any files. Output exactly this message and nothing else:
+
+> Contradictory inputs detected. Blocked until resolved. See decisions.json.
 
 ## Step 1: Read Before Editing
 
 Tailor tone, examples, and emphasis accordingly as per `user-context.md`.
 
 Read `SKILL.md` before making changes. Read relevant reference files if the request mentions them. Use Glob when exact filenames are unclear.
+
+Treat `Current request` as an additional focus area for rewrite coverage:
+
+- Do not broaden the edit scope unnecessarily; keep changes minimal.
+- If the request names a topic, ensure the edited files address that topic explicitly or explain why no change was made.
 
 ## Step 2: Plan the Change
 

@@ -18,7 +18,7 @@ See `CLAUDE-APP.md` for full details.
 
 **Backend:** Tauri 2, rusqlite, notify, pulldown-cmark, tokio
 
-**Agent Runtime:** Node.js 18-24 sidecar + `@anthropic-ai/claude-agent-sdk`
+**Agent Runtime:** Node.js 18+ sidecar + `@anthropic-ai/claude-agent-sdk`
 
 ## Architecture
 

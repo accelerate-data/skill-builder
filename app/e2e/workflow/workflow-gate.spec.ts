@@ -95,7 +95,6 @@ const GATE1_OVERRIDES: Record<string, unknown> = {
     "*": RESEARCH_PLAN_CONTENT,
   },
   run_answer_evaluator: "gate-agent-001",
-  autofill_clarifications: 3,
 };
 
 /** Gate 2 context: step 1 completed, continue from Detailed Research clarifications. */
@@ -113,7 +112,6 @@ const GATE2_OVERRIDES: Record<string, unknown> = {
     "*": RESEARCH_PLAN_CONTENT,
   },
   run_answer_evaluator: "gate-agent-001",
-  autofill_clarifications: 3,
 };
 
 /** Swap read_file to return the evaluation JSON so finishGateEvaluation can parse it. */
@@ -408,7 +406,7 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
     // Simulate agent that starts then exits with error
     await emitTauriEvent(page, "agent-init-progress", {
       agent_id: "gate-agent-001",
-      subtype: "init_start",
+      stage: "init_start",
       timestamp: Date.now(),
     });
     await page.waitForTimeout(50);

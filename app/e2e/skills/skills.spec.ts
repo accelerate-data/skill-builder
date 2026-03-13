@@ -372,7 +372,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await builderRow.getByLabel("Delete skill").click();
 
     // Confirmation dialog should appear
-    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("alertdialog")).toBeVisible();
   });
 
   test("D2 — delete confirmation dialog opens for marketplace skill in list view", async ({ page }) => {
@@ -388,7 +388,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await dataAnalyticsRow.getByLabel("Delete skill").click();
 
     // Confirmation dialog should appear
-    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("alertdialog")).toBeVisible();
   });
 
   test("D3 — edit workflow button only visible for skill-builder skills", async ({ page }) => {

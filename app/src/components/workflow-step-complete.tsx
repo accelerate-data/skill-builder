@@ -11,7 +11,9 @@ import {
   getStepAgentRuns,
   getContextFileContent,
   saveDecisionsContent,
+  getDisabledSteps,
 } from "@/lib/tauri";
+import { useWorkflowStore } from "@/stores/workflow-store";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
@@ -46,23 +48,40 @@ interface WorkflowStepCompleteProps {
   onResetStep?: () => void;
   saveStatus?: "idle" | "dirty" | "saving" | "saved";
   evaluating?: boolean;
+  nextStepBlocked?: boolean;
+  nextStepLabel?: string;
 }
 
 /** Shared action bar: Refine/Done on last step, Next Step otherwise. Hidden in review mode. */
 function StepActionBar({
   isLastStep,
+  nextStepBlocked,
+  nextStepLabel,
   reviewMode,
   onRefine,
   onClose,
   onNextStep,
 }: {
   isLastStep: boolean;
+  nextStepBlocked?: boolean;
+  nextStepLabel?: string;
   reviewMode?: boolean;
   onRefine?: () => void;
   onClose?: () => void;
   onNextStep?: () => void;
 }) {
   if (reviewMode) return null;
+
+  if (nextStepBlocked) {
+    return (
+      <div className="flex items-center justify-end border-t pt-4">
+        <Button size="sm" disabled>
+          <ArrowRight className="size-3.5" />
+          {nextStepLabel ?? "Next Step"}
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center justify-end gap-2 border-t pt-4">
@@ -115,6 +134,8 @@ export function WorkflowStepComplete({
   onResetStep,
   saveStatus,
   evaluating,
+  nextStepBlocked = false,
+  nextStepLabel,
 }: WorkflowStepCompleteProps) {
   const [fileContents, setFileContents] = useState<Map<string, string>>(new Map());
   const [resolvedFiles, setResolvedFiles] = useState<string[]>([]);
@@ -238,10 +259,14 @@ export function WorkflowStepComplete({
         await saveDecisionsContent(skillName, workspacePath, decisionsEditContent);
         setDecisionsEditorDirty(false);
         setDecisionsSaveStatus("saved");
+        // Refresh guard state — user edits may clear contradictions
+        // (e.g. contradictory_inputs changed from true to "revised").
+        const disabled = await getDisabledSteps(skillName);
+        useWorkflowStore.getState().setDisabledSteps(disabled);
       } catch (err) {
         console.error("Failed to save decisions.json:", err);
       }
-    }, 1500);
+    }, 300); // Short debounce — trigger is now blur, not keystroke
     return () => clearTimeout(timer);
   }, [decisionsEditContent, decisionsEditorDirty, workspacePath, skillName, reviewMode]);
 
@@ -298,7 +323,15 @@ export function WorkflowStepComplete({
               <p className="mt-1 text-sm">The agent wrote a file that is not valid JSON. Reset and re-run the step.</p>
             </div>
           </div>
-          <StepActionBar isLastStep={isLastStep} reviewMode={reviewMode} onRefine={onRefine} onClose={onClose} onNextStep={onNextStep} />
+          <StepActionBar
+            isLastStep={isLastStep}
+            nextStepBlocked={nextStepBlocked}
+            nextStepLabel={nextStepLabel}
+            reviewMode={reviewMode}
+            onRefine={onRefine}
+            onClose={onClose}
+            onNextStep={onNextStep}
+          />
         </div>
       );
     }
@@ -342,6 +375,8 @@ export function WorkflowStepComplete({
             </ScrollArea>
             <StepActionBar
               isLastStep={isLastStep}
+              nextStepBlocked={nextStepBlocked}
+              nextStepLabel={nextStepLabel}
               reviewMode={reviewMode}
               onRefine={onRefine}
               onClose={onClose}
@@ -390,6 +425,8 @@ export function WorkflowStepComplete({
               </div>
               <StepActionBar
                 isLastStep={isLastStep}
+                nextStepBlocked={nextStepBlocked}
+                nextStepLabel={nextStepLabel}
                 reviewMode={reviewMode}
                 onRefine={onRefine}
                 onClose={onClose}
@@ -439,21 +476,19 @@ export function WorkflowStepComplete({
             <AgentStatsBar runs={agentRuns} />
           </div>
         )}
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="pr-4">
-            <DecisionsSummaryCard
-              decisionsContent={decisionsContent}
-              duration={reviewMode ? dbDuration : duration}
-              cost={displayCost}
-              allowEdit={!reviewMode}
-              onDecisionsChange={(serialized) => {
-                setDecisionsEditContent(serialized);
-                setDecisionsEditorDirty(true);
-                setDecisionsSaveStatus("saving");
-              }}
-            />
-          </div>
-        </ScrollArea>
+        <div className="min-h-0 flex-1 overflow-y-auto pr-4">
+          <DecisionsSummaryCard
+            decisionsContent={decisionsContent}
+            duration={reviewMode ? dbDuration : duration}
+            cost={displayCost}
+            allowEdit={!reviewMode}
+            onDecisionsChange={(serialized) => {
+              setDecisionsEditContent(serialized);
+              setDecisionsEditorDirty(true);
+              setDecisionsSaveStatus("saving");
+            }}
+          />
+        </div>
         {!reviewMode && decisionsSaveStatus !== "idle" && (
           <div className="flex justify-start">
             <span className="text-xs text-muted-foreground">
@@ -467,6 +502,8 @@ export function WorkflowStepComplete({
         )}
         <StepActionBar
           isLastStep={isLastStep}
+          nextStepBlocked={nextStepBlocked}
+          nextStepLabel={nextStepLabel}
           reviewMode={reviewMode}
           onRefine={onRefine}
           onClose={onClose}
@@ -561,6 +598,8 @@ export function WorkflowStepComplete({
         </ScrollArea>
         <StepActionBar
           isLastStep={isLastStep}
+          nextStepBlocked={nextStepBlocked}
+          nextStepLabel={nextStepLabel}
           reviewMode={reviewMode}
           onRefine={onRefine}
           onClose={onClose}
@@ -612,6 +651,8 @@ export function WorkflowStepComplete({
       </div>
       <StepActionBar
         isLastStep={isLastStep}
+        nextStepBlocked={nextStepBlocked}
+        nextStepLabel={nextStepLabel}
         reviewMode={reviewMode}
         onRefine={onRefine}
         onClose={onClose}

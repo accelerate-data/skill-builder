@@ -3,6 +3,7 @@ import type { SidecarConfig } from "./config.js";
 import { runMockAgent } from "./mock-agent.js";
 import { buildQueryOptions } from "./options.js";
 import { createAbortState, linkExternalSignal } from "./shutdown.js";
+import { MessageProcessor } from "./message-processor.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -18,6 +19,27 @@ export async function discoverInstalledPlugins(cwd: string): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * Filter discovered plugin directories to the explicit required set.
+ * No fallback to "all plugins" is allowed; callers must request plugins intentionally.
+ */
+export function selectPluginPaths(
+  discoveredPluginPaths: string[],
+  requiredPlugins?: string[],
+): string[] {
+  if (!requiredPlugins || requiredPlugins.length === 0) {
+    return [];
+  }
+
+  const discoveredByName = new Map(
+    discoveredPluginPaths.map((pluginPath) => [path.basename(pluginPath), pluginPath] as const),
+  );
+
+  return requiredPlugins
+    .map((pluginName) => discoveredByName.get(pluginName))
+    .filter((pluginPath): pluginPath is string => typeof pluginPath === "string");
 }
 
 /**
@@ -59,7 +81,8 @@ export async function runAgentRequest(
   }
 
   // Discover all installed plugins so every plugin agent is available to the SDK.
-  const pluginPaths = await discoverInstalledPlugins(config.cwd);
+  const discoveredPluginPaths = await discoverInstalledPlugins(config.cwd);
+  const pluginPaths = selectPluginPaths(discoveredPluginPaths, config.requiredPlugins);
 
   // Route SDK subprocess stderr through onMessage so it gets wrapped with
   // request_id and written to the JSONL transcript (not the app log).
@@ -87,11 +110,73 @@ export async function runAgentRequest(
     options,
   });
 
-  // SDK is loaded and connected — ready to stream messages
-  emitSystemEvent(onMessage, "sdk_ready");
+  // Process raw SDK messages through MessageProcessor for structured display items
+  const processor = new MessageProcessor({
+    skillName: config.skillName,
+    stepId: config.stepId,
+    workflowSessionId: config.workflowSessionId,
+    usageSessionId: config.usageSessionId,
+    runSource: config.runSource,
+  });
 
-  for await (const message of conversation) {
-    if (state.abortController.signal.aborted) break;
-    onMessage(message as Record<string, unknown>);
+  try {
+    let sdkReadyEmitted = false;
+    for await (const message of conversation) {
+      if (state.abortController.signal.aborted) break;
+
+      // Emit sdk_ready on first actual message from the SDK so the
+      // "Connecting to API..." progress reflects real connection state.
+      if (!sdkReadyEmitted) {
+        emitSystemEvent(onMessage, "sdk_ready");
+        sdkReadyEmitted = true;
+      }
+
+      const raw = message as Record<string, unknown>;
+      // Log raw message to transcript (debugging) — the raw message is still
+      // captured by persistent-mode's writeLine wrapping, so no separate log needed.
+      // Process into display items + pass-through messages
+      const items = processor.process(raw);
+      for (const item of items) {
+        onMessage(item as Record<string, unknown>);
+      }
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (state.abortController.signal.aborted) {
+      process.stderr.write("[sidecar] Query stream aborted during iteration\n");
+    } else {
+      process.stderr.write(`[sidecar] Query stream failed: ${errorMessage}\n`);
+
+      const errorItems = processor.process({
+        type: "error",
+        message: errorMessage,
+      });
+      for (const item of errorItems) {
+        onMessage(item as Record<string, unknown>);
+      }
+
+      const errorSummary = processor.buildExecutionErrorSummary(errorMessage);
+      onMessage({ type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
+      return;
+    }
+  }
+
+  // Emit a shutdown run_result for aborted runs so Rust can persist partial data
+  if (state.abortController.signal.aborted) {
+    process.stderr.write("[sidecar] Run aborted — emitting shutdown run_result\n");
+    const shutdownSummary = processor.buildShutdownSummary();
+    onMessage({ type: "agent_event", event: shutdownSummary, timestamp: Date.now() } as Record<string, unknown>);
+  }
+
+  // Guard: if the SDK iterator completed without emitting a result message
+  // (e.g. auth failure where the SDK yields error-bearing messages then exits
+  // without a result), emit an error run_result so Rust fires agent-exit and
+  // the frontend transitions out of "Running" state.
+  if (!processor.hasEmittedResult() && !state.abortController.signal.aborted) {
+    process.stderr.write("[sidecar] SDK completed without result — emitting error run_result\n");
+    const errorSummary = processor.buildExecutionErrorSummary(
+      "Agent ended without producing a result",
+    );
+    onMessage({ type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
   }
 }
