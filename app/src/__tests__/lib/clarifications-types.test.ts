@@ -41,6 +41,44 @@ describe("parseClarifications", () => {
     expect(parsed?.sections[0]?.questions).toHaveLength(1);
   });
 
+  it("parses canonical clarifications schema", () => {
+    const input = JSON.stringify({
+      version: "1",
+      metadata: {
+        title: "Clarifications: Demo",
+        question_count: 1,
+        section_count: 1,
+        refinement_count: 0,
+        must_answer_count: 1,
+        priority_questions: ["Q1"],
+      },
+      sections: [
+        {
+          id: 1,
+          title: "Section",
+          questions: [
+            {
+              id: "Q1",
+              title: "Question",
+              must_answer: true,
+              text: "Question text",
+              choices: [],
+              answer_choice: null,
+              answer_text: null,
+              refinements: [],
+            },
+          ],
+        },
+      ],
+      notes: [],
+    });
+
+    const parsed = parseClarifications(input);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.sections[0]?.id).toBe(1);
+    expect(parsed?.sections[0]?.questions).toHaveLength(1);
+  });
+
   it("converts legacy dimensions schema into canonical sections/questions", () => {
     const input = JSON.stringify({
       metadata: {
