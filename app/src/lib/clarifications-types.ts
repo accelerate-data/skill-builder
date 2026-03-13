@@ -58,7 +58,7 @@ export interface ClarificationsResearchPlan {
 }
 
 export interface Section {
-  id: string; // "S1", "S2", ...
+  id: number | string; // integer (e.g. 1) or legacy string (e.g. "S1")
   title: string;
   description?: string;
   questions: Question[];
