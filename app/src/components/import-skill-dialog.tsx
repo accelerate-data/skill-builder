@@ -75,7 +75,6 @@ export function ImportSkillDialog({
       setName(meta.name ?? "")
       setDescription(meta.description ?? "")
       setVersion(meta.version ?? "1.0.0")
-      setModel(meta.model ?? "")
       setArgumentHint(meta.argument_hint ?? "")
       setUserInvocable(meta.user_invocable ?? false)
       setDisableModelInvocation(meta.disable_model_invocation ?? false)
