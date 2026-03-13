@@ -106,39 +106,14 @@ For Rust and cross-layer changes, consult `TEST_MANIFEST.md` for the correct car
 
 **Never run `test:agents:smoke` autonomously** — it makes live API calls. Tell the user to run it manually.
 
-## Code Style
-
-- Granular commits: one concern per commit, run tests before each
-- Stage specific files — use `git add <file>` not `git add .`
-- All `.md` files must pass `markdownlint` before committing (`markdownlint <file>`)
-- When editing `AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, or `.claude/skills/`, run `bash app/scripts/lint-agent-docs.sh`
-- Verify before committing: `cd app && npx tsc --noEmit` + `cargo check --manifest-path app/src-tauri/Cargo.toml`
-- Canonical naming and error-handling conventions live in `.claude/rules/coding-conventions.md`
-
-### Frontend (`app/src/`)
-
-For AD brand rules, component constraints, and state indicator conventions, see:
-
-- `.claude/rules/frontend-design.md`
-
-### Rust backend (`app/src-tauri/`)
-
-Command conventions, error types, and Rust-specific testing guidance live in `.claude/rules/rust-backend.md`.
-
-### Sidecar (`app/sidecar/`)
-
-Protocol and sidecar-specific constraints live in `.claude/rules/agent-sidecar.md`.
-
-### Error handling
-
-See `.claude/rules/coding-conventions.md` for canonical error-handling policy.
-
 ## Issue Management
 
 - **PR title format:** `VU-XXX: short description`
 - **PR body link:** `Fixes VU-XXX`
 - **Linear project:** All issues created for this repository must be created under **Skill Builder**.
 - **Worktrees:** `../worktrees/<branchName>` relative to repo root. Full rules: `.claude/rules/git-workflow.md`.
+
+**Pre-commit:** `markdownlint <file>` for `.md` files · `cd app && npx tsc --noEmit` · `cargo check --manifest-path app/src-tauri/Cargo.toml` · `bash app/scripts/lint-agent-docs.sh` when editing `AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, or `.claude/skills/`.
 
 ## Skills
 
