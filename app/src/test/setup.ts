@@ -11,8 +11,6 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 }
 
 // Override requestAnimationFrame to fire synchronously in tests.
-// The agent store uses RAF batching for message updates; this ensures
-// batched state changes apply immediately so test assertions work.
 let _rafId = 0;
 globalThis.requestAnimationFrame = (cb: FrameRequestCallback): number => {
   cb(++_rafId);

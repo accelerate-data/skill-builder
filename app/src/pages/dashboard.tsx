@@ -62,7 +62,6 @@ function SortHeader({ label, column, sortBy, sortDir, onSort }: {
 export default function DashboardPage() {
   const [skills, setSkills] = useState<SkillSummary[]>([])
   const [loading, setLoading] = useState(true)
-  const [workspacePath, setWorkspacePath] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [dashboardLibraryMarketplaceOpen, setDashboardLibraryMarketplaceOpen] = useState(false)
   const [importState, setImportState] = useState<{ filePath: string; meta: SkillFileMeta } | null>(null)
@@ -78,6 +77,7 @@ export default function DashboardPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const navigate = useNavigate()
+  const workspacePath = useSettingsStore((s) => s.workspacePath)
   const skillsPath = useSettingsStore((s) => s.skillsPath)
   const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
   const hasEnabledRegistry = marketplaceRegistries.some(r => r.enabled)
@@ -96,15 +96,6 @@ export default function DashboardPage() {
       // ignore — locks are best-effort
     }
   }, [setLockedSkills])
-
-  const loadSettings = useCallback(async () => {
-    try {
-      const settings = await invoke<AppSettings>("get_settings")
-      setWorkspacePath(settings.workspace_path || "")
-    } catch {
-      // Settings may not exist yet
-    }
-  }, [])
 
   const loadSkills = useCallback(async () => {
     if (!workspacePath) {
@@ -135,10 +126,6 @@ export default function DashboardPage() {
       setAvailableTags([])
     }
   }, [])
-
-  useEffect(() => {
-    loadSettings()
-  }, [loadSettings])
 
   useEffect(() => {
     if (pendingUpgrade?.mode === "dashboard-library") {
@@ -705,7 +692,7 @@ export default function DashboardPage() {
 
       <DeleteSkillDialog
         skill={deleteTarget}
-        workspacePath={workspacePath}
+        workspacePath={workspacePath || ""}
         open={deleteTarget !== null}
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null)
@@ -720,7 +707,7 @@ export default function DashboardPage() {
         onImported={async () => { await Promise.all([loadSkills(), loadTags()]); }}
         mode="dashboard-library"
         registries={marketplaceRegistries.filter(r => r.enabled)}
-        workspacePath={workspacePath}
+        workspacePath={workspacePath || ""}
       />
 
       {importState && (
