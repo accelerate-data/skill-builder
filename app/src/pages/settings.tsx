@@ -18,6 +18,13 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import type { AppSettings, MarketplaceRegistry } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useSettingsStore, type ModelInfo } from "@/stores/settings-store"
@@ -422,24 +429,28 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-3">
-                  <select
+                  <Select
                     value={preferredModel}
-                    onChange={(e) => { setPreferredModel(e.target.value); autoSave({ preferredModel: e.target.value }); }}
-                    className="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    onValueChange={(val) => { setPreferredModel(val); autoSave({ preferredModel: val }); }}
                   >
-                    {availableModels.length > 0
-                      ? availableModels.map((m) => (
-                          <option key={m.id} value={m.id}>{m.displayName}</option>
-                        ))
-                      : (
-                        <>
-                          <option value="haiku">Haiku — fastest, lowest cost</option>
-                          <option value="sonnet">Sonnet — balanced (default)</option>
-                          <option value="opus">Opus — most capable</option>
-                        </>
-                      )
-                    }
-                  </select>
+                    <SelectTrigger className="w-64">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableModels.length > 0
+                        ? availableModels.map((m) => (
+                            <SelectItem key={m.id} value={m.id}>{m.displayName}</SelectItem>
+                          ))
+                        : (
+                          <>
+                            <SelectItem value="haiku">Haiku — fastest, lowest cost</SelectItem>
+                            <SelectItem value="sonnet">Sonnet — balanced (default)</SelectItem>
+                            <SelectItem value="opus">Opus — most capable</SelectItem>
+                          </>
+                        )
+                      }
+                    </SelectContent>
+                  </Select>
                 </div>
               </CardContent>
             </Card>
@@ -477,23 +488,22 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="grid gap-2">
-                  <Label htmlFor="sdk-effort">Reasoning effort</Label>
-                  <select
-                    id="sdk-effort"
+                  <Label>Reasoning effort</Label>
+                  <Select
                     value={sdkEffort}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      setSdkEffort(value)
-                      autoSave({ sdkEffort: value || null })
-                    }}
-                    className="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    onValueChange={(val) => { setSdkEffort(val); autoSave({ sdkEffort: val || null }); }}
                   >
-                    <option value="">Default</option>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="max">Max</option>
-                  </select>
+                    <SelectTrigger className="w-64">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Default</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="max">Max</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="flex items-center justify-between">
