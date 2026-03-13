@@ -2006,9 +2006,8 @@ describe("step reset behavior regressions", () => {
     vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
   });
 
-  it("performStepReset(1) calls resetWorkflowStep with stepId 1 not 0", async () => {
-    // Bug 1 regression: performStepReset used currentStep (0) instead of the passed stepId arg.
-    // Set up step 1 as the current completed step; step 0 also completed.
+  it("onResetStep on step 1 calls resetWorkflowStep with stepId 0 (rerun from research)", async () => {
+    // Detailed-research rerun resets from step 0, clearing clarifications.json.
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
@@ -2016,11 +2015,9 @@ describe("step reset behavior regressions", () => {
     useWorkflowStore.getState().updateStepStatus(1, "completed");
     useWorkflowStore.getState().setCurrentStep(1);
 
-    // readFile rejects so the missing-files error path is not triggered
     vi.mocked(readFile).mockRejectedValue("not found");
     vi.mocked(resetWorkflowStep).mockResolvedValue(undefined);
 
-    // Override WorkflowStepComplete mock to expose the onResetStep callback
     let capturedOnResetStep: (() => void) | undefined;
     vi.mocked(WorkflowStepComplete).mockImplementation(({ onResetStep }) => {
       capturedOnResetStep = onResetStep;
@@ -2029,37 +2026,28 @@ describe("step reset behavior regressions", () => {
 
     render(<WorkflowPage />);
 
-    // Wait for the completed-step render so onResetStep is captured
     await waitFor(() => {
       expect(screen.getByTestId("step-complete")).toBeTruthy();
     });
 
     expect(capturedOnResetStep).toBeDefined();
 
-    // Trigger performStepReset(1) via the captured prop
     await act(async () => {
       capturedOnResetStep!();
     });
 
-    // resetWorkflowStep must be called with stepId=1, NOT 0 (the Bug 1 regression check)
+    // Must reset from step 0, not step 1, so clarifications.json is deleted
     expect(vi.mocked(resetWorkflowStep)).toHaveBeenCalledWith(
       "/test/workspace",
       "test-skill",
-      1,
+      0,
     );
 
-    // Step 0 was NOT the target — it must still be completed
-    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
-
-    // currentStep was repositioned to 1 by resetToStep(1)
-    expect(useWorkflowStore.getState().currentStep).toBe(1);
+    // Step 0 is no longer completed (auto-start fires so it becomes in_progress)
+    expect(useWorkflowStore.getState().steps[0].status).not.toBe("completed");
   });
 
-  it("performStepReset(1) calls resetToStep(1) making step 1 pending without touching step 0", async () => {
-    // Bug 1 regression: resetToStep(1) resets steps >= 1. Step 0 must remain completed.
-    // Note: after reset in update mode, autoStartAfterReset triggers auto-start which sets
-    // step 1 to in_progress — so we assert on the resetWorkflowStep call and step 0 state
-    // rather than the transient "pending" that immediately becomes "in_progress".
+  it("onResetStep on step 1 resets all steps from 0 onward", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
@@ -2086,17 +2074,14 @@ describe("step reset behavior regressions", () => {
       capturedOnResetStep!();
     });
 
-    // resetToStep(1) was called — verified by checking it was called with step 1
     expect(vi.mocked(resetWorkflowStep)).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
-      1,
+      0,
     );
 
-    // Step 0 is still completed — resetToStep(1) only resets steps >= 1
-    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
-
-    // Steps 2+ were also reset (they were pending already in this 4-step workflow)
+    // Step 0 is no longer completed (auto-start fires → in_progress); steps 2+ are pending
+    expect(useWorkflowStore.getState().steps[0].status).not.toBe("completed");
     expect(useWorkflowStore.getState().steps[2].status).toBe("pending");
     expect(useWorkflowStore.getState().steps[3].status).toBe("pending");
   });
