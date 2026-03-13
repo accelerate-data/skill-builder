@@ -437,8 +437,18 @@ export const useAgentStore = create<AgentState>((set) => ({
         runs: {
           ...state.runs,
           [agentId]: existing
-            ? // Run was auto-created by early messages — update model, keep displayItems
-              { ...existing, model, skillName, status: "running" as const }
+            ? // Run was auto-created by early messages — update model, keep displayItems.
+              // Preserve terminal status: if agent-exit already fired before startRun
+              // (race on fast/mock agents), keep "completed"/"error"/"shutdown" so the
+              // completion effect fires correctly instead of reverting to "running".
+              {
+                ...existing,
+                model,
+                skillName,
+                status: (["completed", "error", "shutdown"] as string[]).includes(existing.status)
+                  ? existing.status
+                  : ("running" as const),
+              }
             : {
                 agentId,
                 model,
@@ -472,7 +482,12 @@ export const useAgentStore = create<AgentState>((set) => ({
                 ...existing,
                 model,
                 skillName: skillName ?? existing.skillName,
-                status: "running" as const,
+                // Preserve terminal status: if agent-exit already fired before registerRun
+                // (race on fast/mock agents), keep "completed"/"error"/"shutdown" so the
+                // completion effect fires correctly instead of reverting to "running".
+                status: (["completed", "error", "shutdown"] as string[]).includes(existing.status)
+                  ? existing.status
+                  : ("running" as const),
                 runSource,
                 usageSessionId: usageSessionId ?? existing.usageSessionId,
               }
