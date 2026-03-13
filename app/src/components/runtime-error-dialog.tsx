@@ -34,6 +34,8 @@ function getErrorTitle(errorType: string): string {
       return "Failed to Start Agent Runtime";
     case "ready_timeout":
       return "Agent Runtime Initialization Timeout";
+    case "AuthenticationFailed":
+      return "Authentication Failed";
     default:
       return "Agent Runtime Error";
   }
@@ -66,6 +68,13 @@ function getFailureClass(errorType: string): {
     return {
       label: "Compatibility issue",
       description: "This is an environment compatibility problem and usually requires installing or updating Node.js.",
+    };
+  }
+
+  if (errorType === "AuthenticationFailed") {
+    return {
+      label: "API key error",
+      description: "Your Anthropic API key is invalid or expired. Update it in Settings to continue.",
     };
   }
 

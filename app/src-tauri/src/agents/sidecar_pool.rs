@@ -1090,6 +1090,17 @@ impl SidecarPool {
                                                             msg_type,
                                                             detail,
                                                         );
+
+                                                        // Detect authentication errors and surface
+                                                        // an actionable RuntimeErrorDialog.
+                                                        if events::is_authentication_error(&msg) {
+                                                            events::emit_runtime_error(
+                                                                &app_handle_stdout,
+                                                                "AuthenticationFailed",
+                                                                "Your Anthropic API key is invalid or expired.",
+                                                                "Go to Settings and update your API key.",
+                                                            );
+                                                        }
                                                     }
                                                 }
                                             }

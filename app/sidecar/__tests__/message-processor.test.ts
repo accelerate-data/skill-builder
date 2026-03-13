@@ -993,6 +993,104 @@ describe("MessageProcessor", () => {
       expect(summary.numTurns).toBeGreaterThanOrEqual(1);
     });
 
+    // =========================================================================
+    // Assistant message error field (VU-531)
+    // =========================================================================
+
+    it("assistant message with error='authentication_failed' emits error item + run_result", () => {
+      const out = processor.process({
+        type: "assistant",
+        error: "authentication_failed",
+        message: { content: [], usage: null },
+      });
+
+      // Should emit a display_item envelope for the error
+      const errorEnvelopes = out.filter(
+        (m) => (m as Record<string, unknown>).type === "display_item"
+          && ((m as Record<string, unknown>).item as Record<string, unknown>)?.type === "error",
+      );
+      expect(errorEnvelopes.length).toBeGreaterThanOrEqual(1);
+      const errorItem = (errorEnvelopes[0] as Record<string, unknown>).item as Record<string, unknown>;
+      expect(errorItem.errorMessage).toContain("Authentication failed");
+
+      // Should emit an agent_event with run_result
+      const agentEvents = out.filter(
+        (m) => (m as Record<string, unknown>).type === "agent_event",
+      );
+      expect(agentEvents.length).toBeGreaterThanOrEqual(1);
+      const event = (agentEvents[0] as Record<string, unknown>).event as Record<string, unknown>;
+      expect(event.type).toBe("run_result");
+      expect(event.status).toBe("error");
+      expect(event.resultSubtype).toBe("error_authentication");
+    });
+
+    it("assistant message with error='billing_error' emits error with billing label", () => {
+      const out = processor.process({
+        type: "assistant",
+        error: "billing_error",
+        message: { content: [], usage: null },
+      });
+
+      const errorEnvelopes = out.filter(
+        (m) => (m as Record<string, unknown>).type === "display_item"
+          && ((m as Record<string, unknown>).item as Record<string, unknown>)?.type === "error",
+      );
+      expect(errorEnvelopes.length).toBeGreaterThanOrEqual(1);
+      const errorItem = (errorEnvelopes[0] as Record<string, unknown>).item as Record<string, unknown>;
+      expect(errorItem.errorMessage).toContain("Billing error");
+    });
+
+    it("assistant message without error field processes normally", () => {
+      const out = processor.process({
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "hello" }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      });
+
+      const errorEnvelopes = out.filter(
+        (m) => (m as Record<string, unknown>).type === "display_item"
+          && ((m as Record<string, unknown>).item as Record<string, unknown>)?.type === "error",
+      );
+      expect(errorEnvelopes).toHaveLength(0);
+    });
+
+    // =========================================================================
+    // auth_status message handling (VU-531)
+    // =========================================================================
+
+    it("auth_status message with error emits error item + run_result", () => {
+      const out = processor.process({
+        type: "auth_status",
+        isAuthenticating: false,
+        output: [],
+        error: "Invalid API key",
+      });
+
+      const errorEnvelopes = out.filter(
+        (m) => (m as Record<string, unknown>).type === "display_item"
+          && ((m as Record<string, unknown>).item as Record<string, unknown>)?.type === "error",
+      );
+      expect(errorEnvelopes.length).toBeGreaterThanOrEqual(1);
+
+      const agentEvents = out.filter(
+        (m) => (m as Record<string, unknown>).type === "agent_event",
+      );
+      expect(agentEvents.length).toBeGreaterThanOrEqual(1);
+      const event = (agentEvents[0] as Record<string, unknown>).event as Record<string, unknown>;
+      expect(event.resultSubtype).toBe("error_authentication");
+    });
+
+    it("auth_status message without error produces no output", () => {
+      const out = processor.process({
+        type: "auth_status",
+        isAuthenticating: true,
+        output: ["Authenticating..."],
+      });
+      expect(out).toHaveLength(0);
+    });
+
     it("reset clears all state", () => {
       processor.process({
         type: "assistant",

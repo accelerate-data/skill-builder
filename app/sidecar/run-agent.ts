@@ -167,4 +167,16 @@ export async function runAgentRequest(
     const shutdownSummary = processor.buildShutdownSummary();
     onMessage({ type: "agent_event", event: shutdownSummary, timestamp: Date.now() } as Record<string, unknown>);
   }
+
+  // Guard: if the SDK iterator completed without emitting a result message
+  // (e.g. auth failure where the SDK yields error-bearing messages then exits
+  // without a result), emit an error run_result so Rust fires agent-exit and
+  // the frontend transitions out of "Running" state.
+  if (!processor.hasEmittedResult() && !state.abortController.signal.aborted) {
+    process.stderr.write("[sidecar] SDK completed without result — emitting error run_result\n");
+    const errorSummary = processor.buildExecutionErrorSummary(
+      "Agent ended without producing a result",
+    );
+    onMessage({ type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
+  }
 }

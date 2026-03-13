@@ -59,6 +59,9 @@ export function classifyRawMessage(raw: Record<string, unknown>): MessageCategor
   // --- user messages (tool_result blocks) ---
   if (type === "user") return "user";
 
+  // --- auth_status messages carry authentication error details ---
+  if (type === "auth_status") return "ai";
+
   // --- assistant, result, error → ai category ---
   if (type === "assistant" || type === "result" || type === "error") return "ai";
 
