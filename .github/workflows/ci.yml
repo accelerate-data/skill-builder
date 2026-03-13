@@ -76,3 +76,26 @@ jobs:
       - name: Clippy
         working-directory: app/src-tauri
         run: cargo clippy -- -D warnings
+
+  docs:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install docs dependencies
+        working-directory: docs
+        run: npm install
+
+      - name: Build user-guide site
+        working-directory: docs
+        run: npm run build
