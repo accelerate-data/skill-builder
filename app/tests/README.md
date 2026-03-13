@@ -153,7 +153,7 @@ app/
     fixtures.ts              # Fixture factories
   tests/
     README.md                # This file
-    TEST_MANIFEST.md         # Cross-layer map (Rust → E2E tags, shared infra, agents)
+    ../../TEST_MANIFEST.md   # Cross-layer map (Rust → E2E tags, shared infra, agents)
     run.sh                   # Unified test runner (unit, integration, e2e, agents)
     harness-test.sh          # Self-tests for run.sh
     manifest-scenarios.sh    # Cross-layer manifest validation
@@ -167,4 +167,4 @@ Symlinks provide a single entry point for browsing tests without moving files fr
 
 ## For AI Assistants
 
-For frontend changes, use `npm run test:changed` to auto-detect affected tests. For Rust and cross-layer concerns, consult **`TEST_MANIFEST.md`** in this directory — it maps Rust modules to E2E tags, shared infrastructure files, and agent sources.
+For frontend changes, use `npm run test:changed` to auto-detect affected tests. For Rust and cross-layer concerns, consult **`TEST_MANIFEST.md`** at the repo root — it maps Rust modules to E2E tags, shared infrastructure files, and agent sources.

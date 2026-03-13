@@ -76,7 +76,7 @@ cargo test --manifest-path app/src-tauri/Cargo.toml db  # module filter
 | `src/types.rs` | Shared Rust types |
 | `src/fs_validation.rs` | Filesystem validation helpers |
 
-See `app/tests/TEST_MANIFEST.md` for the Rust module → E2E tag mapping.
+See `TEST_MANIFEST.md` for the Rust module → E2E tag mapping.
 
 ## Tauri Mock Infrastructure
 

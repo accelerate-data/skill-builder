@@ -8,7 +8,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MANIFEST="$SCRIPT_DIR/TEST_MANIFEST.md"
+MANIFEST="$SCRIPT_DIR/../../TEST_MANIFEST.md"
 
 # ---------------------------------------------------------------------------
 # Colors

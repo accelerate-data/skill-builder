@@ -10,6 +10,8 @@ Changes to these files affect all test layers — run the full test suite (`./te
 - `src/test/mocks/tauri.ts` — Unit/integration mock infrastructure
 - `src/test/mocks/tauri-e2e.ts` — E2E mock infrastructure
 - `src/test/mocks/tauri-e2e-event.ts` — E2E event system mock
+- `src/test/mocks/tauri-e2e-dialog.ts` — E2E dialog mock
+- `src/test/mocks/tauri-e2e-window.ts` — E2E window mock
 - `e2e/helpers/app-helpers.ts` — Shared E2E helpers (splash screen wait, etc.)
 - `e2e/helpers/workflow-helpers.ts` — Shared workflow E2E helpers (navigation, mock overrides)
 - `e2e/helpers/refine-helpers.ts` — Shared refine E2E helpers (navigation, mock overrides)
@@ -29,17 +31,16 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `src-tauri/src/commands/files.rs` | `commands::files` | `@workflow` |
 | `src-tauri/src/commands/settings.rs` | `commands::settings` | `@settings` |
 | `src-tauri/src/commands/clarification.rs` | `commands::clarification` | `@workflow` |
-| `src-tauri/src/commands/github_push.rs` | `commands::github_push` | `@dashboard` |
 | `src-tauri/src/commands/github_auth.rs` | -- | `@settings` |
 | `src-tauri/src/commands/imported_skills.rs` (`parse_skill_file`, `import_skill_from_file`) | `commands::imported_skills` | `@import` |
 | `src-tauri/src/commands/imported_skills.rs` | `commands::imported_skills` | `@skills` |
 | `src-tauri/src/commands/github_import.rs` | `commands::github_import` | `@skills` |
 | `src-tauri/src/commands/github_import.rs` (`check_marketplace_updates`) | `commands::github_import` | `@skills` |
 | `src-tauri/src/commands/github_import.rs` (`check_skill_customized`) | `commands::github_import` | `@skills` |
-| `src-tauri/src/commands/team_import.rs` | `commands::team_import` | `@skills` |
 | `src-tauri/src/commands/usage.rs` | `commands::usage` | `@usage` |
 | `src-tauri/src/commands/agent.rs` | -- | `@workflow-agent` |
 | `src-tauri/src/commands/sidecar_lifecycle.rs` | -- | `@workflow-agent` |
+| `src-tauri/src/commands/workflow_lifecycle.rs` | `commands::workflow_lifecycle` | `@workflow` |
 | `src-tauri/src/commands/refine.rs` | `commands::refine` | `@refine` |
 | `src-tauri/src/commands/skill_test.rs` | `commands::skill_test` | `@skill-tester` |
 | `src-tauri/src/commands/git.rs` | -- | `@dashboard` |
@@ -73,6 +74,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `e2e/dashboard/import-skill.spec.ts` | `@import` |
 | `e2e/setup/setup-screen.spec.ts` | `@workflow` |
 | `e2e/settings/settings.spec.ts` | `@settings` |
+| `e2e/settings/github-auth.spec.ts` | `@settings` |
 | `e2e/workflow/workflow-agent.spec.ts` | `@workflow-agent` |
 | `e2e/navigation/navigation.spec.ts` | `@navigation` |
 | `e2e/skills/skills.spec.ts` | `@skills` |
@@ -80,9 +82,13 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `e2e/workflow/workflow-steps.spec.ts` | `@workflow` |
 | `e2e/workflow/workflow-gate.spec.ts` | `@workflow` |
 | `e2e/workflow/workflow-navigation.spec.ts` | `@workflow` |
+| `e2e/workflow/display-items.spec.ts` | `@workflow` |
+| `e2e/workflow/leave-guard.spec.ts` | `@workflow` |
+| `e2e/workflow/state-mutations.spec.ts` | `@workflow` |
 | `e2e/refine/refine.spec.ts` | `@refine` |
 | `e2e/skill-tester/skill-tester.spec.ts` | `@skill-tester` |
 | `e2e/skill-tester/test-to-refine.spec.ts` | `@skill-tester` |
+| `e2e/skill-tester/test-store-lifecycle.spec.ts` | `@skill-tester` |
 | `e2e/toast-lifecycle.spec.ts` | `@toast` |
 
 ## Cross-Boundary: Agent ↔ App Format Compliance
@@ -97,7 +103,7 @@ Agent prompts define artifact formats (`clarifications.json`, `decisions.json`, 
 
 **Example:** You change `agents/consolidate-research.md` to use a different choices format. Look it up → run `npm run test:agents:structural`. But the mock templates also contain choices in the same format → also run `npm run test:unit` to catch the drift.
 
-**Canonical heading changes:** If you change the heading hierarchy in `docs/design/agent-specs/canonical-format.md` (e.g., adding new H3 sub-headings), also update Rust parser tests (`cargo test commands::workflow`) — the `autofill_answers` and `autofill_refinement_answers` functions use `starts_with("### ")` / `starts_with("## ")` for state resets and must be tested against the new heading structure.
+**Canonical heading changes:** If you change the heading hierarchy in `docs/design/agent-specs/canonical-format.md` (e.g., adding new H3 sub-headings), also update Rust parser tests (`cargo test commands::workflow`) — the artifact parsers in `workflow.rs` use `starts_with("### ")` / `starts_with("## ")` for state resets and must be tested against the new heading structure.
 
 | Source | What it validates | Compliance Test |
 |---|---|---|
@@ -106,7 +112,7 @@ Agent prompts define artifact formats (`clarifications.json`, `decisions.json`, 
 | `app/sidecar/mock-templates/outputs/gate-*/context/*.json` | JSON schema (answer-evaluation.json) | `npm run test:unit` (`canonical-format.test.ts`) |
 | `app/e2e/fixtures/agent-responses/*.md` | E2E fixture structure + anti-patterns | `npm run test:unit` (`canonical-format.test.ts`) |
 | `app/src-tauri/src/commands/workflow.rs` (`autofill_answers`) | Rust parser: answer/recommendation matching, heading resets | `cargo test commands::workflow` |
-| `app/src/lib/reasoning-parser.ts` (`countDecisions`) | TS parser: decision heading regex, frontmatter parsing | `npm run test:unit` (`reasoning-parser.test.ts`) |
+| `app/src/components/decisions-summary-card.tsx` (`parseDecisions`) | TS parser: decision heading regex, frontmatter parsing | `npm run test:unit` (`decisions-summary-card.test.tsx`) |
 
 ## Quick Reference
 
