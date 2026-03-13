@@ -11,7 +11,6 @@ const initialState = {
   isLoadingFiles: false,
   activeFileTab: "SKILL.md",
   diffMode: false,
-  baselineFiles: [],
   gitDiff: null,
   previewRevision: 0,
   messages: [],
@@ -34,7 +33,6 @@ describe("useRefineStore", () => {
     expect(state.isLoadingFiles).toBe(false);
     expect(state.activeFileTab).toBe("SKILL.md");
     expect(state.diffMode).toBe(false);
-    expect(state.baselineFiles).toEqual([]);
     expect(state.gitDiff).toBeNull();
     expect(state.previewRevision).toBe(0);
     expect(state.messages).toEqual([]);
@@ -63,7 +61,6 @@ describe("useRefineStore", () => {
       messages: [{ id: "m1", role: "user", userText: "hi", timestamp: 1 }],
       sessionId: "sess-1",
       diffMode: true,
-      baselineFiles: files,
       skillFiles: files,
       activeFileTab: "references/glossary.md",
       activeAgentId: "agent-1",
@@ -78,7 +75,6 @@ describe("useRefineStore", () => {
     expect(state.messages).toEqual([]);
     expect(state.sessionId).toBeNull();
     expect(state.diffMode).toBe(false);
-    expect(state.baselineFiles).toEqual([]);
     expect(state.skillFiles).toEqual([]);
     expect(state.activeFileTab).toBe("SKILL.md");
     expect(state.activeAgentId).toBeNull();
@@ -99,22 +95,6 @@ describe("useRefineStore", () => {
     expect(state.messages).toEqual([]);
     expect(state.skillFiles).toEqual([]);
     expect(state.activeFileTab).toBe("SKILL.md");
-  });
-
-  it("snapshotBaseline deep-copies current skillFiles to baselineFiles", () => {
-    const files: SkillFile[] = [
-      { filename: "SKILL.md", content: "# Skill" },
-      { filename: "references/glossary.md", content: "glossary" },
-    ];
-    useRefineStore.setState({ skillFiles: files });
-
-    useRefineStore.getState().snapshotBaseline();
-
-    const state = useRefineStore.getState();
-    expect(state.baselineFiles).toEqual(files);
-    expect(state.baselineFiles).not.toBe(state.skillFiles);
-    // Verify it's a deep copy — mutating skillFiles shouldn't affect baseline
-    expect(state.baselineFiles[0]).not.toBe(state.skillFiles[0]);
   });
 
   it("addUserMessage appends a user message with id, role, userText, timestamp", () => {
@@ -299,7 +279,6 @@ describe("useRefineStore", () => {
       isRunning: true,
       sessionId: "sess-1",
       diffMode: true,
-      baselineFiles: [{ filename: "SKILL.md", content: "old" }],
       gitDiff: { stat: "1 file changed", files: [] },
       skillFiles: [{ filename: "SKILL.md", content: "new" }],
       activeFileTab: "references/foo.md",
@@ -317,7 +296,6 @@ describe("useRefineStore", () => {
     expect(state.isRunning).toBe(false);
     expect(state.sessionId).toBeNull();
     expect(state.diffMode).toBe(false);
-    expect(state.baselineFiles).toEqual([]);
     expect(state.gitDiff).toBeNull();
     expect(state.skillFiles).toEqual([]);
     expect(state.activeFileTab).toBe("SKILL.md");

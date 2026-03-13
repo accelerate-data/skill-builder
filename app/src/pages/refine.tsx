@@ -360,8 +360,6 @@ export default function RefinePage() {
 
       const model = preferredModel ?? "sonnet";
 
-      // Snapshot baseline for diff
-      store.snapshotBaseline();
       store.setGitDiff(null);
 
       // Add user message

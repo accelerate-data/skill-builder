@@ -32,7 +32,6 @@ interface RefineState {
   // Preview panel
   activeFileTab: string; // filename key e.g. "SKILL.md"
   diffMode: boolean;
-  baselineFiles: SkillFile[]; // snapshot before agent run
   gitDiff: RefineDiff | null;
   previewRevision: number;
 
@@ -57,7 +56,6 @@ interface RefineState {
   setLoadingFiles: (v: boolean) => void;
   setActiveFileTab: (filename: string) => void;
   setDiffMode: (v: boolean) => void;
-  snapshotBaseline: () => void;
   addUserMessage: (text: string, targetFiles?: string[], command?: RefineCommand) => RefineMessage;
   addAgentTurn: (agentId: string) => RefineMessage;
   updateSkillFiles: (files: SkillFile[]) => void;
@@ -81,7 +79,6 @@ const SESSION_DEFAULTS = {
   sessionId: null as string | null,
   sessionExhausted: false,
   diffMode: false,
-  baselineFiles: [] as SkillFile[],
   gitDiff: null as RefineDiff | null,
   previewRevision: 0,
   skillFiles: [] as SkillFile[],
@@ -92,7 +89,7 @@ const SESSION_DEFAULTS = {
   // to wipe the message before ChatInputBar could render and read it.
 } as const;
 
-export const useRefineStore = create<RefineState>((set, get) => ({
+export const useRefineStore = create<RefineState>((set) => ({
   // Initial state
   selectedSkill: null,
   refinableSkills: [],
@@ -118,11 +115,6 @@ export const useRefineStore = create<RefineState>((set, get) => ({
   setLoadingFiles: (v) => set({ isLoadingFiles: v }),
   setActiveFileTab: (filename) => set({ activeFileTab: filename }),
   setDiffMode: (v) => set({ diffMode: v }),
-
-  snapshotBaseline: () => {
-    const { skillFiles } = get();
-    set({ baselineFiles: skillFiles.map((f) => ({ ...f })) });
-  },
 
   addUserMessage: (text, targetFiles, command) => {
     const message: RefineMessage = {
