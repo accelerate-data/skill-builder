@@ -62,7 +62,7 @@ Read these before starting any non-trivial task:
 
 | Artifact | Update when |
 |---|---|
-| `AGENTS.md` | A fact is durable, non-obvious, and won't be obvious from code |
+| `AGENTS.md` | A fact is durable, non-obvious, and won't be obvious from code · a skill is added to `.claude/skills/` |
 | `repo-map.json` | Architecture, entrypoints, commands, modules, or package structure changes |
 | `README.md` | User-facing installation, configuration, commands, or architecture overview changes |
 | `TEST_MANIFEST.md` | Rust command file added/removed · E2E spec added/removed · shared infra file added/removed · agent artifact format changes affecting a Rust or TS parser |
@@ -125,6 +125,8 @@ Use these repo-local skills when requests match:
 - `.claude/skills/tauri/SKILL.md` — Tauri-specific implementation or debugging
 - `.claude/skills/shadcn-ui/SKILL.md` — shadcn/ui component work
 - `.claude/skills/front-end-design/SKILL.md` — design-first UI workflow for screens and components
+- `.claude/skills/explaining-code/SKILL.md` — explain code with diagrams and analogies
+- `.claude/skills/playwright/SKILL.md` — browser automation via playwright-cli (navigation, forms, screenshots, data extraction)
 
 ## Logging
 
