@@ -57,12 +57,26 @@ vi.mock("@/hooks/use-scope-blocked", () => ({
   useScopeBlocked: () => false,
 }));
 vi.mock("@/stores/skill-store", () => ({
-  useSkillStore: (sel) => sel({ lockedSkills: [] }),
+  useSkillStore: (sel: (state: { lockedSkills: string[] }) => unknown) => sel({ lockedSkills: [] }),
 }));
 
 import RefinePage from "@/pages/refine";
+import type { SkillSummary } from "@/lib/types";
 import { useRefineStore } from "@/stores/refine-store";
 import { useSettingsStore } from "@/stores/settings-store";
+
+const TEST_SKILL: SkillSummary = {
+  name: "my-skill",
+  current_step: null,
+  status: null,
+  last_modified: null,
+  tags: [],
+  purpose: null,
+  author_login: null,
+  author_avatar: null,
+  intake_json: null,
+  description: "",
+};
 
 beforeEach(() => {
   resetTauriMocks();
@@ -74,7 +88,7 @@ beforeEach(() => {
 
 describe("RefinePage — lock release on unmount", () => {
   it("releases lock on unmount when a skill was selected", () => {
-    useRefineStore.setState({ selectedSkill: { name: "my-skill", description: "" } });
+    useRefineStore.setState({ selectedSkill: TEST_SKILL });
 
     const { unmount } = render(<RefinePage />);
     unmount();
