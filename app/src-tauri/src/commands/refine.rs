@@ -474,11 +474,9 @@ fn get_skill_content_inner(
 
     // 2. references/** only. Runtime context artifacts live under the
     // workspace directory and must not pollute authored skill preview.
-    for subdir in &["references"] {
-        let dir = skill_root.join(subdir);
-        if dir.is_dir() {
-            collect_skill_content_files(&dir, subdir, &mut files)?;
-        }
+    let references_dir = skill_root.join("references");
+    if references_dir.is_dir() {
+        collect_skill_content_files(&references_dir, "references", &mut files)?;
     }
 
     log::debug!(
