@@ -600,7 +600,7 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
             .or_insert_with(|| RefineFileDiff {
                 path,
                 status: status.to_string(),
-                diff: String::new(),
+                diff: build_refine_patch_metadata(delta),
             });
 
         // Append diff content: hunk headers, context, additions, deletions
@@ -715,7 +715,7 @@ fn get_refine_diff_for_commit_range_inner(
             .or_insert_with(|| RefineFileDiff {
                 path,
                 status: status.to_string(),
-                diff: String::new(),
+                diff: build_refine_patch_metadata(delta),
             });
 
         let origin = line.origin();
@@ -760,6 +760,49 @@ fn get_refine_diff_for_commit_range_inner(
     files.sort_by(|a, b| a.path.cmp(&b.path));
 
     Ok(RefineDiff { stat, files })
+}
+
+fn build_refine_patch_metadata(delta: git2::DiffDelta<'_>) -> String {
+    let old_path = delta
+        .old_file()
+        .path()
+        .map(|p| p.to_string_lossy().to_string());
+    let new_path = delta
+        .new_file()
+        .path()
+        .map(|p| p.to_string_lossy().to_string());
+
+    let old_raw = old_path.clone();
+    let new_raw = new_path.clone();
+
+    let old_display = if delta.status() == git2::Delta::Added {
+        "/dev/null".to_string()
+    } else {
+        format!(
+            "a/{}",
+            old_path
+                .clone()
+                .unwrap_or_else(|| "/dev/null".to_string())
+        )
+    };
+    let new_display = if delta.status() == git2::Delta::Deleted {
+        "/dev/null".to_string()
+    } else {
+        format!(
+            "b/{}",
+            new_path
+                .clone()
+                .unwrap_or_else(|| "/dev/null".to_string())
+        )
+    };
+
+    let diff_old = old_raw
+        .clone()
+        .or_else(|| new_raw.clone())
+        .unwrap_or_default();
+    let diff_new = new_raw.or(old_raw).unwrap_or_default();
+
+    format!("diff --git a/{diff_old} b/{diff_new}\n--- {old_display}\n+++ {new_display}\n")
 }
 
 // ─── start_refine_session ─────────────────────────────────────────────────────
@@ -2201,7 +2244,10 @@ mod tests {
         let result = get_refine_diff_inner("my-skill", dir.path().to_str().unwrap()).unwrap();
         let diff = &result.files[0].diff;
 
-        // Unified diff must have hunk headers, context, additions, and deletions
+        // Unified diff must have file metadata, hunk headers, context, additions, and deletions
+        assert!(diff.contains("diff --git"), "missing diff header");
+        assert!(diff.contains("--- a/"), "missing old file header");
+        assert!(diff.contains("+++ b/"), "missing new file header");
         assert!(diff.contains("@@"), "missing hunk header");
         assert!(diff.contains("-line2"), "missing deletion");
         assert!(diff.contains("+changed"), "missing addition");

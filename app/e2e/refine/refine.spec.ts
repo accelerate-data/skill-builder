@@ -307,7 +307,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
           files: [{
             path: "test-skill/SKILL.md",
             status: "modified",
-            diff: "diff --git a/SKILL.md b/SKILL.md\nindex 111..222 100644\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,5 +1,9 @@\n # Test Skill\n \n A skill for testing.\n+\n+## Quick Start\n+\n+Get started in 3 steps.\n \n ## Instructions\n",
+            diff: "diff --git a/SKILL.md b/SKILL.md\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,5 +1,9 @@\n # Test Skill\n \n A skill for testing.\n+\n+## Quick Start\n+\n+Get started in 3 steps.\n \n ## Instructions\n",
           }],
         },
         commit_sha: null,
@@ -374,7 +374,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
           files: [{
             path: "test-skill/SKILL.md",
             status: "modified",
-            diff: "diff --git a/SKILL.md b/SKILL.md\nindex 111..222 100644\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,5 +1,9 @@\n # Test Skill\n \n A skill for testing.\n+\n+## Quick Start\n+\n+Get started in 3 steps.\n \n ## Instructions\n",
+            diff: "diff --git a/SKILL.md b/SKILL.md\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,5 +1,9 @@\n # Test Skill\n \n A skill for testing.\n+\n+## Quick Start\n+\n+Get started in 3 steps.\n \n ## Instructions\n",
           }],
         },
         commit_sha: null,
@@ -428,7 +428,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
           files: [{
             path: "test-skill/SKILL.md",
             status: "modified",
-            diff: "diff --git a/SKILL.md b/SKILL.md\nindex 222..333 100644\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -5,5 +5,9 @@\n ## Quick Start\n \n Get started in 3 steps.\n+\n+## Tips\n+\n+Remember to test often.\n \n ## Instructions\n",
+            diff: "diff --git a/SKILL.md b/SKILL.md\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -5,5 +5,9 @@\n ## Quick Start\n \n Get started in 3 steps.\n+\n+## Tips\n+\n+Remember to test often.\n \n ## Instructions\n",
           }],
         },
         commit_sha: null,
@@ -484,12 +484,12 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
             {
               path: "test-skill/SKILL.md",
               status: "modified",
-              diff: "diff --git a/SKILL.md b/SKILL.md\nindex 111..222 100644\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,5 +1,9 @@\n # Test Skill\n \n A skill for testing.\n+\n+## Quick Start\n+\n+Get started in 3 steps.\n \n ## Instructions\n",
+              diff: "diff --git a/SKILL.md b/SKILL.md\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,5 +1,9 @@\n # Test Skill\n \n A skill for testing.\n+\n+## Quick Start\n+\n+Get started in 3 steps.\n \n ## Instructions\n",
             },
             {
               path: "test-skill/references/glossary.md",
               status: "modified",
-              diff: "diff --git a/references/glossary.md b/references/glossary.md\nindex 111..222 100644\n--- a/references/glossary.md\n+++ b/references/glossary.md\n@@ -1,2 +1,3 @@\n # Glossary\n \n - **Term**: Definition\n+- **New Term**: New definition\n",
+              diff: "diff --git a/references/glossary.md b/references/glossary.md\n--- a/references/glossary.md\n+++ b/references/glossary.md\n@@ -1,2 +1,3 @@\n # Glossary\n \n - **Term**: Definition\n+- **New Term**: New definition\n",
             },
           ],
         },
@@ -551,7 +551,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
           files: [{
             path: "test-skill/SKILL.md",
             status: "modified",
-            diff: "diff --git a/SKILL.md b/SKILL.md\nindex 111..222 100644\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,5 +1,9 @@\n # Test Skill\n \n A skill for testing.\n+\n+## Quick Start\n+\n+Get started in 3 steps.\n \n ## Instructions\n",
+            diff: "diff --git a/SKILL.md b/SKILL.md\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,5 +1,9 @@\n # Test Skill\n \n A skill for testing.\n+\n+## Quick Start\n+\n+Get started in 3 steps.\n \n ## Instructions\n",
           }],
         },
         commit_sha: null,

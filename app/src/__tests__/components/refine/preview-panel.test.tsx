@@ -229,7 +229,7 @@ describe("PreviewPanel", () => {
         files: [{
           path: "my-skill/SKILL.md",
           status: "modified",
-          diff: "diff --git a/SKILL.md b/SKILL.md\nindex 111..222 100644\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1 +1 @@\n-old\n+new\n unchanged\n",
+          diff: "diff --git a/SKILL.md b/SKILL.md\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1 +1 @@\n-old\n+new\n unchanged\n",
         }],
       },
     });
@@ -243,5 +243,27 @@ describe("PreviewPanel", () => {
     expect(screen.getAllByTestId("git-patch-line-removed").some((node) => node.textContent?.includes("-old"))).toBe(true);
     expect(screen.getAllByTestId("git-patch-line-context").some((node) => node.textContent?.includes("unchanged"))).toBe(true);
     expect(screen.queryByTestId("markdown-preview")).not.toBeInTheDocument();
+  });
+
+  it("shows deleted authored files in the picker when they only exist in the git diff", async () => {
+    const user = userEvent.setup();
+    setStoreState({
+      skillFiles: SKILL_FILES,
+      activeFileTab: "SKILL.md",
+      gitDiff: {
+        stat: "2 files changed",
+        files: [
+          { path: "my-skill/SKILL.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" },
+          { path: "my-skill/references/deleted.md", status: "deleted", diff: "diff --git a/references/deleted.md b/references/deleted.md\n--- a/references/deleted.md\n+++ /dev/null\n@@ -1 +0,0 @@\n-removed\n" },
+        ],
+      },
+    });
+    render(<PreviewPanel />);
+
+    await user.click(screen.getByTestId("refine-file-picker"));
+
+    await waitFor(() => {
+      expect(screen.getByText("references/deleted.md")).toBeInTheDocument();
+    });
   });
 });

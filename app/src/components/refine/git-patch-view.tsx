@@ -12,7 +12,12 @@ const PATCH_LINE_STYLES: Record<PatchLineType, string> = {
 
 function getPatchLineType(line: string): PatchLineType {
   if (line.startsWith("@@")) return "hunk";
-  if (line.startsWith("diff --git") || line.startsWith("index ") || line.startsWith("--- ") || line.startsWith("+++ ")) {
+  if (
+    line.startsWith("diff --git")
+    || line.startsWith("index ")
+    || line.startsWith("--- ")
+    || line.startsWith("+++ ")
+  ) {
     return "meta";
   }
   if (line.startsWith("+") && !line.startsWith("+++")) return "added";

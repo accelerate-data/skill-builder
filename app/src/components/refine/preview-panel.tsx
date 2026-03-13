@@ -27,6 +27,17 @@ function normalizeDiffPath(path: string): string {
   return parts.length > 1 ? parts.slice(1).join("/") : path;
 }
 
+function getDiffFileTabNames(skillFiles: string[], gitDiffPaths: string[]): string[] {
+  const names = new Set<string>(skillFiles);
+  for (const path of gitDiffPaths) {
+    const normalized = normalizeDiffPath(path);
+    if (isAuthoredSkillFile(normalized)) {
+      names.add(normalized);
+    }
+  }
+  return Array.from(names);
+}
+
 /** Memoized markdown renderer — only re-renders when content changes. */
 const MarkdownPreview = memo(function MarkdownPreview({ content }: { content: string }) {
   return (
@@ -49,9 +60,13 @@ export function PreviewPanel() {
 
   const [filePickerOpen, setFilePickerOpen] = useState(false);
   const previewFiles = skillFiles.filter((file) => isAuthoredSkillFile(file.filename));
-  const fileListKey = previewFiles.map((file) => file.filename).join("|");
+  const previewFileNames = getDiffFileTabNames(
+    previewFiles.map((file) => file.filename),
+    gitDiff?.files.map((file) => file.path) ?? [],
+  );
+  const fileListKey = previewFileNames.join("|");
 
-  if (previewFiles.length === 0 && !isLoadingFiles) {
+  if (previewFileNames.length === 0 && !isLoadingFiles) {
     return (
       <div data-testid="refine-preview-empty" className="flex h-full items-center justify-center text-muted-foreground">
         Select a skill to preview its files
@@ -89,17 +104,17 @@ export function PreviewPanel() {
               <CommandList>
                 <CommandEmpty>No files found</CommandEmpty>
                 <CommandGroup>
-                  {previewFiles.map((f) => (
-                    <CommandItem
-                      key={f.filename}
-                      value={f.filename}
+                    {previewFileNames.map((filename) => (
+                      <CommandItem
+                      key={filename}
+                      value={filename}
                       onSelect={() => {
-                        setActiveFileTab(f.filename);
+                        setActiveFileTab(filename);
                         setFilePickerOpen(false);
                       }}
                     >
                       <FileText className="mr-2 size-3.5 shrink-0" />
-                      <span className="truncate">{f.filename}</span>
+                      <span className="truncate">{filename}</span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -126,10 +141,14 @@ export function PreviewPanel() {
           <div data-testid="git-patch-empty" className="flex h-full items-center justify-center text-sm text-muted-foreground">
             No git diff is available for this file.
           </div>
-        ) : (
+        ) : activeFile ? (
           <ScrollArea className="h-full">
-            <MarkdownPreview content={activeFile?.content ?? ""} />
+            <MarkdownPreview content={activeFile.content} />
           </ScrollArea>
+        ) : (
+          <div data-testid="refine-preview-missing-file" className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            This file is only available in the git diff.
+          </div>
         )}
       </div>
     </div>
