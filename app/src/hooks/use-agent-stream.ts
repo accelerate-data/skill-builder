@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
