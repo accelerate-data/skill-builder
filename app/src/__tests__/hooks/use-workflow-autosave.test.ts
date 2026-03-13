@@ -114,6 +114,53 @@ describe("useWorkflowAutosave", () => {
     expect(saveClarificationsContent).toHaveBeenCalled();
   });
 
+  it("save failure shows error toast and reverts saveStatus to dirty", async () => {
+    vi.useRealTimers();
+    const saveError = new Error("disk full");
+    vi.mocked(saveClarificationsContent).mockRejectedValue(saveError);
+
+    const { result } = renderHook(() =>
+      useWorkflowAutosave({ ...defaultOptions, currentStepStatus: "pending" })
+    );
+
+    act(() => {
+      result.current.handleClarificationsChange({ questions: [] } as any);
+    });
+
+    await act(async () => {
+      await result.current.handleSave(false);
+    });
+
+    const { toast } = await import("@/lib/toast");
+    expect(vi.mocked(toast.error)).toHaveBeenCalled();
+    expect(result.current.editorDirty).toBe(true);
+    expect(result.current.saveStatus).toBe("dirty");
+  });
+
+  it("debounce resets when edits arrive before 1500ms — only one save call", async () => {
+    vi.mocked(saveClarificationsContent).mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useWorkflowAutosave(defaultOptions));
+
+    // First edit
+    act(() => { result.current.handleClarificationsChange({ questions: [] } as any); });
+
+    // Advance 800ms — debounce not yet fired
+    await act(async () => { vi.advanceTimersByTime(800); });
+    expect(saveClarificationsContent).not.toHaveBeenCalled();
+
+    // Second edit resets the debounce
+    act(() => { result.current.handleClarificationsChange({ questions: [{ id: "q1" }] } as any); });
+
+    // Advance another 800ms — still under 1500ms from the second edit
+    await act(async () => { vi.advanceTimersByTime(800); });
+    expect(saveClarificationsContent).not.toHaveBeenCalled();
+
+    // Advance the remaining 700ms to complete the 1500ms window from the second edit
+    await act(async () => { vi.advanceTimersByTime(700); });
+    expect(saveClarificationsContent).toHaveBeenCalledTimes(1);
+  });
+
   it("updateClarificationsState updates data without marking dirty", () => {
     const { result } = renderHook(() =>
       useWorkflowAutosave({ ...defaultOptions, currentStepStatus: "pending" })

@@ -399,8 +399,6 @@ describe("DashboardPage", () => {
     expect(screen.getByText("marketing-data")).toBeInTheDocument();
   });
 
-  // --- Download handler tests ---
-
   // --- View toggle tests ---
 
   it("renders view toggle when skills exist", async () => {
