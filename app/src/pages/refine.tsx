@@ -108,10 +108,18 @@ export default function RefinePage() {
   // finished and the user navigates away without triggering the leave-guard dialog.
   // The leave-guard onLeave also calls releaseSkillResources when the agent IS
   // running; the double-release is safe (fire-and-forget, idempotent on the backend).
+  //
+  // IMPORTANT: close the backend session before clearing the React store's sessionId.
+  // If we clear sessionId first, handleSelectSkill's guard sees null and skips
+  // closeRefineSession on re-select — leaving a stale session in the Rust in-memory
+  // map which makes the next startRefineSession fail with "already exists".
   useEffect(() => {
     return () => {
       const store = useRefineStore.getState();
       if (store.selectedSkill) {
+        if (store.sessionId) {
+          closeRefineSession(store.sessionId).catch(() => {});
+        }
         releaseSkillResources(store.selectedSkill.name, "unmount");
         store.clearSession();
       }
