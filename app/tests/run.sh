@@ -5,7 +5,7 @@ set -euo pipefail
 #
 # Usage: ./tests/run.sh [level] [--tag TAG]
 # Levels: unit, integration, e2e, agents, all (default: all)
-# Tags (E2E): @dashboard, @settings, @workflow, @workflow-agent, @navigation
+# Tags (E2E): @dashboard, @settings, @workflow, @refine, @skill-tester, @integration, @desktop-smoke
 
 # ---------------------------------------------------------------------------
 # Resolve paths

@@ -94,9 +94,9 @@ assert_row_contains "files.rs → E2E tag"            "commands/files.rs"       
 assert_row_contains "settings.rs → cargo filter"    "commands/settings.rs"    "commands::settings"
 assert_row_contains "settings.rs → E2E tag"         "commands/settings.rs"    "@settings"
 assert_row_contains "sidecar.rs → cargo filter"     "agents/sidecar.rs"       "agents::sidecar"
-assert_row_contains "sidecar.rs → E2E tag"          "agents/sidecar.rs"       "@workflow-agent"
+assert_row_contains "sidecar.rs → E2E tag"          "agents/sidecar.rs"       "@workflow"
 assert_row_contains "sidecar_pool.rs → cargo filter" "agents/sidecar_pool.rs" "agents::sidecar_pool"
-assert_row_contains "sidecar_pool.rs → E2E tag"     "agents/sidecar_pool.rs"  "@workflow-agent"
+assert_row_contains "sidecar_pool.rs → E2E tag"     "agents/sidecar_pool.rs"  "@workflow"
 assert_row_contains "reconciliation.rs → E2E tag"   "reconciliation.rs"       "@dashboard"
 assert_row_contains "db.rs → cargo filter"          "db.rs"                   "db"
 
@@ -112,12 +112,14 @@ assert_row_contains "agent-sources CLAUDE.md → structural tests"   "agent-sour
 
 echo ""
 echo -e "${CYAN}${BOLD}━━━ E2E Spec Files ━━━${RESET}"
-assert_in_manifest  "dashboard spec listed"           "dashboard.spec.ts"
-assert_in_manifest  "dashboard-states spec listed"    "dashboard-states.spec.ts"
-assert_in_manifest  "skill-crud spec listed"          "skill-crud.spec.ts"
+assert_in_manifest  "dashboard smoke spec listed"     "dashboard-smoke.spec.ts"
 assert_in_manifest  "settings spec listed"            "settings.spec.ts"
-assert_in_manifest  "workflow-agent spec listed"      "workflow-agent.spec.ts"
-assert_in_manifest  "navigation spec listed"          "navigation.spec.ts"
+assert_in_manifest  "workflow smoke spec listed"      "workflow-smoke.spec.ts"
+assert_in_manifest  "workflow gate spec listed"       "workflow-gate.spec.ts"
+assert_in_manifest  "refine spec listed"              "refine.spec.ts"
+assert_in_manifest  "skill-tester spec listed"        "skill-tester.spec.ts"
+assert_in_manifest  "integration spec listed"         "workflow-integration.spec.ts"
+assert_in_manifest  "desktop smoke spec listed"       "desktop-smoke.spec.ts"
 
 # ===== Summary =====
 
