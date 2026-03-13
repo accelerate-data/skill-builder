@@ -217,7 +217,11 @@
   },
   "key_references": {
     "artifact_contracts": "docs/design/agent-specs/canonical-format.md — high-level artifact format contracts",
-    "research_output_schema": "agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md — canonical research_output schema"
+    "research_output_schema": "agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md — canonical research_output schema",
+    "coding_conventions": ".claude/rules/coding-conventions.md — naming, error handling",
+    "frontend_rules": ".claude/rules/frontend-design.md — AD brand, component constraints, state indicators",
+    "rust_rules": ".claude/rules/rust-backend.md — command conventions, error types, Rust testing",
+    "sidecar_rules": ".claude/rules/agent-sidecar.md — JSONL protocol, sidecar constraints"
   },
   "notes_for_agents": {
     "startup": "Read this file before exploring code. It is the primary startup context for structure, entrypoints, modules, and commands. Skip repo-wide rediscovery if it covers your task.",
