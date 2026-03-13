@@ -27,12 +27,13 @@ vi.mock("@/hooks/use-agent-stream", () => ({}));
 // Mock tauri — use vi.hoisted so variables are available in the factory (which is hoisted)
 const mockReleaseLock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const mockCleanupSkillSidecar = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const mockCloseRefineSession = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 vi.mock("@/lib/tauri", () => ({
   listRefinableSkills: vi.fn(() => Promise.resolve([])),
   getSkillContentForRefine: vi.fn(() => Promise.resolve([])),
   startRefineSession: vi.fn(() => Promise.resolve({ session_id: "s1" })),
   sendRefineMessage: vi.fn(() => Promise.resolve("agent-1")),
-  closeRefineSession: vi.fn(() => Promise.resolve()),
+  closeRefineSession: mockCloseRefineSession,
   finalizeRefineRun: vi.fn(() => Promise.resolve({ files: [], diff: null })),
   materializeRefineValidationOutput: vi.fn(() => Promise.resolve()),
   cleanupSkillSidecar: mockCleanupSkillSidecar,
@@ -82,6 +83,7 @@ beforeEach(() => {
   resetTauriMocks();
   mockReleaseLock.mockClear();
   mockCleanupSkillSidecar.mockClear();
+  mockCloseRefineSession.mockClear();
   useRefineStore.setState({ selectedSkill: null, isRunning: false, activeAgentId: null, sessionId: null });
   useSettingsStore.setState({ workspacePath: "/workspace", skillsPath: null });
 });
@@ -97,10 +99,23 @@ describe("RefinePage — lock release on unmount", () => {
     expect(mockCleanupSkillSidecar).toHaveBeenCalledWith("my-skill");
   });
 
+  it("closes backend session on unmount when a session is active", () => {
+    useRefineStore.setState({ selectedSkill: TEST_SKILL, sessionId: "session-abc" });
+
+    const { unmount } = render(<RefinePage />);
+    unmount();
+
+    // closeRefineSession must be called BEFORE clearSession so the Rust in-memory
+    // map is cleaned up — prevents "already exists" on the next startRefineSession.
+    expect(mockCloseRefineSession).toHaveBeenCalledWith("session-abc");
+    expect(mockReleaseLock).toHaveBeenCalledWith("my-skill");
+  });
+
   it("does not call releaseLock on unmount when no skill was selected", () => {
     const { unmount } = render(<RefinePage />);
     unmount();
 
     expect(mockReleaseLock).not.toHaveBeenCalled();
+    expect(mockCloseRefineSession).not.toHaveBeenCalled();
   });
 });
