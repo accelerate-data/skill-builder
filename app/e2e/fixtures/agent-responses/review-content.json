@@ -10,7 +10,7 @@
   },
   "sections": [
     {
-      "id": "S1",
+      "id": 1,
       "title": "Domain Concepts",
       "questions": [
         {
@@ -31,7 +31,7 @@
       ]
     },
     {
-      "id": "S2",
+      "id": 2,
       "title": "Technical Stack",
       "questions": [
         {
