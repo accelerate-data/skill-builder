@@ -115,6 +115,8 @@ For Rust and cross-layer changes, consult `TEST_MANIFEST.md` for the correct car
 
 **Pre-commit:** `markdownlint <file>` for `.md` files · `cd app && npx tsc --noEmit` · `cargo check --manifest-path app/src-tauri/Cargo.toml` · `bash app/scripts/lint-agent-docs.sh` when editing `AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, or `.claude/skills/`.
 
+**Implementation agents must commit and push before reporting completion.**
+
 ## Skills
 
 Use these repo-local skills when requests match:
