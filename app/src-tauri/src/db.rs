@@ -4098,6 +4098,67 @@ mod tests {
     }
 
     #[test]
+    fn test_migration_count_matches_expected() {
+        // Guard against accidental deletion of migrations.
+        // If this fails, update the expected count and the migration array together.
+        // Uses an in-memory db that runs through the full init_db-style numbered-migration path
+        // so that schema_migrations is populated.
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_migration_table(&conn).unwrap();
+        run_migrations(&conn).unwrap();
+        let migrations: &[(u32, fn(&Connection) -> Result<(), rusqlite::Error>)] = &[
+            (1, run_add_skill_type_migration),
+            (2, run_lock_table_migration),
+            (3, run_author_migration),
+            (4, run_usage_tracking_migration),
+            (5, run_workflow_session_migration),
+            (6, run_sessions_table_migration),
+            (7, run_trigger_text_migration),
+            (8, run_agent_stats_migration),
+            (9, run_intake_migration),
+            (10, run_composite_pk_migration),
+            (11, run_bundled_skill_migration),
+            (12, run_drop_trigger_description_migration),
+            (13, run_remove_validate_step_migration),
+            (14, run_source_migration),
+            (15, run_imported_skills_extended_migration),
+            (16, run_workflow_runs_extended_migration),
+            (17, run_cleanup_stale_running_rows_migration),
+            (18, run_skills_table_migration),
+            (19, run_skills_backfill_migration),
+            (20, run_rename_upload_migration),
+            (21, run_workspace_skills_migration),
+            (22, run_workflow_runs_id_migration),
+            (23, run_fk_columns_migration),
+            (24, run_frontmatter_to_skills_migration),
+            (25, run_workspace_skills_purpose_migration),
+            (26, run_content_hash_migration),
+            (27, run_backfill_null_versions_migration),
+            (28, run_rename_purpose_drop_domain_migration),
+            (29, run_marketplace_source_url_migration),
+            (30, run_skills_soft_delete_migration),
+            (31, run_backfill_synthetic_sessions_migration),
+            (32, run_normalize_model_names_migration),
+            (33, run_reconciliation_events_migration),
+            (34, run_ghost_running_rows_migration),
+        ];
+        for &(version, migrate_fn) in migrations {
+            if !migration_applied(&conn, version) {
+                migrate_fn(&conn).unwrap();
+                mark_migration_applied(&conn, version).unwrap();
+            }
+        }
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM schema_migrations",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 34, "Expected 34 migrations in schema_migrations; got {count}. Did you add or remove a migration without updating this test?");
+    }
+
+    #[test]
     fn test_workflow_run_crud() {
         let conn = create_test_db();
         save_workflow_run(&conn, "test-skill", 3, "in_progress", "domain").unwrap();

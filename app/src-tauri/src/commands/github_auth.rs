@@ -168,6 +168,87 @@ pub fn github_logout(db: tauri::State<'_, Db>) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use crate::db::create_test_db_for_tests;
+
+    #[test]
+    fn test_github_get_user_returns_user_when_token_set() {
+        let conn = create_test_db_for_tests();
+        let mut settings = crate::db::read_settings(&conn).unwrap();
+        settings.github_oauth_token = Some("ghp_test_token".to_string());
+        settings.github_user_login = Some("octocat".to_string());
+        settings.github_user_avatar = Some("https://github.com/octocat.png".to_string());
+        settings.github_user_email = Some("octocat@github.com".to_string());
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        let hydrated = crate::db::read_settings_hydrated(&conn).unwrap();
+        assert!(hydrated.github_oauth_token.is_some());
+        assert_eq!(hydrated.github_user_login.as_deref(), Some("octocat"));
+        assert_eq!(hydrated.github_user_avatar.as_deref(), Some("https://github.com/octocat.png"));
+        assert_eq!(hydrated.github_user_email.as_deref(), Some("octocat@github.com"));
+    }
+
+    #[test]
+    fn test_github_get_user_returns_none_without_token() {
+        let conn = create_test_db_for_tests();
+        // Default settings have no GitHub token
+        let hydrated = crate::db::read_settings_hydrated(&conn).unwrap();
+        assert!(hydrated.github_oauth_token.is_none());
+    }
+
+    #[test]
+    fn test_github_logout_clears_all_oauth_fields() {
+        let conn = create_test_db_for_tests();
+        // Set up logged-in state
+        let mut settings = crate::db::read_settings(&conn).unwrap();
+        settings.github_oauth_token = Some("ghp_test_token".to_string());
+        settings.github_user_login = Some("octocat".to_string());
+        settings.github_user_avatar = Some("https://github.com/octocat.png".to_string());
+        settings.github_user_email = Some("octocat@github.com".to_string());
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        // Simulate logout: clear all github fields
+        let mut settings = crate::db::read_settings(&conn).unwrap();
+        settings.github_oauth_token = None;
+        settings.github_user_login = None;
+        settings.github_user_avatar = None;
+        settings.github_user_email = None;
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        // Verify all fields are cleared
+        let after = crate::db::read_settings_hydrated(&conn).unwrap();
+        assert!(after.github_oauth_token.is_none());
+        assert!(after.github_user_login.is_none());
+        assert!(after.github_user_avatar.is_none());
+        assert!(after.github_user_email.is_none());
+    }
+
+    #[test]
+    fn test_github_logout_leaves_other_settings_intact() {
+        let conn = create_test_db_for_tests();
+        // Set API key and GitHub token
+        let mut settings = crate::db::read_settings(&conn).unwrap();
+        settings.anthropic_api_key = Some("sk-ant-test-key".to_string());
+        settings.github_oauth_token = Some("ghp_test_token".to_string());
+        settings.github_user_login = Some("octocat".to_string());
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        // Logout: clear only github fields
+        let mut settings = crate::db::read_settings(&conn).unwrap();
+        settings.github_oauth_token = None;
+        settings.github_user_login = None;
+        settings.github_user_avatar = None;
+        settings.github_user_email = None;
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        // API key should still be present
+        let after = crate::db::read_settings(&conn).unwrap();
+        assert_eq!(after.anthropic_api_key.as_deref(), Some("sk-ant-test-key"));
+        assert!(after.github_oauth_token.is_none());
+    }
+}
+
 /// Fetch the authenticated user's profile from GitHub.
 async fn fetch_github_user(client: &reqwest::Client, token: &str) -> Result<GitHubUser, String> {
     let response = client

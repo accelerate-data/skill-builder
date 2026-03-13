@@ -405,6 +405,13 @@ describe("Canonical format: decisions.json structure", () => {
         expect(["resolved", "conflict-resolved", "needs-review"]).toContain(decision.status);
       }
     });
+
+    it("conflicts_resolved count matches actual conflict-resolved decisions", () => {
+      const actualConflictResolved = data.decisions.filter(
+        (d: { status: string }) => d.status === "conflict-resolved"
+      ).length;
+      expect(data.metadata.conflicts_resolved).toBe(actualConflictResolved);
+    });
   }
 });
 
@@ -438,6 +445,27 @@ describe("Canonical format: embedded research plan structure", () => {
     it("research_plan has scoring arrays", () => {
       expect(Array.isArray(plan.dimension_scores)).toBe(true);
       expect(Array.isArray(plan.selected_dimensions)).toBe(true);
+    });
+
+    it("dimension_scores items have required fields", () => {
+      const scores = plan.dimension_scores;
+      expect(Array.isArray(scores)).toBe(true);
+      expect(scores.length).toBeGreaterThan(0);
+      for (const score of scores) {
+        expect(typeof score.name).toBe("string");
+        expect(typeof score.score).toBe("number");
+        expect(typeof score.reason).toBe("string");
+      }
+    });
+
+    it("selected_dimensions items have required fields", () => {
+      const selected = plan.selected_dimensions;
+      expect(Array.isArray(selected)).toBe(true);
+      expect(selected.length).toBeGreaterThan(0);
+      for (const dim of selected) {
+        expect(typeof dim.name).toBe("string");
+        expect(typeof dim.focus).toBe("string");
+      }
     });
   }
 });

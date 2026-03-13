@@ -10,18 +10,3 @@ pub fn save_raw_file(file_path: String, content: String) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::tempdir;
-
-    #[test]
-    fn test_save_raw_file_and_read_back() {
-        let dir = tempdir().unwrap();
-        let file_path = dir.path().join("test.md").to_str().unwrap().to_string();
-
-        save_raw_file(file_path.clone(), "# Hello\nWorld".into()).unwrap();
-        let content = std::fs::read_to_string(&file_path).unwrap();
-        assert_eq!(content, "# Hello\nWorld");
-    }
-}

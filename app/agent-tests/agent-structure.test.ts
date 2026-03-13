@@ -253,6 +253,60 @@ describe("Agent output contracts (backend protocol alignment)", () => {
   });
 });
 
+describe("detailed-research output contract", () => {
+  const step1Json = JSON.parse(
+    fs.readFileSync(
+      path.join(
+        REPO_ROOT,
+        "app/sidecar/mock-templates/outputs/step1/context/clarifications.json"
+      ),
+      "utf-8"
+    )
+  );
+
+  it("step1 clarifications.json has version field", () => {
+    expect(step1Json.version).toBe("1");
+  });
+
+  it("step1 clarifications.json has metadata with required fields", () => {
+    expect(typeof step1Json.metadata).toBe("object");
+    expect(typeof step1Json.metadata.question_count).toBe("number");
+    expect(typeof step1Json.metadata.section_count).toBe("number");
+  });
+
+  it("step1 clarifications.json has sections array", () => {
+    expect(Array.isArray(step1Json.sections)).toBe(true);
+    expect(step1Json.sections.length).toBeGreaterThan(0);
+  });
+
+  it("step1 clarifications.json sections contain refinements (additive from step0)", () => {
+    const hasRefinements = step1Json.sections.some(
+      (s: { questions?: Array<{ refinements?: unknown[] }> }) =>
+        s.questions?.some((q) => q.refinements && q.refinements.length > 0)
+    );
+    expect(hasRefinements).toBe(true);
+  });
+});
+
+describe("validate-skill output contract", () => {
+  const validateSkillContent = fs.readFileSync(
+    path.join(AGENTS_DIR, "validate-skill.md"),
+    "utf-8"
+  );
+
+  it("documents a status field in output format", () => {
+    expect(validateSkillContent).toMatch(/validation_complete/);
+  });
+
+  it("documents validation_log_markdown in output format", () => {
+    expect(validateSkillContent).toMatch(/validation_log_markdown/);
+  });
+
+  it("documents test_results_markdown in output format", () => {
+    expect(validateSkillContent).toMatch(/test_results_markdown/);
+  });
+});
+
 // ── Plugin structure sanity checks ───────────────────────────────────────────
 
 describe("skill-content-researcher plugin structure", () => {
