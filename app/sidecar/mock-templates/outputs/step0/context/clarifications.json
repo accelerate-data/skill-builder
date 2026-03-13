@@ -28,7 +28,7 @@
   },
   "sections": [
     {
-      "id": "S1",
+      "id": 1,
       "title": "Core Concepts",
       "questions": [
         {
@@ -82,7 +82,7 @@
       ]
     },
     {
-      "id": "S2",
+      "id": 2,
       "title": "Architecture & Design",
       "questions": [
         {
@@ -136,7 +136,7 @@
       ]
     },
     {
-      "id": "S3",
+      "id": 3,
       "title": "Implementation Details",
       "questions": [
         {
