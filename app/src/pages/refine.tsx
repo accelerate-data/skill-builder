@@ -104,6 +104,20 @@ export default function RefinePage() {
     return extractStructuredResultFromDisplayItems(run?.displayItems);
   }, []);
 
+  // Release skill lock on unmount — covers the case where the agent has already
+  // finished and the user navigates away without triggering the leave-guard dialog.
+  // The leave-guard onLeave also calls releaseSkillResources when the agent IS
+  // running; the double-release is safe (fire-and-forget, idempotent on the backend).
+  useEffect(() => {
+    return () => {
+      const store = useRefineStore.getState();
+      if (store.selectedSkill) {
+        releaseSkillResources(store.selectedSkill.name, "unmount");
+        store.clearSession();
+      }
+    };
+  }, []);
+
   // --- Navigation guard ---
   // Block navigation while an agent is running and show a confirmation dialog.
   const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
