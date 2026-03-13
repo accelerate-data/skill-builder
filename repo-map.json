@@ -215,6 +215,10 @@
     "worktrees": "../worktrees/<branchName> relative to repo root",
     "linear_project": "All issues for this repo go under Skill Builder"
   },
+  "key_references": {
+    "artifact_contracts": "docs/design/agent-specs/canonical-format.md — high-level artifact format contracts",
+    "research_output_schema": "agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md — canonical research_output schema"
+  },
   "notes_for_agents": {
     "startup": "Read this file before exploring code. It is the primary startup context for structure, entrypoints, modules, and commands. Skip repo-wide rediscovery if it covers your task.",
     "sidecar_hot_reload": "Sidecar has NO hot-reload. Restart `npm run dev` after editing app/sidecar/ files.",
