@@ -37,25 +37,6 @@ Adapter files must not duplicate canonical policy unless they are adding agent-s
 - App database: `~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db` (macOS)
 - Full layout: [`docs/design/agent-specs/storage.md`](docs/design/agent-specs/storage.md)
 
-## Repository Folder Map
-
-Use this map before reasoning about implementation location:
-
-- `app/src/` — frontend runtime code (React/TypeScript surfaces, components, stores, hooks).
-- `app/src-tauri/src/` — Rust backend runtime code (Tauri commands, DB, logging, startup wiring).
-- `app/sidecar/` — Node/TypeScript sidecar runtime code.
-- `app/e2e/` — Playwright E2E tests only.
-- `app/src/__tests__/` and `app/sidecar/__tests__/` — unit/integration tests only.
-- `agent-sources/agents/` — agent prompts (flat directory, validated by `npm run test:agents:structural`).
-- `agent-sources/plugins/` — plugin definitions (skills, agents, MCP config, tooling).
-- `agent-sources/workspace/CLAUDE.md` — agent instructions shared by all agents (deployed to workspace `.claude/CLAUDE.md`).
-- `docs/` — documentation and design/reference material only; do not treat as executable source unless explicitly asked.
-- `scripts/` — developer/automation scripts.
-
-## User Guide
-
-Source: `docs/user-guide/` (VitePress). Deployed via `docs.yml` on push to `main`. Route → URL map: `app/src/lib/help-urls.ts`. New docs link: import `getHelpUrl`/`getWorkflowStepUrl`, call `openUrl()` from `@tauri-apps/plugin-opener`. New page: add to `docs/user-guide/`, `docs/.vitepress/config.ts`, and `help-urls.ts`.
-
 ## Dev Commands
 
 ```bash
@@ -81,7 +62,7 @@ Read these before starting any non-trivial task:
 
 | Artifact | Update when |
 |---|---|
-| `AGENTS.md` | A fact is durable, non-obvious, and won't be obvious from code |
+| `AGENTS.md` | A fact is durable, non-obvious, and won't be obvious from code · a skill is added to `.claude/skills/` |
 | `repo-map.json` | Architecture, entrypoints, commands, modules, or package structure changes |
 | `README.md` | User-facing installation, configuration, commands, or architecture overview changes |
 | `TEST_MANIFEST.md` | Rust command file added/removed · E2E spec added/removed · shared infra file added/removed · agent artifact format changes affecting a Rust or TS parser |
@@ -98,43 +79,18 @@ _Add deployment- or operator-specific facts here (e.g. environment variables, in
 
 ### When to write tests
 
-**App:**
+- New state logic → store unit tests
+- New Rust command with logic → `#[cfg(test)]` tests
+- New UI interaction → component test
+- New page or major flow → E2E test (happy path)
+- Bug fix → regression test
+- Cosmetic changes and simple wiring don't need tests
 
-1. New state logic (store actions, derived state) → store unit tests
-2. New Rust command with testable logic → `#[cfg(test)]` tests
-3. New UI interaction (button states, form validation) → component test
-4. New page or major flow → E2E test (happy path)
-5. Bug fix → regression test
+Before writing tests, read existing ones for the files you changed: update broken tests, remove redundant ones, add only for genuinely new behavior.
 
-Purely cosmetic changes or simple wiring don't require tests. If unclear, ask the user.
+### Which tests to run
 
-### Test discipline
-
-Before writing any test code, read existing tests for the files you changed:
-
-1. Update tests that broke due to your changes
-2. Remove tests that are now redundant
-3. Add new tests only for genuinely new behavior
-4. Never add tests just to increase count — every test must catch a real regression
-
-### Choosing which tests to run
-
-Determine what you changed, then pick the right runner:
-
-| What changed | Agent tests | App tests |
-|---|---|---|
-| Frontend (store/hook/component/page) | — | `npm run test:changed` |
-| Rust command | — | `cargo test <module>` + E2E tag from `TEST_MANIFEST.md` |
-| Sidecar agent invocation (`app/sidecar/`) | `cd app && npm run test:agents:structural` (tell user to run Promptfoo `test:agents:smoke` manually) | `cd app/sidecar && npx vitest run` |
-| Agent prompt (`agents/`) | `cd app && npm run test:agents:structural` | `npm run test:unit` (canonical-format) |
-| Agent output format (`agents/`) | `cd app && npm run test:agents:structural` (tell user to run Promptfoo `test:agents:smoke` manually) | `npm run test:unit` (canonical-format) |
-| `agent-sources/workspace/CLAUDE.md` | `cd app && npm run test:agents:structural` | `npm run test:unit` |
-| Mock templates or E2E fixtures | — | `npm run test:unit` |
-| Shared infrastructure (`src/lib/tauri.ts`, test mocks) | — | `app/tests/run.sh` (all levels) |
-
-### Autonomous test triggers (coding agents)
-
-When changed files match these patterns, run the mapped tests automatically before reporting completion:
+Run these automatically before reporting completion when files match:
 
 | Changed files | Run |
 |---|---|
@@ -144,55 +100,11 @@ When changed files match these patterns, run the mapped tests automatically befo
 | `app/sidecar/mock-templates/**` | `cd app && npm run test:unit` |
 | `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` |
 
-`test:agents:smoke` (Promptfoo) is manual by default because it makes live API calls.
+For artifact format changes (agent output + app parser + mock templates): run `test:agents:structural` and `test:unit`, then tell the user to run `test:agents:smoke` manually. The `canonical-format.test.ts` suite is the canary for format drift.
 
-**Artifact format changes** (agent output format + app parser + mock templates): run `cd app && npm run test:agents:structural` and `npm run test:unit`, then tell the user to run `cd app && npm run test:agents:smoke` (Promptfoo evals) manually. The `canonical-format.test.ts` suite is the canary for format drift across the boundary.
+For Rust and cross-layer changes, consult `TEST_MANIFEST.md` for the correct cargo filter and E2E tag. Unsure? `app/tests/run.sh` runs everything.
 
-**Unsure?** `app/tests/run.sh` runs everything.
-
-### Agent test policy
-
-**Only `test:agents:structural` may be run autonomously** — it makes no API calls and is free.
-
-`test:agents:smoke` uses Promptfoo and makes real API calls. **Do not run it autonomously; tell the user to run it manually.**
-
-## Design Docs
-
-Design notes live in `docs/design/`. Each topic gets its own subdirectory with a `README.md` (e.g. `docs/design/backend-design/README.md`). The index at `docs/design/README.md` must be updated when adding a new subdirectory.
-
-Write design docs concisely — state the decision and the reason, not the reasoning process. One sentence beats a paragraph. Avoid restating what the code already makes obvious.
-
-Research output schemas and envelopes are documented in:
-
-- `docs/design/agent-specs/canonical-format.md` — high-level artifact contracts
-- `agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md` — canonical `research_output` schema
-
-## Code Style
-
-- Granular commits: one concern per commit, run tests before each
-- Stage specific files — use `git add <file>` not `git add .`
-- All `.md` files must pass `markdownlint` before committing (`markdownlint <file>`)
-- When editing `AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, or `.claude/skills/`, run `bash app/scripts/lint-agent-docs.sh`
-- Verify before committing: `cd app && npx tsc --noEmit` + `cargo check --manifest-path app/src-tauri/Cargo.toml`
-- Canonical naming and error-handling conventions live in `.claude/rules/coding-conventions.md`
-
-### Frontend (`app/src/`)
-
-For AD brand rules, component constraints, and state indicator conventions, see:
-
-- `.claude/rules/frontend-design.md`
-
-### Rust backend (`app/src-tauri/`)
-
-Command conventions, error types, and Rust-specific testing guidance live in `.claude/rules/rust-backend.md`.
-
-### Sidecar (`app/sidecar/`)
-
-Protocol and sidecar-specific constraints live in `.claude/rules/agent-sidecar.md`.
-
-### Error handling
-
-See `.claude/rules/coding-conventions.md` for canonical error-handling policy.
+**Never run `test:agents:smoke` autonomously** — it makes live API calls. Tell the user to run it manually.
 
 ## Issue Management
 
@@ -200,6 +112,10 @@ See `.claude/rules/coding-conventions.md` for canonical error-handling policy.
 - **PR body link:** `Fixes VU-XXX`
 - **Linear project:** All issues created for this repository must be created under **Skill Builder**.
 - **Worktrees:** `../worktrees/<branchName>` relative to repo root. Full rules: `.claude/rules/git-workflow.md`.
+
+**Pre-commit:** `markdownlint <file>` for `.md` files · `cd app && npx tsc --noEmit` · `cargo check --manifest-path app/src-tauri/Cargo.toml` · `bash app/scripts/lint-agent-docs.sh` when editing `AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, or `.claude/skills/`.
+
+**Implementation agents must commit and push before reporting completion.**
 
 ## Skills
 
@@ -211,6 +127,8 @@ Use these repo-local skills when requests match:
 - `.claude/skills/tauri/SKILL.md` — Tauri-specific implementation or debugging
 - `.claude/skills/shadcn-ui/SKILL.md` — shadcn/ui component work
 - `.claude/skills/front-end-design/SKILL.md` — design-first UI workflow for screens and components
+- `.claude/skills/explaining-code/SKILL.md` — explain code with diagrams and analogies
+- `.claude/skills/playwright/SKILL.md` — browser automation via playwright-cli (navigation, forms, screenshots, data extraction)
 
 ## Logging
 
