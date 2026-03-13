@@ -185,6 +185,18 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
 
     // Read agentId and simulate agent
     const agentId = await getAgentId(page);
+    await expect(page.getByTestId("refine-file-picker")).toContainText("SKILL.md");
+
+    await page.evaluate(() => {
+      const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
+      const files = [
+        { path: "SKILL.md", content: "# Test Skill\n\nA skill for testing.\n\n## Instructions\n\nFollow these steps..." },
+        { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
+      ];
+      overrides.get_skill_content_for_refine = files;
+      overrides.finalize_refine_run = { files, diff: { stat: "no changes", files: [] }, commit_sha: null };
+    });
+
     await simulateAgentRun(page, {
       agentId,
       messages: ["Validating skill files..."],
@@ -192,6 +204,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     });
 
     await expect(page.getByText("Validating skill files...").last()).toBeVisible();
+    await expect(page.getByTestId("refine-file-picker")).toContainText("SKILL.md");
   });
 
   test("@file targeting shows file badge", async ({ page }) => {

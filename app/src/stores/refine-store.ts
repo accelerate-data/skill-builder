@@ -69,6 +69,10 @@ interface RefineState {
   clearSession: () => void;
 }
 
+export function isAuthoredSkillFile(filename: string): boolean {
+  return filename === "SKILL.md" || filename.startsWith("references/");
+}
+
 /** Session state that resets when switching skills or clearing the session. */
 const SESSION_DEFAULTS = {
   messages: [] as RefineMessage[],
@@ -146,11 +150,16 @@ export const useRefineStore = create<RefineState>((set, get) => ({
 
   updateSkillFiles: (files) => set((state) => {
     const existingFiles = new Set(state.skillFiles.map((file) => file.filename));
-    const firstNewFile = files.find((file) => !existingFiles.has(file.filename))?.filename;
-    const nextActive = firstNewFile
-      ?? (files.some((file) => file.filename === state.activeFileTab)
+    const firstNewAuthoredFile = files.find((file) =>
+      !existingFiles.has(file.filename) && isAuthoredSkillFile(file.filename)
+    )?.filename;
+    const activeStillExists = files.some((file) => file.filename === state.activeFileTab);
+    const activeStillEligible = isAuthoredSkillFile(state.activeFileTab);
+    const firstEligibleFile = files.find((file) => isAuthoredSkillFile(file.filename))?.filename;
+    const nextActive = firstNewAuthoredFile
+      ?? (activeStillExists && activeStillEligible
         ? state.activeFileTab
-        : (files[0]?.filename ?? "SKILL.md"));
+        : (firstEligibleFile ?? "SKILL.md"));
     return {
       skillFiles: files,
       activeFileTab: nextActive,

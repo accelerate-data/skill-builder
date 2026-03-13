@@ -472,8 +472,9 @@ fn get_skill_content_inner(
         });
     }
 
-    // 2. references/** and context/** (sorted alphabetically for stable ordering)
-    for subdir in &["references", "context"] {
+    // 2. references/** only. Runtime context artifacts live under the
+    // workspace directory and must not pollute authored skill preview.
+    for subdir in &["references"] {
         let dir = skill_root.join(subdir);
         if dir.is_dir() {
             collect_skill_content_files(&dir, subdir, &mut files)?;
@@ -1107,7 +1108,7 @@ pub async fn close_refine_session(
 }
 
 fn materialize_refine_validation_output_value(
-    skill_root: &Path,
+    workspace_skill_root: &Path,
     structured_output: &serde_json::Value,
 ) -> Result<(), String> {
     let payload = structured_output
@@ -1139,7 +1140,7 @@ fn materialize_refine_validation_output_value(
     let validation_log = require_markdown("validation_log_markdown")?;
     let test_results = require_markdown("test_results_markdown")?;
 
-    let context_dir = skill_root.join("context");
+    let context_dir = workspace_skill_root.join("context");
     std::fs::create_dir_all(&context_dir).map_err(|e| {
         format!(
             "Failed to create context directory '{}': {}",
@@ -1172,9 +1173,11 @@ fn materialize_refine_validation_output_value(
 fn finalize_refine_run_inner(
     skill_name: &str,
     skills_path: &str,
+    workspace_path: &str,
     structured_output: Option<&serde_json::Value>,
 ) -> Result<RefineFinalizeResult, String> {
     let skill_root = Path::new(skills_path).join(skill_name);
+    let workspace_skill_root = Path::new(workspace_path).join(skill_name);
     if !skill_root.exists() {
         return Err(format!(
             "Skill '{}' not found at {}",
@@ -1190,7 +1193,7 @@ fn finalize_refine_run_inner(
             .map(|s| s == "validation_complete")
             .unwrap_or(false);
         if is_validation_output {
-            materialize_refine_validation_output_value(&skill_root, payload)?;
+            materialize_refine_validation_output_value(&workspace_skill_root, payload)?;
         }
     }
 
@@ -1241,8 +1244,8 @@ pub fn materialize_refine_validation_output(
         "[materialize_refine_validation_output] skill={}",
         skill_name
     );
-    let skill_root = Path::new(&workspace_path).join(&skill_name);
-    materialize_refine_validation_output_value(&skill_root, &structured_output)
+    let workspace_skill_root = Path::new(&workspace_path).join(&skill_name);
+    materialize_refine_validation_output_value(&workspace_skill_root, &structured_output)
 }
 
 #[tauri::command]
@@ -1259,7 +1262,13 @@ pub fn finalize_refine_run(
         e
     })?;
 
-    finalize_refine_run_inner(&skill_name, &skills_path, structured_output.as_ref()).map_err(|e| {
+    finalize_refine_run_inner(
+        &skill_name,
+        &skills_path,
+        &workspace_path,
+        structured_output.as_ref(),
+    )
+    .map_err(|e| {
         log::error!("[finalize_refine_run] {}", e);
         e
     })
@@ -1831,16 +1840,16 @@ mod tests {
     #[test]
     fn test_materialize_refine_validation_output_writes_context_files() {
         let tmp = tempdir().unwrap();
-        let skill_root = tmp.path().join("my-skill");
+        let workspace_skill_root = tmp.path().join("my-skill");
         let payload = serde_json::json!({
             "status": "validation_complete",
             "validation_log_markdown": "## Validation\nok",
             "test_results_markdown": "## Testing\nok"
         });
 
-        super::materialize_refine_validation_output_value(&skill_root, &payload).unwrap();
-        assert!(skill_root.join("context/agent-validation-log.md").exists());
-        assert!(skill_root.join("context/test-skill.md").exists());
+        super::materialize_refine_validation_output_value(&workspace_skill_root, &payload).unwrap();
+        assert!(workspace_skill_root.join("context/agent-validation-log.md").exists());
+        assert!(workspace_skill_root.join("context/test-skill.md").exists());
     }
 
     #[test]
@@ -1900,6 +1909,7 @@ mod tests {
     #[test]
     fn test_finalize_refine_run_commits_and_returns_git_diff_for_new_file() {
         let dir = tempdir().unwrap();
+        let workspace_dir = tempdir().unwrap();
         crate::git::ensure_repo(dir.path()).unwrap();
 
         let skill_dir = dir.path().join("my-skill");
@@ -1911,8 +1921,13 @@ mod tests {
         std::fs::create_dir_all(&refs_dir).unwrap();
         std::fs::write(refs_dir.join("glossary.md"), "# Glossary\n").unwrap();
 
-        let result =
-            finalize_refine_run_inner("my-skill", dir.path().to_str().unwrap(), None).unwrap();
+        let result = finalize_refine_run_inner(
+            "my-skill",
+            dir.path().to_str().unwrap(),
+            workspace_dir.path().to_str().unwrap(),
+            None,
+        )
+        .unwrap();
 
         assert!(result.commit_sha.is_some());
         assert_eq!(result.files.len(), 2);
@@ -1925,6 +1940,7 @@ mod tests {
     #[test]
     fn test_finalize_refine_run_returns_no_commit_when_nothing_changed() {
         let dir = tempdir().unwrap();
+        let workspace_dir = tempdir().unwrap();
         crate::git::ensure_repo(dir.path()).unwrap();
 
         let skill_dir = dir.path().join("my-skill");
@@ -1932,12 +1948,70 @@ mod tests {
         std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
         crate::git::commit_all(dir.path(), "initial").unwrap();
 
-        let result =
-            finalize_refine_run_inner("my-skill", dir.path().to_str().unwrap(), None).unwrap();
+        let result = finalize_refine_run_inner(
+            "my-skill",
+            dir.path().to_str().unwrap(),
+            workspace_dir.path().to_str().unwrap(),
+            None,
+        )
+        .unwrap();
 
         assert!(result.commit_sha.is_none());
         assert_eq!(result.diff.stat, "no changes");
         assert!(result.diff.files.is_empty());
+    }
+
+    #[test]
+    fn test_get_skill_content_excludes_context_artifacts() {
+        let dir = tempdir().unwrap();
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(skill_dir.join("references")).unwrap();
+        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
+        std::fs::write(skill_dir.join("references/glossary.md"), "# Glossary\n").unwrap();
+        std::fs::write(skill_dir.join("context/agent-validation-log.md"), "# Validation\n").unwrap();
+
+        let files = get_skill_content_inner("my-skill", dir.path().to_str().unwrap()).unwrap();
+        let paths: Vec<_> = files.iter().map(|file| file.path.as_str()).collect();
+
+        assert_eq!(paths, vec!["SKILL.md", "references/glossary.md"]);
+    }
+
+    #[test]
+    fn test_finalize_refine_validation_writes_workspace_context_without_skill_diff() {
+        let skills_dir = tempdir().unwrap();
+        let workspace_dir = tempdir().unwrap();
+        crate::git::ensure_repo(skills_dir.path()).unwrap();
+
+        let skill_dir = skills_dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
+        crate::git::commit_all(skills_dir.path(), "initial").unwrap();
+
+        let payload = serde_json::json!({
+            "status": "validation_complete",
+            "validation_log_markdown": "## Validation\nok",
+            "test_results_markdown": "## Testing\nok"
+        });
+
+        let result = finalize_refine_run_inner(
+            "my-skill",
+            skills_dir.path().to_str().unwrap(),
+            workspace_dir.path().to_str().unwrap(),
+            Some(&payload),
+        )
+        .unwrap();
+
+        assert!(result.commit_sha.is_none());
+        assert!(result.diff.files.is_empty());
+        assert_eq!(result.files.len(), 1);
+        assert_eq!(result.files[0].path, "SKILL.md");
+        assert!(workspace_dir
+            .path()
+            .join("my-skill/context/agent-validation-log.md")
+            .exists());
+        assert!(workspace_dir.path().join("my-skill/context/test-skill.md").exists());
+        assert!(!skill_dir.join("context/agent-validation-log.md").exists());
     }
 
     // ===== build_refine_prompt tests =====

@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/command";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useRefineStore } from "@/stores/refine-store";
+import { isAuthoredSkillFile, useRefineStore } from "@/stores/refine-store";
 import { DiffView } from "./diff-view";
 
 const REMARK_PLUGINS = [remarkGfm];
@@ -49,9 +49,10 @@ export function PreviewPanel() {
   const setDiffMode = useRefineStore((s) => s.setDiffMode);
 
   const [filePickerOpen, setFilePickerOpen] = useState(false);
-  const fileListKey = skillFiles.map((file) => file.filename).join("|");
+  const previewFiles = skillFiles.filter((file) => isAuthoredSkillFile(file.filename));
+  const fileListKey = previewFiles.map((file) => file.filename).join("|");
 
-  if (skillFiles.length === 0 && !isLoadingFiles) {
+  if (previewFiles.length === 0 && !isLoadingFiles) {
     return (
       <div data-testid="refine-preview-empty" className="flex h-full items-center justify-center text-muted-foreground">
         Select a skill to preview its files
@@ -68,7 +69,7 @@ export function PreviewPanel() {
     );
   }
 
-  const activeFile = skillFiles.find((f) => f.filename === activeFileTab);
+  const activeFile = previewFiles.find((f) => f.filename === activeFileTab);
   const baselineFile = baselineFiles.find((f) => f.filename === activeFileTab);
   const gitDiffFile = gitDiff?.files.find((file) => normalizeDiffPath(file.path) === activeFileTab);
   const hasDiff = (gitDiff?.files.length ?? 0) > 0 || baselineFiles.length > 0;
@@ -90,7 +91,7 @@ export function PreviewPanel() {
               <CommandList>
                 <CommandEmpty>No files found</CommandEmpty>
                 <CommandGroup>
-                  {skillFiles.map((f) => (
+                  {previewFiles.map((f) => (
                     <CommandItem
                       key={f.filename}
                       value={f.filename}

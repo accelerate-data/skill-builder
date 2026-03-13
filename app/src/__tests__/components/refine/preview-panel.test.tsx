@@ -22,6 +22,11 @@ const SKILL_FILES: SkillFile[] = [
   { filename: "references/glossary.md", content: "# Glossary\n\nTerms go here." },
 ];
 
+const SKILL_FILES_WITH_CONTEXT: SkillFile[] = [
+  ...SKILL_FILES,
+  { filename: "context/agent-validation-log.md", content: "# Validation\n\nAll good." },
+];
+
 const BASELINE_FILES: SkillFile[] = [
   { filename: "SKILL.md", content: "# My Skill\n\nOld content." },
   { filename: "references/glossary.md", content: "# Glossary\n\nOld terms." },
@@ -120,6 +125,20 @@ describe("PreviewPanel", () => {
     await waitFor(() => {
       expect(screen.getAllByText("references/new-guide.md").length).toBeGreaterThan(0);
     });
+  });
+
+  it("does not show context artifacts in the file picker", async () => {
+    const user = userEvent.setup();
+    setStoreState({ skillFiles: SKILL_FILES_WITH_CONTEXT, activeFileTab: "SKILL.md" });
+    render(<PreviewPanel />);
+
+    await user.click(screen.getByTestId("refine-file-picker"));
+
+    await waitFor(() => {
+      expect(screen.getByText("references/glossary.md")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("context/agent-validation-log.md")).not.toBeInTheDocument();
   });
 
   // --- Diff toggle ---

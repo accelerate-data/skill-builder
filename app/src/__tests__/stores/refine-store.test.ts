@@ -225,6 +225,25 @@ describe("useRefineStore", () => {
     expect(state.previewRevision).toBe(1);
   });
 
+  it("updateSkillFiles ignores newly added context artifacts when choosing the active preview file", () => {
+    useRefineStore.setState({
+      activeFileTab: "SKILL.md",
+      skillFiles: [
+        { filename: "SKILL.md", content: "old" },
+        { filename: "references/glossary.md", content: "old glossary" },
+      ],
+    });
+
+    useRefineStore.getState().updateSkillFiles([
+      { filename: "SKILL.md", content: "new" },
+      { filename: "references/glossary.md", content: "new glossary" },
+      { filename: "context/agent-validation-log.md", content: "# Validation\nok" },
+    ]);
+
+    const state = useRefineStore.getState();
+    expect(state.activeFileTab).toBe("SKILL.md");
+  });
+
   it("updateSkillFiles prefers a newly added file when the previous active file was removed", () => {
     useRefineStore.setState({
       activeFileTab: "references/glossary.md",
@@ -241,6 +260,23 @@ describe("useRefineStore", () => {
 
     const state = useRefineStore.getState();
     expect(state.activeFileTab).toBe("references/api.md");
+  });
+
+  it("updateSkillFiles falls back to the first authored file when only context artifacts are added", () => {
+    useRefineStore.setState({
+      activeFileTab: "references/glossary.md",
+      skillFiles: [
+        { filename: "references/glossary.md", content: "old glossary" },
+      ],
+    });
+
+    useRefineStore.getState().updateSkillFiles([
+      { filename: "SKILL.md", content: "new" },
+      { filename: "context/agent-validation-log.md", content: "# Validation\nok" },
+    ]);
+
+    const state = useRefineStore.getState();
+    expect(state.activeFileTab).toBe("SKILL.md");
   });
 
   it("setSkillFiles bumps previewRevision so the right panel can remount after reload", () => {
