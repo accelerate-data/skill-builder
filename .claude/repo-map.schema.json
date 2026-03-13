@@ -138,6 +138,11 @@
       "description": "Map of convention label → rule description.",
       "additionalProperties": { "type": "string" }
     },
+    "key_references": {
+      "type": "object",
+      "description": "Important files to know about that are non-obvious from directory structure alone.",
+      "additionalProperties": { "type": "string" }
+    },
     "notes_for_agents": {
       "type": "object",
       "description": "Durable, non-obvious operational notes for coding agents.",

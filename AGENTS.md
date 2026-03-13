@@ -106,17 +106,6 @@ For Rust and cross-layer changes, consult `TEST_MANIFEST.md` for the correct car
 
 **Never run `test:agents:smoke` autonomously** — it makes live API calls. Tell the user to run it manually.
 
-## Design Docs
-
-Design notes live in `docs/design/`. Each topic gets its own subdirectory with a `README.md` (e.g. `docs/design/backend-design/README.md`). The index at `docs/design/README.md` must be updated when adding a new subdirectory.
-
-Write design docs concisely — state the decision and the reason, not the reasoning process. One sentence beats a paragraph. Avoid restating what the code already makes obvious.
-
-Research output schemas and envelopes are documented in:
-
-- `docs/design/agent-specs/canonical-format.md` — high-level artifact contracts
-- `agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md` — canonical `research_output` schema
-
 ## Code Style
 
 - Granular commits: one concern per commit, run tests before each
