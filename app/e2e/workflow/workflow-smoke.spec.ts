@@ -311,6 +311,45 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Scenario 8: Detailed-research Re-run resets to step 0
+  // Source: workflow-steps.spec.ts — "resetting step 1 from step 2 via Re-run button"
+  // The Re-run button on step 1 (Detailed Research) must reset to step 0, not step 1.
+  // This guards the special-case: setResetTarget(currentStep === 1 ? 0 : currentStep).
+  // ---------------------------------------------------------------------------
+  test("Re-run on Detailed Research resets workflow to step 0", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, {
+      ...WORKFLOW_OVERRIDES,
+      get_workflow_state: {
+        run: { current_step: 1, purpose: "domain" },
+        steps: [
+          { step_id: 0, status: "completed" },
+          { step_id: 1, status: "completed" },
+        ],
+      },
+    });
+
+    // Step 1 (Detailed Research) is completed and currently active
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+
+    // Re-run button is shown on the completed clarifications step
+    const rerunButton = page.getByRole("button", { name: "Re-run" });
+    await expect(rerunButton).toBeVisible({ timeout: 5_000 });
+    await rerunButton.click();
+
+    // ResetStepDialog must appear
+    await expect(
+      page.getByRole("heading", { name: "Reset to Earlier Step" }),
+    ).toBeVisible({ timeout: 5_000 });
+
+    // Confirm the reset
+    await page.getByRole("button", { name: /Delete.*Reset|^Reset$/ }).click();
+
+    // Must land on step 0 (Research), not step 1 (Detailed Research)
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Step 2: Detailed Research")).not.toBeVisible({ timeout: 5_000 });
+  });
+
+  // ---------------------------------------------------------------------------
   // Scenario 7: Lock-acquisition failure
   // Source: workflow-navigation.spec.ts — "lock acquisition failure redirects to
   //         dashboard with error toast"

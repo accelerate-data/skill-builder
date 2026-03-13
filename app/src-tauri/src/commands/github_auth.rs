@@ -125,17 +125,11 @@ pub async fn github_poll_for_token(
     Ok(GitHubAuthResult::Success { user })
 }
 
-/// Get the currently authenticated GitHub user from the database.
-/// Returns None if not signed in.
-#[tauri::command]
-pub fn github_get_user(db: tauri::State<'_, Db>) -> Result<Option<GitHubUser>, String> {
-    log::info!("[github_get_user]");
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[github_get_user] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    let settings = crate::db::read_settings_hydrated(&conn)?;
-
+/// Core get-user logic, extracted for testability (avoids requiring AppHandle/State).
+pub(crate) fn github_get_user_impl(
+    conn: &rusqlite::Connection,
+) -> Result<Option<GitHubUser>, String> {
+    let settings = crate::db::read_settings_hydrated(conn)?;
     if settings.github_oauth_token.is_some() {
         let login = settings.github_user_login.unwrap_or_default();
         let avatar_url = settings.github_user_avatar.unwrap_or_default();
@@ -148,6 +142,18 @@ pub fn github_get_user(db: tauri::State<'_, Db>) -> Result<Option<GitHubUser>, S
     } else {
         Ok(None)
     }
+}
+
+/// Get the currently authenticated GitHub user from the database.
+/// Returns None if not signed in.
+#[tauri::command]
+pub fn github_get_user(db: tauri::State<'_, Db>) -> Result<Option<GitHubUser>, String> {
+    log::info!("[github_get_user]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[github_get_user] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+    github_get_user_impl(&conn)
 }
 
 /// Core logout logic, extracted for testability (avoids requiring AppHandle/State).
@@ -187,19 +193,20 @@ mod tests {
         settings.github_user_email = Some("octocat@github.com".to_string());
         crate::db::write_settings(&conn, &settings).unwrap();
 
-        let hydrated = crate::db::read_settings_hydrated(&conn).unwrap();
-        assert!(hydrated.github_oauth_token.is_some());
-        assert_eq!(hydrated.github_user_login.as_deref(), Some("octocat"));
-        assert_eq!(hydrated.github_user_avatar.as_deref(), Some("https://github.com/octocat.png"));
-        assert_eq!(hydrated.github_user_email.as_deref(), Some("octocat@github.com"));
+        let user = super::github_get_user_impl(&conn).unwrap();
+        assert!(user.is_some());
+        let user = user.unwrap();
+        assert_eq!(user.login, "octocat");
+        assert_eq!(user.avatar_url, "https://github.com/octocat.png");
+        assert_eq!(user.email.as_deref(), Some("octocat@github.com"));
     }
 
     #[test]
     fn test_github_get_user_returns_none_without_token() {
         let conn = create_test_db_for_tests();
-        // Default settings have no GitHub token
-        let hydrated = crate::db::read_settings_hydrated(&conn).unwrap();
-        assert!(hydrated.github_oauth_token.is_none());
+        // Default settings have no GitHub token — impl must return None.
+        let user = super::github_get_user_impl(&conn).unwrap();
+        assert!(user.is_none());
     }
 
     #[test]
