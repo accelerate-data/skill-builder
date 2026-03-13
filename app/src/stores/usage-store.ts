@@ -97,7 +97,8 @@ export const useUsageStore = create<UsageState>((set, get) => ({
         getUsageByModel(hideCancelled, startDate, null),
         getUsageByDay(hideCancelled, startDate, null),
       ]);
-      set({ summary, recentSessions, agentRuns, byStep, byModel, byDay, loading: false, skillFilter: null, modelFamilyFilter: null, skillNames: [] });
+      set({ summary, recentSessions, agentRuns, byStep, byModel, byDay, loading: false, skillFilter: null, modelFamilyFilter: null });
+      await get().fetchSkillNames();
     } catch (err) {
       set({ error: String(err), loading: false });
     }

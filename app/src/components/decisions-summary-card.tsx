@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { CheckCircle2, Clock, DollarSign, GitBranch, Shield, AlertTriangle, ChevronRight, ChevronDown } from "lucide-react";
+import { CheckCircle2, GitBranch, AlertTriangle, ChevronRight } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -103,7 +103,6 @@ export function DecisionsSummaryCard({
   const fm = parsedFile.metadata;
 
   const [decisions, setDecisions] = useState<Decision[]>(() => parsedFile.decisions);
-  const [summaryExpanded, setSummaryExpanded] = useState(true);
   const [showNeedsReviewOnly, setShowNeedsReviewOnly] = useState(false);
 
   useEffect(() => {
@@ -115,15 +114,48 @@ export function DecisionsSummaryCard({
   const revisedCount = decisions.filter((d) => d.status === "revised").length;
   const needsReviewDecisions = decisions.filter((d) => d.status === "needs-review");
   const needsReviewCount = needsReviewDecisions.length;
-  const pendingReviewDecisions = decisions.filter((d) => d.status === "needs-review" || d.status === "revised");
   const visibleDecisions = showNeedsReviewOnly
-    ? pendingReviewDecisions
+    ? needsReviewDecisions
     : decisions;
 
   // Effective contradictory state: upgrade true → "revised" when no needs-review left
   const effectiveContradictory = fm.contradictory_inputs === true
     ? (needsReviewCount > 0 ? true : (revisedCount > 0 ? "revised" : true))
     : fm.contradictory_inputs;
+
+  const headerState = needsReviewCount > 0 || effectiveContradictory === true
+    ? "review-required"
+    : effectiveContradictory === "revised"
+      ? "ready-with-edits"
+      : "ready";
+
+  const headerTone = headerState === "review-required"
+    ? {
+        icon: AlertTriangle,
+        iconClassName: "text-amber-600 dark:text-amber-400",
+        panelClassName: "border-border",
+        chipClassName: "border-border",
+      }
+    : {
+        icon: CheckCircle2,
+        iconClassName: "",
+        panelClassName: "border-border bg-muted/30",
+        chipClassName: "border-border bg-background/80 text-muted-foreground",
+      };
+
+  const headerTitle = headerState === "review-required"
+    ? `${needsReviewCount} decision${needsReviewCount === 1 ? " needs" : "s need"} your review`
+    : headerState === "ready-with-edits"
+      ? "All decisions reviewed"
+      : "Decisions confirmed";
+
+  const headerDescription = headerState === "review-required"
+    ? "Review the highlighted decisions below. Changes save when you leave each field."
+    : headerState === "ready-with-edits"
+      ? "No blocking contradictions remain. You can generate the skill with your edits."
+      : "No contradictions were found. You can proceed to Generate Skill.";
+
+  const HeaderIcon = headerTone.icon;
 
   // Called on every keystroke — update local decisions array only, no save
   function handleDecisionDraftChange(updated: Decision) {
@@ -143,153 +175,72 @@ export function DecisionsSummaryCard({
   return (
     <div className="flex flex-col gap-4 min-w-0 overflow-hidden">
       {/* Summary Card */}
-      <div className="rounded-lg border shadow-sm overflow-hidden">
-        {/* Header — collapsible */}
-        <button
-          type="button"
-          className="flex w-full items-center gap-3 px-5 py-3 border-b bg-muted/30 text-left cursor-pointer"
-          onClick={() => setSummaryExpanded((prev) => !prev)}
-        >
-          {summaryExpanded ? (
-            <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-150" />
-          ) : (
-            <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform duration-150" />
-          )}
-          <CheckCircle2 className="size-5 shrink-0" style={{ color: "var(--color-seafoam)" }} />
-          <span className="text-sm font-semibold tracking-tight text-foreground">
-            Decisions Complete
-          </span>
-          <div className="flex-1" />
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            {duration !== undefined && (
-              <span className="flex items-center gap-1">
-                <Clock className="size-3" />
-                {formatDuration(duration)}
-              </span>
-            )}
-            {cost !== undefined && cost > 0 && (
-              <span className="flex items-center gap-1">
-                <DollarSign className="size-3" />
-                ${cost.toFixed(4)}
-              </span>
-            )}
-          </div>
-        </button>
-
-        {/* Contradictory inputs banner */}
-        {effectiveContradictory === true && (
-          <div className="flex items-center gap-2 border-b bg-destructive/10 px-5 py-2 text-xs text-destructive font-medium">
-            <AlertTriangle className="size-3.5" />
-            Contradictory inputs detected — some answers are logically incompatible. Review decisions marked "needs-review" before generating the skill.
-          </div>
-        )}
-        {effectiveContradictory === "revised" && (
-          <div
-            className="flex items-center gap-2 border-b px-5 py-2 text-xs font-medium"
-            style={{
-              background: "color-mix(in oklch, var(--color-seafoam), transparent 90%)",
-              color: "var(--color-seafoam)",
-            }}
-          >
-            <CheckCircle2 className="size-3.5" />
-            Contradictions reviewed — skill will be generated with your edits.
-          </div>
-        )}
-
-        {/* needs-review editing hint — only shown when unaddressed decisions remain */}
-        {allowEdit && needsReviewCount > 0 && effectiveContradictory !== "revised" && (
-          <div className="flex items-center gap-2 border-b bg-amber-50 dark:bg-amber-950/20 px-5 py-2 text-xs text-amber-600 dark:text-amber-400 font-medium">
-            <AlertTriangle className="size-3.5" />
-            {needsReviewCount} decision{needsReviewCount > 1 ? "s" : ""} need your review — edit the text below, changes save when you leave the field.
-          </div>
-        )}
-
-        {/* Stats Grid — collapsible */}
-        {summaryExpanded && <div className="grid grid-cols-2 divide-x">
-          {/* Decisions Column */}
-          <div className="p-4">
-            <div className="flex items-center gap-1.5 mb-3">
-              <GitBranch className="size-3.5" style={{ color: "var(--color-pacific)" }} />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Decisions
-              </span>
-            </div>
-            <div className="flex items-baseline gap-1.5 mb-2">
-              <span className="text-2xl font-semibold tracking-tight" style={{ color: "var(--color-pacific)" }}>
-                {fm.decision_count}
-              </span>
-              <span className="text-xs text-muted-foreground">total</span>
-            </div>
-            <div className="flex flex-col gap-1.5 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Resolved</span>
-                <span className="font-medium text-foreground">{resolvedCount}</span>
+      <div className={`rounded-lg border shadow-sm overflow-hidden ${headerTone.panelClassName}`}>
+        <div className="p-4">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5">
+                <HeaderIcon
+                  className={`size-4 shrink-0 ${headerTone.iconClassName}`}
+                  style={headerState === "review-required" ? undefined : { color: "var(--color-seafoam)" }}
+                />
               </div>
+
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-base font-semibold tracking-tight text-foreground">
+                    {headerTitle}
+                  </p>
+                  <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {headerDescription}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 self-start rounded-full border border-border bg-background/80 px-3 py-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Needs Review</span>
+                <Switch
+                  size="sm"
+                  aria-label="Needs Review"
+                  checked={showNeedsReviewOnly}
+                  onCheckedChange={setShowNeedsReviewOnly}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pl-7">
+              <StatusChip className={headerTone.chipClassName} label={`${fm.decision_count} total`} />
+              <StatusChip className={headerTone.chipClassName} label={`${resolvedCount} resolved`} />
               {conflictResolvedCount > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Conflict-resolved</span>
-                  <span className="font-medium" style={{ color: "var(--color-ocean)" }}>{conflictResolvedCount}</span>
-                </div>
-              )}
-              {revisedCount > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Revised</span>
-                  <span className="font-medium" style={{ color: "var(--color-pacific)" }}>{revisedCount}</span>
-                </div>
+                <StatusChip className={headerTone.chipClassName} label={`${conflictResolvedCount} conflict resolved`} />
               )}
               {needsReviewCount > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Needs review</span>
-                  <span className="font-medium text-destructive">{needsReviewCount}</span>
-                </div>
+                <StatusChip
+                  className={headerTone.chipClassName}
+                  style={headerState === "review-required"
+                    ? {
+                        borderColor: "color-mix(in oklch, currentColor, transparent 70%)",
+                        background: "color-mix(in oklch, currentColor, transparent 92%)",
+                        color: "rgb(217 119 6)",
+                      }
+                    : undefined}
+                  label={`${needsReviewCount} ${needsReviewCount === 1 ? "needs" : "need"} review`}
+                />
+              )}
+              {revisedCount > 0 && (
+                <StatusChip className={headerTone.chipClassName} label={`${revisedCount} revised`} />
+              )}
+              {duration !== undefined && (
+                <StatusChip className={headerTone.chipClassName} label={formatDuration(duration)} />
+              )}
+              {cost !== undefined && cost > 0 && (
+                <StatusChip className={headerTone.chipClassName} label={`$${cost.toFixed(4)}`} />
               )}
             </div>
           </div>
-
-          {/* Quality Column */}
-          <div className="p-4">
-            <div className="flex items-center gap-1.5 mb-3">
-              <Shield className="size-3.5" style={{ color: "var(--color-ocean)" }} />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Quality
-              </span>
-            </div>
-            <div className="flex items-baseline gap-1.5 mb-2">
-              <span className="text-2xl font-semibold tracking-tight" style={{ color: "var(--color-ocean)" }}>
-                {fm.conflicts_resolved}
-              </span>
-              <span className="text-xs text-muted-foreground">reconciled</span>
-            </div>
-            {effectiveContradictory === true ? (
-              <div className="flex items-center gap-1.5 text-xs text-destructive font-medium">
-                <AlertTriangle className="size-3" />
-                Contradictions — review required
-              </div>
-            ) : effectiveContradictory === "revised" ? (
-              <div className="flex items-center gap-1.5 text-xs font-medium" style={{ color: "var(--color-seafoam)" }}>
-                <CheckCircle2 className="size-3" />
-                Reviewed — proceeding with edits
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">No unresolvable contradictions</p>
-            )}
-          </div>
-
-        </div>}
-      </div>
-
-      {/* Decision filter — show when there are needs-review or revised decisions */}
-      {pendingReviewDecisions.length > 0 && (
-        <div className="flex items-center justify-end gap-2 px-1">
-          <span className="text-xs text-muted-foreground">Needs Review</span>
-          <Switch
-            size="sm"
-            aria-label="Needs Review"
-            checked={showNeedsReviewOnly}
-            onCheckedChange={setShowNeedsReviewOnly}
-          />
         </div>
-      )}
+      </div>
 
       {/* Decision Cards */}
       {visibleDecisions.map((d) => (
@@ -307,6 +258,14 @@ export function DecisionsSummaryCard({
         </div>
       )}
     </div>
+  );
+}
+
+function StatusChip({ label, className, style }: { label: string; className?: string; style?: React.CSSProperties }) {
+  return (
+    <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${className ?? ""}`} style={style}>
+      {label}
+    </span>
   );
 }
 
@@ -342,6 +301,7 @@ function AutoResizeTextarea({
   className,
   style,
   placeholder,
+  ariaLabel,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -349,6 +309,7 @@ function AutoResizeTextarea({
   className?: string;
   style?: React.CSSProperties;
   placeholder?: string;
+  ariaLabel?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -386,6 +347,7 @@ function AutoResizeTextarea({
     <textarea
       ref={ref}
       value={value}
+      aria-label={ariaLabel}
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
       onBlur={onBlur}
@@ -448,7 +410,11 @@ function DecisionCard({
           className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium"
           style={{ background: colors.badgeBg, color: colors.badge, border: `1px solid ${colors.badge}40` }}
         >
-          {decision.status === "conflict-resolved" ? "conflict" : decision.status}
+          {decision.status === "conflict-resolved"
+            ? "conflict resolved"
+            : decision.status === "needs-review"
+              ? "needs review"
+              : decision.status}
         </span>
         <ChevronRight
           className="mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform duration-150"
@@ -494,6 +460,7 @@ function DecisionCard({
                 onChange={(v) => handleDraftChange("decision", v)}
                 onBlur={handleBlur}
                 placeholder="Enter decision…"
+                ariaLabel={`Decision for ${decision.title}`}
                 className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm text-foreground leading-relaxed focus:outline-none focus:ring-1 focus:ring-offset-0"
               />
             ) : (
@@ -521,6 +488,7 @@ function DecisionCard({
                   onChange={(v) => handleDraftChange("implication", v)}
                   onBlur={handleBlur}
                   placeholder="Enter implication…"
+                  ariaLabel={`Implication for ${decision.title}`}
                   className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-offset-0"
                   style={{ color: "var(--color-ocean)" }}
                 />

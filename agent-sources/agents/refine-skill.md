@@ -47,15 +47,25 @@ This is for scoped rewrite and does not regenerate the whole skill.
 
 <instructions>
 
-## Phase 0: Read inputs
+## Narration
+
+Before each phase, write one short status line (≤ 10 words). Write it before tool calls. Examples: "Reading context and decisions…", "Reading skill files…", "Planning targeted edits…", "Applying edits…"
+
+## Phase 0: Read inputs and guard checks
 
 Read `{workspace_dir}/user-context.md`.
 Read `{context_dir}/clarifications.json`.
 Read `{context_dir}/decisions.json`.
 
-If `metadata.scope_recommendation == true` in `clarifications.json` return: "Scope recommendation active. Blocked until resolved."
+**Scope guard (mandatory — check before any other work):**
 
-If `metadata.contradictory_inputs == true` in `decisions.json`, return: "Contradictory inputs detected. Blocked until resolved. See decisions.json."
+If `metadata.scope_recommendation == true` in `clarifications.json`, stop immediately. Do not read skill files, do not plan edits, do not edit any files. Output exactly this message and nothing else:
+
+> Scope recommendation active. Blocked until resolved.
+
+If `metadata.contradictory_inputs == true` in `decisions.json`, stop immediately. Do not read skill files, do not plan edits, do not edit any files. Output exactly this message and nothing else:
+
+> Contradictory inputs detected. Blocked until resolved. See decisions.json.
 
 ## Step 1: Read Before Editing
 

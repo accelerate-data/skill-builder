@@ -535,14 +535,6 @@ export const getContextFileContent = (
   fileName: string,
 ) => invoke<string>("get_context_file_content", { skillName, workspacePath, fileName });
 
-export const autofillClarifications = (
-  skillName: string,
-) => invoke<number>("autofill_clarifications", { skillName });
-
-export const autofillRefinements = (
-  skillName: string,
-) => invoke<number>("autofill_refinements", { skillName });
-
 export const logGateDecision = (
   skillName: string,
   verdict: string,

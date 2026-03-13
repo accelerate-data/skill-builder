@@ -5,10 +5,7 @@
  * renders thinking, output, tool_call, result, and error items correctly.
  */
 import { test, expect } from "@playwright/test";
-import {
-  emitTauriEvent,
-  simulateAgentRunWithDisplayItems,
-} from "../helpers/agent-simulator";
+import { emitTauriEvent } from "../helpers/agent-simulator";
 import { navigateToWorkflowUpdateMode } from "../helpers/workflow-helpers";
 
 const navigateToWorkflow = navigateToWorkflowUpdateMode;
@@ -17,11 +14,7 @@ test.describe("DisplayItem Rendering", { tag: "@workflow-agent" }, () => {
   test("renders thinking items collapsed with Brain indicator", async ({ page }) => {
     await navigateToWorkflow(page);
     await expect(page.getByText("Step 1: Research")).toBeVisible();
-
-    // Start the agent run
-    await page.getByRole("button", { name: /start|run/i }).first().click();
-
-    const agentId = "test-display-step0-1";
+    const agentId = "agent-001";
 
     // Emit a thinking display item
     await emitTauriEvent(page, "agent-message", {
@@ -44,10 +37,7 @@ test.describe("DisplayItem Rendering", { tag: "@workflow-agent" }, () => {
   test("renders output items with markdown content", async ({ page }) => {
     await navigateToWorkflow(page);
     await expect(page.getByText("Step 1: Research")).toBeVisible();
-
-    await page.getByRole("button", { name: /start|run/i }).first().click();
-
-    const agentId = "test-display-step0-2";
+    const agentId = "agent-001";
 
     await emitTauriEvent(page, "agent-message", {
       agent_id: agentId,
@@ -68,10 +58,7 @@ test.describe("DisplayItem Rendering", { tag: "@workflow-agent" }, () => {
   test("renders tool call items with tool name and summary", async ({ page }) => {
     await navigateToWorkflow(page);
     await expect(page.getByText("Step 1: Research")).toBeVisible();
-
-    await page.getByRole("button", { name: /start|run/i }).first().click();
-
-    const agentId = "test-display-step0-3";
+    const agentId = "agent-001";
 
     await emitTauriEvent(page, "agent-message", {
       agent_id: agentId,
@@ -89,48 +76,35 @@ test.describe("DisplayItem Rendering", { tag: "@workflow-agent" }, () => {
       },
     });
 
-    await expect(page.getByText("Read")).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText("Reading main.ts")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Read — Reading main\.ts/i })).toBeVisible({ timeout: 5000 });
   });
 
   test("renders result item on agent completion", async ({ page }) => {
     await navigateToWorkflow(page);
     await expect(page.getByText("Step 1: Research")).toBeVisible();
+    const agentId = "agent-001";
 
-    await page.getByRole("button", { name: /start|run/i }).first().click();
-
-    const agentId = "test-display-step0-4";
-
-    await simulateAgentRunWithDisplayItems(page, {
-      agentId,
-      items: [
-        {
-          id: "di-1",
-          type: "output",
-          timestamp: Date.now(),
-          outputText: "Research complete.",
-        },
-        {
+    await emitTauriEvent(page, "agent-message", {
+      agent_id: agentId,
+      message: {
+        type: "display_item",
+        item: {
           id: "di-2",
           type: "result",
           timestamp: Date.now(),
           outputText_result: "Research completed successfully.",
           resultStatus: "success",
         },
-      ],
-      result: "Research completed successfully.",
+      },
     });
 
-    await expect(page.getByText("Result:")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText("Research completed successfully.").last()).toBeVisible({ timeout: 5000 });
   });
 
   test("renders error items with error styling", async ({ page }) => {
     await navigateToWorkflow(page);
     await expect(page.getByText("Step 1: Research")).toBeVisible();
-
-    await page.getByRole("button", { name: /start|run/i }).first().click();
-
-    const agentId = "test-display-step0-5";
+    const agentId = "agent-001";
 
     await emitTauriEvent(page, "agent-message", {
       agent_id: agentId,
@@ -151,10 +125,7 @@ test.describe("DisplayItem Rendering", { tag: "@workflow-agent" }, () => {
   test("updates tool call status from pending to ok", async ({ page }) => {
     await navigateToWorkflow(page);
     await expect(page.getByText("Step 1: Research")).toBeVisible();
-
-    await page.getByRole("button", { name: /start|run/i }).first().click();
-
-    const agentId = "test-display-step0-6";
+    const agentId = "agent-001";
     const wait = (ms: number) => page.waitForTimeout(ms);
 
     // Emit pending tool call
@@ -174,7 +145,7 @@ test.describe("DisplayItem Rendering", { tag: "@workflow-agent" }, () => {
       },
     });
 
-    await expect(page.getByText("Bash")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("button", { name: /Bash — Running: npm test/i })).toBeVisible({ timeout: 5000 });
     await wait(100);
 
     // Update same item with ok status (update-by-id)
@@ -197,7 +168,6 @@ test.describe("DisplayItem Rendering", { tag: "@workflow-agent" }, () => {
     });
 
     // Should still show one Bash item (updated, not duplicated)
-    const bashItems = page.getByText("Bash");
-    await expect(bashItems).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("button", { name: /Bash — Running: npm test/i })).toBeVisible({ timeout: 5000 });
   });
 });

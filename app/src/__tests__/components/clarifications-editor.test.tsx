@@ -323,6 +323,42 @@ describe("Need Review filter toggle", () => {
     expect(screen.queryByText("Answered Question")).not.toBeInTheDocument();
     expect(screen.getByText("Unanswered Question")).toBeInTheDocument();
   });
+
+  it("includes unanswered MUST questions when enabled", async () => {
+    const user = userEvent.setup();
+    const data = makeClarifications([
+      makeQuestion({ id: "Q1", title: "Required Question", must_answer: true, answer_choice: null, answer_text: null }),
+      makeQuestion({ id: "Q2", title: "Optional Question", must_answer: false, answer_choice: null, answer_text: null }),
+    ]);
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+    await user.click(screen.getByRole("switch", { name: "Need Review" }));
+
+    expect(screen.getByText("Required Question")).toBeInTheDocument();
+    expect(screen.queryByText("Optional Question")).not.toBeInTheDocument();
+  });
+
+  it("hides answered questions even when they have evaluator feedback", async () => {
+    const user = userEvent.setup();
+    const data = makeClarifications([
+      makeQuestion({ id: "Q1", title: "Required Question", must_answer: true, answer_choice: "A", answer_text: "Choice A" }),
+      makeQuestion({ id: "Q2", title: "Flagged Question", must_answer: false, answer_choice: "A", answer_text: "Choice A" }),
+    ]);
+    data.answer_evaluator_notes = [
+      {
+        type: "answer_feedback",
+        title: "Needs refinement: Q2",
+        body: "This answer needs more detail.",
+      },
+    ];
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+    await user.click(screen.getByRole("switch", { name: "Need Review" }));
+
+    // Both questions are answered — the toggle should hide them regardless of evaluator feedback
+    expect(screen.queryByText("Required Question")).not.toBeInTheDocument();
+    expect(screen.queryByText("Flagged Question")).not.toBeInTheDocument();
+  });
 });
 
 describe("Inline evaluator feedback", () => {

@@ -138,6 +138,14 @@ export function ClarificationsEditor({
   const progressPct = total > 0 ? Math.round((answered / total) * 100) : 0;
   const isComplete = answered === total;
 
+  const questionNeedsReview = useCallback(
+    (question: Question): boolean => {
+      if (isQuestionAnswered(question)) return false;
+      return reviewFeedbackByQuestion.has(question.id) || question.must_answer;
+    },
+    [reviewFeedbackByQuestion],
+  );
+
   const toggleCard = useCallback((id: string) => {
     setExpandedCards((prev) => {
       const next = new Set(prev);
@@ -193,10 +201,10 @@ export function ClarificationsEditor({
     [data, onChange],
   );
 
-  const hasNeedsReviewInTree = (q: Question): boolean => {
-    if (reviewFeedbackByQuestion.has(q.id)) return true;
+  const hasNeedsReviewInTree = useCallback((q: Question): boolean => {
+    if (questionNeedsReview(q)) return true;
     return q.refinements.some(hasNeedsReviewInTree);
-  };
+  }, [questionNeedsReview]);
 
   const visibleSections = data.sections
     .map((section) => ({

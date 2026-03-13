@@ -22,7 +22,6 @@ const FIXED_TS = 1_000_000_000_000;
 const SKILL_NAME = "my-skill";
 const WITH_ID = `${SKILL_NAME}-test-with-${FIXED_TS}`;
 const WITHOUT_ID = `__test_baseline__-test-without-${FIXED_TS}`;
-const EVAL_ID = `__test_baseline__-test-eval-${FIXED_TS}`;
 
 /**
  * Eval text with a "## Recommendations" section so handleRefine builds a
@@ -38,6 +37,24 @@ ${EVAL_RECOMMENDATIONS_TEXT}`;
 
 /** Expected substring in the pre-filled refine chat message. */
 const EXPECTED_PREFILL_SUBSTRING = EVAL_RECOMMENDATIONS_TEXT;
+
+async function waitForEvalAgentId(page: import("@playwright/test").Page): Promise<string> {
+  await expect
+    .poll(async () => page.evaluate(async () => {
+      const { useAgentStore } = await import("/src/stores/agent-store.ts");
+      const ids = Object.keys(useAgentStore.getState().runs);
+      return ids.find((id) => id.includes("-test-eval-")) ?? null;
+    }), { timeout: 5_000 })
+    .not.toBeNull();
+
+  const evalId = await page.evaluate(async () => {
+    const { useAgentStore } = await import("/src/stores/agent-store.ts");
+    const ids = Object.keys(useAgentStore.getState().runs);
+    return ids.find((id) => id.includes("-test-eval-")) ?? null;
+  });
+  expect(evalId).toBeTruthy();
+  return evalId!;
+}
 
 const BASE_OVERRIDES = {
   get_settings: {
@@ -97,8 +114,8 @@ test.describe("Test → Refine navigation", { tag: "@skill-tester" }, () => {
     // --- Select skill ---
     await page.getByRole("button", { name: /select a skill/i }).waitFor({ timeout: 10_000 });
     await page.getByRole("button", { name: /select a skill/i }).click();
-    await page.getByText("My Skill").click();
-    await expect(page.getByRole("button", { name: /my skill/i })).toBeVisible();
+    await page.getByRole("option", { name: /my-skill/i }).click();
+    await expect(page.getByRole("button", { name: /my-skill/i })).toBeVisible();
 
     // --- Enter prompt and run test ---
     await page.getByPlaceholder("Describe a task to test the skill against...").fill("build a customer model");
@@ -118,9 +135,11 @@ test.describe("Test → Refine navigation", { tag: "@skill-tester" }, () => {
     // Wait for the evaluating phase to begin (both plan agents done → eval starts)
     await expect(page.getByText("evaluating...")).toBeVisible({ timeout: 5_000 });
 
+    const evalAgentId = await waitForEvalAgentId(page);
+
     // --- Simulate eval agent completing with recommendations ---
     await simulateAgentRun(page, {
-      agentId: EVAL_ID,
+      agentId: evalAgentId,
       messages: [EVAL_AGENT_OUTPUT],
     });
 
@@ -172,7 +191,7 @@ test.describe("Test → Refine navigation", { tag: "@skill-tester" }, () => {
     // Select skill, enter prompt, run test
     await page.getByRole("button", { name: /select a skill/i }).waitFor({ timeout: 10_000 });
     await page.getByRole("button", { name: /select a skill/i }).click();
-    await page.getByText("My Skill").click();
+    await page.getByRole("option", { name: /my-skill/i }).click();
     await page.getByPlaceholder("Describe a task to test the skill against...").fill("build a customer model");
     await page.getByRole("button", { name: /run test/i }).click();
     await expect(page.getByRole("button", { name: /running/i })).toBeVisible({ timeout: 5_000 });
@@ -184,9 +203,11 @@ test.describe("Test → Refine navigation", { tag: "@skill-tester" }, () => {
     // Wait for evaluating phase
     await expect(page.getByText("evaluating...")).toBeVisible({ timeout: 5_000 });
 
+    const evalAgentId = await waitForEvalAgentId(page);
+
     // Simulate eval agent completing with recommendations
     await simulateAgentRun(page, {
-      agentId: EVAL_ID,
+      agentId: evalAgentId,
       messages: [EVAL_AGENT_OUTPUT],
     });
 

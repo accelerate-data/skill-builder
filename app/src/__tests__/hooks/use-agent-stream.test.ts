@@ -260,7 +260,7 @@ describe("initAgentStream", () => {
     initAgentStream();
     initAgentStream();
 
-    expect(mockListen).toHaveBeenCalledTimes(11);
+    expect(mockListen).toHaveBeenCalledTimes(12);
   });
 
   it("auto-creates run for display_item messages arriving before startRun", () => {
@@ -547,6 +547,14 @@ describe("initAgentStream", () => {
     });
     expect(useWorkflowStore.getState().isInitializing).toBe(false);
     expect(useWorkflowStore.getState().initProgressMessage).toBeNull();
+  });
+
+  it("imports toast from @/lib/toast, not directly from sonner", async () => {
+    // Read the source file and verify the import uses the app wrapper
+    const source = await import.meta.glob("/src/hooks/use-agent-stream.ts", { as: "raw", eager: true });
+    const content = Object.values(source)[0] as string;
+    expect(content).toContain('from "@/lib/toast"');
+    expect(content).not.toMatch(/from ["']sonner["']/);
   });
 
   it("calls shutdownRun on agent-shutdown event", () => {

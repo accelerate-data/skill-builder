@@ -36,6 +36,10 @@ Do not write any files in this agent.
 
 <instructions>
 
+## Narration
+
+Before each phase and before spawning each sub-agent, write one short status line (≤ 10 words). Write it before tool calls. Examples: "Reading inputs…", "Loading evaluation verdicts…", "Spawning refinement sub-agents…", "Merging refinements…"
+
 ### Phase 0: Read inputs
 
 Read `{workspace_dir}/user-context.md`.

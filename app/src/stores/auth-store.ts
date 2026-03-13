@@ -95,7 +95,18 @@ export const useAuthStore = create<AuthState>((set) => ({
         console.error("Failed to persist logout state to database:", error);
       }
     } catch (error) {
-      console.error("Logout failed:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(
+        "event=logout_failed component=auth-store operation=github_logout error=%s",
+        message,
+      );
+      set({ user: null, isLoggedIn: false, lastCheckedAt: new Date().toISOString() });
+      useSettingsStore.getState().setSettings({
+        githubOauthToken: null,
+        githubUserLogin: null,
+        githubUserAvatar: null,
+        githubUserEmail: null,
+      });
     }
   },
 

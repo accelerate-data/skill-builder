@@ -43,6 +43,17 @@ describe("resolveStepTemplate", () => {
     expect(resolveStepTemplate(undefined)).toBeNull();
   });
 
+  it("maps undefined agentName + runSource=test to test-evaluator (skill test evaluator)", () => {
+    expect(resolveStepTemplate(undefined, { runSource: "test" })).toBe("test-evaluator");
+    expect(resolveStepTemplate(undefined, { runSource: "test", skillName: "my-skill" })).toBe("test-evaluator");
+  });
+
+  it("returns null for undefined agentName without runSource=test", () => {
+    expect(resolveStepTemplate(undefined, { runSource: "workflow" })).toBeNull();
+    expect(resolveStepTemplate(undefined, { runSource: undefined })).toBeNull();
+    expect(resolveStepTemplate(undefined, {})).toBeNull();
+  });
+
   it("maps data-product-builder to test-plan-with for non-baseline skill names", () => {
     expect(resolveStepTemplate("data-product-builder", { skillName: "my-skill" })).toBe("test-plan-with");
     expect(resolveStepTemplate("data-product-builder", { skillName: "churn-analysis" })).toBe("test-plan-with");
@@ -131,7 +142,7 @@ describe("parsePromptPaths", () => {
       "Derive context_dir as workspace_dir/context.";
     const paths = parsePromptPaths(prompt);
     expect(paths.workspaceDir).toBe("/Users/john/workspace/my-skill");
-    expect(paths.contextDir).toBe("/Users/john/workspace/my-skill/context");
+    expect(paths.contextDir).toBe(path.join("/Users/john/workspace/my-skill", "context"));
     expect(paths.skillOutputDir).toBe("/Users/john/skills/my-skill");
     expect(paths.skillDir).toBe("/Users/john/skills/my-skill");
   });
@@ -145,7 +156,7 @@ describe("resolvePromptPathsAsync", () => {
       "Read user-context.md from the workspace directory.";
     const paths = await resolvePromptPathsAsync(prompt);
     expect(paths.workspaceDir).toBe("/tmp/ws/x");
-    expect(paths.contextDir).toBe("/tmp/ws/x/context");
+    expect(paths.contextDir).toBe(path.join("/tmp/ws/x", "context"));
     expect(paths.skillOutputDir).toBe("/tmp/skills/x");
     expect(paths.skillDir).toBe("/tmp/skills/x");
   });

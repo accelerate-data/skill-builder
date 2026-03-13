@@ -119,4 +119,26 @@ describe("classifyRawMessage", () => {
       classifyRawMessage({ type: "error", error: "something failed" }),
     ).toBe("ai");
   });
+
+  // --- auth_status (VU-531) ---
+  it("classifies auth_status messages as ai", () => {
+    expect(
+      classifyRawMessage({
+        type: "auth_status",
+        isAuthenticating: false,
+        output: [],
+        error: "Invalid API key",
+      }),
+    ).toBe("ai");
+  });
+
+  it("classifies auth_status without error as ai", () => {
+    expect(
+      classifyRawMessage({
+        type: "auth_status",
+        isAuthenticating: true,
+        output: ["Authenticating..."],
+      }),
+    ).toBe("ai");
+  });
 });

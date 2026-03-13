@@ -33,6 +33,10 @@ Do not write any files in this agent.
 
 <instructions>
 
+## Narration
+
+Before each step, write one short status line (≤ 10 words). Write it before tool calls. Examples: "Reading clarifications and context…", "Analyzing answers and building decisions…"
+
 ## Step 1: Read inputs
 
 Read `{workspace_dir}/user-context.md`.

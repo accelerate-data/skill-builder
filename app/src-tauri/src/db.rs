@@ -1302,16 +1302,14 @@ fn run_agent_stats_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
 
 // --- Usage Tracking ---
 
-fn step_name(step_id: i32) -> String {
+pub(crate) fn step_name(step_id: i32) -> String {
     match step_id {
         -11 => "Test".to_string(),
         -10 => "Refine".to_string(),
         0 => "Research".to_string(),
-        1 => "Review".to_string(),
-        2 => "Detailed Research".to_string(),
-        3 => "Review".to_string(),
-        4 => "Confirm Decisions".to_string(),
-        5 => "Generate Skill".to_string(),
+        1 => "Detailed Research".to_string(),
+        2 => "Confirm Decisions".to_string(),
+        3 => "Generate Skill".to_string(),
         _ => format!("Step {}", step_id),
     }
 }
@@ -5185,12 +5183,12 @@ mod tests {
 
         // Ordered by total_cost DESC: step 5 ($0.25) then step 1 ($0.18)
         assert_eq!(by_step[0].step_id, 5);
-        assert_eq!(by_step[0].step_name, "Generate Skill");
+        assert_eq!(by_step[0].step_name, "Step 5");
         assert_eq!(by_step[0].run_count, 1);
         assert!((by_step[0].total_cost - 0.25).abs() < 1e-10);
 
         assert_eq!(by_step[1].step_id, 1);
-        assert_eq!(by_step[1].step_name, "Review");
+        assert_eq!(by_step[1].step_name, "Detailed Research");
         assert_eq!(by_step[1].run_count, 2);
         assert!((by_step[1].total_cost - 0.18).abs() < 1e-10);
     }
@@ -5849,11 +5847,11 @@ mod tests {
     #[test]
     fn test_step_name_mapping() {
         assert_eq!(step_name(0), "Research");
-        assert_eq!(step_name(1), "Review");
-        assert_eq!(step_name(2), "Detailed Research");
-        assert_eq!(step_name(3), "Review");
-        assert_eq!(step_name(4), "Confirm Decisions");
-        assert_eq!(step_name(5), "Generate Skill");
+        assert_eq!(step_name(1), "Detailed Research");
+        assert_eq!(step_name(2), "Confirm Decisions");
+        assert_eq!(step_name(3), "Generate Skill");
+        assert_eq!(step_name(4), "Step 4");
+        assert_eq!(step_name(5), "Step 5");
         assert_eq!(step_name(6), "Step 6");
         assert_eq!(step_name(-1), "Step -1");
         assert_eq!(step_name(99), "Step 99");

@@ -15,7 +15,18 @@ use tokio::task::JoinHandle;
 use super::events;
 use super::sidecar::SidecarConfig;
 
-fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<bool> {
+/// The three possible terminal outcomes for a sidecar request.
+#[derive(Debug, PartialEq)]
+enum TerminalOutcome {
+    /// Agent completed successfully.
+    Completed,
+    /// Agent failed (SDK error, execution error).
+    Error,
+    /// Agent was shut down by user request.
+    Shutdown,
+}
+
+fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<TerminalOutcome> {
     match msg.get("type").and_then(|t| t.as_str()) {
         Some("agent_event") => {
             let event = msg.get("event")?;
@@ -27,11 +38,15 @@ fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<bool> {
                 .get("status")
                 .and_then(|status| status.as_str())
                 .unwrap_or("completed");
-            Some(status == "completed")
+            match status {
+                "completed" => Some(TerminalOutcome::Completed),
+                "shutdown" => Some(TerminalOutcome::Shutdown),
+                _ => Some(TerminalOutcome::Error),
+            }
         }
         // Raw error messages from sidecar protocol-error paths (e.g.
         // duplicate session, missing session) are terminal failures.
-        Some("error") => Some(false),
+        Some("error") => Some(TerminalOutcome::Error),
         _ => None,
     }
 }
@@ -43,7 +58,7 @@ pub enum SidecarStartupError {
     SidecarMissing,
     /// Node.js binary was not found on the system.
     NodeMissing,
-    /// Node.js was found but its version is outside the supported range (18-24).
+    /// Node.js was found but its version is below the minimum supported version (18).
     NodeIncompatible { found: String, required: String },
     /// The sidecar process could not be spawned (OS-level failure).
     SpawnFailed { detail: String },
@@ -99,10 +114,10 @@ impl SidecarStartupError {
                 "Run `npm run sidecar:build` in the app/ directory, or use `npm run dev` which builds automatically.".to_string()
             }
             SidecarStartupError::NodeMissing => {
-                "Install Node.js 18-24 from https://nodejs.org".to_string()
+                "Install Node.js 18+ from https://nodejs.org".to_string()
             }
             SidecarStartupError::NodeIncompatible { .. } => {
-                "Install a compatible version of Node.js (18-24) from https://nodejs.org".to_string()
+                "Install Node.js 18+ from https://nodejs.org".to_string()
             }
             SidecarStartupError::SpawnFailed { .. } => {
                 "Check file permissions and ensure the sidecar bundle exists. Try running `npm run sidecar:build` in the app/ directory.".to_string()
@@ -136,11 +151,11 @@ impl fmt::Display for NodeBinaryError {
         match self {
             Self::NotFound => write!(
                 f,
-                "Node.js not found. Please install Node.js 18-24 from https://nodejs.org"
+                "Node.js not found. Please install Node.js 18+ from https://nodejs.org"
             ),
             Self::Incompatible { version } => write!(
                 f,
-                "Node.js {} is not compatible. This app requires Node.js 18-24.",
+                "Node.js {} is not compatible. This app requires Node.js 18+.",
                 version
             ),
         }
@@ -586,7 +601,7 @@ impl SidecarPool {
         let sidecar_path =
             resolve_sidecar_path(app_handle).map_err(|_| SidecarStartupError::SidecarMissing)?;
 
-        // 2. Check Node.js is available (bundled-first waterfall)
+        // 2. Check Node.js is available (system Node.js, 18+ required)
         let node_bin = resolve_node_binary_for_preflight(app_handle)
             .await
             .map_err(|e| match e {
@@ -594,7 +609,7 @@ impl SidecarPool {
                 NodeBinaryError::Incompatible { version } => {
                     SidecarStartupError::NodeIncompatible {
                         found: version,
-                        required: "18-24".to_string(),
+                        required: "18+".to_string(),
                     }
                 }
             })?;
@@ -858,15 +873,27 @@ impl SidecarPool {
                                         skill_name_stdout,
                                         request_id,
                                     );
-                                    {
+                                    // Guard: run_result (which precedes request_complete for
+                                    // one-shot runs) already removes pending and fires agent-exit.
+                                    // Only fire again if the request is still pending (e.g. the
+                                    // sidecar completed without emitting run_result).
+                                    let was_pending = {
                                         let mut pending = stdout_pending.lock().await;
-                                        pending.remove(request_id);
+                                        pending.remove(request_id).is_some()
+                                    };
+                                    if was_pending {
+                                        events::handle_sidecar_exit(
+                                            &app_handle_stdout,
+                                            request_id,
+                                            true,
+                                        );
+                                    } else {
+                                        log::debug!(
+                                            "[persistent-sidecar:{}] request_complete for '{}' — already cleaned up via run_result, skipping exit",
+                                            skill_name_stdout,
+                                            request_id,
+                                        );
                                     }
-                                    events::handle_sidecar_exit(
-                                        &app_handle_stdout,
-                                        request_id,
-                                        true,
-                                    );
                                     // Close JSONL log for this request
                                     let mut logs = stdout_request_logs.lock().await;
                                     logs.remove(request_id);
@@ -931,55 +958,91 @@ impl SidecarPool {
                                         None
                                     };
 
-                                    // turn_complete: streaming session finished one turn.
-                                    // Remove from pending and emit agent-exit so the frontend
-                                    // knows this turn is done. The session stays alive.
+                                    // turn_complete: signals end of one assistant turn.
+                                    // The event carries `streaming: bool` set by MessageProcessor:
+                                    //   streaming=true  → streaming refine session turn; remove
+                                    //                     pending and fire agent-exit so the
+                                    //                     frontend can enable the "send message"
+                                    //                     input for the next turn.
+                                    //   streaming=false → one-shot workflow step; turn_complete
+                                    //                     is informational only — run_result
+                                    //                     (which carries structured output) is
+                                    //                     the real terminal signal, and it always
+                                    //                     arrives after turn_complete in the SDK
+                                    //                     protocol. Firing agent-exit here would
+                                    //                     cause the frontend to try to complete
+                                    //                     the step before structured output
+                                    //                     arrives.
                                     if event_subtype == Some("turn_complete") {
-                                        log::info!(
-                                            "[persistent-sidecar:{}] Agent '{}' turn complete",
-                                            skill_name_stdout,
-                                            request_id,
-                                        );
-                                        {
-                                            let mut pending = stdout_pending.lock().await;
-                                            pending.remove(request_id);
+                                        let is_streaming = msg.get("event")
+                                            .and_then(|e| e.get("streaming"))
+                                            .and_then(|s| s.as_bool())
+                                            .unwrap_or(false);
+
+                                        if is_streaming {
+                                            log::info!(
+                                                "[persistent-sidecar:{}] Agent '{}' turn complete (streaming)",
+                                                skill_name_stdout,
+                                                request_id,
+                                            );
+                                            {
+                                                let mut pending = stdout_pending.lock().await;
+                                                pending.remove(request_id);
+                                            }
+                                            events::handle_sidecar_exit(
+                                                &app_handle_stdout,
+                                                request_id,
+                                                true,
+                                            );
+                                            // Close JSONL log for this turn
+                                            let mut logs = stdout_request_logs.lock().await;
+                                            logs.remove(request_id);
+                                        } else {
+                                            log::debug!(
+                                                "[persistent-sidecar:{}] Agent '{}' turn complete (one-shot, informational)",
+                                                skill_name_stdout,
+                                                request_id,
+                                            );
                                         }
-                                        events::handle_sidecar_exit(
-                                            &app_handle_stdout,
-                                            request_id,
-                                            true,
-                                        );
-                                        // Close JSONL log for this turn
-                                        let mut logs = stdout_request_logs.lock().await;
-                                        logs.remove(request_id);
                                         return;
                                     }
 
                                     // session_exhausted: streaming session ran out of turns.
-                                    // Emit agent-exit so the frontend can show "session limit reached" notice.
+                                    // Guard: run_result (emitted just before session_exhausted)
+                                    // already removed the request from pending and called
+                                    // handle_sidecar_exit. Only fire again if still pending.
                                     if event_subtype == Some("session_exhausted") {
                                         log::info!(
                                             "[persistent-sidecar:{}] Agent '{}' session exhausted",
                                             skill_name_stdout,
                                             request_id,
                                         );
-                                        {
+                                        let was_pending = {
                                             let mut pending = stdout_pending.lock().await;
-                                            pending.remove(request_id);
+                                            pending.remove(request_id).is_some()
+                                        };
+                                        if was_pending {
+                                            events::handle_sidecar_exit(
+                                                &app_handle_stdout,
+                                                request_id,
+                                                true,
+                                            );
+                                        } else {
+                                            log::debug!(
+                                                "[persistent-sidecar:{}] session_exhausted for '{}' — already cleaned up via run_result, skipping exit",
+                                                skill_name_stdout,
+                                                request_id,
+                                            );
                                         }
-                                        events::handle_sidecar_exit(
-                                            &app_handle_stdout,
-                                            request_id,
-                                            true,
-                                        );
                                         let mut logs = stdout_request_logs.lock().await;
                                         logs.remove(request_id);
                                         return;
                                     }
 
-                                    let is_terminal = stream_message_terminal_status(&msg).is_some();
+                                    let terminal_outcome = stream_message_terminal_status(&msg);
+                                    let is_terminal = terminal_outcome.is_some();
 
-                                    if let Some(success) = stream_message_terminal_status(&msg) {
+                                    if let Some(outcome) = terminal_outcome {
                                         // Guard: only process if this request is still pending.
                                         // The sidecar may emit both a raw error and a follow-up
                                         // agent_event(run_result) — the second must be a no-op.
@@ -996,27 +1059,49 @@ impl SidecarPool {
                                             );
                                         } else {
                                             if msg_type == "agent_event" {
-                                                if success {
-                                                    log::info!(
-                                                        "[persistent-sidecar:{}] Agent '{}' completed successfully via {}",
-                                                        skill_name_stdout,
-                                                        request_id,
-                                                        msg_type,
-                                                    );
-                                                } else {
-                                                    let detail = msg
-                                                        .get("event")
-                                                        .and_then(|event| event.get("status"))
-                                                        .and_then(|status| status.as_str())
-                                                        .unwrap_or("error")
-                                                        .to_string();
-                                                    log::warn!(
-                                                        "[persistent-sidecar:{}] Agent '{}' finished with error via {}: {}",
-                                                        skill_name_stdout,
-                                                        request_id,
-                                                        msg_type,
-                                                        detail,
-                                                    );
+                                                match &outcome {
+                                                    TerminalOutcome::Completed => {
+                                                        log::info!(
+                                                            "[persistent-sidecar:{}] Agent '{}' completed successfully via {}",
+                                                            skill_name_stdout,
+                                                            request_id,
+                                                            msg_type,
+                                                        );
+                                                    }
+                                                    TerminalOutcome::Shutdown => {
+                                                        log::info!(
+                                                            "[persistent-sidecar:{}] Agent '{}' shut down via {}",
+                                                            skill_name_stdout,
+                                                            request_id,
+                                                            msg_type,
+                                                        );
+                                                    }
+                                                    TerminalOutcome::Error => {
+                                                        let detail = msg
+                                                            .get("event")
+                                                            .and_then(|event| event.get("status"))
+                                                            .and_then(|status| status.as_str())
+                                                            .unwrap_or("error")
+                                                            .to_string();
+                                                        log::warn!(
+                                                            "[persistent-sidecar:{}] Agent '{}' finished with error via {}: {}",
+                                                            skill_name_stdout,
+                                                            request_id,
+                                                            msg_type,
+                                                            detail,
+                                                        );
+
+                                                        // Detect authentication errors and surface
+                                                        // an actionable RuntimeErrorDialog.
+                                                        if events::is_authentication_error(&msg) {
+                                                            events::emit_runtime_error(
+                                                                &app_handle_stdout,
+                                                                "AuthenticationFailed",
+                                                                "Your Anthropic API key is invalid or expired.",
+                                                                "Go to Settings and update your API key.",
+                                                            );
+                                                        }
+                                                    }
                                                 }
                                             }
 
@@ -1048,11 +1133,20 @@ impl SidecarPool {
                                                     *s.last_activity.lock().await = tokio::time::Instant::now();
                                                 }
                                             }
-                                            events::handle_sidecar_exit(
-                                                &app_handle_stdout,
-                                                request_id,
-                                                success,
-                                            );
+                                            // Dispatch based on outcome: shutdown uses handle_agent_shutdown
+                                            // so the frontend calls shutdownRun() instead of completeRun(false).
+                                            if outcome == TerminalOutcome::Shutdown {
+                                                events::handle_agent_shutdown(
+                                                    &app_handle_stdout,
+                                                    request_id,
+                                                );
+                                            } else {
+                                                events::handle_sidecar_exit(
+                                                    &app_handle_stdout,
+                                                    request_id,
+                                                    outcome == TerminalOutcome::Completed,
+                                                );
+                                            }
                                         }
                                     }
 
@@ -1884,136 +1978,34 @@ pub struct NodeResolution {
     pub meets_minimum: bool,
 }
 
-/// Map OS + architecture to the Node.js download directory convention.
-fn node_platform_arch() -> &'static str {
-    match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("macos", "aarch64") => "darwin-arm64",
-        ("macos", "x86_64") => "darwin-x64",
-        ("windows", "x86_64") => "win-x64",
-        ("windows", "aarch64") => "win-arm64",
-        (os, arch) => {
-            log::warn!("Unsupported platform: {os}-{arch}");
-            "unknown"
-        }
-    }
-}
-
-/// Unified Node.js resolution: bundled-first, then system fallback.
-///
-/// 1. Check bundled path (`{resource_dir}/node/{arch}/bin/node`) -- if executable, use it.
-/// 2. Fall back to system Node (PATH search, validate version 18-24) -- if found, use it.
-/// 3. Neither found -> error.
+/// Resolve the system Node.js binary (18+ required).
 ///
 /// Returns `NodeResolution` with full metadata (path, source, version, meets_minimum).
 /// Used by `check_node` and `check_startup_deps` commands that need rich status info.
-pub async fn resolve_node_binary(app_handle: &tauri::AppHandle) -> Result<NodeResolution, String> {
-    use tauri::Manager;
-
-    let arch = node_platform_arch();
-    let binary_name = if cfg!(windows) { "node.exe" } else { "node" };
-
-    // Step 1: Check for bundled Node.js via Tauri resource_dir
-    if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        let bundled_path = resource_dir
-            .join("node")
-            .join(arch)
-            .join("bin")
-            .join(binary_name);
-
-        if let Some(resolution) = try_bundled_node(&bundled_path).await {
-            return Ok(resolution);
-        }
-    }
-
-    // Step 2: Portable exe fallback -- check {exe_dir}/resources/node/{arch}/bin/node
-    // This handles Windows portable builds (--no-bundle) where resource_dir() may not
-    // resolve correctly but resources are copied alongside the exe.
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(exe_dir) = exe_path.parent() {
-            let portable_path = exe_dir
-                .join("resources")
-                .join("node")
-                .join(arch)
-                .join("bin")
-                .join(binary_name);
-
-            if let Some(resolution) = try_bundled_node(&portable_path).await {
-                return Ok(resolution);
-            }
-        }
-    }
-
-    // Step 3: Fall back to system Node.js
+pub async fn resolve_node_binary(
+    _app_handle: &tauri::AppHandle,
+) -> Result<NodeResolution, String> {
     resolve_system_node().await
 }
 
 /// Internal: resolve Node.js binary path for `preflight_check()`.
 ///
-/// Uses the same bundled-first waterfall as `resolve_node_binary()` but returns
-/// `Result<String, NodeBinaryError>` for compatibility with `preflight_check()`'s
-/// structured error mapping into `SidecarStartupError`.
-///
-/// Unlike the public `resolve_node_binary()`, this function is strict: if a Node.js
-/// binary is found but has an incompatible version, it returns `NodeBinaryError::Incompatible`
-/// rather than a best-effort `NodeResolution` with `meets_minimum: false`.
+/// Returns `Ok(path)` if a compatible Node.js (18+) is found.
+/// Returns `NodeBinaryError::Incompatible` if Node is found but below v18.
+/// Returns `NodeBinaryError::NotFound` if Node is not found at all.
 async fn resolve_node_binary_for_preflight(
     app_handle: &tauri::AppHandle,
 ) -> Result<String, NodeBinaryError> {
-    // Delegate to the public resolver which does the full bundled-first waterfall
     match resolve_node_binary(app_handle).await {
         Ok(resolution) if resolution.meets_minimum => Ok(resolution.path),
-        Ok(resolution) => {
-            // Found Node but incompatible version
-            Err(NodeBinaryError::Incompatible {
-                version: resolution.version.unwrap_or_else(|| "unknown".to_string()),
-            })
-        }
+        Ok(resolution) => Err(NodeBinaryError::Incompatible {
+            version: resolution.version.unwrap_or_else(|| "unknown".to_string()),
+        }),
         Err(_) => Err(NodeBinaryError::NotFound),
     }
 }
 
-/// Try to use a bundled Node.js binary at the given path.
-/// Returns `Some(NodeResolution)` if the binary exists and executes successfully.
-async fn try_bundled_node(bundled_path: &std::path::Path) -> Option<NodeResolution> {
-    if !bundled_path.exists() {
-        return None;
-    }
-
-    let path_str = bundled_path.to_string_lossy().to_string();
-
-    let mut cmd = Command::new(bundled_path);
-    cmd.arg("--version");
-
-    #[cfg(target_os = "windows")]
-    {
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
-
-    let output = cmd.output().await;
-
-    match output {
-        Ok(out) if out.status.success() => {
-            let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            let meets_minimum = is_node_compatible(&version);
-            log::info!("Using bundled Node.js {} at {}", version, path_str);
-            Some(NodeResolution {
-                path: path_str,
-                source: "bundled".to_string(),
-                version: Some(version),
-                meets_minimum,
-            })
-        }
-        _ => {
-            log::warn!(
-                "Bundled Node.js at {} exists but failed to execute, trying next candidate",
-                path_str
-            );
-            None
-        }
-    }
-}
-
-/// System Node.js discovery: searches PATH and well-known locations, validates version 18-24.
+/// System Node.js discovery: searches PATH and well-known locations, validates version 18+.
 async fn resolve_system_node() -> Result<NodeResolution, String> {
     let candidates: Vec<std::path::PathBuf> = {
         let mut v = vec![std::path::PathBuf::from("node")];
@@ -2073,17 +2065,14 @@ async fn resolve_system_node() -> Result<NodeResolution, String> {
         });
     }
 
-    Err(
-        "Node.js not found. Install Node.js 18+ from https://nodejs.org or use the bundled app."
-            .to_string(),
-    )
+    Err("Node.js not found. Install Node.js 18+ from https://nodejs.org".to_string())
 }
 
 fn is_node_compatible(version: &str) -> bool {
     let trimmed = version.strip_prefix('v').unwrap_or(version);
     if let Some(major_str) = trimmed.split('.').next() {
         if let Ok(major) = major_str.parse::<u32>() {
-            return (18..=24).contains(&major);
+            return major >= 18;
         }
     }
     false
@@ -2161,25 +2150,11 @@ mod tests {
     #[test]
     fn test_is_node_compatible_pool() {
         assert!(is_node_compatible("v18.0.0"));
+        assert!(is_node_compatible("v22.0.0"));
         assert!(is_node_compatible("v24.13.0"));
-        assert!(!is_node_compatible("v25.0.0"));
+        assert!(is_node_compatible("v25.0.0"));
         assert!(!is_node_compatible("v16.0.0"));
-    }
-
-    #[test]
-    fn test_node_platform_arch() {
-        let arch = node_platform_arch();
-        let expected: &[&str] = match std::env::consts::OS {
-            "macos" => &["darwin-arm64", "darwin-x64"],
-            "windows" => &["win-x64", "win-arm64"],
-            _ => &["unknown"], // Linux and others — not a release target
-        };
-        assert!(
-            expected.contains(&arch),
-            "Expected one of {:?}, got: {}",
-            expected,
-            arch
-        );
+        assert!(!is_node_compatible("v17.9.9"));
     }
 
     #[tokio::test]
@@ -2429,10 +2404,22 @@ mod tests {
             "message": "No stream session found"
         });
 
-        assert_eq!(stream_message_terminal_status(&completed), Some(true));
-        assert_eq!(stream_message_terminal_status(&failed), Some(false));
-        assert_eq!(stream_message_terminal_status(&raw_error), Some(false));
+        assert_eq!(stream_message_terminal_status(&completed), Some(TerminalOutcome::Completed));
+        assert_eq!(stream_message_terminal_status(&failed), Some(TerminalOutcome::Error));
+        assert_eq!(stream_message_terminal_status(&raw_error), Some(TerminalOutcome::Error));
         assert_eq!(stream_message_terminal_status(&display_item), None);
+
+        // "shutdown" status must map to Shutdown, not Error, so the frontend
+        // calls shutdownRun() instead of completeRun(false).
+        let shutdown = serde_json::json!({
+            "type": "agent_event",
+            "request_id": "agent-1",
+            "event": {
+                "type": "run_result",
+                "status": "shutdown"
+            }
+        });
+        assert_eq!(stream_message_terminal_status(&shutdown), Some(TerminalOutcome::Shutdown));
     }
 
     // -----------------------------------------------------------------
@@ -2475,6 +2462,17 @@ mod tests {
         assert_eq!(
             extract_step_label("my-skill-step0-1707654321000", "my-skill"),
             "step0"
+        );
+    }
+
+    #[test]
+    fn test_extract_step_label_named_workflow_step() {
+        assert_eq!(
+            extract_step_label(
+                "my-skill-confirm-decisions-1707654321000",
+                "my-skill"
+            ),
+            "confirm-decisions"
         );
     }
 

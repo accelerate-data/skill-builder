@@ -28,7 +28,7 @@ Adapter files must not duplicate canonical policy unless they are adding agent-s
 | Database | SQLite (`rusqlite` bundled) |
 | Rust errors | `thiserror` |
 
-**Agent runtime:** No hot-reload — restart `npm run dev` after editing `app/sidecar/`. Requires Node.js 18–24 (Node 25+ crashes the SDK). See `.claude/rules/agent-sidecar.md` when working in `app/sidecar/`.
+**Agent runtime:** No hot-reload — restart `npm run dev` after editing `app/sidecar/`. Requires Node.js 18+. See `.claude/rules/agent-sidecar.md` when working in `app/sidecar/`.
 
 **Key directories:**
 

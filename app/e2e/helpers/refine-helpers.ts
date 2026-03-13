@@ -81,5 +81,5 @@ export async function navigateToRefineWithSkill(
   await page.goto("/refine?skill=test-skill");
   await waitForAppReady(page);
   // Wait for the auto-selected skill name to appear in the picker
-  await page.getByText("Test Skill").first().waitFor({ timeout: 10_000 });
+  await page.getByRole("button", { name: /test-skill/i }).waitFor({ timeout: 10_000 });
 }

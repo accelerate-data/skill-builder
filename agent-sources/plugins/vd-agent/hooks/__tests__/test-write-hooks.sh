@@ -116,12 +116,12 @@ else
   fail "auto-init: MEMORY.md was overwritten"
 fi
 
-# Test timestamp format (YYYYMMDDTHHMMSSz)
+# Test timestamp format (YYYYMMDDTHHMMSSZ with optional -PID suffix)
 TIMESTAMP_FILE=$(ls "$INIT_DIR/vd-memory/learnings/learning-stop-"*.md | head -1)
 BASENAME=$(basename "$TIMESTAMP_FILE" .md)
 TIMESTAMP="${BASENAME#learning-stop-}"
-if echo "$TIMESTAMP" | grep -qE '^[0-9]{8}T[0-9]{6}Z$'; then
-  pass "timestamp format matches YYYYMMDDTHHMMSSz"
+if echo "$TIMESTAMP" | grep -qE '^[0-9]{8}T[0-9]{6}Z(-[0-9]+)?$'; then
+  pass "timestamp format matches YYYYMMDDTHHMMSSZ(-PID)?"
 else
   fail "timestamp format wrong: got $TIMESTAMP"
 fi

@@ -59,6 +59,10 @@ export interface InitProgressEvent {
 
 export interface TurnCompleteEvent {
   type: "turn_complete";
+  /** True when emitted by a streaming session turn; false for one-shot runs.
+   * Rust uses this flag to determine whether to treat the event as a per-turn
+   * terminal signal (streaming) or purely informational (one-shot). */
+  streaming: boolean;
 }
 
 export interface RunResultEvent {

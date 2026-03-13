@@ -34,6 +34,10 @@ Do not write any files in this agent.
 
 <instructions>
 
+## Narration
+
+Before each step and before spawning a sub-agent, write one short status line (≤ 10 words). Write it before tool calls. Examples: "Reading user context…", "Calling research plugin…", "Returning research output…"
+
 ## Step 0: Read user context
 
 Read `{workspace_dir}/user-context.md`.

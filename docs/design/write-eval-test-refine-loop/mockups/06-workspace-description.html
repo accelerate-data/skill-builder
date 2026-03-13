@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skill Builder — Workspace · Description</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: oklch(0.956 0 0);
+    --fg: oklch(0.145 0.005 250);
+    --card: oklch(1 0 0);
+    --muted: oklch(0.955 0.005 85);
+    --muted-fg: oklch(0.530 0.006 85);
+    --border: oklch(0.910 0.006 85);
+    --primary: oklch(0.680 0.120 210);
+    --primary-fg: oklch(1 0 0);
+    --destructive: oklch(0.570 0.180 25);
+    --sidebar-bg: oklch(0.965 0.004 85);
+    --seafoam: oklch(0.780 0.175 160);
+    --pacific: oklch(0.680 0.120 210);
+    --ocean: oklch(0.530 0.130 230);
+    --navy: oklch(0.215 0.105 265);
+    --amber: oklch(0.760 0.160 60);
+    --dot-red: oklch(0.570 0.180 25);
+    --dot-yellow: oklch(0.760 0.160 60);
+    --dot-green: oklch(0.780 0.175 160);
+  }
+  @keyframes dot-pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+  .dot-pulse { animation: dot-pulse 1.8s ease-in-out infinite; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); font-size: 13px; line-height: 1.5; display: flex; }
+
+  /* Icon sidebar */
+  .icon-sidebar { width: 52px; flex-shrink: 0; background: var(--sidebar-bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 4px; height: 100%; }
+  .icon-logo { width: 32px; height: 32px; border-radius: 8px; background: var(--navy); color: white; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: default; user-select: none; }
+  .icon-btn { width: 32px; height: 32px; border-radius: 6px; border: none; background: none; color: var(--muted-fg); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 120ms, color 120ms; }
+  .icon-btn:hover { background: var(--muted); color: var(--fg); }
+  .icon-btn svg { width: 18px; height: 18px; }
+
+  /* Left panel */
+  .left-panel { width: 260px; flex-shrink: 0; background: var(--sidebar-bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; height: 100%; }
+  .panel-topbar { height: 44px; padding: 0 12px; display: flex; align-items: center; border-bottom: 1px solid var(--border); gap: 6px; flex-shrink: 0; }
+  .panel-title { font-size: 13px; font-weight: 600; color: var(--navy); }
+  .count-badge { font-size: 11px; background: var(--muted); color: var(--muted-fg); border-radius: 9999px; padding: 1px 6px; font-weight: 400; }
+  .panel-topbar-right { margin-left: auto; }
+  .icon-btn-sm { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--pacific); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 120ms; }
+  .icon-btn-sm:hover { background: color-mix(in oklch, var(--pacific), transparent 90%); }
+  .icon-btn-sm svg { width: 14px; height: 14px; }
+  .search-wrap { padding: 6px 10px; position: relative; flex-shrink: 0; }
+  .search-icon { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; color: var(--muted-fg); pointer-events: none; display: flex; align-items: center; }
+  .search-icon svg { width: 12px; height: 12px; }
+  .search-input { width: 100%; height: 28px; border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px 4px 28px; font-size: 12px; background: var(--bg); color: var(--fg); font-family: inherit; outline: none; transition: border-color 120ms; }
+  .search-input:focus { border-color: var(--pacific); }
+  .search-input::placeholder { color: var(--muted-fg); }
+  .skill-list { flex: 1; overflow-y: auto; }
+  .skill-row { height: 46px; padding: 6px 10px 6px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); cursor: pointer; position: relative; transition: background 150ms; }
+  .skill-row:hover { background: var(--muted); }
+  .skill-row:hover .more-btn { opacity: 1; }
+  .skill-row.selected { background: color-mix(in oklch, var(--pacific), transparent 90%); border-left: 2px solid var(--pacific); padding-left: 10px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot-none { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; border: 1.5px solid var(--border); background: transparent; }
+  .skill-info { flex: 1; min-width: 0; }
+  .skill-name { font-size: 13px; font-weight: 500; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; display: block; }
+  .skill-purpose { font-size: 11px; color: var(--muted-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; display: block; }
+  .skill-meta { display: flex; align-items: center; gap: 4px; margin-left: auto; flex-shrink: 0; }
+  .skill-time { font-size: 10px; font-family: 'Courier New', monospace; color: var(--muted-fg); }
+  .more-btn { width: 24px; height: 24px; border-radius: 4px; border: none; background: none; color: var(--muted-fg); display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 120ms, background 120ms; flex-shrink: 0; margin-left: 4px; }
+  .more-btn:hover { background: var(--border); }
+  .more-btn svg { width: 14px; height: 14px; }
+  .panel-bottom { border-top: 1px solid var(--border); padding: 8px 12px; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .panel-bottom-btn { display: flex; align-items: center; gap: 6px; border: none; background: none; color: var(--muted-fg); font-size: 12px; cursor: pointer; padding: 0; font-family: inherit; transition: color 120ms; }
+  .panel-bottom-btn:hover { color: var(--fg); }
+  .panel-bottom-btn svg { width: 14px; height: 14px; }
+
+  /* Main area */
+  .main-area { flex: 1; display: flex; flex-direction: column; height: 100%; min-width: 0; overflow: hidden; background: var(--bg); }
+  .ws-header { flex-shrink: 0; background: var(--card); border-bottom: 1px solid var(--border); }
+  .ws-header-row1 { height: 48px; padding: 0 20px; display: flex; align-items: center; gap: 10px; }
+  .ws-skill-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .ws-skill-name { font-size: 14px; font-weight: 600; color: var(--navy); }
+  .ws-version-badge { font-size: 11px; font-family: 'Courier New', monospace; background: var(--muted); color: var(--muted-fg); border-radius: 9999px; padding: 2px 7px; }
+  .ws-type-badge { font-size: 10px; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-weight: 500; }
+  .ws-header-actions { margin-left: auto; }
+  .ws-more-btn { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--muted-fg); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 120ms, color 120ms; }
+  .ws-more-btn:hover { background: var(--muted); color: var(--fg); }
+  .ws-more-btn svg { width: 16px; height: 16px; }
+  .ws-tabs { display: flex; padding: 0 20px; border-bottom: 1px solid var(--border); }
+  .ws-tab { font-size: 13px; color: var(--muted-fg); padding: 8px 14px; border-bottom: 2px solid transparent; cursor: pointer; transition: color 120ms; white-space: nowrap; border-top: none; border-left: none; border-right: none; background: none; font-family: inherit; margin-bottom: -1px; }
+  .ws-tab:hover { color: var(--fg); }
+  .ws-tab.active { font-size: 13px; font-weight: 600; color: var(--fg); border-bottom-color: var(--pacific); }
+
+  /* Description content */
+  .desc-content { flex: 1; overflow-y: auto; padding: 24px 32px; }
+  .desc-inner { max-width: 660px; }
+
+  .section-heading { font-size: 14px; font-weight: 600; color: var(--navy); }
+  .section-subheading { font-size: 12px; color: var(--muted-fg); margin-top: 6px; line-height: 1.5; }
+
+  .current-desc-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; margin-top: 12px; }
+  .current-desc-text { font-size: 13px; line-height: 1.6; color: var(--fg); }
+  .action-row { display: flex; gap: 8px; margin-top: 12px; }
+  .btn-outline-sm { height: 30px; padding: 0 14px; background: none; border: 1px solid var(--border); color: var(--fg); border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; transition: background 120ms; }
+  .btn-outline-sm:hover { background: var(--muted); }
+  .btn-primary-sm { height: 30px; padding: 0 14px; background: var(--primary); color: var(--primary-fg); border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; transition: opacity 120ms; }
+  .btn-primary-sm:hover { opacity: 0.88; }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
+
+  /* Results section */
+  .results-heading-row { display: flex; align-items: center; gap: 10px; }
+  .score-badge { font-size: 11px; background: color-mix(in oklch, var(--seafoam), transparent 85%); color: var(--seafoam); border-radius: 9999px; padding: 2px 10px; font-weight: 500; }
+
+  /* Candidate cards */
+  .candidate-card { border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin-top: 12px; display: flex; gap: 12px; transition: border-color 120ms; cursor: pointer; }
+  .candidate-card.selected { border: 2px solid var(--pacific); background: color-mix(in oklch, var(--pacific), transparent 95%); }
+  .candidate-card:hover:not(.selected) { border-color: color-mix(in oklch, var(--pacific), transparent 60%); }
+  .radio { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0; margin-top: 1px; display: flex; align-items: center; justify-content: center; }
+  .radio.selected { border-color: var(--pacific); }
+  .radio.selected::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--pacific); }
+  .candidate-body { flex: 1; min-width: 0; }
+  .candidate-scores { display: flex; gap: 10px; margin-bottom: 6px; }
+  .cand-score { font-size: 11px; font-family: 'Courier New', monospace; }
+  .cand-score.coverage { color: var(--seafoam); }
+  .cand-score.precision { color: var(--pacific); }
+  .candidate-text { font-size: 12px; line-height: 1.5; color: var(--fg); }
+
+  .apply-row { display: flex; gap: 8px; align-items: center; margin-top: 16px; }
+  .btn-primary-md { height: 36px; padding: 0 18px; background: var(--primary); color: var(--primary-fg); border: none; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit; transition: opacity 120ms; }
+  .btn-primary-md:hover { opacity: 0.88; }
+  .btn-ghost { height: 36px; padding: 0 14px; background: none; border: none; color: var(--muted-fg); border-radius: 7px; font-size: 13px; cursor: pointer; font-family: inherit; transition: background 120ms, color 120ms; }
+  .btn-ghost:hover { background: var(--muted); color: var(--fg); }
+
+  /* Score table */
+  .score-table-heading { font-size: 12px; font-weight: 600; color: var(--muted-fg); margin-top: 28px; margin-bottom: 8px; }
+  .score-table { border-collapse: collapse; width: 100%; font-family: 'Courier New', monospace; font-size: 11px; }
+  .score-table th { background: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-fg); padding: 5px 10px; text-align: left; font-weight: 600; font-family: 'Inter', system-ui, sans-serif; }
+  .score-table td { border-bottom: 1px solid var(--border); padding: 5px 10px; color: var(--fg); }
+  .score-table tr.best td { background: color-mix(in oklch, var(--seafoam), transparent 90%); }
+  .score-table td.strong { font-weight: 700; color: var(--seafoam); }
+  .best-badge { display: inline-block; font-size: 10px; background: color-mix(in oklch, var(--seafoam), transparent 85%); color: var(--seafoam); border-radius: 9999px; padding: 1px 6px; margin-left: 6px; font-weight: 500; font-family: 'Inter', system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<!-- 52px icon sidebar -->
+<aside class="icon-sidebar">
+  <div class="icon-logo">SB</div>
+  <div style="margin-top: auto;">
+    <button class="icon-btn" title="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+</aside>
+
+<!-- Left panel -->
+<div class="left-panel">
+  <div class="panel-topbar">
+    <span class="panel-title">Skills</span>
+    <span class="count-badge">12</span>
+    <div class="panel-topbar-right"><button class="icon-btn-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button></div>
+  </div>
+  <div class="search-wrap">
+    <span class="search-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+    <input type="text" class="search-input" placeholder="Search skills…">
+  </div>
+  <div class="skill-list">
+    <div class="skill-row selected"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">dbt-data-quality</span><span class="skill-purpose">domain</span></div><div class="skill-meta"><span class="skill-time">2h</span><button class="more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button></div></div>
+    <div class="skill-row"><span class="dot" style="background:var(--dot-yellow);"></span><div class="skill-info"><span class="skill-name">fabric-pipeline</span><span class="skill-purpose">platform</span></div><div class="skill-meta"><span class="skill-time">1d</span><button class="more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button></div></div>
+    <div class="skill-row"><span class="dot dot-pulse" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">customer-segmentation</span><span class="skill-purpose">data-eng</span></div><div class="skill-meta"><span class="skill-time">3d</span><button class="more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button></div></div>
+    <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">sql-code-review</span><span class="skill-purpose">domain</span></div><div class="skill-meta"><span class="skill-time">4d</span><button class="more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button></div></div>
+    <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">salesforce-sync</span><span class="skill-purpose">source</span></div><div class="skill-meta"><span class="skill-time">5d</span><button class="more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button></div></div>
+    <div class="skill-row"><span class="dot-none"></span><div class="skill-info"><span class="skill-name">cloud-deploy</span><span class="skill-purpose">platform</span></div><div class="skill-meta"><span class="skill-time">1w</span><button class="more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button></div></div>
+    <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">spark-optimization</span><span class="skill-purpose">data-eng</span></div><div class="skill-meta"><span class="skill-time">1w</span><button class="more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button></div></div>
+    <div class="skill-row"><span class="dot" style="background:var(--dot-red);"></span><div class="skill-info"><span class="skill-name">airflow-dags</span><span class="skill-purpose">platform</span></div><div class="skill-meta"><span class="skill-time">2w</span><button class="more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button></div></div>
+    <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">postgres-migrations</span><span class="skill-purpose">domain</span></div><div class="skill-meta"><span class="skill-time">2w</span><button class="more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button></div></div>
+    <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">looker-dashboards</span><span class="skill-purpose">source</span></div><div class="skill-meta"><span class="skill-time">3w</span><button class="more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button></div></div>
+    <div class="skill-row"><span class="dot dot-pulse" style="background:var(--dot-red);"></span><div class="skill-info"><span class="skill-name">event-streaming</span><span class="skill-purpose">data-eng</span></div><div class="skill-meta"><span class="skill-time">3w</span><button class="more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button></div></div>
+    <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">redshift-tuning</span><span class="skill-purpose">platform</span></div><div class="skill-meta"><span class="skill-time">1mo</span><button class="more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button></div></div>
+  </div>
+  <div class="panel-bottom">
+    <button class="panel-bottom-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Settings
+    </button>
+  </div>
+</div>
+
+<!-- Main area: Description -->
+<main class="main-area">
+  <div class="ws-header">
+    <div class="ws-header-row1">
+      <span class="ws-skill-dot" style="background:var(--dot-green);"></span>
+      <span class="ws-skill-name">dbt-data-quality</span>
+      <span class="ws-version-badge">v3</span>
+      <span class="ws-type-badge">domain</span>
+      <div class="ws-header-actions">
+        <button class="ws-more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+      </div>
+    </div>
+    <div class="ws-tabs">
+      <button class="ws-tab">Overview</button>
+      <button class="ws-tab">Refine</button>
+      <button class="ws-tab">Evals</button>
+      <button class="ws-tab active">Description</button>
+    </div>
+  </div>
+
+  <div class="desc-content">
+    <div class="desc-inner">
+
+      <!-- Current description section -->
+      <div class="section-heading">Trigger Description</div>
+      <div class="section-subheading">What Claude reads to decide whether to invoke this skill.</div>
+
+      <div class="current-desc-card">
+        <div class="current-desc-text">
+          Use this skill when working with dbt models on Microsoft Fabric that require data quality checks, incremental model configurations, or CDC-aware patterns. Applies to source freshness validation, schema tests, and custom test macros targeting Fabric's Lakehouse storage layer.
+        </div>
+        <div class="action-row">
+          <button class="btn-outline-sm">Edit manually</button>
+          <button class="btn-primary-sm">Optimize with AI →</button>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Results section -->
+      <div class="results-heading-row">
+        <div class="section-heading">Optimization Results</div>
+        <span class="score-badge">5 iterations · test score 88%</span>
+      </div>
+      <div class="section-subheading" style="margin-top: 6px;">Select the best candidate.</div>
+
+      <!-- Candidate A — selected -->
+      <div class="candidate-card selected">
+        <div class="radio selected"></div>
+        <div class="candidate-body">
+          <div class="candidate-scores">
+            <span class="cand-score coverage">Coverage 94%</span>
+            <span class="cand-score precision">Precision 88%</span>
+          </div>
+          <div class="candidate-text">
+            Use this skill for dbt data quality work on Microsoft Fabric: incremental model strategies with CDC lag compensation, source freshness SLA enforcement, Lakehouse-compatible schema tests, and custom test macros. Invoke when the user mentions dbt tests, freshness, incremental configs, or CDC patterns in a Fabric context.
+          </div>
+        </div>
+      </div>
+
+      <!-- Candidate B -->
+      <div class="candidate-card">
+        <div class="radio"></div>
+        <div class="candidate-body">
+          <div class="candidate-scores">
+            <span class="cand-score coverage">Coverage 89%</span>
+            <span class="cand-score precision">Precision 92%</span>
+          </div>
+          <div class="candidate-text">
+            Apply when implementing dbt data quality checks, source freshness monitoring, or incremental loading on Microsoft Fabric. Covers CDC patterns, schema test generation, and Lakehouse storage considerations.
+          </div>
+        </div>
+      </div>
+
+      <!-- Candidate C -->
+      <div class="candidate-card">
+        <div class="radio"></div>
+        <div class="candidate-body">
+          <div class="candidate-scores">
+            <span class="cand-score coverage">Coverage 91%</span>
+            <span class="cand-score precision">Precision 90%</span>
+          </div>
+          <div class="candidate-text">
+            Invoke for dbt-based data quality engineering on Fabric: incremental model configuration, CDC lookback windows, source freshness thresholds, and schema test scaffolding for Lakehouse tables.
+          </div>
+        </div>
+      </div>
+
+      <div class="apply-row">
+        <button class="btn-primary-md">Apply Candidate A</button>
+        <button class="btn-ghost">Keep current</button>
+      </div>
+
+      <!-- Score progression table -->
+      <div class="score-table-heading">Score Progression</div>
+      <table class="score-table">
+        <thead>
+          <tr>
+            <th>Iteration</th>
+            <th>Train</th>
+            <th>Test</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>v0 (original)</td>
+            <td>55%</td>
+            <td>52%</td>
+          </tr>
+          <tr>
+            <td>v1</td>
+            <td>68%</td>
+            <td>61%</td>
+          </tr>
+          <tr>
+            <td>v2</td>
+            <td>79%</td>
+            <td>74%</td>
+          </tr>
+          <tr>
+            <td>v3</td>
+            <td>88%</td>
+            <td>83%</td>
+          </tr>
+          <tr class="best">
+            <td>v4 (best)<span class="best-badge">← best</span></td>
+            <td class="strong">93%</td>
+            <td class="strong">88%</td>
+          </tr>
+        </tbody>
+      </table>
+
+    </div>
+  </div>
+</main>
+
+</body>
+</html>

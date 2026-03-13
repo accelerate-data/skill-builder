@@ -51,57 +51,53 @@ const multiContradictoryDecisions = JSON.stringify({
 // ─── Summary Card Stats ───────────────────────────────────────────────────────
 
 describe("DecisionsSummaryCard — Summary Stats", () => {
-  it("shows decision count from metadata", () => {
+  it("shows ready-to-proceed action header for clean decisions", () => {
     render(<DecisionsSummaryCard decisionsContent={sampleDecisions} />);
-    expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText("total")).toBeInTheDocument();
+    expect(screen.getByText("Decisions confirmed")).toBeInTheDocument();
+    expect(screen.getByText("No contradictions were found. You can proceed to Generate Skill.")).toBeInTheDocument();
   });
 
-  it("shows conflicts reconciled count", () => {
+  it("shows summary chips instead of quality columns", () => {
     render(<DecisionsSummaryCard decisionsContent={sampleDecisions} />);
-    expect(screen.getByText("reconciled")).toBeInTheDocument();
-    expect(screen.getByText("No unresolvable contradictions")).toBeInTheDocument();
+    expect(screen.getByText("3 total")).toBeInTheDocument();
+    expect(screen.getByText("2 resolved")).toBeInTheDocument();
+    expect(screen.getByText("1 conflict resolved")).toBeInTheDocument();
   });
 
-  it("shows resolved and conflict-resolved breakdown", () => {
+  it("shows the action message in the main header", () => {
     render(<DecisionsSummaryCard decisionsContent={sampleDecisions} />);
-    expect(screen.getByText("Resolved")).toBeInTheDocument();
-    expect(screen.getByText("Conflict-resolved")).toBeInTheDocument();
-  });
-
-  it("shows quality column header", () => {
-    render(<DecisionsSummaryCard decisionsContent={sampleDecisions} />);
-    expect(screen.getByText("Quality")).toBeInTheDocument();
+    expect(screen.getByText("Decisions confirmed")).toBeInTheDocument();
   });
 
   it("shows duration and cost when provided", () => {
     render(<DecisionsSummaryCard decisionsContent={sampleDecisions} duration={125000} cost={0.5234} />);
-    expect(screen.getByText("2m 5s")).toBeInTheDocument();
-    expect(screen.getByText("$0.5234")).toBeInTheDocument();
+    expect(screen.getAllByText("2m 5s").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("$0.5234").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("does not show contradictory banner when flag is absent", () => {
+  it("does not show review-required copy when flag is absent", () => {
     render(<DecisionsSummaryCard decisionsContent={sampleDecisions} />);
-    expect(screen.queryByText(/Contradictory inputs detected/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/need your review/)).not.toBeInTheDocument();
   });
 });
 
 // ─── Contradictory Inputs ─────────────────────────────────────────────────────
 
 describe("DecisionsSummaryCard — Contradictory Inputs", () => {
-  it("shows contradictory warning banner", () => {
+  it("shows review-required action header", () => {
     render(<DecisionsSummaryCard decisionsContent={contradictoryDecisions} />);
-    expect(screen.getByText(/Contradictory inputs detected/)).toBeInTheDocument();
+    expect(screen.getByText("1 decision needs your review")).toBeInTheDocument();
+    expect(screen.getByText(/Review the highlighted decisions below/)).toBeInTheDocument();
   });
 
   it("shows needs-review count", () => {
     render(<DecisionsSummaryCard decisionsContent={contradictoryDecisions} />);
-    expect(screen.getByText("Needs review")).toBeInTheDocument();
+    expect(screen.getByText("1 needs review")).toBeInTheDocument();
   });
 
-  it("shows contradictions review required in quality column", () => {
+  it("shows needs review toggle inside the summary panel", () => {
     render(<DecisionsSummaryCard decisionsContent={contradictoryDecisions} />);
-    expect(screen.getByText(/Contradictions — review required/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Needs Review")).toBeInTheDocument();
   });
 });
 
@@ -126,7 +122,7 @@ describe("DecisionsSummaryCard — Decision Cards", () => {
     render(<DecisionsSummaryCard decisionsContent={sampleDecisions} />);
     const badges = screen.getAllByText("resolved");
     expect(badges.length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText(/conflict-resolved/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/conflict resolved/i).length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows decision preview text when collapsed", () => {
@@ -144,7 +140,7 @@ describe("DecisionsSummaryCard — Decision Cards", () => {
 
   it("shows needs-review badge for contradictory decisions", () => {
     render(<DecisionsSummaryCard decisionsContent={contradictoryDecisions} />);
-    expect(screen.getByText("needs-review")).toBeInTheDocument();
+    expect(screen.getAllByText("needs review").length).toBeGreaterThanOrEqual(1);
   });
 
   it("filters to only needs-review decisions when toggle is enabled", async () => {
@@ -158,6 +154,26 @@ describe("DecisionsSummaryCard — Decision Cards", () => {
 
     expect(screen.getByText("D1")).toBeInTheDocument();
     expect(screen.queryByText("D2")).not.toBeInTheDocument();
+  });
+
+  it("keeps the Needs Review toggle visible even when only revised decisions remain", async () => {
+    const revisedOnlyContent = JSON.stringify({
+      version: "1",
+      metadata: {
+        decision_count: 2,
+        conflicts_resolved: 0,
+        round: 1,
+        contradictory_inputs: "revised",
+      },
+      decisions: [
+        { id: "D1", title: "Revenue Model", original_question: "Should we track revenue?", decision: "Track ARR", implication: "Reviewed and updated", status: "revised" },
+        { id: "D2", title: "Resolved Item", original_question: "Format?", decision: "JSON", implication: "Clear", status: "resolved" },
+      ],
+    }, null, 2);
+
+    render(<DecisionsSummaryCard decisionsContent={revisedOnlyContent} />);
+
+    expect(screen.getByLabelText("Needs Review")).toBeInTheDocument();
   });
 });
 
@@ -244,7 +260,7 @@ describe("serializeDecisions", () => {
 // ─── Inline Editing (allowEdit + blur) ───────────────────────────────────────
 
 describe("DecisionsSummaryCard — inline editing", () => {
-  it("shows editing hint banner when allowEdit and needs-review cards exist", () => {
+  it("shows review-required action copy when allowEdit and needs-review cards exist", () => {
     render(
       <DecisionsSummaryCard
         decisionsContent={contradictoryDecisions}
@@ -252,17 +268,17 @@ describe("DecisionsSummaryCard — inline editing", () => {
         onDecisionsChange={vi.fn()}
       />
     );
-    expect(screen.getByText(/need your review/)).toBeInTheDocument();
+    expect(screen.getByText("1 decision needs your review")).toBeInTheDocument();
   });
 
-  it("does not show editing hint when allowEdit=false", () => {
+  it("still shows review-required action copy when allowEdit=false", () => {
     render(
       <DecisionsSummaryCard
         decisionsContent={contradictoryDecisions}
         allowEdit={false}
       />
     );
-    expect(screen.queryByText(/need your review/)).not.toBeInTheDocument();
+    expect(screen.getByText("1 decision needs your review")).toBeInTheDocument();
   });
 
   it("auto-expands needs-review cards and shows textareas for decision and implication", () => {
@@ -322,7 +338,7 @@ describe("DecisionsSummaryCard — inline editing", () => {
     expect(onChange).toHaveBeenCalled();
   });
 
-  it("shows revised banner and hides contradictions banner after blur on single-contradiction", async () => {
+  it("shows ready-with-edits action copy after blur on single-contradiction", async () => {
     const user = userEvent.setup();
     render(
       <DecisionsSummaryCard
@@ -332,7 +348,7 @@ describe("DecisionsSummaryCard — inline editing", () => {
       />
     );
 
-    expect(screen.getByText(/Contradictory inputs detected/)).toBeInTheDocument();
+    expect(screen.getByText("1 decision needs your review")).toBeInTheDocument();
 
     const textareas = screen.getAllByRole("textbox") as HTMLTextAreaElement[];
     const decisionTextarea = textareas.find((ta) => ta.value === "Track MRR");
@@ -340,8 +356,36 @@ describe("DecisionsSummaryCard — inline editing", () => {
     await user.type(decisionTextarea!, "Track ARR instead.");
     await user.tab(); // blur
 
-    expect(screen.queryByText(/Contradictory inputs detected/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Contradictions reviewed/)).toBeInTheDocument();
+    expect(screen.queryByText(/need(?:s)? your review/)).not.toBeInTheDocument();
+    expect(screen.getByText("All decisions reviewed")).toBeInTheDocument();
+    expect(screen.getByText("No blocking contradictions remain. You can generate the skill with your edits.")).toBeInTheDocument();
+  });
+
+  it("keeps the Needs Review toggle visible after the last needs-review decision is revised", async () => {
+    const user = userEvent.setup();
+    render(
+      <DecisionsSummaryCard
+        decisionsContent={contradictoryDecisions}
+        allowEdit={true}
+        onDecisionsChange={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByLabelText("Needs Review"));
+
+    const textareas = screen.getAllByRole("textbox") as HTMLTextAreaElement[];
+    const decisionTextarea = textareas.find((ta) => ta.value === "Track MRR");
+    await user.clear(decisionTextarea!);
+    await user.type(decisionTextarea!, "Track ARR instead.");
+    await user.tab();
+
+    expect(screen.getByLabelText("Needs Review")).toBeInTheDocument();
+    expect(screen.getByText("No decisions need review.")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Needs Review"));
+
+    expect(screen.getByText("D1")).toBeInTheDocument();
+    expect(screen.getByText("D2")).toBeInTheDocument();
   });
 
   it("serializes with revised status on blur", async () => {
@@ -388,8 +432,8 @@ describe("DecisionsSummaryCard — inline editing", () => {
     await user.type(decisionTextarea!, "ARR");
     await user.tab();
 
-    // After blur: Revised row visible
-    expect(screen.getByText("Revised")).toBeInTheDocument();
+    // After blur: revised chip visible
+    expect(screen.getByText("1 revised")).toBeInTheDocument();
   });
 });
 
@@ -398,21 +442,21 @@ describe("DecisionsSummaryCard — inline editing", () => {
 describe("DecisionsSummaryCard — Edge Cases", () => {
   it("handles empty content gracefully", () => {
     render(<DecisionsSummaryCard decisionsContent="" />);
-    expect(screen.getByText("Decisions Complete")).toBeInTheDocument();
-    expect(screen.getAllByText("0").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Decisions confirmed")).toBeInTheDocument();
+    expect(screen.getByText("0 total")).toBeInTheDocument();
   });
 
   it("handles malformed JSON gracefully", () => {
     render(<DecisionsSummaryCard decisionsContent="not json at all" />);
-    expect(screen.getByText("Decisions Complete")).toBeInTheDocument();
-    expect(screen.getAllByText("0").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Decisions confirmed")).toBeInTheDocument();
+    expect(screen.getByText("0 total")).toBeInTheDocument();
   });
 });
 
 // ─── Multi-contradiction guard lifecycle ──────────────────────────────────────
 
 describe("DecisionsSummaryCard — multi-contradiction guard", () => {
-  it("keeps contradictions banner when only one of two needs-review decisions is blurred", async () => {
+  it("keeps review-required action copy when only one of two needs-review decisions is blurred", async () => {
     const user = userEvent.setup();
     render(
       <DecisionsSummaryCard
@@ -422,7 +466,7 @@ describe("DecisionsSummaryCard — multi-contradiction guard", () => {
       />
     );
 
-    expect(screen.getByText(/Contradictory inputs detected/)).toBeInTheDocument();
+    expect(screen.getByText("2 decisions need your review")).toBeInTheDocument();
 
     // Edit + blur only D1 — D2 still needs review
     const textareas = screen.getAllByRole("textbox") as HTMLTextAreaElement[];
@@ -433,11 +477,11 @@ describe("DecisionsSummaryCard — multi-contradiction guard", () => {
     await user.tab(); // blur D1
 
     // Contradictions banner should STILL be visible (D2 not addressed)
-    expect(screen.getByText(/Contradictory inputs detected/)).toBeInTheDocument();
-    expect(screen.queryByText(/Contradictions reviewed/)).not.toBeInTheDocument();
+    expect(screen.getByText("1 decision needs your review")).toBeInTheDocument();
+    expect(screen.queryByText("All decisions reviewed")).not.toBeInTheDocument();
   });
 
-  it("shows revised banner only after ALL needs-review decisions are blurred", async () => {
+  it("shows ready-with-edits action copy only after ALL needs-review decisions are blurred", async () => {
     const user = userEvent.setup();
     render(
       <DecisionsSummaryCard
@@ -455,7 +499,7 @@ describe("DecisionsSummaryCard — multi-contradiction guard", () => {
     await user.type(d1Textarea!, "Track ARR.");
     await user.tab();
 
-    expect(screen.getByText(/Contradictory inputs detected/)).toBeInTheDocument();
+    expect(screen.getByText("1 decision needs your review")).toBeInTheDocument();
 
     // Edit + blur D2
     const d2Textarea = screen.getAllByRole("textbox").find(
@@ -466,8 +510,8 @@ describe("DecisionsSummaryCard — multi-contradiction guard", () => {
     await user.tab();
 
     // NOW both are revised → banner switches
-    expect(screen.queryByText(/Contradictory inputs detected/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Contradictions reviewed/)).toBeInTheDocument();
+    expect(screen.queryByText(/need(?:s)? your review/)).not.toBeInTheDocument();
+    expect(screen.getByText("All decisions reviewed")).toBeInTheDocument();
   });
 
   it("shows correct counts: 1 revised, 1 needs-review after partial blur", async () => {
@@ -487,8 +531,8 @@ describe("DecisionsSummaryCard — multi-contradiction guard", () => {
     await user.type(d1Textarea!, "ARR");
     await user.tab();
 
-    // Should show 1 revised and 1 needs-review in the stats
-    expect(screen.getByText("Revised")).toBeInTheDocument();
-    expect(screen.getByText("Needs review")).toBeInTheDocument();
+    // Should show 1 revised and 1 needs-review in the summary chips
+    expect(screen.getByText("1 revised")).toBeInTheDocument();
+    expect(screen.getByText("1 needs review")).toBeInTheDocument();
   });
 });

@@ -6,7 +6,7 @@ Available as a **Tauri desktop app** (GUI) that orchestrates agents via a Node.j
 
 ## Quick Start
 
-Requires: Node.js 18-24, Rust toolchain, [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+Requires: Node.js 18+, Rust toolchain, [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
 
 ```bash
 cd app

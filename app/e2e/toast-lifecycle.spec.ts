@@ -174,7 +174,6 @@ test.describe("Toast lifecycle policy", { tag: "@toast" }, () => {
         ],
       },
       run_answer_evaluator: "gate-agent-001",
-      autofill_clarifications: 3,
       read_file: {
         [SKILLS_CLARIFICATIONS_PATH]: CLARIFICATIONS_JSON,
         "*": CLARIFICATIONS_JSON,
@@ -219,9 +218,11 @@ test.describe("Toast lifecycle policy", { tag: "@toast" }, () => {
     const agentId = await thinking.getAttribute("data-agent-id");
     expect(agentId).toBeTruthy();
 
-    await emitTauriEvent(page, "agent-message", {
+    await emitTauriEvent(page, "agent-session-exhausted", {
       agent_id: agentId,
-      message: { type: "session_exhausted" },
+      sessionId: "refine-session-001",
+      type: "session_exhausted",
+      timestamp: Date.now(),
     });
     await emitTauriEvent(page, "agent-exit", {
       agent_id: agentId,
@@ -283,16 +284,33 @@ test.describe("Toast lifecycle policy", { tag: "@toast" }, () => {
         list_models: [],
         get_workspace_path: "/tmp/test-workspace",
         list_refinable_skills: [{ name: "my-skill", purpose: "domain" }],
-        has_running_agents: true,
+        has_running_agents: false,
+        prepare_skill_test: {
+          test_id: "test-toast-001",
+          baseline_cwd: "/tmp/test-baseline",
+          with_skill_cwd: "/tmp/test-with",
+          transcript_log_dir: "/tmp/test-workspace/my-skill/logs",
+        },
+        start_agent: "agent-id-mock",
+        cleanup_skill_test: undefined,
+        cleanup_skill_sidecar: undefined,
       };
     });
     await page.goto("/test");
     await waitForAppReady(page);
+    await page.evaluate(async () => {
+      const { useWorkflowStore } = await import("/src/stores/workflow-store.ts");
+      useWorkflowStore.setState({ isRunning: true });
+    });
     await page.getByRole("button", { name: /select a skill/i }).click();
-    await page.getByText("my-skill").click();
+    await page.getByRole("option", { name: /my-skill/i }).click();
     await page.getByPlaceholder("Describe a task to test the skill against...").fill("run a validation");
     await page.getByRole("button", { name: /run test/i }).click();
     await expectToastSticky(page, /Cannot start test while other agents are running/);
+    await page.evaluate(async () => {
+      const { useWorkflowStore } = await import("/src/stores/workflow-store.ts");
+      useWorkflowStore.setState({ isRunning: false });
+    });
 
     await navigateToWorkflowUpdateMode(page, {
       ...WORKFLOW_OVERRIDES,
