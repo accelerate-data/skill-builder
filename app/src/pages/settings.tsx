@@ -18,6 +18,13 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import type { AppSettings, MarketplaceRegistry } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useSettingsStore, type ModelInfo } from "@/stores/settings-store"
@@ -58,7 +65,7 @@ export default function SettingsPage() {
   const [apiKey, setApiKey] = useState<string | null>(useSettingsStore.getState().anthropicApiKey ?? null)
   const workspacePath = useSettingsStore.getState().workspacePath ?? null
   const [skillsPath, setSkillsPath] = useState<string | null>(useSettingsStore.getState().skillsPath ?? null)
-  const [preferredModel, setPreferredModel] = useState<string>(useSettingsStore.getState().preferredModel ?? "sonnet")
+  const [preferredModel, setPreferredModel] = useState<string>(useSettingsStore.getState().preferredModel ?? "")
   const [logLevel, setLogLevel] = useState(useSettingsStore.getState().logLevel ?? "info")
   const [extendedThinking, setExtendedThinking] = useState(useSettingsStore.getState().extendedThinking ?? false)
   const [interleavedThinkingBeta, setInterleavedThinkingBeta] = useState(useSettingsStore.getState().interleavedThinkingBeta ?? true)
@@ -422,24 +429,19 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-3">
-                  <select
-                    value={preferredModel}
-                    onChange={(e) => { setPreferredModel(e.target.value); autoSave({ preferredModel: e.target.value }); }}
-                    className="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  <Select
+                    value={preferredModel || (availableModels.length > 0 ? availableModels[0].id : "")}
+                    onValueChange={(val) => { setPreferredModel(val); autoSave({ preferredModel: val }); }}
                   >
-                    {availableModels.length > 0
-                      ? availableModels.map((m) => (
-                          <option key={m.id} value={m.id}>{m.displayName}</option>
-                        ))
-                      : (
-                        <>
-                          <option value="haiku">Haiku — fastest, lowest cost</option>
-                          <option value="sonnet">Sonnet — balanced (default)</option>
-                          <option value="opus">Opus — most capable</option>
-                        </>
-                      )
-                    }
-                  </select>
+                    <SelectTrigger className="w-64">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableModels.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.displayName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </CardContent>
             </Card>
@@ -477,23 +479,26 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="grid gap-2">
-                  <Label htmlFor="sdk-effort">Reasoning effort</Label>
-                  <select
-                    id="sdk-effort"
-                    value={sdkEffort}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      setSdkEffort(value)
-                      autoSave({ sdkEffort: value || null })
+                  <Label>Reasoning effort</Label>
+                  <Select
+                    value={sdkEffort || "_default"}
+                    onValueChange={(val) => {
+                      const effort = val === "_default" ? "" : val
+                      setSdkEffort(effort)
+                      autoSave({ sdkEffort: effort || null })
                     }}
-                    className="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   >
-                    <option value="">Default</option>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="max">Max</option>
-                  </select>
+                    <SelectTrigger className="w-64">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_default">Default</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="max">Max</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -829,21 +834,24 @@ export default function SettingsPage() {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="log-level-select">Log Level</Label>
                   <div className="flex items-center gap-3">
-                    <select
-                      id="log-level-select"
+                    <Select
                       value={logLevel}
-                      onChange={(e) => {
-                        setLogLevel(e.target.value)
-                        autoSave({ logLevel: e.target.value })
-                        invoke("set_log_level", { level: e.target.value }).catch(() => {})
+                      onValueChange={(val) => {
+                        setLogLevel(val)
+                        autoSave({ logLevel: val })
+                        invoke("set_log_level", { level: val }).catch(() => {})
                       }}
-                      className="flex h-9 w-fit rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     >
-                      <option value="error">Error</option>
-                      <option value="warn">Warn</option>
-                      <option value="info">Info</option>
-                      <option value="debug">Debug</option>
-                    </select>
+                      <SelectTrigger id="log-level-select" className="w-fit">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="error">Error</SelectItem>
+                        <SelectItem value="warn">Warn</SelectItem>
+                        <SelectItem value="info">Info</SelectItem>
+                        <SelectItem value="debug">Debug</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <span className="text-sm text-muted-foreground">
                       {{ error: "Only errors", warn: "Errors + warnings", info: "Errors + warnings + lifecycle (default)", debug: "Everything (verbose)" }[logLevel]}
                     </span>
