@@ -53,7 +53,7 @@ function makeClarifications(questions: Question[]): ClarificationsFile {
       must_answer_count: questions.filter((q) => q.must_answer).length,
       priority_questions: questions.filter((q) => q.must_answer).map((q) => q.id),
     },
-    sections: [{ id: "S1", title: "Test Section", questions }],
+    sections: [{ id: 1, title: "Test Section", questions }],
     notes: [],
     answer_evaluator_notes: [],
   };
@@ -72,12 +72,12 @@ function makeClarificationsWithSections(): ClarificationsFile {
     },
     sections: [
       {
-        id: "S1",
+        id: 1,
         title: "Section One",
         questions: [makeQuestion({ id: "Q1", title: "Question One" })],
       },
       {
-        id: "S2",
+        id: 2,
         title: "Section Two",
         questions: [makeQuestion({ id: "Q2", title: "Question Two" })],
       },
