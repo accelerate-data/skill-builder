@@ -1,0 +1,147 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "repo-map",
+  "description": "Compact repository map for agent startup context. Refresh whenever architecture, entrypoints, commands, modules, or package structure changes.",
+  "type": "object",
+  "required": [
+    "generated_at",
+    "primary_languages",
+    "package_managers",
+    "build_systems",
+    "test_frameworks",
+    "applications",
+    "entrypoints",
+    "modules",
+    "key_directories",
+    "dependencies_internal",
+    "dependencies_external",
+    "commands",
+    "conventions",
+    "notes_for_agents"
+  ],
+  "properties": {
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of when this file was last generated."
+    },
+    "repo_root": {
+      "type": "string",
+      "description": "Repository root directory name or path."
+    },
+    "primary_languages": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Primary languages used in the repo, in order of prevalence."
+    },
+    "package_managers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "manifest"],
+        "properties": {
+          "name": { "type": "string" },
+          "manifest": { "type": "string" },
+          "lockfile": { "type": "string" },
+          "workspaces": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "build_systems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "config_files"],
+        "properties": {
+          "name": { "type": "string" },
+          "config_files": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "test_frameworks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "scope"],
+        "properties": {
+          "name": { "type": "string" },
+          "config_files": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "scope": { "type": "string" }
+        }
+      }
+    },
+    "applications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "description"],
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string" },
+          "description": { "type": "string" },
+          "identifier": { "type": "string" }
+        }
+      }
+    },
+    "entrypoints": {
+      "type": "object",
+      "description": "Map of label → file path for each runtime entrypoint.",
+      "additionalProperties": { "type": "string" }
+    },
+    "modules": {
+      "type": "object",
+      "description": "Named source modules with path and description.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["path", "description"],
+        "properties": {
+          "path": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "key_directories": {
+      "type": "object",
+      "description": "Map of directory path → one-line purpose description.",
+      "additionalProperties": { "type": "string" }
+    },
+    "dependencies_internal": {
+      "type": "object",
+      "description": "Map of layer-pair label → description of how they communicate.",
+      "additionalProperties": { "type": "string" }
+    },
+    "dependencies_external": {
+      "type": "object",
+      "description": "External dependencies grouped by category (e.g. runtime, dev).",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": { "type": "string" }
+      }
+    },
+    "commands": {
+      "type": "object",
+      "description": "Map of command label → shell command string.",
+      "additionalProperties": { "type": "string" }
+    },
+    "conventions": {
+      "type": "object",
+      "description": "Map of convention label → rule description.",
+      "additionalProperties": { "type": "string" }
+    },
+    "notes_for_agents": {
+      "type": "object",
+      "description": "Durable, non-obvious operational notes for coding agents.",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

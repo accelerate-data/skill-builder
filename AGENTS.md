@@ -46,7 +46,7 @@ Use this map before reasoning about implementation location:
 - `app/sidecar/` — Node/TypeScript sidecar runtime code.
 - `app/e2e/` — Playwright E2E tests only.
 - `app/src/__tests__/` and `app/sidecar/__tests__/` — unit/integration tests only.
-- `agent-sources/agents/` — agent prompts (flat directory, validated by `./scripts/validate.sh`).
+- `agent-sources/agents/` — agent prompts (flat directory, validated by `npm run test:agents:structural`).
 - `agent-sources/plugins/` — plugin definitions (skills, agents, MCP config, tooling).
 - `agent-sources/workspace/CLAUDE.md` — agent instructions shared by all agents (deployed to workspace `.claude/CLAUDE.md`).
 - `docs/` — documentation and design/reference material only; do not treat as executable source unless explicitly asked.
@@ -59,11 +59,40 @@ Source: `docs/user-guide/` (VitePress). Deployed via `docs.yml` on push to `main
 ## Dev Commands
 
 ```bash
-# Desktop app (run from app/)
 cd app && npm install && npm run sidecar:build
-npm run dev                              # Dev mode (hot reload)
-MOCK_AGENTS=true npm run dev             # Mock mode (no API calls, replays bundled templates)
+cd app && npm run dev                    # Dev mode (hot reload)
+cd app && MOCK_AGENTS=true npm run dev   # Mock mode (no API calls, replays bundled templates)
 ```
+
+## Repo Memory
+
+Coding agent sessions should write durable repo-specific learnings back into this AGENTS.md file when they discover stable operational facts, environment constraints, or workflow gotchas that would help later sessions.
+
+Record only durable, non-obvious, cross-cutting facts here. Do not append release-note style UI tweaks, obvious routes/components, or details that are already easy to recover from code, `repo-map.json`, or `README.md`.
+
+### Agent Startup Context
+
+Read these before starting any non-trivial task:
+
+- `repo-map.json` — structure, entrypoints, modules, commands. Schema: `.claude/repo-map.schema.json`. Skip repo-wide rediscovery if it covers the task.
+- `TEST_MANIFEST.md` — Rust → E2E tag mappings, shared infrastructure blast radius, cross-boundary format compliance. Read before choosing tests for Rust or cross-layer changes. Frontend mappings are handled automatically by `vitest --changed`.
+
+### Maintenance Rules
+
+| Artifact | Update when |
+|---|---|
+| `AGENTS.md` | A fact is durable, non-obvious, and won't be obvious from code |
+| `repo-map.json` | Architecture, entrypoints, commands, modules, or package structure changes |
+| `README.md` | User-facing installation, configuration, commands, or architecture overview changes |
+| `TEST_MANIFEST.md` | Rust command file added/removed · E2E spec added/removed · shared infra file added/removed · agent artifact format changes affecting a Rust or TS parser |
+
+### Stable Repo Memory
+
+_Add durable, non-obvious, cross-cutting implementation and workflow notes here._
+
+### Deployment-Specific Operator Values
+
+_Add deployment- or operator-specific facts here (e.g. environment variables, infra config, service URLs)._
 
 ## Testing
 
@@ -95,7 +124,7 @@ Determine what you changed, then pick the right runner:
 | What changed | Agent tests | App tests |
 |---|---|---|
 | Frontend (store/hook/component/page) | — | `npm run test:changed` |
-| Rust command | — | `cargo test <module>` + E2E tag from `app/tests/TEST_MANIFEST.md` |
+| Rust command | — | `cargo test <module>` + E2E tag from `TEST_MANIFEST.md` |
 | Sidecar agent invocation (`app/sidecar/`) | `cd app && npm run test:agents:structural` (tell user to run Promptfoo `test:agents:smoke` manually) | `cd app/sidecar && npx vitest run` |
 | Agent prompt (`agents/`) | `cd app && npm run test:agents:structural` | `npm run test:unit` (canonical-format) |
 | Agent output format (`agents/`) | `cd app && npm run test:agents:structural` (tell user to run Promptfoo `test:agents:smoke` manually) | `npm run test:unit` (canonical-format) |
@@ -109,7 +138,7 @@ When changed files match these patterns, run the mapped tests automatically befo
 
 | Changed files | Run |
 |---|---|
-| `agents/*.md` | `cd app && npm run test:agents:structural` |
+| `agent-sources/agents/*.md` | `cd app && npm run test:agents:structural` |
 | `agent-sources/workspace/**` | `cd app && npm run test:agents:structural` |
 | `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` |
 | `app/sidecar/mock-templates/**` | `cd app && npm run test:unit` |
@@ -126,12 +155,6 @@ When changed files match these patterns, run the mapped tests automatically befo
 **Only `test:agents:structural` may be run autonomously** — it makes no API calls and is free.
 
 `test:agents:smoke` uses Promptfoo and makes real API calls. **Do not run it autonomously; tell the user to run it manually.**
-
-Rust → E2E tag mappings, E2E spec files, and cross-boundary format compliance details are in `app/tests/TEST_MANIFEST.md`.
-
-### Updating the test manifest
-
-Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the cargo test filter + E2E tag), new E2E spec files, new agent source patterns, or changing shared infrastructure files. Frontend test mappings are handled automatically by `vitest --changed` and naming conventions.
 
 ## Design Docs
 
@@ -195,5 +218,5 @@ Every new feature must include logging. Canonical logging conventions and log-le
 
 ## Gotchas
 
-- **SDK has NO team tools:** `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. The "Teams" option in the Delegation Policy applies to the main Claude Code session only — agents running inside the SDK cannot form teams. Use the Task tool for sub-agents. Multiple Task calls in the same turn run in parallel.
+- **SDK has NO team tools:** `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. Use the Task tool for sub-agents instead. Multiple Task calls in the same turn run in parallel.
 - **Parallel worktrees:** `npm run dev` auto-assigns a free port — safe to run multiple Tauri instances simultaneously.

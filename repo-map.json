@@ -1,0 +1,230 @@
+{
+  "generated_at": "2026-03-13T00:00:00Z",
+  "repo_root": "skill-builder",
+  "primary_languages": ["TypeScript", "TSX", "Rust", "Markdown"],
+  "package_managers": [
+    {
+      "name": "npm",
+      "lockfile": "app/package-lock.json",
+      "manifest": "app/package.json",
+      "workspaces": ["app/sidecar"]
+    },
+    {
+      "name": "npm (sidecar)",
+      "lockfile": "app/sidecar/package-lock.json",
+      "manifest": "app/sidecar/package.json"
+    },
+    {
+      "name": "cargo",
+      "lockfile": "app/src-tauri/Cargo.lock",
+      "manifest": "app/src-tauri/Cargo.toml"
+    }
+  ],
+  "build_systems": [
+    {
+      "name": "Tauri 2",
+      "config_files": ["app/src-tauri/tauri.conf.json", "app/src-tauri/Cargo.toml"],
+      "notes": "Bundles frontend (Vite), Rust backend, sidecar dist, and agent-sources as app resources. Identifier: com.vibedata.skill-builder. CSP allows Anthropic API + GitHub API. Dev port: DEV_PORT (default 1420), HMR on DEV_PORT+1."
+    },
+    {
+      "name": "Vite 7",
+      "config_files": ["app/vite.config.ts", "app/tsconfig.json"],
+      "notes": "React + Tailwind plugin. Path alias `@/` → `./src/`. E2E mock path alias via TAURI_E2E env var."
+    },
+    {
+      "name": "esbuild (sidecar)",
+      "config_files": ["app/sidecar/build.js"],
+      "notes": "Compiles TypeScript sidecar to `app/sidecar/dist/` for Tauri bundling. No hot-reload — restart `npm run dev` after editing sidecar source."
+    },
+    {
+      "name": "GitHub Actions",
+      "config_files": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/ci-windows.yml",
+        ".github/workflows/docs.yml",
+        ".github/workflows/release.yml",
+        ".github/workflows/claude.yml",
+        ".github/workflows/claude-code-review.yml",
+        ".github/workflows/sync-vd-agent.yml"
+      ],
+      "notes": "ci.yml: typecheck + unit tests (Node 22) + cargo test + clippy + docs build gate. docs.yml: VitePress build + GitHub Pages deploy. release.yml: multi-platform Tauri build + sign + publish."
+    }
+  ],
+  "test_frameworks": [
+    {
+      "name": "Vitest",
+      "config_files": ["app/vitest.config.ts", "app/vitest.config.agent.ts"],
+      "scope": "Frontend unit/integration + agent structural validation"
+    },
+    {
+      "name": "Playwright",
+      "config_files": ["app/playwright.config.ts"],
+      "scope": "E2E tests in app/e2e/"
+    },
+    {
+      "name": "Promptfoo",
+      "scope": "Agent smoke tests (live API calls — manual only, do not run autonomously)"
+    },
+    {
+      "name": "cargo test",
+      "scope": "Rust unit tests in app/src-tauri/src/"
+    }
+  ],
+  "applications": [
+    {
+      "name": "Skill Builder Desktop",
+      "type": "Tauri v2 desktop app",
+      "description": "Multi-agent workflow for creating domain-specific Claude skills. React frontend + Rust backend + Node.js agent sidecar.",
+      "identifier": "com.vibedata.skill-builder"
+    }
+  ],
+  "entrypoints": {
+    "frontend": "app/src/main.tsx",
+    "rust_backend": "app/src-tauri/src/main.rs",
+    "rust_lib": "app/src-tauri/src/lib.rs",
+    "sidecar": "app/sidecar/agent-runner.ts",
+    "sidecar_build": "app/sidecar/build.js"
+  },
+  "modules": {
+    "frontend_components": {
+      "path": "app/src/components/",
+      "description": "Reusable UI components (GitHub login, error boundary, research summary, etc.)"
+    },
+    "frontend_pages": {
+      "path": "app/src/pages/",
+      "description": "Page-level route components: dashboard, workflow, settings, refine, usage, test"
+    },
+    "frontend_stores": {
+      "path": "app/src/stores/",
+      "description": "Zustand state stores: auth, settings, workflow, refine, usage"
+    },
+    "frontend_hooks": {
+      "path": "app/src/hooks/",
+      "description": "Custom React hooks: agent streaming, node validation"
+    },
+    "frontend_lib": {
+      "path": "app/src/lib/",
+      "description": "Utilities: Tauri invocation, toast, workflow step definitions, clarification types, help URLs"
+    },
+    "rust_commands": {
+      "path": "app/src-tauri/src/commands/",
+      "description": "Tauri command handlers: agent, workflow, skill, workspace, settings, refine, usage, github_auth, github_import, imported_skills, skill_test, clarification, feedback, files, git, lifecycle, sidecar_lifecycle, workflow_lifecycle"
+    },
+    "rust_db": {
+      "path": "app/src-tauri/src/db.rs",
+      "description": "SQLite schema, migrations (code-only), and query helpers. Migrations registered in MIGRATIONS constant."
+    },
+    "rust_agents": {
+      "path": "app/src-tauri/src/agents/",
+      "description": "Agent runtime: sidecar process pool, event routing, lifecycle"
+    },
+    "sidecar_runner": {
+      "path": "app/sidecar/agent-runner.ts",
+      "description": "JSONL protocol handler, SDK invocation, reads stdin JSON config, streams events to stdout"
+    },
+    "sidecar_events": {
+      "path": "app/sidecar/agent-events.ts",
+      "description": "Canonical AgentEvent type definitions — service boundary contract between sidecar and Rust"
+    },
+    "sidecar_mock": {
+      "path": "app/sidecar/mock-agent.ts",
+      "description": "Mock mode: replays bundled templates with no API calls. Activated via MOCK_AGENTS=true."
+    },
+    "agent_prompts": {
+      "path": "agent-sources/agents/",
+      "description": "Flat directory of .md agent prompts: answer-evaluator, confirm-decisions, detailed-research, eval-skill, generate-skill, refine-skill, research-orchestrator, validate-quality, validate-skill"
+    },
+    "agent_plugins": {
+      "path": "agent-sources/plugins/",
+      "description": "Plugin definitions: skill-content-researcher, skill-creator, vd-agent"
+    },
+    "workspace_instructions": {
+      "path": "agent-sources/workspace/CLAUDE.md",
+      "description": "Shared agent instructions deployed to workspace .claude/CLAUDE.md at app startup"
+    }
+  },
+  "key_directories": {
+    "app/src/": "Frontend React/TypeScript runtime (components, pages, stores, hooks, lib, tests)",
+    "app/src-tauri/src/": "Rust backend runtime (Tauri commands, DB, agents, logging, startup)",
+    "app/sidecar/": "Node.js/TypeScript agent sidecar (JSONL protocol, SDK invocation, mock mode)",
+    "app/e2e/": "Playwright E2E tests only",
+    "app/src/__tests__/": "Frontend unit/integration tests",
+    "app/sidecar/__tests__/": "Sidecar unit tests",
+    "agent-sources/agents/": "Agent prompts — flat directory, validated by scripts/validate.sh",
+    "agent-sources/plugins/": "Plugin definitions (skills, agents, MCP config, tooling)",
+    "docs/user-guide/": "VitePress user documentation, deployed via docs.yml",
+    "docs/design/": "Design docs and architecture decision records",
+    ".claude/rules/": "Shared agent rules (agent-agnostic, detailed policy)",
+    ".claude/skills/": "Workflow playbooks for Claude Code CLI skills",
+    "scripts/": "Developer and automation scripts"
+  },
+  "dependencies_internal": {
+    "frontend → rust": "Via Tauri IPC (`invoke()` from @tauri-apps/api/core)",
+    "rust → sidecar": "Node.js child process, stdin/stdout JSONL protocol",
+    "sidecar → anthropic": "Via @anthropic-ai/claude-agent-sdk (SDK query())",
+    "frontend → sidecar_events": "Typed via agent-events.ts contract, received as Tauri events"
+  },
+  "dependencies_external": {
+    "runtime": {
+      "anthropic": "@anthropic-ai/claude-agent-sdk (agent invocation)",
+      "tauri": "@tauri-apps/api v2 (IPC, events, opener, log)",
+      "react": "React 19 + TanStack Router",
+      "ui": "shadcn/ui + Tailwind CSS 4 + Lucide React",
+      "state": "Zustand",
+      "db": "rusqlite (bundled SQLite)"
+    },
+    "dev": {
+      "vite": "Vite 7 + @vitejs/plugin-react",
+      "vitest": "Vitest (unit + structural agent tests)",
+      "playwright": "Playwright (E2E)",
+      "promptfoo": "Promptfoo (agent smoke tests, manual only)",
+      "esbuild": "esbuild (sidecar compilation)",
+      "markdownlint": "markdownlint-cli (all .md files)"
+    }
+  },
+  "commands": {
+    "install": "cd app && npm install && npm run sidecar:build",
+    "dev": "cd app && npm run dev",
+    "dev_mock": "cd app && MOCK_AGENTS=true npm run dev",
+    "dev_frontend_only": "cd app && npm run dev:frontend",
+    "build": "cd app && npm run build",
+    "test_unit": "cd app && npm run test:unit",
+    "test_changed": "cd app && npm run test:changed",
+    "test_agents_structural": "cd app && npm run test:agents:structural",
+    "test_agents_smoke": "cd app && npm run test:agents:smoke  # MANUAL ONLY — makes live API calls",
+    "test_sidecar": "cd app/sidecar && npx vitest run",
+    "test_e2e": "cd app && npm run test:e2e",
+    "test_all": "cd app && bash tests/run.sh",
+    "test_rust": "cargo test --manifest-path app/src-tauri/Cargo.toml",
+    "test_rust_db": "cargo test --manifest-path app/src-tauri/Cargo.toml db",
+    "typecheck": "cd app && npx tsc --noEmit",
+    "cargo_check": "cargo check --manifest-path app/src-tauri/Cargo.toml",
+    "lint_md": "markdownlint <file>",
+    "lint_agent_docs": "bash app/scripts/lint-agent-docs.sh",
+    "sidecar_build": "cd app && npm run sidecar:build"
+  },
+  "conventions": {
+    "typescript_files": "kebab-case (skill-card.tsx, settings-store.ts)",
+    "react_components": "PascalCase (SkillCard, SettingsPanel)",
+    "functions_vars": "camelCase (getSkillList, workspacePath)",
+    "constants": "UPPER_SNAKE_CASE (MAX_TURNS, DEFAULT_WORKSPACE)",
+    "rust": "Standard Rust conventions, clippy enforced. Every Tauri command logs info! on entry, error! on failure.",
+    "commits": "Granular — one concern per commit. Stage specific files (`git add <file>`, not `git add .`).",
+    "pr_title": "VU-XXX: short description",
+    "pr_body": "Fixes VU-XXX",
+    "worktrees": "../worktrees/<branchName> relative to repo root",
+    "linear_project": "All issues for this repo go under Skill Builder"
+  },
+  "notes_for_agents": {
+    "startup": "Read this file before exploring code. It is the primary startup context for structure, entrypoints, modules, and commands. Skip repo-wide rediscovery if it covers your task.",
+    "sidecar_hot_reload": "Sidecar has NO hot-reload. Restart `npm run dev` after editing app/sidecar/ files.",
+    "sdk_limitations": "@anthropic-ai/claude-agent-sdk does NOT support TeamCreate, TaskCreate, SendMessage. Use the Task tool for sub-agents. Multiple Task calls in the same turn run in parallel.",
+    "test_autonomy": "Only `test:agents:structural` may be run autonomously — no API calls. Never run `test:agents:smoke` autonomously.",
+    "db_location": "Database is at Tauri app_data_dir()/skill-builder.db — NOT in the workspace (~/.vibedata/). macOS: ~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db",
+    "migrations": "DB migrations are code-only in db.rs MIGRATIONS constant — no separate migration files directory.",
+    "workspace_path": "Default workspace: ~/.vibedata/ (configurable). Set by resolve_workspace_path() in workspace.rs.",
+    "mock_mode": "MOCK_AGENTS=true replays bundled templates in app/sidecar/mock-templates/ with no API calls.",
+    "agent_tests_changed": "When agents/*.md or agent-sources/workspace/** changes, run `cd app && npm run test:agents:structural` before reporting completion.",
+    "update_repo_map": "Refresh this file whenever you change architecture, entrypoints, commands, modules, or package structure."
+  }
+}
