@@ -69,4 +69,35 @@ describe("useAuthStore", () => {
     expect(settings.githubUserAvatar).toBeNull();
     expect(settings.githubUserEmail).toBeNull();
   });
+
+  it("logout clears auth and settings state even when githubLogout throws", async () => {
+    mocks.githubLogout.mockRejectedValue(new Error("Network error"));
+
+    // Set up logged-in state
+    useAuthStore.getState().setUser({
+      login: "octocat",
+      avatar_url: "https://github.com/octocat.png",
+      email: "octocat@github.com",
+    });
+    useSettingsStore.getState().setSettings({
+      githubOauthToken: "tok_abc",
+      githubUserLogin: "octocat",
+      githubUserAvatar: "https://github.com/octocat.png",
+      githubUserEmail: "octocat@github.com",
+    });
+
+    await useAuthStore.getState().logout();
+
+    // Auth state should be cleared despite the error
+    const auth = useAuthStore.getState();
+    expect(auth.isLoggedIn).toBe(false);
+    expect(auth.user).toBeNull();
+
+    // Settings should also be cleared
+    const settings = useSettingsStore.getState();
+    expect(settings.githubOauthToken).toBeNull();
+    expect(settings.githubUserLogin).toBeNull();
+    expect(settings.githubUserAvatar).toBeNull();
+    expect(settings.githubUserEmail).toBeNull();
+  });
 });

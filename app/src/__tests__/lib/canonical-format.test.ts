@@ -183,7 +183,8 @@ describe("Canonical format: clarifications.json structure", () => {
       });
 
       it("has answer_evaluator_notes array", () => {
-        expect(Array.isArray(data.answer_evaluator_notes ?? [])).toBe(true);
+        expect(data).toHaveProperty("answer_evaluator_notes");
+        expect(Array.isArray(data.answer_evaluator_notes)).toBe(true);
       });
     });
   }
