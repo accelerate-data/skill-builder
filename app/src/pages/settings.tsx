@@ -490,14 +490,18 @@ export default function SettingsPage() {
                 <div className="grid gap-2">
                   <Label>Reasoning effort</Label>
                   <Select
-                    value={sdkEffort}
-                    onValueChange={(val) => { setSdkEffort(val); autoSave({ sdkEffort: val || null }); }}
+                    value={sdkEffort || "_default"}
+                    onValueChange={(val) => {
+                      const effort = val === "_default" ? "" : val
+                      setSdkEffort(effort)
+                      autoSave({ sdkEffort: effort || null })
+                    }}
                   >
                     <SelectTrigger className="w-64">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Default</SelectItem>
+                      <SelectItem value="_default">Default</SelectItem>
                       <SelectItem value="low">Low</SelectItem>
                       <SelectItem value="medium">Medium</SelectItem>
                       <SelectItem value="high">High</SelectItem>
