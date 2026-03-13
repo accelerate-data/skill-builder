@@ -323,4 +323,77 @@ describe("UsagePage", () => {
     // null summary with no sessions triggers empty state
     expect(screen.getByText("No usage data yet.")).toBeInTheDocument();
   });
+
+  it("hide cancelled checkbox calls toggleHideCancelled when clicked", async () => {
+    const mockToggle = vi.fn();
+    useUsageStore.setState({ toggleHideCancelled: mockToggle });
+
+    const user = userEvent.setup();
+    render(<UsagePage />);
+
+    const checkbox = screen.getByLabelText("Hide cancelled runs");
+    expect(checkbox).toBeInTheDocument();
+    await user.click(checkbox);
+
+    expect(mockToggle).toHaveBeenCalled();
+  });
+
+  it("cancel button closes reset dialog without calling resetCounter", async () => {
+    const mockResetCounter = vi.fn(() => Promise.resolve());
+    useUsageStore.setState({ resetCounter: mockResetCounter });
+
+    const user = userEvent.setup();
+    render(<UsagePage />);
+
+    const resetButton = screen.getByRole("button", { name: /Reset/i });
+    await user.click(resetButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Cancel/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Cancel/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Reset Usage Data")).not.toBeInTheDocument();
+    });
+
+    expect(mockResetCounter).not.toHaveBeenCalled();
+    // Data should remain visible after cancel
+    expect(screen.getByTestId("total-cost")).toBeInTheDocument();
+  });
+
+  it("renders multi-model breakdown with correct costs and counts", () => {
+    setStoreData({
+      byModel: [
+        { model: "claude-sonnet-4-520250514", total_cost: 1.85, run_count: 2 },
+        { model: "claude-haiku-3-520250514", total_cost: 0.9, run_count: 1 },
+      ],
+    });
+    render(<UsagePage />);
+
+    expect(screen.getByText("Cost by Model")).toBeInTheDocument();
+    // shortModelName() maps these to "Sonnet" and "Haiku"
+    expect(screen.getAllByText("Sonnet").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Haiku").length).toBeGreaterThanOrEqual(1);
+    // Per-model cost and count labels
+    expect(screen.getByText(/\$1\.85 \(2 agents\)/)).toBeInTheDocument();
+    expect(screen.getByText(/\$0\.90 \(1 agents\)/)).toBeInTheDocument();
+  });
+
+  it("shows no runs message when agentRuns is empty but summary has data", () => {
+    setStoreData({
+      summary: { total_cost: 2.75, total_runs: 3, avg_cost_per_run: 0.917 },
+      agentRuns: [],
+      byStep: [{ step_id: 1, step_name: "Research", total_cost: 2.75, run_count: 3 }],
+      byModel: [
+        { model: "claude-sonnet-4-520250514", total_cost: 1.85, run_count: 2 },
+        { model: "claude-haiku-3-520250514", total_cost: 0.9, run_count: 1 },
+      ],
+    });
+    render(<UsagePage />);
+
+    expect(screen.getByText("Step History")).toBeInTheDocument();
+    expect(screen.getByText("No runs in this period")).toBeInTheDocument();
+  });
 });

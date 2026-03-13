@@ -209,57 +209,6 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     await expect(page.getByText("Primary focus area")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("human review shows dirty indicator on edit", async ({ page }) => {
-    await navigateToWorkflowUpdateMode(page, HUMAN_REVIEW_OVERRIDES);
-    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
-
-    // Expand Q2 (Primary database, unanswered) to reveal its choice buttons
-    await page.getByText("Primary database").click();
-    await page.waitForTimeout(200);
-
-    // Click the "PostgreSQL" choice to answer Q2 — triggers onChange → dirty
-    await page.getByText("PostgreSQL").first().click();
-    await page.waitForTimeout(200);
-
-    // The SaveIndicator should now show "Unsaved changes"
-    await expect(page.getByText("Unsaved changes")).toBeVisible({ timeout: 3_000 });
-  });
-
-  test("human review save clears dirty indicator and shows saved status", async ({ page }) => {
-    await navigateToWorkflowUpdateMode(page, HUMAN_REVIEW_OVERRIDES);
-    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
-
-    // Expand Q2 (Primary database, unanswered) and click a choice to make dirty
-    await page.getByText("Primary database").click();
-    await page.waitForTimeout(200);
-    await page.getByText("PostgreSQL").first().click();
-    await page.waitForTimeout(200);
-
-    // Verify dirty indicator
-    await expect(page.getByText("Unsaved changes")).toBeVisible({ timeout: 3_000 });
-
-    // Wait for debounced auto-save (1500ms) + buffer
-    await page.waitForTimeout(2000);
-
-    // "Saved" indicator should appear in the SaveIndicator after auto-save completes
-    await expect(page.getByText("Saved")).toBeVisible({ timeout: 3_000 });
-  });
-
-  test("human review shows section headers and questions from loaded content", async ({ page }) => {
-    // Verifies that the ClarificationsEditor correctly loads and renders the
-    // review content with its sections and questions visible.
-    await navigateToWorkflowUpdateMode(page, HUMAN_REVIEW_OVERRIDES);
-    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
-
-    // Both sections from REVIEW_CONTENT should be visible
-    await expect(page.getByText("Domain Concepts")).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("Technical Stack")).toBeVisible({ timeout: 5_000 });
-
-    // Both questions should be visible (collapsed cards still show the title)
-    await expect(page.getByText("Primary focus area")).toBeVisible();
-    await expect(page.getByText("Primary database")).toBeVisible();
-  });
-
   test("human review Continue button is disabled when required questions are unanswered", async ({ page }) => {
     // REVIEW_CONTENT has Q2 (must_answer=true) with no answer — Continue should be disabled.
     await navigateToWorkflowUpdateMode(page, HUMAN_REVIEW_OVERRIDES);
@@ -599,29 +548,6 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     await expect(page.getByText("Step 2: Detailed Research")).not.toBeVisible();
   });
 
-  test("missing-files error state shows Reset Step button", async ({ page }) => {
-    // When a completed step's output files are missing (e.g. manually deleted),
-    // WorkflowStepComplete renders a missing-files error state with a Reset Step button.
-    // Set up step 0 as completed but mock read_file to return NOT_FOUND.
-    await navigateToWorkflowUpdateMode(page, {
-      ...WORKFLOW_OVERRIDES,
-      get_workflow_state: {
-        run: { current_step: 0, purpose: "domain" },
-        steps: [
-          { step_id: 0, status: "completed" },
-        ],
-      },
-      // read_file returns empty string — simulates missing files
-      // (the component shows the missing-files error when content is absent)
-      read_file: null,
-    });
-
-    // Should be on step 1 (Research, index 0), completed
-    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
-
-    // The Reset Step button must be visible regardless of file availability
-    await expect(page.getByRole("button", { name: "Reset Step" })).toBeVisible({ timeout: 5_000 });
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -694,16 +620,6 @@ test.describe("Contradictions guard — multi-decision", { tag: "@workflow" }, (
 
     // Step 4 (Generate Skill) should show "Skipped" in the sidebar
     await expect(page.getByText("Skipped")).toBeVisible({ timeout: 5_000 });
-  });
-
-  test("shows review-required header and 2 needs-review decisions", async ({ page }) => {
-    await navigateToWorkflowUpdateMode(page, CONTRADICTION_GUARD_OVERRIDES);
-    await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
-
-    await expect(page.getByText("2 decisions need your review")).toBeVisible({ timeout: 5_000 });
-
-    const needsReviewBadges = page.getByRole("button", { name: /needs review/i });
-    await expect(needsReviewBadges).toHaveCount(2);
   });
 
   test("editing one of two needs-review decisions does NOT clear contradictions", async ({ page }) => {

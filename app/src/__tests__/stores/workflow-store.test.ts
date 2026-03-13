@@ -78,6 +78,27 @@ describe("useWorkflowStore", () => {
     expect(useWorkflowStore.getState().isRunning).toBe(false);
   });
 
+  it("isRunning is false when reviewMode is active (initial state)", () => {
+    const state = useWorkflowStore.getState();
+    // reviewMode defaults to true; isRunning must be false — no agent runs in review mode
+    expect(state.reviewMode).toBe(true);
+    expect(state.isRunning).toBe(false);
+  });
+
+  it("isRunning remains false after setReviewMode(true) is called", () => {
+    // Simulate: user was in update mode with a running agent, then toggled back to review
+    useWorkflowStore.getState().setRunning(true);
+    expect(useWorkflowStore.getState().isRunning).toBe(true);
+
+    // Toggling to review mode does not automatically stop the agent —
+    // but once setRunning(false) is called, review mode must not restart it
+    useWorkflowStore.getState().setRunning(false);
+    useWorkflowStore.getState().setReviewMode(true);
+
+    expect(useWorkflowStore.getState().isRunning).toBe(false);
+    expect(useWorkflowStore.getState().reviewMode).toBe(true);
+  });
+
   it("setRunning creates workflowSessionId once and reuses across steps", () => {
     // First step starts → generates session ID
     useWorkflowStore.getState().setRunning(true);

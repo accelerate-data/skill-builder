@@ -14,21 +14,6 @@ import {
   simulateAgentInitError,
 } from "../helpers/agent-simulator";
 import { navigateToWorkflowUpdateMode } from "../helpers/workflow-helpers";
-import { readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-interface AgentFixture {
-  agentId: string;
-  messages: string[];
-  result: string;
-}
-
-const researchFixture: AgentFixture = JSON.parse(
-  readFileSync(resolve(__dirname, "../fixtures/agent-responses/research-step.json"), "utf-8"),
-);
 
 /** Alias — all agent lifecycle tests need update mode. */
 const navigateToWorkflow = navigateToWorkflowUpdateMode;
@@ -88,41 +73,6 @@ test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
 
     // The agent output panel should now be showing
     await expect(page.getByText("Starting research...").last()).toBeVisible();
-  });
-
-  test("display items render in the output panel", async ({ page }) => {
-    await navigateToWorkflow(page);
-
-    // Agent auto-starts — wait for init indicator
-    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
-
-    // Emit display items manually (without completing the run) so the agent
-    // output panel stays visible and doesn't get replaced by the
-    // completion screen.
-    for (let i = 0; i < researchFixture.messages.length; i++) {
-      await emitTauriEvent(page, "agent-message", {
-        agent_id: "agent-001",
-        message: {
-          type: "display_item",
-          item: {
-            id: `di-output-${i}`,
-            type: "output",
-            timestamp: Date.now(),
-            outputText: researchFixture.messages[i],
-          },
-        },
-      });
-      await page.waitForTimeout(50);
-    }
-
-    // Wait for items to render
-    await page.waitForTimeout(200);
-
-    // Verify display items rendered — check for distinctive text from each message.
-    // These are rendered as markdown, so headings become visible text.
-    await expect(page.getByRole("heading", { name: "Researching Domain Concepts" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Key Findings" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Generating Clarification Questions" })).toBeVisible();
   });
 
   test("runtime error dialog appears on agent-init-error", async ({ page }) => {

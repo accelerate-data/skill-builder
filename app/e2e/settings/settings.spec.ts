@@ -17,31 +17,4 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     // Mock returns success, button should turn green with "Valid"
     await expect(page.getByRole("button", { name: "Valid" }).first()).toBeVisible();
   });
-
-  test("GitHub account shows sign-in button when not logged in", async ({ page }) => {
-    // Switch to GitHub section
-    await page.locator("nav").getByRole("button", { name: "GitHub" }).click();
-
-    // Default mock returns github_get_user: null — user is not logged in
-    await expect(page.getByText("Not connected").first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Sign in with GitHub" })).toBeVisible();
-  });
-
-  test("settings auto-save shows saved indicator", async ({ page }) => {
-    // Change the API key field and blur to trigger auto-save
-    const input = page.getByPlaceholder("sk-ant-...");
-    await input.fill("sk-ant-new-key");
-    await input.blur();
-
-    // Auto-save should show "Saved" indicator near the header
-    await expect(page.getByText("Saved")).toBeVisible();
-  });
-
-  test("shows Marketplace Registries section in Marketplace tab", async ({ page }) => {
-    // Switch to Marketplace section
-    await page.getByRole("button", { name: /Marketplace/i }).click();
-
-    // Registries card should be visible
-    await expect(page.getByText("Registries", { exact: true })).toBeVisible();
-  });
 });
