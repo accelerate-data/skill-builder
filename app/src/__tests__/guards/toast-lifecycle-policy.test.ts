@@ -111,7 +111,7 @@ describe("toast lifecycle policy guard", () => {
 
     const required: Array<{ file: string; severities: Severity[] }> = [
       { file: "components/layout/app-layout.tsx", severities: ["info", "error"] },
-      { file: "pages/workflow.tsx", severities: ["info", "warning", "error"] },
+      // workflow.tsx delegates all toast calls to use-workflow-state-machine.ts (listed below)
       { file: "hooks/use-agent-stream.ts", severities: ["info"] },
       { file: "hooks/use-workflow-state-machine.ts", severities: ["info", "warning", "error"] },
       { file: "pages/refine.tsx", severities: ["info", "error"] },

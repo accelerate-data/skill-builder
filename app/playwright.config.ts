@@ -17,7 +17,15 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "chromium",
+      // PR CI subset: fast functional checks for all main features
+      name: "smoke",
+      grep: /@workflow|@dashboard|@refine|@settings|@skill-tester|@setup/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      // Nightly / post-merge: real sidecar integration + full desktop smoke
+      name: "nightly",
+      grep: /@integration|@desktop-smoke/,
       use: { ...devices["Desktop Chrome"] },
     },
   ],

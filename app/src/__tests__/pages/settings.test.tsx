@@ -797,6 +797,19 @@ describe("SettingsPage", () => {
     });
   });
 
+  it("shows Registries section in Marketplace tab", async () => {
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    await switchToSection(/Marketplace/i);
+
+    expect(screen.getByText("Registries")).toBeInTheDocument();
+  });
+
   it("does not auto-switch section for dashboard-library mode", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);

@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { renderHook, waitFor, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useWorkflowSession } from "@/hooks/use-workflow-session";
 
@@ -23,7 +23,7 @@ vi.mock("@/lib/toast", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));
 
-const { mockWorkflowStoreMock, mockAgentStoreMock } = vi.hoisted(() => {
+const { mockWorkflowStoreMock, mockAgentStoreMock, mockClearRuns, leaveGuardCapture } = vi.hoisted(() => {
   let mockWorkflowState = {
     workflowSessionId: "session-uuid-123",
     currentStep: 0,
@@ -42,12 +42,19 @@ const { mockWorkflowStoreMock, mockAgentStoreMock } = vi.hoisted(() => {
       }),
     }
   );
+
+  const mockClearRuns = vi.fn();
   const mockAgentStoreMock = Object.assign(
     vi.fn(() => ({})),
-    { getState: vi.fn(() => ({ clearRuns: vi.fn() })) }
+    { getState: vi.fn(() => ({ clearRuns: mockClearRuns })) }
   );
 
-  return { mockWorkflowStoreMock, mockAgentStoreMock };
+  // Captures the onLeave callback so tests can invoke it directly.
+  const leaveGuardCapture = {
+    onLeave: undefined as ((proceed: () => void) => void) | undefined,
+  };
+
+  return { mockWorkflowStoreMock, mockAgentStoreMock, mockClearRuns, leaveGuardCapture };
 });
 
 vi.mock("@/stores/workflow-store", () => ({
@@ -58,12 +65,11 @@ vi.mock("@/stores/agent-store", () => ({
   useAgentStore: mockAgentStoreMock,
 }));
 
-// Mock useLeaveGuard
+// Mock useLeaveGuard — captures onLeave so tests can invoke it directly
 vi.mock("@/hooks/use-leave-guard", () => ({
-  useLeaveGuard: vi.fn().mockReturnValue({
-    blockerStatus: "idle",
-    handleNavStay: vi.fn(),
-    handleNavLeave: vi.fn(),
+  useLeaveGuard: vi.fn().mockImplementation(({ onLeave }: { onLeave: (proceed: () => void) => void }) => {
+    leaveGuardCapture.onLeave = onLeave;
+    return { blockerStatus: "idle", handleNavStay: vi.fn(), handleNavLeave: vi.fn() };
   }),
 }));
 
@@ -139,5 +145,41 @@ describe("useWorkflowSession", () => {
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith({ to: "/" });
     });
+  });
+
+  it("onLeave runs all cleanup steps and calls proceed", async () => {
+    // Set an in-progress step so updateStepStatus gets exercised
+    mockWorkflowState.steps = [{ status: "in_progress" }];
+    const sessionId = mockWorkflowState.workflowSessionId;
+
+    renderHook(() => useWorkflowSession(defaultOptions));
+
+    // Wait for onLeave to be captured by the useLeaveGuard mock
+    await waitFor(() => {
+      expect(leaveGuardCapture.onLeave).toBeDefined();
+    });
+
+    const proceed = vi.fn();
+    act(() => {
+      leaveGuardCapture.onLeave!(proceed);
+    });
+
+    // Step reverted to pending
+    expect(mockWorkflowState.updateStepStatus).toHaveBeenCalledWith(0, "pending");
+    // Running/gate state cleared
+    expect(mockWorkflowState.setRunning).toHaveBeenCalledWith(false);
+    expect(mockWorkflowState.setGateLoading).toHaveBeenCalledWith(false);
+    // Session ID cleared
+    expect(mockWorkflowStoreMock.setState).toHaveBeenCalledWith({ workflowSessionId: null });
+    // Agent runs cleared
+    expect(mockClearRuns).toHaveBeenCalled();
+    // Session ended
+    expect(mockEndWorkflowSession).toHaveBeenCalledWith(sessionId);
+    // Sidecar cleaned up
+    expect(mockCleanupSkillSidecar).toHaveBeenCalledWith("test-skill");
+    // Lock released
+    expect(mockReleaseLock).toHaveBeenCalledWith("test-skill");
+    // Navigation allowed to proceed
+    expect(proceed).toHaveBeenCalled();
   });
 });

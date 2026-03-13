@@ -197,4 +197,42 @@ describe("useWorkflowStateMachine", () => {
     const { result } = renderHook(() => useWorkflowStateMachine(defaultOptions));
     expect("pendingAutoStartStep" in result.current).toBe(true);
   });
+
+  it("agent completion transitions step from in_progress to completed", async () => {
+    // Arrange: step 0 is in_progress, an agent is active with status "completed"
+    mockWorkflowState = {
+      ...mockWorkflowState,
+      currentStep: 0,
+      steps: [{ id: 0, status: "in_progress" }],
+      isRunning: true,
+    };
+    mockActiveAgentId = "agent-finish-1";
+    mockRuns = {
+      "agent-finish-1": { status: "completed", displayItems: [], totalCost: 0 },
+    };
+    // verifyStepOutput resolves true — step output exists
+    mockVerifyStepOutput.mockResolvedValueOnce(true);
+    // getDisabledSteps resolves with empty list
+    mockGetDisabledSteps.mockResolvedValueOnce([]);
+
+    renderHook(() =>
+      useWorkflowStateMachine({
+        ...defaultOptions,
+        steps: [
+          { id: 0, status: "in_progress", name: "Research" },
+          { id: 1, status: "pending", name: "Refine" },
+        ],
+        reviewMode: false,
+      })
+    );
+
+    // Wait for the completion effect to settle
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // The step must have been marked completed and isRunning set to false
+    expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "completed");
+    expect(mockSetRunning).toHaveBeenCalledWith(false);
+  });
 });

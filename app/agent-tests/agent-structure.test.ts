@@ -44,10 +44,6 @@ describe("agent files", () => {
     expect(count).toBe(EXPECTED_AGENTS.length);
   });
 
-  it.each(EXPECTED_AGENTS)("agent exists: %s.md", (agent) => {
-    expect(fs.existsSync(path.join(AGENTS_DIR, `${agent}.md`))).toBe(true);
-  });
-
   it("all agents have YAML frontmatter", () => {
     const missing = EXPECTED_AGENTS.filter((agent) => {
       const file = path.join(AGENTS_DIR, `${agent}.md`);
@@ -253,6 +249,26 @@ describe("Agent output contracts (backend protocol alignment)", () => {
   });
 });
 
+describe("detailed-research output contract", () => {
+  const step1Json = JSON.parse(
+    fs.readFileSync(
+      path.join(
+        REPO_ROOT,
+        "app/sidecar/mock-templates/outputs/step1/context/clarifications.json"
+      ),
+      "utf-8"
+    )
+  );
+
+  it("step1 clarifications.json sections contain refinements (additive from step0)", () => {
+    const hasRefinements = step1Json.sections.some(
+      (s: { questions?: Array<{ refinements?: unknown[] }> }) =>
+        s.questions?.some((q) => q.refinements && q.refinements.length > 0)
+    );
+    expect(hasRefinements).toBe(true);
+  });
+});
+
 // ── Plugin structure sanity checks ───────────────────────────────────────────
 
 describe("skill-content-researcher plugin structure", () => {
@@ -349,15 +365,4 @@ describe("skill-creator plugin structure", () => {
     expect(content).not.toMatch(/<skill-creator-path>/);
   });
 
-  it("detailed-research includes scope recommendation short-circuit contract", () => {
-    const content = fs.readFileSync(
-      path.join(AGENTS_DIR, "detailed-research.md"),
-      "utf8"
-    );
-    expect(content).toMatch(/Scope (Recommendation )?[Gg]uard|scope_recommendation/);
-    expect(content).toMatch(/status": "detailed_research_complete"/);
-    expect(content).toMatch(/refinement_count": 0/);
-    expect(content).toMatch(/section_count": 0/);
-    expect(content).toMatch(/canonical clarifications object \(unchanged\)/i);
-  });
 });

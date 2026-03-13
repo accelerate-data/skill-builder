@@ -2585,6 +2585,32 @@ pub fn reset_workflow_step(
 /// Navigate back to a completed step: preserves the target step's output files and DB status,
 /// deletes only the files of subsequent steps, and sets current_step to target_step_id.
 /// This makes the DB the canonical source of truth for navigate-back transitions.
+/// DB-only logic for navigate_back_to_step, extracted for testability.
+/// Resets workflow steps from `delete_from` onward and sets current_step to `target_step_id`.
+/// File deletion and git operations are handled by the command wrapper.
+pub(crate) fn navigate_back_to_step_impl(
+    conn: &rusqlite::Connection,
+    skill_name: &str,
+    target_step_id: u32,
+) -> Result<(), String> {
+    let delete_from = target_step_id + 1;
+
+    // Reset only steps after the target; target step status is preserved as "completed".
+    crate::db::reset_workflow_steps_from(conn, skill_name, delete_from as i32)?;
+
+    // Set current_step to the target (not delete_from) so DB reflects the correct landing step.
+    if let Some(run) = crate::db::get_workflow_run(conn, skill_name)? {
+        crate::db::save_workflow_run(
+            conn,
+            skill_name,
+            target_step_id as i32,
+            "pending",
+            &run.purpose,
+        )?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn navigate_back_to_step(
     workspace_path: String,
@@ -2624,29 +2650,13 @@ pub fn navigate_back_to_step(
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
-    // Reset only steps after the target; target step status is preserved as "completed".
-    crate::db::reset_workflow_steps_from(&conn, &skill_name, delete_from as i32)?;
-
-    // Set current_step to the target (not delete_from) so DB reflects the correct landing step.
-    // Use "pending" for the run status because subsequent steps are now reset; the next
-    // saveWorkflowState sync will recompute and update as needed.
-    if let Some(run) = crate::db::get_workflow_run(&conn, &skill_name)? {
-        crate::db::save_workflow_run(
-            &conn,
-            &skill_name,
-            target_step_id as i32,
-            "pending",
-            &run.purpose,
-        )?;
-    }
-
     log::info!(
         "[navigate_back_to_step] done skill={} current_step={} current_step_id={}",
         skill_name,
         workflow_step_log_name(target_step_id as i32),
         target_step_id
     );
-    Ok(())
+    navigate_back_to_step_impl(&conn, &skill_name, target_step_id)
 }
 
 #[tauri::command]
@@ -5139,5 +5149,62 @@ mod tests {
         let content = std::fs::read_to_string(deployed_research_dir.join("SKILL.md")).unwrap();
         assert!(content.contains("Bundled Research"));
         assert!(!content.contains("Stale Research"));
+    }
+
+    // ── navigate_back_to_step_impl ────────────────────────────────────────────
+
+    #[test]
+    fn test_navigate_back_to_step_resets_steps_after_target_and_lands_on_target() {
+        // Regression guard: when resetting to step 0, delete_from must be 1 (not 0).
+        // If the impl mistakenly set delete_from=target_step_id, step 0 artifacts
+        // would be erased and current_step would be wrong.
+        let conn = crate::db::create_test_db_for_tests();
+        crate::db::save_workflow_run(&conn, "test-skill", 2, "in_progress", "domain").unwrap();
+        for step_id in 0..=2_i32 {
+            conn.execute(
+                "INSERT OR REPLACE INTO workflow_steps (workflow_run_id, skill_name, step_id, status)
+                 SELECT id, skill_name, ?1, 'completed' FROM workflow_runs WHERE skill_name = 'test-skill'",
+                rusqlite::params![step_id],
+            ).unwrap();
+        }
+
+        // Reset to step 0 (the step-0 regression case)
+        super::navigate_back_to_step_impl(&conn, "test-skill", 0).unwrap();
+
+        let steps = crate::db::get_workflow_steps(&conn, "test-skill").unwrap();
+        // Step 0 must stay completed — only steps >= 1 are reset
+        assert_eq!(steps[0].status, "completed", "step 0 must remain completed");
+        assert_eq!(steps[1].status, "pending", "step 1 must be reset to pending");
+        assert_eq!(steps[2].status, "pending", "step 2 must be reset to pending");
+
+        // current_step in workflow_runs must be 0, not 1 (delete_from)
+        let run = crate::db::get_workflow_run(&conn, "test-skill").unwrap().unwrap();
+        assert_eq!(run.current_step, 0, "current_step must land on target (0), not delete_from (1)");
+        assert_eq!(run.status, "pending");
+    }
+
+    #[test]
+    fn test_navigate_back_to_step_mid_workflow_only_resets_later_steps() {
+        let conn = crate::db::create_test_db_for_tests();
+        crate::db::save_workflow_run(&conn, "test-skill", 3, "in_progress", "domain").unwrap();
+        for step_id in 0..=3_i32 {
+            conn.execute(
+                "INSERT OR REPLACE INTO workflow_steps (workflow_run_id, skill_name, step_id, status)
+                 SELECT id, skill_name, ?1, 'completed' FROM workflow_runs WHERE skill_name = 'test-skill'",
+                rusqlite::params![step_id],
+            ).unwrap();
+        }
+
+        // Reset to step 1 — steps 0 and 1 stay completed; steps 2 and 3 are reset
+        super::navigate_back_to_step_impl(&conn, "test-skill", 1).unwrap();
+
+        let steps = crate::db::get_workflow_steps(&conn, "test-skill").unwrap();
+        assert_eq!(steps[0].status, "completed");
+        assert_eq!(steps[1].status, "completed");
+        assert_eq!(steps[2].status, "pending");
+        assert_eq!(steps[3].status, "pending");
+
+        let run = crate::db::get_workflow_run(&conn, "test-skill").unwrap().unwrap();
+        assert_eq!(run.current_step, 1);
     }
 }

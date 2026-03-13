@@ -50,6 +50,47 @@ pub(crate) fn create_test_db_for_tests() -> Connection {
     conn
 }
 
+// Numbered migrations: each runs once, tracked in schema_migrations.
+// To add a new migration, append a (version, function) entry to this array.
+// Tests reference this constant directly to stay in sync with production.
+#[allow(clippy::type_complexity)]
+const NUMBERED_MIGRATIONS: &[(u32, fn(&Connection) -> Result<(), rusqlite::Error>)] = &[
+    (1, run_add_skill_type_migration),
+    (2, run_lock_table_migration),
+    (3, run_author_migration),
+    (4, run_usage_tracking_migration),
+    (5, run_workflow_session_migration),
+    (6, run_sessions_table_migration),
+    (7, run_trigger_text_migration),
+    (8, run_agent_stats_migration),
+    (9, run_intake_migration),
+    (10, run_composite_pk_migration),
+    (11, run_bundled_skill_migration),
+    (12, run_drop_trigger_description_migration),
+    (13, run_remove_validate_step_migration),
+    (14, run_source_migration),
+    (15, run_imported_skills_extended_migration),
+    (16, run_workflow_runs_extended_migration),
+    (17, run_cleanup_stale_running_rows_migration),
+    (18, run_skills_table_migration),
+    (19, run_skills_backfill_migration),
+    (20, run_rename_upload_migration),
+    (21, run_workspace_skills_migration),
+    (22, run_workflow_runs_id_migration),
+    (23, run_fk_columns_migration),
+    (24, run_frontmatter_to_skills_migration),
+    (25, run_workspace_skills_purpose_migration),
+    (26, run_content_hash_migration),
+    (27, run_backfill_null_versions_migration),
+    (28, run_rename_purpose_drop_domain_migration),
+    (29, run_marketplace_source_url_migration),
+    (30, run_skills_soft_delete_migration),
+    (31, run_backfill_synthetic_sessions_migration),
+    (32, run_normalize_model_names_migration),
+    (33, run_reconciliation_events_migration),
+    (34, run_ghost_running_rows_migration),
+];
+
 pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
     fs::create_dir_all(data_dir)?;
     let db_dir = data_dir.join("db");
@@ -70,47 +111,7 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
     // Migration 0: base schema (always runs via CREATE TABLE IF NOT EXISTS)
     run_migrations(&conn)?;
 
-    // Numbered migrations: each runs once, tracked in schema_migrations.
-    // To add a new migration, append a (version, function) entry to this array.
-    #[allow(clippy::type_complexity)]
-    let migrations: &[(u32, fn(&Connection) -> Result<(), rusqlite::Error>)] = &[
-        (1, run_add_skill_type_migration),
-        (2, run_lock_table_migration),
-        (3, run_author_migration),
-        (4, run_usage_tracking_migration),
-        (5, run_workflow_session_migration),
-        (6, run_sessions_table_migration),
-        (7, run_trigger_text_migration),
-        (8, run_agent_stats_migration),
-        (9, run_intake_migration),
-        (10, run_composite_pk_migration),
-        (11, run_bundled_skill_migration),
-        (12, run_drop_trigger_description_migration),
-        (13, run_remove_validate_step_migration),
-        (14, run_source_migration),
-        (15, run_imported_skills_extended_migration),
-        (16, run_workflow_runs_extended_migration),
-        (17, run_cleanup_stale_running_rows_migration),
-        (18, run_skills_table_migration),
-        (19, run_skills_backfill_migration),
-        (20, run_rename_upload_migration),
-        (21, run_workspace_skills_migration),
-        (22, run_workflow_runs_id_migration),
-        (23, run_fk_columns_migration),
-        (24, run_frontmatter_to_skills_migration),
-        (25, run_workspace_skills_purpose_migration),
-        (26, run_content_hash_migration),
-        (27, run_backfill_null_versions_migration),
-        (28, run_rename_purpose_drop_domain_migration),
-        (29, run_marketplace_source_url_migration),
-        (30, run_skills_soft_delete_migration),
-        (31, run_backfill_synthetic_sessions_migration),
-        (32, run_normalize_model_names_migration),
-        (33, run_reconciliation_events_migration),
-        (34, run_ghost_running_rows_migration),
-    ];
-
-    for &(version, migrate_fn) in migrations {
+    for &(version, migrate_fn) in NUMBERED_MIGRATIONS {
         if !migration_applied(&conn, version) {
             migrate_fn(&conn)?;
             mark_migration_applied(&conn, version)?;
@@ -4095,6 +4096,35 @@ mod tests {
 
         let settings = read_settings(&conn).unwrap();
         assert!(settings.anthropic_api_key.is_none());
+    }
+
+    #[test]
+    fn test_migration_count_matches_expected() {
+        // Guard against missing registrations in NUMBERED_MIGRATIONS.
+        // Applies every migration from the module-level constant and asserts the count
+        // matches NUMBERED_MIGRATIONS.len(). If a migration is added to the codebase
+        // but not to NUMBERED_MIGRATIONS, the count stays at the old value and this fails.
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_migration_table(&conn).unwrap();
+        run_migrations(&conn).unwrap();
+        for &(version, migrate_fn) in super::NUMBERED_MIGRATIONS {
+            migrate_fn(&conn).unwrap();
+            super::mark_migration_applied(&conn, version).unwrap();
+        }
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM schema_migrations",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let expected = super::NUMBERED_MIGRATIONS.len() as i64;
+        assert_eq!(
+            count,
+            expected,
+            "Expected {expected} migrations in schema_migrations; got {count}. \
+             Did you add a migration without registering it in NUMBERED_MIGRATIONS, or remove one?"
+        );
     }
 
     #[test]

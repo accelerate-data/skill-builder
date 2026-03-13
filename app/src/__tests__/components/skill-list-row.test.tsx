@@ -155,6 +155,15 @@ describe("SkillListRow — created skill", () => {
     await user.click(screen.getByRole("button", { name: /More actions/i }));
     expect(screen.getByText("Edit details")).toBeInTheDocument();
   });
+
+  it("action button clicks do not trigger row navigation (stopPropagation)", async () => {
+    const user = userEvent.setup();
+    const { onContinue, onDelete } = renderRow(createdComplete);
+    // Click the Delete button — row's onClick (onContinue) must NOT be called
+    await user.click(screen.getByRole("button", { name: /Delete skill/i }));
+    expect(onDelete).toHaveBeenCalledWith(createdComplete);
+    expect(onContinue).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------

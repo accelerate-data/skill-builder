@@ -4,7 +4,6 @@ import userEvent from "@testing-library/user-event";
 import {
   mockInvoke,
   mockInvokeCommands,
-  mockDialogSave,
   resetTauriMocks,
 } from "@/test/mocks/tauri";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -110,6 +109,7 @@ function setupMocks(
     package_skill: { file_path: "/tmp/test.skill", size_bytes: 1024 },
     copy_file: undefined,
     save_settings: undefined,
+    get_locked_skills: [],
   });
 
   // Hydrate the Zustand settings store (normally done by app-layout.tsx)
@@ -182,6 +182,17 @@ describe("DashboardPage", () => {
       to: "/skill/$skillName",
       params: { skillName: "sales-pipeline" },
     });
+  });
+
+  it("shows Import button in the action bar when workspace and skills_path are configured", async () => {
+    setupMocks({ settings: { skills_path: "/home/user/skills" } });
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("button", { name: /^Import$/i })).toBeInTheDocument();
   });
 
   it("shows New Skill button when workspace and skills_path are set", async () => {
@@ -388,8 +399,6 @@ describe("DashboardPage", () => {
     expect(screen.getByText("marketing-data")).toBeInTheDocument();
   });
 
-  // --- Download handler tests ---
-
   // --- View toggle tests ---
 
   it("renders view toggle when skills exist", async () => {
@@ -480,32 +489,269 @@ describe("DashboardPage", () => {
     expect(listButton).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("calls packageSkill with correct args when downloading a completed skill", async () => {
+  // --- Toggle back to grid view ---
+
+  it("switches back to grid view when grid icon is clicked after switching to list", async () => {
+    const user = userEvent.setup();
     setupMocks();
-    mockDialogSave.mockResolvedValue("/home/user/downloads/hr-analytics.skill");
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
+    });
+
+    // Switch to list
+    await user.click(screen.getByRole("button", { name: "List view" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "List view" })).toHaveAttribute("aria-pressed", "true");
+    });
+
+    // Switch back to grid
+    await user.click(screen.getByRole("button", { name: "Grid view" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Grid view" })).toHaveAttribute("aria-pressed", "true");
+    });
+    expect(screen.getByRole("button", { name: "List view" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  // --- Delete dialog ---
+
+  it("opens delete dialog when delete icon is clicked on a skill card", async () => {
+    const user = userEvent.setup();
+    setupMocks();
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
+    });
+
+    const deleteButtons = screen.getAllByRole("button", { name: /Delete skill/i });
+    await user.click(deleteButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Delete Skill" })).toBeInTheDocument();
+    });
+  });
+
+  it("closes delete dialog when cancel is clicked", async () => {
+    const user = userEvent.setup();
+    setupMocks();
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
+    });
+
+    const deleteButtons = screen.getAllByRole("button", { name: /Delete skill/i });
+    await user.click(deleteButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Delete Skill" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Cancel/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: "Delete Skill" })).not.toBeInTheDocument();
+    });
+    // Skill card still present
+    expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
+  });
+
+  it("closes delete dialog when confirm delete is clicked", async () => {
+    const user = userEvent.setup();
+    setupMocks();
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
+    });
+
+    const deleteButtons = screen.getAllByRole("button", { name: /Delete skill/i });
+    await user.click(deleteButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Delete Skill" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /^Delete$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: "Delete Skill" })).not.toBeInTheDocument();
+    });
+  });
+
+  // --- Source filter ---
+
+  it("filters skills by source when Source filter is applied", async () => {
+    const user = userEvent.setup();
+    setupMocks({
+      skills: [
+        {
+          name: "builder-skill",
+          current_step: "Step 1",
+          status: "in_progress",
+          last_modified: new Date().toISOString(),
+          tags: [],
+          purpose: "domain",
+          skill_source: "skill-builder",
+          author_login: null,
+          author_avatar: null,
+          intake_json: null,
+        },
+        {
+          name: "marketplace-skill",
+          current_step: null,
+          status: "completed",
+          last_modified: new Date().toISOString(),
+          tags: [],
+          purpose: "domain",
+          skill_source: "marketplace",
+          author_login: null,
+          author_avatar: null,
+          intake_json: null,
+        },
+      ],
+    });
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("builder-skill")).toBeInTheDocument();
+    });
+    expect(screen.getByText("marketplace-skill")).toBeInTheDocument();
+
+    // Open Source filter dropdown
+    await user.click(screen.getByRole("button", { name: /Source/i }));
+
+    // Select "Marketplace" option
+    const menuItem = screen.getByRole("menuitemcheckbox", { name: /Marketplace/i });
+    await user.click(menuItem);
+
+    // Only marketplace-skill should remain
+    await waitFor(() => {
+      expect(screen.queryByText("builder-skill")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("marketplace-skill")).toBeInTheDocument();
+  });
+
+  // --- List view: D3/D4 — edit workflow and more-actions only for skill-builder ---
+
+  it("shows Edit Workflow button only for skill-builder skills in list view", async () => {
+    const user = userEvent.setup();
+    setupMocks({
+      skills: [
+        {
+          name: "my-skill",
+          current_step: "Step 2",
+          status: "in_progress",
+          last_modified: new Date().toISOString(),
+          tags: [],
+          purpose: "domain",
+          skill_source: "skill-builder",
+          author_login: null,
+          author_avatar: null,
+          intake_json: null,
+        },
+        {
+          name: "mkt-skill",
+          current_step: null,
+          status: "completed",
+          last_modified: new Date().toISOString(),
+          tags: [],
+          purpose: "domain",
+          skill_source: "marketplace",
+          author_login: null,
+          author_avatar: null,
+          intake_json: null,
+        },
+      ],
+    });
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("my-skill")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "List view" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Edit workflow/i })).toBeInTheDocument();
+    });
+
+    // Only one Edit Workflow button (for the skill-builder skill)
+    expect(screen.getAllByRole("button", { name: /Edit workflow/i })).toHaveLength(1);
+  });
+
+  it("shows More Actions button only for skill-builder skills in list view", async () => {
+    const user = userEvent.setup();
+    setupMocks({
+      skills: [
+        {
+          name: "my-skill",
+          current_step: "Step 2",
+          status: "in_progress",
+          last_modified: new Date().toISOString(),
+          tags: [],
+          purpose: "domain",
+          skill_source: "skill-builder",
+          author_login: null,
+          author_avatar: null,
+          intake_json: null,
+        },
+        {
+          name: "mkt-skill",
+          current_step: null,
+          status: "completed",
+          last_modified: new Date().toISOString(),
+          tags: [],
+          purpose: "domain",
+          skill_source: "marketplace",
+          author_login: null,
+          author_avatar: null,
+          intake_json: null,
+        },
+      ],
+    });
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("my-skill")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "List view" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /More actions/i })).toBeInTheDocument();
+    });
+
+    // Only one More Actions button (for the skill-builder skill)
+    expect(screen.getAllByRole("button", { name: /More actions/i })).toHaveLength(1);
+  });
+
+  // --- List view: D5 — download visible for completed/marketplace skills ---
+
+  it("shows Download and Refine buttons for completed/marketplace skills in list view but not in-progress", async () => {
+    const user = userEvent.setup();
+    setupMocks({
+      settings: { skills_path: "/home/user/skills" },
+    });
     render(<DashboardPage />);
 
     await waitFor(() => {
       expect(screen.getByText("hr-analytics")).toBeInTheDocument();
     });
 
-    // The hr-analytics skill is completed, so download should be enabled.
-    // We simulate the onDownload callback by finding the skill card and
-    // triggering the context menu. Since context menus require right-click
-    // which is hard to test in jsdom, we test the handler logic through
-    // the invoke mock expectations.
+    await user.click(screen.getByRole("button", { name: "List view" }));
 
-    // Manually call the handler by accessing the component's props
-    // Since we can't easily trigger context menu in jsdom, we verify
-    // that packageSkill and copy_file are called with the right args
-    // by examining the mock invocations after triggering via the
-    // internal callback.
-
-    // For the integration test, we verify the mocks are set up correctly
-    // and the command handlers are available
-    // With the store-based initialization, dashboard no longer calls get_settings on mount
-    expect(mockInvoke).toHaveBeenCalledWith("list_skills", {
-      workspacePath: "/home/user/workspace",
+    await waitFor(() => {
+      // hr-analytics is completed — should show Download and Refine
+      expect(screen.getByRole("button", { name: /Download skill/i })).toBeInTheDocument();
     });
+    expect(screen.getByRole("button", { name: /Refine skill/i })).toBeInTheDocument();
+
+    // sales-pipeline is in_progress and skill-builder — no Download or Refine in its row
+    // (there's only 1 Download button total across all rows — hr-analytics only)
+    expect(screen.getAllByRole("button", { name: /Download skill/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Refine skill/i })).toHaveLength(1);
   });
 });
