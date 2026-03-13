@@ -211,8 +211,8 @@ export default function WorkflowPage() {
           if (editorDirty) await handleSave(true);
           handleReviewContinue();
         }}
-        onReset={!reviewMode && stepConfig?.clarificationsEditable ? () => setResetTarget(currentStep) : undefined}
-        onResetStep={!reviewMode ? () => performStepReset(currentStep) : undefined}
+        onReset={!reviewMode && stepConfig?.clarificationsEditable ? () => setResetTarget(currentStep === 1 ? 0 : currentStep) : undefined}
+        onResetStep={!reviewMode ? () => performStepReset(currentStep === 1 ? 0 : currentStep) : undefined}
         saveStatus={saveStatus}
         evaluating={!!gateLoading}
       />
