@@ -135,7 +135,7 @@ function makeClarificationsJson(overrides?: Partial<ClarificationsFile>): Clarif
     },
     sections: [
       {
-        id: "S1",
+        id: 1,
         title: "Test Section",
         questions: [
           {
