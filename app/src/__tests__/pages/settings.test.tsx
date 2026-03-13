@@ -1,3 +1,4 @@
+import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -29,6 +30,64 @@ vi.mock("next-themes", () => ({
 const mockNavigate = vi.fn();
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mockNavigate,
+}));
+
+// Mock shadcn Select with a native <select> so selectOptions works in jsdom.
+const SelectCtx = React.createContext<{
+  value: string;
+  onValueChange?: (v: string) => void;
+  disabled?: boolean;
+  idRef: React.MutableRefObject<string | undefined>;
+} | null>(null);
+
+vi.mock("@/components/ui/select", () => ({
+  Select: ({
+    children,
+    value,
+    onValueChange,
+    disabled,
+  }: {
+    children: React.ReactNode;
+    value: string;
+    onValueChange?: (v: string) => void;
+    disabled?: boolean;
+  }) => {
+    const idRef = React.useRef<string | undefined>(undefined);
+    return (
+      <SelectCtx.Provider value={{ value, onValueChange, disabled, idRef }}>
+        {children}
+      </SelectCtx.Provider>
+    );
+  },
+  SelectTrigger: ({ id }: { id?: string; children?: React.ReactNode }) => {
+    const ctx = React.useContext(SelectCtx);
+    if (ctx && id) ctx.idRef.current = id;
+    return null;
+  },
+  SelectValue: () => null,
+  SelectContent: ({ children }: { children: React.ReactNode }) => {
+    const ctx = React.useContext(SelectCtx);
+    return (
+      <select
+        id={ctx?.idRef.current}
+        value={ctx?.value ?? ""}
+        onChange={(e) => ctx?.onValueChange?.(e.target.value)}
+        disabled={ctx?.disabled}
+      >
+        {children}
+      </select>
+    );
+  },
+  SelectItem: ({
+    children,
+    value,
+  }: {
+    children: React.ReactNode;
+    value: string;
+  }) => <option value={value}>{children}</option>,
+  SelectGroup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SelectLabel: () => null,
+  SelectSeparator: () => null,
 }));
 
 
