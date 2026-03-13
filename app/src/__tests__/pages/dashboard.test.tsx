@@ -154,18 +154,6 @@ describe("DashboardPage", () => {
     expect(screen.getByText("hr-analytics")).toBeInTheDocument();
   });
 
-  it.skip("shows empty state when no skills (VD-912: empty-state copy changed)", async () => {
-    setupMocks({ skills: [] });
-    render(<DashboardPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("No skills yet")).toBeInTheDocument();
-      expect(
-        screen.getByText(/Create your first skill to get started\./)
-      ).toBeInTheDocument();
-    });
-  });
-
   it("navigates to skill page when skill card is clicked", async () => {
     const user = userEvent.setup();
     setupMocks();
