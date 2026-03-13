@@ -190,15 +190,18 @@ describe("useUsageStore", () => {
       let resolveBarrier!: () => void;
       const barrier = new Promise<void>((resolve) => { resolveBarrier = resolve; });
 
-      let callCount = 0;
+      // Each fetchUsage() fires exactly one get_usage_summary call. Using a
+      // per-command counter avoids the non-determinism that arises when two
+      // concurrent fetches interleave their 6 parallel invoke calls and a shared
+      // callCount barrier misfires.
+      let summaryCallCount = 0;
       mockInvoke.mockImplementation((cmd: string) => {
-        callCount++;
-        const batchIndex = callCount;
         switch (cmd) {
           case "get_usage_summary":
-            // First batch (calls 1-6): block on barrier and return stale data
-            // Second batch (calls 7-12): resolve immediately with fresh data
-            if (batchIndex <= 6) {
+            summaryCallCount++;
+            // fetch #1 (first summary call): block on barrier → stale data
+            // fetch #2 (second summary call): resolve immediately → fresh data
+            if (summaryCallCount === 1) {
               return barrier.then(() => staleSummary);
             }
             return Promise.resolve(freshSummary);
@@ -376,7 +379,7 @@ describe("useUsageStore", () => {
       setupInvokeMock();
 
       expect(useUsageStore.getState().hideCancelled).toBe(false);
-      useUsageStore.getState().toggleHideCancelled();
+      await useUsageStore.getState().toggleHideCancelled();
       expect(useUsageStore.getState().hideCancelled).toBe(true);
     });
 

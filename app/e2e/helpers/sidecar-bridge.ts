@@ -207,6 +207,7 @@ async function sendAgentRequest(
     proc.stdout!.on("data", onData);
     proc.on("error", (e) => {
       clearTimeout(timer);
+      proc.stdout!.off("data", onData);
       reject(e);
     });
   });

@@ -67,8 +67,8 @@ describe("useWorkflowStore", () => {
   });
 
   it("setCurrentStep changes currentStep", () => {
-    useWorkflowStore.getState().setCurrentStep(7);
-    expect(useWorkflowStore.getState().currentStep).toBe(7);
+    useWorkflowStore.getState().setCurrentStep(2);
+    expect(useWorkflowStore.getState().currentStep).toBe(2);
   });
 
   it("setRunning changes isRunning", () => {

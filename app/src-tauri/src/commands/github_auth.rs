@@ -150,6 +150,17 @@ pub fn github_get_user(db: tauri::State<'_, Db>) -> Result<Option<GitHubUser>, S
     }
 }
 
+/// Core logout logic, extracted for testability (avoids requiring AppHandle/State).
+pub(crate) fn github_logout_impl(conn: &rusqlite::Connection) -> Result<(), String> {
+    let mut settings = crate::db::read_settings(conn)?;
+    settings.github_oauth_token = None;
+    settings.github_user_login = None;
+    settings.github_user_avatar = None;
+    settings.github_user_email = None;
+    crate::db::write_settings(conn, &settings)?;
+    Ok(())
+}
+
 /// Sign out of GitHub by clearing all OAuth fields from the database.
 #[tauri::command]
 pub fn github_logout(db: tauri::State<'_, Db>) -> Result<(), String> {
@@ -159,13 +170,7 @@ pub fn github_logout(db: tauri::State<'_, Db>) -> Result<(), String> {
         log::error!("[github_logout] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    let mut settings = crate::db::read_settings(&conn)?;
-    settings.github_oauth_token = None;
-    settings.github_user_login = None;
-    settings.github_user_avatar = None;
-    settings.github_user_email = None;
-    crate::db::write_settings(&conn, &settings)?;
-    Ok(())
+    github_logout_impl(&conn)
 }
 
 #[cfg(test)]
@@ -208,13 +213,8 @@ mod tests {
         settings.github_user_email = Some("octocat@github.com".to_string());
         crate::db::write_settings(&conn, &settings).unwrap();
 
-        // Simulate logout: clear all github fields
-        let mut settings = crate::db::read_settings(&conn).unwrap();
-        settings.github_oauth_token = None;
-        settings.github_user_login = None;
-        settings.github_user_avatar = None;
-        settings.github_user_email = None;
-        crate::db::write_settings(&conn, &settings).unwrap();
+        // Call the actual command implementation — not a manual replica.
+        super::github_logout_impl(&conn).unwrap();
 
         // Verify all fields are cleared
         let after = crate::db::read_settings_hydrated(&conn).unwrap();
@@ -234,13 +234,8 @@ mod tests {
         settings.github_user_login = Some("octocat".to_string());
         crate::db::write_settings(&conn, &settings).unwrap();
 
-        // Logout: clear only github fields
-        let mut settings = crate::db::read_settings(&conn).unwrap();
-        settings.github_oauth_token = None;
-        settings.github_user_login = None;
-        settings.github_user_avatar = None;
-        settings.github_user_email = None;
-        crate::db::write_settings(&conn, &settings).unwrap();
+        // Call the actual command implementation — not a manual replica.
+        super::github_logout_impl(&conn).unwrap();
 
         // API key should still be present
         let after = crate::db::read_settings(&conn).unwrap();

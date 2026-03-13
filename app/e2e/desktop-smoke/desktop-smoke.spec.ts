@@ -87,11 +87,9 @@ test.describe("Desktop Smoke", { tag: "@desktop-smoke" }, () => {
       // Run the real sidecar with MOCK_AGENTS=true — events flow through actual sidecar
       await bridge.runAgent(page, "research-orchestrator", agentId, { skillName: "test-skill" });
 
-      // Allow completion effect chain to settle
-      await page.waitForTimeout(500);
-
-      // Running state must be cleared
-      await expect(page.getByTestId("agent-initializing-indicator")).not.toBeVisible();
+      // Wait for the running state to clear — deterministic signal that the
+      // completion effect chain has fully settled.
+      await expect(page.getByTestId("agent-initializing-indicator")).not.toBeVisible({ timeout: 5_000 });
 
       // Step 1 sidebar entry must remain accessible
       const step1Button = page.locator("button").filter({ hasText: "1. Research" });
@@ -130,11 +128,9 @@ test.describe("Desktop Smoke", { tag: "@desktop-smoke" }, () => {
       // Run the real sidecar with MOCK_AGENTS=true for the refine agent
       await bridge.runAgent(page, "refine-skill", agentId, { skillName: "test-skill", runSource: "refine" });
 
-      // Allow completion effect chain to settle
-      await page.waitForTimeout(500);
-
-      // Thinking indicator should be cleared
-      await expect(thinking).not.toBeVisible();
+      // Wait for the thinking indicator to disappear — deterministic signal that
+      // the refine completion effect chain has fully settled.
+      await expect(thinking).not.toBeVisible({ timeout: 5_000 });
     } finally {
       bridge.cleanup();
     }
