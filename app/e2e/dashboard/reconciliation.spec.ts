@@ -60,8 +60,8 @@ test.describe("Reconciliation Notification", { tag: "@dashboard" }, () => {
     // Dialog should be open
     await expect(page.getByText("Startup Reconciliation")).toBeVisible({ timeout: 5_000 });
 
-    // Acknowledge by clicking the action button (no requireApply path — single action button)
-    await page.getByRole("button", { name: "Acknowledge" }).click();
+    // Notifications trigger requireApply — button says "Apply Reconciliation"
+    await page.getByRole("button", { name: "Apply Reconciliation" }).click();
 
     // Dialog should close
     await expect(page.getByText("Startup Reconciliation")).not.toBeVisible({ timeout: 5_000 });

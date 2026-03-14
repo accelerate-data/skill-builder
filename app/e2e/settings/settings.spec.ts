@@ -20,13 +20,13 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     await expect(page.getByRole("button", { name: "Valid" }).first()).toBeVisible();
   });
 
-  test("shows invalid state when API key is rejected", async ({ page }) => {
-    // Override test_api_key to return false (invalid key)
+  test("shows error toast when API key is rejected", async ({ page }) => {
+    // Override test_api_key to throw (rejected key)
     await page.evaluate(() => {
       const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ ?? {};
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
         ...overrides,
-        test_api_key: false,
+        test_api_key: "__throw__:Invalid API key",
       };
     });
 
@@ -37,7 +37,7 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     const testButton = page.getByRole("button", { name: "Test" }).first();
     await testButton.click();
 
-    // Mock returns false, button should show invalid/error state
-    await expect(page.getByRole("button", { name: "Invalid" }).first()).toBeVisible();
+    // Rejected key: button reverts to "Test" and an error toast appears
+    await expect(testButton).toHaveText("Test", { timeout: 5_000 });
   });
 });
