@@ -135,8 +135,7 @@ export default function SkillCard({
   const progress = isMarketplace ? 100 : parseStepProgress(skill.current_step, skill.status)
   const canDownload = isMarketplace || isWorkflowComplete(skill)
 
-  // Only skill-builder skills have the right-click context menu
-  const showContextMenu = skill.skill_source === 'skill-builder'
+  const showContextMenu = true
 
   const bandColor = skill.purpose ? PURPOSE_BAND_COLOR[skill.purpose as Purpose] : undefined
 
