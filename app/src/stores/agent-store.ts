@@ -125,7 +125,112 @@ function drainPendingTerminal(agentId: string) {
 
 /** @deprecated Pending buffers are now in the Zustand store and reset with clearRuns(). */
 export function resetAgentStoreInternals() {
+  clearDisplayItemBuffer();
   useAgentStore.setState({ pendingTerminal: {}, pendingMetadata: {} });
+}
+
+// ---------------------------------------------------------------------------
+// Display item batching buffer (RAF-based)
+// ---------------------------------------------------------------------------
+// Items are collected in a module-level buffer and flushed in a single
+// requestAnimationFrame callback. This reduces O(n) array copies per item
+// to O(1) amortized — one copy per frame instead of one per message.
+
+const _displayItemBuffer: Map<string, DisplayItem[]> = new Map();
+let _rafId: number | null = null;
+
+/** Synchronously flush all buffered display items into Zustand state. */
+export function flushDisplayItems(): void {
+  if (_rafId !== null) {
+    if (typeof cancelAnimationFrame !== "undefined") cancelAnimationFrame(_rafId);
+    _rafId = null;
+  }
+  if (_displayItemBuffer.size === 0) return;
+
+  // Snapshot and clear before applying so re-entrant adds don't get lost
+  const snapshot = new Map(_displayItemBuffer);
+  _displayItemBuffer.clear();
+
+  useAgentStore.setState((state) => {
+    const updatedRuns = { ...state.runs };
+
+    for (const [agentId, items] of snapshot) {
+      const run = updatedRuns[agentId];
+      if (!run) {
+        // Auto-create run for display items arriving before startRun
+        console.debug(
+          "[agent-store] event=auto_create_run operation=flush_display_items agent_id=%s item_count=%d",
+          agentId,
+          items.length,
+        );
+        updatedRuns[agentId] = {
+          agentId,
+          model: "unknown",
+          status: "running" as const,
+          displayItems: items,
+          startTime: Date.now(),
+          contextHistory: [],
+          contextWindow: DEFAULT_CONTEXT_WINDOW,
+          compactionEvents: [],
+          thinkingEnabled: false,
+        };
+        continue;
+      }
+
+      // Build the merged array: start from current items, apply buffered batch
+      const merged = [...run.displayItems];
+      for (const item of items) {
+        const existingIdx = merged.findIndex((di) => di.id === item.id);
+        if (existingIdx >= 0) {
+          merged[existingIdx] = item;
+        } else {
+          merged.push(item);
+        }
+      }
+
+      updatedRuns[agentId] = { ...run, displayItems: merged };
+    }
+
+    return { runs: updatedRuns };
+  });
+}
+
+function scheduleFlush(): void {
+  if (_rafId !== null) return;
+  if (typeof requestAnimationFrame !== "undefined") {
+    _rafId = requestAnimationFrame(() => {
+      _rafId = null;
+      flushDisplayItems();
+    });
+  } else {
+    // Non-browser environment (e.g. SSR/tests without RAF polyfill):
+    // flush synchronously so items always reach Zustand state.
+    flushDisplayItems();
+  }
+}
+
+function bufferDisplayItem(agentId: string, item: DisplayItem): void {
+  let buf = _displayItemBuffer.get(agentId);
+  if (!buf) {
+    buf = [];
+    _displayItemBuffer.set(agentId, buf);
+  }
+  // Deduplicate within the buffer itself (update-by-id)
+  const existingIdx = buf.findIndex((di) => di.id === item.id);
+  if (existingIdx >= 0) {
+    buf[existingIdx] = item;
+  } else {
+    buf.push(item);
+  }
+  scheduleFlush();
+}
+
+function clearDisplayItemBuffer(): void {
+  if (_rafId !== null) {
+    if (typeof cancelAnimationFrame !== "undefined") cancelAnimationFrame(_rafId);
+    _rafId = null;
+  }
+  _displayItemBuffer.clear();
 }
 
 /** Returns the number of queued terminal-status events (for testing). */
@@ -375,68 +480,15 @@ export const useAgentStore = create<AgentState>((set) => ({
     drainPendingMetadata(agentId);
   },
 
-  addDisplayItem: (agentId, item) =>
-    set((state) => {
-      const run = state.runs[agentId];
-      if (!run) {
-        // Auto-create run for display items that arrive before startRun
-        console.debug(
-          "[agent-store] event=auto_create_run operation=add_display_item agent_id=%s item_type=%s",
-          agentId,
-          item.type,
-        );
-        return {
-          runs: {
-            ...state.runs,
-            [agentId]: {
-              agentId,
-              model: "unknown",
-              status: "running" as const,
-              displayItems: [item],
-              startTime: Date.now(),
-              contextHistory: [],
-              contextWindow: DEFAULT_CONTEXT_WINDOW,
-              compactionEvents: [],
-              thinkingEnabled: false,
-            },
-          },
-        };
-      }
-
-      // Update-by-id: if this item has the same id as an existing one,
-      // replace it (tool call status updates, subagent completion)
-      const existingIdx = run.displayItems.findIndex((di) => di.id === item.id);
-      let updatedItems: DisplayItem[];
-      if (existingIdx >= 0) {
-        updatedItems = [...run.displayItems];
-        updatedItems[existingIdx] = item;
-        console.debug(
-          "[agent-store] event=update_display_item operation=replace_by_id agent_id=%s item_id=%s item_type=%s",
-          agentId,
-          item.id,
-          item.type,
-        );
-      } else {
-        updatedItems = [...run.displayItems, item];
-        console.debug(
-          "[agent-store] event=add_display_item operation=append agent_id=%s item_id=%s item_type=%s total=%d",
-          agentId,
-          item.id,
-          item.type,
-          updatedItems.length,
-        );
-      }
-
-      return {
-        runs: {
-          ...state.runs,
-          [agentId]: {
-            ...run,
-            displayItems: updatedItems,
-          },
-        },
-      };
-    }),
+  addDisplayItem: (agentId, item) => {
+    console.debug(
+      "[agent-store] event=add_display_item operation=buffer agent_id=%s item_id=%s item_type=%s",
+      agentId,
+      item.id,
+      item.type,
+    );
+    bufferDisplayItem(agentId, item);
+  },
 
   applyRunConfig: (agentId, event) =>
     set((state) => {
@@ -574,6 +626,8 @@ export const useAgentStore = create<AgentState>((set) => ({
     }),
 
   completeRun: (agentId, success) => {
+    // Flush any buffered display items so they are visible in the final run state
+    flushDisplayItems();
     if (!useAgentStore.getState().runs[agentId]) {
       queuePendingTerminal(agentId, success ? "completed" : "error");
       return;
@@ -597,6 +651,8 @@ export const useAgentStore = create<AgentState>((set) => ({
   },
 
   shutdownRun: (agentId: string) => {
+    // Flush any buffered display items so they are visible in the final run state
+    flushDisplayItems();
     if (!useAgentStore.getState().runs[agentId]) {
       queuePendingTerminal(agentId, "shutdown");
       return;
@@ -622,6 +678,7 @@ export const useAgentStore = create<AgentState>((set) => ({
   setActiveAgent: (agentId) => set({ activeAgentId: agentId }),
 
   clearRuns: () => {
+    clearDisplayItemBuffer();
     set({ runs: {}, activeAgentId: null, pendingTerminal: {}, pendingMetadata: {} });
   },
 }));
