@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { useAgentStore } from "@/stores/agent-store";
+import { useAgentStore, flushDisplayItems } from "@/stores/agent-store";
 import type { DisplayItem } from "@/lib/display-types";
 
 // Polyfill scrollIntoView for jsdom
@@ -41,6 +41,7 @@ function addDisplayItems(agentId: string, items: DisplayItem[]) {
   for (const item of items) {
     useAgentStore.getState().addDisplayItem(agentId, item);
   }
+  flushDisplayItems();
 }
 
 // ---------------------------------------------------------------------------
