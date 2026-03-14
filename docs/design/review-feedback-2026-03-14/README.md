@@ -69,15 +69,6 @@ Every agent invocation runs with `permissionMode: "bypassPermissions"`, granting
 
 ### High
 
-#### H6. Unhandled Promise in `StreamSession` Constructor
-
-**Location:** `sidecar/stream-session.ts:45`
-**Source:** Sidecar Reviewer
-
-`this.runQuery(...)` is async but its promise is discarded. A sync throw before the first `await` becomes an unhandled rejection that crashes the entire sidecar.
-
-**Fix:** `.catch((err) => { onMessage(requestId, { type: "error", message: err.message }); })`
-
 #### H8. GitHub OAuth Requests `repo` Scope (Full Read/Write to All Repos)
 
 **Location:** `commands/github_auth.rs:22`
@@ -236,10 +227,9 @@ Note: VU-489 AC6 splits `workflow.rs` but does **not** address the `db.rs` monol
 | 1 | Migrate API key + OAuth token to OS keychain (C1) | Security | Medium |
 | 2 | Reduce agent permission mode from `bypassPermissions` (C2) | Security | High |
 | 3 | Reduce GitHub OAuth scope from `repo` to `public_repo` (H8) | Security | Trivial |
-| 4 | Catch unhandled promise in `StreamSession` constructor (H6) | Sidecar | Small |
-| 5 | Fix test DB helper — iterate `NUMBERED_MIGRATIONS` (T1) | Rust | Small |
-| 6 | Replace 17 `waitForTimeout` calls with deterministic assertions (T2) | E2E | Medium |
-| 7 | Add `rehype-sanitize` to markdown rendering pipeline (M15) | Security | Small |
-| 8 | Re-enable FK enforcement after migrations complete (L12) | Rust | Trivial |
-| 9 | Add E2E tests for usage page and settings save | E2E | Medium |
+| 4 | Fix test DB helper — iterate `NUMBERED_MIGRATIONS` (T1) | Rust | Small |
+| 5 | Replace 17 `waitForTimeout` calls with deterministic assertions (T2) | E2E | Medium |
+| 6 | Add `rehype-sanitize` to markdown rendering pipeline (M15) | Security | Small |
+| 7 | Re-enable FK enforcement after migrations complete (L12) | Rust | Trivial |
+| 8 | Add E2E tests for usage page and settings save | E2E | Medium |
 | 10 | Split `db.rs` monolith into domain modules (M9) | Architecture | Large |
