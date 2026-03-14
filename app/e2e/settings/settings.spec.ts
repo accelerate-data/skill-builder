@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
-import { waitForAppReady } from "../helpers/app-helpers";
+import { reloadWithOverrides, waitForAppReady } from "../helpers/app-helpers";
+import { E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "../helpers/test-paths";
 
 test.describe("Settings Page", { tag: "@settings" }, () => {
   test.beforeEach(async ({ page }) => {
@@ -39,5 +40,49 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
 
     // Rejected key: button reverts to "Test" and an error toast appears
     await expect(testButton).toHaveText("Test", { timeout: 5_000 });
+  });
+
+  test("saves industry and function role and persists after navigation", async ({ page }) => {
+    await reloadWithOverrides(page, {
+      get_settings: {
+        anthropic_api_key: "sk-ant-test",
+        workspace_path: E2E_WORKSPACE_PATH,
+        skills_path: E2E_SKILLS_PATH,
+      },
+      check_workspace_path: true,
+      save_settings: undefined,
+      list_skills: [],
+    });
+
+    // Navigate to settings via client-side routing (preserves Zustand store)
+    await page.goto("/settings");
+    await waitForAppReady(page);
+
+    // Fill industry and blur to trigger auto-save
+    const industryInput = page.getByPlaceholder("e.g., Financial Services, Healthcare, Retail");
+    await industryInput.fill("Financial Services");
+    await industryInput.blur();
+
+    // Fill function role and blur to trigger auto-save
+    const roleInput = page.getByPlaceholder("e.g., Analytics Engineer, Data Platform Lead");
+    await roleInput.fill("Data Platform Lead");
+    await roleInput.blur();
+
+    // Wait for "Saved" confirmation to appear
+    await expect(page.getByText("Saved")).toBeVisible({ timeout: 5_000 });
+
+    // Navigate away to dashboard using the back button (client-side navigation)
+    await page.getByRole("button", { name: "Back to Dashboard" }).click();
+    await expect(page).toHaveURL("/", { timeout: 5_000 });
+
+    // Navigate back to settings using header button (client-side, preserves store)
+    await page.getByRole("button", { name: /Settings/ }).click();
+    await expect(page).toHaveURL("/settings", { timeout: 5_000 });
+
+    // Verify the values persisted in the Zustand store (rendered from store state)
+    const industryAfter = page.getByPlaceholder("e.g., Financial Services, Healthcare, Retail");
+    const roleAfter = page.getByPlaceholder("e.g., Analytics Engineer, Data Platform Lead");
+    await expect(industryAfter).toHaveValue("Financial Services");
+    await expect(roleAfter).toHaveValue("Data Platform Lead");
   });
 });

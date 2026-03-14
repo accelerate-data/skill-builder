@@ -126,6 +126,7 @@ const mockResponses: Record<string, unknown> = {
   list_user_repos: [],
   validate_remote_repo: undefined,
   // Imported skills (Skills Library page)
+  list_imported_skills: [],
   list_workspace_skills: [],
   upload_skill: {
     skill_id: "skill-001",
@@ -139,6 +140,7 @@ const mockResponses: Record<string, unknown> = {
     is_bundled: false,
   },
   toggle_skill_active: undefined,
+  delete_imported_skill: undefined,
   delete_workspace_skill: undefined,
   export_skill: "C:/skill-builder-test/export/test-skill.zip",
   get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\nFollow these steps...",
