@@ -140,8 +140,9 @@ export function ClarificationsEditor({
 
   const questionNeedsReview = useCallback(
     (question: Question): boolean => {
+      if (reviewFeedbackByQuestion.has(question.id)) return true;
       if (isQuestionAnswered(question)) return false;
-      return reviewFeedbackByQuestion.has(question.id) || question.must_answer;
+      return question.must_answer;
     },
     [reviewFeedbackByQuestion],
   );
