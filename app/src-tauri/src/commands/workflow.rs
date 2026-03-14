@@ -170,7 +170,7 @@ fn deploy_skill_for_workflow(
     let dest = dest_skills_dir.join(skill_name);
 
     // Try purpose-based resolution first
-    let source_dir: std::path::PathBuf = match crate::db::get_workspace_skill_by_purpose(
+    let source_dir: std::path::PathBuf = match crate::db::get_imported_skill_by_purpose(
         conn, purpose,
     ) {
         Ok(Some(ws)) => {
@@ -438,7 +438,7 @@ fn extract_customization_section(content: &str) -> String {
 /// Generate the "## Custom Skills" section from DB, or empty string if none.
 /// All active workspace skills are treated identically regardless of is_bundled.
 fn generate_skills_section(conn: &rusqlite::Connection) -> Result<String, String> {
-    let skills = crate::db::list_active_workspace_skills(conn)?;
+    let skills = crate::db::list_active_skills(conn)?;
     if skills.is_empty() {
         return Ok(String::new());
     }
@@ -4878,7 +4878,7 @@ mod tests {
             Some("Skill structure rules."),
         );
 
-        let skill = crate::types::WorkspaceSkill {
+        let skill = crate::types::ImportedSkill {
             skill_id: "bundled-test-practices".to_string(),
             skill_name: "test-practices".to_string(),
             is_active: true,
@@ -4894,7 +4894,7 @@ mod tests {
             disable_model_invocation: None,
             marketplace_source_url: None,
         };
-        crate::db::insert_workspace_skill(&conn, &skill).unwrap();
+        crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
         let section = generate_skills_section(&conn).unwrap();
 
@@ -4927,7 +4927,7 @@ mod tests {
     #[test]
     fn test_generate_skills_section_inactive_skill_excluded() {
         let conn = super::super::test_utils::create_test_db();
-        let skill = crate::types::WorkspaceSkill {
+        let skill = crate::types::ImportedSkill {
             skill_id: "bundled-test-practices".to_string(),
             skill_name: "test-practices".to_string(),
             is_active: false,
@@ -4943,7 +4943,7 @@ mod tests {
             disable_model_invocation: None,
             marketplace_source_url: None,
         };
-        crate::db::insert_workspace_skill(&conn, &skill).unwrap();
+        crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
         let section = generate_skills_section(&conn).unwrap();
         assert!(
@@ -4969,7 +4969,7 @@ mod tests {
             Some("Analytics patterns."),
         );
 
-        let bundled = crate::types::WorkspaceSkill {
+        let bundled = crate::types::ImportedSkill {
             skill_id: "bundled-test-practices".to_string(),
             skill_name: "test-practices".to_string(),
             is_active: true,
@@ -4985,7 +4985,7 @@ mod tests {
             disable_model_invocation: None,
             marketplace_source_url: None,
         };
-        let imported = crate::types::WorkspaceSkill {
+        let imported = crate::types::ImportedSkill {
             skill_id: "imp-data-analytics-123".to_string(),
             skill_name: "data-analytics".to_string(),
             is_active: true,
@@ -5001,8 +5001,8 @@ mod tests {
             disable_model_invocation: None,
             marketplace_source_url: None,
         };
-        crate::db::insert_workspace_skill(&conn, &bundled).unwrap();
-        crate::db::insert_workspace_skill(&conn, &imported).unwrap();
+        crate::db::insert_imported_skill(&conn, &bundled).unwrap();
+        crate::db::insert_imported_skill(&conn, &imported).unwrap();
 
         let section = generate_skills_section(&conn).unwrap();
 
@@ -5048,7 +5048,7 @@ mod tests {
             Some("Skill description here."),
         );
 
-        let skill = crate::types::WorkspaceSkill {
+        let skill = crate::types::ImportedSkill {
             skill_id: "imp-my-skill-1".to_string(),
             skill_name: "my-skill".to_string(),
             is_active: true,
@@ -5064,7 +5064,7 @@ mod tests {
             disable_model_invocation: None,
             marketplace_source_url: None,
         };
-        crate::db::insert_workspace_skill(&conn, &skill).unwrap();
+        crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
         let section = generate_skills_section(&conn).unwrap();
 
@@ -5122,7 +5122,7 @@ mod tests {
         )
         .unwrap();
 
-        let ws = crate::types::WorkspaceSkill {
+        let ws = crate::types::ImportedSkill {
             skill_id: "bundled-research".to_string(),
             skill_name: "research".to_string(),
             is_active: true,
@@ -5138,7 +5138,7 @@ mod tests {
             purpose: Some("research".to_string()),
             marketplace_source_url: None,
         };
-        crate::db::insert_workspace_skill(&conn, &ws).unwrap();
+        crate::db::insert_imported_skill(&conn, &ws).unwrap();
 
         deploy_skill_for_workflow(
             &conn,

@@ -176,7 +176,7 @@ pub fn prepare_skill_test(
         let sp = settings
             .skills_path
             .unwrap_or_else(|| workspace_path.clone());
-        let tc = crate::db::get_workspace_skill_by_purpose(&conn, "test-context").map_err(|e| {
+        let tc = crate::db::get_imported_skill_by_purpose(&conn, "test-context").map_err(|e| {
             log::error!(
                 "[prepare_skill_test] failed to query test-context skill: {}",
                 e

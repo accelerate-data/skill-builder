@@ -113,9 +113,7 @@ fn list_skills_inner(
     if let Some(source_url) = source_url {
         let mut stmt = conn
             .prepare(
-                "SELECT skill_name FROM imported_skills WHERE marketplace_source_url = ?1
-                 UNION
-                 SELECT skill_name FROM workspace_skills WHERE marketplace_source_url = ?1",
+                "SELECT skill_name FROM imported_skills WHERE marketplace_source_url = ?1",
             )
             .map_err(|e| format!("list_skills_inner source filter prepare: {}", e))?;
         let scoped_names: std::collections::HashSet<String> = stmt

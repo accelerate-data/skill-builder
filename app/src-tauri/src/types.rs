@@ -413,47 +413,6 @@ pub struct SkillFileMeta {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkspaceSkill {
-    pub skill_id: String,
-    pub skill_name: String,
-    pub description: Option<String>,
-    pub is_active: bool,
-    pub is_bundled: bool,
-    pub disk_path: String,
-    pub imported_at: String,
-    pub purpose: Option<String>,
-    pub version: Option<String>,
-    pub model: Option<String>,
-    pub argument_hint: Option<String>,
-    pub user_invocable: Option<bool>,
-    pub disable_model_invocation: Option<bool>,
-    /// Source registry URL this skill was imported from. NULL for bundled/manually uploaded skills.
-    #[serde(default)]
-    pub marketplace_source_url: Option<String>,
-}
-
-impl From<ImportedSkill> for WorkspaceSkill {
-    fn from(s: ImportedSkill) -> Self {
-        Self {
-            skill_id: s.skill_id,
-            skill_name: s.skill_name,
-            description: s.description,
-            is_active: s.is_active,
-            is_bundled: s.is_bundled,
-            disk_path: s.disk_path,
-            imported_at: s.imported_at,
-            purpose: s.purpose,
-            version: s.version,
-            model: s.model,
-            argument_hint: s.argument_hint,
-            user_invocable: s.user_invocable,
-            disable_model_invocation: s.disable_model_invocation,
-            marketplace_source_url: s.marketplace_source_url,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrphanSkill {
     pub skill_name: String,
     pub purpose: String,

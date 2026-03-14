@@ -784,291 +784,6 @@ pub(crate) async fn list_github_skills_inner(
     Ok((marketplace.name.clone(), final_skills))
 }
 
-// ---------------------------------------------------------------------------
-// import_github_skills
-// ---------------------------------------------------------------------------
-
-/// Per-skill import request with optional purpose tag and metadata overrides.
-#[derive(serde::Deserialize)]
-pub struct WorkspaceSkillImportRequest {
-    pub path: String,
-    pub purpose: Option<String>,
-    pub metadata_override: Option<crate::types::SkillMetadataOverride>,
-    /// Caller-supplied marketplace version — used for the pre-download version guard.
-    /// When present and the installed version is already >= this value, the skill is
-    /// skipped before any disk operation (prevents the directory from being deleted
-    /// and re-downloaded only to be thrown away).
-    pub version: Option<String>,
-}
-
-/// Import selected skills from a GitHub repo into the local workspace.
-///
-/// Accepts a list of `WorkspaceSkillImportRequest` items. Each item specifies
-/// the skill path, an optional purpose tag, and optional metadata overrides.
-///
-/// If a workspace_skills row with the same skill_name already exists, it is
-/// updated (version, model, domain, description, disk_path, etc.) while
-/// preserving `is_active` and `is_bundled`. New skills are inserted.
-#[tauri::command]
-pub async fn import_github_skills(
-    db: tauri::State<'_, Db>,
-    owner: String,
-    repo: String,
-    branch: String,
-    skill_requests: Vec<WorkspaceSkillImportRequest>,
-    source_url: Option<String>,
-) -> Result<Vec<ImportedSkill>, String> {
-    log::info!(
-        "[import_github_skills] owner={} repo={} branch={} count={} source_url={:?}",
-        owner,
-        repo,
-        branch,
-        skill_requests.len(),
-        source_url
-    );
-    // Read settings
-    let (workspace_path, token) = {
-        let conn = db.0.lock().map_err(|e| {
-            log::error!("[import_github_skills] failed to acquire DB lock: {}", e);
-            e.to_string()
-        })?;
-        let settings = crate::db::read_settings_hydrated(&conn)?;
-        let wp = settings
-            .workspace_path
-            .ok_or_else(|| "Workspace path not initialized".to_string())?;
-        (wp, settings.github_oauth_token.clone())
-    };
-
-    let client = build_github_client(token.as_deref());
-    let (branch, tree) = fetch_repo_tree(&client, &owner, &repo, &branch).await?;
-
-    let skills_dir = Path::new(&workspace_path).join(".claude").join("skills");
-    let mut imported: Vec<ImportedSkill> = Vec::new();
-    let mut errors: Vec<String> = Vec::new();
-    let mut skipped: Vec<String> = Vec::new();
-
-    for req in &skill_requests {
-        let skill_path = &req.path;
-        let purpose = req.purpose.clone();
-        let metadata_override = req.metadata_override.as_ref();
-
-        // Derive the candidate skill name from the directory path (last segment).
-        let dir_name = skill_path
-            .trim_end_matches('/')
-            .rsplit('/')
-            .next()
-            .unwrap_or(skill_path.as_str());
-
-        // Check if this skill is already installed (by dir name as proxy for skill_name).
-        let existing = {
-            let conn = db.0.lock().map_err(|e| e.to_string())?;
-            crate::db::get_workspace_skill_by_name(&conn, dir_name)?
-        };
-
-        // Pre-download version guard: if the caller supplied the marketplace version and an
-        // existing install is found, skip before touching the disk at all. This avoids the
-        // directory being deleted and re-downloaded only to be thrown away post-import.
-        if let (Some(ref existing_skill), Some(ref mp_ver)) = (&existing, &req.version) {
-            let inst_ver = existing_skill.version.as_deref().unwrap_or("");
-            if !semver_gt(mp_ver, inst_ver) {
-                log::info!(
-                    "[import_github_skills] {} already at version {:?}, skipping (pre-download guard)",
-                    dir_name, existing_skill.version
-                );
-                skipped.push(dir_name.to_string());
-                continue;
-            }
-        }
-
-        // Overwrite the on-disk directory if an existing installation is found.
-        let should_overwrite = existing.is_some();
-
-        match import_single_skill(
-            &client,
-            "https://raw.githubusercontent.com",
-            &owner,
-            &repo,
-            &branch,
-            skill_path,
-            &tree,
-            &skills_dir,
-            should_overwrite,
-            metadata_override,
-        )
-        .await
-        {
-            Ok(mut skill) => {
-                let conn = db.0.lock().map_err(|e| e.to_string())?;
-
-                if let Some(ref existing_skill) = existing {
-                    // Skip if marketplace version is NOT strictly greater than installed version.
-                    let mp_ver = skill.version.as_deref().unwrap_or("");
-                    let inst_ver = existing_skill.version.as_deref().unwrap_or("");
-                    if !semver_gt(mp_ver, inst_ver) {
-                        log::info!(
-                            "[import_github_skills] {} already at version {:?}, skipping",
-                            skill.skill_name,
-                            skill.version
-                        );
-                        if let Err(e) = fs::remove_dir_all(&skill.disk_path) {
-                            log::warn!(
-                                "[import_github_skills] cleanup failed for {}: {}",
-                                skill.disk_path,
-                                e
-                            );
-                        }
-                        skipped.push(skill.skill_name.clone());
-                        continue;
-                    }
-                    // Different version — merge: new frontmatter wins if Some, else fall back to existing WorkspaceSkill
-                    if skill.purpose.is_none() {
-                        skill.purpose = existing_skill.purpose.clone();
-                    }
-                    if skill.description.is_none() {
-                        skill.description = existing_skill.description.clone();
-                    }
-                    if skill.model.is_none() {
-                        skill.model = existing_skill.model.clone();
-                    }
-                    if skill.argument_hint.is_none() {
-                        skill.argument_hint = existing_skill.argument_hint.clone();
-                    }
-                    if skill.user_invocable.is_none() {
-                        skill.user_invocable = existing_skill.user_invocable;
-                    }
-                    if skill.disable_model_invocation.is_none() {
-                        skill.disable_model_invocation = existing_skill.disable_model_invocation;
-                    }
-                    log::info!(
-                        "[import_github_skills] upgrading {} from {:?} to {:?}",
-                        skill.skill_name,
-                        existing_skill.version,
-                        skill.version
-                    );
-                }
-
-                let mut ws_skill: crate::types::WorkspaceSkill = skill.clone().into();
-                ws_skill.purpose = purpose.clone();
-                ws_skill.marketplace_source_url = source_url.clone();
-
-                if let Some(ref existing_skill) = existing {
-                    // Preserve is_active, is_bundled, skill_id, imported_at from the existing row
-                    ws_skill.is_active = existing_skill.is_active;
-                    ws_skill.is_bundled = existing_skill.is_bundled;
-                    ws_skill.skill_id = existing_skill.skill_id.clone();
-                    ws_skill.imported_at = existing_skill.imported_at.clone();
-                    if let Err(e) = crate::db::upsert_workspace_skill(&conn, &ws_skill) {
-                        if let Err(cleanup_err) = fs::remove_dir_all(&skill.disk_path) {
-                            log::warn!(
-                                "[import_github_skills] cleanup failed after upsert error for {}: {}",
-                                skill.disk_path, cleanup_err
-                            );
-                        }
-                        errors.push(format!("{}: {}", skill.skill_name, e));
-                    } else {
-                        if ws_skill.is_active {
-                            if let Err(e) =
-                                super::imported_skills::apply_import_purpose_conflict_policy(
-                                    &conn,
-                                    &workspace_path,
-                                    &ws_skill.skill_id,
-                                    &ws_skill.skill_name,
-                                    ws_skill.purpose.as_deref(),
-                                )
-                            {
-                                errors.push(format!("{}: {}", skill.skill_name, e));
-                                continue;
-                            }
-                        }
-                        // Compute and store the content hash as the new baseline
-                        if let Some(hash) = compute_skill_content_hash(&skill.disk_path) {
-                            if let Err(e) = crate::db::set_workspace_skill_content_hash(
-                                &conn,
-                                &skill.skill_name,
-                                &hash,
-                            ) {
-                                log::warn!("[import_github_skills] failed to set content_hash for '{}': {}", skill.skill_name, e);
-                            }
-                        }
-                        imported.push(skill);
-                    }
-                } else {
-                    log::debug!(
-                        "[import_github_skills] inserting new workspace skill '{}'",
-                        ws_skill.skill_name
-                    );
-                    match crate::db::insert_workspace_skill(&conn, &ws_skill) {
-                        Ok(()) => {
-                            if ws_skill.is_active {
-                                if let Err(e) =
-                                    super::imported_skills::apply_import_purpose_conflict_policy(
-                                        &conn,
-                                        &workspace_path,
-                                        &ws_skill.skill_id,
-                                        &ws_skill.skill_name,
-                                        ws_skill.purpose.as_deref(),
-                                    )
-                                {
-                                    errors.push(format!("{}: {}", skill.skill_name, e));
-                                    continue;
-                                }
-                            }
-                            // Compute and store the content hash as the baseline
-                            if let Some(hash) = compute_skill_content_hash(&ws_skill.disk_path) {
-                                if let Err(e) = crate::db::set_workspace_skill_content_hash(
-                                    &conn,
-                                    &ws_skill.skill_name,
-                                    &hash,
-                                ) {
-                                    log::warn!("[import_github_skills] failed to set content_hash for '{}': {}", ws_skill.skill_name, e);
-                                }
-                            }
-                            imported.push(skill);
-                        }
-                        Err(e) => {
-                            if let Err(cleanup_err) = fs::remove_dir_all(&ws_skill.disk_path) {
-                                log::warn!(
-                                    "Failed to clean up skill directory '{}' after DB error: {}",
-                                    ws_skill.disk_path,
-                                    cleanup_err
-                                );
-                            }
-                            errors.push(format!("{}: {}", skill.skill_name, e));
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                errors.push(format!("{}: {}", skill_path, e));
-            }
-        }
-    }
-
-    if imported.is_empty() && !errors.is_empty() {
-        return Err(format!("All imports failed: {}", errors.join("; ")));
-    }
-
-    // If some succeeded and some failed, log warnings but return the successes
-    for err in &errors {
-        log::warn!("Skill import error: {}", err);
-    }
-    for name in &skipped {
-        log::info!(
-            "[import_github_skills] skipped '{}': already at same or newer version",
-            name
-        );
-    }
-
-    // Regenerate CLAUDE.md with imported skills section
-    if !imported.is_empty() {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        if let Err(e) = super::workflow::update_skills_section(&workspace_path, &conn) {
-            log::warn!("Failed to update CLAUDE.md after GitHub import: {}", e);
-        }
-    }
-
-    Ok(imported)
-}
 
 // ---------------------------------------------------------------------------
 // get_dashboard_skill_names
@@ -1709,7 +1424,7 @@ pub struct RegistryNameInfo {
 pub struct MarketplaceUpdateResult {
     /// Skills with updates in imported_skills (Skills Library / marketplace source).
     pub library: Vec<SkillUpdateInfo>,
-    /// Skills with updates in workspace_skills (Settings → Skills).
+    /// Skills with updates in workspace (legacy, always empty after consolidation).
     pub workspace: Vec<SkillUpdateInfo>,
     /// Backward-compatible field for older callers; now always None.
     pub registry_name: Option<String>,
@@ -1726,21 +1441,15 @@ struct InstalledMarketplaceSkill {
 
 fn load_installed_marketplace_skills(
     conn: &rusqlite::Connection,
-) -> Result<
-    (
-        Vec<InstalledMarketplaceSkill>,
-        Vec<InstalledMarketplaceSkill>,
-    ),
-    String,
-> {
-    let mut lib_stmt = conn
+) -> Result<Vec<InstalledMarketplaceSkill>, String> {
+    let mut stmt = conn
         .prepare(
             "SELECT skill_name, version, marketplace_source_url
              FROM imported_skills
              WHERE marketplace_source_url IS NOT NULL",
         )
-        .map_err(|e| format!("load_installed_marketplace_skills library prepare: {e}"))?;
-    let library = lib_stmt
+        .map_err(|e| format!("load_installed_marketplace_skills prepare: {e}"))?;
+    let skills = stmt
         .query_map([], |row| {
             Ok(InstalledMarketplaceSkill {
                 name: row.get(0)?,
@@ -1748,30 +1457,11 @@ fn load_installed_marketplace_skills(
                 source_url: row.get(2)?,
             })
         })
-        .map_err(|e| format!("load_installed_marketplace_skills library query: {e}"))?
+        .map_err(|e| format!("load_installed_marketplace_skills query: {e}"))?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("load_installed_marketplace_skills library collect: {e}"))?;
+        .map_err(|e| format!("load_installed_marketplace_skills collect: {e}"))?;
 
-    let mut ws_stmt = conn
-        .prepare(
-            "SELECT skill_name, version, marketplace_source_url
-             FROM workspace_skills
-             WHERE marketplace_source_url IS NOT NULL",
-        )
-        .map_err(|e| format!("load_installed_marketplace_skills workspace prepare: {e}"))?;
-    let workspace = ws_stmt
-        .query_map([], |row| {
-            Ok(InstalledMarketplaceSkill {
-                name: row.get(0)?,
-                version: row.get(1)?,
-                source_url: row.get(2)?,
-            })
-        })
-        .map_err(|e| format!("load_installed_marketplace_skills workspace query: {e}"))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("load_installed_marketplace_skills workspace collect: {e}"))?;
-
-    Ok((library, workspace))
+    Ok(skills)
 }
 
 fn collect_updates_for_installed(
@@ -1808,7 +1498,7 @@ pub async fn check_marketplace_updates(
 ) -> Result<MarketplaceUpdateResult, String> {
     log::info!("[check_marketplace_updates] checking all enabled registries");
 
-    let (token, enabled_sources, library_rows, workspace_rows) = {
+    let (token, enabled_sources, installed_rows) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!(
                 "[check_marketplace_updates] failed to acquire DB lock: {}",
@@ -1823,40 +1513,27 @@ pub async fn check_marketplace_updates(
             .filter(|r| r.enabled)
             .map(|r| r.source_url)
             .collect();
-        let (library_rows, workspace_rows) = load_installed_marketplace_skills(&conn)?;
+        let installed_rows = load_installed_marketplace_skills(&conn)?;
         (
             settings.github_oauth_token.clone(),
             enabled_sources,
-            library_rows,
-            workspace_rows,
+            installed_rows,
         )
     };
 
-    let mut by_source_library: HashMap<String, Vec<InstalledMarketplaceSkill>> = HashMap::new();
-    for row in library_rows {
+    let mut by_source: HashMap<String, Vec<InstalledMarketplaceSkill>> = HashMap::new();
+    for row in installed_rows {
         if enabled_sources.contains(&row.source_url) {
-            by_source_library
-                .entry(row.source_url.clone())
-                .or_default()
-                .push(row);
-        }
-    }
-    let mut by_source_workspace: HashMap<String, Vec<InstalledMarketplaceSkill>> = HashMap::new();
-    for row in workspace_rows {
-        if enabled_sources.contains(&row.source_url) {
-            by_source_workspace
+            by_source
                 .entry(row.source_url.clone())
                 .or_default()
                 .push(row);
         }
     }
 
-    let mut all_sources: HashSet<String> = HashSet::new();
-    all_sources.extend(by_source_library.keys().cloned());
-    all_sources.extend(by_source_workspace.keys().cloned());
+    let all_sources: HashSet<String> = by_source.keys().cloned().collect();
 
-    let mut library = Vec::new();
-    let mut workspace = Vec::new();
+    let mut library: Vec<SkillUpdateInfo> = Vec::new();
     let mut registry_names = Vec::new();
 
     for source_url in all_sources {
@@ -1900,15 +1577,8 @@ pub async fn check_marketplace_updates(
         let available_by_name: HashMap<String, &AvailableSkill> =
             available.iter().map(|s| (s.name.clone(), s)).collect();
 
-        if let Some(rows) = by_source_library.get(&source_url) {
+        if let Some(rows) = by_source.get(&source_url) {
             library.extend(collect_updates_for_installed(
-                rows,
-                &available_by_name,
-                &source_url,
-            ));
-        }
-        if let Some(rows) = by_source_workspace.get(&source_url) {
-            workspace.extend(collect_updates_for_installed(
                 rows,
                 &available_by_name,
                 &source_url,
@@ -1918,15 +1588,14 @@ pub async fn check_marketplace_updates(
 
     let result = MarketplaceUpdateResult {
         library,
-        workspace,
+        workspace: Vec::new(),
         registry_name: None,
         registry_names,
     };
 
     log::info!(
-        "[check_marketplace_updates] found {} library updates, {} workspace updates",
-        result.library.len(),
-        result.workspace.len()
+        "[check_marketplace_updates] found {} updates",
+        result.library.len()
     );
 
     Ok(result)
@@ -1950,9 +1619,8 @@ pub fn check_skill_customized(
         e.to_string()
     })?;
 
-    // Try workspace_skills first, then imported_skills
-    let hash_info = crate::db::get_workspace_skill_hash_info(&conn, &skill_name)?
-        .or_else(|| crate::db::get_imported_skill_hash_info(&conn, &skill_name).unwrap_or(None));
+    // Query imported_skills for hash info
+    let hash_info = crate::db::get_imported_skill_hash_info(&conn, &skill_name)?;
 
     let (disk_path, stored_hash) = match hash_info {
         Some(info) => info,

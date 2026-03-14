@@ -1,6 +1,6 @@
 use crate::types::{
     AgentRunRecord, AppSettings, ImportedSkill, SkillMasterRow, UsageByModel, UsageByStep,
-    UsageSummary, WorkflowRunRow, WorkflowSessionRecord, WorkflowStepRow, WorkspaceSkill,
+    UsageSummary, WorkflowRunRow, WorkflowSessionRecord, WorkflowStepRow,
 };
 use rusqlite::{Connection, OptionalExtension};
 use std::collections::HashMap;
@@ -48,6 +48,7 @@ pub(crate) fn create_test_db_for_tests() -> Connection {
     run_reconciliation_events_migration(&conn).unwrap();
     run_ghost_running_rows_migration(&conn).unwrap();
     run_drop_workflow_runs_metadata_migration(&conn).unwrap();
+    run_consolidate_workspace_skills_migration(&conn).unwrap();
     conn
 }
 
@@ -91,6 +92,7 @@ const NUMBERED_MIGRATIONS: &[(u32, fn(&Connection) -> Result<(), rusqlite::Error
     (33, run_reconciliation_events_migration),
     (34, run_ghost_running_rows_migration),
     (35, run_drop_workflow_runs_metadata_migration),
+    (36, run_consolidate_workspace_skills_migration),
 ];
 
 pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
@@ -752,6 +754,39 @@ fn run_drop_workflow_runs_metadata_migration(conn: &Connection) -> Result<(), ru
         ALTER TABLE workflow_runs_new RENAME TO workflow_runs;",
     )?;
     log::info!("migration 35: dropped deprecated metadata columns from workflow_runs");
+    Ok(())
+}
+
+/// Migration 36: Consolidate workspace_skills into imported_skills and drop workspace_skills.
+/// Both tables share the same columns after migrations 25-29. This migrates any
+/// workspace_skills rows not already present in imported_skills, then drops the table.
+fn run_consolidate_workspace_skills_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Idempotency: if workspace_skills table doesn't exist, nothing to do
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='workspace_skills'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+    if !table_exists {
+        return Ok(());
+    }
+
+    conn.execute_batch(
+        "INSERT OR IGNORE INTO imported_skills
+            (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+             purpose, version, model, argument_hint, user_invocable,
+             disable_model_invocation, content_hash, marketplace_source_url)
+        SELECT
+            skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+            purpose, version, model, argument_hint, user_invocable,
+            disable_model_invocation, content_hash, marketplace_source_url
+        FROM workspace_skills;
+
+        DROP TABLE workspace_skills;",
+    )?;
+    log::info!("migration 36: consolidated workspace_skills into imported_skills and dropped workspace_skills");
     Ok(())
 }
 
@@ -2976,326 +3011,155 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
     Ok(skills)
 }
 
-// --- Workspace Skills (Settings → Skills tab) ---
-
-const WS_COLUMNS: &str = "skill_id, skill_name, description, is_active, is_bundled, disk_path, imported_at, purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url";
-
-fn ws_params(skill: &WorkspaceSkill) -> [rusqlite::types::Value; 14] {
-    use rusqlite::types::Value;
-    [
-        Value::Text(skill.skill_id.clone()),
-        Value::Text(skill.skill_name.clone()),
-        skill
-            .description
-            .as_ref()
-            .map_or(Value::Null, |v| Value::Text(v.clone())),
-        Value::Integer(skill.is_active as i64),
-        Value::Integer(skill.is_bundled as i64),
-        Value::Text(skill.disk_path.clone()),
-        Value::Text(skill.imported_at.clone()),
-        skill
-            .purpose
-            .as_ref()
-            .map_or(Value::Null, |v| Value::Text(v.clone())),
-        skill
-            .version
-            .as_ref()
-            .map_or(Value::Null, |v| Value::Text(v.clone())),
-        skill
-            .model
-            .as_ref()
-            .map_or(Value::Null, |v| Value::Text(v.clone())),
-        skill
-            .argument_hint
-            .as_ref()
-            .map_or(Value::Null, |v| Value::Text(v.clone())),
-        skill
-            .user_invocable
-            .map_or(Value::Null, |b| Value::Integer(b as i64)),
-        skill
-            .disable_model_invocation
-            .map_or(Value::Null, |b| Value::Integer(b as i64)),
-        skill
-            .marketplace_source_url
-            .as_ref()
-            .map_or(Value::Null, |v| Value::Text(v.clone())),
-    ]
-}
-
-pub fn insert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
-    conn.execute(
-        &format!("INSERT INTO workspace_skills ({WS_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)"),
-        rusqlite::params_from_iter(ws_params(skill)),
-    ).map_err(|e| {
-        if e.to_string().contains("UNIQUE") {
-            format!("Skill '{}' has already been imported", skill.skill_name)
-        } else {
-            format!("insert_workspace_skill: {}", e)
-        }
-    })?;
-    Ok(())
-}
-
-pub fn upsert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
-    conn.execute(
-        &format!(
-            "INSERT INTO workspace_skills ({WS_COLUMNS})
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
-             ON CONFLICT(skill_name) DO UPDATE SET
-                 description = excluded.description,
-                 is_bundled = excluded.is_bundled,
-                 disk_path = excluded.disk_path,
-                 purpose = excluded.purpose,
-                 version = excluded.version,
-                 model = excluded.model,
-                 argument_hint = excluded.argument_hint,
-                 user_invocable = excluded.user_invocable,
-                 disable_model_invocation = excluded.disable_model_invocation,
-                 marketplace_source_url = excluded.marketplace_source_url"
-        ),
-        rusqlite::params_from_iter(ws_params(skill)),
-    )
-    .map_err(|e| format!("upsert_workspace_skill: {}", e))?;
-    Ok(())
-}
-
-/// Re-seed a bundled skill: overwrites all frontmatter + disk path, preserves is_active.
-pub fn upsert_bundled_workspace_skill(
+/// List imported skills, optionally filtered by marketplace source URL.
+pub fn list_imported_skills_filtered(
     conn: &Connection,
-    skill: &WorkspaceSkill,
-) -> Result<(), String> {
-    conn.execute(
-        &format!(
-            "INSERT INTO workspace_skills ({WS_COLUMNS})
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
-             ON CONFLICT(skill_name) DO UPDATE SET
-                 description = excluded.description,
-                 is_bundled = 1,
-                 disk_path = excluded.disk_path,
-                 version = excluded.version,
-                 model = excluded.model,
-                 argument_hint = excluded.argument_hint,
-                 user_invocable = excluded.user_invocable,
-                 disable_model_invocation = excluded.disable_model_invocation
-                 -- marketplace_source_url intentionally NOT updated: bundled skills always have NULL
-                 -- is_active intentionally NOT updated: preserves user's deactivation
-                 -- purpose intentionally NOT updated: preserves user's purpose setting"
-        ),
-        rusqlite::params_from_iter(ws_params(skill)),
-    ).map_err(|e| format!("upsert_bundled_workspace_skill: {}", e))?;
-    Ok(())
-}
-
-fn row_to_workspace_skill(row: &rusqlite::Row) -> rusqlite::Result<WorkspaceSkill> {
-    let is_active: i64 = row.get(3)?;
-    let is_bundled: i64 = row.get(4)?;
-    let user_invocable: Option<i64> = row.get(11)?;
-    let disable_model_invocation: Option<i64> = row.get(12)?;
-    Ok(WorkspaceSkill {
-        skill_id: row.get(0)?,
-        skill_name: row.get(1)?,
-        description: row.get(2)?,
-        is_active: is_active != 0,
-        is_bundled: is_bundled != 0,
-        disk_path: row.get(5)?,
-        imported_at: row.get(6)?,
-        purpose: row.get(7)?,
-        version: row.get(8)?,
-        model: row.get(9)?,
-        argument_hint: row.get(10)?,
-        user_invocable: user_invocable.map(|v| v != 0),
-        disable_model_invocation: disable_model_invocation.map(|v| v != 0),
-        marketplace_source_url: row.get(13)?,
-    })
-}
-
-pub fn list_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, String> {
-    let mut stmt = conn
-        .prepare(&format!(
-            "SELECT {WS_COLUMNS} FROM workspace_skills ORDER BY imported_at DESC"
-        ))
-        .map_err(|e| format!("list_workspace_skills: {}", e))?;
-    let skills = stmt
-        .query_map([], row_to_workspace_skill)
-        .map_err(|e| format!("list_workspace_skills query: {}", e))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("list_workspace_skills collect: {}", e))?;
-    Ok(skills)
-}
-
-pub fn list_bundled_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, String> {
-    let mut stmt = conn
-        .prepare(&format!(
-            "SELECT {WS_COLUMNS} FROM workspace_skills WHERE is_bundled = 1 ORDER BY skill_name"
-        ))
-        .map_err(|e| format!("list_bundled_workspace_skills: {}", e))?;
-    let skills = stmt
-        .query_map([], row_to_workspace_skill)
-        .map_err(|e| format!("list_bundled_workspace_skills query: {}", e))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("list_bundled_workspace_skills collect: {}", e))?;
-    Ok(skills)
-}
-
-pub fn list_workspace_skills_by_source(
-    conn: &Connection,
-    source_url: &str,
-) -> Result<Vec<WorkspaceSkill>, String> {
-    let mut stmt = conn
-        .prepare(&format!(
-            "SELECT {WS_COLUMNS} FROM workspace_skills
+    source_url: Option<&str>,
+) -> Result<Vec<ImportedSkill>, String> {
+    let query = match source_url {
+        Some(_) => {
+            "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+                    purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
+             FROM imported_skills
              WHERE marketplace_source_url = ?1
              ORDER BY imported_at DESC"
-        ))
-        .map_err(|e| format!("list_workspace_skills_by_source: {}", e))?;
-    let skills = stmt
-        .query_map(rusqlite::params![source_url], row_to_workspace_skill)
-        .map_err(|e| format!("list_workspace_skills_by_source query: {}", e))?
+        }
+        None => {
+            "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+                    purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
+             FROM imported_skills
+             ORDER BY imported_at DESC"
+        }
+    };
+
+    let mut stmt = conn.prepare(query).map_err(|e| format!("list_imported_skills_filtered: {}", e))?;
+
+    let row_mapper = |row: &rusqlite::Row| {
+        Ok(ImportedSkill {
+            skill_id: row.get(0)?,
+            skill_name: row.get(1)?,
+            is_active: row.get::<_, i32>(2)? != 0,
+            disk_path: row.get(3)?,
+            imported_at: row.get(4)?,
+            is_bundled: row.get::<_, i32>(5)? != 0,
+            description: None,
+            purpose: row.get(6)?,
+            version: row.get(7)?,
+            model: row.get(8)?,
+            argument_hint: row.get(9)?,
+            user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
+            disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+            marketplace_source_url: row.get(12)?,
+        })
+    };
+
+    let results = match source_url {
+        Some(url) => stmt.query_map(rusqlite::params![url], row_mapper),
+        None => stmt.query_map([], row_mapper),
+    }
+    .map_err(|e| format!("list_imported_skills_filtered query: {}", e))?;
+
+    let mut skills: Vec<ImportedSkill> = results
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("list_workspace_skills_by_source collect: {}", e))?;
+        .map_err(|e| format!("list_imported_skills_filtered collect: {}", e))?;
+
+    for skill in &mut skills {
+        hydrate_skill_metadata(skill);
+    }
+
     Ok(skills)
 }
 
-pub fn list_active_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, String> {
-    let mut stmt = conn
-        .prepare(&format!(
-            "SELECT {WS_COLUMNS} FROM workspace_skills WHERE is_active = 1 ORDER BY skill_name"
-        ))
-        .map_err(|e| format!("list_active_workspace_skills: {}", e))?;
-    let skills = stmt
-        .query_map([], row_to_workspace_skill)
-        .map_err(|e| format!("list_active_workspace_skills query: {}", e))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("list_active_workspace_skills collect: {}", e))?;
-    Ok(skills)
-}
-
-pub fn update_workspace_skill_active(
+/// Get an imported skill by its skill_id primary key.
+pub fn get_imported_skill_by_id(
     conn: &Connection,
     skill_id: &str,
-    is_active: bool,
-    new_disk_path: &str,
-) -> Result<(), String> {
-    let rows = conn
-        .execute(
-            "UPDATE workspace_skills SET is_active = ?1, disk_path = ?2 WHERE skill_id = ?3",
-            rusqlite::params![is_active as i64, new_disk_path, skill_id],
+) -> Result<Option<ImportedSkill>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+                    purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
+             FROM imported_skills WHERE skill_id = ?1",
         )
-        .map_err(|e| format!("update_workspace_skill_active: {}", e))?;
-    if rows == 0 {
-        return Err(format!("Workspace skill with id '{}' not found", skill_id));
+        .map_err(|e| format!("get_imported_skill_by_id: {}", e))?;
+
+    let result = stmt.query_row(rusqlite::params![skill_id], |row| {
+        Ok(ImportedSkill {
+            skill_id: row.get(0)?,
+            skill_name: row.get(1)?,
+            is_active: row.get::<_, i32>(2)? != 0,
+            disk_path: row.get(3)?,
+            imported_at: row.get(4)?,
+            is_bundled: row.get::<_, i32>(5)? != 0,
+            description: None,
+            purpose: row.get(6)?,
+            version: row.get(7)?,
+            model: row.get(8)?,
+            argument_hint: row.get(9)?,
+            user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
+            disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+            marketplace_source_url: row.get(12)?,
+        })
+    });
+
+    match result {
+        Ok(mut skill) => {
+            hydrate_skill_metadata(&mut skill);
+            Ok(Some(skill))
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("get_imported_skill_by_id: {}", e)),
     }
-    Ok(())
 }
 
-pub fn delete_workspace_skill(conn: &Connection, skill_id: &str) -> Result<(), String> {
+/// Delete an imported skill by its skill_id primary key.
+pub fn delete_imported_skill_by_skill_id(conn: &Connection, skill_id: &str) -> Result<(), String> {
     conn.execute(
-        "DELETE FROM workspace_skills WHERE skill_id = ?1",
+        "DELETE FROM imported_skills WHERE skill_id = ?1",
         rusqlite::params![skill_id],
     )
-    .map_err(|e| format!("delete_workspace_skill: {}", e))?;
+    .map_err(|e| format!("delete_imported_skill_by_skill_id: {}", e))?;
     Ok(())
 }
 
-pub fn get_workspace_skill(
-    conn: &Connection,
-    skill_id: &str,
-) -> Result<Option<WorkspaceSkill>, String> {
-    let mut stmt = conn
-        .prepare(&format!(
-            "SELECT {WS_COLUMNS} FROM workspace_skills WHERE skill_id = ?1"
-        ))
-        .map_err(|e| format!("get_workspace_skill: {}", e))?;
-    let mut rows = stmt
-        .query_map(rusqlite::params![skill_id], row_to_workspace_skill)
-        .map_err(|e| format!("get_workspace_skill query: {}", e))?;
-    match rows.next() {
-        Some(row) => Ok(Some(
-            row.map_err(|e| format!("get_workspace_skill row: {}", e))?,
-        )),
-        None => Ok(None),
-    }
-}
-
-/// Look up a workspace skill by name. Used when skill_id is not known.
-pub fn get_workspace_skill_by_name(
-    conn: &Connection,
-    skill_name: &str,
-) -> Result<Option<WorkspaceSkill>, String> {
-    let mut stmt = conn
-        .prepare(&format!(
-            "SELECT {WS_COLUMNS} FROM workspace_skills WHERE skill_name = ?1"
-        ))
-        .map_err(|e| format!("get_workspace_skill_by_name: {}", e))?;
-    let mut rows = stmt
-        .query_map(rusqlite::params![skill_name], row_to_workspace_skill)
-        .map_err(|e| format!("get_workspace_skill_by_name query: {}", e))?;
-    match rows.next() {
-        Some(row) => {
-            Ok(Some(row.map_err(|e| {
-                format!("get_workspace_skill_by_name row: {}", e)
-            })?))
-        }
-        None => Ok(None),
-    }
-}
-
-/// Look up a workspace skill by name and source registry URL.
-/// Returns only skills that were imported from the specified registry (marketplace_source_url = source_url).
-/// Used to avoid false-positive update notifications for bundled skills sharing a name with marketplace skills.
-#[allow(dead_code)]
-pub fn get_workspace_skill_by_name_and_source(
-    conn: &Connection,
-    skill_name: &str,
-    source_url: &str,
-) -> Result<Option<WorkspaceSkill>, String> {
-    let mut stmt = conn.prepare(
-        &format!("SELECT {WS_COLUMNS} FROM workspace_skills WHERE skill_name = ?1 AND marketplace_source_url = ?2")
-    ).map_err(|e| format!("get_workspace_skill_by_name_and_source: {}", e))?;
-    let mut rows = stmt
-        .query_map(
-            rusqlite::params![skill_name, source_url],
-            row_to_workspace_skill,
-        )
-        .map_err(|e| format!("get_workspace_skill_by_name_and_source query: {}", e))?;
-    match rows.next() {
-        Some(row) => Ok(Some(row.map_err(|e| {
-            format!("get_workspace_skill_by_name_and_source row: {}", e)
-        })?)),
-        None => Ok(None),
-    }
-}
-
-/// Look up an active workspace skill by its purpose tag.
+/// Look up an active imported skill by its purpose tag.
 /// Returns the first active skill with the given purpose, or None if not found.
-pub fn get_workspace_skill_by_purpose(
+pub fn get_imported_skill_by_purpose(
     conn: &Connection,
     purpose: &str,
-) -> rusqlite::Result<Option<WorkspaceSkill>> {
+) -> rusqlite::Result<Option<ImportedSkill>> {
     let mut stmt = conn.prepare(
-        &format!(
-            "SELECT {WS_COLUMNS} FROM workspace_skills WHERE purpose = ?1 AND is_active = 1 ORDER BY imported_at DESC, skill_name ASC LIMIT 1"
-        )
+        "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+                purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
+         FROM imported_skills WHERE purpose = ?1 AND is_active = 1
+         ORDER BY imported_at DESC, skill_name ASC LIMIT 1"
     )?;
-    let mut rows = stmt.query_map(rusqlite::params![purpose], row_to_workspace_skill)?;
-    match rows.next() {
-        Some(row) => Ok(Some(row?)),
-        None => Ok(None),
+    let result = stmt.query_row(rusqlite::params![purpose], |row| {
+        Ok(ImportedSkill {
+            skill_id: row.get(0)?,
+            skill_name: row.get(1)?,
+            is_active: row.get::<_, i32>(2)? != 0,
+            disk_path: row.get(3)?,
+            imported_at: row.get(4)?,
+            is_bundled: row.get::<_, i32>(5)? != 0,
+            description: None,
+            purpose: row.get(6)?,
+            version: row.get(7)?,
+            model: row.get(8)?,
+            argument_hint: row.get(9)?,
+            user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
+            disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+            marketplace_source_url: row.get(12)?,
+        })
+    });
+    match result {
+        Ok(mut skill) => {
+            hydrate_skill_metadata(&mut skill);
+            Ok(Some(skill))
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
     }
-}
-
-/// Update the content_hash for a workspace skill row identified by skill_name.
-pub fn set_workspace_skill_content_hash(
-    conn: &Connection,
-    skill_name: &str,
-    hash: &str,
-) -> Result<(), String> {
-    conn.execute(
-        "UPDATE workspace_skills SET content_hash = ?1 WHERE skill_name = ?2",
-        rusqlite::params![hash, skill_name],
-    )
-    .map_err(|e| format!("set_workspace_skill_content_hash: {}", e))?;
-    Ok(())
 }
 
 /// Update the content_hash for an imported skill row identified by skill_name.
@@ -3310,29 +3174,6 @@ pub fn set_imported_skill_content_hash(
     )
     .map_err(|e| format!("set_imported_skill_content_hash: {}", e))?;
     Ok(())
-}
-
-/// Read disk_path and content_hash for a workspace skill by name.
-pub fn get_workspace_skill_hash_info(
-    conn: &Connection,
-    skill_name: &str,
-) -> Result<Option<(String, Option<String>)>, String> {
-    let mut stmt = conn
-        .prepare("SELECT disk_path, content_hash FROM workspace_skills WHERE skill_name = ?1")
-        .map_err(|e| format!("get_workspace_skill_hash_info: {}", e))?;
-    let mut rows = stmt
-        .query_map(rusqlite::params![skill_name], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
-        })
-        .map_err(|e| format!("get_workspace_skill_hash_info query: {}", e))?;
-    match rows.next() {
-        Some(row) => {
-            Ok(Some(row.map_err(|e| {
-                format!("get_workspace_skill_hash_info row: {}", e)
-            })?))
-        }
-        None => Ok(None),
-    }
 }
 
 /// Read disk_path and content_hash for an imported (marketplace/library) skill by name.
@@ -3403,16 +3244,13 @@ pub fn get_imported_skill_by_name_and_source(
 }
 
 /// Return the names of all locally installed skills.
-/// Combines workflow_runs (generated/marketplace skills), imported_skills (GitHub imports),
-/// and workspace_skills (Settings → Skills).
+/// Combines workflow_runs (generated/marketplace skills) and imported_skills.
 pub fn get_all_installed_skill_names(conn: &Connection) -> Result<Vec<String>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT skill_name FROM workflow_runs
          UNION
-         SELECT skill_name FROM imported_skills
-         UNION
-         SELECT skill_name FROM workspace_skills",
+         SELECT skill_name FROM imported_skills",
         )
         .map_err(|e| e.to_string())?;
     let names = stmt
@@ -7041,167 +6879,161 @@ mod tests {
     }
 
     #[test]
-    fn test_workspace_skill_crud_uses_uuid_skill_id() {
+    fn test_migration_36_drops_workspace_skills_table() {
         let conn = create_test_db();
+        // After all migrations including 36, workspace_skills should not exist
+        let exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='workspace_skills'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(!exists, "workspace_skills table should have been dropped by migration 36");
+    }
 
-        let skill = WorkspaceSkill {
-            skill_id: "ws-uuid-abc-123".to_string(),
-            skill_name: "my-ws-skill".to_string(),
-            description: None,
+    #[test]
+    fn test_list_imported_skills_filtered() {
+        let conn = create_test_db();
+        // Empty DB should return empty list
+        let skills = list_imported_skills_filtered(&conn, None).unwrap();
+        assert!(skills.is_empty());
+
+        // Insert a skill and verify it appears
+        let skill = ImportedSkill {
+            skill_id: "imp-test-1".to_string(),
+            skill_name: "test-skill".to_string(),
             is_active: true,
+            disk_path: "/tmp/test-skill".to_string(),
+            imported_at: "2025-01-01T00:00:00Z".to_string(),
             is_bundled: false,
-            disk_path: "/tmp/ws-skill".to_string(),
-            imported_at: "2024-01-01T00:00:00Z".to_string(),
+            description: None,
+            purpose: Some("domain".to_string()),
+            version: Some("1.0.0".to_string()),
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            marketplace_source_url: Some("https://github.com/acme/skills".to_string()),
+        };
+        insert_imported_skill(&conn, &skill).unwrap();
+
+        let all = list_imported_skills_filtered(&conn, None).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].skill_name, "test-skill");
+
+        let filtered = list_imported_skills_filtered(&conn, Some("https://github.com/acme/skills")).unwrap();
+        assert_eq!(filtered.len(), 1);
+
+        let no_match = list_imported_skills_filtered(&conn, Some("https://github.com/other/repo")).unwrap();
+        assert!(no_match.is_empty());
+    }
+
+    #[test]
+    fn test_get_imported_skill_by_id() {
+        let conn = create_test_db();
+        let skill = ImportedSkill {
+            skill_id: "imp-test-byid".to_string(),
+            skill_name: "test-byid".to_string(),
+            is_active: true,
+            disk_path: "/tmp/test-byid".to_string(),
+            imported_at: "2025-01-01T00:00:00Z".to_string(),
+            is_bundled: false,
+            description: None,
+            purpose: None,
             version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-            purpose: None,
             marketplace_source_url: None,
         };
+        insert_imported_skill(&conn, &skill).unwrap();
 
-        // Insert the workspace skill.
-        insert_workspace_skill(&conn, &skill).unwrap();
+        let found = get_imported_skill_by_id(&conn, "imp-test-byid").unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().skill_name, "test-byid");
 
-        // List workspace skills — the skill must be in the list.
-        let skills = list_workspace_skills(&conn).unwrap();
-        let found = skills.iter().find(|s| s.skill_id == "ws-uuid-abc-123");
-        assert!(
-            found.is_some(),
-            "inserted skill should appear in list_workspace_skills"
-        );
-        assert_eq!(found.unwrap().skill_name, "my-ws-skill");
-        assert!(found.unwrap().is_active);
-
-        // Toggle active (also updates disk_path).
-        update_workspace_skill_active(&conn, "ws-uuid-abc-123", false, "/tmp/ws-skill-updated")
-            .unwrap();
-
-        let skills_after = list_workspace_skills(&conn).unwrap();
-        let updated = skills_after
-            .iter()
-            .find(|s| s.skill_id == "ws-uuid-abc-123")
-            .unwrap();
-        assert!(!updated.is_active, "is_active should be false after update");
-
-        // Delete the skill.
-        delete_workspace_skill(&conn, "ws-uuid-abc-123").unwrap();
-
-        // Verify it is gone.
-        let skills_final = list_workspace_skills(&conn).unwrap();
-        let gone = skills_final
-            .iter()
-            .find(|s| s.skill_id == "ws-uuid-abc-123");
-        assert!(
-            gone.is_none(),
-            "skill should not appear in list after deletion"
-        );
+        let not_found = get_imported_skill_by_id(&conn, "nonexistent").unwrap();
+        assert!(not_found.is_none());
     }
 
-    fn make_ws_skill(
-        skill_id: &str,
-        skill_name: &str,
-        purpose: Option<&str>,
-        is_active: bool,
-    ) -> WorkspaceSkill {
-        WorkspaceSkill {
-            skill_id: skill_id.to_string(),
-            skill_name: skill_name.to_string(),
-            description: None,
-            is_active,
-            is_bundled: false,
-            disk_path: format!("/tmp/{}", skill_name),
+    #[test]
+    fn test_delete_imported_skill_by_skill_id() {
+        let conn = create_test_db();
+        let skill = ImportedSkill {
+            skill_id: "imp-test-del".to_string(),
+            skill_name: "test-del".to_string(),
+            is_active: true,
+            disk_path: "/tmp/test-del".to_string(),
             imported_at: "2025-01-01T00:00:00Z".to_string(),
+            is_bundled: false,
+            description: None,
+            purpose: None,
             version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-            purpose: purpose.map(|s| s.to_string()),
             marketplace_source_url: None,
-        }
+        };
+        insert_imported_skill(&conn, &skill).unwrap();
+        assert!(get_imported_skill_by_id(&conn, "imp-test-del").unwrap().is_some());
+
+        delete_imported_skill_by_skill_id(&conn, "imp-test-del").unwrap();
+        assert!(get_imported_skill_by_id(&conn, "imp-test-del").unwrap().is_none());
     }
 
     #[test]
-    fn test_get_workspace_skill_by_purpose_happy_path() {
+    fn test_get_imported_skill_by_purpose() {
         let conn = create_test_db();
-        let skill = make_ws_skill("id-research", "research-skill", Some("research"), true);
-        insert_workspace_skill(&conn, &skill).unwrap();
+        let skill = ImportedSkill {
+            skill_id: "imp-purpose-test".to_string(),
+            skill_name: "purpose-skill".to_string(),
+            is_active: true,
+            disk_path: "/tmp/purpose-skill".to_string(),
+            imported_at: "2025-01-01T00:00:00Z".to_string(),
+            is_bundled: false,
+            description: None,
+            purpose: Some("research".to_string()),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            marketplace_source_url: None,
+        };
+        insert_imported_skill(&conn, &skill).unwrap();
 
-        let found = get_workspace_skill_by_purpose(&conn, "research").unwrap();
-        assert!(
-            found.is_some(),
-            "should find an active skill with purpose='research'"
-        );
-        assert_eq!(found.unwrap().skill_name, "research-skill");
-    }
-
-    #[test]
-    fn test_get_workspace_skill_by_purpose_no_match() {
-        let conn = create_test_db();
-
-        let found = get_workspace_skill_by_purpose(&conn, "nonexistent-purpose").unwrap();
-        assert!(
-            found.is_none(),
-            "should return None for a purpose that has no matching skill"
-        );
-    }
-
-    #[test]
-    fn test_get_workspace_skill_by_purpose_inactive_ignored() {
-        let conn = create_test_db();
-        // Insert an inactive skill with purpose "validate"
-        let skill = make_ws_skill("id-validate", "validate-skill", Some("validate"), false);
-        insert_workspace_skill(&conn, &skill).unwrap();
-
-        let found = get_workspace_skill_by_purpose(&conn, "validate").unwrap();
-        assert!(
-            found.is_none(),
-            "should return None when the only matching skill is inactive"
-        );
-    }
-
-    #[test]
-    fn test_get_workspace_skill_by_purpose_prefers_latest_imported_at() {
-        let conn = create_test_db();
-        let mut older = make_ws_skill("id-older", "research-old", Some("research"), true);
-        older.imported_at = "2025-01-01T00:00:00Z".to_string();
-        insert_workspace_skill(&conn, &older).unwrap();
-
-        let mut newer = make_ws_skill("id-newer", "research-new", Some("research"), true);
-        newer.imported_at = "2025-02-01T00:00:00Z".to_string();
-        insert_workspace_skill(&conn, &newer).unwrap();
-
-        let found = get_workspace_skill_by_purpose(&conn, "research")
-            .unwrap()
-            .unwrap();
-        assert_eq!(found.skill_name, "research-new");
-    }
-
-    #[test]
-    fn test_get_workspace_skill_by_name_and_source_respects_source_filter() {
-        let conn = create_test_db();
-        let mut row = make_ws_skill("id-ws-src", "market-skill", Some("research"), true);
-        row.marketplace_source_url = Some("https://github.com/acme/skills-a".to_string());
-        insert_workspace_skill(&conn, &row).unwrap();
-
-        let found = get_workspace_skill_by_name_and_source(
-            &conn,
-            "market-skill",
-            "https://github.com/acme/skills-a",
-        )
-        .unwrap();
+        let found = get_imported_skill_by_purpose(&conn, "research").unwrap();
         assert!(found.is_some());
+        assert_eq!(found.unwrap().skill_name, "purpose-skill");
 
-        let not_found = get_workspace_skill_by_name_and_source(
-            &conn,
-            "market-skill",
-            "https://github.com/acme/skills-b",
-        )
-        .unwrap();
+        let not_found = get_imported_skill_by_purpose(&conn, "nonexistent").unwrap();
         assert!(not_found.is_none());
+
+        // Inactive should not match
+        let inactive = ImportedSkill {
+            skill_id: "imp-inactive".to_string(),
+            skill_name: "inactive-skill".to_string(),
+            is_active: false,
+            disk_path: "/tmp/inactive".to_string(),
+            imported_at: "2025-01-01T00:00:00Z".to_string(),
+            is_bundled: false,
+            description: None,
+            purpose: Some("validate".to_string()),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            marketplace_source_url: None,
+        };
+        insert_imported_skill(&conn, &inactive).unwrap();
+        let inactive_found = get_imported_skill_by_purpose(&conn, "validate").unwrap();
+        assert!(inactive_found.is_none(), "inactive skill should not match");
     }
+
 
     #[test]
     fn test_get_imported_skill_by_name_and_source_respects_source_filter() {
