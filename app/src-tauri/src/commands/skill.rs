@@ -323,40 +323,53 @@ fn create_skill_inner(
     let purpose = purpose.unwrap_or("domain");
 
     if let Some(conn) = conn {
-        crate::db::save_workflow_run(conn, name, 0, "pending", purpose)?;
+        // Wrap multi-table writes in a transaction so partial failure rolls back.
+        conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
 
-        if let Some(tags) = tags {
-            if !tags.is_empty() {
-                crate::db::set_skill_tags(conn, name, tags)?;
+        let result = (|| -> Result<(), String> {
+            crate::db::save_workflow_run(conn, name, 0, "pending", purpose)?;
+
+            if let Some(tags) = tags {
+                if !tags.is_empty() {
+                    crate::db::set_skill_tags(conn, name, tags)?;
+                }
             }
-        }
 
-        if let Some(login) = author_login {
-            let _ = crate::db::set_skill_author(conn, name, login, author_avatar);
-        }
+            if let Some(login) = author_login {
+                crate::db::set_skill_author(conn, name, login, author_avatar)?;
+            }
 
-        if let Some(ij) = intake_json {
-            let _ = crate::db::set_skill_intake(conn, name, Some(ij));
-        }
+            if let Some(ij) = intake_json {
+                crate::db::set_skill_intake(conn, name, Some(ij))?;
+            }
 
-        if description.is_some()
-            || version.is_some()
-            || model.is_some()
-            || argument_hint.is_some()
-            || user_invocable.is_some()
-            || disable_model_invocation.is_some()
-        {
-            let _ = crate::db::set_skill_behaviour(
-                conn,
-                name,
-                description,
-                version,
-                model,
-                argument_hint,
-                user_invocable,
-                disable_model_invocation,
-            );
+            if description.is_some()
+                || version.is_some()
+                || model.is_some()
+                || argument_hint.is_some()
+                || user_invocable.is_some()
+                || disable_model_invocation.is_some()
+            {
+                crate::db::set_skill_behaviour(
+                    conn,
+                    name,
+                    description,
+                    version,
+                    model,
+                    argument_hint,
+                    user_invocable,
+                    disable_model_invocation,
+                )?;
+            }
+
+            Ok(())
+        })();
+
+        if let Err(e) = result {
+            let _ = conn.execute_batch("ROLLBACK");
+            return Err(e);
         }
+        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
     }
 
     // Auto-commit: skill created

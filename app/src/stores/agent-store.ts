@@ -635,7 +635,18 @@ export const useAgentStore = create<AgentState>((set) => ({
 
     set((state) => {
       const run = state.runs[agentId];
-      if (!run || run.status !== "running") return state;
+      if (!run) return state;
+      // If already terminal (race: agent-exit fired before startRun registered the run),
+      // stamp endTime if missing so duration calculations don't see undefined.
+      if (run.status !== "running") {
+        if (run.endTime !== undefined) return state;
+        return {
+          runs: {
+            ...state.runs,
+            [agentId]: { ...run, endTime: Date.now() },
+          },
+        };
+      }
       return {
         runs: {
           ...state.runs,
@@ -660,7 +671,16 @@ export const useAgentStore = create<AgentState>((set) => ({
 
     set((state) => {
       const run = state.runs[agentId];
-      if (!run || run.status !== "running") return state;
+      if (!run) return state;
+      if (run.status !== "running") {
+        if (run.endTime !== undefined) return state;
+        return {
+          runs: {
+            ...state.runs,
+            [agentId]: { ...run, endTime: Date.now() },
+          },
+        };
+      }
       return {
         runs: {
           ...state.runs,
