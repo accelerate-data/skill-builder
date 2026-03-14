@@ -347,7 +347,6 @@ pub fn run() {
             commands::github_import::commands::get_dashboard_skill_names,
             commands::github_import::commands::check_marketplace_updates,
             commands::github_import::commands::check_skill_customized,
-            commands::usage::persist_agent_run,
             commands::usage::get_usage_summary,
             commands::usage::get_recent_runs,
             commands::usage::get_usage_by_step,

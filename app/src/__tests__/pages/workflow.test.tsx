@@ -43,7 +43,7 @@ vi.mock("@/lib/tauri", () => ({
   cleanupSkillSidecar: vi.fn(() => Promise.resolve()),
   acquireLock: vi.fn(() => Promise.resolve()),
   releaseLock: vi.fn(() => Promise.resolve()),
-  persistAgentRun: vi.fn(() => Promise.resolve()),
+
   createWorkflowSession: vi.fn(() => Promise.resolve()),
   endWorkflowSession: vi.fn(() => Promise.resolve()),
   verifyStepOutput: vi.fn(() => Promise.resolve(true)),

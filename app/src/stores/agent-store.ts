@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useWorkflowStore } from "./workflow-store";
-import { persistAgentRun } from "@/lib/tauri";
+
 import type { DisplayItem } from "@/lib/display-types";
 import type {
   CompactionEvent,
@@ -282,160 +282,6 @@ interface AgentState {
   shutdownRun: (agentId: string) => void;
   setActiveAgent: (agentId: string | null) => void;
   clearRuns: () => void;
-}
-
-/**
- * Validate persistence context before attempting to write.
- * Returns true if context is valid; logs structured error and returns false otherwise.
- */
-function validatePersistenceContext(
-  context: { stepId: number; workflowSessionId?: string },
-  agentId: string,
-): boolean {
-  if (!context || typeof context.stepId !== "number") {
-    console.error(
-      "[agent-store] event=persistence_validation_failed operation=validate_context agent_id=%s reason=invalid_step_id",
-      agentId,
-    );
-    return false;
-  }
-  return true;
-}
-
-/**
- * Persist one row per model entry with transaction-like semantics.
- * All rows for the same agent run share the same session context. If any row fails,
- * subsequent rows are still attempted (best-effort), but the failure is logged with context.
- * Used by both completeRun and shutdownRun.
- */
-function persistRunRows(
-  sharedParams: Record<string, unknown>,
-  modelEntries: Array<{ model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; totalCost: number }>,
-): void {
-  const agentId = sharedParams.agentId as string;
-
-  // Validate persistence context early
-  if (!validatePersistenceContext(
-    { stepId: sharedParams.stepId as number, workflowSessionId: sharedParams.workflowSessionId as string | undefined },
-    agentId,
-  )) {
-    return;
-  }
-
-  // Attempt to persist all model entries. Track failures but continue to attempt remaining rows.
-  let failureCount = 0;
-  for (const entry of modelEntries) {
-    persistAgentRun({
-      ...sharedParams,
-      model: entry.model,
-      inputTokens: entry.inputTokens,
-      outputTokens: entry.outputTokens,
-      cacheReadTokens: entry.cacheReadTokens,
-      cacheWriteTokens: entry.cacheWriteTokens,
-      totalCost: entry.totalCost,
-    } as Parameters<typeof persistAgentRun>[0]).catch((err: unknown) => {
-      failureCount++;
-      console.error(
-        "[agent-store] event=persistence_failed operation=persist_agent_run agent_id=%s model=%s error=%s row=%d/%d",
-        agentId,
-        entry.model,
-        err instanceof Error ? err.message : String(err),
-        failureCount,
-        modelEntries.length,
-      );
-    });
-  }
-
-  // Log transaction summary
-  if (failureCount > 0) {
-    console.warn(
-      "[agent-store] event=persistence_summary operation=persist_run_rows agent_id=%s status=partial_failure rows_attempted=%d rows_failed=%d",
-      agentId,
-      modelEntries.length,
-      failureCount,
-    );
-  } else {
-    console.log(
-      "[agent-store] event=persistence_summary operation=persist_run_rows agent_id=%s status=success rows=%d",
-      agentId,
-      modelEntries.length,
-    );
-  }
-}
-
-/** Build per-model entries from breakdown or fallback to a single aggregate row. */
-function buildModelEntries(
-  run: AgentRun,
-): Array<{ model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; totalCost: number }> {
-  const breakdown = run.modelUsageBreakdown;
-  if (breakdown && breakdown.length > 0) {
-    return breakdown.map((mu) => ({
-      model: mu.model,
-      inputTokens: mu.inputTokens,
-      outputTokens: mu.outputTokens,
-      cacheReadTokens: mu.cacheReadTokens,
-      cacheWriteTokens: mu.cacheWriteTokens,
-      totalCost: mu.cost,
-    }));
-  }
-
-  // Fallback: single-model persistence using aggregate totals.
-  // Extract cache tokens from the last assistant message's raw usage.
-  let cacheRead = 0;
-  let cacheWrite = 0;
-  const assistantMessages = (run.messages ?? []).filter((m) => m.type === "assistant");
-  if (assistantMessages.length > 0) {
-    const lastMsg = assistantMessages[assistantMessages.length - 1];
-    const betaMsg = (lastMsg.raw as Record<string, unknown>).message as
-      | { usage?: { cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
-      | undefined;
-    cacheRead = betaMsg?.usage?.cache_read_input_tokens ?? 0;
-    cacheWrite = betaMsg?.usage?.cache_creation_input_tokens ?? 0;
-  }
-
-  return [{
-    model: run.model,
-    inputTokens: run.tokenUsage?.input ?? 0,
-    outputTokens: run.tokenUsage?.output ?? 0,
-    cacheReadTokens: cacheRead,
-    cacheWriteTokens: cacheWrite,
-    totalCost: run.totalCost ?? 0,
-  }];
-}
-
-function resolvePersistenceContext(
-  run: AgentRun | undefined,
-): { stepId: number; workflowSessionId?: string } {
-  const runSourceStepId = run?.runSource === "refine"
-    ? -10
-    : run?.runSource === "test"
-      ? -11
-      : -1;
-
-  if (!run) return { stepId: -1 };
-
-  if (runSourceStepId !== -1 && run.usageSessionId) {
-    return {
-      stepId: runSourceStepId,
-      workflowSessionId: run.usageSessionId,
-    };
-  }
-
-  if (run.runSource === "refine") {
-    return {
-      stepId: -10,
-      workflowSessionId: `synthetic:refine:${run.skillName ?? "unknown"}:${run.agentId}`,
-    };
-  }
-
-  if (run.runSource === "test") {
-    return {
-      stepId: -11,
-      workflowSessionId: `synthetic:test:${run.skillName ?? "unknown"}:${run.agentId}`,
-    };
-  }
-
-  return { stepId: -1 };
 }
 
 export const useAgentStore = create<AgentState>((set) => ({
@@ -729,9 +575,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     }),
 
   completeRun: (agentId, success) => {
-    // Capture run data before status update for persistence
-    const runBeforeUpdate = useAgentStore.getState().runs[agentId];
-    if (!runBeforeUpdate) {
+    if (!useAgentStore.getState().runs[agentId]) {
       queuePendingTerminal(agentId, success ? "completed" : "error");
       return;
     }
@@ -751,39 +595,10 @@ export const useAgentStore = create<AgentState>((set) => ({
       };
     });
 
-    // Persist agent run to SQLite (fire-and-forget). Do not require tokenUsage;
-    // some runs only report modelUsage breakdown or partial result metadata.
-    if (runBeforeUpdate) {
-      const persistenceContext = resolvePersistenceContext(runBeforeUpdate);
-
-      // Count tool uses from displayItems
-      const toolUseCount = (runBeforeUpdate.displayItems ?? []).filter(
-        (di) => di.type === "tool_call",
-      ).length;
-
-      persistRunRows(
-        {
-          agentId,
-          skillName: runBeforeUpdate.skillName ?? "unknown",
-          stepId: persistenceContext.stepId,
-          status: success ? "completed" : "error",
-          durationMs: Date.now() - runBeforeUpdate.startTime,
-          numTurns: runBeforeUpdate.numTurns ?? 0,
-          stopReason: runBeforeUpdate.stopReason ?? null,
-          durationApiMs: runBeforeUpdate.durationApiMs ?? null,
-          toolUseCount,
-          compactionCount: runBeforeUpdate.compactionEvents.length,
-          sessionId: runBeforeUpdate.sessionId,
-          workflowSessionId: persistenceContext.workflowSessionId,
-        },
-        buildModelEntries(runBeforeUpdate),
-      );
-    }
   },
 
   shutdownRun: (agentId: string) => {
-    const runBeforeUpdate = useAgentStore.getState().runs[agentId];
-    if (!runBeforeUpdate) {
+    if (!useAgentStore.getState().runs[agentId]) {
       queuePendingTerminal(agentId, "shutdown");
       return;
     }
@@ -803,21 +618,6 @@ export const useAgentStore = create<AgentState>((set) => ({
       };
     });
 
-    // Persist shutdown status with whatever partial data we have
-    if (runBeforeUpdate) {
-      const persistenceContext = resolvePersistenceContext(runBeforeUpdate);
-      persistRunRows(
-        {
-          agentId,
-          skillName: runBeforeUpdate.skillName ?? "unknown",
-          stepId: persistenceContext.stepId,
-          status: "shutdown" as const,
-          durationMs: Date.now() - runBeforeUpdate.startTime,
-          workflowSessionId: persistenceContext.workflowSessionId,
-        },
-        buildModelEntries(runBeforeUpdate),
-      );
-    }
   },
 
   setActiveAgent: (agentId) => set({ activeAgentId: agentId }),
