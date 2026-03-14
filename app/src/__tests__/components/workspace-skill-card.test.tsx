@@ -34,18 +34,6 @@ describe("ImportedSkillCard", () => {
     expect(screen.getByText("sales-analytics")).toBeInTheDocument();
   });
 
-  it("renders skill name", () => {
-    render(
-      <ImportedSkillCard
-        skill={baseSkill}
-        onToggleActive={vi.fn()}
-        onDelete={vi.fn()}
-        onPreview={vi.fn()}
-      />
-    );
-    expect(screen.getByText("sales-analytics")).toBeInTheDocument();
-  });
-
   it("renders description fallback when no trigger text", () => {
     render(
       <ImportedSkillCard

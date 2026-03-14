@@ -197,17 +197,21 @@ describe("StreamSession — mock streaming mode", () => {
     };
 
     const session = new StreamSession("sess-mock", "req-m1", baseConfig(), onMessage);
-    // Wait for the initial mock turn to complete
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await vi.waitFor(() => {
+      expect(messages.length).toBeGreaterThan(0);
+    });
 
     // Push a follow-up turn
+    const initialCount = messages.length;
     session.pushMessage("req-m2", "follow-up message");
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await vi.waitFor(() => {
+      expect(messages.length).toBeGreaterThan(initialCount);
+    });
 
     // Close the session (simulates stream_end from Rust)
     session.close();
-    await new Promise((resolve) => setTimeout(resolve, 10));
-
-    expect(messages.filter(isRunResult)).toHaveLength(1);
+    await vi.waitFor(() => {
+      expect(messages.filter(isRunResult)).toHaveLength(1);
+    });
   });
 });
