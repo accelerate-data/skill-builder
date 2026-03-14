@@ -202,6 +202,18 @@ fn read_file_with_roots(file_path: &str, allowed_roots: &[PathBuf]) -> Result<St
             canonical_path.display()
         ));
     }
+    // Guard against reading excessively large files into memory
+    const MAX_TEXT_FILE_SIZE: u64 = 50 * 1024 * 1024; // 50 MB
+    let metadata = fs::metadata(&canonical_path)
+        .map_err(|e| format!("Failed to stat '{}': {}", canonical_path.display(), e))?;
+    if metadata.len() > MAX_TEXT_FILE_SIZE {
+        return Err(format!(
+            "File '{}' is too large ({} bytes, limit is {} bytes)",
+            canonical_path.display(),
+            metadata.len(),
+            MAX_TEXT_FILE_SIZE,
+        ));
+    }
     fs::read_to_string(&canonical_path)
         .map_err(|e| format!("Failed to read '{}': {}", canonical_path.display(), e))
 }
@@ -217,6 +229,15 @@ fn write_file_with_roots(
         return Err(format!(
             "Write rejected: '{}' is outside allowed roots",
             canonical_target.display()
+        ));
+    }
+    // Guard against writing excessively large content
+    const MAX_WRITE_SIZE: usize = 50 * 1024 * 1024; // 50 MB
+    if content.len() > MAX_WRITE_SIZE {
+        return Err(format!(
+            "Content too large to write ({} bytes, limit is {} bytes)",
+            content.len(),
+            MAX_WRITE_SIZE,
         ));
     }
     if let Some(parent) = canonical_target.parent() {
