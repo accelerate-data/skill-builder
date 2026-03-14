@@ -104,14 +104,14 @@ const STEP_DESCRIPTIONS = {
   },
 } as const
 
-function LockedIcon() {
+function LockedIcon({ message = "Locked — skill has been built" }: { message?: string } = {}) {
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
           <Lock className="ml-1 inline size-3 text-muted-foreground" />
         </TooltipTrigger>
-        <TooltipContent>Locked — skill has been built</TooltipContent>
+        <TooltipContent>{message}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   )
@@ -528,14 +528,13 @@ export default function SkillDialog(props: SkillDialogProps) {
             {step === 2 && (
               <>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="version">Version</Label>
+                  <Label htmlFor="version">Version{isImported && <LockedIcon message="Version is managed by the skill package" />}</Label>
                   <Input
                     id="version"
                     placeholder="1.0.0"
                     value={version}
                     onChange={(e) => setVersion(e.target.value)}
                     disabled={submitting || isImported}
-                    title={isImported ? "Version is managed by the skill package" : undefined}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
