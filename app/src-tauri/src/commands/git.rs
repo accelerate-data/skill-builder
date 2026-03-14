@@ -61,12 +61,12 @@ pub fn restore_skill_version(
     // Commit the restore as a new version
     let short_sha = if sha.len() >= 8 { &sha[..8] } else { &sha };
     let msg = format!("{}: restored to {}", skill_name, short_sha);
-    if let Err(e) = crate::git::commit_all(root, &msg) {
-        log::error!(
-            "Git auto-commit failed after restore ({}): {}. Filesystem restored but git state is inconsistent.",
+    crate::git::commit_all(root, &msg).map_err(|e| {
+        format!(
+            "Filesystem restored but git commit failed ({}): {}",
             msg, e
-        );
-    }
+        )
+    })?;
     Ok(())
 }
 

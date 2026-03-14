@@ -220,7 +220,7 @@ export async function runMockAgent(
   }
 
   const content = await fs.readFile(templatePath, "utf-8");
-  const lines = content.split("\n").filter((line) => line.trim());
+  const lines = content.split(/\r?\n/).filter((line) => line.trim());
   const structuredResultOverride = await buildStructuredMockResult(stepTemplate);
 
   // Process mock template messages through MessageProcessor identically to live SDK

@@ -414,6 +414,9 @@ fn delete_skill_inner(
     // Delete workspace working directory if it exists
     if base.exists() {
         // Verify this is inside the workspace path to prevent directory traversal
+        if !Path::new(workspace_path).exists() {
+            return Err(format!("Workspace not found: {}", workspace_path));
+        }
         let canonical_workspace = fs::canonicalize(workspace_path).map_err(|e| e.to_string())?;
         let canonical_target = fs::canonicalize(&base).map_err(|e| e.to_string())?;
         if !canonical_target.starts_with(&canonical_workspace) {

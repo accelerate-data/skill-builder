@@ -123,7 +123,6 @@ function drainPendingTerminal(agentId: string) {
   useAgentStore.getState().completeRun(agentId, pending === "completed");
 }
 
-/** @deprecated Pending buffers are now in the Zustand store and reset with clearRuns(). */
 export function resetAgentStoreInternals() {
   clearDisplayItemBuffer();
   useAgentStore.setState({ pendingTerminal: {}, pendingMetadata: {} });

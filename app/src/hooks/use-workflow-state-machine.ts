@@ -160,14 +160,14 @@ export function useWorkflowStateMachine({
     setPendingAutoStartStep(nextStep);
   }, [currentStep, steps, setCurrentStep]);
 
-  const autoStartAfterReset = (stepId: number) => {
+  const autoStartAfterReset = useCallback((stepId: number) => {
     const { reviewMode: isReview, disabledSteps: disabled } = useWorkflowStore.getState();
     if (disabled.includes(stepId)) return;
     const cfg = stepConfigs[stepId];
     if ((cfg?.type === "agent" || cfg?.type === "reasoning") && !isReview) {
       setPendingAutoStartStep(stepId);
     }
-  };
+  }, [stepConfigs, setPendingAutoStartStep]);
 
   // Auto-start when advancing from a completed step or on review→update toggle
   useEffect(() => {
