@@ -19,9 +19,37 @@ The codebase is well-structured across its three layers with clean separation of
 | Architecture | 0 | 2 | 5 | 3 |
 | **Total** | **3** | **13** | **21** | **16** |
 
-## Critical Issues
+---
 
-### C1. API Keys Stored in Plaintext SQLite
+## Part 1: Covered by Existing Issues
+
+| ID | Finding | Severity | Covered by |
+|---|---|---|---|
+| C3 | Auth store passes partial object to `save_settings` | Critical | [VU-489](https://linear.app/acceleratedata/issue/VU-489) AC1 — granular write commands + auth-store fix |
+| H1 | ~30+ silent `.catch(() => {})` error handlers | High | [VU-581](https://linear.app/acceleratedata/issue/VU-581) — replace with diagnostic logging |
+| H2 | Sidecar `process.env` spread leaks entire environment | High | [VU-582](https://linear.app/acceleratedata/issue/VU-582) — env var allowlist |
+| H3 | `parseSidecarConfig` validates only 4 of 15+ fields | High | [VU-583](https://linear.app/acceleratedata/issue/VU-583) — full field validation |
+| H4 | `test_api_key` accepts any non-401/403 status as valid | High | [VU-584](https://linear.app/acceleratedata/issue/VU-584) — status code hardening |
+| H5 | Settings page initializes state from `getState()` outside React lifecycle | High | [VU-489](https://linear.app/acceleratedata/issue/VU-489) AC1 — granular commands replace stale snapshot pattern |
+| H7 | `parseStepProgress` hardcodes 6 steps; workflow has 4 | High | [VU-585](https://linear.app/acceleratedata/issue/VU-585) — use `WORKFLOW_STEP_DEFINITIONS.length` |
+| M1 | `persistRunRows` failure count always logs 0 | Medium | [VU-581](https://linear.app/acceleratedata/issue/VU-581) — diagnostic logging covers this pattern |
+| M12 | `AppSettings` has 25+ fields spanning unrelated concerns | Medium | [VU-489](https://linear.app/acceleratedata/issue/VU-489) AC1 — granular write commands split concerns |
+| Rec #1 | Strip secrets from `get_settings` response | — | [VU-489](https://linear.app/acceleratedata/issue/VU-489) AC1 — backend-owned field guards |
+| Rec #2 | Fix auth-store partial `save_settings` call | — | [VU-489](https://linear.app/acceleratedata/issue/VU-489) AC1 |
+| Rec #4 | Add `console.warn` to silent `.catch` handlers | — | [VU-581](https://linear.app/acceleratedata/issue/VU-581) |
+| Rec #5 | Fix `parseStepProgress` hardcoded step count | — | [VU-585](https://linear.app/acceleratedata/issue/VU-585) |
+| Rec #6 | Restrict env vars passed to sidecar subprocess | — | [VU-582](https://linear.app/acceleratedata/issue/VU-582) |
+| Rec #7 | Harden `test_api_key` to only accept 2xx | — | [VU-584](https://linear.app/acceleratedata/issue/VU-584) |
+| Rec #10 | Complete `parseSidecarConfig` validation | — | [VU-583](https://linear.app/acceleratedata/issue/VU-583) |
+| Rec #12 | Fix `persistRunRows` with `Promise.allSettled` | — | [VU-581](https://linear.app/acceleratedata/issue/VU-581) |
+
+---
+
+## Part 2: Pending (No Issue Coverage)
+
+### Critical
+
+#### C1. API Keys Stored in Plaintext SQLite
 
 **Location:** `src-tauri/src/db.rs:2109-2137`, `types.rs:60,85`
 **Source:** Security Auditor
@@ -30,7 +58,7 @@ The codebase is well-structured across its three layers with clean separation of
 
 **Fix:** Use OS keychain (macOS Keychain / Windows Credential Manager) via `tauri-plugin-stronghold` or equivalent. At minimum, strip secrets from the `get_settings` response sent to the frontend.
 
-### C2. Agent SDK Runs with `bypassPermissions` — Full Filesystem/Shell Access
+#### C2. Agent SDK Runs with `bypassPermissions` — Full Filesystem/Shell Access
 
 **Location:** `sidecar/options.ts:50`, `commands/workflow/runtime.rs:541,794`
 **Source:** Security Auditor
@@ -39,63 +67,9 @@ Every agent invocation runs with `permissionMode: "bypassPermissions"`, granting
 
 **Fix:** Use `acceptEdits` or `default` mode. Implement a filesystem allowlist. Consider OS-level sandboxing for the sidecar process.
 
-### C3. Auth Store Passes Partial Object to `save_settings`
+### High
 
-**Location:** `src/stores/auth-store.ts:46-49, 67-73, 87-93`
-**Source:** Frontend Reviewer
-
-`auth-store.ts` calls `invoke("save_settings", { githubUserLogin: ... })` with only 3-4 fields. Rust's `save_settings` expects a full `AppSettings` struct. Serde fails silently, meaning GitHub identity is never persisted. The `.catch()` handler suppresses the error.
-
-**Fix:** Load full settings via `getSettings()`, merge changes, then save via the typed wrapper.
-
-## High Priority Issues
-
-### H1. ~30+ Silent `.catch(() => {})` Error Handlers
-
-**Location:** `workflow-store.ts:128`, `use-workflow-session.ts:68,90,93,119`, `use-workflow-state-machine.ts:135,470,561` + ~20 more
-**Source:** Frontend + Architecture
-
-Over 30 fire-and-forget calls silently discard errors from `endWorkflowSession`, `releaseLock`, `cleanupSkillSidecar`, `createWorkflowSession`, `persistAgentRun`, etc. Makes it impossible to diagnose state corruption or leaked locks.
-
-**Fix:** `.catch((e) => console.warn("[component] non-fatal: op=%s err=%s", opName, e))`
-
-### H2. Sidecar `process.env` Spread Leaks Entire Environment
-
-**Location:** `sidecar/options.ts:28-29`
-**Source:** Sidecar Reviewer
-
-`{ env: { ...process.env, ANTHROPIC_API_KEY: config.apiKey } }` copies every environment variable into the SDK child process. If the SDK logs or serializes its options, all env vars are exposed.
-
-**Fix:** Pass only required vars: `PATH`, `HOME`, `NODE_ENV`, `ANTHROPIC_API_KEY`.
-
-### H3. `parseSidecarConfig` Validates Only 4 of 15+ Fields
-
-**Location:** `sidecar/config.ts:37-52`
-**Source:** Sidecar Reviewer
-
-Validates `prompt`, `apiKey`, `cwd`, `requiredPlugins` then casts everything else blindly. `"maxTurns": "fifty"` or `"permissionMode": 123` would produce subtle runtime failures.
-
-**Fix:** Add validation for all consumed fields. Zod is already available as a transitive dependency.
-
-### H4. `test_api_key` Accepts Any Non-401/403 Status as Valid
-
-**Location:** `commands/settings.rs:341-346`
-**Source:** Rust Reviewer
-
-Returns `Ok(true)` for 500, 429, etc. A server outage tells users their key is valid.
-
-**Fix:** Accept only 2xx. Map 429 to "rate limited", 5xx to "API unavailable."
-
-### H5. Settings Page Initializes State from `getState()` Outside React Lifecycle
-
-**Location:** `pages/settings.tsx:65-86`
-**Source:** Frontend Reviewer
-
-Multiple `useState` initializers read from `useSettingsStore.getState()` which won't update if the store hydrates asynchronously. `workspacePath` is a plain `const` — `autoSave` will always send `null` if the path loads after mount.
-
-**Fix:** Subscribe to the store via `useSettingsStore((s) => s.workspacePath)` and sync with `useEffect`.
-
-### H6. Unhandled Promise in `StreamSession` Constructor
+#### H6. Unhandled Promise in `StreamSession` Constructor
 
 **Location:** `sidecar/stream-session.ts:45`
 **Source:** Sidecar Reviewer
@@ -104,16 +78,7 @@ Multiple `useState` initializers read from `useSettingsStore.getState()` which w
 
 **Fix:** `.catch((err) => { onMessage(requestId, { type: "error", message: err.message }); })`
 
-### H7. `parseStepProgress` Hardcodes 6 Steps; Workflow Has 4
-
-**Location:** `components/skill-card.tsx:47-59`
-**Source:** Frontend Reviewer
-
-Divides by 6 total steps but `WORKFLOW_STEP_DEFINITIONS` has only 4. Progress bar never reaches 100%.
-
-**Fix:** Use `WORKFLOW_STEP_DEFINITIONS.length`.
-
-### H8. GitHub OAuth Requests `repo` Scope (Full Read/Write to All Repos)
+#### H8. GitHub OAuth Requests `repo` Scope (Full Read/Write to All Repos)
 
 **Location:** `commands/github_auth.rs:22`
 **Source:** Security Auditor
@@ -122,13 +87,10 @@ Divides by 6 total steps but `WORKFLOW_STEP_DEFINITIONS` has only 4. Progress ba
 
 **Fix:** Reduce to `public_repo` or fine-grained `repo:read`.
 
-## Medium Priority Issues
-
-### Code Quality
+### Medium — Code Quality
 
 | ID | Issue | Location |
 |---|---|---|
-| M1 | `persistRunRows` failure count always logs 0 (async `.catch` vs sync summary) | `agent-store.ts:310-348` |
 | M2 | `normalize_path` splits on `/` only — fails on Windows `\` | `commands/settings.rs:101-109` |
 | M3 | No size limit on text `read_file`/`write_file` (memory exhaustion risk) | `commands/files.rs:307-345` |
 | M4 | `use-agent-stream.ts` listener registration race condition (async `.then`) | `hooks/use-agent-stream.ts:67-69` |
@@ -137,17 +99,18 @@ Divides by 6 total steps but `WORKFLOW_STEP_DEFINITIONS` has only 4. Progress ba
 | M7 | `addDisplayItem` does O(n) array copy per message — O(n^2) for long runs | `agent-store.ts:546-576` |
 | M8 | Dashboard has 15+ `useState` hooks — hard to reason about | `pages/dashboard.tsx:61-78` |
 
-### Architecture
+### Medium — Architecture
 
 | ID | Issue | Location |
 |---|---|---|
 | M9 | `db.rs` is a monolith (77K+ tokens, all migrations + queries + types) | `src-tauri/src/db.rs` |
 | M10 | Duplicate usage persistence path (frontend `persistRunRows` + Rust `run_result`) | `agent-store.ts` + `events.rs` |
 | M11 | Module-level `Map` state outside Zustand store (invisible to devtools) | `agent-store.ts` |
-| M12 | `AppSettings` has 25+ fields spanning unrelated concerns (auth, UI, marketplace) | `types.rs` |
 | M13 | `INSERT OR REPLACE` on `agent_runs` — risks cascade if FKs ever added | `db.rs:1470-1480` |
 
-### Security
+Note: VU-489 AC6 splits `workflow.rs` but does **not** address the `db.rs` monolith (M9) or the dual-write dedup (M10).
+
+### Medium — Security
 
 | ID | Issue | Location |
 |---|---|---|
@@ -156,7 +119,7 @@ Divides by 6 total steps but `WORKFLOW_STEP_DEFINITIONS` has only 4. Progress ba
 | M16 | Sidecar has no API key redaction utility — accidental logging risk | `sidecar/options.ts`, `config.ts` |
 | M17 | `discoverInstalledPlugins` doesn't filter for directories (`.DS_Store` risk) | `sidecar/run-agent.ts:14-22` |
 
-## Low Priority Issues
+### Low
 
 | ID | Issue | Location |
 |---|---|---|
@@ -177,18 +140,7 @@ Divides by 6 total steps but `WORKFLOW_STEP_DEFINITIONS` has only 4. Progress ba
 | L15 | `thinkingEnabled` detection excludes `adaptive` mode | `sidecar/message-processor.ts:470-473` |
 | L16 | Usage page uses raw `<select>` instead of shadcn Select | `pages/usage.tsx:297-354` |
 
-## Test Coverage Analysis
-
-### Coverage by Layer
-
-| Layer | Files | Status |
-|---|---|---|
-| Frontend unit tests | 76 test files | Strong — stores, hooks, components, pages covered |
-| Sidecar tests | 10 files, 223 tests | Strong — all modules have corresponding tests |
-| Rust inline tests | Extensive `#[cfg(test)]` | Good — commands, DB, migrations, cleanup |
-| E2E tests | 10 specs, 42 tests | Moderate — major flows covered, gaps below |
-
-### Test Infrastructure Issues
+### Tests — Pending
 
 | ID | Issue | Severity | Location |
 |---|---|---|---|
@@ -226,15 +178,7 @@ Divides by 6 total steps but `WORKFLOW_STEP_DEFINITIONS` has only 4. Progress ba
 | `agent-items/result-item.tsx`, `error-item.tsx`, `tool-item.tsx`, `subagent-item.tsx` | Agent output rendering branches |
 | `refine/chat-panel.tsx`, `git-patch-view.tsx` | Refine conversation container |
 
-### Well-Covered Areas (Positive)
-
-- **Workflow store**: 40+ tests — initialization, transitions, session lifecycle, legacy migration
-- **Rust workflow output format**: 113 tests — every step's payload schema validation
-- **Sidecar protocol**: thorough JSONL coverage — error subtypes, auth failures, abort paths
-- **Reconciliation**: 57 tests — all 12 documented scenarios
-- **DB migrations**: 106 tests including migration count guard
-- **Cross-layer sync guards**: excellent drift prevention between sidecar and frontend
-- **Agent store buffering**: well-structured out-of-order event buffer tests
+---
 
 ## Architecture Assessment
 
@@ -249,7 +193,7 @@ Divides by 6 total steps but `WORKFLOW_STEP_DEFINITIONS` has only 4. Progress ba
 - WAL mode + busy timeout for SQLite concurrency
 - Structural agent tests keeping sidecar/frontend event contracts in sync
 
-### Concerns
+### Concerns (Pending)
 
 | Concern | Impact |
 |---|---|
@@ -272,37 +216,30 @@ Divides by 6 total steps but `WORKFLOW_STEP_DEFINITIONS` has only 4. Progress ba
 - GitHub OAuth uses Device Flow (no client secret in app)
 - `CLAUDECODE` env var explicitly removed to prevent nested-session issues
 
-### Risk Matrix
+### Pending Risk Matrix
 
 | Finding | Severity | Effort to Fix |
 |---|---|---|
-| Plaintext secrets in SQLite | Critical | Medium |
-| `bypassPermissions` on all agents | Critical | High |
-| API key returned to frontend via `get_settings` | High | Low |
-| `repo` scope on GitHub OAuth | High | Low (1 line) |
-| API key in sidecar process env | High | Medium |
-| No markdown sanitization (`rehype-sanitize`) | Medium | Low |
+| Plaintext secrets in SQLite (C1) | Critical | Medium |
+| `bypassPermissions` on all agents (C2) | Critical | High |
+| `repo` scope on GitHub OAuth (H8) | High | Trivial (1 line) |
+| No markdown sanitization (M15) | Medium | Low |
 | CSP `'unsafe-inline'` for styles | Medium | Low |
-| CSP includes localhost in production | Medium | Low |
-| `list_skill_files` missing allowed-root validation | Medium | Small |
-| No integrity check on bundled agent resources | Low | Medium |
+| CSP includes localhost in production (M5) | Medium | Low |
+| `list_skill_files` missing allowed-root validation (M14) | Medium | Small |
+| No integrity check on bundled agent resources (L11) | Low | Medium |
 
-## Top 15 Recommendations (Prioritized)
+## Pending Recommendations (Prioritized)
 
 | # | Action | Source | Effort |
 |---|---|---|---|
-| 1 | Strip secrets from `get_settings` response to frontend | Security | Low |
-| 2 | Fix auth-store partial `save_settings` call (C3) | Frontend | Small |
-| 3 | Reduce GitHub OAuth scope from `repo` to `public_repo` | Security | Trivial |
-| 4 | Add `console.warn` to 30+ silent `.catch(() => {})` handlers | Frontend + Arch | Medium |
-| 5 | Fix `parseStepProgress` hardcoded step count (progress never hits 100%) | Frontend | Trivial |
-| 6 | Restrict env vars passed to sidecar subprocess | Sidecar | Small |
-| 7 | Harden `test_api_key` to only accept 2xx | Rust | Small |
-| 8 | Fix test DB helper — iterate `NUMBERED_MIGRATIONS` instead of manual list | Rust | Small |
-| 9 | Replace 17 `waitForTimeout` calls with deterministic assertions | E2E | Medium |
-| 10 | Complete `parseSidecarConfig` validation (consider Zod) | Sidecar | Small |
-| 11 | Add `rehype-sanitize` to markdown rendering pipeline | Security | Small |
-| 12 | Fix `persistRunRows` with `Promise.allSettled` | Frontend | Small |
-| 13 | Re-enable FK enforcement after migrations complete (`PRAGMA foreign_keys = ON`) | Rust | Trivial |
-| 14 | Add E2E tests for usage page and settings save | E2E | Medium |
-| 15 | Plan migration to OS keychain for API key + OAuth token storage | Security | Medium |
+| 1 | Migrate API key + OAuth token to OS keychain (C1) | Security | Medium |
+| 2 | Reduce agent permission mode from `bypassPermissions` (C2) | Security | High |
+| 3 | Reduce GitHub OAuth scope from `repo` to `public_repo` (H8) | Security | Trivial |
+| 4 | Catch unhandled promise in `StreamSession` constructor (H6) | Sidecar | Small |
+| 5 | Fix test DB helper — iterate `NUMBERED_MIGRATIONS` (T1) | Rust | Small |
+| 6 | Replace 17 `waitForTimeout` calls with deterministic assertions (T2) | E2E | Medium |
+| 7 | Add `rehype-sanitize` to markdown rendering pipeline (M15) | Security | Small |
+| 8 | Re-enable FK enforcement after migrations complete (L12) | Rust | Trivial |
+| 9 | Add E2E tests for usage page and settings save | E2E | Medium |
+| 10 | Split `db.rs` monolith into domain modules (M9) | Architecture | Large |
