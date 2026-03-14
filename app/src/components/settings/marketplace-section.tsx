@@ -1,5 +1,3 @@
-import { useState } from "react"
-import { toast } from "@/lib/toast"
 import { Loader2, CheckCircle2, XCircle, PlugZap, Trash2, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -13,17 +11,10 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import type { MarketplaceRegistry } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { useSettingsStore } from "@/stores/settings-store"
-import { checkMarketplaceUrl, parseGitHubUrl } from "@/lib/tauri"
+import { useMarketplaceRegistries, DEFAULT_MARKETPLACE_URL, type RegistryTestResult } from "@/hooks/use-marketplace-registries"
 
-/** Must match DEFAULT_MARKETPLACE_URL in app/src-tauri/src/commands/settings.rs */
-const DEFAULT_MARKETPLACE_URL = "hbanerjee74/skills"
-
-type RegistryTestState = "checking" | "valid" | "invalid" | undefined
-
-function RegistryTestIcon({ state }: { state: RegistryTestState }) {
+function RegistryTestIcon({ state }: { state: RegistryTestResult | undefined }) {
   if (state === "checking") return <Loader2 className="size-3.5 animate-spin" />
   if (state === "valid") return <CheckCircle2 className="size-3.5" style={{ color: "var(--color-seafoam)" }} />
   if (state === "invalid") return <XCircle className="size-3.5 text-destructive" />
@@ -41,11 +32,7 @@ export function MarketplaceSection({
   setAutoUpdate,
   autoSave,
 }: MarketplaceSectionProps) {
-  const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
-  const [addingRegistry, setAddingRegistry] = useState(false)
-  const [newRegistryUrl, setNewRegistryUrl] = useState("")
-  const [newRegistryAdding, setNewRegistryAdding] = useState(false)
-  const [registryTestState, setRegistryTestState] = useState<Record<string, "checking" | "valid" | "invalid">>({})
+  const reg = useMarketplaceRegistries(autoSave)
 
   return (
     <div className="space-y-6 p-6">
@@ -63,9 +50,9 @@ export function MarketplaceSection({
               <span className="w-16">Enabled</span>
               <span className="w-16" />
             </div>
-            {marketplaceRegistries.map((registry) => {
+            {reg.marketplaceRegistries.map((registry) => {
               const isDefault = registry.source_url === DEFAULT_MARKETPLACE_URL
-              const testState = registryTestState[registry.source_url]
+              const testState = reg.registryTestState[registry.source_url]
               const isFailed = testState === "invalid"
               return (
                 <div
@@ -85,14 +72,7 @@ export function MarketplaceSection({
                     <Switch
                       checked={registry.enabled && !isFailed}
                       disabled={isFailed}
-                      onCheckedChange={(checked) => {
-                        console.log(`[settings] registry toggled: url=${registry.source_url}, enabled=${checked}`)
-                        const current = useSettingsStore.getState().marketplaceRegistries
-                        const updated = current.map(r =>
-                          r.source_url === registry.source_url ? { ...r, enabled: checked } : r
-                        )
-                        autoSave({ marketplaceRegistries: updated })
-                      }}
+                      onCheckedChange={(checked) => reg.toggleRegistry(registry.source_url, checked)}
                       aria-label={`Toggle ${registry.source_url}`}
                     />
                   </div>
@@ -103,16 +83,7 @@ export function MarketplaceSection({
                       aria-label={`Test ${registry.source_url}`}
                       title="Check marketplace.json is reachable"
                       disabled={testState === "checking"}
-                      onClick={async () => {
-                        setRegistryTestState((s) => ({ ...s, [registry.source_url]: "checking" }))
-                        try {
-                          await checkMarketplaceUrl(registry.source_url)
-                          setRegistryTestState((s) => ({ ...s, [registry.source_url]: "valid" }))
-                        } catch (err) {
-                          console.error(`[settings] registry test failed for ${registry.source_url}:`, err)
-                          setRegistryTestState((s) => ({ ...s, [registry.source_url]: "invalid" }))
-                        }
-                      }}
+                      onClick={() => reg.testRegistry(registry.source_url)}
                     >
                       <RegistryTestIcon state={testState} />
                     </button>
@@ -121,12 +92,7 @@ export function MarketplaceSection({
                         type="button"
                         className="text-muted-foreground hover:text-destructive transition-colors"
                         aria-label={`Remove ${registry.name}`}
-                        onClick={() => {
-                          console.log(`[settings] registry removed: name=${registry.name}`)
-                          const current = useSettingsStore.getState().marketplaceRegistries
-                          const updated = current.filter(r => r.source_url !== registry.source_url)
-                          autoSave({ marketplaceRegistries: updated })
-                        }}
+                        onClick={() => reg.removeRegistry(registry)}
                       >
                         <Trash2 className="size-3.5" />
                       </button>
@@ -137,12 +103,12 @@ export function MarketplaceSection({
             })}
           </div>
 
-          {!addingRegistry ? (
+          {!reg.addingRegistry ? (
             <Button
               variant="outline"
               size="sm"
               className="w-fit"
-              onClick={() => setAddingRegistry(true)}
+              onClick={() => reg.setAddingRegistry(true)}
             >
               <Plus className="size-4" />
               Add registry
@@ -154,78 +120,25 @@ export function MarketplaceSection({
                 <Input
                   id="new-registry-url"
                   placeholder="owner/repo or owner/repo#branch"
-                  value={newRegistryUrl}
-                  onChange={(e) => setNewRegistryUrl(e.target.value)}
+                  value={reg.newRegistryUrl}
+                  onChange={(e) => reg.setNewRegistryUrl(e.target.value)}
                 />
-                {newRegistryUrl.trim() && marketplaceRegistries.some(r => r.source_url === newRegistryUrl.trim()) && (
+                {reg.isDuplicateUrl && (
                   <p className="text-xs text-destructive">This registry is already added.</p>
                 )}
               </div>
               <div className="flex gap-2">
                 <Button
                   size="sm"
-                  disabled={
-                    !newRegistryUrl.trim() ||
-                    newRegistryAdding ||
-                    marketplaceRegistries.some(r => r.source_url === newRegistryUrl.trim())
-                  }
-                  onClick={async () => {
-                    const url = newRegistryUrl.trim()
-                    setNewRegistryAdding(true)
-
-                    let info: Awaited<ReturnType<typeof parseGitHubUrl>>
-                    try {
-                      info = await parseGitHubUrl(url)
-                    } catch {
-                      toast.error("Invalid GitHub repository format — use owner/repo or owner/repo#branch.", { duration: Infinity })
-                      setNewRegistryAdding(false)
-                      return
-                    }
-                    const canonicalUrl = info.branch === "main"
-                      ? `${info.owner}/${info.repo}`
-                      : `${info.owner}/${info.repo}#${info.branch}`
-
-                    const isDuplicate = marketplaceRegistries.some(r => {
-                      const m = r.source_url.match(/^([^/]+)\/([^/#]+)/)
-                      return m && m[1] === info.owner && m[2] === info.repo
-                    })
-                    if (isDuplicate) {
-                      toast.error(`${info.owner}/${info.repo} is already in your registries.`, { duration: Infinity })
-                      setNewRegistryAdding(false)
-                      return
-                    }
-
-                    let name: string
-                    try {
-                      name = await checkMarketplaceUrl(url)
-                    } catch (err) {
-                      console.error(`[settings] add registry check failed for ${url}:`, err)
-                      setNewRegistryAdding(false)
-                      toast.error("Could not reach marketplace.json — check it is a public GitHub repository with a .claude-plugin/marketplace.json file.", { duration: Infinity })
-                      return
-                    }
-                    console.log(`[settings] registry added: name=${name}, url=${canonicalUrl}`)
-                    const entry: MarketplaceRegistry = {
-                      name,
-                      source_url: canonicalUrl,
-                      enabled: true,
-                    }
-                    autoSave({ marketplaceRegistries: [...marketplaceRegistries, entry] })
-                    setNewRegistryUrl("")
-                    setNewRegistryAdding(false)
-                    setAddingRegistry(false)
-                  }}
+                  disabled={!reg.newRegistryUrl.trim() || reg.newRegistryAdding || reg.isDuplicateUrl}
+                  onClick={reg.addRegistry}
                 >
-                  {newRegistryAdding ? <Loader2 className="size-3.5 animate-spin" /> : "Add"}
+                  {reg.newRegistryAdding ? <Loader2 className="size-3.5 animate-spin" /> : "Add"}
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    setNewRegistryUrl("")
-                    setNewRegistryAdding(false)
-                    setAddingRegistry(false)
-                  }}
+                  onClick={reg.cancelAdd}
                 >
                   Cancel
                 </Button>
