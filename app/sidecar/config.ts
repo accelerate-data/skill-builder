@@ -145,3 +145,15 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
 
   return raw as SidecarConfig;
 }
+
+/**
+ * Return a shallow copy of the config with sensitive fields redacted.
+ * Use this before logging or serializing config objects to prevent
+ * accidental API key exposure in stderr/transcripts.
+ */
+export function redactConfig(config: SidecarConfig): Record<string, unknown> {
+  return {
+    ...config,
+    apiKey: "[REDACTED]",
+  };
+}
