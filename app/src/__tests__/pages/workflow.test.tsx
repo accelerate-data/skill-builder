@@ -110,6 +110,7 @@ import {
   materializeAnswerEvaluationOutput,
   getContextFileContent,
   navigateBackToStepDb,
+  verifyStepOutput,
 } from "@/lib/tauri";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
@@ -2721,5 +2722,906 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
     expect(wf.isRunning).toBe(false);
 
     expect(mockToast.success).toHaveBeenCalledWith("Step 4 completed");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TF-02: Gate evaluation handler coverage
+// ---------------------------------------------------------------------------
+describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
+  beforeEach(() => {
+    resetTauriMocks();
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+
+    useSettingsStore.getState().setSettings({
+      workspacePath: "/test/workspace",
+      skillsPath: "/test/skills",
+      anthropicApiKey: "sk-test",
+    });
+
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
+    mockToast.info.mockClear();
+    mockBlocker.proceed.mockClear();
+    mockBlocker.reset.mockClear();
+    mockBlocker.status = "idle";
+
+    vi.mocked(saveWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockReset().mockRejectedValue("not found");
+    vi.mocked(readFile).mockClear();
+    vi.mocked(writeFile).mockClear();
+    vi.mocked(runAnswerEvaluator).mockClear();
+    vi.mocked(getDisabledSteps).mockReset().mockResolvedValue([]);
+    vi.mocked(materializeWorkflowStepOutput).mockReset().mockResolvedValue(undefined);
+    vi.mocked(materializeAnswerEvaluationOutput).mockReset().mockResolvedValue(undefined);
+    vi.mocked(runWorkflowStep).mockReset();
+    vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
+  });
+
+  afterEach(() => {
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+    vi.mocked(WorkflowSidebar).mockImplementation(() => <div data-testid="workflow-sidebar" />);
+    vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
+  });
+
+  /** Helper: trigger gate flow on step 0 and wait for gate dialog */
+  async function triggerGateDialog(evaluation: Record<string, unknown>) {
+    const jsonData = makeClarificationsJson();
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-handler-test");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    // Gate agent completes
+    act(() => {
+      useAgentStore.getState().startRun("gate-handler-test", "haiku");
+      useAgentStore.getState().completeRun("gate-handler-test", true);
+    });
+  }
+
+  it("handleGateSkip from clarifications context skips to step 2 and marks step 1 completed", async () => {
+    const evaluation = {
+      verdict: "sufficient",
+      answered_count: 2,
+      empty_count: 0,
+      vague_count: 0,
+      contradictory_count: 0,
+      total_count: 2,
+      reasoning: "All clear.",
+      per_question: [],
+    };
+
+    await triggerGateDialog(evaluation);
+
+    // Wait for the "Skip to Decisions" button (sufficient verdict)
+    const skipButton = await screen.findByRole("button", { name: "Skip to Decisions" });
+
+    await act(async () => {
+      skipButton.click();
+    });
+
+    // handleGateSkip → skipToDecisions → step 1 completed, currentStep = 2
+    expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+    expect(useWorkflowStore.getState().currentStep).toBe(2);
+    expect(mockToast.success).toHaveBeenCalledWith(
+      "Skipped detailed research — answers were sufficient",
+    );
+  });
+
+  it("handleGateResearch from clarifications context advances to next step normally", async () => {
+    const evaluation = {
+      verdict: "sufficient",
+      answered_count: 2,
+      empty_count: 0,
+      vague_count: 0,
+      contradictory_count: 0,
+      total_count: 2,
+      reasoning: "All clear.",
+      per_question: [],
+    };
+
+    await triggerGateDialog(evaluation);
+
+    // Wait for the "Run Research Anyway" button (sufficient, gate 1)
+    const researchButton = await screen.findByRole("button", { name: "Run Research Anyway" });
+
+    await act(async () => {
+      researchButton.click();
+    });
+
+    // handleGateResearch → closeGateDialog + mark current step completed + advance
+    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+    expect(useWorkflowStore.getState().currentStep).toBe(1);
+  });
+
+  it("handleGateContinueAnyway advances and shows toast", async () => {
+    const evaluation = {
+      verdict: "mixed",
+      answered_count: 1,
+      empty_count: 1,
+      vague_count: 1,
+      contradictory_count: 0,
+      total_count: 2,
+      reasoning: "Some vague.",
+      per_question: [
+        { question_id: "Q1", verdict: "vague", reason: "Too general." },
+        { question_id: "Q2", verdict: "not_answered" },
+      ],
+    };
+
+    await triggerGateDialog(evaluation);
+
+    // Wait for the "Continue Anyway" button (mixed, no contradictions)
+    const continueButton = await screen.findByRole("button", { name: "Continue Anyway" });
+
+    await act(async () => {
+      continueButton.click();
+    });
+
+    // handleGateContinueAnyway → advance to next step
+    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+    expect(useWorkflowStore.getState().currentStep).toBe(1);
+    expect(mockToast.success).toHaveBeenCalledWith("Continuing with current answers");
+  });
+
+  it("handleGateSkip from refinements context advances to next step (not step 2)", async () => {
+    // Set up step 1 (refinements context)
+    const jsonData = makeClarificationsJson();
+    const evaluation = {
+      verdict: "sufficient",
+      answered_count: 2,
+      empty_count: 0,
+      vague_count: 0,
+      contradictory_count: 0,
+      total_count: 2,
+      reasoning: "All clear.",
+      per_question: [],
+    };
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-ref-test");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    act(() => {
+      useAgentStore.getState().startRun("gate-ref-test", "haiku");
+      useAgentStore.getState().completeRun("gate-ref-test", true);
+    });
+
+    // Refinements + sufficient → "Continue to Decisions" button
+    const continueButton = await screen.findByRole("button", { name: "Continue to Decisions" });
+
+    // The "Skip to Decisions" in refinements context actually calls handleGateSkip.
+    // But for sufficient refinements, the only buttons are "Back to Review" and "Continue to Decisions".
+    // "Continue to Decisions" calls onResearch which maps to handleGateResearch.
+    await act(async () => {
+      continueButton.click();
+    });
+
+    // handleGateResearch from refinements → marks step 1 completed + advances to step 2
+    expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+    expect(useWorkflowStore.getState().currentStep).toBe(2);
+  });
+
+  it("runGateOrAdvance falls through to advanceToNextStep when step is not 0 or 1", async () => {
+    // Step 2 completed in review mode — runGateOrAdvance should just advance, not run gate evaluation.
+    // Use review mode to prevent the reposition effect from moving currentStep away from step 2.
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    // reviewMode=true (default from initWorkflow) — keeps currentStep stable
+    for (let i = 0; i < 3; i++) useWorkflowStore.getState().updateStepStatus(i, "completed");
+    useWorkflowStore.getState().setCurrentStep(2);
+
+    let capturedOnNextStep: (() => void) | undefined;
+    vi.mocked(WorkflowStepComplete).mockImplementation(({ onNextStep }) => {
+      capturedOnNextStep = onNextStep;
+      return <div data-testid="step-complete" />;
+    });
+
+    render(<WorkflowPage />);
+    await waitFor(() => expect(screen.getByTestId("step-complete")).toBeTruthy());
+
+    await act(async () => capturedOnNextStep?.());
+
+    // Should advance to step 3 without triggering gate evaluation
+    expect(useWorkflowStore.getState().currentStep).toBe(3);
+    expect(vi.mocked(runAnswerEvaluator)).not.toHaveBeenCalled();
+  });
+
+  it("runGateOrAdvance skips gate when next step (1) is disabled and advances normally", async () => {
+    // When step 0 completed but step 1 is disabled, runGateOrAdvance should not trigger
+    // the gate evaluator and should not advance (because the next step is disabled).
+    vi.mocked(getDisabledSteps).mockResolvedValue([1]);
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    // reviewMode=true to keep currentStep stable
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+    useWorkflowStore.getState().setDisabledSteps([1]);
+
+    vi.mocked(readFile).mockRejectedValue("not found");
+
+    let capturedOnClarificationsContinue: (() => void) | undefined;
+    vi.mocked(WorkflowStepComplete).mockImplementation(({ onClarificationsContinue }) => {
+      capturedOnClarificationsContinue = onClarificationsContinue;
+      return <div data-testid="step-complete" />;
+    });
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("step-complete")).toBeTruthy();
+    });
+
+    await act(async () => {
+      capturedOnClarificationsContinue?.();
+    });
+
+    // Gate should not have been triggered (step 1 disabled)
+    expect(vi.mocked(runAnswerEvaluator)).not.toHaveBeenCalled();
+
+    // Should stay on step 0 (can't advance to disabled step 1)
+    expect(useWorkflowStore.getState().currentStep).toBe(0);
+  });
+
+  it("finishGateEvaluation proceeds normally when answer-evaluation.json parse fails", async () => {
+    const jsonData = makeClarificationsJson();
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve("NOT VALID JSON {{{");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-bad-json");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    act(() => {
+      useAgentStore.getState().startRun("gate-bad-json", "haiku");
+      useAgentStore.getState().completeRun("gate-bad-json", true);
+    });
+
+    // JSON parse fails → proceedNormally → step completed, advances
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+      expect(useWorkflowStore.getState().currentStep).toBe(1);
+    });
+  });
+
+  it("finishGateEvaluation proceeds normally when verdict is unrecognized", async () => {
+    const jsonData = makeClarificationsJson();
+    const evaluation = {
+      verdict: "unknown_verdict",
+      answered_count: 0,
+      empty_count: 0,
+      vague_count: 0,
+      contradictory_count: 0,
+      total_count: 0,
+      reasoning: "Unknown.",
+      per_question: [],
+    };
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-bad-verdict");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    act(() => {
+      useAgentStore.getState().startRun("gate-bad-verdict", "haiku");
+      useAgentStore.getState().completeRun("gate-bad-verdict", true);
+    });
+
+    // Invalid verdict → proceedNormally → step completed, advances
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+      expect(useWorkflowStore.getState().currentStep).toBe(1);
+    });
+  });
+
+  it("gate agent error falls through: marks step completed and advances", async () => {
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-error-agent");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    vi.mocked(readFile).mockRejectedValue("not found");
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    // Gate agent starts and fails
+    act(() => {
+      useAgentStore.getState().startRun("gate-error-agent", "haiku");
+      useAgentStore.getState().completeRun("gate-error-agent", false);
+    });
+
+    // Error path in gate watcher → step completed, advances
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+      expect(useWorkflowStore.getState().currentStep).toBe(1);
+    });
+
+    // Gate loading should be cleared
+    expect(useWorkflowStore.getState().gateLoading).toBe(false);
+  });
+
+  it("buildGateFeedbackNotes maps all four verdict types with reasons", async () => {
+    const evaluation = {
+      verdict: "mixed",
+      answered_count: 0,
+      empty_count: 1,
+      vague_count: 1,
+      contradictory_count: 1,
+      total_count: 4,
+      reasoning: "Multiple issues.",
+      per_question: [
+        { question_id: "Q1", verdict: "vague", reason: "Too general." },
+        { question_id: "Q2", verdict: "contradictory", contradicts: "Q1", reason: "Conflicts with Q1." },
+        { question_id: "Q3", verdict: "not_answered", reason: "Skipped entirely." },
+        { question_id: "Q4", verdict: "needs_refinement", reason: "Needs more constraints." },
+      ],
+    };
+
+    const jsonData = makeClarificationsJson();
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-all-verdicts");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    act(() => {
+      useAgentStore.getState().startRun("gate-all-verdicts", "haiku");
+      useAgentStore.getState().completeRun("gate-all-verdicts", true);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+    });
+
+    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
+      ([path]) => path === "/test/skills/test-skill/context/clarifications.json",
+    );
+    expect(writeCalls.length).toBeGreaterThan(0);
+    const serialized = writeCalls[writeCalls.length - 1][1];
+    const parsed = JSON.parse(serialized);
+    const notes = parsed.answer_evaluator_notes as Array<{ type: string; title: string; body: string }>;
+
+    // All four verdict types should be present with custom reasons
+    expect(notes.some((n) => n.title === "Vague answer: Q1" && n.body === "Too general.")).toBe(true);
+    expect(notes.some((n) => n.title === "Contradictory answer: Q2" && n.body === "Conflicts with Q1.")).toBe(true);
+    expect(notes.some((n) => n.title === "Not answered: Q3" && n.body === "Skipped entirely.")).toBe(true);
+    expect(notes.some((n) => n.title === "Needs refinement: Q4" && n.body === "Needs more constraints.")).toBe(true);
+
+    // All should have type "answer_feedback"
+    expect(notes.every((n) => n.type === "answer_feedback")).toBe(true);
+  });
+
+  it("buildGateFeedbackNotes uses fallback messages when no reason is provided", async () => {
+    const evaluation = {
+      verdict: "mixed",
+      answered_count: 0,
+      empty_count: 1,
+      vague_count: 1,
+      contradictory_count: 1,
+      total_count: 4,
+      reasoning: "Multiple issues.",
+      per_question: [
+        { question_id: "Q1", verdict: "vague" },
+        { question_id: "Q2", verdict: "contradictory", contradicts: "Q3" },
+        { question_id: "Q3", verdict: "not_answered" },
+        { question_id: "Q4", verdict: "needs_refinement" },
+      ],
+    };
+
+    const jsonData = makeClarificationsJson();
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-no-reason");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    act(() => {
+      useAgentStore.getState().startRun("gate-no-reason", "haiku");
+      useAgentStore.getState().completeRun("gate-no-reason", true);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+    });
+
+    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
+      ([path]) => path === "/test/skills/test-skill/context/clarifications.json",
+    );
+    const serialized = writeCalls[writeCalls.length - 1][1];
+    const parsed = JSON.parse(serialized);
+    const notes = parsed.answer_evaluator_notes as Array<{ title: string; body: string }>;
+
+    // Fallback messages
+    expect(notes.some((n) => n.title === "Vague answer: Q1" && n.body === "Answer is too general and needs specific details.")).toBe(true);
+    expect(notes.some((n) => n.title === "Contradictory answer: Q2" && n.body === "This answer conflicts with Q3.")).toBe(true);
+    expect(notes.some((n) => n.title === "Not answered: Q3" && n.body.includes("still unanswered"))).toBe(true);
+    expect(notes.some((n) => n.title === "Needs refinement: Q4" && n.body.includes("more concrete detail"))).toBe(true);
+  });
+
+  it("buildGateFeedbackNotes excludes clear verdicts from notes", async () => {
+    const evaluation = {
+      verdict: "sufficient",
+      answered_count: 2,
+      empty_count: 0,
+      vague_count: 0,
+      contradictory_count: 0,
+      total_count: 2,
+      reasoning: "All good.",
+      per_question: [
+        { question_id: "Q1", verdict: "clear" },
+        { question_id: "Q2", verdict: "clear" },
+      ],
+    };
+
+    const jsonData = makeClarificationsJson();
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-all-clear");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    act(() => {
+      useAgentStore.getState().startRun("gate-all-clear", "haiku");
+      useAgentStore.getState().completeRun("gate-all-clear", true);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+    });
+
+    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
+      ([path]) => path === "/test/skills/test-skill/context/clarifications.json",
+    );
+    const serialized = writeCalls[writeCalls.length - 1][1];
+    const parsed = JSON.parse(serialized);
+
+    // No feedback notes for "clear" verdicts
+    expect(parsed.answer_evaluator_notes).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TF-03: Step-completion error paths
+// ---------------------------------------------------------------------------
+describe("WorkflowPage — step-completion error paths (TF-03)", () => {
+  beforeEach(() => {
+    resetTauriMocks();
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+
+    useSettingsStore.getState().setSettings({
+      workspacePath: "/test/workspace",
+      skillsPath: "/test/skills",
+      anthropicApiKey: "sk-test",
+    });
+
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
+    mockToast.info.mockClear();
+    mockBlocker.proceed.mockClear();
+    mockBlocker.reset.mockClear();
+    mockBlocker.status = "idle";
+
+    vi.mocked(saveWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockReset().mockRejectedValue("not found");
+    vi.mocked(readFile).mockReset().mockRejectedValue("not found");
+    vi.mocked(writeFile).mockReset().mockResolvedValue(undefined);
+    vi.mocked(verifyStepOutput).mockReset().mockResolvedValue(true);
+    vi.mocked(getDisabledSteps).mockReset().mockResolvedValue([]);
+    vi.mocked(materializeWorkflowStepOutput).mockReset().mockResolvedValue(undefined);
+    vi.mocked(runWorkflowStep).mockReset();
+    vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
+  });
+
+  afterEach(() => {
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+    vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
+  });
+
+  it("step errors when verifyStepOutput returns false (no output files)", async () => {
+    vi.mocked(verifyStepOutput).mockResolvedValue(false);
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-no-output", "sonnet");
+
+    render(<WorkflowPage />);
+
+    // Agent completes with structured output (step 0 does not require it, so null is OK)
+    act(() => {
+      useAgentStore.getState().completeRun("agent-no-output", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("error");
+    });
+
+    expect(useWorkflowStore.getState().isRunning).toBe(false);
+    expect(mockToast.error).toHaveBeenCalledWith(
+      "Step 1 completed but produced no output files",
+      { duration: Infinity },
+    );
+  });
+
+  it("step errors when verifyStepOutput returns false even with valid structured output", async () => {
+    vi.mocked(verifyStepOutput).mockResolvedValue(false);
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-output-fail", "sonnet");
+
+    render(<WorkflowPage />);
+
+    act(() => {
+      useAgentStore.getState().addDisplayItem("agent-output-fail", {
+        id: "result-output-fail",
+        type: "result",
+        timestamp: Date.now(),
+        outputText_result: "Agent completed",
+        structuredOutput: {
+          status: "research_complete",
+          dimensions_selected: 1,
+          question_count: 1,
+          research_plan_markdown: "# Plan",
+          clarifications_json: {},
+        },
+        resultStatus: "success",
+      });
+      useAgentStore.getState().completeRun("agent-output-fail", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("error");
+    });
+
+    // materializeWorkflowStepOutput was called (since structured output was present)
+    expect(vi.mocked(materializeWorkflowStepOutput)).toHaveBeenCalled();
+
+    // But verifyStepOutput returned false → error
+    expect(mockToast.error).toHaveBeenCalledWith(
+      "Step 1 completed but produced no output files",
+      { duration: Infinity },
+    );
+  });
+
+  it("step 2 (non-requiresStructuredOutput) completes when structuredOutput is null and verifyStepOutput is true", async () => {
+    // Step 2 is "reasoning" type with no requiresStructuredOutput
+    vi.mocked(verifyStepOutput).mockResolvedValue(true);
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().setCurrentStep(2);
+    useWorkflowStore.getState().updateStepStatus(2, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-step2-no-structured", "sonnet");
+
+    render(<WorkflowPage />);
+
+    // Complete with no structured output
+    act(() => {
+      useAgentStore.getState().completeRun("agent-step2-no-structured", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[2].status).toBe("completed");
+    });
+
+    // Should not have attempted materialization
+    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
+    expect(mockToast.success).toHaveBeenCalledWith("Step 3 completed");
+  });
+
+  it("step 3 (requiresStructuredOutput) errors when structuredOutput is null", async () => {
+    // Step 3 has requiresStructuredOutput: true
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().updateStepStatus(2, "completed");
+    useWorkflowStore.getState().setCurrentStep(3);
+    useWorkflowStore.getState().updateStepStatus(3, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-step3-null", "sonnet");
+
+    render(<WorkflowPage />);
+
+    // Complete with NO structured output (no result display item)
+    act(() => {
+      useAgentStore.getState().completeRun("agent-step3-null", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[3].status).toBe("error");
+    });
+
+    expect(useWorkflowStore.getState().isRunning).toBe(false);
+    expect(mockToast.error).toHaveBeenCalledWith(
+      "Step 4 completed but produced no structured output",
+      { duration: Infinity },
+    );
+  });
+
+  it("step errors when materializeWorkflowStepOutput throws", async () => {
+    vi.mocked(materializeWorkflowStepOutput).mockRejectedValueOnce(new Error("validation failed"));
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().updateStepStatus(2, "completed");
+    useWorkflowStore.getState().setCurrentStep(3);
+    useWorkflowStore.getState().updateStepStatus(3, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-step3-materialize-fail", "sonnet");
+
+    render(<WorkflowPage />);
+
+    act(() => {
+      useAgentStore.getState().addDisplayItem("agent-step3-materialize-fail", {
+        id: "result-mat-fail",
+        type: "result",
+        timestamp: Date.now(),
+        outputText_result: "Agent completed",
+        structuredOutput: {
+          status: "generated",
+          evaluations_markdown: "## Test",
+        },
+        resultStatus: "success",
+      });
+      useAgentStore.getState().completeRun("agent-step3-materialize-fail", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[3].status).toBe("error");
+    });
+
+    expect(useWorkflowStore.getState().isRunning).toBe(false);
+    expect(mockToast.error).toHaveBeenCalledWith(
+      "Step 4 output validation failed: validation failed",
+      { duration: Infinity },
+    );
+  });
+
+  it("verifyStepOutput exception is non-fatal — step still completes", async () => {
+    // When verifyStepOutput throws (not returns false), the step should still complete
+    vi.mocked(verifyStepOutput).mockRejectedValue(new Error("disk error"));
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-verify-throw", "sonnet");
+
+    render(<WorkflowPage />);
+
+    act(() => {
+      useAgentStore.getState().completeRun("agent-verify-throw", true);
+    });
+
+    // Should still complete (verification failure is non-fatal)
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+    });
+
+    expect(mockToast.success).toHaveBeenCalledWith("Step 1 completed");
+  });
+
+  it("step 1 with requiresStructuredOutput errors when structured output is an array", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+    useWorkflowStore.getState().updateStepStatus(1, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-step1-array", "sonnet");
+
+    render(<WorkflowPage />);
+
+    act(() => {
+      useAgentStore.getState().addDisplayItem("agent-step1-array", {
+        id: "result-step1-arr",
+        type: "result",
+        timestamp: Date.now(),
+        outputText_result: "Agent completed",
+        structuredOutput: ["not", "an", "object"],
+        resultStatus: "success",
+      });
+      useAgentStore.getState().completeRun("agent-step1-array", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[1].status).toBe("error");
+    });
+
+    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
+    expect(mockToast.error).toHaveBeenCalledWith(
+      "Step 2 completed but produced no structured output",
+      { duration: Infinity },
+    );
   });
 });
