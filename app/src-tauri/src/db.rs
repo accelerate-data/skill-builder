@@ -773,19 +773,28 @@ fn run_consolidate_workspace_skills_migration(conn: &Connection) -> Result<(), r
         return Ok(());
     }
 
-    conn.execute_batch(
+    // Disable FK enforcement for the migration. Some workspace_skills rows may have
+    // skill_id values referencing skills rows that were already deleted (orphaned FKs).
+    // We null-out those orphaned skill_id values rather than failing.
+    // PRAGMA foreign_keys must be changed outside a transaction in SQLite.
+    conn.pragma_update(None, "foreign_keys", false)?;
+    let result = conn.execute_batch(
         "INSERT OR IGNORE INTO imported_skills
             (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
              purpose, version, model, argument_hint, user_invocable,
              disable_model_invocation, content_hash, marketplace_source_url)
         SELECT
-            skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
-            purpose, version, model, argument_hint, user_invocable,
-            disable_model_invocation, content_hash, marketplace_source_url
-        FROM workspace_skills;
+            CASE WHEN EXISTS(SELECT 1 FROM skills WHERE id = ws.skill_id)
+                 THEN ws.skill_id ELSE NULL END,
+            ws.skill_name, ws.is_active, ws.disk_path, ws.imported_at, ws.is_bundled,
+            ws.purpose, ws.version, ws.model, ws.argument_hint, ws.user_invocable,
+            ws.disable_model_invocation, ws.content_hash, ws.marketplace_source_url
+        FROM workspace_skills ws;
 
         DROP TABLE workspace_skills;",
-    )?;
+    );
+    conn.pragma_update(None, "foreign_keys", true)?;
+    result?;
     log::info!("migration 36: consolidated workspace_skills into imported_skills and dropped workspace_skills");
     Ok(())
 }
