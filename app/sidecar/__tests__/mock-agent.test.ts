@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import {
   buildStructuredMockResult,
   parsePromptPaths,
-  resolvePromptPathsAsync,
+  resolvePromptPaths,
   resolveStepTemplate,
 } from "../mock-agent.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -148,13 +148,13 @@ describe("parsePromptPaths", () => {
   });
 });
 
-describe("resolvePromptPathsAsync", () => {
-  it("resolves skillOutputDir from inline prompt path", async () => {
+describe("resolvePromptPaths", () => {
+  it("resolves skillOutputDir from inline prompt path", () => {
     const prompt =
       "The skill name is: x. The workspace directory is: /tmp/ws/x. " +
       "The skill output directory (SKILL.md and references/) is: /tmp/skills/x. " +
       "Read user-context.md from the workspace directory.";
-    const paths = await resolvePromptPathsAsync(prompt);
+    const paths = resolvePromptPaths(prompt);
     expect(paths.workspaceDir).toBe("/tmp/ws/x");
     expect(paths.contextDir).toBe(path.join("/tmp/ws/x", "context"));
     expect(paths.skillOutputDir).toBe("/tmp/skills/x");
