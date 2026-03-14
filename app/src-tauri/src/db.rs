@@ -3782,8 +3782,16 @@ fn run_marketplace_source_url_migration(conn: &Connection) -> Result<(), rusqlit
             })
             .unwrap_or(false)
     };
+    let table_exists = |table: &str| -> bool {
+        conn.query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name=?1",
+            [table],
+            |row| row.get(0),
+        )
+        .unwrap_or(false)
+    };
     let mut altered = false;
-    if !check_col("workspace_skills", "marketplace_source_url") {
+    if table_exists("workspace_skills") && !check_col("workspace_skills", "marketplace_source_url") {
         conn.execute_batch("ALTER TABLE workspace_skills ADD COLUMN marketplace_source_url TEXT;")?;
         altered = true;
     }
