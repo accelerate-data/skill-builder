@@ -24,6 +24,7 @@
     "test:e2e:navigation": "playwright test --grep @navigation",
     "test:e2e:skills": "playwright test --grep @skills",
     "test:e2e:usage": "playwright test --grep @usage",
+    "test:e2e:integration": "playwright test --grep @integration",
     "test:changed": "vitest run --changed HEAD~1",
     "test:agents": "npm run test:agents:structural && npm run test:agents:smoke",
     "test:agents:structural": "vitest run --config vitest.config.agent.ts agent-tests/agent-structure.test.ts",

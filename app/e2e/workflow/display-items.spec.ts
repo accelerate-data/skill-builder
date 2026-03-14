@@ -15,6 +15,7 @@ test.describe("DisplayItem Rendering", { tag: "@workflow-agent" }, () => {
     await navigateToWorkflow(page);
     await expect(page.getByText("Step 1: Research")).toBeVisible();
     const agentId = "agent-001";
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
 
     // Emit a thinking display item
     await emitTauriEvent(page, "agent-message", {
@@ -38,6 +39,7 @@ test.describe("DisplayItem Rendering", { tag: "@workflow-agent" }, () => {
     await navigateToWorkflow(page);
     await expect(page.getByText("Step 1: Research")).toBeVisible();
     const agentId = "agent-001";
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
 
     await emitTauriEvent(page, "agent-message", {
       agent_id: agentId,
@@ -59,6 +61,7 @@ test.describe("DisplayItem Rendering", { tag: "@workflow-agent" }, () => {
     await navigateToWorkflow(page);
     await expect(page.getByText("Step 1: Research")).toBeVisible();
     const agentId = "agent-001";
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
 
     await emitTauriEvent(page, "agent-message", {
       agent_id: agentId,
@@ -83,6 +86,7 @@ test.describe("DisplayItem Rendering", { tag: "@workflow-agent" }, () => {
     await navigateToWorkflow(page);
     await expect(page.getByText("Step 1: Research")).toBeVisible();
     const agentId = "agent-001";
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
 
     await emitTauriEvent(page, "agent-message", {
       agent_id: agentId,
@@ -105,6 +109,7 @@ test.describe("DisplayItem Rendering", { tag: "@workflow-agent" }, () => {
     await navigateToWorkflow(page);
     await expect(page.getByText("Step 1: Research")).toBeVisible();
     const agentId = "agent-001";
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
 
     await emitTauriEvent(page, "agent-message", {
       agent_id: agentId,
@@ -126,6 +131,7 @@ test.describe("DisplayItem Rendering", { tag: "@workflow-agent" }, () => {
     await navigateToWorkflow(page);
     await expect(page.getByText("Step 1: Research")).toBeVisible();
     const agentId = "agent-001";
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
     const wait = (ms: number) => page.waitForTimeout(ms);
 
     // Emit pending tool call
