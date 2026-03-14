@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   useAgentStore,
-  flushMessageBuffer,
   formatModelName,
   formatTokenCount,
   getLatestContextTokens,
@@ -9,9 +8,10 @@ import {
   resetAgentStoreInternals,
   getPendingTerminalCount,
   getPendingMetadataCount,
+  flushDisplayItems,
 } from "@/stores/agent-store";
 import type { DisplayItem } from "@/lib/display-types";
-import { mockInvoke } from "@/test/mocks/tauri";
+
 
 function makeDisplayItem(overrides: Partial<DisplayItem> & { type: DisplayItem["type"] }): DisplayItem {
   return {
@@ -60,6 +60,7 @@ describe("useAgentStore", () => {
 
     useAgentStore.getState().addDisplayItem("agent-1", item1);
     useAgentStore.getState().addDisplayItem("agent-1", item2);
+    flushDisplayItems();
 
     const state = useAgentStore.getState();
     expect(state.runs["agent-1"].displayItems).toHaveLength(2);
@@ -85,6 +86,7 @@ describe("useAgentStore", () => {
       toolStatus: "ok",
     });
     useAgentStore.getState().addDisplayItem("agent-1", updated);
+    flushDisplayItems();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.displayItems).toHaveLength(1);
@@ -114,6 +116,7 @@ describe("useAgentStore", () => {
   it("addDisplayItem auto-creates run for unknown agent", () => {
     const item = makeDisplayItem({ type: "output", outputText: "Hello" });
     useAgentStore.getState().addDisplayItem("nonexistent", item);
+    flushDisplayItems();
 
     const run = useAgentStore.getState().runs["nonexistent"];
     expect(run).toBeDefined();
@@ -155,6 +158,7 @@ describe("useAgentStore", () => {
     // 3. registerRun called  → must NOT revert status back to "running"
     const item = makeDisplayItem({ type: "output", outputText: "hello" });
     useAgentStore.getState().addDisplayItem("race-agent", item);
+    flushDisplayItems();
     expect(useAgentStore.getState().runs["race-agent"].status).toBe("running");
 
     useAgentStore.getState().completeRun("race-agent", true);
@@ -168,6 +172,7 @@ describe("useAgentStore", () => {
     // Same race but via startRun (workflow path)
     const item = makeDisplayItem({ type: "output", outputText: "hello" });
     useAgentStore.getState().addDisplayItem("race-wf-agent", item);
+    flushDisplayItems();
     useAgentStore.getState().completeRun("race-wf-agent", true);
     expect(useAgentStore.getState().runs["race-wf-agent"].status).toBe("completed");
 
@@ -204,6 +209,7 @@ describe("useAgentStore", () => {
     useAgentStore.getState().startRun("agent-2", "opus");
 
     useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({ type: "output", outputText: "test" }));
+    flushDisplayItems();
 
     useAgentStore.getState().clearRuns();
 
@@ -245,6 +251,7 @@ describe("useAgentStore", () => {
     useAgentStore.getState().startRun("agent-2", "opus");
 
     useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({ type: "output", outputText: "only for agent-1" }));
+    flushDisplayItems();
     useAgentStore.getState().completeRun("agent-2", true);
 
     const state = useAgentStore.getState();
@@ -524,6 +531,7 @@ describe("displayItems management", () => {
         outputText: `msg-${i}`,
       }));
     }
+    flushDisplayItems();
 
     expect(useAgentStore.getState().runs["agent-1"].displayItems).toHaveLength(5);
   });
@@ -544,6 +552,78 @@ describe("displayItems management", () => {
     expect(run.status).toBe("completed");
   });
 
+  it("flushDisplayItems applies all buffered items in a single batch", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
+      id: "di-batch-1",
+      type: "output",
+      outputText: "first",
+    }));
+    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
+      id: "di-batch-2",
+      type: "output",
+      outputText: "second",
+    }));
+
+    // Explicit flush ensures all items are applied
+    flushDisplayItems();
+
+    const items = useAgentStore.getState().runs["agent-1"].displayItems;
+    expect(items).toHaveLength(2);
+    expect(items[0].outputText).toBe("first");
+    expect(items[1].outputText).toBe("second");
+  });
+
+  it("update-by-id deduplicates within a single batch", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
+      id: "tool-batch",
+      type: "tool_call",
+      toolName: "Read",
+      toolStatus: "pending",
+    }));
+    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
+      id: "tool-batch",
+      type: "tool_call",
+      toolName: "Read",
+      toolStatus: "ok",
+    }));
+    flushDisplayItems();
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.displayItems).toHaveLength(1);
+    expect(run.displayItems[0].toolStatus).toBe("ok");
+  });
+
+  it("update-by-id across flush boundaries replaces existing items", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    // First batch: add pending tool call
+    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
+      id: "tool-cross",
+      type: "tool_call",
+      toolName: "Read",
+      toolStatus: "pending",
+    }));
+    flushDisplayItems();
+    expect(useAgentStore.getState().runs["agent-1"].displayItems).toHaveLength(1);
+
+    // Second batch: update to ok
+    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
+      id: "tool-cross",
+      type: "tool_call",
+      toolName: "Read",
+      toolStatus: "ok",
+    }));
+    flushDisplayItems();
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.displayItems).toHaveLength(1);
+    expect(run.displayItems[0].toolStatus).toBe("ok");
+  });
+
   it("clearRuns discards all displayItems", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
@@ -557,12 +637,6 @@ describe("displayItems management", () => {
     expect(useAgentStore.getState().runs).toEqual({});
   });
 
-  it("flushMessageBuffer is safe to call (no-op)", () => {
-    useAgentStore.getState().startRun("agent-1", "sonnet");
-    // No-op — should not error
-    flushMessageBuffer();
-    expect(useAgentStore.getState().runs["agent-1"].displayItems).toHaveLength(0);
-  });
 });
 
 // =============================================================================
@@ -640,66 +714,6 @@ describe("agent event buffering", () => {
     expect(useAgentStore.getState().runs["agent-buf-5"].sessionId).toBeUndefined();
   });
 
-  it("completeRun logs structured error when persistence fails", async () => {
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    mockInvoke.mockRejectedValue(new Error("Database connection failed"));
-
-    useAgentStore.getState().startRun("agent-persist-fail", "sonnet");
-    useAgentStore.getState().completeRun("agent-persist-fail", true);
-
-    // Wait for async persistence to complete
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    const errorCalls = consoleSpy.mock.calls.filter((call) =>
-      String(call[0]).includes("event=persistence_failed")
-    );
-    expect(errorCalls.length).toBeGreaterThan(0);
-    expect(String(errorCalls[0][0])).toContain("operation=persist_agent_run");
-    // Check that the error log contains the format string and args
-    expect(errorCalls[0].length).toBeGreaterThan(1); // Has message + format args
-
-    consoleSpy.mockRestore();
-  });
-
-  it("completeRun logs persistence summary after all rows are attempted", async () => {
-    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    mockInvoke.mockResolvedValue(undefined);
-
-    useAgentStore.getState().startRun("agent-summary", "sonnet");
-    useAgentStore.getState().completeRun("agent-summary", true);
-
-    // Wait for async persistence to complete
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    const summaryCalls = consoleSpy.mock.calls.filter((call) =>
-      String(call[0]).includes("event=persistence_summary")
-    );
-    expect(summaryCalls.length).toBeGreaterThan(0);
-    expect(String(summaryCalls[0][0])).toContain("operation=persist_run_rows");
-    expect(String(summaryCalls[0][0])).toContain("status=success");
-    // Check that the log has format args
-    expect(summaryCalls[0].length).toBeGreaterThan(1);
-
-    consoleSpy.mockRestore();
-  });
-
-  it("shutdownRun logs structured errors on persistence failure", async () => {
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    mockInvoke.mockRejectedValue(new Error("Write lock timeout"));
-
-    useAgentStore.getState().startRun("agent-shutdown-fail", "sonnet");
-    useAgentStore.getState().shutdownRun("agent-shutdown-fail");
-
-    // Wait for async persistence to complete
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    const errorCalls = consoleSpy.mock.calls.filter((call) =>
-      String(call[0]).includes("event=persistence_failed")
-    );
-    expect(errorCalls.length).toBeGreaterThan(0);
-
-    consoleSpy.mockRestore();
-  });
 });
 
 describe("module-level internal state", () => {

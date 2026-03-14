@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import rehypeSanitize from "rehype-sanitize"
 import { markdownComponents } from "@/components/markdown-link"
 import { Loader2 } from "lucide-react"
 import {
@@ -87,7 +88,7 @@ export default function SkillPreviewDialog({
             </div>
           ) : content ? (
             <div className="markdown-body compact pr-3 overflow-x-hidden break-words">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={markdownComponents}>
                 {content}
               </ReactMarkdown>
             </div>

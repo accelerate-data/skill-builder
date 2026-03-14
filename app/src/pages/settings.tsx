@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import type { AppSettings, MarketplaceRegistry } from "@/lib/types"
-import { cn } from "@/lib/utils"
+import { cn, normalizeDirectoryPickerPath } from "@/lib/utils"
 import { useSettingsStore, type ModelInfo } from "@/stores/settings-store"
 import { useAuthStore } from "@/stores/auth-store"
 import { getDataDir, checkMarketplaceUrl, parseGitHubUrl } from "@/lib/tauri"
@@ -237,13 +237,7 @@ export default function SettingsPage() {
   const handleBrowseSkillsPath = async () => {
     const folder = await open({ directory: true, title: "Select Skills Folder" })
     if (folder) {
-      // Normalize: remove trailing slashes, then check for duplicate last segment
-      // (macOS file picker can return doubled paths like /foo/Skills/Skills)
-      let normalized = folder.replace(/\/+$/, '')
-      const parts = normalized.split('/')
-      if (parts.length >= 2 && parts[parts.length - 1] === parts[parts.length - 2]) {
-        normalized = parts.slice(0, -1).join('/')
-      }
+      const normalized = normalizeDirectoryPickerPath(folder)
       setSkillsPath(normalized)
       autoSave({ skillsPath: normalized })
     }
@@ -854,7 +848,7 @@ export default function SettingsPage() {
                       onValueChange={(val) => {
                         setLogLevel(val)
                         autoSave({ logLevel: val })
-                        invoke("set_log_level", { level: val }).catch(() => {})
+                        invoke("set_log_level", { level: val }).catch((e) => console.warn("[settings] non-fatal: op=set_log_level err=%s", e))
                       }}
                     >
                       <SelectTrigger id="log-level-select" className="w-fit">

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { useAgentStore } from "@/stores/agent-store";
+import { useAgentStore, flushDisplayItems } from "@/stores/agent-store";
 import type { DisplayItem } from "@/lib/display-types";
 
 // Polyfill scrollIntoView for jsdom
@@ -18,10 +18,6 @@ vi.mock("remark-gfm", () => ({
   default: () => {},
 }));
 
-// Mock tauri commands
-vi.mock("@/lib/tauri", () => ({
-  persistAgentRun: vi.fn(() => Promise.resolve()),
-}));
 
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 
@@ -41,6 +37,7 @@ function addDisplayItems(agentId: string, items: DisplayItem[]) {
   for (const item of items) {
     useAgentStore.getState().addDisplayItem(agentId, item);
   }
+  flushDisplayItems();
 }
 
 // ---------------------------------------------------------------------------

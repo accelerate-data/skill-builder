@@ -97,12 +97,29 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
 
 /// Normalize a path: strip trailing separators and deduplicate the last
 /// segment when the macOS file picker doubles it (e.g. `/foo/Skills/Skills`
-/// becomes `/foo/Skills`).
+/// becomes `/foo/Skills`). Uses `Path::components()` for cross-platform
+/// separator handling (works with both `/` and `\`).
 fn normalize_path(raw: &str) -> String {
     let trimmed = raw.trim_end_matches(['/', '\\']);
-    let parts: Vec<&str> = trimmed.split('/').collect();
-    if parts.len() >= 2 && parts[parts.len() - 1] == parts[parts.len() - 2] {
-        parts[..parts.len() - 1].join("/")
+    if trimmed.is_empty() {
+        return trimmed.to_string();
+    }
+
+    let last_sep = trimmed.rfind(['/', '\\']);
+    let Some(last_sep) = last_sep else {
+        return trimmed.to_string();
+    };
+    if last_sep == 0 {
+        return trimmed.to_string();
+    }
+
+    let previous_part = &trimmed[..last_sep];
+    let prev_sep = previous_part.rfind(['/', '\\']);
+    let previous_segment = &trimmed[prev_sep.map_or(0, |idx| idx + 1)..last_sep];
+    let last_segment = &trimmed[last_sep + 1..];
+
+    if !previous_segment.is_empty() && previous_segment == last_segment {
+        trimmed[..last_sep].to_string()
     } else {
         trimmed.to_string()
     }
@@ -340,9 +357,12 @@ pub async fn test_api_key(api_key: String) -> Result<bool, String> {
 
     let status = resp.status().as_u16();
     match status {
+        200..=299 => Ok(true),
         400 | 401 => Err("Invalid API key".to_string()),
         403 => Err("API key is disabled".to_string()),
-        _ => Ok(true),
+        429 => Err("Rate limited — please try again in a moment".to_string()),
+        500..=599 => Err("Anthropic API is unavailable — please try again later".to_string()),
+        _ => Err(format!("Unexpected API response (HTTP {})", status)),
     }
 }
 
@@ -470,6 +490,22 @@ mod tests {
     fn test_normalize_path_root_duplicate() {
         // Edge case: root-level duplicate
         assert_eq!(normalize_path("/Skills/Skills"), "/Skills");
+    }
+
+    #[test]
+    fn test_normalize_path_windows_trailing_backslash() {
+        assert_eq!(
+            normalize_path(r"C:\Users\me\Skill Builder\"),
+            r"C:\Users\me\Skill Builder"
+        );
+    }
+
+    #[test]
+    fn test_normalize_path_windows_duplicate_last_segment_with_spaces() {
+        assert_eq!(
+            normalize_path(r"C:\Users\me\Skill Builder\Skill Builder\"),
+            r"C:\Users\me\Skill Builder"
+        );
     }
 
     #[test]
@@ -645,5 +681,26 @@ mod tests {
             fs::read_to_string(dst.join("sub").join("nested.txt")).unwrap(),
             "nested"
         );
+    }
+
+    #[test]
+    fn normalize_path_deduplicates_last_segment() {
+        assert_eq!(normalize_path("/foo/Skills/Skills"), "/foo/Skills");
+    }
+
+    #[test]
+    fn normalize_path_strips_trailing_separators() {
+        assert_eq!(normalize_path("/foo/bar/"), "/foo/bar");
+        assert_eq!(normalize_path("/foo/bar\\"), "/foo/bar");
+    }
+
+    #[test]
+    fn normalize_path_no_change_for_normal_paths() {
+        assert_eq!(normalize_path("/foo/bar/baz"), "/foo/bar/baz");
+    }
+
+    #[test]
+    fn normalize_path_handles_spaces_in_path() {
+        assert_eq!(normalize_path("/Users/John Doe/My Skills/My Skills"), "/Users/John Doe/My Skills");
     }
 }

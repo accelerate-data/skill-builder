@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { initAgentStream, _resetForTesting } from "@/hooks/use-agent-stream";
-import { useAgentStore } from "@/stores/agent-store";
+import { useAgentStore, flushDisplayItems } from "@/stores/agent-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { mockListen } from "@/test/mocks/tauri";
 
@@ -23,8 +23,8 @@ describe("initAgentStream", () => {
     });
   });
 
-  it("subscribes to display and discrete agent event channels", () => {
-    initAgentStream();
+  it("subscribes to display and discrete agent event channels", async () => {
+    await initAgentStream();
 
     expect(mockListen).toHaveBeenCalledWith("agent-init-progress", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-init-error", expect.any(Function));
@@ -39,9 +39,9 @@ describe("initAgentStream", () => {
     expect(mockListen).toHaveBeenCalledWith("agent-shutdown", expect.any(Function));
   });
 
-  it("adds display_item message to agent store", () => {
+  it("adds display_item message to agent store", async () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    initAgentStream();
+    await initAgentStream();
 
     listeners["agent-message"]({
       payload: {
@@ -57,15 +57,16 @@ describe("initAgentStream", () => {
         },
       },
     });
+    flushDisplayItems();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.displayItems).toHaveLength(1);
     expect(run.displayItems[0].outputText).toBe("Hello world");
   });
 
-  it("updates run init via agent-run-init event", () => {
+  it("updates run init via agent-run-init event", async () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    initAgentStream();
+    await initAgentStream();
 
     listeners["agent-run-init"]({
       payload: {
@@ -82,9 +83,9 @@ describe("initAgentStream", () => {
     expect(run.sessionId).toBe("sess-123");
   });
 
-  it("applies the full typed agent event lifecycle to a run", () => {
+  it("applies the full typed agent event lifecycle to a run", async () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    initAgentStream();
+    await initAgentStream();
 
     listeners["agent-run-config"]({
       payload: {
@@ -158,8 +159,8 @@ describe("initAgentStream", () => {
     expect(run.contextWindow).toBe(200000);
   });
 
-  it("replays queued typed agent events when they arrive before run registration", () => {
-    initAgentStream();
+  it("replays queued typed agent events when they arrive before run registration", async () => {
+    await initAgentStream();
 
     listeners["agent-run-config"]({
       payload: {
@@ -231,9 +232,9 @@ describe("initAgentStream", () => {
     expect(run.contextWindow).toBe(200000);
   });
 
-  it("completes run on agent-exit with success=true", () => {
+  it("completes run on agent-exit with success=true", async () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    initAgentStream();
+    await initAgentStream();
 
     listeners["agent-exit"]({
       payload: { agent_id: "agent-1", success: true },
@@ -244,9 +245,9 @@ describe("initAgentStream", () => {
     expect(run.endTime).toBeDefined();
   });
 
-  it("sets error status on agent-exit with success=false", () => {
+  it("sets error status on agent-exit with success=false", async () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    initAgentStream();
+    await initAgentStream();
 
     listeners["agent-exit"]({
       payload: { agent_id: "agent-1", success: false },
@@ -256,15 +257,15 @@ describe("initAgentStream", () => {
     expect(run.status).toBe("error");
   });
 
-  it("only registers listeners once for multiple init calls", () => {
-    initAgentStream();
-    initAgentStream();
+  it("only registers listeners once for multiple init calls", async () => {
+    await initAgentStream();
+    await initAgentStream();
 
     expect(mockListen).toHaveBeenCalledTimes(12);
   });
 
-  it("auto-creates run for display_item messages arriving before startRun", () => {
-    initAgentStream();
+  it("auto-creates run for display_item messages arriving before startRun", async () => {
+    await initAgentStream();
 
     listeners["agent-message"]({
       payload: {
@@ -280,6 +281,7 @@ describe("initAgentStream", () => {
         },
       },
     });
+    flushDisplayItems();
 
     const run = useAgentStore.getState().runs["unknown-agent"];
     expect(run).toBeDefined();
@@ -287,8 +289,8 @@ describe("initAgentStream", () => {
     expect(run.displayItems[0].outputText).toBe("Early message");
   });
 
-  it("startRun preserves displayItems from auto-created run", () => {
-    initAgentStream();
+  it("startRun preserves displayItems from auto-created run", async () => {
+    await initAgentStream();
 
     // Display item arrives before startRun
     listeners["agent-message"]({
@@ -306,6 +308,7 @@ describe("initAgentStream", () => {
       },
     });
 
+    flushDisplayItems();
     // Now startRun is called (e.g. by workflow page)
     useAgentStore.getState().startRun("early-agent", "sonnet");
 
@@ -315,12 +318,12 @@ describe("initAgentStream", () => {
     expect(run.displayItems[0].outputText).toBe("I started early");
   });
 
-  it("clears initializing state on first agent message", () => {
+  it("clears initializing state on first agent message", async () => {
     useWorkflowStore.getState().setInitializing();
     expect(useWorkflowStore.getState().isInitializing).toBe(true);
 
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    initAgentStream();
+    await initAgentStream();
 
     listeners["agent-message"]({
       payload: {
@@ -342,10 +345,10 @@ describe("initAgentStream", () => {
     expect(useWorkflowStore.getState().initStartTime).toBeNull();
   });
 
-  it("does not error when clearing initializing on subsequent messages", () => {
+  it("does not error when clearing initializing on subsequent messages", async () => {
     useWorkflowStore.getState().setInitializing();
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    initAgentStream();
+    await initAgentStream();
 
     // First message clears initializing
     listeners["agent-message"]({
@@ -372,15 +375,16 @@ describe("initAgentStream", () => {
     });
 
     expect(useWorkflowStore.getState().isInitializing).toBe(false);
+    flushDisplayItems();
     expect(useAgentStore.getState().runs["agent-1"].displayItems).toHaveLength(2);
   });
 
-  it("does not clear initializing when it was not set", () => {
+  it("does not clear initializing when it was not set", async () => {
     // isInitializing starts as false
     expect(useWorkflowStore.getState().isInitializing).toBe(false);
 
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    initAgentStream();
+    await initAgentStream();
 
     listeners["agent-message"]({
       payload: {
@@ -397,9 +401,9 @@ describe("initAgentStream", () => {
     expect(useWorkflowStore.getState().initStartTime).toBeNull();
   });
 
-  it("updates progress message on init_start event", () => {
+  it("updates progress message on init_start event", async () => {
     useWorkflowStore.getState().setInitializing();
-    initAgentStream();
+    await initAgentStream();
 
     listeners["agent-init-progress"]({
       payload: {
@@ -415,9 +419,9 @@ describe("initAgentStream", () => {
     );
   });
 
-  it("updates progress message on sdk_ready event", () => {
+  it("updates progress message on sdk_ready event", async () => {
     useWorkflowStore.getState().setInitializing();
-    initAgentStream();
+    await initAgentStream();
 
     listeners["agent-init-progress"]({
       payload: {
@@ -433,9 +437,9 @@ describe("initAgentStream", () => {
     );
   });
 
-  it("does not update progress message when not initializing", () => {
+  it("does not update progress message when not initializing", async () => {
     // isInitializing is false by default
-    initAgentStream();
+    await initAgentStream();
 
     listeners["agent-init-progress"]({
       payload: {
@@ -449,10 +453,10 @@ describe("initAgentStream", () => {
     expect(useWorkflowStore.getState().initProgressMessage).toBeNull();
   });
 
-  it("ignores unknown system event subtypes", () => {
+  it("ignores unknown system event subtypes", async () => {
     useWorkflowStore.getState().setInitializing();
     const initialMessage = useWorkflowStore.getState().initProgressMessage;
-    initAgentStream();
+    await initAgentStream();
 
     listeners["agent-init-progress"]({
       payload: {
@@ -467,9 +471,9 @@ describe("initAgentStream", () => {
     expect(useWorkflowStore.getState().initProgressMessage).toBe(initialMessage);
   });
 
-  it("clears progress message when initializing is cleared", () => {
+  it("clears progress message when initializing is cleared", async () => {
     useWorkflowStore.getState().setInitializing();
-    initAgentStream();
+    await initAgentStream();
 
     // Simulate init_start
     listeners["agent-init-progress"]({
@@ -499,9 +503,9 @@ describe("initAgentStream", () => {
     expect(useWorkflowStore.getState().initProgressMessage).toBeNull();
   });
 
-  it("progresses through all init stages in order", () => {
+  it("progresses through all init stages in order", async () => {
     useWorkflowStore.getState().setInitializing();
-    initAgentStream();
+    await initAgentStream();
 
     // Initial state: "Spawning agent process..."
     expect(useWorkflowStore.getState().initProgressMessage).toBe(
@@ -551,15 +555,15 @@ describe("initAgentStream", () => {
 
   it("imports toast from @/lib/toast, not directly from sonner", async () => {
     // Read the source file and verify the import uses the app wrapper
-    const source = await import.meta.glob("/src/hooks/use-agent-stream.ts", { as: "raw", eager: true });
+    const source = await import.meta.glob("/src/hooks/use-agent-stream.ts", { query: "?raw", import: "default", eager: true });
     const content = Object.values(source)[0] as string;
     expect(content).toContain('from "@/lib/toast"');
     expect(content).not.toMatch(/from ["']sonner["']/);
   });
 
-  it("calls shutdownRun on agent-shutdown event", () => {
+  it("calls shutdownRun on agent-shutdown event", async () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    initAgentStream();
+    await initAgentStream();
 
     listeners["agent-shutdown"]({
       payload: { agent_id: "agent-1" },
@@ -570,10 +574,10 @@ describe("initAgentStream", () => {
     expect(run.endTime).toBeDefined();
   });
 
-  it("agent-shutdown is a no-op for non-running agents", () => {
+  it("agent-shutdown is a no-op for non-running agents", async () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
     useAgentStore.getState().completeRun("agent-1", true);
-    initAgentStream();
+    await initAgentStream();
 
     listeners["agent-shutdown"]({
       payload: { agent_id: "agent-1" },
@@ -589,7 +593,7 @@ describe("initAgentStream", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (mockListen as any).mockResolvedValue(unlisten);
 
-    initAgentStream();
+    await initAgentStream();
     // Allow the listen() promises to resolve
     await Promise.resolve();
 

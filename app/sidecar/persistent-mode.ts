@@ -326,10 +326,9 @@ export async function runPersistent(
       // abort it before starting the new one.
       if (inFlight.size > 0 && currentAbort) {
         currentAbort.abort();
-        // Fire-and-forget: don't block the readline loop while the aborted
-        // request tears down. The stdout writer routes by request_id so
-        // concurrent requests with different IDs are safe.
-        void Promise.allSettled([...inFlight]);
+        // Aborted request tears down asynchronously via its own .finally()
+        // handler which removes it from inFlight. No need to await here —
+        // the readline loop continues and routes by request_id.
       }
 
       const { request_id, config } = message;

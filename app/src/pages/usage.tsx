@@ -12,6 +12,13 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -294,16 +301,17 @@ export default function UsagePage() {
         <div className="flex items-center justify-end gap-2">
           {/* Skill filter */}
           {skillNames.length > 0 && (
-            <select
-              value={skillFilter ?? ""}
-              onChange={(e) => setSkillFilter(e.target.value || null)}
-              className="h-7 rounded-md bg-background border border-border/60 shadow-sm px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
-            >
-              <option value="">All Skills</option>
-              {skillNames.map((name) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
+            <Select value={skillFilter ?? "all"} onValueChange={(v) => setSkillFilter(v === "all" ? null : v)}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Skills</SelectItem>
+                {skillNames.map((name) => (
+                  <SelectItem key={name} value={name}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
           {/* Date range filter shown even on empty state */}
           <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
@@ -341,16 +349,17 @@ export default function UsagePage() {
         {/* Left: skill filter + date range */}
         <div className="flex items-center gap-2">
           {skillNames.length > 0 && (
-            <select
-              value={skillFilter ?? ""}
-              onChange={(e) => setSkillFilter(e.target.value || null)}
-              className="h-7 rounded-md bg-background border border-border/60 shadow-sm px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
-            >
-              <option value="">All Skills</option>
-              {skillNames.map((name) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
+            <Select value={skillFilter ?? "all"} onValueChange={(v) => setSkillFilter(v === "all" ? null : v)}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Skills</SelectItem>
+                {skillNames.map((name) => (
+                  <SelectItem key={name} value={name}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
           <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
             {DATE_RANGE_OPTIONS.map((opt) => (
@@ -529,27 +538,32 @@ export default function UsagePage() {
             <CardTitle>Step History</CardTitle>
             {/* Table-level filters */}
             <div className="flex items-center gap-2">
-              <select
+              <Select
                 value={stepFilter === "all" ? "all" : String(stepFilter)}
-                onChange={(e) => setStepFilter(e.target.value === "all" ? "all" : Number(e.target.value))}
-                className="h-7 rounded-md bg-background border border-border/60 shadow-sm px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+                onValueChange={(v) => setStepFilter(v === "all" ? "all" : Number(v))}
               >
-                <option value="all">All Steps</option>
-                {Object.entries(STEP_NAMES).map(([id, name]) => (
-                  <option key={id} value={id}>{name}</option>
-                ))}
-              </select>
-              {availableModels.length > 1 && (
-                <select
-                  value={modelFamilyFilter ?? "all"}
-                  onChange={(e) => setModelFamilyFilter(e.target.value === "all" ? null : e.target.value)}
-                  className="h-7 rounded-md bg-background border border-border/60 shadow-sm px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
-                >
-                  <option value="all">All Models</option>
-                  {availableModels.map((m) => (
-                    <option key={m} value={m}>{m}</option>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Steps</SelectItem>
+                  {Object.entries(STEP_NAMES).map(([id, name]) => (
+                    <SelectItem key={id} value={id}>{name}</SelectItem>
                   ))}
-                </select>
+                </SelectContent>
+              </Select>
+              {availableModels.length > 1 && (
+                <Select value={modelFamilyFilter ?? "all"} onValueChange={(v) => setModelFamilyFilter(v === "all" ? null : v)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Models</SelectItem>
+                    {availableModels.map((m) => (
+                      <SelectItem key={m} value={m}>{m}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
               {filteredRuns.length > 0 && (
                 <span className="text-xs text-muted-foreground">{filteredRuns.length} run{filteredRuns.length !== 1 ? "s" : ""}</span>

@@ -6,10 +6,13 @@
  * can render without the Rust backend.
  */
 
+const E2E_SKILLS_PATH = "C:/skill-builder-test/skills";
+const E2E_DEFAULT_SKILLS_PATH = "C:/skill-builder-test/default-skills";
+
 const defaultSettings = {
   anthropic_api_key: "sk-ant-test-e2e",
   workspace_path: null,
-  skills_path: "/tmp/e2e-skills",
+  skills_path: E2E_SKILLS_PATH,
   preferred_model: null,
   log_level: "info",
 };
@@ -18,7 +21,7 @@ const mockResponses: Record<string, unknown> = {
   get_settings: defaultSettings,
   save_settings: undefined,
   test_api_key: true,
-  get_default_skills_path: "/tmp/e2e-skills",
+  get_default_skills_path: E2E_DEFAULT_SKILLS_PATH,
   check_node: {
     available: true,
     version: "v20.11.0",
@@ -68,7 +71,7 @@ const mockResponses: Record<string, unknown> = {
   start_agent: "agent-001",
   run_workflow_step: "agent-001",
   run_parallel_agents: { agent_id_a: "agent-001", agent_id_b: "agent-002" },
-  package_skill: { file_path: "/tmp/test/my-skill.skill", size_bytes: 12345 },
+  package_skill: { file_path: "C:/skill-builder-test/package/my-skill.skill", size_bytes: 12345 },
   // Workflow state
   get_workflow_state: { run: null, steps: [] },
   save_workflow_state: undefined,
@@ -130,14 +133,14 @@ const mockResponses: Record<string, unknown> = {
     domain: "testing",
     description: "A test skill",
     is_active: true,
-    disk_path: "/tmp/skills/test-skill",
+    disk_path: `${E2E_SKILLS_PATH}/test-skill`,
     trigger_text: "When testing...",
     imported_at: new Date().toISOString(),
     is_bundled: false,
   },
   toggle_skill_active: undefined,
   delete_workspace_skill: undefined,
-  export_skill: "/tmp/test-skill.zip",
+  export_skill: "C:/skill-builder-test/export/test-skill.zip",
   get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\nFollow these steps...",
   // GitHub import
   parse_github_url: { owner: "test-owner", repo: "test-repo", branch: "main", subpath: null },
@@ -152,7 +155,7 @@ const mockResponses: Record<string, unknown> = {
       domain: "Data",
       description: "Analytics skill",
       is_active: true,
-      disk_path: "/tmp/skills/analytics",
+      disk_path: `${E2E_SKILLS_PATH}/analytics`,
       trigger_text: null,
       imported_at: new Date().toISOString(),
       is_bundled: false,

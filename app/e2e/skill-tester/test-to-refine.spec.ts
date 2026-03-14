@@ -10,6 +10,11 @@
 import { test, expect } from "@playwright/test";
 import { waitForAppReady } from "../helpers/app-helpers";
 import { simulateAgentRun } from "../helpers/agent-simulator";
+import {
+  E2E_SKILLS_PATH,
+  E2E_WORKSPACE_PATH,
+  joinE2ePath,
+} from "../helpers/test-paths";
 
 /**
  * Frozen timestamp used to make agent IDs deterministic.
@@ -59,11 +64,11 @@ async function waitForEvalAgentId(page: import("@playwright/test").Page): Promis
 const BASE_OVERRIDES = {
   get_settings: {
     anthropic_api_key: "sk-ant-test",
-    workspace_path: "/tmp/test-workspace",
-    skills_path: "/tmp/test-skills",
+    workspace_path: E2E_WORKSPACE_PATH,
+    skills_path: E2E_SKILLS_PATH,
   },
   list_models: [],
-  get_workspace_path: "/tmp/test-workspace",
+  get_workspace_path: E2E_WORKSPACE_PATH,
   has_running_agents: false,
   list_refinable_skills: [
     {
@@ -77,9 +82,9 @@ const BASE_OVERRIDES = {
   ],
   prepare_skill_test: {
     test_id: "test-e2e-001",
-    baseline_cwd: "/tmp/test-baseline",
-    with_skill_cwd: "/tmp/test-with",
-    transcript_log_dir: "/tmp/test-workspace/my-skill/logs",
+    baseline_cwd: joinE2ePath("test-baseline"),
+    with_skill_cwd: joinE2ePath("test-with"),
+    transcript_log_dir: `${E2E_WORKSPACE_PATH}/my-skill/logs`,
   },
   start_agent: "agent-id-mock",
   cleanup_skill_test: undefined,

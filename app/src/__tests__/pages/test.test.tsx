@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { useRef } from "react";
-import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
+import { useAgentStore, flushDisplayItems } from "@/stores/agent-store";
 import type { DisplayItem } from "@/lib/display-types";
 
 // ---------------------------------------------------------------------------
@@ -89,6 +89,7 @@ function seedAgentWithDisplayItems(agentId: string, items: DisplayItem[]) {
   for (const item of items) {
     useAgentStore.getState().addDisplayItem(agentId, item);
   }
+  flushDisplayItems();
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +124,6 @@ describe("StreamingContent", () => {
 
   it("renders waiting placeholder when agentId is set but run has no displayItems", () => {
     useAgentStore.getState().startRun("agent-with", "sonnet");
-    flushMessageBuffer();
 
     renderStreamingContent("agent-with", "running");
     expect(screen.getByText(/waiting for agent response/i)).toBeTruthy();
@@ -188,6 +188,7 @@ describe("StreamingContent", () => {
       type: "output",
       outputText: "Found 5 markdown files.",
     }));
+    flushDisplayItems();
 
     const run = useAgentStore.getState().runs[agentId];
     expect(run.displayItems).toHaveLength(2);

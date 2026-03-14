@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useWorkflowStore } from "./workflow-store";
-import { persistAgentRun } from "@/lib/tauri";
+
 import type { DisplayItem } from "@/lib/display-types";
 import type {
   CompactionEvent,
@@ -11,7 +11,6 @@ import type {
 } from "@/lib/agent-events";
 
 type PendingTerminalStatus = "completed" | "error" | "shutdown";
-let _pendingTerminalByAgent = new Map<string, PendingTerminalStatus>();
 
 // ---------------------------------------------------------------------------
 // Pending agent event buffer (for typed events arriving before run registration)
@@ -24,28 +23,43 @@ type PendingAgentEvent =
   | CompactionEvent
   | ContextWindowEvent;
 
-let _pendingMetadataByAgent = new Map<string, PendingAgentEvent[]>();
-
-function queuePendingMetadata(agentId: string, event: PendingAgentEvent) {
-  const existing = _pendingMetadataByAgent.get(agentId) ?? [];
-  existing.push(event);
-  _pendingMetadataByAgent.set(agentId, existing);
+/**
+ * Build a partial state update that appends `event` to the pending metadata buffer.
+ * Designed to be spread into the return value of a `set()` callback so the queue
+ * mutation and the "no change to runs" return happen in a single atomic update.
+ */
+function pendingMetadataUpdate(
+  state: AgentState,
+  agentId: string,
+  event: PendingAgentEvent,
+): Partial<AgentState> {
   console.warn(
     "[agent-store] event=metadata_queued operation=queue_pending_metadata agent_id=%s",
     agentId,
   );
+  const existing = state.pendingMetadata[agentId] ?? [];
+  return {
+    pendingMetadata: {
+      ...state.pendingMetadata,
+      [agentId]: [...existing, event],
+    },
+  };
 }
 
 function drainPendingMetadata(agentId: string) {
-  const pending = _pendingMetadataByAgent.get(agentId);
+  const state = useAgentStore.getState();
+  const pending = state.pendingMetadata[agentId];
   if (!pending || pending.length === 0) return;
-  if (!useAgentStore.getState().runs[agentId]) return;
-  _pendingMetadataByAgent.delete(agentId);
+  if (!state.runs[agentId]) return;
+  // Remove from pending first
+  const { [agentId]: _, ...rest } = state.pendingMetadata;
+  useAgentStore.setState({ pendingMetadata: rest });
   console.log(
     "[agent-store] event=metadata_replayed operation=drain_pending_metadata agent_id=%s count=%d",
     agentId,
     pending.length,
   );
+  // Then apply events (re-read state each iteration since apply* calls set())
   for (const event of pending) {
     const store = useAgentStore.getState();
     switch (event.type) {
@@ -70,11 +84,17 @@ function drainPendingMetadata(agentId: string) {
 
 
 function queuePendingTerminal(agentId: string, status: PendingTerminalStatus) {
-  const existing = _pendingTerminalByAgent.get(agentId);
+  const state = useAgentStore.getState();
+  const existing = state.pendingTerminal[agentId];
   // Preserve the most informative terminal state. A later completed/error
   // event should overwrite an earlier shutdown fallback.
   if (!existing || existing === "shutdown") {
-    _pendingTerminalByAgent.set(agentId, status);
+    useAgentStore.setState({
+      pendingTerminal: {
+        ...state.pendingTerminal,
+        [agentId]: status,
+      },
+    });
     console.warn(
       "[agent-store] event=terminal_queued operation=queue_pending_terminal agent_id=%s status=%s",
       agentId,
@@ -84,11 +104,13 @@ function queuePendingTerminal(agentId: string, status: PendingTerminalStatus) {
 }
 
 function drainPendingTerminal(agentId: string) {
-  const pending = _pendingTerminalByAgent.get(agentId);
+  const state = useAgentStore.getState();
+  const pending = state.pendingTerminal[agentId];
   if (!pending) return;
-  if (!useAgentStore.getState().runs[agentId]) return;
+  if (!state.runs[agentId]) return;
 
-  _pendingTerminalByAgent.delete(agentId);
+  const { [agentId]: _, ...rest } = state.pendingTerminal;
+  useAgentStore.setState({ pendingTerminal: rest });
   console.log(
     "[agent-store] event=terminal_replayed operation=drain_pending_terminal agent_id=%s status=%s",
     agentId,
@@ -101,33 +123,127 @@ function drainPendingTerminal(agentId: string) {
   useAgentStore.getState().completeRun(agentId, pending === "completed");
 }
 
-/** Reset all module-level internal state. Used by clearRuns() and _resetForTesting(). */
+/** @deprecated Pending buffers are now in the Zustand store and reset with clearRuns(). */
 export function resetAgentStoreInternals() {
-  if (_pendingTerminalByAgent.size > 0) {
-    console.warn(
-      "[agent-store] event=pending_terminal_cleared operation=reset_internals count=%d",
-      _pendingTerminalByAgent.size,
-    );
-    _pendingTerminalByAgent.clear();
+  clearDisplayItemBuffer();
+  useAgentStore.setState({ pendingTerminal: {}, pendingMetadata: {} });
+}
+
+// ---------------------------------------------------------------------------
+// Display item batching buffer (RAF-based)
+// ---------------------------------------------------------------------------
+// Items are collected in a module-level buffer and flushed in a single
+// requestAnimationFrame callback. This reduces O(n) array copies per item
+// to O(1) amortized — one copy per frame instead of one per message.
+
+const _displayItemBuffer: Map<string, DisplayItem[]> = new Map();
+let _rafId: number | null = null;
+
+/** Synchronously flush all buffered display items into Zustand state. */
+export function flushDisplayItems(): void {
+  if (_rafId !== null) {
+    if (typeof cancelAnimationFrame !== "undefined") cancelAnimationFrame(_rafId);
+    _rafId = null;
   }
-  _pendingMetadataByAgent.clear();
+  if (_displayItemBuffer.size === 0) return;
+
+  // Snapshot and clear before applying so re-entrant adds don't get lost
+  const snapshot = new Map(_displayItemBuffer);
+  _displayItemBuffer.clear();
+
+  useAgentStore.setState((state) => {
+    const updatedRuns = { ...state.runs };
+
+    for (const [agentId, items] of snapshot) {
+      const run = updatedRuns[agentId];
+      if (!run) {
+        // Auto-create run for display items arriving before startRun
+        console.debug(
+          "[agent-store] event=auto_create_run operation=flush_display_items agent_id=%s item_count=%d",
+          agentId,
+          items.length,
+        );
+        updatedRuns[agentId] = {
+          agentId,
+          model: "unknown",
+          status: "running" as const,
+          displayItems: items,
+          startTime: Date.now(),
+          contextHistory: [],
+          contextWindow: DEFAULT_CONTEXT_WINDOW,
+          compactionEvents: [],
+          thinkingEnabled: false,
+        };
+        continue;
+      }
+
+      // Build the merged array: start from current items, apply buffered batch
+      const merged = [...run.displayItems];
+      for (const item of items) {
+        const existingIdx = merged.findIndex((di) => di.id === item.id);
+        if (existingIdx >= 0) {
+          merged[existingIdx] = item;
+        } else {
+          merged.push(item);
+        }
+      }
+
+      updatedRuns[agentId] = { ...run, displayItems: merged };
+    }
+
+    return { runs: updatedRuns };
+  });
+}
+
+function scheduleFlush(): void {
+  if (_rafId !== null) return;
+  if (typeof requestAnimationFrame !== "undefined") {
+    _rafId = requestAnimationFrame(() => {
+      _rafId = null;
+      flushDisplayItems();
+    });
+  } else {
+    // Non-browser environment (e.g. SSR/tests without RAF polyfill):
+    // flush synchronously so items always reach Zustand state.
+    flushDisplayItems();
+  }
+}
+
+function bufferDisplayItem(agentId: string, item: DisplayItem): void {
+  let buf = _displayItemBuffer.get(agentId);
+  if (!buf) {
+    buf = [];
+    _displayItemBuffer.set(agentId, buf);
+  }
+  // Deduplicate within the buffer itself (update-by-id)
+  const existingIdx = buf.findIndex((di) => di.id === item.id);
+  if (existingIdx >= 0) {
+    buf[existingIdx] = item;
+  } else {
+    buf.push(item);
+  }
+  scheduleFlush();
+}
+
+function clearDisplayItemBuffer(): void {
+  if (_rafId !== null) {
+    if (typeof cancelAnimationFrame !== "undefined") cancelAnimationFrame(_rafId);
+    _rafId = null;
+  }
+  _displayItemBuffer.clear();
 }
 
 /** Returns the number of queued terminal-status events (for testing). */
 export function getPendingTerminalCount(): number {
-  return _pendingTerminalByAgent.size;
+  return Object.keys(useAgentStore.getState().pendingTerminal).length;
 }
 
 /** Returns the number of queued metadata events (for testing). */
 export function getPendingMetadataCount(): number {
-  return _pendingMetadataByAgent.size;
+  return Object.keys(useAgentStore.getState().pendingMetadata).length;
 }
 
-/** Force-flush any buffered messages (for cleanup / testing). */
-export function flushMessageBuffer() {
-  // No-op: RAF message buffer has been removed.
-  // Messages now arrive directly via addDisplayItem / typed apply actions.
-}
+const DEFAULT_CONTEXT_WINDOW = 200_000;
 
 /** Map model IDs and shorthands to human-readable display names with version. */
 export function formatModelName(model: string): string {
@@ -218,7 +334,6 @@ export interface AgentRun {
   status: "running" | "completed" | "error" | "shutdown";
   /** Structured display items from sidecar MessageProcessor. */
   displayItems: DisplayItem[];
-  /** Legacy message buffer — kept for persistence fallback path. May be empty. */
   messages?: AgentMessage[];
   startTime: number;
   endTime?: number;
@@ -245,6 +360,10 @@ export interface AgentRun {
 interface AgentState {
   runs: Record<string, AgentRun>;
   activeAgentId: string | null;
+  /** Pending terminal statuses for runs not yet registered */
+  pendingTerminal: Record<string, PendingTerminalStatus>;
+  /** Pending metadata events for runs not yet registered */
+  pendingMetadata: Record<string, PendingAgentEvent[]>;
   startRun: (agentId: string, model: string) => void;
   /** Register a run for streaming without setting activeAgentId.
    *  Used by refine page which manages its own agent lifecycle.
@@ -269,163 +388,11 @@ interface AgentState {
   clearRuns: () => void;
 }
 
-/**
- * Validate persistence context before attempting to write.
- * Returns true if context is valid; logs structured error and returns false otherwise.
- */
-function validatePersistenceContext(
-  context: { stepId: number; workflowSessionId?: string },
-  agentId: string,
-): boolean {
-  if (!context || typeof context.stepId !== "number") {
-    console.error(
-      "[agent-store] event=persistence_validation_failed operation=validate_context agent_id=%s reason=invalid_step_id",
-      agentId,
-    );
-    return false;
-  }
-  return true;
-}
-
-/**
- * Persist one row per model entry with transaction-like semantics.
- * All rows for the same agent run share the same session context. If any row fails,
- * subsequent rows are still attempted (best-effort), but the failure is logged with context.
- * Used by both completeRun and shutdownRun.
- */
-function persistRunRows(
-  sharedParams: Record<string, unknown>,
-  modelEntries: Array<{ model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; totalCost: number }>,
-): void {
-  const agentId = sharedParams.agentId as string;
-
-  // Validate persistence context early
-  if (!validatePersistenceContext(
-    { stepId: sharedParams.stepId as number, workflowSessionId: sharedParams.workflowSessionId as string | undefined },
-    agentId,
-  )) {
-    return;
-  }
-
-  // Attempt to persist all model entries. Track failures but continue to attempt remaining rows.
-  let failureCount = 0;
-  for (const entry of modelEntries) {
-    persistAgentRun({
-      ...sharedParams,
-      model: entry.model,
-      inputTokens: entry.inputTokens,
-      outputTokens: entry.outputTokens,
-      cacheReadTokens: entry.cacheReadTokens,
-      cacheWriteTokens: entry.cacheWriteTokens,
-      totalCost: entry.totalCost,
-    } as Parameters<typeof persistAgentRun>[0]).catch((err: unknown) => {
-      failureCount++;
-      console.error(
-        "[agent-store] event=persistence_failed operation=persist_agent_run agent_id=%s model=%s error=%s row=%d/%d",
-        agentId,
-        entry.model,
-        err instanceof Error ? err.message : String(err),
-        failureCount,
-        modelEntries.length,
-      );
-    });
-  }
-
-  // Log transaction summary
-  if (failureCount > 0) {
-    console.warn(
-      "[agent-store] event=persistence_summary operation=persist_run_rows agent_id=%s status=partial_failure rows_attempted=%d rows_failed=%d",
-      agentId,
-      modelEntries.length,
-      failureCount,
-    );
-  } else {
-    console.log(
-      "[agent-store] event=persistence_summary operation=persist_run_rows agent_id=%s status=success rows=%d",
-      agentId,
-      modelEntries.length,
-    );
-  }
-}
-
-/** Build per-model entries from breakdown or fallback to a single aggregate row. */
-function buildModelEntries(
-  run: AgentRun,
-): Array<{ model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; totalCost: number }> {
-  const breakdown = run.modelUsageBreakdown;
-  if (breakdown && breakdown.length > 0) {
-    return breakdown.map((mu) => ({
-      model: mu.model,
-      inputTokens: mu.inputTokens,
-      outputTokens: mu.outputTokens,
-      cacheReadTokens: mu.cacheReadTokens,
-      cacheWriteTokens: mu.cacheWriteTokens,
-      totalCost: mu.cost,
-    }));
-  }
-
-  // Fallback: single-model persistence using aggregate totals.
-  // Extract cache tokens from the last assistant message's raw usage.
-  let cacheRead = 0;
-  let cacheWrite = 0;
-  const assistantMessages = (run.messages ?? []).filter((m) => m.type === "assistant");
-  if (assistantMessages.length > 0) {
-    const lastMsg = assistantMessages[assistantMessages.length - 1];
-    const betaMsg = (lastMsg.raw as Record<string, unknown>).message as
-      | { usage?: { cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
-      | undefined;
-    cacheRead = betaMsg?.usage?.cache_read_input_tokens ?? 0;
-    cacheWrite = betaMsg?.usage?.cache_creation_input_tokens ?? 0;
-  }
-
-  return [{
-    model: run.model,
-    inputTokens: run.tokenUsage?.input ?? 0,
-    outputTokens: run.tokenUsage?.output ?? 0,
-    cacheReadTokens: cacheRead,
-    cacheWriteTokens: cacheWrite,
-    totalCost: run.totalCost ?? 0,
-  }];
-}
-
-function resolvePersistenceContext(
-  run: AgentRun | undefined,
-): { stepId: number; workflowSessionId?: string } {
-  const runSourceStepId = run?.runSource === "refine"
-    ? -10
-    : run?.runSource === "test"
-      ? -11
-      : -1;
-
-  if (!run) return { stepId: -1 };
-
-  if (runSourceStepId !== -1 && run.usageSessionId) {
-    return {
-      stepId: runSourceStepId,
-      workflowSessionId: run.usageSessionId,
-    };
-  }
-
-  if (run.runSource === "refine") {
-    return {
-      stepId: -10,
-      workflowSessionId: `synthetic:refine:${run.skillName ?? "unknown"}:${run.agentId}`,
-    };
-  }
-
-  if (run.runSource === "test") {
-    return {
-      stepId: -11,
-      workflowSessionId: `synthetic:test:${run.skillName ?? "unknown"}:${run.agentId}`,
-    };
-  }
-
-  return { stepId: -1 };
-}
-
 export const useAgentStore = create<AgentState>((set) => ({
   runs: {},
   activeAgentId: null,
+  pendingTerminal: {},
+  pendingMetadata: {},
 
   startRun: (agentId, model) => {
     const workflow = useWorkflowStore.getState();
@@ -457,7 +424,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 displayItems: [],
                 startTime: Date.now(),
                 contextHistory: [],
-                contextWindow: 200_000,
+                contextWindow: DEFAULT_CONTEXT_WINDOW,
                 compactionEvents: [],
                 thinkingEnabled: false,
                 runSource: "workflow",
@@ -499,7 +466,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 displayItems: [],
                 startTime: Date.now(),
                 contextHistory: [],
-                contextWindow: 200_000,
+                contextWindow: DEFAULT_CONTEXT_WINDOW,
                 compactionEvents: [],
                 thinkingEnabled: false,
                 runSource,
@@ -513,75 +480,21 @@ export const useAgentStore = create<AgentState>((set) => ({
     drainPendingMetadata(agentId);
   },
 
-  addDisplayItem: (agentId, item) =>
-    set((state) => {
-      const run = state.runs[agentId];
-      if (!run) {
-        // Auto-create run for display items that arrive before startRun
-        console.debug(
-          "[agent-store] event=auto_create_run operation=add_display_item agent_id=%s item_type=%s",
-          agentId,
-          item.type,
-        );
-        return {
-          runs: {
-            ...state.runs,
-            [agentId]: {
-              agentId,
-              model: "unknown",
-              status: "running" as const,
-              displayItems: [item],
-              startTime: Date.now(),
-              contextHistory: [],
-              contextWindow: 200_000,
-              compactionEvents: [],
-              thinkingEnabled: false,
-            },
-          },
-        };
-      }
-
-      // Update-by-id: if this item has the same id as an existing one,
-      // replace it (tool call status updates, subagent completion)
-      const existingIdx = run.displayItems.findIndex((di) => di.id === item.id);
-      let updatedItems: DisplayItem[];
-      if (existingIdx >= 0) {
-        updatedItems = [...run.displayItems];
-        updatedItems[existingIdx] = item;
-        console.debug(
-          "[agent-store] event=update_display_item operation=replace_by_id agent_id=%s item_id=%s item_type=%s",
-          agentId,
-          item.id,
-          item.type,
-        );
-      } else {
-        updatedItems = [...run.displayItems, item];
-        console.debug(
-          "[agent-store] event=add_display_item operation=append agent_id=%s item_id=%s item_type=%s total=%d",
-          agentId,
-          item.id,
-          item.type,
-          updatedItems.length,
-        );
-      }
-
-      return {
-        runs: {
-          ...state.runs,
-          [agentId]: {
-            ...run,
-            displayItems: updatedItems,
-          },
-        },
-      };
-    }),
+  addDisplayItem: (agentId, item) => {
+    console.debug(
+      "[agent-store] event=add_display_item operation=buffer agent_id=%s item_id=%s item_type=%s",
+      agentId,
+      item.id,
+      item.type,
+    );
+    bufferDisplayItem(agentId, item);
+  },
 
   applyRunConfig: (agentId, event) =>
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        queuePendingMetadata(agentId, event);
-        return state;
+        return pendingMetadataUpdate(state, agentId, event);
       }
 
       console.debug(
@@ -605,8 +518,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        queuePendingMetadata(agentId, event);
-        return state;
+        return pendingMetadataUpdate(state, agentId, event);
       }
 
       console.debug(
@@ -630,8 +542,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        queuePendingMetadata(agentId, event);
-        return state;
+        return pendingMetadataUpdate(state, agentId, event);
       }
 
       console.debug(
@@ -661,8 +572,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        queuePendingMetadata(agentId, event);
-        return state;
+        return pendingMetadataUpdate(state, agentId, event);
       }
 
       console.debug(
@@ -692,8 +602,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        queuePendingMetadata(agentId, event);
-        return state;
+        return pendingMetadataUpdate(state, agentId, event);
       }
 
       if (event.contextWindow <= 0) {
@@ -717,12 +626,9 @@ export const useAgentStore = create<AgentState>((set) => ({
     }),
 
   completeRun: (agentId, success) => {
-    // Flush any buffered messages so all data is applied before status changes
-    flushMessageBuffer();
-
-    // Capture run data before status update for persistence
-    const runBeforeUpdate = useAgentStore.getState().runs[agentId];
-    if (!runBeforeUpdate) {
+    // Flush any buffered display items so they are visible in the final run state
+    flushDisplayItems();
+    if (!useAgentStore.getState().runs[agentId]) {
       queuePendingTerminal(agentId, success ? "completed" : "error");
       return;
     }
@@ -742,42 +648,12 @@ export const useAgentStore = create<AgentState>((set) => ({
       };
     });
 
-    // Persist agent run to SQLite (fire-and-forget). Do not require tokenUsage;
-    // some runs only report modelUsage breakdown or partial result metadata.
-    if (runBeforeUpdate) {
-      const persistenceContext = resolvePersistenceContext(runBeforeUpdate);
-
-      // Count tool uses from displayItems
-      const toolUseCount = (runBeforeUpdate.displayItems ?? []).filter(
-        (di) => di.type === "tool_call",
-      ).length;
-
-      persistRunRows(
-        {
-          agentId,
-          skillName: runBeforeUpdate.skillName ?? "unknown",
-          stepId: persistenceContext.stepId,
-          status: success ? "completed" : "error",
-          durationMs: Date.now() - runBeforeUpdate.startTime,
-          numTurns: runBeforeUpdate.numTurns ?? 0,
-          stopReason: runBeforeUpdate.stopReason ?? null,
-          durationApiMs: runBeforeUpdate.durationApiMs ?? null,
-          toolUseCount,
-          compactionCount: runBeforeUpdate.compactionEvents.length,
-          sessionId: runBeforeUpdate.sessionId,
-          workflowSessionId: persistenceContext.workflowSessionId,
-        },
-        buildModelEntries(runBeforeUpdate),
-      );
-    }
   },
 
   shutdownRun: (agentId: string) => {
-    // Flush any buffered messages so all data is applied before status changes
-    flushMessageBuffer();
-
-    const runBeforeUpdate = useAgentStore.getState().runs[agentId];
-    if (!runBeforeUpdate) {
+    // Flush any buffered display items so they are visible in the final run state
+    flushDisplayItems();
+    if (!useAgentStore.getState().runs[agentId]) {
       queuePendingTerminal(agentId, "shutdown");
       return;
     }
@@ -797,27 +673,12 @@ export const useAgentStore = create<AgentState>((set) => ({
       };
     });
 
-    // Persist shutdown status with whatever partial data we have
-    if (runBeforeUpdate) {
-      const persistenceContext = resolvePersistenceContext(runBeforeUpdate);
-      persistRunRows(
-        {
-          agentId,
-          skillName: runBeforeUpdate.skillName ?? "unknown",
-          stepId: persistenceContext.stepId,
-          status: "shutdown" as const,
-          durationMs: Date.now() - runBeforeUpdate.startTime,
-          workflowSessionId: persistenceContext.workflowSessionId,
-        },
-        buildModelEntries(runBeforeUpdate),
-      );
-    }
   },
 
   setActiveAgent: (agentId) => set({ activeAgentId: agentId }),
 
   clearRuns: () => {
-    resetAgentStoreInternals();
-    set({ runs: {}, activeAgentId: null });
+    clearDisplayItemBuffer();
+    set({ runs: {}, activeAgentId: null, pendingTerminal: {}, pendingMetadata: {} });
   },
 }));

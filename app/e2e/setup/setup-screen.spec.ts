@@ -1,18 +1,19 @@
 import { test, expect } from "@playwright/test";
+import { E2E_DEFAULT_SKILLS_PATH, E2E_SKILLS_PATH } from "../helpers/test-paths";
 
 test.describe("Setup Screen", { tag: "@workflow" }, () => {
   test("shows setup screen when API key is missing", async ({ page }) => {
     // Override settings to have no API key
-    await page.addInitScript(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        get_settings: {
-          anthropic_api_key: null,
-          workspace_path: null,
-          skills_path: "/tmp/e2e-skills",
-          preferred_model: null,
-          log_level: "info",
-        },
-      };
+    await page.addInitScript((overrides) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = overrides;
+    }, {
+      get_settings: {
+        anthropic_api_key: null,
+        workspace_path: null,
+        skills_path: E2E_SKILLS_PATH,
+        preferred_model: null,
+        log_level: "info",
+      },
     });
 
     await page.goto("/");
@@ -28,17 +29,17 @@ test.describe("Setup Screen", { tag: "@workflow" }, () => {
   });
 
   test("completing setup navigates to dashboard", async ({ page }) => {
-    await page.addInitScript(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        get_settings: {
-          anthropic_api_key: null,
-          workspace_path: null,
-          skills_path: null,
-          preferred_model: null,
-          log_level: "info",
-        },
-        get_default_skills_path: "/tmp/default-skills",
-      };
+    await page.addInitScript((overrides) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = overrides;
+    }, {
+      get_settings: {
+        anthropic_api_key: null,
+        workspace_path: null,
+        skills_path: null,
+        preferred_model: null,
+        log_level: "info",
+      },
+      get_default_skills_path: E2E_DEFAULT_SKILLS_PATH,
     });
 
     await page.goto("/");

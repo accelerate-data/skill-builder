@@ -245,4 +245,30 @@ describe("buildQueryOptions", () => {
     expect(plugins[1]).toEqual({ type: "local", path: "/workspace/.claude/plugins/skill-creator" });
   });
 
+  it("env contains only allowlisted vars plus ANTHROPIC_API_KEY", () => {
+    // Set a non-allowlisted var to verify it is excluded
+    const originalSecret = process.env.SECRET_KEY;
+    process.env.SECRET_KEY = "should-not-leak";
+    try {
+      const opts = buildQueryOptions(
+        makeConfig({ apiKey: "sk-test-key" }),
+        new AbortController(),
+        []
+      );
+      const env = (opts as Record<string, unknown>).env as Record<string, string | undefined>;
+      expect(env.ANTHROPIC_API_KEY).toBe("sk-test-key");
+      expect(env.SECRET_KEY).toBeUndefined();
+      // PATH should be forwarded if present in process.env
+      if (process.env.PATH) {
+        expect(env.PATH).toBe(process.env.PATH);
+      }
+    } finally {
+      if (originalSecret === undefined) {
+        delete process.env.SECRET_KEY;
+      } else {
+        process.env.SECRET_KEY = originalSecret;
+      }
+    }
+  });
+
 });

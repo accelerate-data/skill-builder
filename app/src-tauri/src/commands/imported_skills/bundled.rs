@@ -127,6 +127,7 @@ pub(crate) fn purge_stale_bundled_skills(
 /// Seed bundled skills from the app's bundled-skills directory into the workspace.
 /// For each subdirectory containing SKILL.md:
 /// 1. Copies the directory to `{workspace}/.claude/skills/{name}/` (always overwrite)
+///
 /// This is a filesystem-only operation — no DB writes.
 pub(crate) fn seed_bundled_skills(
     workspace_path: &str,
