@@ -1,5 +1,36 @@
 use serde::{Deserialize, Serialize};
 
+// ─── Security newtypes ──────────────────────────────────────────────────────
+
+/// Newtype wrapper for API keys that redacts the value in Debug output.
+/// Prevents API keys from leaking into Tauri debug logs.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ApiKey(String);
+
+impl ApiKey {
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+impl std::fmt::Debug for ApiKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("[REDACTED]")
+    }
+}
+
+impl From<String> for ApiKey {
+    fn from(s: String) -> Self {
+        ApiKey(s)
+    }
+}
+
+impl AsRef<str> for ApiKey {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 // ─── marketplace.json deserialization types ──────────────────────────────────
 
 #[derive(Debug, Deserialize)]

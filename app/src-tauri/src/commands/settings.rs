@@ -1,7 +1,7 @@
 use std::fs;
 
 use crate::db::Db;
-use crate::types::AppSettings;
+use crate::types::{ApiKey, AppSettings};
 
 /// Default built-in marketplace registry URL. Used for both the initial migration
 /// and the "cannot remove" guard in the Settings UI.
@@ -17,14 +17,15 @@ pub fn get_data_dir(data_dir: tauri::State<'_, crate::DataDir>) -> Result<String
         .ok_or_else(|| "Data directory path contains invalid UTF-8".to_string())
 }
 
-#[tauri::command]
-pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
-    log::info!("[get_settings]");
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[get_settings] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    let mut settings = crate::db::read_settings_hydrated(&conn)?;
+/// Run one-time marketplace migration and registry URL normalization.
+///
+/// Called once at startup from `init_db` instead of on every `get_settings` read.
+/// This avoids holding the global DB mutex for write operations on every settings read.
+pub(crate) fn run_settings_startup_migrations(
+    conn: &rusqlite::Connection,
+) -> Result<(), String> {
+    let mut settings = crate::db::read_settings_hydrated(conn)?;
+    let mut dirty = false;
 
     // Migrate legacy marketplace_url → marketplace_registries on first run
     if !settings.marketplace_initialized {
@@ -47,22 +48,15 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
         settings.marketplace_registries = registries;
         settings.marketplace_url = None; // clear legacy field
         settings.marketplace_initialized = true;
-        if let Err(e) = crate::db::write_settings(&conn, &settings) {
-            log::error!(
-                "[get_settings] failed to persist marketplace migration: {}",
-                e
-            );
-        } else {
-            log::info!(
-                "[get_settings] migrated marketplace_url to marketplace_registries ({} entries)",
-                settings.marketplace_registries.len()
-            );
-        }
+        dirty = true;
+        log::info!(
+            "[startup] migrated marketplace_url to marketplace_registries ({} entries)",
+            settings.marketplace_registries.len()
+        );
     }
 
     // Normalize all stored registry URLs to canonical shorthand (owner/repo or owner/repo#branch).
     // This migrates existing entries that were saved as full HTTPS URLs.
-    let mut normalized = false;
     for registry in &mut settings.marketplace_registries {
         if let Ok(info) =
             crate::commands::github_import::parse_github_url_inner(&registry.source_url)
@@ -74,24 +68,31 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
             };
             if canonical != registry.source_url {
                 log::info!(
-                    "[get_settings] normalizing registry url: {} -> {}",
+                    "[startup] normalizing registry url: {} -> {}",
                     registry.source_url,
                     canonical
                 );
                 registry.source_url = canonical;
-                normalized = true;
+                dirty = true;
             }
         }
     }
-    if normalized {
-        if let Err(e) = crate::db::write_settings(&conn, &settings) {
-            log::error!(
-                "[get_settings] failed to persist normalized registry URLs: {}",
-                e
-            );
-        }
+
+    if dirty {
+        crate::db::write_settings(conn, &settings)?;
     }
 
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
+    log::info!("[get_settings]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_settings] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+    let settings = crate::db::read_settings_hydrated(&conn)?;
     Ok(settings)
 }
 
@@ -335,12 +336,12 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
 }
 
 #[tauri::command]
-pub async fn test_api_key(api_key: String) -> Result<bool, String> {
+pub async fn test_api_key(api_key: ApiKey) -> Result<bool, String> {
     log::info!("[test_api_key]");
     let client = reqwest::Client::new();
     let resp = client
         .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
+        .header("x-api-key", api_key.as_ref())
         .header("anthropic-version", "2023-06-01")
         .header("content-type", "application/json")
         .body(

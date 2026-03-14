@@ -93,6 +93,12 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
     conn.pragma_update(None, "foreign_keys", true)
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
+    // Run one-time settings migrations (marketplace registry init + URL normalization).
+    // These previously ran on every get_settings call; now they run once at startup.
+    if let Err(e) = crate::commands::settings::run_settings_startup_migrations(&conn) {
+        log::error!("[init_db] settings startup migrations failed: {}", e);
+    }
+
     Ok(Db(Mutex::new(conn)))
 }
 
