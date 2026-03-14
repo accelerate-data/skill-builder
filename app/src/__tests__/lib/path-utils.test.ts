@@ -26,7 +26,11 @@ describe("joinPath", () => {
     expect(joinPath("/workspace", "my-skill")).toBe("/workspace/my-skill");
   });
 
-  it("normalizes backslash trailing separators from Windows-style paths", () => {
-    expect(joinPath("C:\\Users\\me\\workspace\\", "skill")).toBe("C:\\Users\\me\\workspace/skill");
+  it("normalizes all backslashes to forward slashes in Windows-style paths", () => {
+    expect(joinPath("C:\\Users\\me\\workspace\\", "skill")).toBe("C:/Users/me/workspace/skill");
+  });
+
+  it("normalizes mixed separators", () => {
+    expect(joinPath("C:\\Users/me\\workspace", "sub/dir")).toBe("C:/Users/me/workspace/sub/dir");
   });
 });

@@ -6,7 +6,7 @@
  */
 export function joinPath(...segments: string[]): string {
   return segments
-    .map((s) => s.replace(/[\\/]+$/, ""))
+    .map((s) => s.replace(/[\\/]+$/, "").replace(/\\/g, "/"))
     .filter(Boolean)
     .join("/");
 }
