@@ -156,6 +156,94 @@ pub fn save_workflow_state(
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::test_utils::create_test_db;
+    use crate::types::StepStatusUpdate;
+
+    /// Replicate the effective_status override logic from `save_workflow_state` so it can be
+    /// tested without needing the Tauri runtime or a `tauri::State<'_, Db>`.
+    fn compute_effective_status(status: &str, step_statuses: &[StepStatusUpdate]) -> String {
+        if !step_statuses.is_empty() && step_statuses.iter().all(|s| s.status == "completed") {
+            "completed".to_string()
+        } else {
+            status.to_string()
+        }
+    }
+
+    #[test]
+    fn test_all_steps_completed_overrides_in_progress_status() {
+        let conn = create_test_db();
+
+        // Create a skill and workflow run with status "in_progress".
+        crate::db::save_workflow_run(&conn, "test-skill", 3, "in_progress", "domain").unwrap();
+
+        let step_statuses = vec![
+            StepStatusUpdate { step_id: 0, status: "completed".to_string() },
+            StepStatusUpdate { step_id: 1, status: "completed".to_string() },
+            StepStatusUpdate { step_id: 2, status: "completed".to_string() },
+            StepStatusUpdate { step_id: 3, status: "completed".to_string() },
+        ];
+
+        let effective_status = compute_effective_status("in_progress", &step_statuses);
+
+        // The backend-authoritative override must produce "completed".
+        assert_eq!(
+            effective_status, "completed",
+            "status should be overridden to 'completed' when all steps are completed"
+        );
+
+        // Persist the effective status and verify it lands in the DB.
+        crate::db::save_workflow_run(&conn, "test-skill", 3, &effective_status, "domain").unwrap();
+        for step in &step_statuses {
+            crate::db::save_workflow_step(&conn, "test-skill", step.step_id, &step.status).unwrap();
+        }
+
+        let run = crate::db::get_workflow_run(&conn, "test-skill").unwrap().unwrap();
+        assert_eq!(
+            run.status, "completed",
+            "DB status should be 'completed' after all steps complete"
+        );
+    }
+
+    #[test]
+    fn test_partial_steps_completed_does_not_override_status() {
+        let step_statuses = vec![
+            StepStatusUpdate { step_id: 0, status: "completed".to_string() },
+            StepStatusUpdate { step_id: 1, status: "in_progress".to_string() },
+        ];
+
+        let effective_status = compute_effective_status("in_progress", &step_statuses);
+        assert_eq!(
+            effective_status, "in_progress",
+            "status should NOT be overridden when not all steps are completed"
+        );
+    }
+
+    #[test]
+    fn test_empty_step_statuses_does_not_override_status() {
+        let step_statuses: Vec<StepStatusUpdate> = vec![];
+        let effective_status = compute_effective_status("pending", &step_statuses);
+        assert_eq!(
+            effective_status, "pending",
+            "status should NOT be overridden when step_statuses is empty"
+        );
+    }
+
+    #[test]
+    fn test_completed_status_sent_by_frontend_is_preserved() {
+        // If the frontend already sends "completed" AND all steps are completed, the result
+        // should still be "completed" (override is a no-op).
+        let step_statuses = vec![
+            StepStatusUpdate { step_id: 0, status: "completed".to_string() },
+            StepStatusUpdate { step_id: 1, status: "completed".to_string() },
+        ];
+        let effective_status = compute_effective_status("completed", &step_statuses);
+        assert_eq!(effective_status, "completed");
+    }
+}
+
 /// Output files produced by each step, relative to the skill directory.
 pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {

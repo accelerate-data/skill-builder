@@ -716,6 +716,54 @@ describe("agent event buffering", () => {
 
 });
 
+describe("applyContextWindow behavior", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+  });
+
+  it("sets contextWindow when a new value arrives", () => {
+    useAgentStore.getState().startRun("agent-cw", "sonnet");
+
+    useAgentStore.getState().applyContextWindow("agent-cw", {
+      type: "context_window",
+      contextWindow: 150_000,
+    });
+
+    const run = useAgentStore.getState().runs["agent-cw"];
+    expect(run.contextWindow).toBe(200_000); // max(200_000, 150_000) = 200_000
+  });
+
+  it("keeps the larger value when a smaller contextWindow arrives after a larger one", () => {
+    useAgentStore.getState().startRun("agent-cw2", "sonnet");
+
+    // First event: large window
+    useAgentStore.getState().applyContextWindow("agent-cw2", {
+      type: "context_window",
+      contextWindow: 300_000,
+    });
+    expect(useAgentStore.getState().runs["agent-cw2"].contextWindow).toBe(300_000);
+
+    // Second event: smaller window — store must NOT regress to the smaller value
+    useAgentStore.getState().applyContextWindow("agent-cw2", {
+      type: "context_window",
+      contextWindow: 100_000,
+    });
+    expect(useAgentStore.getState().runs["agent-cw2"].contextWindow).toBe(300_000);
+  });
+
+  it("ignores zero or negative contextWindow values", () => {
+    useAgentStore.getState().startRun("agent-cw3", "sonnet");
+    const originalWindow = useAgentStore.getState().runs["agent-cw3"].contextWindow;
+
+    useAgentStore.getState().applyContextWindow("agent-cw3", {
+      type: "context_window",
+      contextWindow: 0,
+    });
+
+    expect(useAgentStore.getState().runs["agent-cw3"].contextWindow).toBe(originalWindow);
+  });
+});
+
 describe("module-level internal state", () => {
   beforeEach(() => {
     resetAgentStoreInternals();

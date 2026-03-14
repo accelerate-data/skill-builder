@@ -553,6 +553,27 @@ describe("initAgentStream", () => {
     expect(useWorkflowStore.getState().initProgressMessage).toBeNull();
   });
 
+  it("agent-init-error sets runtimeError on workflow store with message and fix_hint", async () => {
+    useWorkflowStore.getState().setInitializing();
+    await initAgentStream();
+
+    listeners["agent-init-error"]({
+      payload: {
+        error_type: "api_key_invalid",
+        message: "The API key provided is not valid.",
+        fix_hint: "Check your API key in the settings.",
+      },
+    });
+
+    const { runtimeError } = useWorkflowStore.getState();
+    expect(runtimeError).not.toBeNull();
+    expect(runtimeError!.message).toBe("The API key provided is not valid.");
+    expect(runtimeError!.fix_hint).toBe("Check your API key in the settings.");
+    expect(runtimeError!.error_type).toBe("api_key_invalid");
+    // Also confirms initializing was cleared
+    expect(useWorkflowStore.getState().isInitializing).toBe(false);
+  });
+
   it("imports toast from @/lib/toast, not directly from sonner", async () => {
     // Read the source file and verify the import uses the app wrapper
     const source = await import.meta.glob("/src/hooks/use-agent-stream.ts", { query: "?raw", import: "default", eager: true });

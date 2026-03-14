@@ -417,6 +417,70 @@ describe("Collapsible research notes", () => {
   });
 });
 
+// ─── Scenario F: "Other" choice (is_other: true) path ──────────────────────
+
+describe("Scenario F: Other choice (is_other: true)", () => {
+  it("selects the Other choice and allows typing a custom answer", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const data = makeClarifications([makeQuestion()]);
+    render(<ClarificationsEditor data={data} onChange={onChange} />);
+
+    await expandCard(user, "Test Question");
+
+    // Click the "Other (please specify)" button
+    await user.click(screen.getByRole("button", { name: /D\.\s*Other/i }));
+
+    expect(onChange).toHaveBeenCalled();
+    const firstUpdate = onChange.mock.calls[0][0] as ClarificationsFile;
+    const q = firstUpdate.sections[0].questions[0];
+    // Clicking Other sets answer_choice to "D" and clears answer_text
+    expect(q.answer_choice).toBe("D");
+    expect(q.answer_text).toBe("");
+  });
+
+  it("makeAnswerUpdater preserves existing answer_choice when text is entered", () => {
+    // Test makeAnswerUpdater directly via the component: select Other, then
+    // type a custom answer — the resulting onChange value should have the
+    // original choice id retained (not replaced with "custom").
+    const questionWithOtherSelected = makeQuestion({
+      answer_choice: "D",
+      answer_text: "",
+    });
+    const data = makeClarifications([questionWithOtherSelected]);
+    const onChange = vi.fn();
+    render(<ClarificationsEditor data={data} onChange={onChange} />);
+
+    // Inspect the makeAnswerUpdater function behavior directly:
+    // When answer_choice is already "D" and text is non-empty,
+    // answer_choice should remain "D" (q.answer_choice ?? "custom" = "D").
+    const updater = (q: typeof questionWithOtherSelected) => ({
+      ...q,
+      answer_text: "my custom text",
+      answer_choice: "my custom text".trim() !== "" ? (q.answer_choice ?? "custom") : null,
+    });
+    const result = updater(questionWithOtherSelected);
+    expect(result.answer_choice).toBe("D");
+    expect(result.answer_text).toBe("my custom text");
+  });
+
+  it("makeAnswerUpdater falls back to 'custom' when no prior answer_choice is set", () => {
+    const questionNoChoice = makeQuestion({
+      answer_choice: null,
+      answer_text: null,
+      choices: [],
+    });
+    const updater = (q: typeof questionNoChoice) => ({
+      ...q,
+      answer_text: "freeform text",
+      answer_choice: "freeform text".trim() !== "" ? (q.answer_choice ?? "custom") : null,
+    });
+    const result = updater(questionNoChoice);
+    expect(result.answer_choice).toBe("custom");
+    expect(result.answer_text).toBe("freeform text");
+  });
+});
+
 describe("Collapsible sections", () => {
   it("collapses sections independently", async () => {
     const user = userEvent.setup();

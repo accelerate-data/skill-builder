@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { E2E_DEFAULT_SKILLS_PATH, E2E_SKILLS_PATH } from "../helpers/test-paths";
 
-test.describe("Setup Screen", { tag: "@workflow" }, () => {
+test.describe("Setup Screen", { tag: "@setup" }, () => {
   test("shows setup screen when API key is missing", async ({ page }) => {
     // Override settings to have no API key
     await page.addInitScript((overrides) => {

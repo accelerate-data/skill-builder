@@ -93,6 +93,8 @@ interface SimulateAgentRunOptions {
   messages?: string[];
   /** Result text for the final result display item. */
   result?: string;
+  /** Status for the result display item. Defaults to "success". */
+  resultStatus?: string;
   /** Delay in ms between events. Defaults to 50. */
   delays?: number;
 }
@@ -114,6 +116,7 @@ export async function simulateAgentRun(
     agentId,
     messages = ["Researching domain concepts..."],
     result = "Research complete.",
+    resultStatus = "success",
     delays = 50,
   } = options;
 
@@ -162,7 +165,7 @@ export async function simulateAgentRun(
         type: "result",
         timestamp: Date.now(),
         outputText_result: result,
-        resultStatus: "success",
+        resultStatus,
       },
     },
   });

@@ -862,6 +862,68 @@ describe("runPersistent", () => {
     }
   });
 
+  // TS-05: Duplicate session_id rejection
+  it("emits error with session_id when stream_start uses a duplicate session_id", async () => {
+    const originalMockAgents = process.env.MOCK_AGENTS;
+    process.env.MOCK_AGENTS = "true";
+
+    const { Readable } = await import("node:stream");
+    const input = new Readable({ read() {} });
+    const exitFn = vi.fn();
+    const capture = captureStdout();
+
+    try {
+      const runPromise = runPersistent(input, exitFn);
+
+      // First stream_start
+      input.push(JSON.stringify({
+        type: "stream_start",
+        request_id: "req-dup-1",
+        session_id: "test-session",
+        config: { prompt: "first prompt", apiKey: "sk-test", cwd: "/tmp" },
+      }) + "\n");
+      await new Promise((r) => setTimeout(r, 10));
+
+      // Second stream_start with SAME session_id — should be rejected
+      input.push(JSON.stringify({
+        type: "stream_start",
+        request_id: "req-dup-2",
+        session_id: "test-session",
+        config: { prompt: "second prompt", apiKey: "sk-test", cwd: "/tmp" },
+      }) + "\n");
+      await new Promise((r) => setTimeout(r, 20));
+
+      // Clean up
+      input.push(JSON.stringify({ type: "stream_end", session_id: "test-session" }) + "\n");
+      input.push(JSON.stringify({ type: "shutdown" }) + "\n");
+      input.push(null);
+      await runPromise;
+    } finally {
+      if (originalMockAgents === undefined) {
+        delete process.env.MOCK_AGENTS;
+      } else {
+        process.env.MOCK_AGENTS = originalMockAgents;
+      }
+      capture.restore();
+    }
+
+    // The second stream_start should have produced an error response keyed to req-dup-2
+    const errorLine = capture.lines.find((l) => {
+      try {
+        const parsed = JSON.parse(l);
+        return (
+          parsed.type === "error" &&
+          parsed.request_id === "req-dup-2"
+        );
+      } catch {
+        return false;
+      }
+    });
+    expect(errorLine).toBeDefined();
+    const errorMsg = JSON.parse(errorLine!);
+    expect(errorMsg.message).toContain("test-session");
+  });
+
   it("supports stream_start and stream_message in MOCK_AGENTS mode", async () => {
     const originalMockAgents = process.env.MOCK_AGENTS;
     process.env.MOCK_AGENTS = "true";

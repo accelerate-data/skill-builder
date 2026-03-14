@@ -5,8 +5,18 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn(),
 }));
 
+// Mock fs/promises for TS-08 discoverInstalledPlugins error test
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    readdir: vi.fn(actual.readdir),
+  };
+});
+
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { runAgentRequest, emitSystemEvent, selectPluginPaths } from "../run-agent.js";
+import * as fsPromises from "node:fs/promises";
+import { runAgentRequest, emitSystemEvent, selectPluginPaths, discoverInstalledPlugins } from "../run-agent.js";
 import type { SidecarConfig } from "../config.js";
 
 const mockQuery = vi.mocked(query);
@@ -498,5 +508,60 @@ describe("runAgentRequest passes prompt directly to query", () => {
 
     const callArgs = mockQuery.mock.calls[0][0];
     expect(callArgs.prompt).toBe("plain prompt");
+  });
+});
+
+// TS-02: Abort end-to-end path — external signal fires mid-stream → shutdown run_result
+describe("runAgentRequest — abort via external signal", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("emits run_result with status='shutdown' (not 'error') when external signal fires", async () => {
+    const externalController = new AbortController();
+
+    async function* fakeConversation() {
+      yield {
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "working..." }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      };
+      // External signal fires after first message
+      externalController.abort();
+      // One more yield that should be skipped due to abort check
+      yield { type: "result", subtype: "success", usage: { input_tokens: 10, output_tokens: 5 }, total_cost_usd: 0.001 };
+    }
+    mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
+
+    const messages: Record<string, unknown>[] = [];
+    await runAgentRequest(baseConfig(), (msg) => messages.push(msg), externalController.signal);
+
+    const runResult = messages.find(
+      (m) =>
+        m.type === "agent_event" &&
+        (m.event as Record<string, unknown> | undefined)?.type === "run_result",
+    );
+    expect(runResult).toBeDefined();
+    const event = runResult!.event as Record<string, unknown>;
+    expect(event.status).toBe("shutdown");
+  });
+});
+
+// TS-08: discoverInstalledPlugins swallowed error
+describe("discoverInstalledPlugins — error handling", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns [] when readdir throws a permission-denied error (does not throw)", async () => {
+    const mockReaddir = vi.mocked(fsPromises.readdir);
+    mockReaddir.mockRejectedValueOnce(
+      Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" }),
+    );
+
+    const result = await discoverInstalledPlugins("/some/workspace");
+    expect(result).toEqual([]);
   });
 });

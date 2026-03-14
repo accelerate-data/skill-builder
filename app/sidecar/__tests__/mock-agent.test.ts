@@ -7,8 +7,20 @@ import {
   parsePromptPaths,
   resolvePromptPaths,
   resolveStepTemplate,
+  runMockAgent,
 } from "../mock-agent.js";
+import type { SidecarConfig } from "../config.js";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function baseMockConfig(overrides: Partial<SidecarConfig> = {}): SidecarConfig {
+  return {
+    prompt: "test prompt",
+    apiKey: "sk-test",
+    cwd: "/tmp/test",
+    ...overrides,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // resolveStepTemplate
@@ -252,6 +264,67 @@ describe("mock-agent drift detection", () => {
       ).toBe(true);
     }
   });
+});
+
+// TS-06: runMockAgent tests
+describe("runMockAgent", () => {
+  it("happy path: known agent name with a template → emits a run_result", async () => {
+    const messages: Record<string, unknown>[] = [];
+    // generate-skill maps to step3-generate-skill which has a JSONL template
+    await runMockAgent(
+      baseMockConfig({ agentName: "generate-skill" }),
+      (msg) => messages.push(msg),
+    );
+
+    const runResult = messages.find(
+      (m) =>
+        m.type === "agent_event" &&
+        (m.event as Record<string, unknown> | undefined)?.type === "run_result",
+    );
+    expect(runResult).toBeDefined();
+    const event = runResult!.event as Record<string, unknown>;
+    expect(event.status).toBe("completed");
+  }, 10000);
+
+  it("unknown agent name → emits a minimal success run_result without crashing", async () => {
+    const messages: Record<string, unknown>[] = [];
+    await runMockAgent(
+      baseMockConfig({ agentName: "totally-unknown-agent-xyz" }),
+      (msg) => messages.push(msg),
+    );
+
+    const runResult = messages.find(
+      (m) =>
+        m.type === "agent_event" &&
+        (m.event as Record<string, unknown> | undefined)?.type === "run_result",
+    );
+    expect(runResult).toBeDefined();
+    const event = runResult!.event as Record<string, unknown>;
+    // Unknown agents use a minimal success result
+    expect(event.status).toBe("completed");
+  });
+
+  it("pre-cancelled signal → emits a run_result with shutdown/error status", async () => {
+    const controller = new AbortController();
+    controller.abort(); // Pre-cancel before runMockAgent is called
+
+    const messages: Record<string, unknown>[] = [];
+    await runMockAgent(
+      baseMockConfig({ agentName: "generate-skill" }),
+      (msg) => messages.push(msg),
+      controller.signal,
+    );
+
+    const runResult = messages.find(
+      (m) =>
+        m.type === "agent_event" &&
+        (m.event as Record<string, unknown> | undefined)?.type === "run_result",
+    );
+    expect(runResult).toBeDefined();
+    const event = runResult!.event as Record<string, unknown>;
+    // Cancelled runs should produce an error status (not completed)
+    expect(["error", "shutdown"]).toContain(event.status);
+  }, 10000);
 });
 
 describe("buildStructuredMockResult", () => {

@@ -84,6 +84,8 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
 
     // Dialog should close (mock returns success) or navigate away
     await expect(page.getByRole("heading", { name: "Create New Skill" })).not.toBeVisible({ timeout: 5_000 });
+    // Should navigate to the workflow page for the new skill
+    await expect(page).toHaveURL(/\/skill\/hr-analytics/, { timeout: 5_000 });
   });
 
   test("can confirm skill deletion", async ({ page }) => {
@@ -116,5 +118,7 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
 
     // Dialog should close
     await expect(page.getByRole("heading", { name: "Delete Skill" })).not.toBeVisible();
+    // Skill should no longer appear in the list
+    await expect(page.getByText("delete-me")).not.toBeVisible();
   });
 });

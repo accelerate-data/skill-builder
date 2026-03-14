@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { createAbortState, handleShutdown } from "../shutdown.js";
+import { createAbortState, handleShutdown, linkExternalSignal } from "../shutdown.js";
 
 describe("createAbortState", () => {
   it("returns a fresh AbortController with signal.aborted=false", () => {
@@ -54,5 +54,42 @@ describe("handleShutdown", () => {
     handleShutdown(state, exitFn, timerFn);
 
     expect(exitFn).toHaveBeenCalledWith(0);
+  });
+});
+
+// TS-01: linkExternalSignal
+describe("linkExternalSignal", () => {
+  it("aborts state immediately when external signal is already aborted", () => {
+    const state = createAbortState();
+    const externalController = new AbortController();
+    externalController.abort();
+
+    linkExternalSignal(state, externalController.signal);
+
+    expect(state.abortController.signal.aborted).toBe(true);
+  });
+
+  it("aborts state when external signal fires after linking", () => {
+    const state = createAbortState();
+    const externalController = new AbortController();
+
+    linkExternalSignal(state, externalController.signal);
+    expect(state.abortController.signal.aborted).toBe(false);
+
+    externalController.abort();
+
+    expect(state.abortController.signal.aborted).toBe(true);
+  });
+
+  it("does not crash and leaves state unaffected when called with undefined-like unused", () => {
+    // The function signature requires an AbortSignal, but we can test with a
+    // non-aborted signal that never fires — verifies the happy path doesn't mutate state.
+    const state = createAbortState();
+    const externalController = new AbortController();
+
+    // Link but never abort — no crash expected
+    linkExternalSignal(state, externalController.signal);
+
+    expect(state.abortController.signal.aborted).toBe(false);
   });
 });

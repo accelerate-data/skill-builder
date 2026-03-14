@@ -35,7 +35,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
 
     // Type "/" to trigger command picker
     await input.press("/");
-    await page.waitForTimeout(100);
+    await expect(page.getByRole("listbox")).toBeVisible();
 
     // Command picker should open with both options
     await expect(page.getByRole("option", { name: /rewrite skill/i })).toBeVisible();
