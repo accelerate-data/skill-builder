@@ -42,7 +42,7 @@ vi.mock("@/lib/tauri", () => ({
   createGithubIssue: mockCreateGithubIssue,
   githubGetUser: vi.fn(() => Promise.resolve(null)),
   githubLogout: vi.fn(),
-  persistAgentRun: vi.fn(() => Promise.resolve()),
+
 }));
 
 vi.mock("@tauri-apps/plugin-opener", () => ({

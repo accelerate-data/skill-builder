@@ -18,10 +18,6 @@ vi.mock("remark-gfm", () => ({
   default: () => {},
 }));
 
-// Mock tauri commands
-vi.mock("@/lib/tauri", () => ({
-  persistAgentRun: vi.fn(() => Promise.resolve()),
-}));
 
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 
