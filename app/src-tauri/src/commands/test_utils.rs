@@ -102,24 +102,6 @@ pub fn create_test_db() -> rusqlite::Connection {
             content_hash TEXT,
             marketplace_source_url TEXT
         );
-        CREATE TABLE IF NOT EXISTS workspace_skills (
-            skill_id     TEXT PRIMARY KEY,
-            skill_name   TEXT UNIQUE NOT NULL,
-            description  TEXT,
-            is_active    INTEGER NOT NULL DEFAULT 1,
-            is_bundled   INTEGER NOT NULL DEFAULT 0,
-            disk_path    TEXT NOT NULL,
-            imported_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
-            purpose      TEXT,
-            version      TEXT,
-            model        TEXT,
-            argument_hint TEXT,
-            user_invocable INTEGER,
-            disable_model_invocation INTEGER,
-            skill_master_id INTEGER REFERENCES skills(id),
-            content_hash TEXT,
-            marketplace_source_url TEXT
-        );
         CREATE TABLE IF NOT EXISTS skill_locks (
             skill_name TEXT PRIMARY KEY,
             instance_id TEXT NOT NULL,

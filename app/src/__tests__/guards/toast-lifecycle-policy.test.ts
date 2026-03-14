@@ -119,7 +119,7 @@ describe("toast lifecycle policy guard", () => {
       { file: "pages/test.tsx", severities: ["error"] },
       { file: "pages/settings.tsx", severities: ["error"] },
       { file: "pages/dashboard.tsx", severities: ["error"] },
-      { file: "components/workspace-skills-tab.tsx", severities: ["error"] },
+      { file: "components/imported-skills-tab.tsx", severities: ["error"] },
       { file: "pages/usage.tsx", severities: ["error"] },
     ];
 

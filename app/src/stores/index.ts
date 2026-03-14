@@ -4,6 +4,6 @@ export { useSettingsStore } from "./settings-store";
 export { useSkillStore } from "./skill-store";
 export { useAuthStore } from "./auth-store";
 export { useUsageStore } from "./usage-store";
-export { useWorkspaceSkillsStore } from "./workspace-skills-store";
+export { useImportedSkillsStore } from "./imported-skills-store";
 export { useRefineStore } from "./refine-store";
 export { useTestStore } from "./test-store";

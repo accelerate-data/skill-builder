@@ -10,11 +10,11 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
-import { useWorkspaceSkillsStore } from "@/stores/workspace-skills-store"
-import type { WorkspaceSkill } from "@/stores/workspace-skills-store"
+import { invoke } from "@tauri-apps/api/core"
+import type { ImportedSkill } from "@/lib/types"
 
 interface SkillPreviewDialogProps {
-  skill: WorkspaceSkill | null
+  skill: ImportedSkill | null
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -27,7 +27,6 @@ export default function SkillPreviewDialog({
   const [content, setContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const getSkillContent = useWorkspaceSkillsStore((s) => s.getSkillContent)
 
   useEffect(() => {
     if (!open || !skill) {
@@ -40,7 +39,7 @@ export default function SkillPreviewDialog({
     setLoading(true)
     setError(null)
 
-    getSkillContent(skill.skill_name)
+    invoke<string>("get_skill_content", { skillName: skill.skill_name })
       .then((result) => {
         if (!cancelled) {
           setContent(result)
@@ -58,7 +57,7 @@ export default function SkillPreviewDialog({
     return () => {
       cancelled = true
     }
-  }, [open, skill, getSkillContent])
+  }, [open, skill])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

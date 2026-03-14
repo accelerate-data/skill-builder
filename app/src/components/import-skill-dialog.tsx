@@ -13,29 +13,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { importSkillFromFile } from "@/lib/tauri"
 import type { SkillFileMeta } from "@/lib/types"
-import { PURPOSE_OPTIONS } from "@/lib/types"
-
-export interface ImportConfirmParams {
-  filePath: string
-  name: string
-  description: string
-  version: string
-  model: string | null
-  argumentHint: string | null
-  userInvocable: boolean
-  disableModelInvocation: boolean
-  forceOverwrite: boolean
-  purpose?: string | null
-}
 
 interface ImportSkillDialogProps {
   open: boolean
@@ -43,10 +22,6 @@ interface ImportSkillDialogProps {
   filePath: string
   meta: SkillFileMeta
   onImported: () => void
-  /** Show the Purpose dropdown (workspace skills context) */
-  showPurpose?: boolean
-  /** Override the default importSkillFromFile handler */
-  onConfirm?: (params: ImportConfirmParams) => Promise<void>
 }
 
 export function ImportSkillDialog({
@@ -55,8 +30,6 @@ export function ImportSkillDialog({
   filePath,
   meta,
   onImported,
-  showPurpose = false,
-  onConfirm,
 }: ImportSkillDialogProps) {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -64,7 +37,6 @@ export function ImportSkillDialog({
   const [argumentHint, setArgumentHint] = useState("")
   const [userInvocable, setUserInvocable] = useState(false)
   const [disableModelInvocation, setDisableModelInvocation] = useState(false)
-  const [purpose, setPurpose] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [nameConflictError, setNameConflictError] = useState<string | null>(null)
   const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false)
@@ -78,7 +50,6 @@ export function ImportSkillDialog({
       setArgumentHint(meta.argument_hint ?? "")
       setUserInvocable(meta.user_invocable ?? false)
       setDisableModelInvocation(meta.disable_model_invocation ?? false)
-      setPurpose(null)
       setSubmitting(false)
       setNameConflictError(null)
       setShowOverwriteConfirm(false)
@@ -97,25 +68,18 @@ export function ImportSkillDialog({
       setNameConflictError(null)
       if (!forceOverwrite) setShowOverwriteConfirm(false)
 
-      const params: ImportConfirmParams = {
-        filePath,
-        name: name.trim(),
-        description: description.trim(),
-        version: version.trim(),
-        model: null,
-        argumentHint: argumentHint || null,
-        userInvocable,
-        disableModelInvocation,
-        forceOverwrite,
-        purpose: showPurpose ? purpose : undefined,
-      }
-
       try {
-        if (onConfirm) {
-          await onConfirm(params)
-        } else {
-          await importSkillFromFile(params)
-        }
+        await importSkillFromFile({
+          filePath,
+          name: name.trim(),
+          description: description.trim(),
+          version: version.trim(),
+          model: null,
+          argumentHint: argumentHint || null,
+          userInvocable,
+          disableModelInvocation,
+          forceOverwrite,
+        })
         onOpenChange(false)
         toast.success(`Imported "${name.trim()}"`)
         onImported()
@@ -137,8 +101,7 @@ export function ImportSkillDialog({
     },
     [
       filePath, name, description, version, argumentHint,
-      userInvocable, disableModelInvocation, purpose,
-      showPurpose, onConfirm, onOpenChange, onImported,
+      userInvocable, disableModelInvocation, onOpenChange, onImported,
     ]
   )
 
@@ -228,28 +191,6 @@ export function ImportSkillDialog({
                 disabled={submitting}
               />
             </div>
-
-            {showPurpose && (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="import-purpose">Purpose</Label>
-                <Select
-                  value={purpose ?? ""}
-                  onValueChange={(val) => setPurpose(val || null)}
-                  disabled={submitting}
-                >
-                  <SelectTrigger id="import-purpose">
-                    <SelectValue placeholder="Select a purpose (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PURPOSE_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="import-argument-hint">Argument Hint</Label>

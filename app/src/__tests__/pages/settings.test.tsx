@@ -104,8 +104,8 @@ vi.mock("@/components/github-login-dialog", () => ({
   GitHubLoginDialog: () => null,
 }));
 
-vi.mock("@/components/workspace-skills-tab", () => ({
-  WorkspaceSkillsTab: () => <div data-testid="skills-page">Workspace Skills Content</div>,
+vi.mock("@/components/imported-skills-tab", () => ({
+  ImportedSkillsTab: () => <div data-testid="skills-page">Imported Skills Content</div>,
 }));
 
 vi.mock("@/components/feedback-dialog", () => ({
@@ -776,7 +776,7 @@ describe("SettingsPage", () => {
     expect(screen.queryByText("Not connected")).not.toBeInTheDocument();
   });
 
-  it("auto-switches to skills section when pendingUpgradeOpen targets workspace-skills", async () => {
+  it("auto-switches to skills section when pendingUpgradeOpen is set", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
@@ -784,14 +784,12 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    // General section is active by default — skills content not visible
     expect(screen.queryByTestId("skills-page")).not.toBeInTheDocument();
 
     act(() => {
-      useSettingsStore.getState().setPendingUpgradeOpen({ mode: "workspace-skills", skills: ["my-skill"] });
+      useSettingsStore.getState().setPendingUpgradeOpen({ skills: ["my-skill"] });
     });
 
-    // Settings page should auto-switch to Skills section
     await waitFor(() => {
       expect(screen.getByTestId("skills-page")).toBeInTheDocument();
     });
@@ -808,22 +806,5 @@ describe("SettingsPage", () => {
     await switchToSection(/Marketplace/i);
 
     expect(screen.getByText("Registries")).toBeInTheDocument();
-  });
-
-  it("does not auto-switch section for dashboard-library mode", async () => {
-    setupDefaultMocks();
-    render(<SettingsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
-    });
-
-    act(() => {
-      useSettingsStore.getState().setPendingUpgradeOpen({ mode: "dashboard-library", skills: ["my-skill"] });
-    });
-
-    // General section should remain — skills content not visible
-    expect(screen.queryByTestId("skills-page")).not.toBeInTheDocument();
-    expect(screen.getByText("API Configuration")).toBeInTheDocument();
   });
 });

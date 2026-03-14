@@ -322,18 +322,6 @@ pub struct WorkflowRunRow {
     pub intake_json: Option<String>,
     #[serde(default = "default_source")]
     pub source: String,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub version: Option<String>,
-    #[serde(default)]
-    pub model: Option<String>,
-    #[serde(default)]
-    pub argument_hint: Option<String>,
-    #[serde(default)]
-    pub user_invocable: Option<bool>,
-    #[serde(default)]
-    pub disable_model_invocation: Option<bool>,
 }
 
 fn default_source() -> String {
@@ -422,47 +410,6 @@ pub struct SkillFileMeta {
     pub argument_hint: Option<String>,
     pub user_invocable: Option<bool>,
     pub disable_model_invocation: Option<bool>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkspaceSkill {
-    pub skill_id: String,
-    pub skill_name: String,
-    pub description: Option<String>,
-    pub is_active: bool,
-    pub is_bundled: bool,
-    pub disk_path: String,
-    pub imported_at: String,
-    pub purpose: Option<String>,
-    pub version: Option<String>,
-    pub model: Option<String>,
-    pub argument_hint: Option<String>,
-    pub user_invocable: Option<bool>,
-    pub disable_model_invocation: Option<bool>,
-    /// Source registry URL this skill was imported from. NULL for bundled/manually uploaded skills.
-    #[serde(default)]
-    pub marketplace_source_url: Option<String>,
-}
-
-impl From<ImportedSkill> for WorkspaceSkill {
-    fn from(s: ImportedSkill) -> Self {
-        Self {
-            skill_id: s.skill_id,
-            skill_name: s.skill_name,
-            description: s.description,
-            is_active: s.is_active,
-            is_bundled: s.is_bundled,
-            disk_path: s.disk_path,
-            imported_at: s.imported_at,
-            purpose: s.purpose,
-            version: s.version,
-            model: s.model,
-            argument_hint: s.argument_hint,
-            user_invocable: s.user_invocable,
-            disable_model_invocation: s.disable_model_invocation,
-            marketplace_source_url: s.marketplace_source_url,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -709,7 +656,6 @@ pub struct SkillMetadataOverride {
     pub description: Option<String>,
     pub purpose: Option<String>,
     pub version: Option<String>,
-    pub model: Option<String>,
     pub argument_hint: Option<String>,
     pub user_invocable: Option<bool>,
     pub disable_model_invocation: Option<bool>,

@@ -113,9 +113,7 @@ fn list_skills_inner(
     if let Some(source_url) = source_url {
         let mut stmt = conn
             .prepare(
-                "SELECT skill_name FROM imported_skills WHERE marketplace_source_url = ?1
-                 UNION
-                 SELECT skill_name FROM workspace_skills WHERE marketplace_source_url = ?1",
+                "SELECT skill_name FROM imported_skills WHERE marketplace_source_url = ?1",
             )
             .map_err(|e| format!("list_skills_inner source filter prepare: {}", e))?;
         let scoped_names: std::collections::HashSet<String> = stmt
@@ -618,14 +616,7 @@ pub fn update_skill_metadata(
     })?;
 
     if let Some(p) = &purpose {
-        conn.execute(
-            "UPDATE workflow_runs SET purpose = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
-            rusqlite::params![skill_name, p],
-        ).map_err(|e| {
-            log::error!("[update_skill_metadata] Failed to update purpose: {}", e);
-            e.to_string()
-        })?;
-        // Also update skills master table — works for all skill sources
+        // Update skills master table — sole source of truth for metadata
         conn.execute(
             "UPDATE skills SET purpose = ?2, updated_at = datetime('now') WHERE name = ?1",
             rusqlite::params![skill_name, p],
@@ -655,7 +646,7 @@ pub fn update_skill_metadata(
         || user_invocable.is_some()
         || disable_model_invocation.is_some()
     {
-        // set_skill_behaviour writes to skills master (canonical) + workflow_runs (dual-write).
+        // set_skill_behaviour writes to skills master only (canonical store for all skill sources).
         // Works for all skill sources — marketplace/imported updates skills master directly.
         crate::db::set_skill_behaviour(
             &conn,

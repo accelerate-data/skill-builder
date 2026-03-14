@@ -34,16 +34,16 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
 import { FeedbackDialog } from "@/components/feedback-dialog"
-import { WorkspaceSkillsTab } from "@/components/workspace-skills-tab"
+import { ImportedSkillsTab } from "@/components/imported-skills-tab"
 
 /** Must match DEFAULT_MARKETPLACE_URL in app/src-tauri/src/commands/settings.rs */
 const DEFAULT_MARKETPLACE_URL = "hbanerjee74/skills"
 
 const sections = [
   { id: "general", label: "General" },
+  { id: "skill-building", label: "Claude SDK" },
+  { id: "skills", label: "Import" },
   { id: "marketplace", label: "Marketplace" },
-  { id: "skill-building", label: "Skill Building" },
-  { id: "skills", label: "Skills" },
   { id: "github", label: "GitHub" },
   { id: "advanced", label: "Advanced" },
 ] as const
@@ -94,9 +94,9 @@ export default function SettingsPage() {
   const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const { user, isLoggedIn, isLoading: isAuthLoading, lastCheckedAt, logout } = useAuthStore()
 
-  // Auto-navigate to the skills section when a pending upgrade targets workspace-skills
+  // Auto-navigate to the skills section when a pending upgrade is set
   useEffect(() => {
-    if (pendingUpgrade?.mode === "workspace-skills") {
+    if (pendingUpgrade) {
       setActiveSection("skills")
     }
   }, [pendingUpgrade])
@@ -301,60 +301,6 @@ export default function SettingsPage() {
           <div className="space-y-6 p-6">
             <Card>
               <CardHeader>
-                <CardTitle>API Configuration</CardTitle>
-                <CardDescription>
-                  Configure your Anthropic API key for skill building.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-4">
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="api-key">Anthropic API Key</Label>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <Input
-                        id="api-key"
-                        type={showApiKey ? "text" : "password"}
-                        placeholder="sk-ant-..."
-                        value={apiKey || ""}
-                        onChange={(e) => setApiKey(e.target.value || null)}
-                        onBlur={(e) => autoSave({ apiKey: e.target.value || null })}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-xs"
-                        className="absolute right-2 top-1/2 -translate-y-1/2"
-                        onClick={() => setShowApiKey(!showApiKey)}
-                      >
-                        {showApiKey ? (
-                          <EyeOff className="size-3.5" />
-                        ) : (
-                          <Eye className="size-3.5" />
-                        )}
-                      </Button>
-                    </div>
-                    <Button
-                      variant={apiKeyValid ? "default" : "outline"}
-                      size="sm"
-                      onClick={handleTestApiKey}
-                      disabled={testing || !apiKey}
-                      className={apiKeyValid ? "text-white" : ""}
-                      style={apiKeyValid ? { background: "var(--color-seafoam)", color: "white" } : undefined}
-                    >
-                      {testing ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : apiKeyValid ? (
-                        <CheckCircle2 className="size-3.5" />
-                      ) : null}
-                      {apiKeyValid ? "Valid" : "Test"}
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
                 <CardTitle>User Profile</CardTitle>
                 <CardDescription>
                   Optional context about you and your work. Agents use this to tailor research and skill content.
@@ -415,11 +361,80 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>About</CardTitle>
+                <CardDescription>
+                  Skill Builder v{appVersion}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="outline" size="sm" onClick={() => setAboutDialogOpen(true)}>
+                  <Info className="size-4" />
+                  About Skill Builder
+                </Button>
+              </CardContent>
+            </Card>
           </div>
           )}
 
           {activeSection === "skill-building" && (
           <div className="space-y-6 p-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>API Configuration</CardTitle>
+                <CardDescription>
+                  Configure your Anthropic API key for skill building.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="api-key">Anthropic API Key</Label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Input
+                        id="api-key"
+                        type={showApiKey ? "text" : "password"}
+                        placeholder="sk-ant-..."
+                        value={apiKey || ""}
+                        onChange={(e) => setApiKey(e.target.value || null)}
+                        onBlur={(e) => autoSave({ apiKey: e.target.value || null })}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="absolute right-2 top-1/2 -translate-y-1/2"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                      >
+                        {showApiKey ? (
+                          <EyeOff className="size-3.5" />
+                        ) : (
+                          <Eye className="size-3.5" />
+                        )}
+                      </Button>
+                    </div>
+                    <Button
+                      variant={apiKeyValid ? "default" : "outline"}
+                      size="sm"
+                      onClick={handleTestApiKey}
+                      disabled={testing || !apiKey}
+                      className={apiKeyValid ? "text-white" : ""}
+                      style={apiKeyValid ? { background: "var(--color-seafoam)", color: "white" } : undefined}
+                    >
+                      {testing ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : apiKeyValid ? (
+                        <CheckCircle2 className="size-3.5" />
+                      ) : null}
+                      {apiKeyValid ? "Valid" : "Test"}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle>Model</CardTitle>
@@ -549,7 +564,7 @@ export default function SettingsPage() {
 
           {activeSection === "skills" && (
           <div className="space-y-6 p-6">
-            <WorkspaceSkillsTab />
+            <ImportedSkillsTab />
           </div>
           )}
 
@@ -893,20 +908,6 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>About</CardTitle>
-                <CardDescription>
-                  Skill Builder v{appVersion}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button variant="outline" size="sm" onClick={() => setAboutDialogOpen(true)}>
-                  <Info className="size-4" />
-                  About Skill Builder
-                </Button>
-              </CardContent>
-            </Card>
           </div>
           )}
         </div>

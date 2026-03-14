@@ -30,9 +30,9 @@ interface SettingsState {
   autoUpdate: boolean;
   isConfigured: boolean;
   availableModels: ModelInfo[];
-  pendingUpgradeOpen: { mode: "dashboard-library" | "workspace-skills"; skills: string[] } | null;
+  pendingUpgradeOpen: { skills: string[] } | null;
   setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset" | "setPendingUpgradeOpen">>) => void;
-  setPendingUpgradeOpen: (value: { mode: "dashboard-library" | "workspace-skills"; skills: string[] } | null) => void;
+  setPendingUpgradeOpen: (value: { skills: string[] } | null) => void;
   reset: () => void;
 }
 
@@ -60,7 +60,7 @@ const initialState = {
   autoUpdate: false,
   isConfigured: false,
   availableModels: [] as ModelInfo[],
-  pendingUpgradeOpen: null as { mode: "dashboard-library" | "workspace-skills"; skills: string[] } | null,
+  pendingUpgradeOpen: null as { skills: string[] } | null,
 };
 
 export const useSettingsStore = create<SettingsState>((set) => ({

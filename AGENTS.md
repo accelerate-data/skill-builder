@@ -63,7 +63,7 @@ Read these before starting any non-trivial task:
 | Artifact | Update when |
 |---|---|
 | `AGENTS.md` | A fact is durable, non-obvious, and won't be obvious from code · a skill is added to `.claude/skills/` |
-| `repo-map.json` | Architecture, entrypoints, commands, modules, or package structure changes |
+| `repo-map.json` | Any file added, removed, or renamed inside `commands/`, `stores/`, `pages/`, `components/`, `lib/`, `hooks/` · sub-module directory added or restructured · new Tauri command file · entrypoint or package structure change |
 | `README.md` | User-facing installation, configuration, commands, or architecture overview changes |
 | `TEST_MANIFEST.md` | Rust command file added/removed · E2E spec added/removed · shared infra file added/removed · agent artifact format changes affecting a Rust or TS parser |
 
@@ -114,6 +114,16 @@ For Rust and cross-layer changes, consult `TEST_MANIFEST.md` for the correct car
 - **Worktrees:** `../worktrees/<branchName>` relative to repo root. Full rules: `.claude/rules/git-workflow.md`.
 
 **Pre-commit:** `markdownlint <file>` for `.md` files · `cd app && npx tsc --noEmit` · `cargo check --manifest-path app/src-tauri/Cargo.toml` · `bash app/scripts/lint-agent-docs.sh` when editing `AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, or `.claude/skills/`.
+
+**Pre-PR `repo-map.json` audit (required):** Before opening or updating a PR, verify `repo-map.json` reflects the current codebase. Check:
+
+- `rust_commands` flat-file list matches every `.rs` file directly under `app/src-tauri/src/commands/`
+- `rust_commands` sub-module names match actual files inside `commands/workflow/`, `commands/imported_skills/`, `commands/github_import/`
+- `frontend_stores` lists every file in `app/src/stores/` (excluding `index.ts`)
+- `frontend_pages` lists every file in `app/src/pages/`
+- Any removed file or renamed directory is reflected in the description
+
+Update stale entries in the same commit that introduced the structural change, not as a follow-up.
 
 **Implementation agents must commit and push before reporting completion.**
 

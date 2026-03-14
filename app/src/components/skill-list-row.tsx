@@ -78,8 +78,8 @@ export default function SkillListRow({
   onRefine,
   onTest,
 }: SkillListRowProps) {
-  const isMarketplace = skill.skill_source === 'marketplace'
-  const canDownload = isMarketplace || isWorkflowComplete(skill)
+  const isImported = skill.skill_source === 'marketplace' || skill.skill_source === 'imported'
+  const canDownload = isImported || isWorkflowComplete(skill)
   const statusLabel = getStatusLabel(skill)
   const isComplete = statusLabel === "Completed"
 
@@ -160,7 +160,7 @@ export default function SkillListRow({
               onClick={() => onEditWorkflow?.(skill)}
             />
           )}
-          {canDownload && onRefine && (
+          {canDownload && onRefine && !isImported && (
             <IconAction
               icon={<MessageSquare className="size-3" />}
               label="Refine skill"
@@ -192,26 +192,24 @@ export default function SkillListRow({
             onClick={() => onDelete(skill)}
           />
 
-          {skill.skill_source === 'skill-builder' && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="text-muted-foreground"
-                  aria-label="More actions"
-                >
-                  <MoreHorizontal className="size-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => onEdit?.(skill)}>
-                  <SquarePen className="size-4" />
-                  Edit details
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="text-muted-foreground"
+                aria-label="More actions"
+              >
+                <MoreHorizontal className="size-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => onEdit?.(skill)}>
+                <SquarePen className="size-4" />
+                Edit details
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </td>
     </tr>

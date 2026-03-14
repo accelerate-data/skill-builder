@@ -131,12 +131,11 @@ export default function SkillCard({
   onRefine,
   onTest,
 }: SkillCardProps) {
-  const isMarketplace = skill.skill_source === 'marketplace'
-  const progress = isMarketplace ? 100 : parseStepProgress(skill.current_step, skill.status)
-  const canDownload = isMarketplace || isWorkflowComplete(skill)
+  const isImported = skill.skill_source === 'marketplace' || skill.skill_source === 'imported'
+  const progress = isImported ? 100 : parseStepProgress(skill.current_step, skill.status)
+  const canDownload = isImported || isWorkflowComplete(skill)
 
-  // Only skill-builder skills have the right-click context menu
-  const showContextMenu = skill.skill_source === 'skill-builder'
+  const showContextMenu = true
 
   const bandColor = skill.purpose ? PURPOSE_BAND_COLOR[skill.purpose as Purpose] : undefined
 
@@ -205,7 +204,7 @@ export default function SkillCard({
                 onClick={() => onEdit(skill)}
               />
             )}
-            {canDownload && onRefine && (
+            {canDownload && onRefine && !isImported && (
               <IconAction
                 icon={<MessageSquare className="size-3" />}
                 label="Refine skill"

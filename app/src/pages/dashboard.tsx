@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
-import { open, save } from "@tauri-apps/plugin-dialog"
+import { save } from "@tauri-apps/plugin-dialog"
 import { toast } from "@/lib/toast"
-import { FolderOpen, Search, Filter, AlertCircle, Settings, Plus, Github, ChevronUp, ChevronDown, Upload } from "lucide-react"
+import { FolderOpen, Search, Filter, AlertCircle, Settings, Plus, ChevronUp, ChevronDown } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -29,13 +29,11 @@ import { DashboardViewToggle, type ViewMode } from "@/components/dashboard-view-
 import SkillDialog from "@/components/skill-dialog"
 import DeleteSkillDialog from "@/components/delete-skill-dialog"
 import TagFilter from "@/components/tag-filter"
-import GitHubImportDialog from "@/components/github-import-dialog"
-import { ImportSkillDialog } from "@/components/import-skill-dialog"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useSkillStore } from "@/stores/skill-store"
 import { useWorkflowStore } from "@/stores/workflow-store"
-import { packageSkill, getLockedSkills, parseSkillFile } from "@/lib/tauri"
-import type { SkillSummary, AppSettings, SkillFileMeta } from "@/lib/types"
+import { packageSkill, getLockedSkills } from "@/lib/tauri"
+import type { SkillSummary, AppSettings } from "@/lib/types"
 import { PURPOSES, PURPOSE_LABELS } from "@/lib/types"
 import { SOURCE_DISPLAY_LABELS } from "@/components/skill-source-badge"
 
@@ -63,9 +61,6 @@ export default function DashboardPage() {
   const [skills, setSkills] = useState<SkillSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [createOpen, setCreateOpen] = useState(false)
-  const [dashboardLibraryMarketplaceOpen, setDashboardLibraryMarketplaceOpen] = useState(false)
-  const [importState, setImportState] = useState<{ filePath: string; meta: SkillFileMeta } | null>(null)
-  const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
   const [editTarget, setEditTarget] = useState<SkillSummary | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -79,8 +74,6 @@ export default function DashboardPage() {
   const navigate = useNavigate()
   const workspacePath = useSettingsStore((s) => s.workspacePath)
   const skillsPath = useSettingsStore((s) => s.skillsPath)
-  const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
-  const hasEnabledRegistry = marketplaceRegistries.some(r => r.enabled)
   const savedViewMode = useSettingsStore((s) => s.dashboardViewMode) as ViewMode | null
   const [viewMode, setViewMode] = useState<ViewMode>(savedViewMode ?? "grid")
   const viewModeInitialized = useRef(false)
@@ -128,13 +121,6 @@ export default function DashboardPage() {
   }, [])
 
   useEffect(() => {
-    if (pendingUpgrade?.mode === "dashboard-library") {
-      setDashboardLibraryMarketplaceOpen(true)
-      useSettingsStore.getState().setPendingUpgradeOpen(null)
-    }
-  }, [pendingUpgrade])
-
-  useEffect(() => {
     loadSkills()
     loadTags()
     refreshLocks()
@@ -150,9 +136,6 @@ export default function DashboardPage() {
     }
   }, [refreshLocks])
 
-  // Initialize view mode from saved preference or auto-select based on skill count.
-  // A saved preference is restored immediately. Auto-select waits until skills
-  // have actually been fetched (workspacePath is set and loading is done).
   useEffect(() => {
     if (loading || viewModeInitialized.current) return
     if (savedViewMode !== null) {
@@ -291,7 +274,6 @@ export default function DashboardPage() {
         await invoke("copy_file", { src: result.file_path, dest: savePath })
         toast.success("Skill downloaded", { id: toastId })
       } else {
-        // User cancelled the save dialog
         toast.dismiss(toastId)
       }
     } catch (err) {
@@ -304,28 +286,6 @@ export default function DashboardPage() {
       })
     }
   }, [workspacePath])
-
-  const handleImportFromFile = useCallback(async () => {
-    const filePath = await open({
-      title: "Import Skill",
-      filters: [{ name: "Skill Package", extensions: ["skill", "zip"] }],
-    })
-    if (!filePath) return
-
-    console.log("[dashboard] import from file: path=%s", filePath)
-    try {
-      const meta = await parseSkillFile(filePath)
-      setImportState({ filePath, meta })
-    } catch (err) {
-      console.error("[dashboard] parseSkillFile failed:", err)
-      const msg = err instanceof Error ? err.message : String(err)
-      toast.error(`Import failed: ${msg}`, {
-        duration: Infinity,
-        cause: err,
-        context: { operation: "dashboard_import_parse", filePath },
-      })
-    }
-  }, [])
 
   function sharedSkillProps(skill: SkillSummary) {
     return {
@@ -482,19 +442,6 @@ export default function DashboardPage() {
     <div className={viewMode === "list" ? "flex flex-col h-full gap-6 p-6 dashboard-texture" : "flex flex-col gap-6 p-6 dashboard-texture"}>
       {workspacePath && skillsPath && (
         <div className="flex items-center justify-end gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setDashboardLibraryMarketplaceOpen(true)}
-            disabled={!hasEnabledRegistry}
-            title={!hasEnabledRegistry ? "Enable a marketplace registry in Settings → Marketplace" : undefined}
-          >
-            <Github className="size-4" />
-            Marketplace
-          </Button>
-          <Button variant="outline" onClick={handleImportFromFile}>
-            <Upload className="size-4" />
-            Import
-          </Button>
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" />
             New Skill
@@ -700,25 +647,6 @@ export default function DashboardPage() {
         onDeleted={() => { loadSkills(); loadTags(); }}
         isLocked={deleteTarget ? lockedSkills.has(deleteTarget.name) : false}
       />
-
-      <GitHubImportDialog
-        open={dashboardLibraryMarketplaceOpen}
-        onOpenChange={setDashboardLibraryMarketplaceOpen}
-        onImported={async () => { await Promise.all([loadSkills(), loadTags()]); }}
-        mode="dashboard-library"
-        registries={marketplaceRegistries.filter(r => r.enabled)}
-        workspacePath={workspacePath || ""}
-      />
-
-      {importState && (
-        <ImportSkillDialog
-          open={true}
-          onOpenChange={(open) => { if (!open) setImportState(null) }}
-          filePath={importState.filePath}
-          meta={importState.meta}
-          onImported={() => { loadSkills(); loadTags(); }}
-        />
-      )}
 
     </div>
   )
