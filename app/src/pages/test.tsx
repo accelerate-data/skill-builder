@@ -20,193 +20,27 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useTestStore } from "@/stores/test-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import {
-  listRefinableSkills,
-  startAgent,
-  cleanupSkillSidecar,
-  prepareSkillTest,
-  cleanupSkillTest,
-} from "@/lib/tauri";
-import { useWorkflowStore } from "@/stores/workflow-store";
+import { listRefinableSkills } from "@/lib/tauri";
 import type { SkillSummary } from "@/lib/types";
 import { cn, deriveModelLabel } from "@/lib/utils";
 import { DisplayItemList } from "@/components/agent-items/display-item-list";
 import type { DisplayItem } from "@/lib/display-types";
+import {
+  parseEvalOutput,
+  evalDirectionIcon,
+  evalIconColor,
+  evalRowBg,
+  renderInlineBold,
+} from "@/lib/eval-parser";
+import { useTestOrchestration } from "@/hooks/use-test-orchestration";
+import type { Phase } from "@/hooks/use-test-orchestration";
 
 // Ensure agent-stream listeners are registered
 import "@/hooks/use-agent-stream";
 
 // ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type Phase = "idle" | "running" | "evaluating" | "done" | "error";
-
-interface TestState {
-  phase: Phase;
-  selectedSkill: SkillSummary | null;
-  prompt: string;
-  testId: string | null;
-  baselineCwd: string | null;
-  transcriptLogDir: string | null;
-  withAgentId: string | null;
-  withoutAgentId: string | null;
-  evalAgentId: string | null;
-  withText: string;
-  withoutText: string;
-  evalText: string;
-  withDone: boolean;
-  withoutDone: boolean;
-  startTime: number | null;
-  errorMessage: string | null;
-}
-
-const INITIAL_STATE: TestState = {
-  phase: "idle",
-  selectedSkill: null,
-  prompt: "",
-  testId: null,
-  baselineCwd: null,
-  transcriptLogDir: null,
-  withAgentId: null,
-  withoutAgentId: null,
-  evalAgentId: null,
-  withText: "",
-  withoutText: "",
-  evalText: "",
-  withDone: false,
-  withoutDone: false,
-  startTime: null,
-  errorMessage: null,
-};
-
-const TERMINAL_STATUSES = new Set(["completed", "error", "shutdown"]);
-const TEST_RUN_STEP_ID = -11;
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Extract accumulated output text from agent display items.
- * Collects text from output and tool_call display items. */
-function extractAssistantText(agentId: string): string {
-  const run = useAgentStore.getState().runs[agentId];
-  if (!run) return "";
-  return run.displayItems
-    .filter((di) => di.type === "output" || di.type === "tool_call")
-    .map((di) => di.outputText ?? di.toolSummary ?? "")
-    .filter(Boolean)
-    .join("\n");
-}
-
-/** Build the evaluator prompt from both plans. */
-function buildEvalPrompt(
-  userPrompt: string,
-  skillName: string,
-  withPlanText: string,
-  withoutPlanText: string,
-): string {
-  return `Task prompt:
-"""
-${userPrompt}
-"""
-
-Plan A (Vibedata + ${skillName} skill):
-"""
-${withPlanText}
-"""
-
-Plan B (Vibedata Only, no skill):
-"""
-${withoutPlanText}
-"""
-
-Use the Evaluation Rubric from your context to compare the two plans.
-
-First, output bullet points (one per line) in this exact format:
-- \u2191 **dimension name** — explanation why Plan A is meaningfully better
-- \u2193 **dimension name** — explanation why Plan B is meaningfully better
-- \u2192 **dimension name** — explanation why both are similar or neither is clearly better
-
-One bullet per evaluation dimension. Start each line with the direction symbol, then the **bolded dimension name**, then " — " and the explanation.
-
-Then output a "## Recommendations" section with 2-4 specific, actionable suggestions for how to improve the skill based on the evaluation. Focus on gaps where Plan A underperformed or where the skill could have provided more guidance.`;
-}
-
-type EvalDirection = "up" | "down" | "neutral" | null;
-
-interface EvalLine {
-  direction: EvalDirection;
-  text: string;
-}
-
-/** Parse an evaluator line into direction and text.
- * Strips leading markdown bullet prefixes (-, *, •) before detecting direction. */
-function parseEvalLine(line: string): EvalLine {
-  const trimmed = line.trim();
-  if (!trimmed) return { direction: null, text: "" };
-  // Strip optional markdown bullet (-, *, •) so "- ↑ text" parses correctly
-  const stripped = trimmed.replace(/^[-*•]\s*/, "");
-  if (stripped.startsWith("\u2191")) return { direction: "up", text: stripped.slice(1).trim() };
-  if (stripped.startsWith("\u2193")) return { direction: "down", text: stripped.slice(1).trim() };
-  if (stripped.startsWith("\u2192")) return { direction: "neutral", text: stripped.slice(1).trim() };
-  return { direction: null, text: trimmed };
-}
-
-/** Split evaluator output into directional bullet lines and a recommendations block. */
-function parseEvalOutput(text: string): { lines: EvalLine[]; recommendations: string } {
-  const markerMatch = /^##\s*recommendations/im.exec(text);
-  if (!markerMatch) {
-    return {
-      lines: text.split("\n").map(parseEvalLine).filter((l) => l.text.length > 0),
-      recommendations: "",
-    };
-  }
-  const bulletSection = text.slice(0, markerMatch.index).trim();
-  const recsSection = text.slice(markerMatch.index + markerMatch[0].length).trim();
-  return {
-    lines: bulletSection.split("\n").map(parseEvalLine).filter((l) => l.text.length > 0),
-    recommendations: recsSection,
-  };
-}
-
-/** Return the arrow character for an eval direction. */
-function evalDirectionIcon(direction: EvalDirection): string {
-  switch (direction) {
-    case "up": return "\u2191";
-    case "down": return "\u2193";
-    case "neutral": return "\u2192";
-    default: return "\u2022";
-  }
-}
-
-/** Return the color class for an eval direction's icon. */
-function evalIconColor(direction: EvalDirection): string {
-  switch (direction) {
-    case "up": return "text-[var(--color-seafoam)]";
-    case "down": return "text-destructive";
-    case "neutral": return "text-muted-foreground";
-    default: return "text-muted-foreground/50";
-  }
-}
-
-/** Return the row background class for an eval direction. */
-function evalRowBg(direction: EvalDirection): string {
-  switch (direction) {
-    case "up": return "bg-[var(--color-seafoam)]/5";
-    case "down": return "bg-destructive/5";
-    default: return "";
-  }
-}
-
-/** Render inline bold markdown (**text**) in a string as React nodes. */
-function renderInlineBold(text: string): React.ReactNode {
-  const parts = text.split(/\*\*(.+?)\*\*/);
-  if (parts.length === 1) return text;
-  return parts.map((part, i) =>
-    i % 2 === 1 ? <strong key={i}>{part}</strong> : part,
-  );
-}
 
 /** Return the evaluator placeholder message based on phase. */
 function evalPlaceholder(phase: Phase, errorMessage: string | null): string {
@@ -217,10 +51,6 @@ function evalPlaceholder(phase: Phase, errorMessage: string | null): string {
     case "error": return errorMessage ?? "An error occurred";
     default: return "No evaluation results";
   }
-}
-
-function buildSyntheticTestSessionId(skillName: string, testId: string): string {
-  return `synthetic:test:${skillName}:${testId}`;
 }
 
 /** Auto-scroll a container to the bottom. */
@@ -330,15 +160,21 @@ export default function TestPage() {
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [isLoadingSkills, setIsLoadingSkills] = useState(true);
 
-  // --- Test state ---
-  const [state, setState] = useState<TestState>(INITIAL_STATE);
+  // --- Test orchestration hook ---
+  const {
+    state,
+    setState,
+    handleRunTest,
+    cleanup,
+    isRunning,
+    elapsed,
+    withCost,
+    withoutCost,
+    evalCost,
+  } = useTestOrchestration({ workspacePath });
 
   // --- Scope recommendation guard ---
   const scopeBlocked = useScopeBlocked(state.selectedSkill, "test");
-
-  // --- Elapsed timer ---
-  const [elapsed, setElapsed] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // --- Divider positions ---
   const [vSplit, setVSplit] = useState(50); // vertical: left panel %
@@ -352,9 +188,6 @@ export default function TestPage() {
   const withScrollRef = useRef<HTMLDivElement>(null);
   const withoutScrollRef = useRef<HTMLDivElement>(null);
   const evalScrollRef = useRef<HTMLDivElement>(null);
-
-  // --- Polling interval for agent text ---
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Stable ref to latest state for callbacks
   const stateRef = useRef(state);
@@ -431,92 +264,6 @@ export default function TestPage() {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Elapsed timer management
-  // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    if (state.phase === "running" || state.phase === "evaluating") {
-      if (!timerRef.current && state.startTime) {
-        timerRef.current = setInterval(() => {
-          setElapsed(Date.now() - state.startTime!);
-        }, 100);
-      }
-    } else {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    }
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [state.phase, state.startTime]);
-
-  // ---------------------------------------------------------------------------
-  // Poll agent store for streaming text
-  // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    if (state.phase === "idle" || state.phase === "done" || state.phase === "error") {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-      return;
-    }
-
-    pollRef.current = setInterval(() => {
-      const s = stateRef.current;
-
-      let updated = false;
-      let newWithText = s.withText;
-      let newWithoutText = s.withoutText;
-      let newEvalText = s.evalText;
-
-      if (s.withAgentId) {
-        const text = extractAssistantText(s.withAgentId);
-        if (text !== s.withText) {
-          newWithText = text;
-          updated = true;
-        }
-      }
-      if (s.withoutAgentId) {
-        const text = extractAssistantText(s.withoutAgentId);
-        if (text !== s.withoutText) {
-          newWithoutText = text;
-          updated = true;
-        }
-      }
-      if (s.evalAgentId) {
-        const text = extractAssistantText(s.evalAgentId);
-        if (text !== s.evalText) {
-          newEvalText = text;
-          updated = true;
-        }
-      }
-
-      if (updated) {
-        setState((prev) => ({
-          ...prev,
-          withText: newWithText,
-          withoutText: newWithoutText,
-          evalText: newEvalText,
-        }));
-      }
-    }, 150);
-
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-  }, [state.phase]);
-
-  // ---------------------------------------------------------------------------
   // Auto-scroll panels
   // ---------------------------------------------------------------------------
 
@@ -525,326 +272,9 @@ export default function TestPage() {
   useEffect(() => scrollToBottom(evalScrollRef), [state.evalText]);
 
   // ---------------------------------------------------------------------------
-  // Watch agent exits to transition phases
-  // ---------------------------------------------------------------------------
-
-  const withStatus = useAgentStore((s) =>
-    state.withAgentId ? s.runs[state.withAgentId]?.status : undefined,
-  );
-  const withCost = useAgentStore((s) =>
-    state.withAgentId ? s.runs[state.withAgentId]?.totalCost : undefined,
-  );
-  const withoutStatus = useAgentStore((s) =>
-    state.withoutAgentId ? s.runs[state.withoutAgentId]?.status : undefined,
-  );
-  const withoutCost = useAgentStore((s) =>
-    state.withoutAgentId ? s.runs[state.withoutAgentId]?.totalCost : undefined,
-  );
-  const evalStatus = useAgentStore((s) =>
-    state.evalAgentId ? s.runs[state.evalAgentId]?.status : undefined,
-  );
-  const evalCost = useAgentStore((s) =>
-    state.evalAgentId ? s.runs[state.evalAgentId]?.totalCost : undefined,
-  );
-
-  // Track when plan agents complete
-  useEffect(() => {
-    if (state.phase !== "running") return;
-    if (!state.withAgentId || !state.withoutAgentId) return;
-
-    const withTerminal = withStatus != null && TERMINAL_STATUSES.has(withStatus);
-    const withoutTerminal = withoutStatus != null && TERMINAL_STATUSES.has(withoutStatus);
-
-    if (withTerminal && !state.withDone) {
-      setState((prev) => ({ ...prev, withDone: true }));
-    }
-    if (withoutTerminal && !state.withoutDone) {
-      setState((prev) => ({ ...prev, withoutDone: true }));
-    }
-  }, [state.phase, state.withAgentId, state.withoutAgentId, withStatus, withoutStatus, state.withDone, state.withoutDone]);
-
-  // Both plan agents done -> start evaluator
-  useEffect(() => {
-    if (state.phase !== "running") return;
-    if (!state.withDone || !state.withoutDone) return;
-    if (!state.selectedSkill) return;
-
-    const withText = state.withAgentId
-      ? extractAssistantText(state.withAgentId)
-      : "";
-    const withoutText = state.withoutAgentId
-      ? extractAssistantText(state.withoutAgentId)
-      : "";
-
-    // Check for errors
-    const withErr = withStatus === "error" || withStatus === "shutdown";
-    const withoutErr = withoutStatus === "error" || withoutStatus === "shutdown";
-
-    if (withErr && withoutErr) {
-      setState((prev) => ({
-        ...prev,
-        phase: "error",
-        withText,
-        withoutText,
-        errorMessage: "Both agents failed",
-      }));
-      cleanup(state.testId);
-      return;
-    }
-
-    // Start evaluator
-    const ts = Date.now();
-    const evalId = `${state.selectedSkill.name}-test-eval-${ts}`;
-    const evalPrompt = buildEvalPrompt(
-      state.prompt,
-      state.selectedSkill.name,
-      withText,
-      withoutText,
-    );
-
-    setState((prev) => ({
-      ...prev,
-      phase: "evaluating",
-      withText,
-      withoutText,
-      evalAgentId: evalId,
-    }));
-
-    // Reuse the baseline workspace created during handleRunTest
-    if (!state.baselineCwd || !state.transcriptLogDir) {
-      setState((prev) => ({
-        ...prev,
-        phase: "error",
-        errorMessage: "Missing baseline workspace for evaluator",
-      }));
-      return;
-    }
-
-    const evalModel = useSettingsStore.getState().preferredModel ?? "sonnet";
-    const syntheticTestSessionId = buildSyntheticTestSessionId(
-      state.selectedSkill.name,
-      state.testId ?? "unknown",
-    );
-    useAgentStore.getState().registerRun(
-      evalId,
-      evalModel,
-      state.selectedSkill.name,
-      "test",
-      syntheticTestSessionId,
-    );
-    startAgent(
-      evalId,
-      evalPrompt,
-      evalModel,
-      state.baselineCwd,
-      [],
-      15,
-      "plan",
-      syntheticTestSessionId,
-      state.selectedSkill.name,
-      "test-evaluator",
-      undefined,                  // agentName — evaluator uses skill-test context, not a plugin agent
-      state.transcriptLogDir ?? undefined,  // transcriptLogDir
-      TEST_RUN_STEP_ID,
-      undefined,
-      syntheticTestSessionId,
-      "test",
-    ).catch((err) => {
-      console.error("[test] Failed to start evaluator agent:", err);
-      setState((prev) => ({
-        ...prev,
-        phase: "error",
-        errorMessage: `Evaluator failed to start: ${String(err)}`,
-      }));
-    });
-  }, [state.phase, state.withDone, state.withoutDone, withStatus, withoutStatus]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Evaluator done -> cleanup
-  useEffect(() => {
-    if (state.phase !== "evaluating") return;
-    if (!state.evalAgentId) return;
-    if (!evalStatus || !TERMINAL_STATUSES.has(evalStatus)) return;
-
-    const evalText = extractAssistantText(state.evalAgentId);
-
-    setState((prev) => ({
-      ...prev,
-      phase: evalStatus === "completed" ? "done" : "error",
-      evalText,
-      errorMessage:
-        evalStatus !== "completed" ? "Evaluator agent failed" : null,
-    }));
-
-    cleanup(state.testId);
-  }, [state.phase, state.evalAgentId, evalStatus]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ---------------------------------------------------------------------------
-  // Cleanup helper
-  // ---------------------------------------------------------------------------
-
-  const cleanup = useCallback((testId: string | null) => {
-    if (testId) {
-      cleanupSkillTest(testId).catch((err) =>
-        console.warn("[test] cleanup_skill_test failed:", err),
-      );
-    }
-    cleanupSkillSidecar("__test_baseline__").catch((err) =>
-      console.warn("[test] cleanup sidecar failed:", err),
-    );
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      const s = stateRef.current;
-      if (s.phase === "running" || s.phase === "evaluating") {
-        cleanup(s.testId);
-      }
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ---------------------------------------------------------------------------
-  // Handlers
-  // ---------------------------------------------------------------------------
-
-  const handleSelectSkill = useCallback((skill: SkillSummary) => {
-    setState((prev) => ({ ...prev, selectedSkill: skill }));
-  }, []);
-
-  const handleRunTest = useCallback(async () => {
-    const s = stateRef.current;
-    if (!s.selectedSkill || !s.prompt.trim()) {
-      toast.error("Select a skill and enter a prompt", { duration: Infinity });
-      return;
-    }
-    if (s.phase === "running" || s.phase === "evaluating") return;
-
-    console.log("[test] starting test: skill=%s", s.selectedSkill.name);
-
-    // Guard: don't clobber in-progress workflow or refine runs
-    const wf = useWorkflowStore.getState();
-    const agentsRunning =
-      wf.isRunning || wf.gateLoading || useRefineStore.getState().isRunning;
-    if (agentsRunning) {
-      toast.error("Cannot start test while other agents are running", { duration: Infinity });
-      return;
-    }
-
-    // Clear previous test runs from agent store
-    useAgentStore.getState().clearRuns();
-
-    const ts = Date.now();
-    const skillName = s.selectedSkill.name;
-    const withId = `${skillName}-test-with-${ts}`;
-    const withoutId = `__test_baseline__-test-without-${ts}`;
-
-    setState((prev) => ({
-      ...INITIAL_STATE,
-      selectedSkill: prev.selectedSkill,
-      prompt: prev.prompt,
-      phase: "running",
-      withAgentId: withId,
-      withoutAgentId: withoutId,
-      startTime: ts,
-    }));
-    setElapsed(0);
-
-    let preparedTestId: string | undefined;
-    try {
-      if (!workspacePath) {
-        throw new Error("Workspace path not configured");
-      }
-      const prepared = await prepareSkillTest(workspacePath, skillName);
-      preparedTestId = prepared.test_id;
-
-      setState((prev) => ({
-        ...prev,
-        testId: prepared.test_id,
-        baselineCwd: prepared.baseline_cwd,
-        transcriptLogDir: prepared.transcript_log_dir,
-      }));
-
-      const syntheticTestSessionId = buildSyntheticTestSessionId(
-        skillName,
-        prepared.test_id,
-      );
-
-      // Register runs in agent store
-      const testModel = useSettingsStore.getState().preferredModel ?? "sonnet";
-      useAgentStore
-        .getState()
-        .registerRun(withId, testModel, skillName, "test", syntheticTestSessionId);
-      useAgentStore
-        .getState()
-        .registerRun(withoutId, testModel, skillName, "test", syntheticTestSessionId);
-
-      // Prepend empty-workspace context so agents don't waste turns searching for
-      // existing code. The test workspace is always freshly created by prepareSkillTest.
-      const wrappedPrompt =
-        `Note: This is a brand new, empty project workspace. ` +
-        `No files, code, or directory structure exist yet.\n\n${s.prompt}`;
-
-      // Start both agents in parallel using the vd-agent data-product-builder.
-      // With-skill: CLAUDE.md includes @-import of the skill under test.
-      // Baseline: vd-agent only, no skill context.
-      await Promise.all([
-        startAgent(
-          withId,
-          wrappedPrompt,
-          testModel,
-          prepared.with_skill_cwd,
-          [],
-          15,
-          "plan",
-          syntheticTestSessionId,
-          skillName,
-          "test-plan-with",
-          "data-product-builder",       // agentName → --agent data-product-builder
-          prepared.transcript_log_dir,  // transcriptLogDir
-          TEST_RUN_STEP_ID,
-          undefined,
-          syntheticTestSessionId,
-          "test",
-        ),
-        startAgent(
-          withoutId,
-          wrappedPrompt,
-          testModel,
-          prepared.baseline_cwd,
-          [],
-          15,
-          "plan",
-          syntheticTestSessionId,
-          "__test_baseline__",          // separate sidecar key — prevents abort race with with-skill agent
-          "test-plan-without",
-          "data-product-builder",       // agentName → --agent data-product-builder
-          prepared.transcript_log_dir,  // transcriptLogDir
-          TEST_RUN_STEP_ID,
-          undefined,
-          syntheticTestSessionId,
-          "test",
-        ),
-      ]);
-    } catch (err) {
-      console.error("[test] Failed to start test:", err);
-      // Clean up temp dir if it was created before the failure
-      if (preparedTestId) cleanup(preparedTestId);
-      setState((prev) => ({
-        ...prev,
-        phase: "error",
-        errorMessage: `Failed to start test: ${String(err)}`,
-      }));
-      toast.error("Failed to start test", { duration: Infinity });
-    }
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Derived values
-  // ---------------------------------------------------------------------------
-
-  const isRunning = state.phase === "running" || state.phase === "evaluating";
-
   // Sync phase to global test store so CloseGuard can detect running agents.
+  // ---------------------------------------------------------------------------
+
   useEffect(() => {
     useTestStore.getState().setRunning(isRunning);
   }, [isRunning]);
@@ -860,11 +290,19 @@ export default function TestPage() {
     },
   });
 
+  // ---------------------------------------------------------------------------
+  // Derived values
+  // ---------------------------------------------------------------------------
+
   const elapsedStr = `${(elapsed / 1000).toFixed(1)}s`;
   const activeModel = useSettingsStore((s) => s.preferredModel ?? "sonnet");
   const modelLabel = deriveModelLabel(activeModel);
 
   const { lines: evalLines, recommendations: evalRecommendations } = parseEvalOutput(state.evalText);
+
+  const handleSelectSkill = useCallback((skill: SkillSummary) => {
+    setState((prev) => ({ ...prev, selectedSkill: skill }));
+  }, []);
 
   const handleRefine = useCallback(() => {
     if (!state.selectedSkill) return;
