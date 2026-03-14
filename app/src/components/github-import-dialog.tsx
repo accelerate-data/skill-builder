@@ -32,8 +32,6 @@ import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplace
 import type { WorkspaceSkillImportRequest } from "@/lib/tauri"
 import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, SkillSummary, WorkspaceSkill, MarketplaceRegistry } from "@/lib/types"
 import { PURPOSE_OPTIONS } from "@/lib/types"
-import { useSettingsStore } from "@/stores/settings-store"
-
 /**
  * Returns true only if `a` is strictly greater than `b` by semver rules.
  * Returns false if either value is missing/empty or semver parsing fails.
@@ -59,12 +57,6 @@ function semverGt(a: string | null | undefined, b: string | null | undefined): b
   return false
 }
 
-const FALLBACK_MODEL_OPTIONS = [
-  { id: "haiku",  displayName: "Haiku — fastest, lowest cost" },
-  { id: "sonnet", displayName: "Sonnet — balanced (default)" },
-  { id: "opus",   displayName: "Opus — most capable" },
-]
-
 interface GitHubImportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -88,14 +80,10 @@ interface GitHubImportDialogProps {
 
 type SkillState = "idle" | "importing" | "imported" | "exists" | "same-version" | "upgrade"
 
-/** Sentinel used in the model <Select> to represent "no override — use app default". */
-const APP_DEFAULT_MODEL = "__app_default__"
-
 interface EditFormState {
   name: string
   description: string
   version: string
-  model: string
   argument_hint: string
   user_invocable: boolean
   disable_model_invocation: boolean
@@ -152,7 +140,6 @@ export default function GitHubImportDialog({
   const [activeTab, setActiveTab] = useState<string>("")
   // Ref kept in sync with activeTab so callbacks with stale closures can read the current value
   const activeTabRef = useRef<string>("")
-  const availableModels = useSettingsStore((s) => s.availableModels)
 
   const [editingSkill, setEditingSkill] = useState<AvailableSkill | null>(null)
   const [editForm, setEditForm] = useState<EditFormState | null>(null)
@@ -320,7 +307,6 @@ export default function GitHubImportDialog({
       name: skill.name ?? ws?.skill_name ?? '',
       description: skill.description ?? lib?.description ?? ws?.description ?? '',
       version: skill.version ?? ws?.version ?? '1.0.0',
-      model: skill.model ?? ws?.model ?? '',
       argument_hint: skill.argument_hint ?? ws?.argument_hint ?? '',
       user_invocable: (skill.user_invocable ?? ws?.user_invocable) ?? false,
       disable_model_invocation: (skill.disable_model_invocation ?? ws?.disable_model_invocation) ?? false,
@@ -361,7 +347,6 @@ export default function GitHubImportDialog({
         description: form.description,
         purpose: null,
         version: form.version || null,
-        model: form.model === APP_DEFAULT_MODEL ? "" : form.model,  // "" signals "App default" -> clear model from frontmatter
         argument_hint: form.argument_hint || null,
         user_invocable: form.user_invocable,
         disable_model_invocation: form.disable_model_invocation,
@@ -402,7 +387,6 @@ export default function GitHubImportDialog({
           description: editForm.description,
           purpose: 'skill-builder',
           version: editForm.version || null,
-          model: editForm.model || null,
           argument_hint: editForm.argument_hint || null,
           user_invocable: editForm.user_invocable,
           disable_model_invocation: editForm.disable_model_invocation,
@@ -663,24 +647,6 @@ export default function GitHubImportDialog({
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="edit-model">Model <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                  <Select
-                    value={editForm.model}
-                    onValueChange={(v) => updateField("model", v)}
-                  >
-                    <SelectTrigger id="edit-model">
-                      <SelectValue placeholder="App default" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={APP_DEFAULT_MODEL}>App default</SelectItem>
-                      {(availableModels.length > 0 ? availableModels : FALLBACK_MODEL_OPTIONS).map((m) => (
-                        <SelectItem key={m.id} value={m.id}>{m.displayName}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
                   <Label htmlFor="edit-argument-hint">Argument Hint <span className="text-muted-foreground text-xs">(optional)</span></Label>
                   <Input
                     id="edit-argument-hint"
@@ -817,24 +783,6 @@ export default function GitHubImportDialog({
                   {!editForm.version.trim() && (
                     <p className="text-xs text-destructive">Version is required</p>
                   )}
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="si-model">Model <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                  <Select
-                    value={editForm.model || APP_DEFAULT_MODEL}
-                    onValueChange={(v) => updateField("model", v === APP_DEFAULT_MODEL ? '' : v)}
-                  >
-                    <SelectTrigger id="si-model">
-                      <SelectValue placeholder="App default" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={APP_DEFAULT_MODEL}>App default</SelectItem>
-                      {(availableModels.length > 0 ? availableModels : FALLBACK_MODEL_OPTIONS).map((m) => (
-                        <SelectItem key={m.id} value={m.id}>{m.displayName}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                 </div>
 
                 <div className="flex flex-col gap-1.5">

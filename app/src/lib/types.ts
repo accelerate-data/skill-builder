@@ -309,7 +309,6 @@ export interface SkillMetadataOverride {
   description: string
   purpose?: string | null
   version?: string | null
-  model?: string | null
   argument_hint?: string | null
   user_invocable?: boolean | null
   disable_model_invocation?: boolean | null

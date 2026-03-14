@@ -709,7 +709,6 @@ pub struct SkillMetadataOverride {
     pub description: Option<String>,
     pub purpose: Option<String>,
     pub version: Option<String>,
-    pub model: Option<String>,
     pub argument_hint: Option<String>,
     pub user_invocable: Option<bool>,
     pub disable_model_invocation: Option<bool>,
