@@ -1,6 +1,5 @@
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { useBlocker } from "@tanstack/react-router";
-import { flushMessageBuffer } from "@/stores/agent-store";
 
 /**
  * Shared lifecycle hook for pages that need to block navigation during long-running operations.
@@ -34,15 +33,6 @@ export function useLeaveGuard(options: {
       proceed?.();
     });
   }, [options, proceed]);
-
-  // Safety-net cleanup: flush buffered messages and mark unmount occurred.
-  // This ensures that if the component is removed without going through the blocker dialog,
-  // any pending agent messages are flushed before store state is lost.
-  useEffect(() => {
-    return () => {
-      flushMessageBuffer();
-    };
-  }, []);
 
   return {
     blockerStatus,

@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { useRef } from "react";
-import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
+import { useAgentStore } from "@/stores/agent-store";
 import type { DisplayItem } from "@/lib/display-types";
 
 // ---------------------------------------------------------------------------
@@ -123,7 +123,6 @@ describe("StreamingContent", () => {
 
   it("renders waiting placeholder when agentId is set but run has no displayItems", () => {
     useAgentStore.getState().startRun("agent-with", "sonnet");
-    flushMessageBuffer();
 
     renderStreamingContent("agent-with", "running");
     expect(screen.getByText(/waiting for agent response/i)).toBeTruthy();
