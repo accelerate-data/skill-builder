@@ -1,15 +1,20 @@
 import { test, expect } from "@playwright/test";
 import { waitForAppReady } from "../helpers/app-helpers";
 import { emitTauriEvent } from "../helpers/agent-simulator";
+import {
+  E2E_SKILLS_PATH,
+  E2E_WORKSPACE_PATH,
+  joinE2ePath,
+} from "../helpers/test-paths";
 
 const BASE_OVERRIDES = {
   get_settings: {
     anthropic_api_key: "sk-ant-test",
-    workspace_path: "/tmp/test-workspace",
-    skills_path: "/tmp/test-skills",
+    workspace_path: E2E_WORKSPACE_PATH,
+    skills_path: E2E_SKILLS_PATH,
   },
   list_models: [],
-  get_workspace_path: "/tmp/test-workspace",
+  get_workspace_path: E2E_WORKSPACE_PATH,
   list_refinable_skills: [
     { name: "my-skill", purpose: "domain" },
   ],
@@ -42,9 +47,9 @@ test.describe("Skill Tester", { tag: "@skill-tester" }, () => {
       ...BASE_OVERRIDES,
       prepare_skill_test: {
         test_id: "test-123",
-        baseline_cwd: "/tmp/skill-builder-test-123/baseline",
-        with_skill_cwd: "/tmp/skill-builder-test-123/with-skill",
-        transcript_log_dir: "/tmp/test-workspace/my-skill/logs",
+        baseline_cwd: joinE2ePath("skill-test-123", "baseline"),
+        with_skill_cwd: joinE2ePath("skill-test-123", "with-skill"),
+        transcript_log_dir: `${E2E_WORKSPACE_PATH}/my-skill/logs`,
       },
       start_agent: "agent-id-mock",
     });
@@ -83,9 +88,9 @@ test.describe("Skill Tester", { tag: "@skill-tester" }, () => {
       ...BASE_OVERRIDES,
       prepare_skill_test: {
         test_id: "test-stream-456",
-        baseline_cwd: "/tmp/skill-builder-test-456/baseline",
-        with_skill_cwd: "/tmp/skill-builder-test-456/with-skill",
-        transcript_log_dir: "/tmp/test-workspace/my-skill/logs",
+        baseline_cwd: joinE2ePath("skill-test-456", "baseline"),
+        with_skill_cwd: joinE2ePath("skill-test-456", "with-skill"),
+        transcript_log_dir: `${E2E_WORKSPACE_PATH}/my-skill/logs`,
       },
       start_agent: "agent-id-stream",
     });
