@@ -554,7 +554,7 @@ pub fn get_tags_for_skills(
     // rusqlite's parameterized query API, so there is no SQL injection risk.
     let placeholders: Vec<String> = (1..=skill_names.len()).map(|i| format!("?{}", i)).collect();
     let sql = format!(
-        "SELECT skill_name, tag FROM skill_tags WHERE skill_id IN (SELECT id FROM skills WHERE name IN ({})) ORDER BY skill_name, tag",
+        "SELECT s.name, st.tag FROM skill_tags st JOIN skills s ON st.skill_id = s.id WHERE s.name IN ({}) ORDER BY s.name, st.tag",
         placeholders.join(", ")
     );
 
