@@ -69,6 +69,8 @@ pub(crate) fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Resu
     let mut deletions = 0usize;
 
     diff.print(DiffFormat::Patch, |delta, _hunk, line| {
+        // git2 delta paths come from the git index/tree, which always uses forward slashes
+        // regardless of OS. No backslash normalization needed on Windows.
         let path = delta
             .new_file()
             .path()
@@ -181,6 +183,7 @@ pub(crate) fn get_refine_diff_for_commit_range_inner(
     let mut deletions = 0usize;
 
     diff.print(DiffFormat::Patch, |delta, _hunk, line| {
+        // git2 delta paths come from the git index/tree — always forward slashes, even on Windows.
         let path = delta
             .new_file()
             .path()

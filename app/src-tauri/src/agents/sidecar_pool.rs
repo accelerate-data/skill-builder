@@ -1179,7 +1179,12 @@ impl SidecarPool {
                 skill_name_stdout
             );
             let mut pool = stdout_pool.lock().await;
-            pool.remove(&skill_name_stdout);
+            if let Some(old) = pool.remove(&skill_name_stdout) {
+                // Abort heartbeat + stderr so they don't loop against a dead process.
+                // stdout_task (this task) exits naturally after this block.
+                old.stderr_task.abort();
+                old.heartbeat_task.abort();
+            }
         });
 
         // Spawn heartbeat task for periodic health checks
