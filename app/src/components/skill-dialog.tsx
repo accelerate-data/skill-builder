@@ -534,7 +534,8 @@ export default function SkillDialog(props: SkillDialogProps) {
                     placeholder="1.0.0"
                     value={version}
                     onChange={(e) => setVersion(e.target.value)}
-                    disabled={submitting}
+                    disabled={submitting || isImported}
+                    title={isImported ? "Version is managed by the skill package" : undefined}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
