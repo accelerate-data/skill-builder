@@ -110,5 +110,19 @@ describe("useImportedSkillsStore", () => {
       });
       expect(refetch).toHaveBeenCalledOnce();
     });
+
+    it("propagates error on invoke failure without calling refetch", async () => {
+      mockInvoke.mockRejectedValueOnce(new Error("delete failed"));
+      useImportedSkillsStore.setState({ skills: sampleSkills });
+
+      const refetch = vi.fn();
+      await expect(
+        useImportedSkillsStore.getState().deleteSkill("id-1", refetch),
+      ).rejects.toThrow("delete failed");
+
+      expect(refetch).not.toHaveBeenCalled();
+      // Skills list unchanged
+      expect(useImportedSkillsStore.getState().skills).toHaveLength(2);
+    });
   });
 });

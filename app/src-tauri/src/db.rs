@@ -6889,6 +6889,28 @@ mod tests {
     }
 
     #[test]
+    fn test_migration_35_drops_workflow_runs_metadata_columns() {
+        let conn = create_test_db();
+        // After migration 35, these 6 columns must not exist in workflow_runs
+        let columns_removed = ["description", "version", "model", "argument_hint", "user_invocable", "disable_model_invocation"];
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(workflow_runs)")
+            .unwrap();
+        let column_names: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        for removed in &columns_removed {
+            assert!(
+                !column_names.contains(&removed.to_string()),
+                "column '{}' should have been dropped by migration 35 but is still present",
+                removed
+            );
+        }
+    }
+
+    #[test]
     fn test_migration_36_drops_workspace_skills_table() {
         let conn = create_test_db();
         // After all migrations including 36, workspace_skills should not exist
@@ -6914,7 +6936,7 @@ mod tests {
             skill_id: "imp-test-1".to_string(),
             skill_name: "test-skill".to_string(),
             is_active: true,
-            disk_path: "/tmp/test-skill".to_string(),
+            disk_path: std::env::temp_dir().join("test-skill").to_string_lossy().to_string(),
             imported_at: "2025-01-01T00:00:00Z".to_string(),
             is_bundled: false,
             description: None,
@@ -6946,7 +6968,7 @@ mod tests {
             skill_id: "imp-test-byid".to_string(),
             skill_name: "test-byid".to_string(),
             is_active: true,
-            disk_path: "/tmp/test-byid".to_string(),
+            disk_path: std::env::temp_dir().join("test-byid").to_string_lossy().to_string(),
             imported_at: "2025-01-01T00:00:00Z".to_string(),
             is_bundled: false,
             description: None,
@@ -6975,7 +6997,7 @@ mod tests {
             skill_id: "imp-test-del".to_string(),
             skill_name: "test-del".to_string(),
             is_active: true,
-            disk_path: "/tmp/test-del".to_string(),
+            disk_path: std::env::temp_dir().join("test-del").to_string_lossy().to_string(),
             imported_at: "2025-01-01T00:00:00Z".to_string(),
             is_bundled: false,
             description: None,
@@ -7001,7 +7023,7 @@ mod tests {
             skill_id: "imp-purpose-test".to_string(),
             skill_name: "purpose-skill".to_string(),
             is_active: true,
-            disk_path: "/tmp/purpose-skill".to_string(),
+            disk_path: std::env::temp_dir().join("purpose-skill").to_string_lossy().to_string(),
             imported_at: "2025-01-01T00:00:00Z".to_string(),
             is_bundled: false,
             description: None,
