@@ -1,6 +1,7 @@
 use crate::db::Db;
 use crate::types::{DeviceFlowResponse, GitHubAuthResult, GitHubUser};
 
+// Public client ID — intentional for OAuth device flow; not a secret.
 const GITHUB_CLIENT_ID: &str = "Ov23lioPbQz4gAFxEfhM";
 
 /// Start the GitHub Device Flow by requesting a device code.

@@ -41,9 +41,13 @@ export class StreamSession {
     this.config = config;
     this.currentRequestId = firstRequestId;
 
-    // Start the streaming query in background — don't await
-    this.runQuery(config, onMessage, externalSignal);
+    // Start the streaming query in background — don't await.
+    // Expose the promise so callers (persistent-mode shutdown) can await it.
+    this.queryDone = this.runQuery(config, onMessage, externalSignal);
   }
+
+  /** Resolves when `runQuery` finishes (success, error, or abort). */
+  readonly queryDone: Promise<void>;
 
   /**
    * Push a follow-up user message into the streaming session.
