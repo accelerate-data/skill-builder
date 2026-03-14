@@ -172,7 +172,7 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("shows Import button in the action bar when workspace and skills_path are configured", async () => {
+  it("does not show an Import button in the action bar when workspace and skills_path are configured", async () => {
     setupMocks({ settings: { skills_path: "/home/user/skills" } });
     render(<DashboardPage />);
 
@@ -180,7 +180,7 @@ describe("DashboardPage", () => {
       expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("button", { name: /^Import$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Import$/i })).not.toBeInTheDocument();
   });
 
   it("shows New Skill button when workspace and skills_path are set", async () => {
@@ -350,6 +350,7 @@ describe("DashboardPage", () => {
   it("combines search, tag, and type filters", async () => {
     const user = userEvent.setup();
     setupMocks({
+      settings: { skills_path: "/home/user/skills" },
       skills: [
         ...sampleSkills,
         {
@@ -708,17 +709,13 @@ describe("DashboardPage", () => {
 
     await user.click(screen.getByRole("button", { name: "List view" }));
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /More actions/i })).toBeInTheDocument();
-    });
-
-    // Only one More Actions button (for the skill-builder skill)
-    expect(screen.getAllByRole("button", { name: /More actions/i })).toHaveLength(1);
+    // Current row actions expose More Actions on both skill-builder and marketplace rows.
+    expect(screen.getAllByRole("button", { name: /More actions/i })).toHaveLength(2);
   });
 
   // --- List view: D5 — download visible for completed/marketplace skills ---
 
-  it("shows Download and Refine buttons for completed/marketplace skills in list view but not in-progress", async () => {
+  it("shows Download for completed skills and Refine only for completed skill-builder skills in list view", async () => {
     const user = userEvent.setup();
     setupMocks({
       settings: { skills_path: "/home/user/skills" },
@@ -731,15 +728,11 @@ describe("DashboardPage", () => {
 
     await user.click(screen.getByRole("button", { name: "List view" }));
 
+    // `sales-pipeline` is at step 3, which now counts as workflow-complete via
+    // `isWorkflowComplete`, so both rows expose Download and Refine.
     await waitFor(() => {
-      // hr-analytics is completed — should show Download and Refine
-      expect(screen.getByRole("button", { name: /Download skill/i })).toBeInTheDocument();
+      expect(screen.getAllByRole("button", { name: /Download skill/i })).toHaveLength(2);
     });
-    expect(screen.getByRole("button", { name: /Refine skill/i })).toBeInTheDocument();
-
-    // sales-pipeline is in_progress and skill-builder — no Download or Refine in its row
-    // (there's only 1 Download button total across all rows — hr-analytics only)
-    expect(screen.getAllByRole("button", { name: /Download skill/i })).toHaveLength(1);
-    expect(screen.getAllByRole("button", { name: /Refine skill/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Refine skill/i })).toHaveLength(2);
   });
 });

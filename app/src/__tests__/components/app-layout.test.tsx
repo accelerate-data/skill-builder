@@ -460,7 +460,7 @@ describe("AppLayout", () => {
       });
     });
 
-    it("shows info toast for workspace skills update in manual mode", async () => {
+    it("does not show a separate workspace update toast in manual mode", async () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
@@ -476,11 +476,12 @@ describe("AppLayout", () => {
       render(<AppLayout />);
 
       await waitFor(() => {
-        expect(toast.info).toHaveBeenCalledWith(
-          "Settings \u2192 Skills: update available for 1 skill: hr-skill",
-          expect.objectContaining({ duration: 5000 })
-        );
+        expect(mockInvoke).toHaveBeenCalledWith("check_marketplace_updates");
       });
+      expect(toast.info).not.toHaveBeenCalledWith(
+        "Settings \u2192 Skills: update available for 1 skill: hr-skill",
+        expect.anything()
+      );
     });
 
     it("shows success toast after auto-updating non-customized skills", async () => {
