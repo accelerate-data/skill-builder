@@ -8,6 +8,8 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
   });
 
   test("can type API key and test it", async ({ page }) => {
+    // API key input is in the "Claude SDK" section, not the default "General" section
+    await page.getByRole("button", { name: "Claude SDK" }).click();
     const input = page.getByPlaceholder("sk-ant-...");
     await input.fill("sk-ant-test-key");
 
