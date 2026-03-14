@@ -22,6 +22,7 @@ pub(crate) fn create_test_db_for_tests() -> Connection {
     }
     repair_skills_table_schema(&conn).unwrap();
     run_marketplace_source_url_migration(&conn).unwrap();
+    conn.pragma_update(None, "foreign_keys", true).unwrap();
     conn
 }
 
@@ -112,6 +113,11 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
     // Startup repair: ensure marketplace_source_url columns exist regardless of migration state.
     // Guards against dev builds that recorded migration 29 before the ALTER TABLE statements ran.
     run_marketplace_source_url_migration(&conn)
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
+    // Re-enable FK enforcement now that all migrations have completed.
+    // Runtime writes will be validated against FK constraints from this point on.
+    conn.pragma_update(None, "foreign_keys", true)
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     Ok(Db(Mutex::new(conn)))
@@ -3596,8 +3602,8 @@ pub fn reconcile_orphaned_sessions(conn: &Connection) -> Result<u32, String> {
 /// skills, workflow_runs, imported_skills, workspace_skills.
 fn run_rename_purpose_drop_domain_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     // Wrap in a transaction so partial failure rolls back, preventing irrecoverable state.
-    // FK checks disabled during table rebuilds, re-enabled after commit.
-    conn.execute_batch("PRAGMA foreign_keys = OFF; BEGIN;")?;
+    // FK enforcement is managed globally by init_db (off during migrations, on after).
+    conn.execute_batch("BEGIN;")?;
 
     // --- skills ---
     conn.execute_batch("
@@ -3755,8 +3761,7 @@ fn run_rename_purpose_drop_domain_migration(conn: &Connection) -> Result<(), rus
     ");
     conn.execute_batch(&sql)?;
 
-    // Commit transaction and re-enable FK checks
-    conn.execute_batch("COMMIT; PRAGMA foreign_keys = ON;")?;
+    conn.execute_batch("COMMIT;")?;
 
     log::info!("migration 28: renamed skill_type -> purpose, dropped domain from all 4 tables");
     Ok(())
@@ -4290,6 +4295,8 @@ mod tests {
     fn test_backfill_migration_populates_skills_from_workflow_runs() {
         // Simulate pre-migration state: workflow_runs exist but skills table is empty
         let conn = Connection::open_in_memory().unwrap();
+        // Match production: FK off during migrations, on after.
+        conn.pragma_update(None, "foreign_keys", false).unwrap();
         run_migrations(&conn).unwrap();
         run_add_skill_type_migration(&conn).unwrap();
         run_lock_table_migration(&conn).unwrap();
@@ -4333,6 +4340,7 @@ mod tests {
         run_backfill_null_versions_migration(&conn).unwrap();
         run_rename_purpose_drop_domain_migration(&conn).unwrap();
         run_skills_soft_delete_migration(&conn).unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
 
         // Verify skills master was populated
         let skills = list_all_skills(&conn).unwrap();
@@ -7160,6 +7168,59 @@ mod tests {
         assert_eq!(
             still_shutdown, "shutdown",
             "Re-running migration must be idempotent"
+        );
+    }
+
+    #[test]
+    fn test_foreign_keys_enabled_after_migrations() {
+        let conn = create_test_db();
+        let fk_enabled: bool = conn
+            .pragma_query_value(None, "foreign_keys", |row| row.get(0))
+            .unwrap();
+        assert!(
+            fk_enabled,
+            "foreign_keys pragma must be ON after migrations complete"
+        );
+    }
+
+    #[test]
+    fn test_no_foreign_key_violations_in_schema() {
+        let conn = create_test_db();
+        let violations: Vec<String> = conn
+            .prepare("PRAGMA foreign_key_check")
+            .unwrap()
+            .query_map([], |row| {
+                let table: String = row.get(0)?;
+                let rowid: i64 = row.get(1)?;
+                let parent: String = row.get(2)?;
+                Ok(format!("{table} rowid={rowid} references {parent}"))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(
+            violations.is_empty(),
+            "FK violations found after migration: {violations:?}"
+        );
+    }
+
+    #[test]
+    fn test_fk_enforcement_rejects_orphaned_references() {
+        let conn = create_test_db();
+        // Inserting a workflow_run with a non-existent skill_id should fail
+        let result = conn.execute(
+            "INSERT INTO workflow_runs (skill_name, current_step, status, skill_id)
+             VALUES ('orphan-skill', 0, 'pending', 99999)",
+            [],
+        );
+        assert!(
+            result.is_err(),
+            "FK enforcement must reject inserts with non-existent skill_id"
+        );
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("FOREIGN KEY constraint failed"),
+            "Expected FK constraint error, got: {err}"
         );
     }
 }
