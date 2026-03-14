@@ -361,6 +361,21 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>About</CardTitle>
+                <CardDescription>
+                  Skill Builder v{appVersion}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="outline" size="sm" onClick={() => setAboutDialogOpen(true)}>
+                  <Info className="size-4" />
+                  About Skill Builder
+                </Button>
+              </CardContent>
+            </Card>
           </div>
           )}
 
@@ -893,20 +908,6 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>About</CardTitle>
-                <CardDescription>
-                  Skill Builder v{appVersion}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button variant="outline" size="sm" onClick={() => setAboutDialogOpen(true)}>
-                  <Info className="size-4" />
-                  About Skill Builder
-                </Button>
-              </CardContent>
-            </Card>
           </div>
           )}
         </div>
