@@ -1,17 +1,24 @@
 /**
- * Smoke tests for the workflow page — 5 scenarios covering the most critical paths.
+ * Smoke tests for the workflow page — covers critical paths including
+ * step progression, reset/rerun, failure recovery, navigation guards,
+ * and completion of all 4 workflow steps.
  *
  * Replaces workflow-steps.spec.ts, workflow-agent.spec.ts, and
  * workflow-navigation.spec.ts for the @workflow tag.
  */
 import { test, expect } from "@playwright/test";
-import { emitTauriEvent } from "../helpers/agent-simulator";
+import { emitTauriEvent, simulateAgentRun, simulateAgentRunWithDisplayItems } from "../helpers/agent-simulator";
 import { waitForAppReady } from "../helpers/app-helpers";
 import {
   WORKFLOW_OVERRIDES,
   navigateToWorkflow,
   navigateToWorkflowUpdateMode,
 } from "../helpers/workflow-helpers";
+import {
+  E2E_SKILLS_PATH,
+  E2E_WORKSPACE_PATH,
+  skillContextPath,
+} from "../helpers/test-paths";
 
 // --- Override presets ---
 
@@ -330,6 +337,126 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
     // Must land on step 0 (Research), not step 1 (Detailed Research)
     await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
     await expect(page.getByText("Step 2: Detailed Research")).not.toBeVisible({ timeout: 5_000 });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Scenario 9: Step 2 (Confirm Decisions) completion
+  // Steps 0-1 already completed; step 2 (reasoning type) auto-starts in
+  // update mode, runs to completion, and displays DecisionsSummaryCard.
+  // ---------------------------------------------------------------------------
+  test("step 2 (Confirm Decisions) shows completion UI after agent finishes", async ({ page }) => {
+    const DECISIONS_JSON = JSON.stringify({
+      version: "1",
+      metadata: { decision_count: 1, conflicts_resolved: 0, round: 1 },
+      decisions: [
+        {
+          id: "D1",
+          title: "Primary framework",
+          original_question: "Which framework should the skill target?",
+          decision: "React with TypeScript",
+          implication: "All examples use React + TS patterns",
+          status: "resolved",
+        },
+      ],
+    });
+
+    const step2Overrides: Record<string, unknown> = {
+      ...WORKFLOW_OVERRIDES,
+      get_workflow_state: {
+        run: { current_step: 2, purpose: "domain" },
+        steps: [
+          { step_id: 0, status: "completed" },
+          { step_id: 1, status: "completed" },
+        ],
+      },
+      materialize_workflow_step_output: undefined,
+      read_file: {
+        ...WORKFLOW_OVERRIDES.read_file as Record<string, string>,
+        [skillContextPath(E2E_SKILLS_PATH, "test-skill", "decisions.json")]: DECISIONS_JSON,
+        [skillContextPath(E2E_WORKSPACE_PATH, "test-skill", "decisions.json")]: DECISIONS_JSON,
+      },
+    };
+
+    await navigateToWorkflowUpdateMode(page, step2Overrides);
+
+    // Agent auto-starts — wait for init indicator
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
+
+    // Simulate a complete agent run (step 2 does not require structured output)
+    await simulateAgentRun(page, {
+      agentId: "agent-001",
+      messages: ["Analyzing decisions and implications..."],
+      result: "Decision analysis complete.",
+    });
+
+    // Step 2 completion toast
+    await expect(page.getByText("Step 3 completed")).toBeVisible({ timeout: 10_000 });
+
+    // DecisionsSummaryCard should render with the decision title
+    await expect(page.getByText("Primary framework")).toBeVisible({ timeout: 5_000 });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Scenario 10: Step 3 (Generate Skill) completion
+  // Steps 0-2 already completed; step 3 (agent type, requiresStructuredOutput)
+  // auto-starts in update mode, runs with structured output, and displays
+  // the generated SKILL.md content.
+  // ---------------------------------------------------------------------------
+  test("step 3 (Generate Skill) shows completion UI after agent finishes with structured output", async ({ page }) => {
+    const SKILL_MD = "# Test Skill\n\nA generated skill for testing.\n\n## Instructions\n\nFollow the domain patterns.";
+
+    const step3Overrides: Record<string, unknown> = {
+      ...WORKFLOW_OVERRIDES,
+      get_workflow_state: {
+        run: { current_step: 3, purpose: "domain" },
+        steps: [
+          { step_id: 0, status: "completed" },
+          { step_id: 1, status: "completed" },
+          { step_id: 2, status: "completed" },
+        ],
+      },
+      materialize_workflow_step_output: undefined,
+      list_skill_files: [
+        { relative_path: "SKILL.md", is_directory: false },
+      ],
+      read_file: {
+        ...WORKFLOW_OVERRIDES.read_file as Record<string, string>,
+        [`${E2E_SKILLS_PATH}/test-skill/SKILL.md`]: SKILL_MD,
+      },
+    };
+
+    await navigateToWorkflowUpdateMode(page, step3Overrides);
+
+    // Agent auto-starts — wait for init indicator
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
+
+    // Simulate agent run with structured output (required for step 3)
+    await simulateAgentRunWithDisplayItems(page, {
+      agentId: "agent-001",
+      items: [
+        {
+          id: "di-output-0",
+          type: "output",
+          timestamp: Date.now(),
+          outputText: "Generating skill files...",
+        },
+        {
+          id: "di-result",
+          type: "result",
+          timestamp: Date.now(),
+          outputText_result: "Skill generation complete.",
+          resultStatus: "success",
+          structuredOutput: { skill_name: "test-skill", files_written: ["SKILL.md"] },
+        },
+      ],
+      result: "Skill generation complete.",
+    });
+
+    // Step 4 completion toast
+    await expect(page.getByText("Step 4 completed")).toBeVisible({ timeout: 10_000 });
+
+    // SKILL.md content should be visible in the completion screen
+    await expect(page.getByText("A generated skill for testing.")).toBeVisible({ timeout: 5_000 });
   });
 
   // ---------------------------------------------------------------------------
