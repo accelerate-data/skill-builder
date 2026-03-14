@@ -340,11 +340,13 @@ export async function runPersistent(
       // Run the agent request without blocking the readline loop.
       // This lets ping/shutdown messages be processed while the agent runs.
       const requestPromise = (async () => {
+        let requestError = false;
         try {
           await runAgentRequest(config, (msg) => {
             writeLine(wrapWithRequestId(request_id, msg));
           }, abortController.signal);
         } catch (err) {
+          requestError = true;
           const errorMessage =
             err instanceof Error ? err.message : String(err);
           writeLine(
@@ -355,9 +357,10 @@ export async function runPersistent(
           );
         } finally {
           // Signal to Rust that this request is fully complete and the sidecar
-          // is ready for the next one.
+          // is ready for the next one. Include error flag so Rust fires
+          // agent-exit with the correct success/failure status.
           writeLine(
-            wrapWithRequestId(request_id, { type: "request_complete" }),
+            wrapWithRequestId(request_id, { type: "request_complete", error: requestError }),
           );
         }
       })();

@@ -882,10 +882,16 @@ impl SidecarPool {
                                         pending.remove(request_id).is_some()
                                     };
                                     if was_pending {
+                                        // Use the error flag from the sidecar to determine
+                                        // success/failure. Aborted or errored runs that don't
+                                        // emit run_result need agent-exit with success=false.
+                                        let had_error = msg.get("error")
+                                            .and_then(|e| e.as_bool())
+                                            .unwrap_or(false);
                                         events::handle_sidecar_exit(
                                             &app_handle_stdout,
                                             request_id,
-                                            true,
+                                            !had_error,
                                         );
                                     } else {
                                         log::debug!(

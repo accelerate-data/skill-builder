@@ -1109,12 +1109,21 @@ pub async fn send_refine_message(
             chrono::Utc::now().timestamp_millis()
         );
 
-        pool.send_stream_message(&skill_name, &session_id, &agent_id, &prompt, &app)
-            .await
-            .map_err(|e| {
-                log::error!("[send_refine_message] Failed to send stream message: {}", e);
-                e
-            })?;
+        let send_result = pool.send_stream_message(&skill_name, &session_id, &agent_id, &prompt, &app)
+            .await;
+
+        if let Err(ref e) = send_result {
+            log::error!("[send_refine_message] Failed to send stream message: {}", e);
+            // Reset stream_started so the next attempt retries as a fresh stream_start
+            // instead of repeatedly sending into a dead session.
+            if let Ok(mut map) = sessions.0.lock() {
+                if let Some(session) = map.get_mut(&session_id) {
+                    log::warn!("[send_refine_message] Resetting stream_started for session [REDACTED]");
+                    session.stream_started = false;
+                }
+            }
+        }
+        send_result?;
 
         Ok(agent_id)
     }
