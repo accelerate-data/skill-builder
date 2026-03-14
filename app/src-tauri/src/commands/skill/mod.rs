@@ -1,6 +1,6 @@
-mod crud;
-mod metadata;
-mod suggestions;
+pub(super) mod crud;
+pub(super) mod metadata;
+pub(super) mod suggestions;
 
 // Re-export all public items so callers using commands::skill::* continue to work.
 pub use crud::*;
