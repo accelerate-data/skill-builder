@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { cn, isValidKebab, toKebabChars, buildIntakeJson, formatElapsed } from "@/lib/utils";
+import {
+  cn,
+  isValidKebab,
+  toKebabChars,
+  buildIntakeJson,
+  formatElapsed,
+  normalizeDirectoryPickerPath,
+} from "@/lib/utils";
 
 describe("cn", () => {
   it("merges class names", () => {
@@ -150,5 +157,27 @@ describe("formatElapsed", () => {
   it("formats large values correctly", () => {
     // 3661000ms = 61 minutes 1 second
     expect(formatElapsed(3661000)).toBe("61m 1s");
+  });
+});
+
+describe("normalizeDirectoryPickerPath", () => {
+  it("strips trailing slash from a macOS path", () => {
+    expect(normalizeDirectoryPickerPath("/Users/me/Skills/")).toBe("/Users/me/Skills");
+  });
+
+  it("deduplicates the doubled last path segment on macOS", () => {
+    expect(normalizeDirectoryPickerPath("/Users/me/My Skills/My Skills")).toBe("/Users/me/My Skills");
+  });
+
+  it("strips trailing backslash from a Windows path", () => {
+    expect(normalizeDirectoryPickerPath("C:\\Users\\me\\My Skills\\")).toBe("C:\\Users\\me\\My Skills");
+  });
+
+  it("deduplicates the doubled last path segment on Windows", () => {
+    expect(normalizeDirectoryPickerPath("C:\\Users\\me\\My Skills\\My Skills\\")).toBe("C:\\Users\\me\\My Skills");
+  });
+
+  it("preserves paths with spaces when there is no duplicate segment", () => {
+    expect(normalizeDirectoryPickerPath("/Users/me/Skill Builder Workspace")).toBe("/Users/me/Skill Builder Workspace");
   });
 });
