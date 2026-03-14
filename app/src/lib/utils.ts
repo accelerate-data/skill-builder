@@ -47,3 +47,25 @@ export function deriveModelLabel(modelId: string): string {
   if (modelId.includes("opus")) return "Opus";
   return "Sonnet";
 }
+
+/** Normalize a directory path returned by the file picker across macOS/Windows. */
+export function normalizeDirectoryPickerPath(raw: string): string {
+  const trimmed = raw.replace(/[\\/]+$/, "");
+  if (!trimmed) return trimmed;
+
+  const lastSep = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  if (lastSep <= 0) return trimmed;
+
+  const prevSep = Math.max(
+    trimmed.lastIndexOf("/", lastSep - 1),
+    trimmed.lastIndexOf("\\", lastSep - 1),
+  );
+  const previousSegment = trimmed.slice(prevSep + 1, lastSep);
+  const lastSegment = trimmed.slice(lastSep + 1);
+
+  if (previousSegment !== "" && previousSegment === lastSegment) {
+    return trimmed.slice(0, lastSep);
+  }
+
+  return trimmed;
+}

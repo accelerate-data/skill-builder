@@ -100,21 +100,29 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
 /// becomes `/foo/Skills`). Uses `Path::components()` for cross-platform
 /// separator handling (works with both `/` and `\`).
 fn normalize_path(raw: &str) -> String {
-    use std::path::{Component, Path};
-    let path = Path::new(raw);
-    let components: Vec<Component<'_>> = path.components().collect();
-    if components.len() >= 2 {
-        if let (Some(Component::Normal(last)), Some(Component::Normal(prev))) =
-            (components.last(), components.get(components.len() - 2))
-        {
-            if last == prev {
-                let deduped: std::path::PathBuf = components[..components.len() - 1].iter().collect();
-                return deduped.to_string_lossy().to_string();
-            }
-        }
+    let trimmed = raw.trim_end_matches(['/', '\\']);
+    if trimmed.is_empty() {
+        return trimmed.to_string();
     }
-    // Strip trailing separators only (the original trimming behavior)
-    path.to_string_lossy().trim_end_matches(['/', '\\']).to_string()
+
+    let last_sep = trimmed.rfind(['/', '\\']);
+    let Some(last_sep) = last_sep else {
+        return trimmed.to_string();
+    };
+    if last_sep == 0 {
+        return trimmed.to_string();
+    }
+
+    let previous_part = &trimmed[..last_sep];
+    let prev_sep = previous_part.rfind(['/', '\\']);
+    let previous_segment = &trimmed[prev_sep.map_or(0, |idx| idx + 1)..last_sep];
+    let last_segment = &trimmed[last_sep + 1..];
+
+    if !previous_segment.is_empty() && previous_segment == last_segment {
+        trimmed[..last_sep].to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 #[tauri::command]
@@ -482,6 +490,22 @@ mod tests {
     fn test_normalize_path_root_duplicate() {
         // Edge case: root-level duplicate
         assert_eq!(normalize_path("/Skills/Skills"), "/Skills");
+    }
+
+    #[test]
+    fn test_normalize_path_windows_trailing_backslash() {
+        assert_eq!(
+            normalize_path(r"C:\Users\me\Skill Builder\"),
+            r"C:\Users\me\Skill Builder"
+        );
+    }
+
+    #[test]
+    fn test_normalize_path_windows_duplicate_last_segment_with_spaces() {
+        assert_eq!(
+            normalize_path(r"C:\Users\me\Skill Builder\Skill Builder\"),
+            r"C:\Users\me\Skill Builder"
+        );
     }
 
     #[test]
