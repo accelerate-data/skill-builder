@@ -43,9 +43,9 @@ import "@/hooks/use-agent-stream";
 
 /** Fire-and-forget: release skill lock and shut down persistent sidecar. */
 function releaseSkillResources(skillName: string, reason: string): void {
-  releaseLock(skillName).catch(() => {});
+  releaseLock(skillName).catch((e) => console.warn("[refine] non-fatal: op=releaseLock err=%s", e));
   console.log("[refine] releaseLock: %s (%s)", skillName, reason);
-  cleanupSkillSidecar(skillName).catch(() => {});
+  cleanupSkillSidecar(skillName).catch((e) => console.warn("[refine] non-fatal: op=cleanupSkillSidecar err=%s", e));
 }
 
 /** Load skill files from disk, returning null on failure. */
@@ -118,7 +118,7 @@ export default function RefinePage() {
       const store = useRefineStore.getState();
       if (store.selectedSkill) {
         if (store.sessionId) {
-          closeRefineSession(store.sessionId).catch(() => {});
+          closeRefineSession(store.sessionId).catch((e) => console.warn("[refine] non-fatal: op=closeRefineSession err=%s", e));
         }
         releaseSkillResources(store.selectedSkill.name, "unmount");
         store.clearSession();
@@ -140,7 +140,7 @@ export default function RefinePage() {
 
       // Fire-and-forget: close refine session
       if (store.sessionId) {
-        closeRefineSession(store.sessionId).catch(() => {});
+        closeRefineSession(store.sessionId).catch((e) => console.warn("[refine] non-fatal: op=closeRefineSession err=%s", e));
       }
 
       if (store.selectedSkill) {
@@ -197,7 +197,7 @@ export default function RefinePage() {
       // Release lock on previous skill (if any) before acquiring new lock
       const prevSkill = store.selectedSkill;
       if (prevSkill && prevSkill.name !== skill.name) {
-        await releaseLock(prevSkill.name).catch(() => {});
+        await releaseLock(prevSkill.name).catch((e) => console.warn("[refine] non-fatal: op=releaseLock err=%s", e));
         console.log("[refine] releaseLock: %s (skill switch)", prevSkill.name);
       }
 

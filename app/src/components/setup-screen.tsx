@@ -29,7 +29,7 @@ export function SetupScreen({ onComplete }: SetupScreenProps = {}) {
     if (!existingSkillsPath) {
       getDefaultSkillsPath()
         .then((path) => setSkillsPath(path))
-        .catch(() => {})
+        .catch((e) => console.warn("[setup-screen] non-fatal: op=getDefaultSkillsPath err=%s", e))
     }
   }, [existingSkillsPath])
 
