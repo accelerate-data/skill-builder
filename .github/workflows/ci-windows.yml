@@ -48,6 +48,14 @@ jobs:
         working-directory: app
         run: npm run test:unit
 
+      - name: Install sidecar dependencies
+        working-directory: app/sidecar
+        run: npm ci
+
+      - name: Sidecar unit tests
+        working-directory: app/sidecar
+        run: npx vitest run
+
   rust-windows:
     runs-on: windows-latest
     steps:

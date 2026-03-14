@@ -138,3 +138,4 @@ Every new feature must include logging. Canonical logging conventions and log-le
 
 - **SDK has NO team tools:** `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. Use the Task tool for sub-agents instead. Multiple Task calls in the same turn run in parallel.
 - **Parallel worktrees:** `npm run dev` auto-assigns a free port — safe to run multiple Tauri instances simultaneously.
+- **Windows compatibility:** Path separators, CRLF line endings, env-var prefix syntax, and Rust toolchain selection are recurring sources of Windows CI failures. Follow `.claude/rules/windows-compat.md` before writing path assertions, regex, `package.json` scripts, or Rust CI config.
