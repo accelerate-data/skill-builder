@@ -618,7 +618,7 @@ export const useAgentStore = create<AgentState>((set) => ({
           ...state.runs,
           [agentId]: {
             ...run,
-            contextWindow: Math.max(run.contextWindow, event.contextWindow),
+            contextWindow: event.contextWindow,
           },
         },
       };

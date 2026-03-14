@@ -15,11 +15,9 @@ pub fn acquire_skill_lock(
     conn.execute_batch("BEGIN IMMEDIATE")
         .map_err(|e| e.to_string())?;
 
-    let skill_master_id = get_skill_master_id(conn, skill_name)?
-        .ok_or_else(|| "Skill not found in skills master".to_string());
-
     let result = (|| -> Result<(), String> {
-        let s_id = skill_master_id?;
+        let s_id = get_skill_master_id(conn, skill_name)?
+            .ok_or_else(|| "Skill not found in skills master".to_string())?;
         if let Some(existing) = get_skill_lock(conn, skill_name)? {
             if existing.instance_id == instance_id {
                 return Ok(()); // Already locked by us

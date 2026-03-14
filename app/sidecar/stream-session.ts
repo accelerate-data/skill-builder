@@ -56,12 +56,12 @@ export class StreamSession {
     this.currentRequestId = requestId;
     if (this.mockMode && this.mockOnMessage) {
       void this.emitMockTurn(userMessage, this.mockOnMessage);
-      return;
+      // Fall through to drain any messages that were queued before mock mode was confirmed.
     }
     if (this.pendingResolve) {
       this.pendingResolve(userMessage);
       this.pendingResolve = null;
-    } else {
+    } else if (!this.mockMode) {
       // Generator hasn't reached its await yet — queue the message
       // so it's consumed on the next iteration instead of being dropped.
       this.messageQueue.push(userMessage);

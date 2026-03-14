@@ -531,6 +531,11 @@ export class MessageProcessor {
     this.accumulator.recordCompaction();
 
     const compactionMetadata = raw.compact_metadata as { pre_tokens?: number } | undefined;
+    if (!compactionMetadata) {
+      process.stderr.write(
+        "[message-processor] warn=compact_metadata_absent pre_tokens defaulting to 0\n",
+      );
+    }
     const preTokens = compactionMetadata?.pre_tokens ?? 0;
 
     const event: CompactionEvent = {

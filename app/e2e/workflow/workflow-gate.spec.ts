@@ -247,6 +247,25 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
     await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
   });
 
+  test("gate 1 sufficient: run research anyway keeps workflow on step 2", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
+
+    await clickCompleteStep(page);
+    await simulateGateCompletion(page, "sufficient");
+
+    // Dialog should appear with sufficient verdict
+    await expect(
+      page.getByRole("heading", { name: "Skip Detailed Research?" }),
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("button", { name: "Run Research Anyway" })).toBeVisible();
+
+    // Click Run Research Anyway — should advance to step 2 instead of skipping to step 3
+    await page.getByRole("button", { name: "Run Research Anyway" }).click();
+    await expect(page.getByRole("dialog")).not.toBeVisible();
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+  });
+
   test("gate 1 mixed: quality review dialog and continue anyway advances", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
     await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });

@@ -52,7 +52,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         }
       }
     } catch {
-      set({ isLoading: false, lastCheckedAt: new Date().toISOString() });
+      set({ isLoading: false, isLoggedIn: false, user: null, lastCheckedAt: new Date().toISOString() });
     }
   },
 

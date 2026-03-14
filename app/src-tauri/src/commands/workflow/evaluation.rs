@@ -123,9 +123,13 @@ pub fn save_workflow_state(
         );
         match crate::db::read_settings(&conn) {
             Ok(settings) => {
-                let skills_path = settings
-                    .skills_path
-                    .ok_or_else(|| "Skills path not configured".to_string())?;
+                let Some(skills_path) = settings.skills_path else {
+                    log::warn!(
+                        "[save_workflow_state] skills_path not configured — skipping git auto-commit for '{}'",
+                        skill_name
+                    );
+                    return Ok(());
+                };
                 let completed_steps: Vec<i32> = step_statuses
                     .iter()
                     .filter(|s| s.status == "completed")

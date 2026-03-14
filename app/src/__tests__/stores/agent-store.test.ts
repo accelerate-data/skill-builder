@@ -730,10 +730,10 @@ describe("applyContextWindow behavior", () => {
     });
 
     const run = useAgentStore.getState().runs["agent-cw"];
-    expect(run.contextWindow).toBe(200_000); // max(200_000, 150_000) = 200_000
+    expect(run.contextWindow).toBe(150_000);
   });
 
-  it("keeps the larger value when a smaller contextWindow arrives after a larger one", () => {
+  it("accepts a smaller contextWindow replacing a larger one (unconditional update)", () => {
     useAgentStore.getState().startRun("agent-cw2", "sonnet");
 
     // First event: large window
@@ -743,12 +743,12 @@ describe("applyContextWindow behavior", () => {
     });
     expect(useAgentStore.getState().runs["agent-cw2"].contextWindow).toBe(300_000);
 
-    // Second event: smaller window — store must NOT regress to the smaller value
+    // Second event: smaller window — accepted unconditionally (model may shrink window)
     useAgentStore.getState().applyContextWindow("agent-cw2", {
       type: "context_window",
       contextWindow: 100_000,
     });
-    expect(useAgentStore.getState().runs["agent-cw2"].contextWindow).toBe(300_000);
+    expect(useAgentStore.getState().runs["agent-cw2"].contextWindow).toBe(100_000);
   });
 
   it("ignores zero or negative contextWindow values", () => {
