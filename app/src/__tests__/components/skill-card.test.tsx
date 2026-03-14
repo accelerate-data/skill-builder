@@ -81,12 +81,12 @@ describe("parseStepProgress", () => {
     expect(parseStepProgress(null, "running")).toBe(0);
   });
 
-  it("maps step 0 to ~17%", () => {
-    expect(parseStepProgress("step 0", null)).toBe(17);
+  it("maps step 0 to 25%", () => {
+    expect(parseStepProgress("step 0", null)).toBe(25);
   });
 
-  it("maps step 5 to 100%", () => {
-    expect(parseStepProgress("step 5", null)).toBe(100);
+  it("maps step 3 (last step) to 100%", () => {
+    expect(parseStepProgress("step 3", null)).toBe(100);
   });
 
   it("returns 100 for current_step containing 'completed'", () => {
@@ -111,8 +111,8 @@ describe("isWorkflowComplete", () => {
     expect(isWorkflowComplete({ ...createdComplete, status: "running", current_step: "completed" })).toBe(true);
   });
 
-  it("returns true when current_step is step 5", () => {
-    expect(isWorkflowComplete({ ...createdComplete, status: "running", current_step: "step 5" })).toBe(true);
+  it("returns true when current_step is last step", () => {
+    expect(isWorkflowComplete({ ...createdComplete, status: "running", current_step: "step 3" })).toBe(true);
   });
 
   it("returns false when current_step is step 2", () => {
@@ -162,8 +162,8 @@ describe("SkillCard — created skill", () => {
   });
 
   it("shows progress based on current_step", () => {
-    renderCard(createdIncomplete); // step 2 → 50%
-    expect(screen.getByText("50%")).toBeInTheDocument();
+    renderCard(createdIncomplete); // step 2 → 75%
+    expect(screen.getByText("75%")).toBeInTheDocument();
   });
 
   it("shows 100% progress when complete", () => {
