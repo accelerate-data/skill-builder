@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { useRef } from "react";
-import { useAgentStore } from "@/stores/agent-store";
+import { useAgentStore, flushDisplayItems } from "@/stores/agent-store";
 import type { DisplayItem } from "@/lib/display-types";
 
 // ---------------------------------------------------------------------------
@@ -89,6 +89,7 @@ function seedAgentWithDisplayItems(agentId: string, items: DisplayItem[]) {
   for (const item of items) {
     useAgentStore.getState().addDisplayItem(agentId, item);
   }
+  flushDisplayItems();
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +188,7 @@ describe("StreamingContent", () => {
       type: "output",
       outputText: "Found 5 markdown files.",
     }));
+    flushDisplayItems();
 
     const run = useAgentStore.getState().runs[agentId];
     expect(run.displayItems).toHaveLength(2);

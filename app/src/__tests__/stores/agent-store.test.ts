@@ -8,6 +8,7 @@ import {
   resetAgentStoreInternals,
   getPendingTerminalCount,
   getPendingMetadataCount,
+  flushDisplayItems,
 } from "@/stores/agent-store";
 import type { DisplayItem } from "@/lib/display-types";
 import { mockInvoke } from "@/test/mocks/tauri";
@@ -59,6 +60,7 @@ describe("useAgentStore", () => {
 
     useAgentStore.getState().addDisplayItem("agent-1", item1);
     useAgentStore.getState().addDisplayItem("agent-1", item2);
+    flushDisplayItems();
 
     const state = useAgentStore.getState();
     expect(state.runs["agent-1"].displayItems).toHaveLength(2);
@@ -84,6 +86,7 @@ describe("useAgentStore", () => {
       toolStatus: "ok",
     });
     useAgentStore.getState().addDisplayItem("agent-1", updated);
+    flushDisplayItems();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.displayItems).toHaveLength(1);
@@ -113,6 +116,7 @@ describe("useAgentStore", () => {
   it("addDisplayItem auto-creates run for unknown agent", () => {
     const item = makeDisplayItem({ type: "output", outputText: "Hello" });
     useAgentStore.getState().addDisplayItem("nonexistent", item);
+    flushDisplayItems();
 
     const run = useAgentStore.getState().runs["nonexistent"];
     expect(run).toBeDefined();
@@ -154,6 +158,7 @@ describe("useAgentStore", () => {
     // 3. registerRun called  → must NOT revert status back to "running"
     const item = makeDisplayItem({ type: "output", outputText: "hello" });
     useAgentStore.getState().addDisplayItem("race-agent", item);
+    flushDisplayItems();
     expect(useAgentStore.getState().runs["race-agent"].status).toBe("running");
 
     useAgentStore.getState().completeRun("race-agent", true);
@@ -167,6 +172,7 @@ describe("useAgentStore", () => {
     // Same race but via startRun (workflow path)
     const item = makeDisplayItem({ type: "output", outputText: "hello" });
     useAgentStore.getState().addDisplayItem("race-wf-agent", item);
+    flushDisplayItems();
     useAgentStore.getState().completeRun("race-wf-agent", true);
     expect(useAgentStore.getState().runs["race-wf-agent"].status).toBe("completed");
 
@@ -203,6 +209,7 @@ describe("useAgentStore", () => {
     useAgentStore.getState().startRun("agent-2", "opus");
 
     useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({ type: "output", outputText: "test" }));
+    flushDisplayItems();
 
     useAgentStore.getState().clearRuns();
 
@@ -244,6 +251,7 @@ describe("useAgentStore", () => {
     useAgentStore.getState().startRun("agent-2", "opus");
 
     useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({ type: "output", outputText: "only for agent-1" }));
+    flushDisplayItems();
     useAgentStore.getState().completeRun("agent-2", true);
 
     const state = useAgentStore.getState();
@@ -523,6 +531,7 @@ describe("displayItems management", () => {
         outputText: `msg-${i}`,
       }));
     }
+    flushDisplayItems();
 
     expect(useAgentStore.getState().runs["agent-1"].displayItems).toHaveLength(5);
   });
@@ -541,6 +550,78 @@ describe("displayItems management", () => {
     expect(run.displayItems).toHaveLength(1);
     expect(run.displayItems[0].outputText).toBe("buffered");
     expect(run.status).toBe("completed");
+  });
+
+  it("flushDisplayItems applies all buffered items in a single batch", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
+      id: "di-batch-1",
+      type: "output",
+      outputText: "first",
+    }));
+    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
+      id: "di-batch-2",
+      type: "output",
+      outputText: "second",
+    }));
+
+    // Explicit flush ensures all items are applied
+    flushDisplayItems();
+
+    const items = useAgentStore.getState().runs["agent-1"].displayItems;
+    expect(items).toHaveLength(2);
+    expect(items[0].outputText).toBe("first");
+    expect(items[1].outputText).toBe("second");
+  });
+
+  it("update-by-id deduplicates within a single batch", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
+      id: "tool-batch",
+      type: "tool_call",
+      toolName: "Read",
+      toolStatus: "pending",
+    }));
+    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
+      id: "tool-batch",
+      type: "tool_call",
+      toolName: "Read",
+      toolStatus: "ok",
+    }));
+    flushDisplayItems();
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.displayItems).toHaveLength(1);
+    expect(run.displayItems[0].toolStatus).toBe("ok");
+  });
+
+  it("update-by-id across flush boundaries replaces existing items", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    // First batch: add pending tool call
+    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
+      id: "tool-cross",
+      type: "tool_call",
+      toolName: "Read",
+      toolStatus: "pending",
+    }));
+    flushDisplayItems();
+    expect(useAgentStore.getState().runs["agent-1"].displayItems).toHaveLength(1);
+
+    // Second batch: update to ok
+    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
+      id: "tool-cross",
+      type: "tool_call",
+      toolName: "Read",
+      toolStatus: "ok",
+    }));
+    flushDisplayItems();
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.displayItems).toHaveLength(1);
+    expect(run.displayItems[0].toolStatus).toBe("ok");
   });
 
   it("clearRuns discards all displayItems", () => {
