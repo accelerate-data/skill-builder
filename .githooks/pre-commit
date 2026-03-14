@@ -15,11 +15,12 @@ GH_APP="ghs_"                                    # GitHub app token
 LINEAR_PAT="lin_api_"                            # Linear API key
 SLACK_PAT="xoxb-"                                # Slack bot token
 SLACK_USR="xoxp-"                                # Slack user token
+NOTION_PAT="secret_"                            # Notion integration token
 
 contains_secret() {
   content="$1"
   echo "$content" | grep -qE \
-    "${ANT_PAT}|${OAI_PAT}|${OAI_OLD}|${GH_PAT}|${GH_APP}|${LINEAR_PAT}|${SLACK_PAT}|${SLACK_USR}"
+    "${ANT_PAT}|${OAI_PAT}|${OAI_OLD}|${GH_PAT}|${GH_APP}|${LINEAR_PAT}|${SLACK_PAT}|${SLACK_USR}|${NOTION_PAT}"
 }
 
 # Scan .mcp.json for secret values rather than blocking the whole file.
@@ -41,7 +42,7 @@ fi
 
 if [ -n "$files_to_scan" ]; then
   flagged="$(echo "$files_to_scan" | xargs grep -lE \
-    "${ANT_PAT}|${OAI_PAT}|${OAI_OLD}|${GH_PAT}|${GH_APP}|${LINEAR_PAT}|${SLACK_PAT}|${SLACK_USR}" \
+    "${ANT_PAT}|${OAI_PAT}|${OAI_OLD}|${GH_PAT}|${GH_APP}|${LINEAR_PAT}|${SLACK_PAT}|${SLACK_USR}|${NOTION_PAT}" \
     2>/dev/null || true)"
   if [ -n "$flagged" ]; then
     echo "ERROR: API key detected in staged files — remove the key before committing." >&2
