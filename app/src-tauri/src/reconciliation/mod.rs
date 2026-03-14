@@ -106,6 +106,20 @@ pub fn reconcile_on_startup(
 
             if !skill_md.exists() {
                 // Scenario 9a: folder with no SKILL.md -> auto-delete, notify
+                // Guard against symlinks that resolve outside skills_path
+                let safe_to_delete = std::fs::canonicalize(skills_dir)
+                    .and_then(|canon_base| {
+                        std::fs::canonicalize(&path)
+                            .map(|canon_path| canon_path.starts_with(canon_base))
+                    })
+                    .unwrap_or(false);
+                if !safe_to_delete {
+                    log::warn!(
+                        "[reconcile] '{}': skipping delete — path escapes skills_path",
+                        name
+                    );
+                    continue;
+                }
                 log::info!("[reconcile] '{}': removing — no SKILL.md found", name);
                 if let Err(e) = std::fs::remove_dir_all(&path) {
                     log::error!("[reconcile] '{}': failed to remove: {}", name, e);
@@ -459,12 +473,25 @@ pub fn resolve_orphan(
     );
     match action {
         "delete" => {
+            // Reject names that could escape skills_path via path traversal
+            crate::commands::imported_skills::validate_skill_name(skill_name)?;
+
             // Delete DB record (handles missing records gracefully)
             crate::db::delete_workflow_run(conn, skill_name)?;
 
             // Delete skill output directory on disk if it exists
             let output_dir = Path::new(skills_path).join(skill_name);
             if output_dir.exists() {
+                let canonical_base = std::fs::canonicalize(skills_path)
+                    .map_err(|e| format!("Failed to canonicalize skills_path: {}", e))?;
+                let canonical_target = std::fs::canonicalize(&output_dir)
+                    .map_err(|e| format!("Failed to canonicalize output_dir: {}", e))?;
+                if !canonical_target.starts_with(&canonical_base) {
+                    return Err(format!(
+                        "Path traversal attempt for skill '{}'",
+                        skill_name
+                    ));
+                }
                 std::fs::remove_dir_all(&output_dir).map_err(|e| {
                     format!("Failed to delete skill output for '{}': {}", skill_name, e)
                 })?;

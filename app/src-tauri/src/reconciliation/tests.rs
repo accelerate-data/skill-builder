@@ -1685,3 +1685,54 @@ fn test_pass3_skips_dotfiles_and_trash() {
         ".trash should not be touched"
     );
 }
+
+// --- Path traversal guard tests ---
+
+#[test]
+fn test_resolve_orphan_delete_rejects_traversal_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_path = tmp.path().to_str().unwrap();
+    let conn = create_test_db();
+    crate::db::save_workflow_run(&conn, "some-skill", 1, "pending", "domain").unwrap();
+
+    // skill_name contains path traversal sequences — must be rejected before any FS op
+    let result = resolve_orphan(&conn, "../escape", "delete", skills_path);
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("Invalid skill name") || err.contains("traversal"),
+        "unexpected error: {}",
+        err
+    );
+    // DB row must NOT have been deleted (error before db write)
+    assert!(
+        crate::db::get_workflow_run(&conn, "some-skill")
+            .unwrap()
+            .is_some(),
+        "unrelated skill should be untouched"
+    );
+}
+
+#[test]
+fn test_resolve_orphan_delete_rejects_slash_in_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_path = tmp.path().to_str().unwrap();
+    let conn = create_test_db();
+
+    let result = resolve_orphan(&conn, "foo/bar", "delete", skills_path);
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().contains("Invalid skill name"),
+        "slash in skill_name must be rejected"
+    );
+}
+
+#[test]
+fn test_resolve_orphan_delete_rejects_empty_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_path = tmp.path().to_str().unwrap();
+    let conn = create_test_db();
+
+    let result = resolve_orphan(&conn, "", "delete", skills_path);
+    assert!(result.is_err());
+}
