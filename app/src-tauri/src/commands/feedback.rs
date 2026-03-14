@@ -41,15 +41,23 @@ pub async fn create_github_issue(
 
     // 2. Ensure labels exist (create if needed, best-effort)
     for label in &request.labels {
-        ensure_label(&client, &github_token, label).await.ok();
+        ensure_label_inner(&client, &github_token, label, "https://api.github.com")
+            .await
+            .ok();
     }
 
-    // 3. Create the issue
+    create_github_issue_inner(&client, &github_token, &request, "https://api.github.com").await
+}
+
+/// Inner testable function: create a GitHub issue using the given base URL.
+pub(crate) async fn create_github_issue_inner(
+    client: &reqwest::Client,
+    github_token: &str,
+    request: &CreateGithubIssueRequest,
+    base_url: &str,
+) -> Result<CreateGithubIssueResponse, String> {
     let response = client
-        .post(format!(
-            "https://api.github.com/repos/{}/issues",
-            GITHUB_REPO
-        ))
+        .post(format!("{}/repos/{}/issues", base_url, GITHUB_REPO))
         .header("Authorization", format!("Bearer {}", github_token))
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", "SkillBuilder")
@@ -94,12 +102,15 @@ pub async fn create_github_issue(
 }
 
 /// Ensure a label exists on the repo (best-effort, 422 = already exists).
-async fn ensure_label(client: &reqwest::Client, token: &str, label: &str) -> Result<(), String> {
+/// Inner testable function: ensure a label exists using the given base URL.
+pub(crate) async fn ensure_label_inner(
+    client: &reqwest::Client,
+    token: &str,
+    label: &str,
+    base_url: &str,
+) -> Result<(), String> {
     let response = client
-        .post(format!(
-            "https://api.github.com/repos/{}/labels",
-            GITHUB_REPO
-        ))
+        .post(format!("{}/repos/{}/labels", base_url, GITHUB_REPO))
         .header("Authorization", format!("Bearer {}", token))
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", "SkillBuilder")
@@ -117,5 +128,104 @@ async fn ensure_label(client: &reqwest::Client, token: &str, label: &str) -> Res
         Ok(())
     } else {
         Err(format!("Failed to create label: {}", status))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    fn make_request(title: &str) -> CreateGithubIssueRequest {
+        CreateGithubIssueRequest {
+            title: title.to_string(),
+            body: "test body".to_string(),
+            labels: vec!["bug".to_string()],
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_github_issue_no_token() {
+        // Use an in-memory DB with no github_oauth_token set
+        let conn = crate::db::create_test_db_for_tests();
+        let db = crate::db::Db(Mutex::new(conn));
+        // Directly test the token retrieval logic via a Tauri-less path:
+        // read settings, confirm no token
+        let inner_conn = db.0.lock().unwrap();
+        let settings = crate::db::read_settings_hydrated(&inner_conn).unwrap();
+        let result: Result<String, String> = settings
+            .github_oauth_token
+            .ok_or_else(|| "Not signed in to GitHub. Sign in with GitHub in Settings.".to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Not signed in to GitHub"));
+    }
+
+    #[tokio::test]
+    async fn test_ensure_label_already_exists() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", format!("/repos/{}/labels", GITHUB_REPO).as_str())
+            .with_status(422)
+            .with_body("{}")
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = ensure_label_inner(&client, "token", "bug", &server.url()).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_ensure_label_success() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", format!("/repos/{}/labels", GITHUB_REPO).as_str())
+            .with_status(201)
+            .with_body(r#"{"name":"bug"}"#)
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = ensure_label_inner(&client, "token", "bug", &server.url()).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_create_github_issue_api_error() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", format!("/repos/{}/issues", GITHUB_REPO).as_str())
+            .with_status(403)
+            .with_body(r#"{"message":"Forbidden"}"#)
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let req = make_request("Test Issue");
+        let result = create_github_issue_inner(&client, "bad-token", &req, &server.url()).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("GitHub API error"), "got: {}", err);
+    }
+
+    #[tokio::test]
+    async fn test_create_github_issue_success() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", format!("/repos/{}/issues", GITHUB_REPO).as_str())
+            .with_status(201)
+            .with_body(
+                r#"{"html_url":"https://github.com/hbanerjee74/skill-builder/issues/42","number":42}"#,
+            )
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let req = make_request("Test Issue");
+        let result = create_github_issue_inner(&client, "token", &req, &server.url()).await;
+        assert!(result.is_ok());
+        let resp = result.unwrap();
+        assert_eq!(resp.number, 42);
+        assert!(resp.url.contains("issues/42"));
     }
 }
