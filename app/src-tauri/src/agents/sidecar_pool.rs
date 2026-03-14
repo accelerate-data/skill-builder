@@ -13,7 +13,15 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use super::events;
+use super::node_resolver::{self, NodeBinaryError};
 use super::sidecar::SidecarConfig;
+use super::sidecar_path;
+
+// Re-export public items so existing `use crate::agents::sidecar_pool::*` paths keep working.
+pub use super::node_resolver::resolve_node_binary;
+pub use super::sidecar_path::resolve_sidecar_path_public;
+#[cfg(target_os = "windows")]
+pub use super::node_resolver::find_git_bash;
 
 /// The three possible terminal outcomes for a sidecar request.
 #[derive(Debug, PartialEq)]
@@ -135,30 +143,6 @@ impl SidecarStartupError {
 impl fmt::Display for SidecarStartupError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {}", self.message(), self.fix_hint())
-    }
-}
-
-/// Structured error from `resolve_node_binary_for_preflight()` so callers can
-/// pattern-match instead of parsing error strings.
-#[derive(Debug)]
-enum NodeBinaryError {
-    NotFound,
-    Incompatible { version: String },
-}
-
-impl fmt::Display for NodeBinaryError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NotFound => write!(
-                f,
-                "Node.js not found. Please install Node.js 18+ from https://nodejs.org"
-            ),
-            Self::Incompatible { version } => write!(
-                f,
-                "Node.js {} is not compatible. This app requires Node.js 18+.",
-                version
-            ),
-        }
     }
 }
 
@@ -598,11 +582,11 @@ impl SidecarPool {
         app_handle: &tauri::AppHandle,
     ) -> Result<(String, String), SidecarStartupError> {
         // 1. Check sidecar bundle exists
-        let sidecar_path =
-            resolve_sidecar_path(app_handle).map_err(|_| SidecarStartupError::SidecarMissing)?;
+        let sidecar_path = sidecar_path::resolve_sidecar_path(app_handle)
+            .map_err(|_| SidecarStartupError::SidecarMissing)?;
 
         // 2. Check Node.js is available (system Node.js, 18+ required)
-        let node_bin = resolve_node_binary_for_preflight(app_handle)
+        let node_bin = node_resolver::resolve_node_binary_for_preflight(app_handle)
             .await
             .map_err(|e| match e {
                 NodeBinaryError::NotFound => SidecarStartupError::NodeMissing,
@@ -650,7 +634,7 @@ impl SidecarPool {
         // so the user doesn't have to configure CLAUDE_CODE_GIT_BASH_PATH.
         #[cfg(target_os = "windows")]
         if std::env::var("CLAUDE_CODE_GIT_BASH_PATH").is_err() {
-            if let Some(bash_path) = find_git_bash() {
+            if let Some(bash_path) = node_resolver::find_git_bash() {
                 log::info!("Auto-detected git-bash at {}", bash_path);
                 cmd.env("CLAUDE_CODE_GIT_BASH_PATH", &bash_path);
             }
@@ -1911,209 +1895,6 @@ fn extract_step_label<'a>(agent_id: &'a str, skill_name: &str) -> &'a str {
     without_prefix
 }
 
-// Re-use the sidecar path resolution logic from sidecar.rs.
-// These are kept as separate functions here to avoid making the private functions
-// in sidecar.rs public (which would change the existing module's API surface).
-
-/// Public accessor for startup dependency checks.
-pub fn resolve_sidecar_path_public(app_handle: &tauri::AppHandle) -> Result<String, String> {
-    resolve_sidecar_path(app_handle)
-}
-
-fn resolve_sidecar_path(app_handle: &tauri::AppHandle) -> Result<String, String> {
-    use tauri::Manager;
-
-    // Prefer bootstrap.js (catches module-load errors) with agent-runner.js as fallback.
-    let entry_files = ["bootstrap.js", "agent-runner.js"];
-
-    if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        for entry in &entry_files {
-            let sidecar = resource_dir.join("sidecar").join("dist").join(entry);
-            if sidecar.exists() {
-                return sidecar
-                    .to_str()
-                    .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
-                    .ok_or_else(|| "Invalid sidecar path".to_string());
-            }
-        }
-    }
-
-    if let Ok(exe_dir) = std::env::current_exe() {
-        if let Some(dir) = exe_dir.parent() {
-            for entry in &entry_files {
-                let sidecar = dir.join("sidecar").join("dist").join(entry);
-                if sidecar.exists() {
-                    return sidecar
-                        .to_str()
-                        .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
-                        .ok_or_else(|| "Invalid sidecar path".to_string());
-                }
-            }
-        }
-    }
-
-    let dev_base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .map(|p| p.join("sidecar").join("dist"));
-    if let Some(base) = dev_base {
-        for entry in &entry_files {
-            let path = base.join(entry);
-            if path.exists() {
-                return path
-                    .to_str()
-                    .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
-                    .ok_or_else(|| "Invalid sidecar path".to_string());
-            }
-        }
-    }
-
-    Err("Could not find bootstrap.js or agent-runner.js -- run 'npm run build' in app/sidecar/ first".to_string())
-}
-
-/// Result of Node.js binary resolution: the path and where it was found.
-pub struct NodeResolution {
-    pub path: String,
-    pub source: String,
-    pub version: Option<String>,
-    pub meets_minimum: bool,
-}
-
-/// Resolve the system Node.js binary (18+ required).
-///
-/// Returns `NodeResolution` with full metadata (path, source, version, meets_minimum).
-/// Used by `check_node` and `check_startup_deps` commands that need rich status info.
-pub async fn resolve_node_binary(
-    _app_handle: &tauri::AppHandle,
-) -> Result<NodeResolution, String> {
-    resolve_system_node().await
-}
-
-/// Internal: resolve Node.js binary path for `preflight_check()`.
-///
-/// Returns `Ok(path)` if a compatible Node.js (18+) is found.
-/// Returns `NodeBinaryError::Incompatible` if Node is found but below v18.
-/// Returns `NodeBinaryError::NotFound` if Node is not found at all.
-async fn resolve_node_binary_for_preflight(
-    app_handle: &tauri::AppHandle,
-) -> Result<String, NodeBinaryError> {
-    match resolve_node_binary(app_handle).await {
-        Ok(resolution) if resolution.meets_minimum => Ok(resolution.path),
-        Ok(resolution) => Err(NodeBinaryError::Incompatible {
-            version: resolution.version.unwrap_or_else(|| "unknown".to_string()),
-        }),
-        Err(_) => Err(NodeBinaryError::NotFound),
-    }
-}
-
-/// System Node.js discovery: searches PATH and well-known locations, validates version 18+.
-async fn resolve_system_node() -> Result<NodeResolution, String> {
-    let candidates: Vec<std::path::PathBuf> = {
-        let mut v = vec![std::path::PathBuf::from("node")];
-        for p in &[
-            "/usr/local/bin/node",
-            "/opt/homebrew/bin/node",
-            "/usr/bin/node",
-        ] {
-            v.push(std::path::PathBuf::from(p));
-        }
-        v
-    };
-
-    let mut first_available: Option<(String, String)> = None; // (path, version)
-
-    for candidate in &candidates {
-        let mut cmd = Command::new(candidate);
-        cmd.arg("--version");
-
-        #[cfg(target_os = "windows")]
-        {
-            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-        }
-
-        let output = cmd.output().await;
-
-        if let Ok(out) = output {
-            if out.status.success() {
-                let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                let path_str = candidate.to_string_lossy().to_string();
-
-                if first_available.is_none() {
-                    first_available = Some((path_str.clone(), version.clone()));
-                }
-
-                if is_node_compatible(&version) {
-                    log::info!("Using system Node.js {} at {}", version, path_str);
-                    return Ok(NodeResolution {
-                        path: path_str,
-                        source: "system".to_string(),
-                        version: Some(version),
-                        meets_minimum: true,
-                    });
-                }
-            }
-        }
-    }
-
-    // Found a Node but it doesn't meet version requirements -- still return it
-    // (check_node and check_startup_deps callers want a best-effort path to report the mismatch)
-    if let Some((path, version)) = first_available {
-        return Ok(NodeResolution {
-            path,
-            source: "system".to_string(),
-            version: Some(version),
-            meets_minimum: false,
-        });
-    }
-
-    Err("Node.js not found. Install Node.js 18+ from https://nodejs.org".to_string())
-}
-
-fn is_node_compatible(version: &str) -> bool {
-    let trimmed = version.strip_prefix('v').unwrap_or(version);
-    if let Some(major_str) = trimmed.split('.').next() {
-        if let Ok(major) = major_str.parse::<u32>() {
-            return major >= 18;
-        }
-    }
-    false
-}
-
-/// Auto-detect git-bash on Windows.
-/// Checks PATH then standard install locations.
-/// Public so `check_startup_deps` can call it for preflight validation.
-#[cfg(target_os = "windows")]
-pub fn find_git_bash() -> Option<String> {
-    use std::path::PathBuf;
-
-    // 1. Check if bash.exe is already in PATH
-    if let Ok(output) = std::process::Command::new("where").arg("bash.exe").output() {
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            // `where` can return multiple lines — pick the first Git one
-            for line in stdout.lines() {
-                let trimmed = line.trim();
-                if trimmed.contains("Git") && PathBuf::from(trimmed).exists() {
-                    return Some(trimmed.to_string());
-                }
-            }
-        }
-    }
-
-    // 2. Check standard install locations
-    let candidates = [
-        r"C:\Program Files\Git\bin\bash.exe",
-        r"C:\Program Files (x86)\Git\bin\bash.exe",
-    ];
-
-    for path in &candidates {
-        if PathBuf::from(path).exists() {
-            return Some(path.to_string());
-        }
-    }
-
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2139,16 +1920,6 @@ mod tests {
     // were removed because shutdown_skill/shutdown_all now require a real
     // tauri::AppHandle to emit agent-shutdown events. The no-op behavior
     // (empty pool) is trivially correct and covered by the type system.
-
-    #[test]
-    fn test_is_node_compatible_pool() {
-        assert!(is_node_compatible("v18.0.0"));
-        assert!(is_node_compatible("v22.0.0"));
-        assert!(is_node_compatible("v24.13.0"));
-        assert!(is_node_compatible("v25.0.0"));
-        assert!(!is_node_compatible("v16.0.0"));
-        assert!(!is_node_compatible("v17.9.9"));
-    }
 
     #[tokio::test]
     async fn test_pending_requests_empty_after_init() {
