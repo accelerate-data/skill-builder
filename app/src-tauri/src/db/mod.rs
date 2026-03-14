@@ -38,6 +38,7 @@ pub(crate) fn create_test_db_for_tests() -> Connection {
     }
     repair_skills_table_schema(&conn).unwrap();
     run_marketplace_source_url_migration(&conn).unwrap();
+    conn.pragma_update(None, "foreign_keys", true).unwrap();
     conn
 }
 
@@ -85,6 +86,11 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
     // Startup repair: ensure marketplace_source_url columns exist regardless of migration state.
     // Guards against dev builds that recorded migration 29 before the ALTER TABLE statements ran.
     run_marketplace_source_url_migration(&conn)
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
+    // Re-enable FK enforcement now that all migrations are complete.
+    // This ensures ON DELETE CASCADE and other FK constraints are active for all app writes.
+    conn.pragma_update(None, "foreign_keys", true)
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     Ok(Db(Mutex::new(conn)))
@@ -3495,6 +3501,15 @@ mod tests {
             still_shutdown, "shutdown",
             "Re-running migration must be idempotent"
         );
+    }
+
+    #[test]
+    fn test_foreign_keys_enabled_after_init() {
+        let conn = create_test_db();
+        let fk_enabled: bool = conn
+            .pragma_query_value(None, "foreign_keys", |row| row.get(0))
+            .unwrap();
+        assert!(fk_enabled, "PRAGMA foreign_keys must be ON after init_db / create_test_db_for_tests");
     }
 }
 
