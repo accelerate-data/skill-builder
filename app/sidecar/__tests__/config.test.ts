@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSidecarConfig } from "../config.js";
+import { parseSidecarConfig, redactConfig } from "../config.js";
 
 describe("parseSidecarConfig", () => {
   it("throws on null", () => {
@@ -186,5 +186,17 @@ describe("parseSidecarConfig", () => {
     });
     expect(result.model).toBe("claude-sonnet-4-6");
     expect(result.maxTurns).toBe(50);
+  });
+});
+
+// --- redactConfig ---
+
+describe("redactConfig", () => {
+  it("redacts apiKey", () => {
+    const config = parseSidecarConfig({ prompt: "hello", apiKey: "sk-secret-key", cwd: "/tmp" });
+    const redacted = redactConfig(config);
+    expect(redacted.apiKey).toBe("[REDACTED]");
+    expect(redacted.prompt).toBe("hello");
+    expect(redacted.cwd).toBe("/tmp");
   });
 });
