@@ -4,12 +4,6 @@
 # Dependencies
 node_modules/
 
-# Skill build artifacts
-*.skill
-
-# Skill working directories (user-generated output)
-.vibedata/
-
 # Allow mock-template context/ dirs (bundled test fixtures, not user output)
 !app/sidecar/mock-templates/**/context/
 
@@ -18,9 +12,6 @@ app/test-results/
 app/src-tauri/test-results/
 app/playwright-report/
 app/playwright-artifacts/
-
-# Research design working documents (kept locally, not committed)
-docs/design/research-design/
 
 # VitePress build output
 docs/.vitepress/dist/
@@ -37,12 +28,6 @@ app/src-tauri/resources/node/*
 
 # Local screenshots (not committed)
 screenshots-gitignore/
-
-# One-pagers and design drafts (local working documents, not committed)
-ONE-PAGERS/
-
-# Implementation plans (local development working documents, not committed)
-docs/plans/
 
 # Vibedata agent artifacts 
 vd-memory/*
