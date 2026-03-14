@@ -256,15 +256,14 @@
   },
   "notes_for_agents": {
     "startup": "Read this file before exploring code. It is the primary startup context for structure, entrypoints, modules, and commands. Skip repo-wide rediscovery if it covers your task.",
-    "sidecar_hot_reload": "Sidecar has NO hot-reload. Restart `npm run dev` after editing app/sidecar/ files.",
-    "sdk_limitations": "@anthropic-ai/claude-agent-sdk does NOT support TeamCreate, TaskCreate, SendMessage. Use the Task tool for sub-agents. Multiple Task calls in the same turn run in parallel.",
     "test_autonomy": "Only `test:agents:structural` may be run autonomously — no API calls. Never run `test:agents:smoke` autonomously.",
     "db_location": "Database is at Tauri app_data_dir()/skill-builder.db. macOS: ~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db",
     "migrations": "DB migrations are code-only in db/migrations.rs NUMBERED_MIGRATIONS constant — no separate migration files directory.",
     "workspace_path": "Workspace: <app_local_data_dir>/workspace (not user-configurable). Resolved from Tauri app_local_data_dir() by resolve_workspace_path() in commands/workspace.rs. Legacy ~/.vibedata/ path is cleaned up automatically on startup.",
     "mock_mode": "MOCK_AGENTS=true replays bundled templates in app/sidecar/mock-templates/ with no API calls.",
     "agent_tests_changed": "When agents/*.md or agent-sources/workspace/** changes, run `cd app && npm run test:agents:structural` before reporting completion.",
-    "pre_commit_checks": "Before committing: `markdownlint <file>` for .md files · `cd app && npx tsc --noEmit` · `cargo check --manifest-path app/src-tauri/Cargo.toml` · `bash app/scripts/lint-agent-docs.sh` when editing AGENTS.md, CLAUDE.md, .claude/rules/, or .claude/skills/.",
+    "sdk_limitations": "See AGENTS.md Gotchas — SDK has no team tools (no TeamCreate/TaskCreate/SendMessage). Use the Task tool for sub-agents; multiple Task calls in the same turn run in parallel.",
+    "pre_commit_checks": "See AGENTS.md Issue Management for the full pre-commit checklist (markdownlint, tsc, cargo check, lint-agent-docs).",
     "test_selection": "For Rust or cross-layer changes, read TEST_MANIFEST.md to find the correct cargo filter and E2E tag before running tests. Frontend test selection is handled automatically by `vitest --changed`.",
     "path_safety": "All filesystem operations on user-supplied skill names must call validate_skill_name() and use fs::canonicalize + starts_with before any remove_dir_all or rename. See commands/skill/crud.rs delete_skill_inner for the canonical pattern.",
     "update_repo_map": "Refresh this file whenever you change architecture, entrypoints, commands, modules, or package structure."
