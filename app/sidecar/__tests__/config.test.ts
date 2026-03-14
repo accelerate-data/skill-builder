@@ -76,4 +76,115 @@ describe("parseSidecarConfig", () => {
     });
     expect((result as Record<string, unknown>).extraField).toBe("should survive");
   });
+
+  // --- Optional field validation (VU-583) ---
+
+  it("throws when model is not a string", () => {
+    expect(() =>
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", model: 123 })
+    ).toThrow("model must be a string");
+  });
+
+  it("throws when maxTurns is not a positive integer", () => {
+    expect(() =>
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", maxTurns: "fifty" })
+    ).toThrow("maxTurns must be a positive integer");
+  });
+
+  it("throws when maxTurns is zero", () => {
+    expect(() =>
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", maxTurns: 0 })
+    ).toThrow("maxTurns must be a positive integer");
+  });
+
+  it("throws when maxTurns is negative", () => {
+    expect(() =>
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", maxTurns: -5 })
+    ).toThrow("maxTurns must be a positive integer");
+  });
+
+  it("throws when permissionMode is invalid", () => {
+    expect(() =>
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", permissionMode: "yolo" })
+    ).toThrow("permissionMode must be one of");
+  });
+
+  it("throws when effort is invalid", () => {
+    expect(() =>
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", effort: "extreme" })
+    ).toThrow("effort must be one of");
+  });
+
+  it("throws when runSource is invalid", () => {
+    expect(() =>
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", runSource: "deploy" })
+    ).toThrow("runSource must be one of");
+  });
+
+  it("throws when stepId is not a number", () => {
+    expect(() =>
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", stepId: "two" })
+    ).toThrow("stepId must be a number");
+  });
+
+  it("throws when promptSuggestions is not a boolean", () => {
+    expect(() =>
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", promptSuggestions: "yes" })
+    ).toThrow("promptSuggestions must be a boolean");
+  });
+
+  it("throws when allowedTools is not a string array", () => {
+    expect(() =>
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", allowedTools: [1, 2] })
+    ).toThrow("allowedTools must be string[]");
+  });
+
+  it("throws when betas is not a string array", () => {
+    expect(() =>
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", betas: [true] })
+    ).toThrow("betas must be string[]");
+  });
+
+  it("throws when thinking is not an object", () => {
+    expect(() =>
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", thinking: "enabled" })
+    ).toThrow("thinking must be an object");
+  });
+
+  it("throws when thinking.type is invalid", () => {
+    expect(() =>
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", thinking: { type: "turbo" } })
+    ).toThrow("thinking.type must be disabled, adaptive, or enabled");
+  });
+
+  it("throws when thinking.budgetTokens is not a number", () => {
+    expect(() =>
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", thinking: { type: "enabled", budgetTokens: "lots" } })
+    ).toThrow("thinking.budgetTokens must be a number");
+  });
+
+  it("accepts valid config with all optional fields", () => {
+    const result = parseSidecarConfig({
+      prompt: "hello",
+      apiKey: "key",
+      cwd: "/tmp",
+      model: "claude-sonnet-4-6",
+      agentName: "my-agent",
+      maxTurns: 50,
+      permissionMode: "bypassPermissions",
+      effort: "high",
+      runSource: "workflow",
+      stepId: 2,
+      skillName: "test-skill",
+      promptSuggestions: false,
+      allowedTools: ["Read", "Write"],
+      betas: ["beta-1"],
+      thinking: { type: "enabled", budgetTokens: 16000 },
+      fallbackModel: "claude-haiku-4-5",
+      workflowSessionId: "sess-123",
+      usageSessionId: "usage-456",
+    });
+    expect(result.model).toBe("claude-sonnet-4-6");
+    expect(result.maxTurns).toBe(50);
+  });
 });
