@@ -236,10 +236,10 @@ describe("SettingsPage", () => {
     });
 
     expect(screen.getByRole("button", { name: /General/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Skill Building/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Skills$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /GitHub/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Claude SDK/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Import/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Marketplace/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /GitHub/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Advanced/i })).toBeInTheDocument();
   });
 
@@ -251,9 +251,9 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("API Configuration")).toBeInTheDocument();
-    expect(screen.getByText("Appearance")).toBeInTheDocument();
     expect(screen.getByText("User Profile")).toBeInTheDocument();
+    expect(screen.getByText("Appearance")).toBeInTheDocument();
+    expect(screen.getByText("About")).toBeInTheDocument();
   });
 
   it("initializes settings from store snapshot", () => {
@@ -278,6 +278,8 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
+
+    await switchToSection(/Claude SDK/i);
 
     // API key field (password input)
     const apiKeyInput = screen.getByPlaceholderText("sk-ant-...");
@@ -306,6 +308,8 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
+    await switchToSection(/Claude SDK/i);
+
     const testButtons = screen.getAllByRole("button", { name: /Test/i });
     // First "Test" button is the Anthropic API key test button
     await user.click(testButtons[0]);
@@ -326,7 +330,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/Skill Building/i);
+    await switchToSection(/Claude SDK/i);
 
     const thinkingSwitch = screen.getByRole("switch", { name: /Extended thinking/i });
     await user.click(thinkingSwitch);
@@ -348,6 +352,8 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
+
+    await switchToSection(/Claude SDK/i);
 
     const apiKeyInput = screen.getByPlaceholderText("sk-ant-...");
     await user.clear(apiKeyInput);
@@ -372,7 +378,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/Skill Building/i);
+    await switchToSection(/Claude SDK/i);
 
     const thinkingSwitch = screen.getByRole("switch", { name: /Extended thinking/i });
     await user.click(thinkingSwitch);
@@ -398,7 +404,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/Skill Building/i);
+    await switchToSection(/Claude SDK/i);
 
     const thinkingSwitch = screen.getByRole("switch", { name: /Extended thinking/i });
     await user.click(thinkingSwitch);
@@ -533,6 +539,31 @@ describe("SettingsPage", () => {
     // After normalization, the path should have the duplicate stripped
     await waitFor(() => {
       expect(screen.getByText("/Users/me/Skills")).toBeInTheDocument();
+    });
+  });
+
+  it("normalizes duplicated Windows browse dialog paths with spaces", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks(populatedSettings);
+    vi.mocked(mockOpen).mockResolvedValueOnce("C:\\Users\\me\\Skill Builder\\Skill Builder\\");
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    await switchToSection(/Advanced/i);
+
+    const browseButton = screen.getByRole("button", { name: /Browse/i });
+    await user.click(browseButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("C:\\Users\\me\\Skill Builder")).toBeInTheDocument();
+      expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
+        settings: expect.objectContaining({
+          skills_path: "C:\\Users\\me\\Skill Builder",
+        }),
+      });
     });
   });
 

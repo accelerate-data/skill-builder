@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useSettingsStore } from "@/stores/settings-store"
 import { getSettings, saveSettings, testApiKey, getDefaultSkillsPath } from "@/lib/tauri"
+import { normalizeDirectoryPickerPath } from "@/lib/utils"
 
 interface SetupScreenProps {
   /** @deprecated No longer needed -- the parent reads isConfigured from the store. */
@@ -55,12 +56,7 @@ export function SetupScreen({ onComplete }: SetupScreenProps = {}) {
   const handleBrowseSkillsPath = async () => {
     const folder = await open({ directory: true, title: "Select Skills Folder" })
     if (folder) {
-      let normalized = folder.replace(/[/\\]+$/, "")
-      const parts = normalized.split(/[/\\]/)
-      if (parts.length >= 2 && parts[parts.length - 1] === parts[parts.length - 2]) {
-        normalized = parts.slice(0, -1).join("/")
-      }
-      setSkillsPath(normalized)
+      setSkillsPath(normalizeDirectoryPickerPath(folder))
     }
   }
 
