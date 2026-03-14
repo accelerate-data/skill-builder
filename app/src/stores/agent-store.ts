@@ -634,7 +634,19 @@ export const useAgentStore = create<AgentState>((set) => ({
 
     set((state) => {
       const run = state.runs[agentId];
-      if (!run || run.status !== "running") return state;
+      if (!run) return state;
+      // If the run is already in a terminal state (e.g. set by a display-item
+      // flush racing ahead of startRun), only stamp endTime if it is missing —
+      // do not overwrite an existing terminal status or endTime.
+      if (run.status !== "running") {
+        if (run.endTime !== undefined) return state;
+        return {
+          runs: {
+            ...state.runs,
+            [agentId]: { ...run, endTime: Date.now() },
+          },
+        };
+      }
       return {
         runs: {
           ...state.runs,
