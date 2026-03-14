@@ -22,6 +22,7 @@ import {
   endWorkflowSession,
 } from "@/lib/tauri";
 import { resolveModelId } from "@/lib/models";
+import { joinPath } from "@/lib/path-utils";
 import { parseClarifications } from "@/lib/clarifications-types";
 import { type StepConfig } from "@/lib/workflow-step-configs";
 import { toast } from "@/lib/toast";
@@ -437,7 +438,7 @@ export function useWorkflowStateMachine({
         await materializeAnswerEvaluationOutput(skillName, workspacePath, structuredOutput);
       }
 
-      const evalPath = `${workspacePath}/${skillName}/answer-evaluation.json`;
+      const evalPath = joinPath(workspacePath, skillName, "answer-evaluation.json");
       const raw = await readFile(evalPath);
       const evaluation: AnswerEvaluation = JSON.parse(raw);
 
@@ -467,7 +468,7 @@ export function useWorkflowStateMachine({
 
       if (workspacePath) {
         const gateLog = JSON.stringify({ ...evaluation, action: "show_dialog", timestamp: new Date().toISOString() });
-        writeFile(`${workspacePath}/${skillName}/gate-result.json`, gateLog).catch((e) => console.warn("[use-workflow-state-machine] non-fatal: op=writeFile err=%s", e));
+        writeFile(joinPath(workspacePath, skillName, "gate-result.json"), gateLog).catch((e) => console.warn("[use-workflow-state-machine] non-fatal: op=writeFile err=%s", e));
       }
 
       setGateLoading(false);
@@ -558,7 +559,7 @@ export function useWorkflowStateMachine({
   const logGateAction = (decision: string) => {
     if (!workspacePath) return;
     const entry = JSON.stringify({ decision, verdict: gateVerdict, timestamp: new Date().toISOString() });
-    writeFile(`${workspacePath}/${skillName}/gate-result.json`, entry).catch((e) => console.warn("[use-workflow-state-machine] non-fatal: op=writeFile err=%s", e));
+    writeFile(joinPath(workspacePath, skillName, "gate-result.json"), entry).catch((e) => console.warn("[use-workflow-state-machine] non-fatal: op=writeFile err=%s", e));
     logGateDecision(skillName, gateVerdict ?? "unknown", decision).catch((e) => console.warn("[use-workflow-state-machine] non-fatal: op=logGateDecision err=%s", e));
   };
 

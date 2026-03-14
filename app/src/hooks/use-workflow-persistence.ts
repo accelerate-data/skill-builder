@@ -8,6 +8,7 @@ import {
   readFile,
   getContextFileContent,
 } from "@/lib/tauri";
+import { joinPath } from "@/lib/path-utils";
 
 interface UseWorkflowPersistenceOptions {
   /** Skill name from route params */
@@ -133,7 +134,7 @@ export function useWorkflowPersistence({
           const skillsRelative = firstOutput.startsWith("skill/")
             ? firstOutput.slice("skill/".length)
             : firstOutput;
-          readFile(`${skillsPath}/${skillName}/${skillsRelative}`)
+          readFile(joinPath(skillsPath, skillName, skillsRelative))
             .then((content) => setErrorHasArtifacts(!!content))
             .catch(() => setErrorHasArtifacts(false));
         } else {

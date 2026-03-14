@@ -71,10 +71,10 @@ function parseResearchPlan(markdown: string): ResearchPlanData {
   };
 
   // Parse YAML frontmatter
-  const fmMatch = markdown.match(/^---\n([\s\S]*?)\n---/);
+  const fmMatch = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (fmMatch) {
     const fm = fmMatch[1];
-    for (const line of fm.split("\n")) {
+    for (const line of fm.split(/\r?\n/)) {
       const [key, ...rest] = line.split(":");
       const value = rest.join(":").trim();
       switch (key.trim()) {
@@ -89,7 +89,7 @@ function parseResearchPlan(markdown: string): ResearchPlanData {
   // Parse Dimension Scores table
   const scoreTableMatch = markdown.match(/## Dimension Scores\s*\n\|[^\n]+\n\|[-|\s]+\n([\s\S]*?)(?=\n##|\n---|\Z)/);
   if (scoreTableMatch) {
-    for (const row of scoreTableMatch[1].trim().split("\n")) {
+    for (const row of scoreTableMatch[1].trim().split(/\r?\n/)) {
       const cells = row.split("|").map((c) => c.trim()).filter(Boolean);
       if (cells.length >= 3) {
         result.dimensions.push({
@@ -104,7 +104,7 @@ function parseResearchPlan(markdown: string): ResearchPlanData {
   // Parse Selected Dimensions table
   const selectedMatch = markdown.match(/## Selected Dimensions\s*\n\|[^\n]+\n\|[-|\s]+\n([\s\S]*?)(?=\n##|\n---|\Z)/);
   if (selectedMatch) {
-    for (const row of selectedMatch[1].trim().split("\n")) {
+    for (const row of selectedMatch[1].trim().split(/\r?\n/)) {
       const cells = row.split("|").map((c) => c.trim()).filter(Boolean);
       if (cells.length >= 1) {
         result.selectedDimensions.push(cells[0]);
@@ -117,7 +117,7 @@ function parseResearchPlan(markdown: string): ResearchPlanData {
   // without frontmatter or a dedicated "Selected Dimensions" section.
   if (result.dimensions.length === 0) {
     const tableRows = markdown
-      .split("\n")
+      .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => line.startsWith("|") && line.endsWith("|"));
 

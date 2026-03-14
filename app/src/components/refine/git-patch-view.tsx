@@ -30,7 +30,7 @@ interface GitPatchViewProps {
 }
 
 export function GitPatchView({ patch }: GitPatchViewProps) {
-  const lines = patch.split("\n");
+  const lines = patch.split(/\r?\n/);
 
   return (
     <ScrollArea className="h-full">
