@@ -216,9 +216,9 @@ describe("SkillCard — marketplace skill", () => {
     expect(screen.queryByRole("button", { name: /Edit workflow/i })).not.toBeInTheDocument();
   });
 
-  it("shows Refine button", () => {
+  it("hides Refine button (marketplace skills are not refinable)", () => {
     renderCard(marketplaceSkill);
-    expect(screen.getByRole("button", { name: /Refine skill/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Refine skill/i })).not.toBeInTheDocument();
   });
 
   it("shows Download button", () => {
@@ -236,10 +236,10 @@ describe("SkillCard — marketplace skill", () => {
     expect(screen.getByText("100%")).toBeInTheDocument();
   });
 
-  it("does not show Edit Details on right-click", () => {
+  it("shows Edit Details on right-click (context menu available for all skills)", () => {
     renderCard(marketplaceSkill);
     fireEvent.contextMenu(screen.getByText("my-skill"));
-    expect(screen.queryByText("Edit details")).not.toBeInTheDocument();
+    expect(screen.getByText("Edit details")).toBeInTheDocument();
   });
 
   it("calls onContinue when card is clicked", async () => {
@@ -247,13 +247,6 @@ describe("SkillCard — marketplace skill", () => {
     const { onContinue } = renderCard(marketplaceSkill);
     await user.click(screen.getByText("my-skill"));
     expect(onContinue).toHaveBeenCalledWith(marketplaceSkill);
-  });
-
-  it("calls onRefine when Refine button is clicked", async () => {
-    const user = userEvent.setup();
-    const { onRefine } = renderCard(marketplaceSkill);
-    await user.click(screen.getByRole("button", { name: /Refine skill/i }));
-    expect(onRefine).toHaveBeenCalledWith(marketplaceSkill);
   });
 
   it("calls onDownload when Download button is clicked", async () => {
