@@ -646,7 +646,7 @@ pub fn update_skill_metadata(
         || user_invocable.is_some()
         || disable_model_invocation.is_some()
     {
-        // set_skill_behaviour writes to skills master (canonical) + workflow_runs (dual-write).
+        // set_skill_behaviour writes to skills master only (canonical store for all skill sources).
         // Works for all skill sources — marketplace/imported updates skills master directly.
         crate::db::set_skill_behaviour(
             &conn,

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mockInvoke, mockInvokeCommands, resetTauriMocks } from "@/test/mocks/tauri";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import type { ImportedSkill } from "@/lib/types";
@@ -98,19 +98,17 @@ describe("useImportedSkillsStore", () => {
   });
 
   describe("deleteSkill", () => {
-    it("removes skill from list", async () => {
+    it("invokes delete command and calls refetch", async () => {
       mockInvokeCommands({ delete_imported_skill: undefined });
       useImportedSkillsStore.setState({ skills: sampleSkills });
 
-      await useImportedSkillsStore.getState().deleteSkill("id-1");
+      const refetch = vi.fn().mockResolvedValue(undefined);
+      await useImportedSkillsStore.getState().deleteSkill("id-1", refetch);
 
       expect(mockInvoke).toHaveBeenCalledWith("delete_imported_skill", {
         skillId: "id-1",
       });
-
-      const state = useImportedSkillsStore.getState();
-      expect(state.skills).toHaveLength(1);
-      expect(state.skills[0].skill_name).toBe("hr-metrics");
+      expect(refetch).toHaveBeenCalledOnce();
     });
   });
 });

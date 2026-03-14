@@ -90,7 +90,7 @@ export function ImportedSkillsTab() {
     async (skill: ImportedSkill) => {
       const toastId = toast.loading(`Deleting "${skill.skill_name}"...`)
       try {
-        await deleteSkill(skill.skill_id)
+        await deleteSkill(skill.skill_id, fetchSkills)
         toast.success(`Deleted "${skill.skill_name}"`, { id: toastId })
       } catch (err) {
         console.error("[imported-skills] delete failed:", err)
@@ -102,7 +102,7 @@ export function ImportedSkillsTab() {
         })
       }
     },
-    [deleteSkill]
+    [deleteSkill, fetchSkills]
   )
 
   return (

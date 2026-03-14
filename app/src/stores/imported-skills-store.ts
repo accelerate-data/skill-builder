@@ -7,7 +7,7 @@ interface ImportedSkillsState {
   isLoading: boolean;
   error: string | null;
   fetchSkills: () => Promise<void>;
-  deleteSkill: (skillId: string) => Promise<void>;
+  deleteSkill: (skillId: string, refetch: () => Promise<void>) => Promise<void>;
 }
 
 export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
@@ -28,10 +28,8 @@ export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
     }
   },
 
-  deleteSkill: async (skillId: string) => {
+  deleteSkill: async (skillId: string, refetch: () => Promise<void>) => {
     await invoke<void>("delete_imported_skill", { skillId });
-    set((state) => ({
-      skills: state.skills.filter((s) => s.skill_id !== skillId),
-    }));
+    await refetch();
   },
 }));
