@@ -2552,25 +2552,75 @@ mod tests {
     /// Documents the known limitation: when the DB commit succeeds but the disk rename fails,
     /// the DB is in the post-commit state (new name) while the disk retains the old name.
     ///
-    /// `rename_skill_inner` does DB first, then disk. If `fs::rename` fails (e.g. the target
-    /// path is not writable or crosses filesystem boundaries), the function returns an `Err`,
-    /// but the DB transaction has already been committed and cannot be rolled back. This is a
-    /// documented trade-off: DB is authoritative; a reconciler can fix the disk state later.
+    /// TC-08: `rename_skill_inner` disk failure after DB rename succeeds.
     ///
-    /// Testing this scenario reliably on all platforms without root access is impractical, so
-    /// this test exercises only the happy path and records the limitation as a doc comment.
+    /// When `fs::rename` fails on the skills_path directory (e.g. read-only parent),
+    /// the function returns `Err` with a descriptive message. The workspace directory
+    /// rename is rolled back, but the DB transaction has already committed. This test
+    /// uses a read-only directory to trigger the disk failure.
     #[test]
-    fn test_rename_skill_inner_db_committed_on_disk_failure_is_known_limitation() {
-        // This is a documentation test. The known behavior is:
-        //   1. DB UPDATE committed (new name in skills + workflow_runs etc.)
-        //   2. fs::rename fails → rename_skill_inner returns Err
-        //   3. DB retains the new name; disk retains the old directory.
-        //
-        // Triggering a real fs::rename failure portably without elevated privileges is
-        // unreliable, so we document and verify only the happy path above. The caller
-        // (rename_skill) logs the error but cannot undo the DB commit. A reconciliation
-        // pass can re-align disk to DB.
-        //
-        // No assertions here — this test exists to record the contract in the test suite.
+    fn test_rename_skill_inner_disk_failure_returns_error() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().join("workspace");
+        fs::create_dir_all(&workspace).unwrap();
+        let workspace_str = workspace.to_str().unwrap();
+
+        let skills_dir = dir.path().join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+        let skills_str = skills_dir.to_str().unwrap();
+
+        let mut conn = create_test_db();
+
+        // Create a skill with workspace and skills directories
+        create_skill_inner(
+            workspace_str, "rename-fail", None, None, Some(&conn), Some(skills_str),
+            None, None, None, None, None, None, None, None, None,
+        )
+        .unwrap();
+
+        // Create the skills-path directory (simulating a completed skill)
+        let skill_output = skills_dir.join("rename-fail");
+        fs::create_dir_all(&skill_output).unwrap();
+        fs::write(skill_output.join("SKILL.md"), "# Test").unwrap();
+
+        // Make the skills directory read-only so fs::rename fails
+        let perms = std::fs::Permissions::from_mode(0o555);
+        fs::set_permissions(&skills_dir, perms).unwrap();
+
+        let result = rename_skill_inner(
+            "rename-fail",
+            "rename-success",
+            workspace_str,
+            &mut conn,
+            Some(skills_str),
+        );
+
+        // Restore permissions before assertions (cleanup)
+        let restore_perms = std::fs::Permissions::from_mode(0o755);
+        let _ = fs::set_permissions(&skills_dir, restore_perms);
+
+        // The rename should fail because the skills directory is read-only
+        assert!(result.is_err(), "rename should fail when skills dir is read-only");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Failed to rename skills directory"),
+            "Error should mention skills directory rename failure, got: {}",
+            err
+        );
+
+        // The workspace directory should have been rolled back (old name preserved)
+        // because rename_skill_inner rolls back workspace rename on skills rename failure
+        assert!(
+            workspace.join("rename-fail").exists(),
+            "workspace dir should be rolled back to old name"
+        );
     }
+
+    // TC-09: `graceful_shutdown` non-timeout path cannot be tested directly because
+    // it requires `tauri::State<SidecarPool>`, `tauri::State<Db>`, `tauri::State<InstanceInfo>`,
+    // and a `tauri::AppHandle` — none of which are constructible in unit tests. The timeout
+    // path calls `process::exit` which is also impractical to test. This limitation is documented.
+    // The sidecar shutdown logic is covered by persistent-mode.test.ts integration tests instead.
 }

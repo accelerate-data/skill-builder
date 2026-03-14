@@ -267,6 +267,46 @@ mod tests {
         assert_eq!(effective_status, "completed");
     }
 
+    /// TC-06: Test the full DB path of save_workflow_run + save_workflow_step
+    /// with the all-completed override. This exercises the actual database
+    /// persistence, not just the compute_effective_status helper.
+    #[test]
+    fn test_all_completed_override_full_db_path() {
+        let conn = create_test_db();
+
+        // Create initial workflow run as "in_progress"
+        crate::db::save_workflow_run(&conn, "tc06-skill", 3, "in_progress", "domain").unwrap();
+
+        // Simulate what save_workflow_state does: compute effective status, then persist
+        let step_statuses = vec![
+            StepStatusUpdate { step_id: 0, status: "completed".to_string() },
+            StepStatusUpdate { step_id: 1, status: "completed".to_string() },
+            StepStatusUpdate { step_id: 2, status: "completed".to_string() },
+            StepStatusUpdate { step_id: 3, status: "completed".to_string() },
+        ];
+
+        // Frontend sends "pending" but all steps are completed
+        let effective_status = compute_effective_status("pending", &step_statuses);
+        assert_eq!(effective_status, "completed");
+
+        // Persist the override status and all step statuses to DB
+        crate::db::save_workflow_run(&conn, "tc06-skill", 3, &effective_status, "domain").unwrap();
+        for step in &step_statuses {
+            crate::db::save_workflow_step(&conn, "tc06-skill", step.step_id, &step.status).unwrap();
+        }
+
+        // Verify DB state: run status must be "completed"
+        let run = crate::db::get_workflow_run(&conn, "tc06-skill").unwrap().unwrap();
+        assert_eq!(run.status, "completed");
+
+        // Verify all steps are "completed" in DB
+        let steps = crate::db::get_workflow_steps(&conn, "tc06-skill").unwrap();
+        assert_eq!(steps.len(), 4);
+        for step in &steps {
+            assert_eq!(step.status, "completed", "step {} should be completed", step.step_id);
+        }
+    }
+
     // --- validate_skill_name tests (TC-01 regression coverage) ---
 
     #[test]
