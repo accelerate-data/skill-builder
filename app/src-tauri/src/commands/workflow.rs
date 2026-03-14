@@ -5207,4 +5207,58 @@ mod tests {
         let run = crate::db::get_workflow_run(&conn, "test-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 1);
     }
+
+    // --- extract_customization_section tests ---
+
+    #[test]
+    fn test_extract_customization_no_marker() {
+        let content = "# CLAUDE.md\n\nSome content without customization.";
+        assert_eq!(extract_customization_section(content), "");
+    }
+
+    #[test]
+    fn test_extract_customization_found() {
+        let content = "# CLAUDE.md\n\nBase content.\n## Customization\nsome text";
+        let result = extract_customization_section(content);
+        assert_eq!(result, "## Customization\nsome text");
+    }
+
+    #[test]
+    fn test_extract_customization_marker_at_eof() {
+        let content = "# CLAUDE.md\n\nBase content.\n## Customization\n";
+        let result = extract_customization_section(content);
+        assert_eq!(result, "## Customization\n");
+    }
+
+    #[test]
+    fn test_extract_customization_multiple_headings() {
+        // Note: the function captures everything from "## Customization" to EOF,
+        // including subsequent headings. This is intentional — the caller controls
+        // how the returned section is composed into the final output.
+        let content = "# CLAUDE.md\n\n## Other\nother content\n## Customization\ncustom\n## Another\nmore";
+        let result = extract_customization_section(content);
+        assert_eq!(result, "## Customization\ncustom\n## Another\nmore");
+    }
+
+    #[test]
+    fn test_extract_customization_crlf() {
+        // Windows compatibility: CRLF line endings must not break the marker search.
+        // The marker uses "\n## Customization\n" so CRLF-only content won't match
+        // without prior normalization. This test documents the current contract:
+        // callers must strip \r before calling.
+        let content_lf = "# CLAUDE.md\n\nBase.\n## Customization\ncustom text";
+        assert_eq!(
+            extract_customization_section(content_lf),
+            "## Customization\ncustom text"
+        );
+
+        // CRLF content: the function searches for literal "\n## Customization\n",
+        // which will NOT match "\r\n## Customization\r\n". Document this contract.
+        let content_crlf = "# CLAUDE.md\r\n\r\nBase.\r\n## Customization\r\ncustom text";
+        assert_eq!(
+            extract_customization_section(content_crlf),
+            "",
+            "CRLF content does not match — callers must normalize to LF first"
+        );
+    }
 }
