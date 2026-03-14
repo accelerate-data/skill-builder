@@ -229,7 +229,6 @@ export interface AgentRun {
   status: "running" | "completed" | "error" | "shutdown";
   /** Structured display items from sidecar MessageProcessor. */
   displayItems: DisplayItem[];
-  /** Legacy message buffer — kept for persistence fallback path. May be empty. */
   messages?: AgentMessage[];
   startTime: number;
   endTime?: number;
