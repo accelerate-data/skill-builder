@@ -3,18 +3,52 @@
 
 set -eu
 
-# Block Anthropic API keys in staged files
-ANT_KEY_PAT="sk-ant"
-ANT_KEY_PAT="${ANT_KEY_PAT}-"
 staged_files="$(git diff --cached --name-only)"
 
-if [ -n "$staged_files" ] && echo "$staged_files" | xargs grep -l "$ANT_KEY_PAT" 2>/dev/null | grep -q .; then
-  echo "ERROR: Anthropic API key detected in staged files." >&2
-  echo "Remove the key before committing." >&2
-  echo "$staged_files" | xargs grep -l "$ANT_KEY_PAT" 2>/dev/null | while read -r f; do
-    echo "  $f" >&2
+# Patterns that identify real API key values.
+# Split across assignments so the hook doesn't trigger on itself.
+ANT_PAT="sk-ant"; ANT_PAT="${ANT_PAT}-"         # Anthropic
+OAI_PAT="sk-proj"; OAI_PAT="${OAI_PAT}-"        # OpenAI project key
+OAI_OLD="sk-"; OAI_OLD="${OAI_OLD}T3BlbkFJ"     # OpenAI legacy key
+GH_PAT="ghp_"                                    # GitHub personal access token
+GH_APP="ghs_"                                    # GitHub app token
+LINEAR_PAT="lin_api_"                            # Linear API key
+SLACK_PAT="xoxb-"                                # Slack bot token
+SLACK_USR="xoxp-"                                # Slack user token
+NOTION_PAT="secret_"                            # Notion integration token
+
+contains_secret() {
+  content="$1"
+  echo "$content" | grep -qE \
+    "${ANT_PAT}|${OAI_PAT}|${OAI_OLD}|${GH_PAT}|${GH_APP}|${LINEAR_PAT}|${SLACK_PAT}|${SLACK_USR}|${NOTION_PAT}"
+}
+
+# Scan .mcp.json for secret values rather than blocking the whole file.
+# All other staged files are scanned directly.
+files_to_scan=""
+if [ -n "$staged_files" ]; then
+  for f in $staged_files; do
+    if [ "$f" = ".mcp.json" ]; then
+      content="$(git show ":0:.mcp.json" 2>/dev/null || true)"
+      if contains_secret "$content"; then
+        echo "ERROR: API key detected in .mcp.json — remove the value before committing." >&2
+        exit 1
+      fi
+    else
+      files_to_scan="$files_to_scan $f"
+    fi
   done
-  exit 1
+fi
+
+if [ -n "$files_to_scan" ]; then
+  flagged="$(echo "$files_to_scan" | xargs grep -lE \
+    "${ANT_PAT}|${OAI_PAT}|${OAI_OLD}|${GH_PAT}|${GH_APP}|${LINEAR_PAT}|${SLACK_PAT}|${SLACK_USR}|${NOTION_PAT}" \
+    2>/dev/null || true)"
+  if [ -n "$flagged" ]; then
+    echo "ERROR: API key detected in staged files — remove the key before committing." >&2
+    echo "$flagged" | while read -r f; do echo "  $f" >&2; done
+    exit 1
+  fi
 fi
 
 # Block real key in committed .claude/settings.local.json
