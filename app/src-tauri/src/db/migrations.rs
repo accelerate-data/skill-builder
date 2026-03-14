@@ -461,7 +461,7 @@ pub(super) fn run_workflow_runs_extended_migration(conn: &Connection) -> Result<
     Ok(())
 }
 
-/// Migration 17: Create the `skills` master table — the single catalog backing
+/// Migration 18: Create the `skills` master table — the single catalog backing
 /// the skills library, test tab, and reconciliation.
 pub(super) fn run_skills_table_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
@@ -648,7 +648,7 @@ pub(super) fn run_consolidate_workspace_skills_migration(conn: &Connection) -> R
     Ok(())
 }
 
-/// Migration 18: Backfill `skills` from `workflow_runs`, add FK column, backfill FK,
+/// Migration 19: Backfill `skills` from `workflow_runs`, add FK column, backfill FK,
 /// and remove marketplace rows from `workflow_runs` (now in skills master only).
 pub(super) fn run_skills_backfill_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     // Step 1: Backfill skills from workflow_runs
@@ -736,7 +736,7 @@ pub(super) fn run_workspace_skills_migration(conn: &Connection) -> Result<(), ru
     Ok(())
 }
 
-/// Migration 21: Add integer primary key to `workflow_runs`.
+/// Migration 22: Add integer primary key to `workflow_runs`.
 /// The table previously used `skill_name TEXT PRIMARY KEY`. We recreate it with
 /// `id INTEGER PRIMARY KEY AUTOINCREMENT` and `skill_name TEXT UNIQUE NOT NULL`.
 /// This unblocks rename_skill (no more INSERT+DELETE) and allows child tables to
@@ -802,7 +802,7 @@ pub(super) fn run_workflow_runs_id_migration(conn: &Connection) -> Result<(), ru
     Ok(())
 }
 
-/// Migration 22: Add integer FK columns to child tables and backfill from skill_name.
+/// Migration 23: Add integer FK columns to child tables and backfill from skill_name.
 /// After this migration:
 ///   - workflow_steps, workflow_artifacts, agent_runs: have `workflow_run_id INT FK → workflow_runs(id)`
 ///   - skill_tags, skill_locks, workflow_sessions: have `skill_id INT FK → skills(id)`
