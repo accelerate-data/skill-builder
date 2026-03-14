@@ -618,14 +618,7 @@ pub fn update_skill_metadata(
     })?;
 
     if let Some(p) = &purpose {
-        conn.execute(
-            "UPDATE workflow_runs SET purpose = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
-            rusqlite::params![skill_name, p],
-        ).map_err(|e| {
-            log::error!("[update_skill_metadata] Failed to update purpose: {}", e);
-            e.to_string()
-        })?;
-        // Also update skills master table — works for all skill sources
+        // Update skills master table — sole source of truth for metadata
         conn.execute(
             "UPDATE skills SET purpose = ?2, updated_at = datetime('now') WHERE name = ?1",
             rusqlite::params![skill_name, p],

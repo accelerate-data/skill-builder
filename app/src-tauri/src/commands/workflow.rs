@@ -1697,12 +1697,14 @@ fn read_workflow_settings(
     let author_login = run_row.as_ref().and_then(|r| r.author_login.clone());
     let created_at = run_row.as_ref().map(|r| r.created_at.clone());
     let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
-    let description = run_row.as_ref().and_then(|r| r.description.clone());
-    let version = run_row.as_ref().and_then(|r| r.version.clone());
-    let skill_model = run_row.as_ref().and_then(|r| r.model.clone());
-    let argument_hint = run_row.as_ref().and_then(|r| r.argument_hint.clone());
-    let user_invocable = run_row.as_ref().and_then(|r| r.user_invocable);
-    let disable_model_invocation = run_row.as_ref().and_then(|r| r.disable_model_invocation);
+    // Metadata fields come from the skills master table (canonical since migration 24/35)
+    let master_row = crate::db::get_skill_master(&conn, skill_name).ok().flatten();
+    let description = master_row.as_ref().and_then(|m| m.description.clone());
+    let version = master_row.as_ref().and_then(|m| m.version.clone());
+    let skill_model = master_row.as_ref().and_then(|m| m.model.clone());
+    let argument_hint = master_row.as_ref().and_then(|m| m.argument_hint.clone());
+    let user_invocable = master_row.as_ref().and_then(|m| m.user_invocable);
+    let disable_model_invocation = master_row.as_ref().and_then(|m| m.disable_model_invocation);
     let tags = crate::db::get_tags_for_skills(&conn, &[skill_name.to_string()])
         .unwrap_or_default()
         .remove(skill_name)

@@ -47,6 +47,7 @@ pub(crate) fn create_test_db_for_tests() -> Connection {
     run_normalize_model_names_migration(&conn).unwrap();
     run_reconciliation_events_migration(&conn).unwrap();
     run_ghost_running_rows_migration(&conn).unwrap();
+    run_drop_workflow_runs_metadata_migration(&conn).unwrap();
     conn
 }
 
@@ -89,6 +90,7 @@ const NUMBERED_MIGRATIONS: &[(u32, fn(&Connection) -> Result<(), rusqlite::Error
     (32, run_normalize_model_names_migration),
     (33, run_reconciliation_events_migration),
     (34, run_ghost_running_rows_migration),
+    (35, run_drop_workflow_runs_metadata_migration),
 ];
 
 pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
@@ -716,6 +718,43 @@ fn run_ghost_running_rows_migration(conn: &Connection) -> Result<(), rusqlite::E
     Ok(())
 }
 
+/// Migration 35: Drop deprecated metadata columns from `workflow_runs`.
+/// These columns are now canonical in the `skills` master table only.
+/// Uses the SQLite table-rebuild pattern since ALTER TABLE DROP COLUMN is not
+/// widely supported.
+fn run_drop_workflow_runs_metadata_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE workflow_runs_new (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            skill_name  TEXT UNIQUE NOT NULL,
+            current_step INTEGER NOT NULL DEFAULT 0,
+            status      TEXT NOT NULL DEFAULT 'pending',
+            purpose     TEXT DEFAULT 'domain',
+            created_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            source      TEXT NOT NULL DEFAULT 'created',
+            author_login TEXT,
+            author_avatar TEXT,
+            display_name TEXT,
+            intake_json TEXT,
+            skill_id    INTEGER REFERENCES skills(id)
+        );
+        INSERT INTO workflow_runs_new (id, skill_name, current_step, status, purpose,
+                                       created_at, updated_at, source,
+                                       author_login, author_avatar, display_name,
+                                       intake_json, skill_id)
+            SELECT id, skill_name, current_step, status, purpose,
+                   created_at, updated_at, source,
+                   author_login, author_avatar, display_name,
+                   intake_json, skill_id
+            FROM workflow_runs;
+        DROP TABLE workflow_runs;
+        ALTER TABLE workflow_runs_new RENAME TO workflow_runs;",
+    )?;
+    log::info!("migration 35: dropped deprecated metadata columns from workflow_runs");
+    Ok(())
+}
+
 /// Migration 18: Backfill `skills` from `workflow_runs`, add FK column, backfill FK,
 /// and remove marketplace rows from `workflow_runs` (now in skills master only).
 fn run_skills_backfill_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -1089,24 +1128,9 @@ fn repair_skills_table_schema(conn: &Connection) -> Result<(), rusqlite::Error> 
 
     // If any column was missing, the migration 24 backfill never ran either.
     // Run it now so existing imported/marketplace skills have their version/model populated.
+    // Note: workflow_runs no longer has metadata columns (dropped in migration 35),
+    // so we only backfill from imported_skills for marketplace/imported skills.
     if added_any {
-        conn.execute_batch(
-            "UPDATE skills
-             SET
-               description = COALESCE(skills.description, (
-                   SELECT wr.description FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
-               version = COALESCE(skills.version, (
-                   SELECT wr.version FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
-               model = COALESCE(skills.model, (
-                   SELECT wr.model FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
-               argument_hint = COALESCE(skills.argument_hint, (
-                   SELECT wr.argument_hint FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
-               user_invocable = COALESCE(skills.user_invocable, (
-                   SELECT wr.user_invocable FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
-               disable_model_invocation = COALESCE(skills.disable_model_invocation, (
-                   SELECT wr.disable_model_invocation FROM workflow_runs wr WHERE wr.skill_name = skills.name))
-             WHERE skill_source = 'skill-builder';"
-        )?;
         conn.execute_batch(
             "UPDATE skills
              SET
@@ -1122,7 +1146,7 @@ fn repair_skills_table_schema(conn: &Connection) -> Result<(), rusqlite::Error> 
                    SELECT imp.disable_model_invocation FROM imported_skills imp WHERE imp.skill_name = skills.name))
              WHERE skill_source IN ('marketplace', 'imported');"
         )?;
-        log::info!("repair_skills_table_schema: backfilled frontmatter fields from workflow_runs and imported_skills");
+        log::info!("repair_skills_table_schema: backfilled frontmatter fields from imported_skills");
     }
 
     Ok(())
@@ -2203,6 +2227,44 @@ pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String>
     Ok(result)
 }
 
+/// Get a single skill from the master table by name.
+pub fn get_skill_master(
+    conn: &Connection,
+    skill_name: &str,
+) -> Result<Option<SkillMasterRow>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, name, skill_source, purpose, created_at, updated_at,
+                    description, version, model, argument_hint, user_invocable, disable_model_invocation
+             FROM skills
+             WHERE name = ?1 AND COALESCE(deleted_at, '') = ''",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let result = stmt.query_row(rusqlite::params![skill_name], |row| {
+        Ok(SkillMasterRow {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            skill_source: row.get(2)?,
+            purpose: row.get(3)?,
+            created_at: row.get(4)?,
+            updated_at: row.get(5)?,
+            description: row.get(6)?,
+            version: row.get(7)?,
+            model: row.get(8)?,
+            argument_hint: row.get(9)?,
+            user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
+            disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+        })
+    });
+
+    match result {
+        Ok(row) => Ok(Some(row)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 /// Delete a skill from the master table by name.
 pub fn delete_skill(conn: &Connection, name: &str) -> Result<(), String> {
     log::info!("delete_skill: name={}", name);
@@ -2361,30 +2423,6 @@ pub fn set_skill_behaviour(
     )
     .map_err(|e| e.to_string())?;
 
-    // Dual-write to workflow_runs for skill-builder skills (no-op for marketplace/imported).
-    // These columns will be dropped from workflow_runs in a future migration.
-    conn.execute(
-        "UPDATE workflow_runs SET
-            description = COALESCE(?2, description),
-            version = COALESCE(?3, version),
-            model = COALESCE(?4, model),
-            argument_hint = COALESCE(?5, argument_hint),
-            user_invocable = COALESCE(?6, user_invocable),
-            disable_model_invocation = COALESCE(?7, disable_model_invocation),
-            updated_at = datetime('now') || 'Z'
-         WHERE skill_name = ?1",
-        rusqlite::params![
-            skill_name,
-            description,
-            version,
-            model,
-            argument_hint,
-            user_invocable_i,
-            disable_model_invocation_i,
-        ],
-    )
-    .map_err(|e| e.to_string())?;
-
     Ok(())
 }
 
@@ -2394,7 +2432,7 @@ pub fn get_workflow_run(
 ) -> Result<Option<WorkflowRunRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, current_step, status, purpose, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created'), description, version, model, argument_hint, user_invocable, disable_model_invocation
+            "SELECT skill_name, current_step, status, purpose, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created')
              FROM workflow_runs WHERE skill_name = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -2412,12 +2450,6 @@ pub fn get_workflow_run(
             display_name: row.get(8)?,
             intake_json: row.get(9)?,
             source: row.get(10)?,
-            description: row.get(11)?,
-            version: row.get(12)?,
-            model: row.get(13)?,
-            argument_hint: row.get(14)?,
-            user_invocable: row.get::<_, Option<i32>>(15)?.map(|v| v != 0),
-            disable_model_invocation: row.get::<_, Option<i32>>(16)?.map(|v| v != 0),
         })
     });
 
@@ -2438,7 +2470,7 @@ pub fn get_purpose(conn: &Connection, skill_name: &str) -> Result<String, String
 pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, current_step, status, purpose, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created'), description, version, model, argument_hint, user_invocable, disable_model_invocation
+            "SELECT skill_name, current_step, status, purpose, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created')
              FROM workflow_runs ORDER BY skill_name",
         )
         .map_err(|e| e.to_string())?;
@@ -2457,12 +2489,6 @@ pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, 
                 display_name: row.get(8)?,
                 intake_json: row.get(9)?,
                 source: row.get(10)?,
-                description: row.get(11)?,
-                version: row.get(12)?,
-                model: row.get(13)?,
-                argument_hint: row.get(14)?,
-                user_invocable: row.get::<_, Option<i32>>(15)?.map(|v| v != 0),
-                disable_model_invocation: row.get::<_, Option<i32>>(16)?.map(|v| v != 0),
             })
         })
         .map_err(|e| e.to_string())?;
