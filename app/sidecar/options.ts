@@ -2,6 +2,39 @@ import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
 
 /**
+ * Environment variables safe to forward to the SDK child process.
+ * Includes PATH/HOME for basic operation, proxy/TLS vars for corporate
+ * networks, and locale vars for correct text handling.
+ */
+const ENV_ALLOWLIST = [
+  "PATH",
+  "HOME",
+  "TMPDIR",
+  "TEMP",
+  "TMP",
+  "NODE_ENV",
+  "NODE_PATH",
+  "NODE_EXTRA_CA_CERTS",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "HTTPS_PROXY",
+  "HTTP_PROXY",
+  "NO_PROXY",
+  "XDG_RUNTIME_DIR",
+  "LANG",
+  "LC_ALL",
+] as const;
+
+function buildSafeEnv(apiKey: string): Record<string, string> {
+  const env: Record<string, string> = { ANTHROPIC_API_KEY: apiKey };
+  for (const key of ENV_ALLOWLIST) {
+    const val = process.env[key];
+    if (val !== undefined) env[key] = val;
+  }
+  return env;
+}
+
+/**
  * Build the options object to pass to the SDK query() function.
  *
  * Agent / model resolution (settingSources: ['project'] always passed for project settings):
@@ -25,8 +58,9 @@ export function buildQueryOptions(
 
   // Pass the API key through the SDK's env option instead of mutating
   // process.env, which avoids races on concurrent requests.
+  // Only allowlisted vars are forwarded to limit secret exposure.
   const envField = config.apiKey
-    ? { env: { ...process.env, ANTHROPIC_API_KEY: config.apiKey } }
+    ? { env: buildSafeEnv(config.apiKey) }
     : {};
 
   const pluginsField = pluginPaths.length > 0
