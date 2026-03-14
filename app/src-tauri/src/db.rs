@@ -1468,7 +1468,7 @@ pub fn persist_agent_run(
     }
 
     conn.execute(
-        "INSERT OR REPLACE INTO agent_runs
+        "INSERT INTO agent_runs
          (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
           cache_read_tokens, cache_write_tokens, total_cost, duration_ms,
           num_turns, stop_reason, duration_api_ms, tool_use_count, compaction_count,
@@ -1476,8 +1476,26 @@ pub fn persist_agent_run(
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
                  ?12, ?13, ?14, ?15, ?16,
                  ?17, ?18,
-                 COALESCE((SELECT started_at FROM agent_runs WHERE agent_id = ?1 AND model = ?4), datetime('now') || 'Z'),
-                 datetime('now') || 'Z')",
+                 datetime('now') || 'Z',
+                 datetime('now') || 'Z')
+         ON CONFLICT(agent_id, model) DO UPDATE SET
+          skill_name = excluded.skill_name,
+          step_id = excluded.step_id,
+          status = excluded.status,
+          input_tokens = excluded.input_tokens,
+          output_tokens = excluded.output_tokens,
+          cache_read_tokens = excluded.cache_read_tokens,
+          cache_write_tokens = excluded.cache_write_tokens,
+          total_cost = excluded.total_cost,
+          duration_ms = excluded.duration_ms,
+          num_turns = excluded.num_turns,
+          stop_reason = excluded.stop_reason,
+          duration_api_ms = excluded.duration_api_ms,
+          tool_use_count = excluded.tool_use_count,
+          compaction_count = excluded.compaction_count,
+          session_id = excluded.session_id,
+          workflow_session_id = excluded.workflow_session_id,
+          completed_at = excluded.completed_at",
         rusqlite::params![
             agent_id,
             skill_name,
