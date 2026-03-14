@@ -261,10 +261,11 @@ export function useWorkflowStateMachine({
       setActiveAgent(null);
 
       const finish = async () => {
-        if ((step === 0 || step === 1 || step === 2 || step === 3) && completedAgentId) {
+        const cfg = stepConfigs[step];
+        if (cfg && completedAgentId) {
           const structuredOutput = extractStructuredResultPayload(completedAgentId);
           if (structuredOutput == null || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) {
-            if (step === 1 || step === 3) {
+            if (cfg.requiresStructuredOutput) {
               updateStepStatus(step, "error");
               setRunning(false);
               toast.error(
