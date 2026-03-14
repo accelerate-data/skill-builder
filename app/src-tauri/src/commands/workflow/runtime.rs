@@ -7,7 +7,7 @@ use crate::db::Db;
 use super::deploy::{
     deploy_skill_for_workflow, ensure_workspace_prompts, resolve_bundled_skills_dir,
 };
-use super::evaluation::{workflow_step_log_name, read_workspace_path, read_skills_path};
+use super::evaluation::workflow_step_log_name;
 use super::output_format::answer_evaluator_output_format;
 use super::step_config::{
     build_betas, get_step_config, required_plugins_for_workflow_step, resolve_model_id,

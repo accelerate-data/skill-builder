@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 pub mod bundled;
 pub mod frontmatter;
 pub mod helpers;

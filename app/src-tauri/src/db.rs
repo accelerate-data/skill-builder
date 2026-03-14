@@ -112,6 +112,15 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
 
     ensure_migration_table(&conn)?;
 
+    // Keep FK enforcement OFF for the entire migration sequence. Some migrations
+    // (e.g. migration 28) call `PRAGMA foreign_keys = ON` after table rebuilds, which
+    // leaves FK checks enabled for subsequent migrations on the same connection. Later
+    // migrations that copy rows with orphaned FK values (e.g. workflow_runs.skill_id
+    // pointing to deleted skills rows) would then fail. Migrations must never rely on
+    // FK enforcement being ON — data integrity is the responsibility of application code.
+    conn.pragma_update(None, "foreign_keys", false)
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
     // Migration 0: base schema (always runs via CREATE TABLE IF NOT EXISTS)
     run_migrations(&conn)?;
 
