@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeSanitize from "rehype-sanitize";
 import { markdownComponents } from "@/components/markdown-link";
 import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2, MessageSquare, AlertTriangle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import {
   getDisabledSteps,
 } from "@/lib/tauri";
 import { useWorkflowStore } from "@/stores/workflow-store";
+import { joinPath } from "@/lib/path-utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
@@ -214,7 +216,7 @@ export function WorkflowStepComplete({
             }
           } else if (skillsPath) {
             try {
-              content = await readFile(`${skillsPath}/${skillName}/${skillsRelative}`);
+              content = await readFile(joinPath(skillsPath, skillName, skillsRelative));
             } catch {
               // not found in skills path
             }
@@ -681,7 +683,7 @@ function FileContentRenderer({ file, content }: { file: string; content: string 
   return (
     <div className="rounded-md border">
       <div className="markdown-body compact max-w-none p-4">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={markdownComponents}>
           {content}
         </ReactMarkdown>
       </div>

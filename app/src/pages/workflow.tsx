@@ -160,7 +160,7 @@ export default function WorkflowPage() {
 
     const sessionId = store.workflowSessionId;
     if (sessionId) {
-      endWorkflowSession(sessionId).catch(() => {});
+      endWorkflowSession(sessionId).catch((e) => console.warn("[workflow] non-fatal: op=endWorkflowSession err=%s", e));
       useWorkflowStore.setState({ workflowSessionId: null });
     }
 
@@ -382,7 +382,7 @@ export default function WorkflowPage() {
           if (resetTarget !== null) {
             const sessionId = useWorkflowStore.getState().workflowSessionId;
             if (sessionId) {
-              endWorkflowSession(sessionId).catch(() => {});
+              endWorkflowSession(sessionId).catch((e) => console.warn("[workflow] non-fatal: op=endWorkflowSession err=%s", e));
               useWorkflowStore.setState({ workflowSessionId: null });
             }
             useAgentStore.getState().clearRuns();

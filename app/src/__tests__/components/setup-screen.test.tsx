@@ -135,6 +135,23 @@ describe("SetupScreen", () => {
     });
   });
 
+  it("normalizes duplicated Windows paths with spaces from the directory picker", async () => {
+    const user = userEvent.setup();
+    vi.mocked(mockOpen).mockResolvedValueOnce("C:\\Users\\me\\Skill Builder\\Skill Builder\\");
+    render(<SetupScreen onComplete={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Welcome to Skill Builder")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Browse/i }));
+
+    await waitFor(() => {
+      const input = screen.getByLabelText("Skills Folder") as HTMLInputElement;
+      expect(input.value).toBe("C:\\Users\\me\\Skill Builder");
+    });
+  });
+
   it("Get Started saves settings and calls onComplete", async () => {
     const user = userEvent.setup();
     const onComplete = vi.fn();

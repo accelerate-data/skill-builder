@@ -22,14 +22,16 @@ Use these exact tools:
 - `mcp__linear__list_projects`: project selection
 - `mcp__linear__get_project`: fetch full project details
 - `mcp__linear__list_milestones`: milestone discovery for selected project
+- `mcp__linear__list_cycles`: cycle discovery for the team
 - `mcp__linear__list_issue_labels`: label selection
 - `mcp__linear__save_issue`: create/update issue(s)
 - `mcp__linear__create_comment`: optional rationale notes on parent
 
 Required fields:
 
-- New issue via `save_issue`: `team`, `title`; include `description`, `project`, `labels`, `estimate`, `assignee: "me"` when available.
+- New issue via `save_issue`: `team`, `title`, `project`, `milestone`, `cycle`; include `description`, `labels`, `estimate`, `assignee: "me"` when available.
 - Decomposition child issue: must include parent reference in description and AC mapping.
+- **`milestone` and `cycle` are mandatory.** Never create an issue without both.
 
 Fallback behavior:
 
@@ -43,9 +45,10 @@ Fallback behavior:
 4. Idempotency: re-runs must not duplicate equivalent issues/comments. Reuse discovered open issue when appropriate.
 5. Acceptance criteria in Linear must use Markdown checkboxes (`- [ ] ...`).
 6. Resolve the target project from user input or existing issue context. Do not hardcode a project name in this skill.
-7. Milestone selection must be from the resolved project only. If no clear milestone match exists, ask the user before creating the issue.
-8. Do not decompose by implementation layer (`frontend`/`backend`/`API`). Issues must represent integrated, user-visible outcomes that can be validated end-to-end.
-9. Decomposition is allowed only by feature slices. Frontend-only splits are allowed only when each split is an independently testable feature outcome.
+7. Milestone selection must be from the resolved project only. If no clear milestone match exists, ask the user before creating the issue. Never omit milestone.
+8. Cycle selection is mandatory. Use `list_cycles` to find the current or next cycle for the team. If ambiguous, ask the user. Never omit cycle.
+9. Do not decompose by implementation layer (`frontend`/`backend`/`API`). Issues must represent integrated, user-visible outcomes that can be validated end-to-end.
+10. Decomposition is allowed only by feature slices. Frontend-only splits are allowed only when each split is an independently testable feature outcome.
 
 ## Outcomes
 
@@ -97,7 +100,7 @@ See `references/linear-operations.md` for estimate table.
 - `L` is the maximum single-issue size.
 - If scope exceeds `L`, switch to decomposition.
 
-## Project And Milestone Resolution (required)
+## Project, Milestone, and Cycle Resolution (required)
 
 Before drafting or creating an issue:
 
@@ -107,15 +110,19 @@ Before drafting or creating an issue:
 4. If exactly one milestone is a clear match, include it in the draft.
 5. If project or milestone is ambiguous, ask the user before `save_issue`.
 6. Never pick a milestone from a different project.
+7. Use `list_cycles` with the team ID to find the current cycle. Default to the current active cycle; if none, use the next upcoming cycle.
+8. If cycle is ambiguous, ask the user before `save_issue`.
+9. Every issue must have both a milestone and a cycle before creation. Block on user input if either cannot be resolved.
 
 ## Create Path
 
 1. Resolve project and fetch labels.
 2. Resolve milestone candidates from that project.
-3. Draft title, estimate, project, milestone (if resolved), labels, description (schema above).
-4. Confirm draft with user.
-5. Create with `mcp__linear__save_issue` (`assignee: "me"` when allowed).
-6. Return issue ID + URL.
+3. Resolve cycle for the team (current or next).
+4. Draft title, estimate, project, milestone, cycle, labels, description (schema above).
+5. Confirm draft with user.
+6. Create with `mcp__linear__save_issue` (`assignee: "me"` when allowed). Must include `milestone` and `cycle`.
+7. Return issue ID + URL.
 
 ## Decompose Path
 
@@ -123,9 +130,10 @@ Before drafting or creating an issue:
 2. Split into 2-4 child issues, each <= `L`.
 3. Traceability rule: each child maps to exactly one AC group from parent.
 4. Resolve milestone candidates from the resolved project; if unclear, ask user before create.
-5. Confirm child plan with user.
-6. Create children with `save_issue` in parallel when safe.
-7. Update parent description to list child IDs and AC-group mapping.
+5. Resolve cycle for the team (current or next).
+6. Confirm child plan with user.
+7. Create children with `save_issue` in parallel when safe. Each child must include `milestone` and `cycle`.
+8. Update parent description to list child IDs and AC-group mapping.
 
 ## Output Hygiene
 

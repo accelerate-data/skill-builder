@@ -11,7 +11,6 @@ import type {
 } from "@/lib/agent-events";
 
 type PendingTerminalStatus = "completed" | "error" | "shutdown";
-let _pendingTerminalByAgent = new Map<string, PendingTerminalStatus>();
 
 // ---------------------------------------------------------------------------
 // Pending agent event buffer (for typed events arriving before run registration)
@@ -24,28 +23,43 @@ type PendingAgentEvent =
   | CompactionEvent
   | ContextWindowEvent;
 
-let _pendingMetadataByAgent = new Map<string, PendingAgentEvent[]>();
-
-function queuePendingMetadata(agentId: string, event: PendingAgentEvent) {
-  const existing = _pendingMetadataByAgent.get(agentId) ?? [];
-  existing.push(event);
-  _pendingMetadataByAgent.set(agentId, existing);
+/**
+ * Build a partial state update that appends `event` to the pending metadata buffer.
+ * Designed to be spread into the return value of a `set()` callback so the queue
+ * mutation and the "no change to runs" return happen in a single atomic update.
+ */
+function pendingMetadataUpdate(
+  state: AgentState,
+  agentId: string,
+  event: PendingAgentEvent,
+): Partial<AgentState> {
   console.warn(
     "[agent-store] event=metadata_queued operation=queue_pending_metadata agent_id=%s",
     agentId,
   );
+  const existing = state.pendingMetadata[agentId] ?? [];
+  return {
+    pendingMetadata: {
+      ...state.pendingMetadata,
+      [agentId]: [...existing, event],
+    },
+  };
 }
 
 function drainPendingMetadata(agentId: string) {
-  const pending = _pendingMetadataByAgent.get(agentId);
+  const state = useAgentStore.getState();
+  const pending = state.pendingMetadata[agentId];
   if (!pending || pending.length === 0) return;
-  if (!useAgentStore.getState().runs[agentId]) return;
-  _pendingMetadataByAgent.delete(agentId);
+  if (!state.runs[agentId]) return;
+  // Remove from pending first
+  const { [agentId]: _, ...rest } = state.pendingMetadata;
+  useAgentStore.setState({ pendingMetadata: rest });
   console.log(
     "[agent-store] event=metadata_replayed operation=drain_pending_metadata agent_id=%s count=%d",
     agentId,
     pending.length,
   );
+  // Then apply events (re-read state each iteration since apply* calls set())
   for (const event of pending) {
     const store = useAgentStore.getState();
     switch (event.type) {
@@ -70,11 +84,17 @@ function drainPendingMetadata(agentId: string) {
 
 
 function queuePendingTerminal(agentId: string, status: PendingTerminalStatus) {
-  const existing = _pendingTerminalByAgent.get(agentId);
+  const state = useAgentStore.getState();
+  const existing = state.pendingTerminal[agentId];
   // Preserve the most informative terminal state. A later completed/error
   // event should overwrite an earlier shutdown fallback.
   if (!existing || existing === "shutdown") {
-    _pendingTerminalByAgent.set(agentId, status);
+    useAgentStore.setState({
+      pendingTerminal: {
+        ...state.pendingTerminal,
+        [agentId]: status,
+      },
+    });
     console.warn(
       "[agent-store] event=terminal_queued operation=queue_pending_terminal agent_id=%s status=%s",
       agentId,
@@ -84,11 +104,13 @@ function queuePendingTerminal(agentId: string, status: PendingTerminalStatus) {
 }
 
 function drainPendingTerminal(agentId: string) {
-  const pending = _pendingTerminalByAgent.get(agentId);
+  const state = useAgentStore.getState();
+  const pending = state.pendingTerminal[agentId];
   if (!pending) return;
-  if (!useAgentStore.getState().runs[agentId]) return;
+  if (!state.runs[agentId]) return;
 
-  _pendingTerminalByAgent.delete(agentId);
+  const { [agentId]: _, ...rest } = state.pendingTerminal;
+  useAgentStore.setState({ pendingTerminal: rest });
   console.log(
     "[agent-store] event=terminal_replayed operation=drain_pending_terminal agent_id=%s status=%s",
     agentId,
@@ -101,33 +123,22 @@ function drainPendingTerminal(agentId: string) {
   useAgentStore.getState().completeRun(agentId, pending === "completed");
 }
 
-/** Reset all module-level internal state. Used by clearRuns() and _resetForTesting(). */
+/** @deprecated Pending buffers are now in the Zustand store and reset with clearRuns(). */
 export function resetAgentStoreInternals() {
-  if (_pendingTerminalByAgent.size > 0) {
-    console.warn(
-      "[agent-store] event=pending_terminal_cleared operation=reset_internals count=%d",
-      _pendingTerminalByAgent.size,
-    );
-    _pendingTerminalByAgent.clear();
-  }
-  _pendingMetadataByAgent.clear();
+  useAgentStore.setState({ pendingTerminal: {}, pendingMetadata: {} });
 }
 
 /** Returns the number of queued terminal-status events (for testing). */
 export function getPendingTerminalCount(): number {
-  return _pendingTerminalByAgent.size;
+  return Object.keys(useAgentStore.getState().pendingTerminal).length;
 }
 
 /** Returns the number of queued metadata events (for testing). */
 export function getPendingMetadataCount(): number {
-  return _pendingMetadataByAgent.size;
+  return Object.keys(useAgentStore.getState().pendingMetadata).length;
 }
 
-/** Force-flush any buffered messages (for cleanup / testing). */
-export function flushMessageBuffer() {
-  // No-op: RAF message buffer has been removed.
-  // Messages now arrive directly via addDisplayItem / typed apply actions.
-}
+const DEFAULT_CONTEXT_WINDOW = 200_000;
 
 /** Map model IDs and shorthands to human-readable display names with version. */
 export function formatModelName(model: string): string {
@@ -245,6 +256,10 @@ export interface AgentRun {
 interface AgentState {
   runs: Record<string, AgentRun>;
   activeAgentId: string | null;
+  /** Pending terminal statuses for runs not yet registered */
+  pendingTerminal: Record<string, PendingTerminalStatus>;
+  /** Pending metadata events for runs not yet registered */
+  pendingMetadata: Record<string, PendingAgentEvent[]>;
   startRun: (agentId: string, model: string) => void;
   /** Register a run for streaming without setting activeAgentId.
    *  Used by refine page which manages its own agent lifecycle.
@@ -426,6 +441,8 @@ function resolvePersistenceContext(
 export const useAgentStore = create<AgentState>((set) => ({
   runs: {},
   activeAgentId: null,
+  pendingTerminal: {},
+  pendingMetadata: {},
 
   startRun: (agentId, model) => {
     const workflow = useWorkflowStore.getState();
@@ -457,7 +474,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 displayItems: [],
                 startTime: Date.now(),
                 contextHistory: [],
-                contextWindow: 200_000,
+                contextWindow: DEFAULT_CONTEXT_WINDOW,
                 compactionEvents: [],
                 thinkingEnabled: false,
                 runSource: "workflow",
@@ -499,7 +516,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 displayItems: [],
                 startTime: Date.now(),
                 contextHistory: [],
-                contextWindow: 200_000,
+                contextWindow: DEFAULT_CONTEXT_WINDOW,
                 compactionEvents: [],
                 thinkingEnabled: false,
                 runSource,
@@ -533,7 +550,7 @@ export const useAgentStore = create<AgentState>((set) => ({
               displayItems: [item],
               startTime: Date.now(),
               contextHistory: [],
-              contextWindow: 200_000,
+              contextWindow: DEFAULT_CONTEXT_WINDOW,
               compactionEvents: [],
               thinkingEnabled: false,
             },
@@ -580,8 +597,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        queuePendingMetadata(agentId, event);
-        return state;
+        return pendingMetadataUpdate(state, agentId, event);
       }
 
       console.debug(
@@ -605,8 +621,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        queuePendingMetadata(agentId, event);
-        return state;
+        return pendingMetadataUpdate(state, agentId, event);
       }
 
       console.debug(
@@ -630,8 +645,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        queuePendingMetadata(agentId, event);
-        return state;
+        return pendingMetadataUpdate(state, agentId, event);
       }
 
       console.debug(
@@ -661,8 +675,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        queuePendingMetadata(agentId, event);
-        return state;
+        return pendingMetadataUpdate(state, agentId, event);
       }
 
       console.debug(
@@ -692,8 +705,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        queuePendingMetadata(agentId, event);
-        return state;
+        return pendingMetadataUpdate(state, agentId, event);
       }
 
       if (event.contextWindow <= 0) {
@@ -717,9 +729,6 @@ export const useAgentStore = create<AgentState>((set) => ({
     }),
 
   completeRun: (agentId, success) => {
-    // Flush any buffered messages so all data is applied before status changes
-    flushMessageBuffer();
-
     // Capture run data before status update for persistence
     const runBeforeUpdate = useAgentStore.getState().runs[agentId];
     if (!runBeforeUpdate) {
@@ -773,9 +782,6 @@ export const useAgentStore = create<AgentState>((set) => ({
   },
 
   shutdownRun: (agentId: string) => {
-    // Flush any buffered messages so all data is applied before status changes
-    flushMessageBuffer();
-
     const runBeforeUpdate = useAgentStore.getState().runs[agentId];
     if (!runBeforeUpdate) {
       queuePendingTerminal(agentId, "shutdown");
@@ -817,7 +823,6 @@ export const useAgentStore = create<AgentState>((set) => ({
   setActiveAgent: (agentId) => set({ activeAgentId: agentId }),
 
   clearRuns: () => {
-    resetAgentStoreInternals();
-    set({ runs: {}, activeAgentId: null });
+    set({ runs: {}, activeAgentId: null, pendingTerminal: {}, pendingMetadata: {} });
   },
 }));

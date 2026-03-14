@@ -1,6 +1,7 @@
 import { CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeSanitize from "rehype-sanitize";
 import { markdownComponents } from "@/components/markdown-link";
 import { ErrorBoundary } from "@/components/error-boundary";
 import type { DisplayItem } from "@/lib/display-types";
@@ -42,7 +43,7 @@ export function ResultItem({ item }: { item: DisplayItem }) {
       {item.resultMarkdown && (
         <ErrorBoundary fallback={<pre className="whitespace-pre-wrap break-words text-sm">{item.resultMarkdown}</pre>}>
           <div className="markdown-body compact agent-markdown">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={markdownComponents}>
               {item.resultMarkdown}
             </ReactMarkdown>
           </div>

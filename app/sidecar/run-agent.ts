@@ -14,8 +14,10 @@ import * as path from "node:path";
 export async function discoverInstalledPlugins(cwd: string): Promise<string[]> {
   const pluginsDir = path.join(cwd, ".claude", "plugins");
   try {
-    const entries = await fs.readdir(pluginsDir);
-    return entries.map((entry) => path.join(pluginsDir, entry));
+    const entries = await fs.readdir(pluginsDir, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(pluginsDir, entry.name));
   } catch {
     return [];
   }

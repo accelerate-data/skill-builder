@@ -70,15 +70,15 @@ function computeToolSummary(
   if (!input) return name;
 
   if (name === "Read" && input.file_path) {
-    const path = String(input.file_path).split("/").pop();
+    const path = String(input.file_path).split(/[/\\]/).pop();
     return `Reading ${path}`;
   }
   if (name === "Write" && input.file_path) {
-    const path = String(input.file_path).split("/").pop();
+    const path = String(input.file_path).split(/[/\\]/).pop();
     return `Writing ${path}`;
   }
   if (name === "Edit" && input.file_path) {
-    const path = String(input.file_path).split("/").pop();
+    const path = String(input.file_path).split(/[/\\]/).pop();
     return `Editing ${path}`;
   }
   if (name === "Bash" && input.command) {
@@ -86,7 +86,7 @@ function computeToolSummary(
   }
   if (name === "Grep" && input.pattern) {
     const pattern = truncate(String(input.pattern), 40);
-    const p = input.path ? ` in ${String(input.path).split("/").pop()}` : "";
+    const p = input.path ? ` in ${String(input.path).split(/[/\\]/).pop()}` : "";
     return `Grep: "${pattern}"${p}`;
   }
   if (name === "Glob" && input.pattern) {
@@ -102,7 +102,7 @@ function computeToolSummary(
     return `Agent: ${truncate(String(input.description), 60)}`;
   }
   if (name === "NotebookEdit" && input.notebook_path) {
-    const path = String(input.notebook_path).split("/").pop();
+    const path = String(input.notebook_path).split(/[/\\]/).pop();
     return `Editing notebook ${path}`;
   }
   if (name === "LS" && input.path) {
@@ -468,9 +468,10 @@ export class MessageProcessor {
       | undefined;
 
     const thinkingEnabled =
-      configObj?.thinking?.type === "enabled" &&
-      typeof configObj.thinking.budgetTokens === "number" &&
-      configObj.thinking.budgetTokens > 0;
+      configObj?.thinking?.type === "adaptive" ||
+      (configObj?.thinking?.type === "enabled" &&
+        typeof configObj.thinking.budgetTokens === "number" &&
+        configObj.thinking.budgetTokens > 0);
     const agentName = configObj?.agentName;
 
     this.accumulator.recordConfig(thinkingEnabled, agentName);

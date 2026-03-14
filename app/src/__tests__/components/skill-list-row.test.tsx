@@ -176,9 +176,9 @@ describe("SkillListRow — marketplace skill", () => {
     expect(screen.queryByRole("button", { name: /Edit workflow/i })).not.toBeInTheDocument();
   });
 
-  it("shows Refine button", () => {
+  it("hides Refine button", () => {
     renderRow(marketplaceSkill);
-    expect(screen.getByRole("button", { name: /Refine skill/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Refine skill/i })).not.toBeInTheDocument();
   });
 
   it("shows Download button", () => {
@@ -191,9 +191,9 @@ describe("SkillListRow — marketplace skill", () => {
     expect(screen.getByRole("button", { name: /Delete skill/i })).toBeInTheDocument();
   });
 
-  it("hides More Actions button", () => {
+  it("shows More Actions button", () => {
     renderRow(marketplaceSkill);
-    expect(screen.queryByRole("button", { name: /More actions/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /More actions/i })).toBeInTheDocument();
   });
 
   it("always shows Completed regardless of step data", () => {
@@ -206,13 +206,6 @@ describe("SkillListRow — marketplace skill", () => {
     const { onContinue } = renderRow(marketplaceSkill);
     await user.click(screen.getByText("my-skill"));
     expect(onContinue).toHaveBeenCalledWith(marketplaceSkill);
-  });
-
-  it("calls onRefine when Refine is clicked", async () => {
-    const user = userEvent.setup();
-    const { onRefine } = renderRow(marketplaceSkill);
-    await user.click(screen.getByRole("button", { name: /Refine skill/i }));
-    expect(onRefine).toHaveBeenCalledWith(marketplaceSkill);
   });
 
   it("calls onDownload when Download is clicked", async () => {

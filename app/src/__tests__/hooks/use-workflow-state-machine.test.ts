@@ -1,4 +1,4 @@
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useWorkflowStateMachine } from "@/hooks/use-workflow-state-machine";
 import { STEP_CONFIGS } from "@/lib/workflow-step-configs";
@@ -189,8 +189,9 @@ describe("useWorkflowStateMachine", () => {
     );
 
     // pendingAutoStartStep should not trigger handleStartAgentStep
-    await new Promise((r) => setTimeout(r, 10));
-    expect(mockRunWorkflowStep).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mockRunWorkflowStep).not.toHaveBeenCalled();
+    });
   });
 
   it("returns pendingAutoStartStep in result", () => {
@@ -227,12 +228,11 @@ describe("useWorkflowStateMachine", () => {
     );
 
     // Wait for the completion effect to settle
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
+    await waitFor(() => {
+      expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "completed");
     });
 
     // The step must have been marked completed and isRunning set to false
-    expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "completed");
     expect(mockSetRunning).toHaveBeenCalledWith(false);
   });
 });

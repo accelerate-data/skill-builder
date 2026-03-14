@@ -2,6 +2,7 @@ import { memo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import rehypeSanitize from "rehype-sanitize";
 import { markdownComponents } from "@/components/markdown-link";
 import { ChevronDown, FileText, GitCompare } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,7 @@ import { isAuthoredSkillFile, useRefineStore } from "@/stores/refine-store";
 import { GitPatchView } from "./git-patch-view";
 
 const REMARK_PLUGINS = [remarkGfm];
-const REHYPE_PLUGINS = [rehypeHighlight];
+const REHYPE_PLUGINS = [rehypeHighlight, rehypeSanitize];
 
 function normalizeDiffPath(path: string): string {
   const parts = path.split("/");

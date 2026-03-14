@@ -51,7 +51,6 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
     // Click step 1 (Research) in sidebar — it is completed
     const step1Button = page.locator("button").filter({ hasText: "1. Research" });
     await step1Button.click();
-    await page.waitForTimeout(300);
 
     // Should show completion screen via ResearchSummaryCard (read-only mode in review).
     await expect(page.getByText("Research Complete")).toBeVisible({ timeout: 5_000 });
@@ -97,7 +96,6 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
     // Click step 1 (Research) which is completed — triggers reset dialog in update mode
     const step1Button = page.locator("button").filter({ hasText: "1. Research" });
     await step1Button.click();
-    await page.waitForTimeout(300);
 
     // ResetStepDialog should appear
     await expect(
@@ -118,7 +116,6 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
 
     // Click the reset button
     await page.getByRole("button", { name: /Delete.*Reset|^Reset$/ }).click();
-    await page.waitForTimeout(500);
 
     // After reset, dialog should close
     await expect(
@@ -142,13 +139,11 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
       stage: "init_start",
       timestamp: Date.now(),
     });
-    await page.waitForTimeout(50);
 
     await emitTauriEvent(page, "agent-exit", {
       agent_id: "agent-001",
       success: false,
     });
-    await page.waitForTimeout(500);
 
     // Should show error state (scope to main content to avoid matching toast)
     await expect(page.locator("main").getByText("Step 1 failed")).toBeVisible({ timeout: 5_000 });
@@ -175,12 +170,10 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
       stage: "init_start",
       timestamp: Date.now(),
     });
-    await page.waitForTimeout(100);
 
     // Try to navigate away by clicking Dashboard in the app sidebar
     const skillsLink = page.locator("aside nav").getByText("Dashboard");
     await skillsLink.click();
-    await page.waitForTimeout(300);
 
     // Navigation guard dialog should appear
     await expect(
@@ -190,7 +183,6 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
 
     // Click "Stay" — should dismiss dialog and remain on workflow
     await page.getByRole("button", { name: "Stay" }).click();
-    await page.waitForTimeout(200);
     await expect(
       page.getByRole("heading", { name: "Agent Running" }),
     ).not.toBeVisible();
@@ -199,7 +191,6 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
 
     // Try to navigate again
     await skillsLink.click();
-    await page.waitForTimeout(300);
 
     // Dialog appears again
     await expect(
@@ -208,7 +199,6 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
 
     // This time click "Leave" — should navigate away
     await page.getByRole("button", { name: "Leave" }).click();
-    await page.waitForTimeout(500);
 
     // Should be on dashboard
     await expect(page).toHaveURL("/");
@@ -241,12 +231,10 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
       stage: "init_start",
       timestamp: Date.now(),
     });
-    await page.waitForTimeout(100);
 
     // Click a completed step in the workflow sidebar (step 1: Research)
     const step1Button = page.locator("button").filter({ hasText: "1. Research" });
     await step1Button.click();
-    await page.waitForTimeout(300);
 
     // Step-switch guard dialog should appear
     await expect(
@@ -255,21 +243,18 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
 
     // Click "Stay" — should dismiss dialog
     await page.getByRole("button", { name: "Stay" }).click();
-    await page.waitForTimeout(200);
     await expect(
       page.getByRole("heading", { name: "Agent Running" }),
     ).not.toBeVisible();
 
     // Click the completed step again
     await step1Button.click();
-    await page.waitForTimeout(300);
 
     // Click "Leave" — should switch steps
     await expect(
       page.getByRole("heading", { name: "Agent Running" }),
     ).toBeVisible({ timeout: 5_000 });
     await page.getByRole("button", { name: "Leave" }).click();
-    await page.waitForTimeout(300);
 
     // Should now be on step 1 (Research)
     await expect(page.getByText("Step 1: Research")).toBeVisible();
@@ -291,7 +276,6 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
       stage: "init_start",
       timestamp: Date.now(),
     });
-    await page.waitForTimeout(100);
 
     // The "Review" button in the toggle should be disabled while agent is running
     const reviewToggleButton = page.locator("header").getByRole("button", { name: "Review" });
@@ -303,7 +287,6 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
 
     // Simulate agent completion
     await emitTauriEvent(page, "agent-exit", { agent_id: "agent-001", success: true });
-    await page.waitForTimeout(500);
 
     // After agent completes, the toggle should be enabled again
     await expect(reviewToggleButton).toBeEnabled({ timeout: 5_000 });

@@ -13,42 +13,15 @@ pub struct Db(pub Mutex<Connection>);
 #[cfg(test)]
 pub(crate) fn create_test_db_for_tests() -> Connection {
     let conn = Connection::open_in_memory().unwrap();
+    ensure_migration_table(&conn).unwrap();
+    conn.pragma_update(None, "foreign_keys", false).unwrap();
     run_migrations(&conn).unwrap();
-    run_add_skill_type_migration(&conn).unwrap();
-    run_lock_table_migration(&conn).unwrap();
-    run_author_migration(&conn).unwrap();
-    run_usage_tracking_migration(&conn).unwrap();
-    run_workflow_session_migration(&conn).unwrap();
-    run_sessions_table_migration(&conn).unwrap();
-    run_trigger_text_migration(&conn).unwrap();
-    run_agent_stats_migration(&conn).unwrap();
-    run_intake_migration(&conn).unwrap();
-    run_composite_pk_migration(&conn).unwrap();
-    run_bundled_skill_migration(&conn).unwrap();
-    run_remove_validate_step_migration(&conn).unwrap();
-    run_source_migration(&conn).unwrap();
-    run_imported_skills_extended_migration(&conn).unwrap();
-    run_workflow_runs_extended_migration(&conn).unwrap();
-    run_skills_table_migration(&conn).unwrap();
-    run_skills_backfill_migration(&conn).unwrap();
-    run_rename_upload_migration(&conn).unwrap();
-    run_workspace_skills_migration(&conn).unwrap();
-    run_workflow_runs_id_migration(&conn).unwrap();
-    run_fk_columns_migration(&conn).unwrap();
-    run_frontmatter_to_skills_migration(&conn).unwrap();
-    run_workspace_skills_purpose_migration(&conn).unwrap();
-    run_content_hash_migration(&conn).unwrap();
-    run_backfill_null_versions_migration(&conn).unwrap();
-    run_rename_purpose_drop_domain_migration(&conn).unwrap();
-    run_skills_soft_delete_migration(&conn).unwrap();
+    for &(version, migrate_fn) in NUMBERED_MIGRATIONS {
+        migrate_fn(&conn).unwrap();
+        mark_migration_applied(&conn, version).unwrap();
+    }
+    repair_skills_table_schema(&conn).unwrap();
     run_marketplace_source_url_migration(&conn).unwrap();
-    run_skills_soft_delete_migration(&conn).unwrap();
-    run_backfill_synthetic_sessions_migration(&conn).unwrap();
-    run_normalize_model_names_migration(&conn).unwrap();
-    run_reconciliation_events_migration(&conn).unwrap();
-    run_ghost_running_rows_migration(&conn).unwrap();
-    run_drop_workflow_runs_metadata_migration(&conn).unwrap();
-    run_consolidate_workspace_skills_migration(&conn).unwrap();
     conn
 }
 
@@ -1468,7 +1441,7 @@ pub fn persist_agent_run(
     }
 
     conn.execute(
-        "INSERT OR REPLACE INTO agent_runs
+        "INSERT INTO agent_runs
          (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
           cache_read_tokens, cache_write_tokens, total_cost, duration_ms,
           num_turns, stop_reason, duration_api_ms, tool_use_count, compaction_count,
@@ -1476,8 +1449,26 @@ pub fn persist_agent_run(
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
                  ?12, ?13, ?14, ?15, ?16,
                  ?17, ?18,
-                 COALESCE((SELECT started_at FROM agent_runs WHERE agent_id = ?1 AND model = ?4), datetime('now') || 'Z'),
-                 datetime('now') || 'Z')",
+                 datetime('now') || 'Z',
+                 datetime('now') || 'Z')
+         ON CONFLICT(agent_id, model) DO UPDATE SET
+          skill_name = excluded.skill_name,
+          step_id = excluded.step_id,
+          status = excluded.status,
+          input_tokens = excluded.input_tokens,
+          output_tokens = excluded.output_tokens,
+          cache_read_tokens = excluded.cache_read_tokens,
+          cache_write_tokens = excluded.cache_write_tokens,
+          total_cost = excluded.total_cost,
+          duration_ms = excluded.duration_ms,
+          num_turns = excluded.num_turns,
+          stop_reason = excluded.stop_reason,
+          duration_api_ms = excluded.duration_api_ms,
+          tool_use_count = excluded.tool_use_count,
+          compaction_count = excluded.compaction_count,
+          session_id = excluded.session_id,
+          workflow_session_id = excluded.workflow_session_id,
+          completed_at = excluded.completed_at",
         rusqlite::params![
             agent_id,
             skill_name,

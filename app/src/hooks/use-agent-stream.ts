@@ -60,15 +60,16 @@ interface AgentShutdownPayload {
   agent_id: string;
 }
 
-export function initAgentStream() {
+export async function initAgentStream() {
   if (initialized) return;
   initialized = true;
 
-  function reg<T>(event: string, handler: (e: { payload: T }) => void) {
-    listen<T>(event, handler).then((unlisten) => { _unlisteners.push(unlisten); });
+  async function reg<T>(event: string, handler: (e: { payload: T }) => void) {
+    const unlisten = await listen<T>(event, handler);
+    _unlisteners.push(unlisten);
   }
 
-  reg<AgentInitProgressPayload>("agent-init-progress", (event) => {
+  await reg<AgentInitProgressPayload>("agent-init-progress", (event) => {
     const { agent_id, stage } = event.payload;
     console.debug(
       "[use-agent-stream] event=agent_init_progress component=ipc agent_id=%s stage=%s",
@@ -84,7 +85,7 @@ export function initAgentStream() {
     }
   });
 
-  reg<AgentSessionExhaustedPayload>("agent-session-exhausted", (event) => {
+  await reg<AgentSessionExhaustedPayload>("agent-session-exhausted", (event) => {
     const { agent_id, sessionId } = event.payload;
     console.debug(
       "[use-agent-stream] event=agent_session_exhausted component=ipc agent_id=%s session_id=%s",
@@ -98,7 +99,7 @@ export function initAgentStream() {
     );
   });
 
-  reg<AgentInitErrorPayload>("agent-init-error", (event) => {
+  await reg<AgentInitErrorPayload>("agent-init-error", (event) => {
     const workflowState = useWorkflowStore.getState();
     workflowState.clearInitializing();
     workflowState.setRuntimeError({
@@ -108,7 +109,7 @@ export function initAgentStream() {
     });
   });
 
-  reg<AgentRunConfigPayload>("agent-run-config", (event) => {
+  await reg<AgentRunConfigPayload>("agent-run-config", (event) => {
     const { agent_id, ...runConfig } = event.payload;
     console.debug(
       "[use-agent-stream] event=agent_run_config component=ipc agent_id=%s",
@@ -117,7 +118,7 @@ export function initAgentStream() {
     useAgentStore.getState().applyRunConfig(agent_id, runConfig);
   });
 
-  reg<AgentRunInitPayload>("agent-run-init", (event) => {
+  await reg<AgentRunInitPayload>("agent-run-init", (event) => {
     const { agent_id, ...runInit } = event.payload;
     console.debug(
       "[use-agent-stream] event=agent_run_init component=ipc agent_id=%s",
@@ -126,7 +127,7 @@ export function initAgentStream() {
     useAgentStore.getState().applyRunInit(agent_id, runInit);
   });
 
-  reg<AgentTurnUsagePayload>("agent-turn-usage", (event) => {
+  await reg<AgentTurnUsagePayload>("agent-turn-usage", (event) => {
     const { agent_id, ...turnUsage } = event.payload;
     console.debug(
       "[use-agent-stream] event=agent_turn_usage component=ipc agent_id=%s turn=%d",
@@ -136,7 +137,7 @@ export function initAgentStream() {
     useAgentStore.getState().applyTurnUsage(agent_id, turnUsage);
   });
 
-  reg<AgentCompactionPayload>("agent-compaction", (event) => {
+  await reg<AgentCompactionPayload>("agent-compaction", (event) => {
     const { agent_id, ...compaction } = event.payload;
     console.debug(
       "[use-agent-stream] event=agent_compaction component=ipc agent_id=%s turn=%d",
@@ -146,7 +147,7 @@ export function initAgentStream() {
     useAgentStore.getState().applyCompaction(agent_id, compaction);
   });
 
-  reg<AgentContextWindowPayload>("agent-context-window", (event) => {
+  await reg<AgentContextWindowPayload>("agent-context-window", (event) => {
     const { agent_id, ...contextWindow } = event.payload;
     console.debug(
       "[use-agent-stream] event=agent_context_window component=ipc agent_id=%s",
@@ -155,7 +156,7 @@ export function initAgentStream() {
     useAgentStore.getState().applyContextWindow(agent_id, contextWindow);
   });
 
-  reg<AgentMessagePayload>("agent-message", (event) => {
+  await reg<AgentMessagePayload>("agent-message", (event) => {
     const { agent_id, message } = event.payload;
 
     // Clear the "initializing" spinner on the first message from the agent.
@@ -186,14 +187,14 @@ export function initAgentStream() {
     );
   });
 
-  reg<AgentExitPayload>("agent-exit", (event) => {
+  await reg<AgentExitPayload>("agent-exit", (event) => {
     useAgentStore.getState().completeRun(
       event.payload.agent_id,
       event.payload.success
     );
   });
 
-  reg<AgentShutdownPayload>("agent-shutdown", (event) => {
+  await reg<AgentShutdownPayload>("agent-shutdown", (event) => {
     useAgentStore.getState().shutdownRun(event.payload.agent_id);
   });
 
@@ -203,12 +204,11 @@ export function initAgentStream() {
   // refine-store turn-boundary UI state (e.g. "waiting for input" indicator).
   listen<{ agent_id: string }>("agent-turn-complete", (event) => {
     console.log("event=turn_complete component=use-agent-stream agent_id=%s", event.payload.agent_id);
-    // TODO(VU-539): dispatch refine-store turn-boundary action when implemented
   });
 }
 
 // Initialize eagerly on module load
-initAgentStream();
+void initAgentStream();
 
 /** Reset module-level singleton state for tests. */
 export async function _resetForTesting() {

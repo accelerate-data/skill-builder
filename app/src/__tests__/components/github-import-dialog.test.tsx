@@ -378,7 +378,7 @@ describe("GitHubImportDialog", () => {
 
     it("shows no-registries message when registries array is empty", () => {
       renderDialog({ registries: [] });
-      expect(screen.getByText(/No enabled registries/)).toBeInTheDocument();
+      expect(screen.getAllByText(/No enabled registries/)).toHaveLength(2);
     });
   });
 });
