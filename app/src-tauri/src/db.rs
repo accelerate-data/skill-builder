@@ -725,6 +725,22 @@ fn run_ghost_running_rows_migration(conn: &Connection) -> Result<(), rusqlite::E
 /// Uses the SQLite table-rebuild pattern since ALTER TABLE DROP COLUMN is not
 /// widely supported.
 fn run_drop_workflow_runs_metadata_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Idempotency: if a previous run left workflow_runs_new behind (e.g. the process
+    // crashed before mark_migration_applied was called), drop it first.
+    conn.execute_batch("DROP TABLE IF EXISTS workflow_runs_new;")?;
+
+    // Skip if workflow_runs already lacks the deprecated columns (migration already applied
+    // to this DB but not recorded in schema_migrations due to a prior crash).
+    let has_deprecated = conn
+        .prepare("PRAGMA table_info(workflow_runs)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .any(|col| col == "description");
+    if !has_deprecated {
+        log::info!("migration 35: workflow_runs already lacks deprecated columns, skipping rebuild");
+        return Ok(());
+    }
+
     conn.execute_batch(
         "CREATE TABLE workflow_runs_new (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -757,45 +773,13 @@ fn run_drop_workflow_runs_metadata_migration(conn: &Connection) -> Result<(), ru
     Ok(())
 }
 
-/// Migration 36: Consolidate workspace_skills into imported_skills and drop workspace_skills.
-/// Both tables share the same columns after migrations 25-29. This migrates any
-/// workspace_skills rows not already present in imported_skills, then drops the table.
+/// Migration 36: Drop workspace_skills table.
+/// The workspace_skills concept is removed entirely; imported_skills is the sole import table.
+/// Data is not migrated — workspace_skills held transient bundled/toggle state that no longer
+/// maps to any feature.
 fn run_consolidate_workspace_skills_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
-    // Idempotency: if workspace_skills table doesn't exist, nothing to do
-    let table_exists: bool = conn
-        .query_row(
-            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='workspace_skills'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap_or(false);
-    if !table_exists {
-        return Ok(());
-    }
-
-    // Disable FK enforcement for the migration. Some workspace_skills rows may have
-    // skill_id values referencing skills rows that were already deleted (orphaned FKs).
-    // We null-out those orphaned skill_id values rather than failing.
-    // PRAGMA foreign_keys must be changed outside a transaction in SQLite.
-    conn.pragma_update(None, "foreign_keys", false)?;
-    let result = conn.execute_batch(
-        "INSERT OR IGNORE INTO imported_skills
-            (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
-             purpose, version, model, argument_hint, user_invocable,
-             disable_model_invocation, content_hash, marketplace_source_url)
-        SELECT
-            CASE WHEN EXISTS(SELECT 1 FROM skills WHERE id = ws.skill_id)
-                 THEN ws.skill_id ELSE NULL END,
-            ws.skill_name, ws.is_active, ws.disk_path, ws.imported_at, ws.is_bundled,
-            ws.purpose, ws.version, ws.model, ws.argument_hint, ws.user_invocable,
-            ws.disable_model_invocation, ws.content_hash, ws.marketplace_source_url
-        FROM workspace_skills ws;
-
-        DROP TABLE workspace_skills;",
-    );
-    conn.pragma_update(None, "foreign_keys", true)?;
-    result?;
-    log::info!("migration 36: consolidated workspace_skills into imported_skills and dropped workspace_skills");
+    conn.execute_batch("DROP TABLE IF EXISTS workspace_skills;")?;
+    log::info!("migration 36: dropped workspace_skills table");
     Ok(())
 }
 
