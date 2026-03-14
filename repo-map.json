@@ -100,7 +100,7 @@
     },
     "frontend_hooks": {
       "path": "app/src/hooks/",
-      "description": "Custom React hooks: agent streaming, node validation"
+      "description": "Custom React hooks: agent streaming, workflow state machine, workflow session/persistence/autosave, test orchestration, settings form, scope blocking, marketplace registries, node validation, leave guard"
     },
     "frontend_lib": {
       "path": "app/src/lib/",
@@ -108,11 +108,11 @@
     },
     "rust_commands": {
       "path": "app/src-tauri/src/commands/",
-      "description": "Tauri command handlers. Flat files: agent, skill, workspace, settings, refine, usage, github_auth, skill_test, clarification, feedback, files, git, lifecycle, node, sidecar_lifecycle, workflow_lifecycle, test_utils. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, packaging, runtime, evaluation), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands)"
+      "description": "Tauri command handlers. Flat files: agent, workspace, settings, usage, github_auth, skill_test, clarification, feedback, files, git, lifecycle, node, sidecar_lifecycle, workflow_lifecycle, test_utils. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, packaging, runtime, evaluation, tests), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands), skill/ (crud, metadata, suggestions, tests), refine/ (content, diff, output, protocol, tests)"
     },
     "rust_db": {
       "path": "app/src-tauri/src/db/",
-      "description": "SQLite schema, migrations (code-only), and query helpers. Sub-modules: mod.rs (Db struct, init_db, pub use re-exports, all tests), migrations.rs (NUMBERED_MIGRATIONS + 41 migration fns), skills.rs (skill CRUD/workflow runs/steps/tags), usage.rs (persist_agent_run/usage queries), settings.rs (read/write settings), imported_skills.rs (imported skill CRUD/hash tracking), locks.rs (skill locks/check_pid_alive), workflow.rs (workflow sessions)."
+      "description": "SQLite schema, migrations (code-only), and query helpers. Sub-modules: mod.rs (Db struct, init_db, pub use re-exports, all tests), migrations.rs (NUMBERED_MIGRATIONS + migration functions), skills.rs (skill CRUD/workflow runs/steps/tags), usage.rs (persist_agent_run/usage queries), settings.rs (read/write settings), imported_skills.rs (imported skill CRUD/hash tracking), locks.rs (skill locks/check_pid_alive), workflow.rs (workflow sessions)."
     },
     "rust_agents": {
       "path": "app/src-tauri/src/agents/",
@@ -230,7 +230,7 @@
     "test_autonomy": "Only `test:agents:structural` may be run autonomously — no API calls. Never run `test:agents:smoke` autonomously.",
     "db_location": "Database is at Tauri app_data_dir()/skill-builder.db — NOT in the workspace (~/.vibedata/). macOS: ~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db",
     "migrations": "DB migrations are code-only in db/migrations.rs NUMBERED_MIGRATIONS constant — no separate migration files directory.",
-    "workspace_path": "Default workspace: ~/.vibedata/ (configurable). Set by resolve_workspace_path() in workspace.rs.",
+    "workspace_path": "Workspace: <app_local_data_dir>/workspace (not user-configurable). Resolved from Tauri app_local_data_dir() by resolve_workspace_path() in commands/workspace.rs. Legacy ~/.vibedata/ path is cleaned up automatically on startup.",
     "mock_mode": "MOCK_AGENTS=true replays bundled templates in app/sidecar/mock-templates/ with no API calls.",
     "agent_tests_changed": "When agents/*.md or agent-sources/workspace/** changes, run `cd app && npm run test:agents:structural` before reporting completion.",
     "update_repo_map": "Refresh this file whenever you change architecture, entrypoints, commands, modules, or package structure."
