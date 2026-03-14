@@ -16,6 +16,26 @@ pub(crate) fn read_workspace_path(db: &tauri::State<'_, Db>) -> Option<String> {
     crate::db::read_settings(&conn).ok()?.workspace_path
 }
 
+/// Reject skill names that could escape the parent directory.
+/// Accepts only simple names: no path separators, no `..`, no null bytes, no leading `.`.
+pub(crate) fn validate_skill_name(skill_name: &str) -> Result<(), String> {
+    if skill_name.is_empty() {
+        return Err("Skill name cannot be empty".to_string());
+    }
+    if skill_name.contains('/')
+        || skill_name.contains('\\')
+        || skill_name.contains("..")
+        || skill_name.contains('\0')
+        || skill_name.starts_with('.')
+    {
+        return Err(format!(
+            "Invalid skill name '{}': must not contain path separators, '..', null bytes, or start with '.'",
+            skill_name
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn workspace_context_dir(workspace_path: &str, skill_name: &str) -> std::path::PathBuf {
     Path::new(workspace_path).join(skill_name).join("context")
 }
@@ -246,6 +266,44 @@ mod tests {
         let effective_status = compute_effective_status("completed", &step_statuses);
         assert_eq!(effective_status, "completed");
     }
+
+    // --- validate_skill_name tests (TC-01 regression coverage) ---
+
+    #[test]
+    fn test_validate_skill_name_accepts_simple_name() {
+        assert!(validate_skill_name("my-skill").is_ok());
+        assert!(validate_skill_name("skill_v2").is_ok());
+        assert!(validate_skill_name("HR Analytics").is_ok());
+    }
+
+    #[test]
+    fn test_validate_skill_name_rejects_empty() {
+        assert!(validate_skill_name("").is_err());
+    }
+
+    #[test]
+    fn test_validate_skill_name_rejects_traversal() {
+        assert!(validate_skill_name("../../etc").is_err());
+        assert!(validate_skill_name("..").is_err());
+        assert!(validate_skill_name("foo/../bar").is_err());
+    }
+
+    #[test]
+    fn test_validate_skill_name_rejects_path_separators() {
+        assert!(validate_skill_name("foo/bar").is_err());
+        assert!(validate_skill_name("foo\\bar").is_err());
+    }
+
+    #[test]
+    fn test_validate_skill_name_rejects_null_byte() {
+        assert!(validate_skill_name("skill\0name").is_err());
+    }
+
+    #[test]
+    fn test_validate_skill_name_rejects_leading_dot() {
+        assert!(validate_skill_name(".hidden").is_err());
+        assert!(validate_skill_name(".").is_err());
+    }
 }
 
 /// Output files produced by each step, relative to the skill directory.
@@ -304,6 +362,7 @@ pub fn get_disabled_steps(
     skill_name: String,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<u32>, String> {
+    validate_skill_name(&skill_name)?;
     log::info!("[get_disabled_steps] skill={}", skill_name);
     let workspace_path =
         read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
@@ -325,6 +384,7 @@ pub fn get_clarifications_content(
     skill_name: String,
     workspace_path: String,
 ) -> Result<String, String> {
+    validate_skill_name(&skill_name)?;
     let path = workspace_context_dir(&workspace_path, &skill_name).join("clarifications.json");
     std::fs::read_to_string(&path).map_err(|e| {
         format!(
@@ -341,6 +401,7 @@ pub fn save_clarifications_content(
     workspace_path: String,
     content: String,
 ) -> Result<(), String> {
+    validate_skill_name(&skill_name)?;
     let parsed: serde_json::Value = serde_json::from_str(&content)
         .map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
     validate_clarifications_json(&parsed)
@@ -370,6 +431,7 @@ pub fn save_clarifications_content(
 
 #[tauri::command]
 pub fn get_decisions_content(skill_name: String, workspace_path: String) -> Result<String, String> {
+    validate_skill_name(&skill_name)?;
     let path = workspace_context_dir(&workspace_path, &skill_name).join("decisions.json");
     std::fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read decisions from '{}': {}", path.display(), e))
@@ -381,6 +443,7 @@ pub fn save_decisions_content(
     workspace_path: String,
     content: String,
 ) -> Result<(), String> {
+    validate_skill_name(&skill_name)?;
     if content.trim().is_empty() {
         return Err("decisions.json content cannot be empty".to_string());
     }
@@ -404,6 +467,7 @@ pub fn get_context_file_content(
     workspace_path: String,
     file_name: String,
 ) -> Result<String, String> {
+    validate_skill_name(&skill_name)?;
     if file_name.contains('/') || file_name.contains('\\') || file_name.contains("..") {
         return Err("Invalid context file name".to_string());
     }
@@ -419,6 +483,7 @@ pub fn reset_workflow_step(
     from_step_id: u32,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
+    validate_skill_name(&skill_name)?;
     log::info!(
         "[reset_workflow_step] CALLED skill={} from_step={} from_step_id={} workspace={}",
         skill_name,
@@ -583,6 +648,10 @@ pub fn reset_legacy_skills(
         read_skills_path(&db).ok_or_else(|| "Skills path not configured".to_string())?;
     let workspace_path =
         read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
+
+    for name in &skill_names {
+        validate_skill_name(name)?;
+    }
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
