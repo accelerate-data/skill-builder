@@ -4,8 +4,10 @@ use base64::Engine;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-/// Maximum file size for base64 reading (5 MB).
+/// Maximum file size for base64 reading and writing (5 MB).
 const MAX_BASE64_FILE_SIZE: u64 = 5_242_880;
+/// Maximum recursion depth for collect_entries to prevent symlink cycles.
+const MAX_COLLECT_DEPTH: u32 = 20;
 const ATTACHMENTS_DIR_NAME: &str = "skill-builder-attachments";
 
 fn list_skill_files_with_roots(
@@ -33,7 +35,7 @@ fn list_skill_files_with_roots(
     }
 
     let mut entries = Vec::new();
-    collect_entries(&skill_dir, &skill_dir, &mut entries)?;
+    collect_entries(&skill_dir, &skill_dir, &mut entries, 0)?;
     entries.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
     Ok(entries)
 }
@@ -53,7 +55,15 @@ fn collect_entries(
     base: &Path,
     current: &Path,
     entries: &mut Vec<SkillFileEntry>,
+    depth: u32,
 ) -> Result<(), String> {
+    if depth > MAX_COLLECT_DEPTH {
+        return Err(format!(
+            "Directory traversal exceeded maximum depth of {}",
+            MAX_COLLECT_DEPTH
+        ));
+    }
+
     let dir_entries = fs::read_dir(current).map_err(|e| e.to_string())?;
     for entry in dir_entries {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -86,7 +96,16 @@ fn collect_entries(
         });
 
         if is_directory {
-            collect_entries(base, &path, entries)?;
+            // Skip symlinks to prevent infinite cycles
+            let file_type = entry.file_type().map_err(|e| e.to_string())?;
+            if file_type.is_symlink() {
+                log::debug!(
+                    "[collect_entries] skipping symlink directory: {}",
+                    path.display()
+                );
+                continue;
+            }
+            collect_entries(base, &path, entries, depth + 1)?;
         }
     }
     Ok(())
@@ -442,6 +461,16 @@ pub fn write_base64_to_temp_file(
             file_name
         );
         return Err("Invalid file name: path traversal not allowed".to_string());
+    }
+
+    // Reject payloads that would decode to more than MAX_BASE64_FILE_SIZE.
+    // Base64 encodes 3 bytes as 4 chars, so decoded_len ≈ base64_len * 3/4.
+    let estimated_decoded_len = (base64_content.len() as u64) * 3 / 4;
+    if estimated_decoded_len > MAX_BASE64_FILE_SIZE {
+        return Err(format!(
+            "Base64 payload too large: estimated {} bytes exceeds {} byte limit",
+            estimated_decoded_len, MAX_BASE64_FILE_SIZE
+        ));
     }
 
     let bytes = base64::engine::general_purpose::STANDARD
