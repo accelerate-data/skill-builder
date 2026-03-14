@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SkillPicker } from "@/components/refine/skill-picker";
-import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
+import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useTestStore } from "@/stores/test-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -569,9 +569,6 @@ export default function TestPage() {
     if (!state.withDone || !state.withoutDone) return;
     if (!state.selectedSkill) return;
 
-    // Flush message buffer so final text is available
-    flushMessageBuffer();
-
     const withText = state.withAgentId
       ? extractAssistantText(state.withAgentId)
       : "";
@@ -668,8 +665,6 @@ export default function TestPage() {
     if (!state.evalAgentId) return;
     if (!evalStatus || !TERMINAL_STATUSES.has(evalStatus)) return;
 
-    flushMessageBuffer();
-
     const evalText = extractAssistantText(state.evalAgentId);
 
     setState((prev) => ({
@@ -701,7 +696,6 @@ export default function TestPage() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      flushMessageBuffer();
       const s = stateRef.current;
       if (s.phase === "running" || s.phase === "evaluating") {
         cleanup(s.testId);

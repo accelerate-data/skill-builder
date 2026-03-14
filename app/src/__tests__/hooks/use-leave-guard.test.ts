@@ -1,16 +1,10 @@
 import { renderHook } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
-import * as agentStore from "@/stores/agent-store";
 
 // Mock the router's useBlocker hook
 vi.mock("@tanstack/react-router", () => ({
   useBlocker: vi.fn(),
-}));
-
-// Mock the agent store's flushMessageBuffer
-vi.mock("@/stores/agent-store", () => ({
-  flushMessageBuffer: vi.fn(),
 }));
 
 import { useBlocker } from "@tanstack/react-router";
@@ -111,19 +105,6 @@ describe("useLeaveGuard", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(mockBlockerResult.proceed).toHaveBeenCalled();
-  });
-
-  it("should flush message buffer on unmount", () => {
-    const shouldBlock = vi.fn(() => false);
-    const onLeave = vi.fn();
-
-    const { unmount } = renderHook(() => useLeaveGuard({ shouldBlock, onLeave }));
-
-    expect(agentStore.flushMessageBuffer).not.toHaveBeenCalled();
-
-    unmount();
-
-    expect(agentStore.flushMessageBuffer).toHaveBeenCalled();
   });
 
   it("should work with synchronous onLeave", () => {

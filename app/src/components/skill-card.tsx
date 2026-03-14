@@ -137,8 +137,6 @@ export default function SkillCard({
   const progress = isImported ? 100 : parseStepProgress(skill.current_step, skill.status)
   const canDownload = isImported || isWorkflowComplete(skill)
 
-  const showContextMenu = true
-
   const bandColor = skill.purpose ? PURPOSE_BAND_COLOR[skill.purpose as Purpose] : undefined
 
   const cardContent = (
@@ -196,14 +194,6 @@ export default function SkillCard({
                 label="Edit workflow"
                 tooltip="Edit workflow"
                 onClick={() => onEditWorkflow?.(skill)}
-              />
-            )}
-            {!showContextMenu && onEdit && (
-              <IconAction
-                icon={<SquarePen className="size-3" />}
-                label="Edit details"
-                tooltip="Edit details"
-                onClick={() => onEdit(skill)}
               />
             )}
             {canDownload && onRefine && !isImported && (
@@ -264,21 +254,17 @@ export default function SkillCard({
 
   return (
     <TooltipProvider>
-      {showContextMenu ? (
-        <ContextMenu>
-          <ContextMenuTrigger asChild>
-            {cardContent}
-          </ContextMenuTrigger>
-          <ContextMenuContent>
-            <ContextMenuItem onSelect={() => onEdit?.(skill)}>
-              <SquarePen className="size-4" />
-              Edit details
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
-      ) : (
-        cardContent
-      )}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          {cardContent}
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onSelect={() => onEdit?.(skill)}>
+            <SquarePen className="size-4" />
+            Edit details
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     </TooltipProvider>
   )
 }

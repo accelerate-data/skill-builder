@@ -204,7 +204,6 @@ export async function initAgentStream() {
   // refine-store turn-boundary UI state (e.g. "waiting for input" indicator).
   listen<{ agent_id: string }>("agent-turn-complete", (event) => {
     console.log("event=turn_complete component=use-agent-stream agent_id=%s", event.payload.agent_id);
-    // TODO(VU-539): dispatch refine-store turn-boundary action when implemented
   });
 }
 
