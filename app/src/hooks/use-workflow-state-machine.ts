@@ -432,7 +432,7 @@ export function useWorkflowStateMachine({
       return;
     }
 
-    console.log("[workflow] Gate structured output:", structuredOutput);
+    console.debug("[workflow] Gate structured output:", structuredOutput);
 
     try {
       if (structuredOutput != null) {
