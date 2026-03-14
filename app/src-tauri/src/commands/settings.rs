@@ -97,15 +97,24 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
 
 /// Normalize a path: strip trailing separators and deduplicate the last
 /// segment when the macOS file picker doubles it (e.g. `/foo/Skills/Skills`
-/// becomes `/foo/Skills`).
+/// becomes `/foo/Skills`). Uses `Path::components()` for cross-platform
+/// separator handling (works with both `/` and `\`).
 fn normalize_path(raw: &str) -> String {
-    let trimmed = raw.trim_end_matches(['/', '\\']);
-    let parts: Vec<&str> = trimmed.split('/').collect();
-    if parts.len() >= 2 && parts[parts.len() - 1] == parts[parts.len() - 2] {
-        parts[..parts.len() - 1].join("/")
-    } else {
-        trimmed.to_string()
+    use std::path::{Component, Path};
+    let path = Path::new(raw);
+    let components: Vec<Component<'_>> = path.components().collect();
+    if components.len() >= 2 {
+        if let (Some(Component::Normal(last)), Some(Component::Normal(prev))) =
+            (components.last(), components.get(components.len() - 2))
+        {
+            if last == prev {
+                let deduped: std::path::PathBuf = components[..components.len() - 1].iter().collect();
+                return deduped.to_string_lossy().to_string();
+            }
+        }
     }
+    // Strip trailing separators only (the original trimming behavior)
+    path.to_string_lossy().trim_end_matches(['/', '\\']).to_string()
 }
 
 #[tauri::command]
@@ -648,5 +657,26 @@ mod tests {
             fs::read_to_string(dst.join("sub").join("nested.txt")).unwrap(),
             "nested"
         );
+    }
+
+    #[test]
+    fn normalize_path_deduplicates_last_segment() {
+        assert_eq!(normalize_path("/foo/Skills/Skills"), "/foo/Skills");
+    }
+
+    #[test]
+    fn normalize_path_strips_trailing_separators() {
+        assert_eq!(normalize_path("/foo/bar/"), "/foo/bar");
+        assert_eq!(normalize_path("/foo/bar\\"), "/foo/bar");
+    }
+
+    #[test]
+    fn normalize_path_no_change_for_normal_paths() {
+        assert_eq!(normalize_path("/foo/bar/baz"), "/foo/bar/baz");
+    }
+
+    #[test]
+    fn normalize_path_handles_spaces_in_path() {
+        assert_eq!(normalize_path("/Users/John Doe/My Skills/My Skills"), "/Users/John Doe/My Skills");
     }
 }
