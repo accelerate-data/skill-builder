@@ -106,7 +106,13 @@ export class StreamSession {
       });
       emitSystemEvent((msg) => onMessage(this.currentRequestId, msg), "init_start");
       emitSystemEvent((msg) => onMessage(this.currentRequestId, msg), "sdk_ready");
-      await this.emitMockTurn(config.prompt, onMessage);
+      try {
+        await this.emitMockTurn(config.prompt, onMessage);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`[stream-session] Mock turn error for session ${this.sessionId}: ${errorMessage}\n`);
+        onMessage(this.currentRequestId, { type: "error", message: errorMessage });
+      }
       return;
     }
 
@@ -125,8 +131,30 @@ export class StreamSession {
       });
     };
 
-    const discoveredPluginPaths = await discoverInstalledPlugins(config.cwd);
-    const pluginPaths = selectPluginPaths(discoveredPluginPaths, config.requiredPlugins);
+    // Hoist processor so the setup-error catch block can emit a run_result.
+    const processor = new MessageProcessor({
+      skillName: config.skillName,
+      stepId: config.stepId,
+      workflowSessionId: config.workflowSessionId,
+      usageSessionId: config.usageSessionId,
+      runSource: config.runSource,
+      streaming: true,
+    });
+
+    let discoveredPluginPaths: string[];
+    let pluginPaths: string[];
+    try {
+      discoveredPluginPaths = await discoverInstalledPlugins(config.cwd);
+      pluginPaths = selectPluginPaths(discoveredPluginPaths, config.requiredPlugins);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[stream-session] Setup error for session ${this.sessionId}: ${errorMessage}\n`);
+      onMessage(this.currentRequestId, { type: "error", message: errorMessage });
+      const errorSummary = processor.buildExecutionErrorSummary(errorMessage);
+      onMessage(this.currentRequestId, { type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
+      return;
+    }
+
     const options = buildQueryOptions(config, state.abortController, pluginPaths, stderrHandler);
 
     // Build the async generator that feeds messages to the SDK
@@ -189,16 +217,6 @@ export class StreamSession {
     const conversation = query({
       prompt: messageGenerator(),
       options,
-    });
-
-    // Process raw SDK messages through MessageProcessor for structured display items
-    const processor = new MessageProcessor({
-      skillName: config.skillName,
-      stepId: config.stepId,
-      workflowSessionId: config.workflowSessionId,
-      usageSessionId: config.usageSessionId,
-      runSource: config.runSource,
-      streaming: true,
     });
 
     try {
