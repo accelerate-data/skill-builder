@@ -138,6 +138,10 @@ export function ClarificationsEditor({
   const progressPct = total > 0 ? Math.round((answered / total) * 100) : 0;
   const isComplete = answered === total;
 
+  // By design: answered questions are excluded from the "Needs Review" filter even
+  // if they have review feedback (e.g. contradictory/vague). The filter is intended
+  // to surface only unanswered required questions and unanswered flagged questions,
+  // not to re-surface questions the user has already addressed.
   const questionNeedsReview = useCallback(
     (question: Question): boolean => {
       if (isQuestionAnswered(question)) return false;
