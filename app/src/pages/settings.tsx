@@ -239,8 +239,8 @@ export default function SettingsPage() {
     if (folder) {
       // Normalize: remove trailing slashes, then check for duplicate last segment
       // (macOS file picker can return doubled paths like /foo/Skills/Skills)
-      let normalized = folder.replace(/\/+$/, '')
-      const parts = normalized.split('/')
+      let normalized = folder.replace(/[/\\]+$/, '')
+      const parts = normalized.split(/[/\\]/)
       if (parts.length >= 2 && parts[parts.length - 1] === parts[parts.length - 2]) {
         normalized = parts.slice(0, -1).join('/')
       }

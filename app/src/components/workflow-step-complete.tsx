@@ -14,6 +14,7 @@ import {
   getDisabledSteps,
 } from "@/lib/tauri";
 import { useWorkflowStore } from "@/stores/workflow-store";
+import { joinPath } from "@/lib/path-utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
@@ -214,7 +215,7 @@ export function WorkflowStepComplete({
             }
           } else if (skillsPath) {
             try {
-              content = await readFile(`${skillsPath}/${skillName}/${skillsRelative}`);
+              content = await readFile(joinPath(skillsPath, skillName, skillsRelative));
             } catch {
               // not found in skills path
             }
