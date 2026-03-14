@@ -88,7 +88,7 @@
   "modules": {
     "frontend_components": {
       "path": "app/src/components/",
-      "description": "Reusable UI components (GitHub login, error boundary, research summary, etc.)"
+      "description": "Reusable UI components. Sub-directories: agent-items/ (display item renderers: base, error, output, result, subagent, thinking, tool), layout/ (app-layout, header, sidebar), refine/ (chat panel, chat input, preview panel, git patch view, skill picker), settings/ (general, github, marketplace, sdk, advanced sections), ui/ (shadcn/ui primitives). Flat components include skill cards, dialogs (delete, import, github, skill, feedback, reset, transition-gate), clarifications-editor, workflow-step-complete, agent panels, and more."
     },
     "frontend_pages": {
       "path": "app/src/pages/",
@@ -104,7 +104,7 @@
     },
     "frontend_lib": {
       "path": "app/src/lib/",
-      "description": "Utilities: Tauri invocation, toast, workflow step definitions, clarification types, help URLs"
+      "description": "Utilities and shared types: tauri.ts (typed Tauri command wrappers), types.ts (shared TS types), agent-events.ts (frontend AgentEvent types), display-types.ts (DisplayItem types), agent-results.ts (result parsing), eval-parser.ts (eval output parsing), models.ts (model list), workflow-steps.ts + workflow-step-configs.ts (step definitions), clarifications-types.ts, path-utils.ts, app-log.ts, help-urls.ts, toast.ts, utils.ts"
     },
     "rust_commands": {
       "path": "app/src-tauri/src/commands/",
@@ -116,15 +116,19 @@
     },
     "rust_agents": {
       "path": "app/src-tauri/src/agents/",
-      "description": "Agent runtime: sidecar process pool, event routing, lifecycle"
+      "description": "Agent runtime. Files: sidecar_pool.rs (persistent sidecar lifecycle, stream dispatch, multi-turn sessions), events.rs (routes agent_event subtypes, persists run_result, emits Tauri frontend events), sidecar.rs (sidecar process spawning), sidecar_path.rs (resolves sidecar binary path), node_resolver.rs (Node.js binary resolution with platform-specific logic)."
     },
     "sidecar_runner": {
       "path": "app/sidecar/agent-runner.ts",
-      "description": "JSONL protocol handler, SDK invocation, reads stdin JSON config, streams events to stdout"
+      "description": "Entry point: reads stdin JSON config, calls SDK query(), streams JSONL events to stdout"
     },
     "sidecar_events": {
       "path": "app/sidecar/agent-events.ts",
       "description": "Canonical AgentEvent type definitions — service boundary contract between sidecar and Rust"
+    },
+    "sidecar_core": {
+      "path": "app/sidecar/",
+      "description": "Supporting sidecar modules: persistent-mode.ts (message demultiplexer, routes one-shot vs streaming requests), run-agent.ts (executes a single agent request), stream-session.ts (async generator push pattern for multi-turn streaming), message-processor.ts (transforms SDK messages into DisplayItems and AgentEvents), message-classifier.ts (classifies SDK message types), run-metadata-accumulator.ts (accumulates run-level metadata), tool-summaries.ts (context-aware tool call summaries), display-types.ts (DisplayItem types), config.ts + options.ts (SDK config builders), error-labels.ts (user-facing error strings), research-tools.ts (research tool definitions), shutdown.ts (graceful shutdown handler)"
     },
     "sidecar_mock": {
       "path": "app/sidecar/mock-agent.ts",
