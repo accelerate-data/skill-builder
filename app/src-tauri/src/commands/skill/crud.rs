@@ -358,7 +358,8 @@ pub(crate) fn create_skill_inner(
         }
     }
 
-    // Auto-commit: skill created
+    // INTENTIONAL: DB committed first; git commit may fail.
+    // Reconciler corrects disk/DB divergence on next startup.
     if let Some(sp) = skills_path {
         let msg = format!("{}: created", name);
         if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
