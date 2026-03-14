@@ -1,23 +1,31 @@
 import { test, expect } from "@playwright/test";
 import { waitForAppReady } from "../helpers/app-helpers";
+import { E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "../helpers/test-paths";
 
 const WORKSPACE_OVERRIDES = {
   get_settings: {
     anthropic_api_key: "sk-ant-test",
-    workspace_path: "/tmp/test-workspace",
-    skills_path: "/tmp/test-skills",
+    workspace_path: E2E_WORKSPACE_PATH,
+    skills_path: E2E_SKILLS_PATH,
   },
   check_workspace_path: true,
   list_skills: [],
 };
 
 test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
-  test.beforeEach(async ({ page }) => {
-    await page.addInitScript((overrides) => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = overrides;
-    }, WORKSPACE_OVERRIDES);
+  async function reloadDashboardWithOverrides(
+    page: import("@playwright/test").Page,
+    overrides: Record<string, unknown>,
+  ) {
+    await page.addInitScript((nextOverrides) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = nextOverrides;
+    }, overrides);
     await page.goto("/");
     await waitForAppReady(page);
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await reloadDashboardWithOverrides(page, WORKSPACE_OVERRIDES);
   });
 
   test("shows empty state when workspace configured but no skills", async ({ page }) => {
@@ -33,27 +41,23 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
   });
 
   test("clicking a skill card navigates to the workflow page", async ({ page }) => {
-    await page.addInitScript(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        get_settings: {
-          anthropic_api_key: "sk-ant-test",
-          workspace_path: "/tmp/test-workspace",
-          skills_path: "/tmp/test-skills",
+    await reloadDashboardWithOverrides(page, {
+      get_settings: {
+        anthropic_api_key: "sk-ant-test",
+        workspace_path: E2E_WORKSPACE_PATH,
+        skills_path: E2E_SKILLS_PATH,
+      },
+      check_workspace_path: true,
+      list_skills: [
+        {
+          name: "my-skill",
+          purpose: "domain",
+          current_step: null,
+          status: null,
+          last_modified: null,
         },
-        check_workspace_path: true,
-        list_skills: [
-          {
-            name: "my-skill",
-            purpose: "domain",
-            current_step: null,
-            status: null,
-            last_modified: null,
-          },
-        ],
-      };
+      ],
     });
-    await page.goto("/");
-    await waitForAppReady(page);
 
     await page.getByText("my-skill").click();
     await expect(page).toHaveURL(/\/skill\/my-skill/);
@@ -83,28 +87,24 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
   });
 
   test("can confirm skill deletion", async ({ page }) => {
-    await page.addInitScript(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        get_settings: {
-          anthropic_api_key: "sk-ant-test",
-          workspace_path: "/tmp/test-workspace",
-          skills_path: "/tmp/test-skills",
+    await reloadDashboardWithOverrides(page, {
+      get_settings: {
+        anthropic_api_key: "sk-ant-test",
+        workspace_path: E2E_WORKSPACE_PATH,
+        skills_path: E2E_SKILLS_PATH,
+      },
+      check_workspace_path: true,
+      list_skills: [
+        {
+          name: "delete-me",
+          purpose: "domain",
+          current_step: null,
+          status: null,
+          last_modified: null,
         },
-        check_workspace_path: true,
-        list_skills: [
-          {
-            name: "delete-me",
-            purpose: "domain",
-            current_step: null,
-            status: null,
-            last_modified: null,
-          },
-        ],
-        delete_skill: undefined,
-      };
+      ],
+      delete_skill: undefined,
     });
-    await page.goto("/");
-    await waitForAppReady(page);
 
     // Open delete dialog
     const deleteButton = page.locator("button").filter({ has: page.locator("svg.lucide-trash-2") });
