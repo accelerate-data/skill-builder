@@ -3,15 +3,32 @@
 
 set -eu
 
-# Block Anthropic API keys in staged files
 ANT_KEY_PAT="sk-ant"
 ANT_KEY_PAT="${ANT_KEY_PAT}-"
 staged_files="$(git diff --cached --name-only)"
 
-if [ -n "$staged_files" ] && echo "$staged_files" | xargs grep -l "$ANT_KEY_PAT" 2>/dev/null | grep -q .; then
+# Block Anthropic API keys in staged files, but scan .mcp.json for key
+# values rather than blocking the whole file.
+files_to_scan=""
+if [ -n "$staged_files" ]; then
+  for f in $staged_files; do
+    if [ "$f" = ".mcp.json" ]; then
+      # Only flag .mcp.json if it contains an actual API key value.
+      if git show ":0:.mcp.json" 2>/dev/null | grep -q "$ANT_KEY_PAT"; then
+        echo "ERROR: Anthropic API key detected in .mcp.json." >&2
+        echo "Remove the key value before committing." >&2
+        exit 1
+      fi
+    else
+      files_to_scan="$files_to_scan $f"
+    fi
+  done
+fi
+
+if [ -n "$files_to_scan" ] && echo "$files_to_scan" | xargs grep -l "$ANT_KEY_PAT" 2>/dev/null | grep -q .; then
   echo "ERROR: Anthropic API key detected in staged files." >&2
   echo "Remove the key before committing." >&2
-  echo "$staged_files" | xargs grep -l "$ANT_KEY_PAT" 2>/dev/null | while read -r f; do
+  echo "$files_to_scan" | xargs grep -l "$ANT_KEY_PAT" 2>/dev/null | while read -r f; do
     echo "  $f" >&2
   done
   exit 1

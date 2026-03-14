@@ -32,9 +32,6 @@ app/src-tauri/resources/node/*
 # Claude Code — ignore local config, track committed skills
 .claude/worktrees/
 
-# MCP server config (contains PATs, never commit)
-.mcp.json
-
 # Git worktrees (local development isolation)
 .worktrees/
 
