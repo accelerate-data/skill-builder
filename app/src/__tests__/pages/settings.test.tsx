@@ -94,6 +94,8 @@ vi.mock("@/components/ui/select", () => ({
 // Mock @/lib/tauri functions that the settings page imports
 vi.mock("@/lib/tauri", () => ({
   getDataDir: vi.fn(() => Promise.resolve("/Users/test/Library/Application Support/com.skill-builder.app")),
+  checkMarketplaceUrl: vi.fn(() => Promise.resolve("Test Registry")),
+  parseGitHubUrl: vi.fn(() => Promise.resolve({ owner: "test", repo: "repo", branch: "main", subpath: null })),
   githubStartDeviceFlow: vi.fn(),
   githubPollForToken: vi.fn(),
   githubGetUser: vi.fn(() => Promise.resolve(null)),
