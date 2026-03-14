@@ -1,6 +1,8 @@
 use rusqlite::Connection;
 
-pub(super) const NUMBERED_MIGRATIONS: &[(u32, fn(&Connection) -> Result<(), rusqlite::Error>)] = &[
+type MigrationFn = fn(&Connection) -> Result<(), rusqlite::Error>;
+
+pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (1, run_add_skill_type_migration),
     (2, run_lock_table_migration),
     (3, run_author_migration),
