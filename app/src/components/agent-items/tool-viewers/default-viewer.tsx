@@ -15,7 +15,7 @@ export function DefaultViewer({ item }: { item: DisplayItem }) {
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    }).catch(() => {});
+    }).catch((e) => console.warn("[default-viewer] non-fatal: op=clipboardWrite err=%s", e));
   }
 
   return (

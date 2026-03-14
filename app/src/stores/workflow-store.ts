@@ -125,7 +125,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       set({ isRunning: true, workflowSessionId: sessionId });
       // Fire-and-forget: persist session to SQLite
       if (skillName) {
-        createWorkflowSession(sessionId, skillName).catch(() => {});
+        createWorkflowSession(sessionId, skillName).catch((e) => console.warn("[workflow-store] non-fatal: op=createWorkflowSession err=%s", e));
       }
     } else {
       set({ isRunning: running });

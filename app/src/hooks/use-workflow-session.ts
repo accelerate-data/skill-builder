@@ -65,7 +65,7 @@ export function useWorkflowSession({
     return () => {
       mounted = false;
       // Fire-and-forget: release lock on unmount (unless navigating away via blocker)
-      releaseLock(skillName).catch(() => {});
+      releaseLock(skillName).catch((e) => console.warn("[use-workflow-session] non-fatal: op=releaseLock err=%s", e));
     };
   }, [skillName, navigate]);
 
@@ -87,10 +87,10 @@ export function useWorkflowSession({
 
       // Fire-and-forget: end workflow session
       const sessionId = useWorkflowStore.getState().workflowSessionId;
-      if (sessionId) endWorkflowSession(sessionId).catch(() => {});
+      if (sessionId) endWorkflowSession(sessionId).catch((e) => console.warn("[use-workflow-session] non-fatal: op=endWorkflowSession err=%s", e));
 
       // Fire-and-forget: clean up persistent sidecar
-      cleanupSkillSidecar(skillName).catch(() => {});
+      cleanupSkillSidecar(skillName).catch((e) => console.warn("[use-workflow-session] non-fatal: op=cleanupSkillSidecar err=%s", e));
     };
   }, [skillName]);
 
@@ -116,13 +116,13 @@ export function useWorkflowSession({
       useAgentStore.getState().clearRuns();
 
       // Fire-and-forget: end workflow session
-      if (sessionId) endWorkflowSession(sessionId).catch(() => {});
+      if (sessionId) endWorkflowSession(sessionId).catch((e) => console.warn("[use-workflow-session] non-fatal: op=endWorkflowSession err=%s", e));
 
       // Fire-and-forget: shut down persistent sidecar for this skill
-      cleanupSkillSidecar(skillName).catch(() => {});
+      cleanupSkillSidecar(skillName).catch((e) => console.warn("[use-workflow-session] non-fatal: op=cleanupSkillSidecar err=%s", e));
 
       // Fire-and-forget: release skill lock before leaving
-      releaseLock(skillName).catch(() => {});
+      releaseLock(skillName).catch((e) => console.warn("[use-workflow-session] non-fatal: op=releaseLock err=%s", e));
 
       proceed();
     },
