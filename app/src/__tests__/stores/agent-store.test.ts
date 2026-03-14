@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   useAgentStore,
-  flushMessageBuffer,
   formatModelName,
   formatTokenCount,
   getLatestContextTokens,
@@ -557,12 +556,6 @@ describe("displayItems management", () => {
     expect(useAgentStore.getState().runs).toEqual({});
   });
 
-  it("flushMessageBuffer is safe to call (no-op)", () => {
-    useAgentStore.getState().startRun("agent-1", "sonnet");
-    // No-op — should not error
-    flushMessageBuffer();
-    expect(useAgentStore.getState().runs["agent-1"].displayItems).toHaveLength(0);
-  });
 });
 
 // =============================================================================

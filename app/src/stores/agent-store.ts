@@ -123,11 +123,7 @@ export function getPendingMetadataCount(): number {
   return _pendingMetadataByAgent.size;
 }
 
-/** Force-flush any buffered messages (for cleanup / testing). */
-export function flushMessageBuffer() {
-  // No-op: RAF message buffer has been removed.
-  // Messages now arrive directly via addDisplayItem / typed apply actions.
-}
+const DEFAULT_CONTEXT_WINDOW = 200_000;
 
 /** Map model IDs and shorthands to human-readable display names with version. */
 export function formatModelName(model: string): string {
@@ -457,7 +453,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 displayItems: [],
                 startTime: Date.now(),
                 contextHistory: [],
-                contextWindow: 200_000,
+                contextWindow: DEFAULT_CONTEXT_WINDOW,
                 compactionEvents: [],
                 thinkingEnabled: false,
                 runSource: "workflow",
@@ -499,7 +495,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 displayItems: [],
                 startTime: Date.now(),
                 contextHistory: [],
-                contextWindow: 200_000,
+                contextWindow: DEFAULT_CONTEXT_WINDOW,
                 compactionEvents: [],
                 thinkingEnabled: false,
                 runSource,
@@ -533,7 +529,7 @@ export const useAgentStore = create<AgentState>((set) => ({
               displayItems: [item],
               startTime: Date.now(),
               contextHistory: [],
-              contextWindow: 200_000,
+              contextWindow: DEFAULT_CONTEXT_WINDOW,
               compactionEvents: [],
               thinkingEnabled: false,
             },
@@ -717,9 +713,6 @@ export const useAgentStore = create<AgentState>((set) => ({
     }),
 
   completeRun: (agentId, success) => {
-    // Flush any buffered messages so all data is applied before status changes
-    flushMessageBuffer();
-
     // Capture run data before status update for persistence
     const runBeforeUpdate = useAgentStore.getState().runs[agentId];
     if (!runBeforeUpdate) {
@@ -773,9 +766,6 @@ export const useAgentStore = create<AgentState>((set) => ({
   },
 
   shutdownRun: (agentId: string) => {
-    // Flush any buffered messages so all data is applied before status changes
-    flushMessageBuffer();
-
     const runBeforeUpdate = useAgentStore.getState().runs[agentId];
     if (!runBeforeUpdate) {
       queuePendingTerminal(agentId, "shutdown");
