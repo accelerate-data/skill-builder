@@ -854,7 +854,7 @@ export default function SettingsPage() {
                       onValueChange={(val) => {
                         setLogLevel(val)
                         autoSave({ logLevel: val })
-                        invoke("set_log_level", { level: val }).catch(() => {})
+                        invoke("set_log_level", { level: val }).catch((e) => console.warn("[settings] non-fatal: op=set_log_level err=%s", e))
                       }}
                     >
                       <SelectTrigger id="log-level-select" className="w-fit">

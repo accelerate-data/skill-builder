@@ -132,7 +132,7 @@ export function useWorkflowStateMachine({
   const endActiveSession = useCallback(() => {
     const sessionId = useWorkflowStore.getState().workflowSessionId;
     if (sessionId) {
-      endWorkflowSession(sessionId).catch(() => {});
+      endWorkflowSession(sessionId).catch((e) => console.warn("[use-workflow-state-machine] non-fatal: op=endWorkflowSession err=%s", e));
       useWorkflowStore.setState({ workflowSessionId: null });
     }
   }, []);
@@ -467,7 +467,7 @@ export function useWorkflowStateMachine({
 
       if (workspacePath) {
         const gateLog = JSON.stringify({ ...evaluation, action: "show_dialog", timestamp: new Date().toISOString() });
-        writeFile(`${workspacePath}/${skillName}/gate-result.json`, gateLog).catch(() => {});
+        writeFile(`${workspacePath}/${skillName}/gate-result.json`, gateLog).catch((e) => console.warn("[use-workflow-state-machine] non-fatal: op=writeFile err=%s", e));
       }
 
       setGateLoading(false);
@@ -558,8 +558,8 @@ export function useWorkflowStateMachine({
   const logGateAction = (decision: string) => {
     if (!workspacePath) return;
     const entry = JSON.stringify({ decision, verdict: gateVerdict, timestamp: new Date().toISOString() });
-    writeFile(`${workspacePath}/${skillName}/gate-result.json`, entry).catch(() => {});
-    logGateDecision(skillName, gateVerdict ?? "unknown", decision).catch(() => {});
+    writeFile(`${workspacePath}/${skillName}/gate-result.json`, entry).catch((e) => console.warn("[use-workflow-state-machine] non-fatal: op=writeFile err=%s", e));
+    logGateDecision(skillName, gateVerdict ?? "unknown", decision).catch((e) => console.warn("[use-workflow-state-machine] non-fatal: op=logGateDecision err=%s", e));
   };
 
   const handleGateSkip = () => {
