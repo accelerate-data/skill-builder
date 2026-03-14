@@ -156,9 +156,9 @@ describe("UsagePage", () => {
     render(<UsagePage />);
 
     expect(screen.getByText("Cost by Model")).toBeInTheDocument();
-    // Model names may appear multiple times (in breakdown and in session badges)
-    expect(screen.getAllByText("claude-sonnet-4-520250514").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("claude-opus-4-20250514").length).toBeGreaterThanOrEqual(1);
+    // Usage page renders shortened model-family labels in the chart/table UI.
+    expect(screen.getAllByText("Sonnet").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Opus").length).toBeGreaterThanOrEqual(1);
     // Cost text is unique to the breakdown section
     expect(screen.getByText(/\$5\.50 \(20 agents\)/)).toBeInTheDocument();
     expect(screen.getByText(/\$7\.00 \(12 agents\)/)).toBeInTheDocument();
