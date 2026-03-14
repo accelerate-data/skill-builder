@@ -331,7 +331,7 @@ export function useWorkflowStateMachine({
 
   // --- Step execution handlers ---
 
-  const handleStartAgentStep = async () => {
+  const handleStartAgentStep = useCallback(async () => {
     if (!workspacePath) {
       toast.error("Missing workspace path", { duration: Infinity });
       return;
@@ -371,7 +371,7 @@ export function useWorkflowStateMachine({
         { duration: Infinity },
       );
     }
-  };
+  }, [workspacePath, gateLoading, clearRuns, updateStepStatus, currentStep, setRunning, setInitializing, skillName, agentStartRun, stepConfig?.model, clearInitializing]);
 
   const runGateEvaluation = async () => {
     if (!workspacePath) return;

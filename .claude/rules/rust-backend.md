@@ -42,7 +42,7 @@ message mapping only when adding user-facing context.
 ## Testing
 
 Inline `#[cfg(test)]` tests in the same file as the command where practical. Use
-`crate::db::open_in_memory()` to create a migrated in-memory SQLite connection:
+`crate::db::create_test_db_for_tests()` to create a migrated in-memory SQLite connection:
 
 ```rust
 #[cfg(test)]
@@ -52,7 +52,7 @@ mod tests {
 
     #[test]
     fn creates_workspace_and_retrieves_it() {
-        let conn = db::open_in_memory().expect("in-memory db");
+        let conn = db::create_test_db_for_tests();
         // ... exercise command logic directly against conn
     }
 }

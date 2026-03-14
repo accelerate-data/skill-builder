@@ -397,7 +397,7 @@ export default function TestPage() {
       console.log("[test] pre-selected skill from search param: %s", skillParam);
       setState((prev) => ({ ...prev, selectedSkill: match }));
     }
-  }, [skillParam, skills]);
+  }, [skillParam, skills, setState]);
 
   // ---------------------------------------------------------------------------
   // Draggable dividers
