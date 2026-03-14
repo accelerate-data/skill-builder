@@ -21,162 +21,46 @@ The codebase is well-structured across its three layers with clean separation of
 
 ---
 
-## Part 1: Covered by Existing Issues
+## Status Reconciliation Against PR #160 and Open Cycle 2 Issues
 
-| ID | Finding | Severity | Covered by |
+The tables below replace the earlier split between "covered by issues" and
+"pending". "Done" means implemented on `PR #160` and validated on the branch,
+even if the linked Linear issue is still in `In Review`. "Remaining" means the
+finding is still open in Linear, only partially addressed, or still has no
+tracked implementation path in the combined PR.
+
+### Done
+
+| Review finding(s) | Issue | What changed on PR #160 | Linear state |
 |---|---|---|---|
-| C3 | Auth store passes partial object to `save_settings` | Critical | [VU-489](https://linear.app/acceleratedata/issue/VU-489) AC1 — granular write commands + auth-store fix |
-| H1 | ~30+ silent `.catch(() => {})` error handlers | High | [VU-581](https://linear.app/acceleratedata/issue/VU-581) — replace with diagnostic logging |
-| H2 | Sidecar `process.env` spread leaks entire environment | High | [VU-582](https://linear.app/acceleratedata/issue/VU-582) — env var allowlist |
-| H3 | `parseSidecarConfig` validates only 4 of 15+ fields | High | [VU-583](https://linear.app/acceleratedata/issue/VU-583) — full field validation |
-| H4 | `test_api_key` accepts any non-401/403 status as valid | High | [VU-584](https://linear.app/acceleratedata/issue/VU-584) — status code hardening |
-| H5 | Settings page initializes state from `getState()` outside React lifecycle | High | [VU-489](https://linear.app/acceleratedata/issue/VU-489) AC1 — granular commands replace stale snapshot pattern |
-| H7 | `parseStepProgress` hardcodes 6 steps; workflow has 4 | High | [VU-585](https://linear.app/acceleratedata/issue/VU-585) — use `WORKFLOW_STEP_DEFINITIONS.length` |
-| M1 | `persistRunRows` failure count always logs 0 | Medium | [VU-581](https://linear.app/acceleratedata/issue/VU-581) — diagnostic logging covers this pattern |
-| M12 | `AppSettings` has 25+ fields spanning unrelated concerns | Medium | [VU-489](https://linear.app/acceleratedata/issue/VU-489) AC1 — granular write commands split concerns |
-| Rec #1 | Strip secrets from `get_settings` response | — | [VU-489](https://linear.app/acceleratedata/issue/VU-489) AC1 — backend-owned field guards |
-| Rec #2 | Fix auth-store partial `save_settings` call | — | [VU-489](https://linear.app/acceleratedata/issue/VU-489) AC1 |
-| Rec #4 | Add `console.warn` to silent `.catch` handlers | — | [VU-581](https://linear.app/acceleratedata/issue/VU-581) |
-| Rec #5 | Fix `parseStepProgress` hardcoded step count | — | [VU-585](https://linear.app/acceleratedata/issue/VU-585) |
-| Rec #6 | Restrict env vars passed to sidecar subprocess | — | [VU-582](https://linear.app/acceleratedata/issue/VU-582) |
-| Rec #7 | Harden `test_api_key` to only accept 2xx | — | [VU-584](https://linear.app/acceleratedata/issue/VU-584) |
-| Rec #10 | Complete `parseSidecarConfig` validation | — | [VU-583](https://linear.app/acceleratedata/issue/VU-583) |
-| Rec #12 | Fix `persistRunRows` with `Promise.allSettled` | — | [VU-581](https://linear.app/acceleratedata/issue/VU-581) |
+| H1, M1, Rec #4, Rec #12 | [VU-581](https://linear.app/acceleratedata/issue/VU-581) | Replaced silent frontend error swallowing with diagnostic logging and updated the related tests | In Review |
+| H2, Rec #6 | [VU-582](https://linear.app/acceleratedata/issue/VU-582) | Restricted env vars passed into the sidecar SDK subprocess | In Review |
+| H3, Rec #10 | [VU-583](https://linear.app/acceleratedata/issue/VU-583) | Added runtime validation for sidecar config fields | In Review |
+| H4, Rec #7 | [VU-584](https://linear.app/acceleratedata/issue/VU-584) | Hardened API key validation behavior and its tests | In Review |
+| H7, Rec #5 | [VU-585](https://linear.app/acceleratedata/issue/VU-585) | Switched progress/completion logic to the actual workflow step definitions | In Review |
+| M2, M3, M4, M6 | [VU-586](https://linear.app/acceleratedata/issue/VU-586) | Landed the code-quality fixes in PR #160 for path handling, file limits, listener timing, and render/test cleanup | In Review |
+| M10, M11, M13 | [VU-587](https://linear.app/acceleratedata/issue/VU-587) | Landed the architecture fixes in PR #160 for usage persistence, hidden store state, and `agent_runs` write behavior | In Review |
+| M14, M15, M16, M17 | [VU-588](https://linear.app/acceleratedata/issue/VU-588) | Landed the medium-severity security hardening batch included in PR #160 | In Review |
+| L5, L7, L13, L14, L15, L16 plus related cleanup/tests in the low-priority batch | [VU-589](https://linear.app/acceleratedata/issue/VU-589) | Landed the cleanup work in PR #160 around dead stubs, CRLF handling, persistent-mode cleanup, adaptive thinking detection, and usage-page control updates | In Review |
+| T1-T10 test-infra bucket | [VU-590](https://linear.app/acceleratedata/issue/VU-590) | Fixed test DB drift, removed flaky waits, improved Windows-safe paths, updated Playwright/test-manifest coverage, and repaired stale test infrastructure | In Review |
+| E2E coverage gaps table | [VU-591](https://linear.app/acceleratedata/issue/VU-591) | Added the missing E2E coverage and cross-platform path regressions called out in the review | In Review |
+| Untested frontend components table | [VU-592](https://linear.app/acceleratedata/issue/VU-592) | Added the missing component/unit coverage for sidebar, error boundary, dialogs, agent item renderers, and refine panel pieces | In Review |
 
----
+### Remaining
 
-## Part 2: Pending (No Issue Coverage)
-
-### Critical
-
-#### C1. API Keys Stored in Plaintext SQLite
-
-**Location:** `src-tauri/src/db.rs:2109-2137`, `types.rs:60,85`
-**Source:** Security Auditor
-
-`anthropic_api_key` and `github_oauth_token` are serialized as plaintext JSON in the `settings` table. Any process under the user's account can extract them. The `get_settings` command also returns the API key to the frontend webview, making it accessible via DevTools or any XSS.
-
-**Fix:** Use OS keychain (macOS Keychain / Windows Credential Manager) via `tauri-plugin-stronghold` or equivalent. At minimum, strip secrets from the `get_settings` response sent to the frontend.
-
-#### C2. Agent SDK Runs with `bypassPermissions` — Full Filesystem/Shell Access
-
-**Location:** `sidecar/options.ts:50`, `commands/workflow/runtime.rs:541,794`
-**Source:** Security Auditor
-
-Every agent invocation runs with `permissionMode: "bypassPermissions"`, granting unrestricted Read/Write/Edit/Bash access. A prompt-injected agent (via imported skill content or research material) could execute arbitrary commands.
-
-**Fix:** Use `acceptEdits` or `default` mode. Implement a filesystem allowlist. Consider OS-level sandboxing for the sidecar process.
-
-### High
-
-#### H6. Unhandled Promise in `StreamSession` Constructor
-
-**Location:** `sidecar/stream-session.ts:45`
-**Source:** Sidecar Reviewer
-
-`this.runQuery(...)` is async but its promise is discarded. A sync throw before the first `await` becomes an unhandled rejection that crashes the entire sidecar.
-
-**Fix:** `.catch((err) => { onMessage(requestId, { type: "error", message: err.message }); })`
-
-#### H8. GitHub OAuth Requests `repo` Scope (Full Read/Write to All Repos)
-
-**Location:** `commands/github_auth.rs:22`
-**Source:** Security Auditor
-
-`repo,read:user` grants full access to all public and private repos. Only skill-catalog browsing is needed.
-
-**Fix:** Reduce to `public_repo` or fine-grained `repo:read`.
-
-### Medium — Code Quality
-
-| ID | Issue | Location |
+| Review finding(s) | Issue / tracking | Why it remains |
 |---|---|---|
-| M2 | `normalize_path` splits on `/` only — fails on Windows `\` | `commands/settings.rs:101-109` |
-| M3 | No size limit on text `read_file`/`write_file` (memory exhaustion risk) | `commands/files.rs:307-345` |
-| M4 | `use-agent-stream.ts` listener registration race condition (async `.then`) | `hooks/use-agent-stream.ts:67-69` |
-| M5 | CSP includes `localhost:1420` in production builds | `tauri.conf.json:23` |
-| M6 | `AgentOutputPanel` subscribes to entire run object — re-renders on every display item | `components/agent-output-panel.tsx:13` |
-| M7 | `addDisplayItem` does O(n) array copy per message — O(n^2) for long runs | `agent-store.ts:546-576` |
-| M8 | Dashboard has 15+ `useState` hooks — hard to reason about | `pages/dashboard.tsx:61-78` |
-
-### Medium — Architecture
-
-| ID | Issue | Location |
-|---|---|---|
-| M9 | `db.rs` is a monolith (77K+ tokens, all migrations + queries + types) | `src-tauri/src/db.rs` |
-| M10 | Duplicate usage persistence path (frontend `persistRunRows` + Rust `run_result`) | `agent-store.ts` + `events.rs` |
-| M11 | Module-level `Map` state outside Zustand store (invisible to devtools) | `agent-store.ts` |
-| M13 | `INSERT OR REPLACE` on `agent_runs` — risks cascade if FKs ever added | `db.rs:1470-1480` |
-
-Note: VU-489 AC6 splits `workflow.rs` but does **not** address the `db.rs` monolith (M9) or the dual-write dedup (M10).
-
-### Medium — Security
-
-| ID | Issue | Location |
-|---|---|---|
-| M14 | `list_skill_files` doesn't use `get_allowed_roots` validation | `commands/files.rs:18` |
-| M15 | No `rehype-sanitize` on agent-generated markdown rendering | `components/agent-items/*.tsx` |
-| M16 | Sidecar has no API key redaction utility — accidental logging risk | `sidecar/options.ts`, `config.ts` |
-| M17 | `discoverInstalledPlugins` doesn't filter for directories (`.DS_Store` risk) | `sidecar/run-agent.ts:14-22` |
-
-### Low
-
-| ID | Issue | Location |
-|---|---|---|
-| L1 | `flushMessageBuffer()` is a documented no-op — dead code | `agent-store.ts:127-130` |
-| L2 | Hardcoded `contextWindow: 200_000` default; models vary (1M for Opus) | `agent-store.ts:460,536` |
-| L3 | TODO comment for VU-539 left in codebase | `use-agent-stream.ts:206` |
-| L4 | `showContextMenu` hardcoded to `true` — dead branch | `skill-card.tsx:138` |
-| L5 | Dead `App.tsx` file returns null (compatibility stub) | `App.tsx` |
-| L6 | `handleShutdown` always exits with code 0 even on forced timeout | `sidecar/shutdown.ts:51` |
-| L7 | `resolvePromptPathsAsync` is unnecessarily async | `sidecar/mock-agent.ts:122-129` |
-| L8 | `AGENT_EVENTS_VERSION` / `DISPLAY_TYPES_VERSION` not embedded in protocol messages | `sidecar/agent-events.ts:112`, `display-types.ts:103` |
-| L9 | GitHub Client ID hardcoded — can't rotate without code change | `github_auth.rs:4` |
-| L10 | Tauri `opener:default` capability allows opening arbitrary URLs | `capabilities/default.json` |
-| L11 | No integrity check on bundled agent resource files | `tauri.conf.json:29-35` |
-| L12 | FK enforcement disabled during migration, never re-enabled | `db.rs:121-122` |
-| L13 | `void Promise.allSettled([...inFlight])` is a no-op in persistent-mode | `sidecar/persistent-mode.ts:332` |
-| L14 | `parsePromptPaths` regex doesn't handle CRLF line endings | `sidecar/mock-agent.ts:91-104` |
-| L15 | `thinkingEnabled` detection excludes `adaptive` mode | `sidecar/message-processor.ts:470-473` |
-| L16 | Usage page uses raw `<select>` instead of shadcn Select | `pages/usage.tsx:297-354` |
-
-### Tests — Pending
-
-| ID | Issue | Severity | Location |
-|---|---|---|---|
-| T1 | `create_test_db_for_tests()` diverges from production `NUMBERED_MIGRATIONS` — migration 30 called twice, migrations 12 and 17 missing | High | `db.rs:14-52` |
-| T2 | 17 `waitForTimeout` calls in `workflow-smoke.spec.ts` — primary flakiness risk | High | `e2e/workflow/workflow-smoke.spec.ts` |
-| T3 | Hardcoded `/tmp/` paths in 20+ E2E mock overrides violate Windows compat rules | High | Multiple E2E specs and helpers |
-| T4 | No `screenshot: "only-on-failure"` configured in Playwright | Medium | `playwright.config.ts` |
-| T5 | `display-items.spec.ts` not listed in TEST_MANIFEST | Medium | `e2e/workflow/display-items.spec.ts` |
-| T6 | 2 orphaned fixtures (`workspace-skills.json`, `usage-data.json`) with schema drift | Low | `e2e/fixtures/` |
-| T7 | `addInitScript` called after `goto` in dashboard tests | Medium | `e2e/dashboard/dashboard-smoke.spec.ts:36-56` |
-| T8 | Duplicate test case `"renders skill name"` in `workspace-skill-card.test.tsx:25,37` | Medium | Unit tests |
-| T9 | Real-timer `setTimeout` in 3 test files (50ms/10ms waits) creates flakiness | Medium | `use-workflow-state-machine.test.ts:192,231`, `stream-session.test.ts:201,205,209` |
-| T10 | `feedback.rs:134` has empty `#[cfg(test)]` stub with no tests | Medium | Rust tests |
-
-### E2E Coverage Gaps — Missing Critical Flows
-
-| Flow | Why Critical |
-|---|---|
-| Usage page (`/usage`) | Primary cost feedback loop; `data-testid` hooks already wired |
-| Settings: workspace path save, GitHub login/logout | First-run config only partially tested (1 test) |
-| GitHub import dialog (marketplace) | Multi-step dialog with auth, untested |
-| Imported skills management | Enable/disable/delete library, zero coverage |
-| Clarification editor interaction | Users answer questions during workflow, never asserted |
-| Orphan/reconciliation dialogs | Post-startup dialogs users must dismiss |
-| Error boundary rendering | App-level crash recovery |
-
-### Untested Frontend Components
-
-| Component | Risk |
-|---|---|
-| `workflow-sidebar.tsx` | Core navigation, rendered on every workflow page |
-| `error-boundary.tsx` | Crash recovery fallback |
-| `reconciliation-ack-dialog.tsx` | Startup dialog, dismiss flows |
-| `skill-dialog.tsx` | Skill creation/edit form validation |
-| `agent-items/result-item.tsx`, `error-item.tsx`, `tool-item.tsx`, `subagent-item.tsx` | Agent output rendering branches |
-| `refine/chat-panel.tsx`, `git-patch-view.tsx` | Refine conversation container |
+| C1 | Untracked in Cycle 2 | API keys and GitHub OAuth tokens are still stored in plaintext SQLite, and secrets still traverse frontend-accessible settings paths |
+| C2 | Untracked in Cycle 2 | Agent runs still use `bypassPermissions`; PR #160 did not reduce the sidecar permission model |
+| H6 | Untracked in Cycle 2 | `StreamSession` constructor async error handling was not part of PR #160 |
+| H8 | Untracked in Cycle 2 | GitHub OAuth scope reduction is still outstanding |
+| C3, H5, M12, Rec #1, Rec #2 | [VU-489](https://linear.app/acceleratedata/issue/VU-489) | Still open in `Todo`; the backend settings/API-boundary ownership work was not part of PR #160 |
+| M5, M8 | [VU-586](https://linear.app/acceleratedata/issue/VU-586) | The open issue exists, but PR #160 did not include the CSP production cleanup or dashboard state-structure refactor |
+| M9 | [VU-587](https://linear.app/acceleratedata/issue/VU-587) | `db.rs` is still a monolith after PR #160 |
+| M7 | [VU-593](https://linear.app/acceleratedata/issue/VU-593) | Split out after the review because the O(n^2) display-item append path still needs a dedicated fix |
+| L1, L2, L3, L4, L6, L8, L9, L10, L11 | [VU-589](https://linear.app/acceleratedata/issue/VU-589) | These low-priority findings are not clearly closed by the PR #160 file set and should still be treated as remaining until verified or split out |
+| L12 | [VU-596](https://linear.app/acceleratedata/issue/VU-596) | Split out after the review because foreign-key enforcement is still disabled after migrations |
+| Any merge-dependent item still marked `In Review` above | [PR #160](https://github.com/accelerate-data/skill-builder/pull/160) | Implemented on the branch, but not `Done` in Linear or merged to `main` yet |
 
 ---
 
@@ -223,10 +107,8 @@ Note: VU-489 AC6 splits `workflow.rs` but does **not** address the `db.rs` monol
 | Plaintext secrets in SQLite (C1) | Critical | Medium |
 | `bypassPermissions` on all agents (C2) | Critical | High |
 | `repo` scope on GitHub OAuth (H8) | High | Trivial (1 line) |
-| No markdown sanitization (M15) | Medium | Low |
 | CSP `'unsafe-inline'` for styles | Medium | Low |
 | CSP includes localhost in production (M5) | Medium | Low |
-| `list_skill_files` missing allowed-root validation (M14) | Medium | Small |
 | No integrity check on bundled agent resources (L11) | Low | Medium |
 
 ## Pending Recommendations (Prioritized)
@@ -237,9 +119,8 @@ Note: VU-489 AC6 splits `workflow.rs` but does **not** address the `db.rs` monol
 | 2 | Reduce agent permission mode from `bypassPermissions` (C2) | Security | High |
 | 3 | Reduce GitHub OAuth scope from `repo` to `public_repo` (H8) | Security | Trivial |
 | 4 | Catch unhandled promise in `StreamSession` constructor (H6) | Sidecar | Small |
-| 5 | Fix test DB helper — iterate `NUMBERED_MIGRATIONS` (T1) | Rust | Small |
-| 6 | Replace 17 `waitForTimeout` calls with deterministic assertions (T2) | E2E | Medium |
-| 7 | Add `rehype-sanitize` to markdown rendering pipeline (M15) | Security | Small |
-| 8 | Re-enable FK enforcement after migrations complete (L12) | Rust | Trivial |
-| 9 | Add E2E tests for usage page and settings save | E2E | Medium |
-| 10 | Split `db.rs` monolith into domain modules (M9) | Architecture | Large |
+| 5 | Fix the remaining production CSP issue (`localhost:1420`) and review style policy (`M5`) | Security / Config | Low |
+| 6 | Batch display-item accumulation to remove the remaining O(n^2) append path (M7 / VU-593) | Frontend architecture | Medium |
+| 7 | Re-enable FK enforcement after migrations complete (L12 / VU-596) | Rust | Trivial |
+| 8 | Split `db.rs` monolith into domain modules (M9) | Architecture | Large |
+| 9 | Finish the backend settings/API-boundary ownership work in VU-489 | Backend contracts | Large |
