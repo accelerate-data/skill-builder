@@ -157,4 +157,32 @@ describe("useLeaveGuard", () => {
     const secondBlockerConfig = (useBlocker as any).mock.calls[1][0];
     expect(secondBlockerConfig.shouldBlockFn()).toBe(false);
   });
+
+  it("shouldBlock returns false when isRunning=false and no dirty state (clean review)", () => {
+    // Simulates: navigating away from a clean review page where nothing is running and
+    // no edits have been made. The guard must not trigger.
+    const isRunning = false;
+    const isDirty = false;
+    const shouldBlock = vi.fn(() => isRunning || isDirty);
+    const onLeave = vi.fn();
+
+    renderHook(() => useLeaveGuard({ shouldBlock, onLeave }));
+
+    const blockerConfig = (useBlocker as any).mock.calls[0][0];
+    expect(blockerConfig.shouldBlockFn()).toBe(false);
+  });
+
+  it("shouldBlock returns false when navigating between completed steps in review mode", () => {
+    // Simulates: user browses completed steps in review mode without running an agent.
+    // The guard must not fire between completed steps.
+    const isRunning = false;
+    const reviewMode = true;
+    const shouldBlock = vi.fn(() => isRunning && !reviewMode);
+    const onLeave = vi.fn();
+
+    renderHook(() => useLeaveGuard({ shouldBlock, onLeave }));
+
+    const blockerConfig = (useBlocker as any).mock.calls[0][0];
+    expect(blockerConfig.shouldBlockFn()).toBe(false);
+  });
 });

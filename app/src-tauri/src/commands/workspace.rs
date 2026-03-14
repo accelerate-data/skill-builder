@@ -194,19 +194,17 @@ pub fn init_workspace(
     // Deploy bundled agents to .claude/
     super::workflow::ensure_workspace_prompts_sync(app, &workspace_path)?;
 
-    // Purge stale bundled skills then seed current ones (always overwrite files, preserve is_active)
+    // Purge stale bundled skills then seed current ones (filesystem-only, no DB)
     {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
         let bundled_skills_dir = super::workflow::resolve_bundled_skills_dir(app);
         if let Err(e) = super::imported_skills::purge_stale_bundled_skills(
             &workspace_path,
-            &conn,
             &bundled_skills_dir,
         ) {
             log::warn!("purge_stale_bundled_skills: failed: {}", e);
         }
         if let Err(e) =
-            super::imported_skills::seed_bundled_skills(&workspace_path, &conn, &bundled_skills_dir)
+            super::imported_skills::seed_bundled_skills(&workspace_path, &bundled_skills_dir)
         {
             log::warn!("seed_bundled_skills: failed: {}", e);
         }

@@ -11,42 +11,52 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Switch } from "@/components/ui/switch"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { useWorkspaceSkillsStore } from "@/stores/workspace-skills-store"
-import type { WorkspaceSkill } from "@/stores/workspace-skills-store"
+import { useImportedSkillsStore } from "@/stores/imported-skills-store"
 import { useSettingsStore } from "@/stores/settings-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
 import { ImportSkillDialog } from "@/components/import-skill-dialog"
-import type { ImportConfirmParams } from "@/components/import-skill-dialog"
 import { parseSkillFile } from "@/lib/tauri"
+import type { ImportedSkill } from "@/lib/types"
 import type { SkillFileMeta } from "@/lib/types"
-import { PURPOSE_OPTIONS } from "@/lib/types"
 
-export function WorkspaceSkillsTab() {
+function formatRelativeTime(dateString: string): string {
+  try {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMinutes = Math.floor(diffMs / 60000)
+
+    if (diffMinutes < 1) return "just now"
+    if (diffMinutes < 60) return `${diffMinutes}m ago`
+    const diffHours = Math.floor(diffMinutes / 60)
+    if (diffHours < 24) return `${diffHours}h ago`
+    const diffDays = Math.floor(diffHours / 24)
+    if (diffDays < 30) return `${diffDays}d ago`
+    return date.toLocaleDateString()
+  } catch {
+    return ""
+  }
+}
+
+function sourceLabel(skill: ImportedSkill): string {
+  if (skill.marketplace_source_url) return "marketplace"
+  return "file"
+}
+
+export function ImportedSkillsTab() {
   const {
     skills,
     isLoading,
     fetchSkills,
-    uploadSkill,
-    toggleActive,
     deleteSkill,
-    setPurpose,
-  } = useWorkspaceSkillsStore()
+  } = useImportedSkillsStore()
 
   const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
   const hasEnabledRegistry = marketplaceRegistries.some(r => r.enabled)
-  const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const [showGitHubImport, setShowGitHubImport] = useState(false)
-  const [workspaceImportOpen, setWorkspaceImportOpen] = useState(false)
-  const [workspaceImportFile, setWorkspaceImportFile] = useState("")
-  const [workspaceImportMeta, setWorkspaceImportMeta] = useState<SkillFileMeta>({
+  const [importOpen, setImportOpen] = useState(false)
+  const [importFile, setImportFile] = useState("")
+  const [importMeta, setImportMeta] = useState<SkillFileMeta>({
     name: null, description: null, version: null, model: null,
     argument_hint: null, user_invocable: null, disable_model_invocation: null,
   })
@@ -54,13 +64,6 @@ export function WorkspaceSkillsTab() {
   useEffect(() => {
     fetchSkills()
   }, [fetchSkills])
-
-  useEffect(() => {
-    if (pendingUpgrade?.mode === "workspace-skills") {
-      setShowGitHubImport(true)
-      useSettingsStore.getState().setPendingUpgradeOpen(null)
-    }
-  }, [pendingUpgrade])
 
   const handleImport = useCallback(async () => {
     const filePath = await open({
@@ -71,89 +74,35 @@ export function WorkspaceSkillsTab() {
 
     try {
       const meta = await parseSkillFile(filePath)
-      setWorkspaceImportFile(filePath)
-      setWorkspaceImportMeta(meta)
-      setWorkspaceImportOpen(true)
+      setImportFile(filePath)
+      setImportMeta(meta)
+      setImportOpen(true)
     } catch (err) {
-      console.error("[workspace-skills] parse failed:", err)
+      console.error("[imported-skills] parse failed:", err)
       toast.error(
         "Import failed: not a valid skill package.",
-        { duration: Infinity, cause: err, context: { operation: "workspace_skills_import_parse" } }
+        { duration: Infinity, cause: err, context: { operation: "imported_skills_import_parse" } }
       )
     }
   }, [])
 
-  const handleToggle = useCallback(
-    async (skill: WorkspaceSkill) => {
-      try {
-        await toggleActive(skill.skill_id, !skill.is_active)
-        toast.success(
-          !skill.is_active ? `"${skill.skill_name}" activated` : `"${skill.skill_name}" deactivated`,
-          { duration: 1500 }
-        )
-      } catch (err) {
-        console.error("[workspace-skills] toggle failed:", err)
-        toast.error(`Failed to toggle: ${err instanceof Error ? err.message : String(err)}`, {
-          duration: Infinity,
-          cause: err,
-          context: { operation: "workspace_skills_toggle", skillId: skill.skill_id },
-        })
-      }
-    },
-    [toggleActive]
-  )
-
   const handleDelete = useCallback(
-    async (skill: WorkspaceSkill) => {
+    async (skill: ImportedSkill) => {
       const toastId = toast.loading(`Deleting "${skill.skill_name}"...`)
       try {
-        await deleteSkill(skill.skill_id)
+        await deleteSkill(skill.skill_id, fetchSkills)
         toast.success(`Deleted "${skill.skill_name}"`, { id: toastId })
       } catch (err) {
-        console.error("[workspace-skills] delete failed:", err)
+        console.error("[imported-skills] delete failed:", err)
         toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`, {
           id: toastId,
           duration: Infinity,
           cause: err,
-          context: { operation: "workspace_skills_delete", skillId: skill.skill_id },
+          context: { operation: "imported_skills_delete", skillId: skill.skill_id },
         })
       }
     },
-    [deleteSkill]
-  )
-
-  const handleWorkspaceConfirm = useCallback(
-    async (params: ImportConfirmParams) => {
-      await uploadSkill({
-        filePath: params.filePath,
-        name: params.name,
-        description: params.description,
-        version: params.version,
-        model: params.model,
-        argumentHint: params.argumentHint,
-        userInvocable: params.userInvocable,
-        disableModelInvocation: params.disableModelInvocation,
-        purpose: params.purpose,
-        forceOverwrite: params.forceOverwrite,
-      })
-    },
-    [uploadSkill]
-  )
-
-  const handlePurposeChange = useCallback(
-    async (skillId: string, newPurpose: string | null) => {
-      try {
-        await setPurpose(skillId, newPurpose)
-      } catch (err) {
-        console.error("[workspace-skills] setPurpose failed:", err)
-        toast.error(`Failed to update purpose: ${err instanceof Error ? err.message : String(err)}`, {
-          duration: Infinity,
-          cause: err,
-          context: { operation: "workspace_skills_set_purpose", skillId },
-        })
-      }
-    },
-    [setPurpose]
+    [deleteSkill, fetchSkills]
   )
 
   return (
@@ -164,7 +113,7 @@ export function WorkspaceSkillsTab() {
           className="w-36"
           onClick={() => setShowGitHubImport(true)}
           disabled={!hasEnabledRegistry}
-          title={!hasEnabledRegistry ? "Enable a marketplace registry in Settings → Marketplace" : undefined}
+          title={!hasEnabledRegistry ? "Enable a marketplace registry in Settings \u2192 Marketplace" : undefined}
         >
           <Github className="size-4" />
           Marketplace
@@ -191,7 +140,7 @@ export function WorkspaceSkillsTab() {
             <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-muted">
               <Package className="size-6 text-muted-foreground" />
             </div>
-            <CardTitle>No workspace skills</CardTitle>
+            <CardTitle>No imported skills</CardTitle>
             <CardDescription>
               Import a .skill package or browse the marketplace to add skills.
             </CardDescription>
@@ -201,9 +150,9 @@ export function WorkspaceSkillsTab() {
         <div className="rounded-md border">
           <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
             <span className="flex-1">Name</span>
-            <span className="w-28">Purpose</span>
             <span className="w-24">Version</span>
-            <span className="w-20">Active</span>
+            <span className="w-24">Source</span>
+            <span className="w-28">Imported</span>
             <span className="w-8" />
           </div>
           {skills.map((skill) => (
@@ -222,38 +171,18 @@ export function WorkspaceSkillsTab() {
                   <div className="text-xs text-muted-foreground">{skill.description}</div>
                 )}
               </div>
-              <div className="w-28 shrink-0">
-                <Select
-                  value={skill.purpose ?? ""}
-                  onValueChange={(val) =>
-                    handlePurposeChange(skill.skill_id, val)
-                  }
-                >
-                  <SelectTrigger className="h-6 text-xs border-0 bg-transparent px-0 shadow-none focus:ring-0 text-muted-foreground hover:text-foreground w-full">
-                    <SelectValue placeholder="Set purpose…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PURPOSE_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
               <div className="w-24 shrink-0">
                 {skill.version ? (
                   <Badge variant="outline" className="text-xs font-mono">{skill.version}</Badge>
                 ) : (
-                  <span className="text-xs text-muted-foreground">—</span>
+                  <span className="text-xs text-muted-foreground">&mdash;</span>
                 )}
               </div>
-              <div className="w-20 shrink-0 flex items-center gap-2">
-                <Switch
-                  checked={skill.is_active}
-                  onCheckedChange={() => handleToggle(skill)}
-                  aria-label={`Toggle ${skill.skill_name}`}
-                />
+              <div className="w-24 shrink-0">
+                <span className="text-xs text-muted-foreground">{sourceLabel(skill)}</span>
+              </div>
+              <div className="w-28 shrink-0">
+                <span className="text-xs text-muted-foreground">{formatRelativeTime(skill.imported_at)}</span>
               </div>
               <div className="w-8 shrink-0 flex items-center justify-end">
                 {!skill.is_bundled && (
@@ -276,17 +205,14 @@ export function WorkspaceSkillsTab() {
         open={showGitHubImport}
         onOpenChange={setShowGitHubImport}
         onImported={fetchSkills}
-        mode="workspace-skills"
         registries={marketplaceRegistries.filter(r => r.enabled)}
       />
 
       <ImportSkillDialog
-        open={workspaceImportOpen}
-        onOpenChange={setWorkspaceImportOpen}
-        filePath={workspaceImportFile}
-        meta={workspaceImportMeta}
-        showPurpose
-        onConfirm={handleWorkspaceConfirm}
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        filePath={importFile}
+        meta={importMeta}
         onImported={fetchSkills}
       />
     </div>

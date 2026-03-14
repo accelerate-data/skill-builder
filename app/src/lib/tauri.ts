@@ -1,18 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta } from "@/lib/types";
 
 // Re-export invoke for flexible Tauri command invocation
 export { invoke };
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta } from "@/lib/types";
-
-export interface WorkspaceSkillImportRequest {
-  path: string;
-  purpose: string | null;
-  metadata_override: SkillMetadataOverride | null;
-  version: string | null;
-}
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta } from "@/lib/types";
 
 // --- Settings ---
 
@@ -385,8 +378,11 @@ export async function listSkills(workspacePath: string, sourceUrl?: string | nul
   })
 }
 
-export const listWorkspaceSkills = (sourceUrl?: string | null) =>
-  invoke<WorkspaceSkill[]>("list_workspace_skills", { sourceUrl: sourceUrl ?? null })
+export const listImportedSkills = (sourceUrl?: string | null) =>
+  invoke<ImportedSkill[]>("list_imported_skills", { sourceUrl: sourceUrl ?? null })
+
+export const deleteImportedSkill = (skillId: string) =>
+  invoke<void>("delete_imported_skill", { skillId })
 
 // --- GitHub Import ---
 
@@ -399,12 +395,6 @@ export const checkMarketplaceUrl = (url: string) =>
 
 export const listGitHubSkills = (owner: string, repo: string, branch: string, subpath?: string) =>
   invoke<AvailableSkill[]>("list_github_skills", { owner, repo, branch, subpath: subpath ?? null });
-
-export const importGitHubSkills = (owner: string, repo: string, branch: string, skillRequests: WorkspaceSkillImportRequest[], sourceUrl?: string | null) =>
-  invoke<ImportedSkill[]>("import_github_skills", { owner, repo, branch, skillRequests, sourceUrl: sourceUrl ?? null });
-
-export const setWorkspaceSkillPurpose = (skillId: string, purpose: string | null) =>
-  invoke<void>("set_workspace_skill_purpose", { skillId, purpose });
 
 // --- Marketplace Import ---
 

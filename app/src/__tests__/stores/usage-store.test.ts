@@ -101,6 +101,7 @@ describe("useUsageStore", () => {
       byDay: [],
       loading: false,
       error: null,
+      hideCancelled: false,
       dateRange: "all",
       skillFilter: null,
       modelFamilyFilter: null,
@@ -189,15 +190,18 @@ describe("useUsageStore", () => {
       let resolveBarrier!: () => void;
       const barrier = new Promise<void>((resolve) => { resolveBarrier = resolve; });
 
-      let callCount = 0;
+      // Each fetchUsage() fires exactly one get_usage_summary call. Using a
+      // per-command counter avoids the non-determinism that arises when two
+      // concurrent fetches interleave their 6 parallel invoke calls and a shared
+      // callCount barrier misfires.
+      let summaryCallCount = 0;
       mockInvoke.mockImplementation((cmd: string) => {
-        callCount++;
-        const batchIndex = callCount;
         switch (cmd) {
           case "get_usage_summary":
-            // First batch (calls 1-6): block on barrier and return stale data
-            // Second batch (calls 7-12): resolve immediately with fresh data
-            if (batchIndex <= 6) {
+            summaryCallCount++;
+            // fetch #1 (first summary call): block on barrier → stale data
+            // fetch #2 (second summary call): resolve immediately → fresh data
+            if (summaryCallCount === 1) {
               return barrier.then(() => staleSummary);
             }
             return Promise.resolve(freshSummary);
@@ -261,6 +265,142 @@ describe("useUsageStore", () => {
 
       await useUsageStore.getState().fetchUsage();
       expect(useUsageStore.getState().summary).toEqual(secondSummary);
+    });
+  });
+
+  describe("toStartDate (via startDate param passed to invoke)", () => {
+    it("passes startDate=null when dateRange is 'all'", async () => {
+      setupInvokeMock();
+      useUsageStore.setState({ dateRange: "all" });
+
+      await useUsageStore.getState().fetchUsage();
+
+      const summaryCall = mockInvoke.mock.calls.find((c) => c[0] === "get_usage_summary");
+      expect(summaryCall).toBeDefined();
+      expect(summaryCall![1].startDate).toBeNull();
+    });
+
+    it("passes a startDate ~7 days ago when dateRange is '7d'", async () => {
+      setupInvokeMock();
+      useUsageStore.setState({ dateRange: "7d" });
+
+      const before = Date.now();
+      await useUsageStore.getState().fetchUsage();
+      const after = Date.now();
+
+      const summaryCall = mockInvoke.mock.calls.find((c) => c[0] === "get_usage_summary");
+      expect(summaryCall).toBeDefined();
+      const startDate = summaryCall![1].startDate as string;
+      expect(typeof startDate).toBe("string");
+
+      const parsedMs = new Date(startDate).getTime();
+      const expectedMs = before - 7 * 24 * 60 * 60 * 1000;
+      // Allow a small tolerance for test execution time
+      expect(parsedMs).toBeGreaterThanOrEqual(expectedMs - 1000);
+      expect(parsedMs).toBeLessThanOrEqual(after - 7 * 24 * 60 * 60 * 1000 + 1000);
+    });
+
+    it("passes a startDate ~30 days ago when dateRange is '30d'", async () => {
+      setupInvokeMock();
+      useUsageStore.setState({ dateRange: "30d" });
+
+      const before = Date.now();
+      await useUsageStore.getState().fetchUsage();
+
+      const summaryCall = mockInvoke.mock.calls.find((c) => c[0] === "get_usage_summary");
+      expect(summaryCall).toBeDefined();
+      const startDate = summaryCall![1].startDate as string;
+
+      const parsedMs = new Date(startDate).getTime();
+      const expectedMs = before - 30 * 24 * 60 * 60 * 1000;
+      expect(parsedMs).toBeGreaterThanOrEqual(expectedMs - 1000);
+      expect(parsedMs).toBeLessThanOrEqual(expectedMs + 1000);
+    });
+  });
+
+  describe("filter mutations trigger re-fetch", () => {
+    it("setDateRange triggers fetchUsage", async () => {
+      setupInvokeMock();
+
+      await useUsageStore.getState().setDateRange("7d");
+
+      expect(mockInvoke).toHaveBeenCalled();
+      const calledCommands = mockInvoke.mock.calls.map((c) => c[0]);
+      expect(calledCommands).toContain("get_usage_summary");
+    });
+
+    it("setSkillFilter triggers fetchUsage", async () => {
+      setupInvokeMock();
+
+      await useUsageStore.getState().setSkillFilter("my-skill");
+
+      expect(mockInvoke).toHaveBeenCalled();
+      const calledCommands = mockInvoke.mock.calls.map((c) => c[0]);
+      expect(calledCommands).toContain("get_usage_summary");
+    });
+
+    it("setSkillFilter updates the skillFilter state", async () => {
+      setupInvokeMock();
+
+      await useUsageStore.getState().setSkillFilter("my-skill");
+
+      expect(useUsageStore.getState().skillFilter).toBe("my-skill");
+    });
+
+    it("setModelFamilyFilter triggers fetchUsage", async () => {
+      setupInvokeMock();
+
+      await useUsageStore.getState().setModelFamilyFilter("sonnet");
+
+      expect(mockInvoke).toHaveBeenCalled();
+      const calledCommands = mockInvoke.mock.calls.map((c) => c[0]);
+      expect(calledCommands).toContain("get_usage_summary");
+    });
+
+    it("setModelFamilyFilter updates the modelFamilyFilter state", async () => {
+      setupInvokeMock();
+
+      await useUsageStore.getState().setModelFamilyFilter("sonnet");
+
+      expect(useUsageStore.getState().modelFamilyFilter).toBe("sonnet");
+    });
+
+    it("toggleHideCancelled triggers fetchUsage", async () => {
+      setupInvokeMock();
+
+      await useUsageStore.getState().toggleHideCancelled();
+
+      expect(mockInvoke).toHaveBeenCalled();
+      const calledCommands = mockInvoke.mock.calls.map((c) => c[0]);
+      expect(calledCommands).toContain("get_usage_summary");
+    });
+
+    it("toggleHideCancelled flips hideCancelled state", async () => {
+      setupInvokeMock();
+
+      expect(useUsageStore.getState().hideCancelled).toBe(false);
+      await useUsageStore.getState().toggleHideCancelled();
+      expect(useUsageStore.getState().hideCancelled).toBe(true);
+    });
+
+    it("setSkillFilter passes skillName to Tauri commands", async () => {
+      setupInvokeMock();
+
+      await useUsageStore.getState().setSkillFilter("target-skill");
+
+      const summaryCall = mockInvoke.mock.calls.find((c) => c[0] === "get_usage_summary");
+      expect(summaryCall).toBeDefined();
+      expect(summaryCall![1].skillName).toBe("target-skill");
+    });
+
+    it("setModelFamilyFilter passes modelFamily to get_agent_runs", async () => {
+      setupInvokeMock();
+
+      await useUsageStore.getState().setModelFamilyFilter("haiku");
+
+      const agentRunsCall = mockInvoke.mock.calls.find((c) => c[0] === "get_agent_runs");
+      expect(agentRunsCall).toBeDefined();
+      expect(agentRunsCall![1].modelFamily).toBe("haiku");
     });
   });
 

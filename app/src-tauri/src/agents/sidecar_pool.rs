@@ -2119,13 +2119,6 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_pool_creation() {
-        let pool = SidecarPool::new();
-        // Pool should be created without panicking
-        let _ = pool;
-    }
-
-    #[tokio::test]
     async fn test_pool_empty_after_init() {
         let pool = SidecarPool::new();
         let sidecars = pool.sidecars.lock().await;
@@ -2155,53 +2148,6 @@ mod tests {
         assert!(is_node_compatible("v25.0.0"));
         assert!(!is_node_compatible("v16.0.0"));
         assert!(!is_node_compatible("v17.9.9"));
-    }
-
-    #[tokio::test]
-    async fn test_pool_spawn_and_crash_recovery() {
-        // This test verifies the pool data structure logic without a real Node.js process.
-        // We manually insert and remove entries to simulate the lifecycle.
-        let pool = SidecarPool::new();
-
-        // Verify pool starts empty
-        {
-            let sidecars = pool.sidecars.lock().await;
-            assert_eq!(sidecars.len(), 0);
-        }
-
-        // Simulate crash recovery: after removing a sidecar entry,
-        // the next get_or_spawn should attempt to create a new one.
-        // (We can't test the actual spawn without a sidecar binary,
-        // but we verify the pool correctly handles removal.)
-        {
-            let mut sidecars = pool.sidecars.lock().await;
-            sidecars.remove("test-skill");
-            assert!(!sidecars.contains_key("test-skill"));
-        }
-    }
-
-    #[tokio::test]
-    async fn test_multiple_skills_independent() {
-        // Verify the pool can track multiple skills independently
-        let pool = SidecarPool::new();
-
-        // Simulate: after spawning sidecars for two skills, removing one
-        // should not affect the other.
-        // (We test the HashMap logic without real child processes.)
-
-        // Both should be absent initially
-        {
-            let sidecars = pool.sidecars.lock().await;
-            assert!(!sidecars.contains_key("skill_a"));
-            assert!(!sidecars.contains_key("skill_b"));
-        }
-
-        // Directly remove from pool (shutdown_skill requires AppHandle)
-        {
-            let mut sidecars = pool.sidecars.lock().await;
-            sidecars.remove("skill_a");
-            assert!(!sidecars.contains_key("skill_b"));
-        }
     }
 
     #[tokio::test]

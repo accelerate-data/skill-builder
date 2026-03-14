@@ -109,6 +109,7 @@ import {
   materializeWorkflowStepOutput,
   materializeAnswerEvaluationOutput,
   getContextFileContent,
+  navigateBackToStepDb,
 } from "@/lib/tauri";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
@@ -1852,6 +1853,51 @@ describe("WorkflowPage — VD-863 autosave on completed agent step with clarific
     vi.useRealTimers();
   });
 
+  it("autosave fires saveClarificationsContent after 1500ms on completed clarificationsEditable step", async () => {
+    vi.useFakeTimers();
+
+    const clarJson = makeClarificationsJson();
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(clarJson));
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    // Step 0 completed — clarificationsEditable is true for step 0
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    // Allow the clarifications load effect to settle
+    await act(async () => { await Promise.resolve(); });
+
+    // WorkflowStepComplete is mocked — get onClarificationsChange from the last render props.
+    // ClarificationsEditor lives inside WorkflowStepComplete so mockClarificationsOnChange
+    // is never wired here; use the prop directly instead.
+    const calls = vi.mocked(WorkflowStepComplete).mock.calls;
+    const stepCompleteProps = calls[calls.length - 1]?.[0];
+    const onClarificationsChange = stepCompleteProps?.onClarificationsChange;
+    expect(onClarificationsChange).toBeDefined();
+
+    act(() => { onClarificationsChange?.({ ...clarJson, sections: [] }); });
+
+    // Before 1500ms — no save yet
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+
+    // After 1500ms — autosave fires
+    await act(async () => { vi.advanceTimersByTime(500); });
+    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
+      "/test/skills/test-skill/context/clarifications.json",
+      expect.any(String),
+    );
+  });
+
   it("autosave does NOT fire on pending agent steps", async () => {
     // Use real timers — no timer-based interaction needed
     vi.useRealTimers();
@@ -2127,6 +2173,14 @@ describe("step reset behavior regressions", () => {
     await act(async () => {
       screen.getByRole("button", { name: "Reset" }).click();
     });
+
+    // navigateBackToStepDb must be called for step 0 so artifacts from step 1+
+    // are deleted from disk (regression for step-0 reset skipping file cleanup).
+    expect(vi.mocked(navigateBackToStepDb)).toHaveBeenCalledWith(
+      expect.anything(), // workspacePath
+      "test-skill",
+      0,
+    );
 
     // Step 0 must be pending — resetToStep(0) was called (not navigateBackToStep)
     await waitFor(() => {

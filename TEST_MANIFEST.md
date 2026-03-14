@@ -31,15 +31,15 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `src-tauri/src/commands/files.rs` | `commands::files` | `@workflow` |
 | `src-tauri/src/commands/settings.rs` | `commands::settings` | `@settings` |
 | `src-tauri/src/commands/clarification.rs` | `commands::clarification` | `@workflow` |
-| `src-tauri/src/commands/github_auth.rs` | -- | `@settings` |
-| `src-tauri/src/commands/imported_skills.rs` (`parse_skill_file`, `import_skill_from_file`) | `commands::imported_skills` | `@import` |
-| `src-tauri/src/commands/imported_skills.rs` | `commands::imported_skills` | `@skills` |
-| `src-tauri/src/commands/github_import.rs` | `commands::github_import` | `@skills` |
-| `src-tauri/src/commands/github_import.rs` (`check_marketplace_updates`) | `commands::github_import` | `@skills` |
-| `src-tauri/src/commands/github_import.rs` (`check_skill_customized`) | `commands::github_import` | `@skills` |
-| `src-tauri/src/commands/usage.rs` | `commands::usage` | `@usage` |
-| `src-tauri/src/commands/agent.rs` | -- | `@workflow-agent` |
-| `src-tauri/src/commands/sidecar_lifecycle.rs` | -- | `@workflow-agent` |
+| `src-tauri/src/commands/github_auth.rs` | `commands::github_auth` | `@settings` |
+| `src-tauri/src/commands/imported_skills.rs` (`parse_skill_file`, `import_skill_from_file`) | `commands::imported_skills` | -- |
+| `src-tauri/src/commands/imported_skills.rs` | `commands::imported_skills` | -- |
+| `src-tauri/src/commands/github_import.rs` | `commands::github_import` | -- |
+| `src-tauri/src/commands/github_import.rs` (`check_marketplace_updates`) | `commands::github_import` | -- |
+| `src-tauri/src/commands/github_import.rs` (`check_skill_customized`) | `commands::github_import` | -- |
+| `src-tauri/src/commands/usage.rs` | `commands::usage` | -- |
+| `src-tauri/src/commands/agent.rs` | -- | `@workflow` |
+| `src-tauri/src/commands/sidecar_lifecycle.rs` | -- | `@workflow` |
 | `src-tauri/src/commands/workflow_lifecycle.rs` | `commands::workflow_lifecycle` | `@workflow` |
 | `src-tauri/src/commands/refine.rs` | `commands::refine` | `@refine` |
 | `src-tauri/src/commands/skill_test.rs` | `commands::skill_test` | `@skill-tester` |
@@ -47,8 +47,8 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `src-tauri/src/commands/lifecycle.rs` | -- | -- |
 | `src-tauri/src/commands/feedback.rs` | -- | -- |
 | `src-tauri/src/commands/node.rs` | `commands::node` | -- |
-| `src-tauri/src/agents/sidecar.rs` | `agents::sidecar` | `@workflow-agent` |
-| `src-tauri/src/agents/sidecar_pool.rs` | `agents::sidecar_pool` | `@workflow-agent` |
+| `src-tauri/src/agents/sidecar.rs` | `agents::sidecar` | `@workflow` |
+| `src-tauri/src/agents/sidecar_pool.rs` | `agents::sidecar_pool` | `@workflow` |
 | `src-tauri/src/db.rs` | `db` | -- |
 | `src-tauri/src/types.rs` | `types` | -- |
 | `src-tauri/src/cleanup.rs` | `cleanup` | -- |
@@ -66,30 +66,16 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 
 | Spec | Tag |
 |---|---|
-| `e2e/dashboard/dashboard.spec.ts` | `@dashboard` |
-| `e2e/dashboard/dashboard-states.spec.ts` | `@dashboard` |
-| `e2e/dashboard/skill-crud.spec.ts` | `@dashboard` |
-| `e2e/dashboard/dashboard-views.spec.ts` | `@dashboard` |
-| `e2e/dashboard/usage-multi-model.spec.ts` | `@dashboard` |
-| `e2e/dashboard/import-skill.spec.ts` | `@import` |
+| `e2e/dashboard/dashboard-smoke.spec.ts` | `@dashboard` |
 | `e2e/setup/setup-screen.spec.ts` | `@workflow` |
 | `e2e/settings/settings.spec.ts` | `@settings` |
-| `e2e/settings/github-auth.spec.ts` | `@settings` |
-| `e2e/workflow/workflow-agent.spec.ts` | `@workflow-agent` |
-| `e2e/navigation/navigation.spec.ts` | `@navigation` |
-| `e2e/skills/skills.spec.ts` | `@skills` |
-| `e2e/usage/usage.spec.ts` | `@usage` |
-| `e2e/workflow/workflow-steps.spec.ts` | `@workflow` |
+| `e2e/workflow/workflow-smoke.spec.ts` | `@workflow` |
 | `e2e/workflow/workflow-gate.spec.ts` | `@workflow` |
-| `e2e/workflow/workflow-navigation.spec.ts` | `@workflow` |
-| `e2e/workflow/display-items.spec.ts` | `@workflow` |
-| `e2e/workflow/leave-guard.spec.ts` | `@workflow` |
-| `e2e/workflow/state-mutations.spec.ts` | `@workflow` |
 | `e2e/refine/refine.spec.ts` | `@refine` |
 | `e2e/skill-tester/skill-tester.spec.ts` | `@skill-tester` |
 | `e2e/skill-tester/test-to-refine.spec.ts` | `@skill-tester` |
-| `e2e/skill-tester/test-store-lifecycle.spec.ts` | `@skill-tester` |
-| `e2e/toast-lifecycle.spec.ts` | `@toast` |
+| `e2e/integration/workflow-integration.spec.ts` | `@integration` |
+| `e2e/desktop-smoke/desktop-smoke.spec.ts` | `@desktop-smoke` |
 
 ## Cross-Boundary: Agent ↔ App Format Compliance
 

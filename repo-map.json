@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-03-13T00:00:00Z",
+  "generated_at": "2026-03-14T00:00:00Z",
   "repo_root": "skill-builder",
   "primary_languages": ["TypeScript", "TSX", "Rust", "Markdown"],
   "package_managers": [
@@ -96,7 +96,7 @@
     },
     "frontend_stores": {
       "path": "app/src/stores/",
-      "description": "Zustand state stores: auth, settings, workflow, refine, usage"
+      "description": "Zustand state stores: agent, auth, imported-skills, refine, settings, skill, test, usage, workflow"
     },
     "frontend_hooks": {
       "path": "app/src/hooks/",
@@ -108,7 +108,7 @@
     },
     "rust_commands": {
       "path": "app/src-tauri/src/commands/",
-      "description": "Tauri command handlers: agent, workflow, skill, workspace, settings, refine, usage, github_auth, github_import, imported_skills, skill_test, clarification, feedback, files, git, lifecycle, sidecar_lifecycle, workflow_lifecycle"
+      "description": "Tauri command handlers. Flat files: agent, skill, workspace, settings, refine, usage, github_auth, skill_test, clarification, feedback, files, git, lifecycle, node, sidecar_lifecycle, workflow_lifecycle, test_utils. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, packaging, runtime, evaluation), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands)"
     },
     "rust_db": {
       "path": "app/src-tauri/src/db.rs",
