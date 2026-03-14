@@ -447,17 +447,18 @@ describe("runPersistent", () => {
       capture.restore();
     }
 
-    // Should get an error response wrapped with request_id
-    const errorLine = capture.lines.find((l) => {
+    // query() throw is caught inside runAgentRequest, which emits an error
+    // run_result via the processor. The error surfaces as an agent_event with
+    // request_id wrapping, not a top-level error line.
+    const runResultLine = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.type === "error" && parsed.request_id;
+      return parsed.request_id === "req_err" && parsed.type === "agent_event"
+        && parsed.event?.type === "run_result";
     });
-    expect(errorLine).toBeDefined();
+    expect(runResultLine).toBeDefined();
 
-    const errorMsg = JSON.parse(errorLine!);
-    expect(errorMsg.request_id).toBe("req_err");
-    expect(errorMsg.type).toBe("error");
-    expect(errorMsg.message).toBe("SDK connection failed");
+    const parsed = JSON.parse(runResultLine!);
+    expect(parsed.event.status).toBe("error");
 
     // Process should still be running (exited only on shutdown)
     expect(exitFn).toHaveBeenCalledWith(0);

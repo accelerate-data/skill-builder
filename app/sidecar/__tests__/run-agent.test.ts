@@ -134,20 +134,28 @@ describe("runAgentRequest", () => {
     );
   });
 
-  it("propagates SDK errors after emitting init_start", async () => {
+  it("emits error run_result when query() throws synchronously", async () => {
     const messages: Record<string, unknown>[] = [];
     mockQuery.mockImplementation(() => {
       throw new Error("SDK failure");
     });
 
-    await expect(
-      runAgentRequest(baseConfig(), (msg) => messages.push(msg)),
-    ).rejects.toThrow("SDK failure");
+    // query() throw is now caught inside the try block and emits an error run_result
+    // instead of propagating — this ensures the frontend always gets a terminal event.
+    await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
-    // sdk_plugins_debug then init_start should have been emitted before the error
-    expect(messages).toHaveLength(2);
-    expect(messages[0]).toMatchObject({ type: "system", subtype: "sdk_plugins_debug" });
-    expect(messages[1]).toMatchObject({ type: "system", subtype: "init_start" });
+    // sdk_plugins_debug, init_start, error display item, then error run_result
+    const errorItem = messages.find(
+      (m) => m.type === "display_item" && (m as Record<string, unknown>).item &&
+        ((m as Record<string, unknown>).item as Record<string, unknown>).type === "error",
+    );
+    expect(errorItem).toBeDefined();
+
+    const runResult = messages.find(
+      (m) => m.type === "agent_event" && (m as Record<string, unknown>).event &&
+        ((m as Record<string, unknown>).event as Record<string, unknown>).type === "run_result",
+    );
+    expect(runResult).toBeDefined();
   });
 
   it("passes apiKey via SDK env option instead of mutating process.env", async () => {

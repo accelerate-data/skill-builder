@@ -106,12 +106,6 @@ export async function runAgentRequest(
   // Notify the UI that we're about to initialize the SDK
   emitSystemEvent(onMessage, "init_start");
 
-  process.stderr.write("[sidecar] Starting SDK query\n");
-  const conversation = query({
-    prompt: config.prompt,
-    options,
-  });
-
   // Process raw SDK messages through MessageProcessor for structured display items
   const processor = new MessageProcessor({
     skillName: config.skillName,
@@ -122,6 +116,12 @@ export async function runAgentRequest(
   });
 
   try {
+    process.stderr.write("[sidecar] Starting SDK query\n");
+    const conversation = query({
+      prompt: config.prompt,
+      options,
+    });
+
     let sdkReadyEmitted = false;
     for await (const message of conversation) {
       if (state.abortController.signal.aborted) break;
