@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { initAgentStream, _resetForTesting } from "@/hooks/use-agent-stream";
-import { useAgentStore } from "@/stores/agent-store";
+import { useAgentStore, flushDisplayItems } from "@/stores/agent-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { mockListen } from "@/test/mocks/tauri";
 
@@ -57,6 +57,7 @@ describe("initAgentStream", () => {
         },
       },
     });
+    flushDisplayItems();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.displayItems).toHaveLength(1);
@@ -280,6 +281,7 @@ describe("initAgentStream", () => {
         },
       },
     });
+    flushDisplayItems();
 
     const run = useAgentStore.getState().runs["unknown-agent"];
     expect(run).toBeDefined();
@@ -306,6 +308,7 @@ describe("initAgentStream", () => {
       },
     });
 
+    flushDisplayItems();
     // Now startRun is called (e.g. by workflow page)
     useAgentStore.getState().startRun("early-agent", "sonnet");
 
@@ -372,6 +375,7 @@ describe("initAgentStream", () => {
     });
 
     expect(useWorkflowStore.getState().isInitializing).toBe(false);
+    flushDisplayItems();
     expect(useAgentStore.getState().runs["agent-1"].displayItems).toHaveLength(2);
   });
 
