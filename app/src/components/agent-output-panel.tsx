@@ -10,7 +10,8 @@ interface AgentOutputPanelProps {
 }
 
 export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
-  const run = useAgentStore((s) => s.runs[agentId]);
+  const displayItems = useAgentStore((s) => s.runs[agentId]?.displayItems);
+  const hasRun = useAgentStore((s) => agentId in s.runs);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -20,9 +21,9 @@ export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
 
   useEffect(() => {
     scrollToBottom();
-  }, [run?.displayItems?.length, scrollToBottom]);
+  }, [displayItems?.length, scrollToBottom]);
 
-  if (!run) {
+  if (!hasRun) {
     return (
       <Card className="flex-1">
         <CardContent className="flex h-full items-center justify-center text-muted-foreground">
@@ -36,7 +37,7 @@ export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
     <Card className="flex min-h-0 flex-1 flex-col overflow-hidden py-2 gap-0">
       <ScrollArea className="min-h-0 flex-1">
         <div ref={scrollRef} className="flex flex-col px-4 py-1">
-          <DisplayItemList items={run.displayItems} />
+          <DisplayItemList items={displayItems ?? []} />
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
