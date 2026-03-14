@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeSanitize from "rehype-sanitize";
 import { markdownComponents } from "@/components/markdown-link";
 import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2, MessageSquare, AlertTriangle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -682,7 +683,7 @@ function FileContentRenderer({ file, content }: { file: string; content: string 
   return (
     <div className="rounded-md border">
       <div className="markdown-body compact max-w-none p-4">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={markdownComponents}>
           {content}
         </ReactMarkdown>
       </div>
