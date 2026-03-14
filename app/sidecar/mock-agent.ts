@@ -89,18 +89,18 @@ export function parsePromptPaths(prompt: string): {
   skillDir: string | null;
 } {
   const workspaceMatch = prompt.match(
-    /The workspace directory is: ([^\n]+?)\.\s/,
+    /The workspace directory is: ([^\r\n]+?)\.\s/,
   );
   const workspaceDir = workspaceMatch?.[1]?.trim() ?? null;
 
   const contextMatch = prompt.match(
-    /The context directory is: ([^\n]+?)\.\s/,
+    /The context directory is: ([^\r\n]+?)\.\s/,
   );
   const outputMatch = prompt.match(
-    /The skill output directory \(SKILL\.md and references\/\) is: ([^\n]+?)\.\s/,
+    /The skill output directory \(SKILL\.md and references\/\) is: ([^\r\n]+?)\.\s/,
   );
   const skillDirMatch = prompt.match(
-    /The skill directory is: ([^\n]+?)\.\s/,
+    /The skill directory is: ([^\r\n]+?)\.\s/,
   );
 
   const contextDir =
@@ -119,12 +119,12 @@ export function parsePromptPaths(prompt: string): {
 /**
  * Resolve all paths from the prompt. Paths are now inline in the prompt string.
  */
-export async function resolvePromptPathsAsync(prompt: string): Promise<{
+export function resolvePromptPaths(prompt: string): {
   workspaceDir: string | null;
   contextDir: string | null;
   skillOutputDir: string | null;
   skillDir: string | null;
-}> {
+} {
   return parsePromptPaths(prompt);
 }
 
@@ -318,7 +318,7 @@ async function writeMockOutputFiles(
 
   if (!(await pathExists(srcDir))) return;
 
-  const paths = await resolvePromptPathsAsync(config.prompt);
+  const paths = resolvePromptPaths(config.prompt);
 
   // Determine the destination root for this step's files.
   //
