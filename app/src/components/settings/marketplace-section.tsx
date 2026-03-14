@@ -33,7 +33,7 @@ function RegistryTestIcon({ state }: { state: RegistryTestState }) {
 interface MarketplaceSectionProps {
   autoUpdate: boolean
   setAutoUpdate: (v: boolean) => void
-  autoSave: (overrides: { marketplaceRegistries?: MarketplaceRegistry[]; autoUpdate?: boolean }) => void
+  autoSave: (overrides: Record<string, unknown>) => void
 }
 
 export function MarketplaceSection({

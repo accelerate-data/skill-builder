@@ -26,7 +26,7 @@ interface AdvancedSectionProps {
   setLogLevel: (v: string) => void
   skillsPath: string | null
   setSkillsPath: (v: string | null) => void
-  autoSave: (overrides: { logLevel?: string; skillsPath?: string | null }) => void
+  autoSave: (overrides: Record<string, unknown>) => void
 }
 
 export function AdvancedSection({

@@ -19,7 +19,7 @@ interface GeneralSectionProps {
   setFunctionRole: (v: string) => void
   appVersion: string
   onAboutOpen: () => void
-  autoSave: (overrides: { industry?: string | null; functionRole?: string | null }) => void
+  autoSave: (overrides: Record<string, unknown>) => void
 }
 
 export function GeneralSection({
