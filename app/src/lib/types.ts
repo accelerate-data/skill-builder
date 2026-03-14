@@ -264,25 +264,6 @@ export interface ImportedSkill {
   marketplace_source_url: string | null
 }
 
-/** Workspace skill stored in the workspace_skills table (Settings > Skills tab). */
-export interface WorkspaceSkill {
-  skill_id: string
-  skill_name: string
-  description: string | null
-  is_active: boolean
-  is_bundled: boolean
-  disk_path: string
-  imported_at: string
-  purpose: string | null
-  version: string | null
-  model: string | null
-  argument_hint: string | null
-  user_invocable: boolean | null
-  disable_model_invocation: boolean | null
-  /** Source registry URL this skill was imported from. null for bundled/manually uploaded skills. */
-  marketplace_source_url: string | null
-}
-
 export interface GitHubRepoInfo {
   owner: string
   repo: string

@@ -34,7 +34,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
 import { FeedbackDialog } from "@/components/feedback-dialog"
-import { WorkspaceSkillsTab } from "@/components/workspace-skills-tab"
+import { ImportedSkillsTab } from "@/components/imported-skills-tab"
 
 /** Must match DEFAULT_MARKETPLACE_URL in app/src-tauri/src/commands/settings.rs */
 const DEFAULT_MARKETPLACE_URL = "hbanerjee74/skills"
@@ -94,9 +94,9 @@ export default function SettingsPage() {
   const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const { user, isLoggedIn, isLoading: isAuthLoading, lastCheckedAt, logout } = useAuthStore()
 
-  // Auto-navigate to the skills section when a pending upgrade targets workspace-skills
+  // Auto-navigate to the skills section when a pending upgrade is set
   useEffect(() => {
-    if (pendingUpgrade?.mode === "workspace-skills") {
+    if (pendingUpgrade) {
       setActiveSection("skills")
     }
   }, [pendingUpgrade])
@@ -549,7 +549,7 @@ export default function SettingsPage() {
 
           {activeSection === "skills" && (
           <div className="space-y-6 p-6">
-            <WorkspaceSkillsTab />
+            <ImportedSkillsTab />
           </div>
           )}
 

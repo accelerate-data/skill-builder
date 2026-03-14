@@ -10,7 +10,7 @@ import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useAuthStore } from "@/stores/auth-store";
-import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, parseGitHubUrl, checkMarketplaceUpdates, importGitHubSkills, importMarketplaceToLibrary, checkSkillCustomized } from "@/lib/tauri";
+import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, checkMarketplaceUpdates, importMarketplaceToLibrary, checkSkillCustomized } from "@/lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelInfo } from "@/stores/settings-store";
 import type { AppSettings, DiscoveredSkill, OrphanSkill, SkillUpdateInfo } from "@/lib/types";
@@ -60,7 +60,7 @@ async function checkForMarketplaceUpdates(
 /** Auto-update non-customized skills silently and show a summary toast. */
 async function handleAutoUpdate(
   library: SkillUpdateInfo[],
-  workspace: SkillUpdateInfo[],
+  _workspace: SkillUpdateInfo[],
   cancelledRef: { current: boolean },
 ): Promise<void> {
   const groupBySource = (skills: SkillUpdateInfo[]): Map<string, SkillUpdateInfo[]> => {
@@ -75,45 +75,25 @@ async function handleAutoUpdate(
     return grouped;
   };
 
-  const [libFiltered, wsFiltered] = await Promise.all([
-    filterNonCustomized(library),
-    filterNonCustomized(workspace),
-  ]);
+  const libFiltered = await filterNonCustomized(library);
   if (cancelledRef.current) return;
 
   const libBySource = groupBySource(libFiltered);
-  const wsBySource = groupBySource(wsFiltered);
 
-  await Promise.all([
-    ...Array.from(libBySource.entries()).map(async ([sourceUrl, scoped]) => {
-        await importMarketplaceToLibrary(scoped.map((s) => s.path), sourceUrl).catch((err) =>
-          console.warn("[app-layout] Auto-update library failed:", err)
-        );
-      }),
-    ...Array.from(wsBySource.entries()).map(async ([sourceUrl, scoped]) => {
-        const info = await parseGitHubUrl(sourceUrl);
-        await importGitHubSkills(
-          info.owner, info.repo, info.branch,
-          scoped.map((s) => ({ path: s.path, purpose: null, metadata_override: null, version: s.version })),
-          sourceUrl
-        ).catch((err) =>
-          console.warn("[app-layout] Auto-update workspace failed:", err)
-        );
-      }),
-  ]);
+  await Promise.all(
+    Array.from(libBySource.entries()).map(async ([sourceUrl, scoped]) => {
+      await importMarketplaceToLibrary(scoped.map((s) => s.path), sourceUrl).catch((err) =>
+        console.warn("[app-layout] Auto-update library failed:", err)
+      );
+    }),
+  );
   if (cancelledRef.current) return;
 
-  const total = libFiltered.length + wsFiltered.length;
-  if (total > 0) {
+  if (libFiltered.length > 0) {
     toast.success(
       <div className="space-y-1">
-        <p className="font-medium">Auto-updated {total} skill{total !== 1 ? "s" : ""}</p>
-        {libFiltered.length > 0 && (
-          <p>• Dashboard: {libFiltered.map((s) => s.name).join(", ")}</p>
-        )}
-        {wsFiltered.length > 0 && (
-          <p>• Workspace: {wsFiltered.map((s) => s.name).join(", ")}</p>
-        )}
+        <p className="font-medium">Auto-updated {libFiltered.length} skill{libFiltered.length !== 1 ? "s" : ""}</p>
+        <p>• Dashboard: {libFiltered.map((s) => s.name).join(", ")}</p>
       </div>,
       { duration: Infinity }
     );
@@ -123,7 +103,7 @@ async function handleAutoUpdate(
 /** Show persistent notification toasts for available skill updates. */
 function showManualUpdateToasts(
   library: SkillUpdateInfo[],
-  workspace: SkillUpdateInfo[],
+  _workspace: SkillUpdateInfo[],
   router: ReturnType<typeof useRouter>,
 ): void {
   if (library.length > 0) {
@@ -135,23 +115,7 @@ function showManualUpdateToasts(
         action: {
           label: "Upgrade",
           onClick: () => {
-            useSettingsStore.getState().setPendingUpgradeOpen({ mode: "dashboard-library", skills: names });
-            router.navigate({ to: "/" });
-          },
-        },
-      }
-    );
-  }
-  if (workspace.length > 0) {
-    const names = workspace.map((s) => s.name);
-    toast.info(
-      `Settings \u2192 Skills: update available for ${workspace.length} skill${workspace.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
-      {
-        duration: 5000,
-        action: {
-          label: "Upgrade",
-          onClick: () => {
-            useSettingsStore.getState().setPendingUpgradeOpen({ mode: "workspace-skills", skills: names });
+            useSettingsStore.getState().setPendingUpgradeOpen({ skills: names });
             router.navigate({ to: "/settings" });
           },
         },

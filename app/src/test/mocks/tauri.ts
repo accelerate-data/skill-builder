@@ -7,7 +7,7 @@ const FIRE_AND_FORGET_COMMANDS = new Set(["persist_agent_run"]);
 const defaultInvokeImpl = (cmd: string) =>
   FIRE_AND_FORGET_COMMANDS.has(cmd)
     ? Promise.resolve()
-    : (cmd === "list_models" || cmd === "list_workspace_skills")
+    : (cmd === "list_models" || cmd === "list_imported_skills")
       ? Promise.resolve([])
       : undefined;
 export const mockInvoke = vi.fn().mockImplementation(defaultInvokeImpl);
