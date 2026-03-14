@@ -15,6 +15,11 @@ import {
   WORKFLOW_OVERRIDES,
   navigateToWorkflowUpdateMode,
 } from "../helpers/workflow-helpers";
+import {
+  E2E_SKILLS_PATH,
+  E2E_WORKSPACE_PATH,
+  skillContextPath,
+} from "../helpers/test-paths";
 
 const RESEARCH_PLAN_CONTENT = `# Research Plan
 
@@ -22,9 +27,9 @@ const RESEARCH_PLAN_CONTENT = `# Research Plan
 - Scope this skill around domain workflows.
 `;
 
-const WORKSPACE_EVAL_PATH = "/tmp/test-workspace/test-skill/answer-evaluation.json";
-const SKILLS_CLARIFICATIONS_PATH = "/tmp/test-skills/test-skill/context/clarifications.json";
-const SKILLS_RESEARCH_PLAN_PATH = "/tmp/test-skills/test-skill/context/research-plan.md";
+const WORKSPACE_EVAL_PATH = `${E2E_WORKSPACE_PATH}/test-skill/answer-evaluation.json`;
+const SKILLS_CLARIFICATIONS_PATH = skillContextPath(E2E_SKILLS_PATH, "test-skill", "clarifications.json");
+const SKILLS_RESEARCH_PLAN_PATH = skillContextPath(E2E_SKILLS_PATH, "test-skill", "research-plan.md");
 
 const CLARIFICATIONS_BASE = JSON.stringify({
   version: "1",
