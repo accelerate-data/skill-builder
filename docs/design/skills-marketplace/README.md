@@ -94,7 +94,7 @@ For the default registry:
 | `source` | `plugin_path` | Skills at |
 |---|---|---|
 | `"./plugins/skill-builder"` | `plugins/skill-builder` | `plugins/skill-builder/skills/*/SKILL.md` |
-| `"./plugins/skill-creator"` | `plugins/skill-creator` | `plugins/skill-creator/skills/*/SKILL.md` |
+| `"./plugins/skill-creator"` | `plugins/skill-creator` | `plugins/skill-creator/SKILL.md` |
 | `"./plugins/skill-builder-research"` | `plugins/skill-builder-research` | `plugins/skill-builder-research/skills/*/SKILL.md` |
 | `"./plugins/skill-builder-validate"` | `plugins/skill-builder-validate` | `plugins/skill-builder-validate/skills/*/SKILL.md` |
 | `"./"` | `""` (root) | `skills/*/SKILL.md` |
