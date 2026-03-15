@@ -41,11 +41,11 @@ Glob `references/` in `{skill_output_dir}` and collect all reference paths.
 Use progressive discovery for skill content.
 
 - Read `{skill_output_dir}/SKILL.md` first
-- Read the reference files only when needed for each finding. 
+- Read the reference files only when needed for each finding.
 - Expand reads when a claim cannot be evidenced.
 - Before final output, run a completeness sweep to verify every decision is COVERED.
 
-Before scoring quality, locate and read `plugins/skill-creator/agents/grader.md` and use its evidence-based grading style as a calibration input for quality checks.
+Before scoring quality, locate and read `plugins/skill-creator/skills/skill-creator/agents/grader.md` and use its evidence-based grading style as a calibration input for quality checks.
 
 ## Step 1: Validate Structure
 
