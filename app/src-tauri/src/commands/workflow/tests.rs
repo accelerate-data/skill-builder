@@ -224,7 +224,8 @@ fn test_materialize_answer_evaluation_rejects_missing_per_question_array() {
     });
     let err = materialize_answer_evaluation_output_value(&workspace_dir, &payload)
         .unwrap_err();
-    assert!(err.contains("answer_evaluation.per_question must be an array"));
+    assert!(err.contains("invalid answer evaluation output"));
+    assert!(err.contains("per_question"));
 }
 
 #[test]
@@ -385,8 +386,8 @@ fn test_materialize_step0_rejects_missing_or_invalid_numeric_fields() {
     let err_missing_dimensions =
         materialize_workflow_step_output_value(&skill_root, 0, &missing_dimensions)
             .unwrap_err();
-    assert!(err_missing_dimensions
-        .contains("structured_output.dimensions_selected must be an integer"));
+    assert!(err_missing_dimensions.contains("invalid research step output"));
+    assert!(err_missing_dimensions.contains("dimensions_selected"));
 
     let non_integer_question_count = serde_json::json!({
         "status": "research_complete",
@@ -400,8 +401,7 @@ fn test_materialize_step0_rejects_missing_or_invalid_numeric_fields() {
         &non_integer_question_count,
     )
     .unwrap_err();
-    assert!(err_non_integer_question_count
-        .contains("structured_output.question_count must be an integer"));
+    assert!(err_non_integer_question_count.contains("invalid research step output"));
 }
 
 #[test]
@@ -416,7 +416,8 @@ fn test_materialize_step0_rejects_missing_or_invalid_research_output() {
     });
     let err_missing =
         materialize_workflow_step_output_value(&skill_root, 0, &missing).unwrap_err();
-    assert!(err_missing.contains("structured_output.research_output is required"));
+    assert!(err_missing.contains("invalid research step output"));
+    assert!(err_missing.contains("research_output"));
 
     let invalid_nested = serde_json::json!({
         "status": "research_complete",
@@ -488,8 +489,8 @@ fn test_materialize_step1_rejects_missing_or_invalid_numeric_fields() {
         &missing_refinement_count,
     )
     .unwrap_err();
-    assert!(err_missing_refinement_count
-        .contains("structured_output.refinement_count must be an integer"));
+    assert!(err_missing_refinement_count.contains("invalid detailed research output"));
+    assert!(err_missing_refinement_count.contains("refinement_count"));
 
     let non_integer_section_count = serde_json::json!({
         "status": "detailed_research_complete",
@@ -503,8 +504,7 @@ fn test_materialize_step1_rejects_missing_or_invalid_numeric_fields() {
         &non_integer_section_count,
     )
     .unwrap_err();
-    assert!(err_non_integer_section_count
-        .contains("structured_output.section_count must be an integer"));
+    assert!(err_non_integer_section_count.contains("invalid detailed research output"));
 }
 
 #[test]
@@ -518,7 +518,8 @@ fn test_materialize_step1_rejects_missing_clarifications_json() {
     });
     let err =
         materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
-    assert!(err.contains("structured_output.clarifications_json is required"));
+    assert!(err.contains("invalid detailed research output"));
+    assert!(err.contains("clarifications_json"));
 }
 
 #[test]
@@ -748,7 +749,8 @@ fn test_materialize_step3_rejects_missing_or_invalid_evaluations_markdown() {
     });
     let err_missing =
         materialize_workflow_step_output_value(&skill_root, 3, &missing).unwrap_err();
-    assert!(err_missing.contains("structured_output.evaluations_markdown must be a string"));
+    assert!(err_missing.contains("invalid generate skill output"));
+    assert!(err_missing.contains("evaluations_markdown"));
 
     let non_string = serde_json::json!({
         "status": "generated",
@@ -756,7 +758,7 @@ fn test_materialize_step3_rejects_missing_or_invalid_evaluations_markdown() {
     });
     let err_non_string =
         materialize_workflow_step_output_value(&skill_root, 3, &non_string).unwrap_err();
-    assert!(err_non_string.contains("structured_output.evaluations_markdown must be a string"));
+    assert!(err_non_string.contains("invalid generate skill output"));
 
     let empty = serde_json::json!({
         "status": "generated",

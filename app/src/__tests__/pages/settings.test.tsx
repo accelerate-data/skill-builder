@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { mockInvoke, mockInvokeCommands, resetTauriMocks } from "@/test/mocks/tauri";
+import { mockInvokeCommands, resetTauriMocks } from "@/test/mocks/tauri";
 import { open as mockOpen } from "@tauri-apps/plugin-dialog";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -100,6 +100,11 @@ vi.mock("@/lib/tauri", () => ({
   githubPollForToken: vi.fn(),
   githubGetUser: vi.fn(() => Promise.resolve(null)),
   githubLogout: vi.fn(),
+  updateUserSettings: vi.fn(() => Promise.resolve(undefined)),
+  listModels: vi.fn(() => Promise.resolve([])),
+  updateGithubIdentity: vi.fn(() => Promise.resolve(undefined)),
+  testApiKey: vi.fn(() => Promise.resolve(true)),
+  setLogLevel: vi.fn(() => Promise.resolve(undefined)),
 }));
 
 vi.mock("@/components/github-login-dialog", () => ({
@@ -117,6 +122,7 @@ vi.mock("@/components/feedback-dialog", () => ({
 // Import after mocks are set up
 import SettingsPage from "@/pages/settings";
 import { useSettingsStore } from "@/stores/settings-store";
+import { updateUserSettings as _updateUserSettings } from "@/lib/tauri";
 
 const defaultSettings: AppSettings = {
   anthropic_api_key: null,
@@ -167,6 +173,7 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
   mockInvokeCommands({
     get_settings: settings,
     save_settings: undefined,
+    update_user_settings: undefined,
     test_api_key: true,
     get_log_file_path: "/tmp/com.vibedata.skill-builder/skill-builder.log",
     set_log_level: undefined,
@@ -209,6 +216,8 @@ describe("SettingsPage", () => {
   beforeEach(() => {
     resetTauriMocks();
     mockNavigate.mockClear();
+    // Reset module-level mocks so test-specific overrides don't leak
+    vi.mocked(_updateUserSettings).mockReset().mockResolvedValue(undefined);
     // Default to logged-out state
     useAuthStore.setState({ user: null, isLoggedIn: false, isLoading: false });
     useSettingsStore.getState().reset();
@@ -316,10 +325,9 @@ describe("SettingsPage", () => {
     // First "Test" button is the Anthropic API key test button
     await user.click(testButtons[0]);
 
+    const { testApiKey } = await import("@/lib/tauri");
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("test_api_key", {
-        apiKey: "sk-ant-existing-key",
-      });
+      expect(testApiKey).toHaveBeenCalledWith("sk-ant-existing-key");
     });
   });
 
@@ -337,12 +345,11 @@ describe("SettingsPage", () => {
     const thinkingSwitch = screen.getByRole("switch", { name: /Extended thinking/i });
     await user.click(thinkingSwitch);
 
+    const { updateUserSettings } = await import("@/lib/tauri");
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
-        settings: expect.objectContaining({
-          extended_thinking: true,
-        }),
-      });
+      expect(updateUserSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ extended_thinking: true }),
+      );
     });
   });
 
@@ -362,12 +369,11 @@ describe("SettingsPage", () => {
     await user.type(apiKeyInput, "sk-ant-new-key");
     await user.tab(); // blur the input
 
+    const { updateUserSettings } = await import("@/lib/tauri");
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
-        settings: expect.objectContaining({
-          anthropic_api_key: "sk-ant-new-key",
-        }),
-      });
+      expect(updateUserSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ anthropic_api_key: "sk-ant-new-key" }),
+      );
     });
   });
 
@@ -393,13 +399,10 @@ describe("SettingsPage", () => {
   it("shows error toast on auto-save failure", async () => {
     const user = userEvent.setup();
     const { toast } = await import("@/lib/toast");
+    const { updateUserSettings } = await import("@/lib/tauri");
     setupDefaultMocks(populatedSettings);
-    // Override save_settings to fail
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "save_settings") return Promise.reject("DB error");
-      if (cmd === "get_settings") return Promise.resolve(populatedSettings);
-      return Promise.resolve(undefined);
-    });
+    // Override updateUserSettings to fail
+    vi.mocked(updateUserSettings).mockRejectedValue("DB error");
     render(<SettingsPage />);
 
     await waitFor(() => {
@@ -513,12 +516,11 @@ describe("SettingsPage", () => {
     const browseButton = screen.getByRole("button", { name: /Browse/i });
     await user.click(browseButton);
 
+    const { updateUserSettings } = await import("@/lib/tauri");
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
-        settings: expect.objectContaining({
-          skills_path: "/new/skills/path",
-        }),
-      });
+      expect(updateUserSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ skills_path: "/new/skills/path" }),
+      );
     });
   });
 
@@ -559,13 +561,12 @@ describe("SettingsPage", () => {
     const browseButton = screen.getByRole("button", { name: /Browse/i });
     await user.click(browseButton);
 
+    const { updateUserSettings } = await import("@/lib/tauri");
     await waitFor(() => {
       expect(screen.getByText("C:\\Users\\me\\Skill Builder")).toBeInTheDocument();
-      expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
-        settings: expect.objectContaining({
-          skills_path: "C:\\Users\\me\\Skill Builder",
-        }),
-      });
+      expect(updateUserSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ skills_path: "C:\\Users\\me\\Skill Builder" }),
+      );
     });
   });
 
@@ -668,8 +669,9 @@ describe("SettingsPage", () => {
     const select = screen.getByRole("combobox", { name: /Log Level/i });
     await user.selectOptions(select, "debug");
 
+    const { setLogLevel } = await import("@/lib/tauri");
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("set_log_level", { level: "debug" });
+      expect(setLogLevel).toHaveBeenCalledWith("debug");
     });
   });
 
@@ -687,12 +689,11 @@ describe("SettingsPage", () => {
     const select = screen.getByRole("combobox", { name: /Log Level/i });
     await user.selectOptions(select, "debug");
 
+    const { updateUserSettings } = await import("@/lib/tauri");
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
-        settings: expect.objectContaining({
-          log_level: "debug",
-        }),
-      });
+      expect(updateUserSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ log_level: "debug" }),
+      );
     });
   });
 

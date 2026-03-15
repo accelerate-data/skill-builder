@@ -6,6 +6,7 @@
  * - Gate 1: after Research (step 0), before Detailed Research (step 1)
  * - Gate 2: after Detailed Research (step 1), before Confirm Decisions (step 2)
  */
+import path from "node:path";
 import { test, expect } from "@playwright/test";
 import {
   emitTauriEvent,

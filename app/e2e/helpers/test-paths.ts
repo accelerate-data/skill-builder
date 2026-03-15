@@ -3,8 +3,10 @@ import os from "node:os";
 
 const E2E_ROOT = path.join(os.tmpdir(), "skill-builder-test");
 
+// Normalize to forward slashes so E2E path constants match the paths the
+// frontend sends via joinPath() (which also normalizes backslashes to "/").
 export function joinE2ePath(...segments: string[]): string {
-  return path.join(E2E_ROOT, ...segments);
+  return path.join(E2E_ROOT, ...segments).replace(/\\/g, "/");
 }
 
 export const E2E_WORKSPACE_PATH = joinE2ePath("workspace");

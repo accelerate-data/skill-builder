@@ -1,11 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry } from "@/lib/types";
 
 // Re-export invoke for flexible Tauri command invocation
 export { invoke };
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepStructuredOutput, AnswerEvaluationOutput, PerQuestionEntry } from "@/lib/types";
 
 // --- Settings ---
 
@@ -13,6 +13,22 @@ export const getSettings = () => invoke<AppSettings>("get_settings");
 
 export const saveSettings = (settings: AppSettings) =>
   invoke<void>("save_settings", { settings });
+
+/** Update user-configurable settings. Backend-owned fields are preserved. */
+export const updateUserSettings = (settings: AppSettings) =>
+  invoke<void>("update_user_settings", { settings });
+
+/** Update only the dashboard view mode. Pass null to clear. */
+export const updateDashboardViewMode = (mode: string | null) =>
+  invoke<void>("update_dashboard_view_mode", { mode });
+
+/** Update GitHub identity fields. Pass null values to clear (logout). */
+export const updateGithubIdentity = (
+  login: string | null,
+  avatar: string | null,
+  email: string | null,
+  token: string | null,
+) => invoke<void>("update_github_identity", { login, avatar, email, token });
 
 export const testApiKey = (apiKey: string) =>
   invoke<boolean>("test_api_key", { apiKey });
@@ -135,8 +151,8 @@ export const runWorkflowStep = (
 
 export const materializeWorkflowStepOutput = (
   skillName: string,
-  stepId: number,
-  structuredOutput: unknown,
+  stepId: 0 | 1 | 2 | 3,
+  structuredOutput: ResearchStepOutput | DetailedResearchOutput | DecisionsOutput | GenerateSkillOutput,
 ) => invoke<void>("materialize_workflow_step_output", {
   skillName,
   stepId,
@@ -454,33 +470,11 @@ export const finalizeRefineRun = (
 
 // --- Answer Evaluation (Transition Gate) ---
 
-export type PerQuestionVerdict =
-  | {
-    question_id: string;
-    verdict: "clear" | "needs_refinement" | "not_answered";
-  }
-  | {
-    question_id: string;
-    verdict: "vague";
-    reason: string;
-  }
-  | {
-    question_id: string;
-    verdict: "contradictory";
-    reason: string;
-    contradicts: string;
-  };
+/** @deprecated Use {@link PerQuestionEntry} from `@/lib/types` instead. */
+export type PerQuestionVerdict = PerQuestionEntry;
 
-export interface AnswerEvaluation {
-  verdict: "sufficient" | "mixed" | "insufficient";
-  answered_count: number;
-  empty_count: number;
-  vague_count: number;
-  contradictory_count?: number;
-  total_count: number;
-  reasoning: string;
-  per_question?: PerQuestionVerdict[];
-}
+/** @deprecated Use {@link AnswerEvaluationOutput} from `@/lib/types` instead. */
+export type AnswerEvaluation = AnswerEvaluationOutput;
 
 export const runAnswerEvaluator = (
   skillName: string,
@@ -490,7 +484,7 @@ export const runAnswerEvaluator = (
 export const materializeAnswerEvaluationOutput = (
   skillName: string,
   workspacePath: string,
-  structuredOutput: unknown,
+  structuredOutput: AnswerEvaluationOutput,
 ) => invoke<void>("materialize_answer_evaluation_output", {
   skillName,
   workspacePath,
@@ -588,4 +582,56 @@ export const importSkillFromFile = (params: {
     disableModelInvocation: params.disableModelInvocation ?? null,
     forceOverwrite: params.forceOverwrite,
   })
+
+// --- Additional typed wrappers ---
+
+export const copyFile = (src: string, dest: string) =>
+  invoke<void>("copy_file", { src, dest });
+
+export const listModels = (apiKey: string) =>
+  invoke<ModelInfo[]>("list_models", { apiKey });
+
+export const toggleSkillActive = (skillName: string, active: boolean) =>
+  invoke<void>("toggle_skill_active", { skillName, active });
+
+export const deleteWorkspaceSkill = (skillName: string) =>
+  invoke<void>("delete_workspace_skill", { skillName });
+
+export const createSkill = (params: {
+  workspacePath: string;
+  name: string;
+  tags?: string[] | null;
+  purpose?: string | null;
+  intakeJson?: string | null;
+  description?: string | null;
+  version?: string | null;
+  model?: string | null;
+  argumentHint?: string | null;
+  userInvocable?: boolean | null;
+  disableModelInvocation?: boolean | null;
+}) => invoke<void>("create_skill", {
+  workspacePath: params.workspacePath,
+  name: params.name,
+  tags: params.tags ?? null,
+  purpose: params.purpose ?? null,
+  intakeJson: params.intakeJson ?? null,
+  description: params.description ?? null,
+  version: params.version ?? null,
+  model: params.model ?? null,
+  argumentHint: params.argumentHint ?? null,
+  userInvocable: params.userInvocable ?? null,
+  disableModelInvocation: params.disableModelInvocation ?? null,
+});
+
+export const setLogLevel = (level: string) =>
+  invoke<void>("set_log_level", { level });
+
+export const getSkillContent = (skillName: string) =>
+  invoke<string>("get_skill_content", { skillName });
+
+export const checkStartupDeps = () =>
+  invoke<StartupDeps>("check_startup_deps");
+
+export const getAllTags = () =>
+  invoke<string[]>("get_all_tags");
 

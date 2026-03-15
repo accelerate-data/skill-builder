@@ -75,6 +75,13 @@ pub(super) fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             value TEXT NOT NULL
         );
 
+        -- workflow_runs tracks workflow execution state only.
+        -- Metadata fields (description, version, model, argument_hint,
+        -- user_invocable, disable_model_invocation) were added here temporarily
+        -- in migration 16 but were moved to the `skills` master table in
+        -- migration 24 and fully dropped from this table in migration 35.
+        -- `skills` is the sole authoritative source for skill metadata.
+        -- Do NOT add metadata columns back here.
         CREATE TABLE IF NOT EXISTS workflow_runs (
             skill_name TEXT PRIMARY KEY,
             domain TEXT NOT NULL,
@@ -586,7 +593,16 @@ pub(super) fn run_ghost_running_rows_migration(conn: &Connection) -> Result<(), 
 }
 
 /// Migration 35: Drop deprecated metadata columns from `workflow_runs`.
-/// These columns are now canonical in the `skills` master table only.
+///
+/// After migration 24 moved description/version/model/argument_hint/user_invocable/
+/// disable_model_invocation to the `skills` master table, `workflow_runs` retained
+/// them as a transitional snapshot. This migration removes the snapshot copies so
+/// there is a single authoritative source.
+///
+/// Post-migration, `save_workflow_state` CANNOT receive or persist metadata from the
+/// frontend even if the caller tries — the columns simply do not exist. Metadata reads
+/// must always go through `get_skill_master` / `skills` table.
+///
 /// Uses the SQLite table-rebuild pattern since ALTER TABLE DROP COLUMN is not
 /// widely supported.
 pub(super) fn run_drop_workflow_runs_metadata_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
