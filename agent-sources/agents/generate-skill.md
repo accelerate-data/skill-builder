@@ -100,24 +100,44 @@ Treat `Current request` as an additional focus area for coverage:
 - If `Current request` names a topic, make sure the generated or rewritten skill covers it explicitly where appropriate.
 - In rewrite mode, preserve all original domain knowledge while prioritizing coherence and coverage for the request-specific topic.
 
-## Phase 1: Plan the Skill Structure
+## Phase 1: Read Skill-Creator Methodology and Plan Structure
 
-1. Read `plugins/skill-creator/skills/skill-creator/SKILL.md` to apply the writing methodology.
-2. Define the skill structure for the new skill using the decisions from the parsed `decisions.json`.
+Read `plugins/skill-creator/skills/skill-creator/SKILL.md` — this is the authoritative skill-writing methodology. Its "Skill Writing Guide" section (anatomy, progressive disclosure, writing patterns, writing style) governs Phases 2–3.
+
+### Prior-step handoff
+
+Steps 0–2 have already completed the skill-creator plugin's "Capture Intent" and "Interview and Research" phases. The outputs are:
+
+- `clarifications.json` — research questions, user answers, and refinements (= the interview record)
+- `decisions.json` — distilled design decisions with rationale and implications (= the design spec)
+- `user-context.md` — skill name, version, author, dates, purpose, and any user-provided description
+
+Do not repeat intent capture or interviewing. Treat these artifacts as authoritative input and proceed directly to skill writing.
+
+### Plan the structure
+
+Using the plugin's progressive disclosure model and the decisions from `decisions.json`:
 
 - Each reference file covers a coherent topic area, not one file per decision
-- Avoid rigid section templates and numeric straitjackets; choose structure based on skill development best practices.
+- Avoid rigid section templates and numeric straitjackets; choose structure based on the plugin's skill development best practices
 
 ## Phase 2: Write SKILL.md
 
-Follow the skill writing guide from the `plugins/skill-creator/skills/skill-creator/SKILL.md` read in Phase 1 to create the skill. Follow the specific fields/guards from below.
+Follow the skill-creator plugin's "Write the SKILL.md" and "Skill Writing Guide" sections. In particular, apply the plugin's guidance on:
 
-### Frontmatter
+- Progressive disclosure (metadata → SKILL.md body → bundled resources)
+- Writing patterns (imperative form, output format templates, examples with Input/Output)
+- Writing style (explain the why, use theory of mind, avoid heavy-handed MUSTs)
+- Domain organization (organize references by variant when supporting multiple domains/frameworks)
+
+### Frontmatter overrides
+
+The plugin defines generic frontmatter fields. For this workflow, use these specific fields:
 
 ```yaml
 ---
 name: <skill-name from coordinator prompt>
-description: <see trigger pattern rules below>
+description: <see description guidance below>
 tools: <agent-determined from research: comma-separated list, e.g. Read, Write, Edit, Glob, Grep, Bash>
 version: <version from user-context.md, default 1.0.0>
 author: <coordinator-provided username>
@@ -128,6 +148,14 @@ modified: <today's date>
 
 `tools` is the only field the agent determines. All others come from user-context.md or the coordinator prompt and must be preserved in rewrite mode (except `modified`).
 
+### Description guidance
+
+The plugin's description advice applies: make descriptions trigger-rich and slightly "pushy" to combat undertriggering (include both what the skill does AND specific contexts for when to use it). Additionally:
+
+- Build the description draft from the capability + trigger decisions in `decisions.json` first (including any `needs-review` items), then refine with user-context wording.
+- If user-provided description text exists, treat it as input to incorporate and improve, not an automatic final value.
+- Keep "when to use" trigger conditions in the frontmatter description, not scattered in body sections.
+
 ### Context alignment rules
 
 - Keep generated guidance aligned with purpose and user context first.
@@ -135,18 +163,13 @@ modified: <today's date>
 - For non-platform purposes, include Lakehouse-specific detail only when it materially affects the skill's decisions, risks, or tests.
 - Avoid generic warehouse-first prescriptions that conflict with Fabric/Azure context.
 
-### Description guidance
-
-- Follow the description best practices when writing the description for the new skill. This will be the primary triggering mechanism when this skill is used in Vibedata.
-- Use a trigger-rich description in frontmatter (what it does + when to use it).
-- Keep "when to use" trigger conditions in the frontmatter description, not scattered in body sections.
-- Build the description draft from the capability + trigger decisions in `decisions.json` first (including any `needs-review` items), then refine with user-context wording.
-- If user-provided description text exists, treat it as input to incorporate and improve, not an automatic final value.
-- To reduce undertriggering, prefer explicit trigger phrasing that is slightly assertive about when to invoke the skill.
-
 ## Phase 3: Write Reference Files and Self-Review
 
-Write each reference file to `references/`. Keep files self-contained and reference them explicitly from SKILL.md with "when to read" guidance.
+Follow the plugin's progressive disclosure and domain organization patterns when writing reference files:
+
+- Write each reference file to `references/`. Keep files self-contained.
+- Reference them explicitly from SKILL.md with "when to read" guidance (per plugin methodology).
+- For large reference files (>300 lines), include a table of contents.
 
 Self-review:
 
@@ -158,7 +181,7 @@ Self-review:
 
 ## Phase 4: Draft `evaluations_markdown`
 
-Create `evaluations_markdown` as the complete content for evaluating if the skill covers all the decisions in `decisions.json`. 
+Create `evaluations_markdown` as the complete content for evaluating if the skill covers all the decisions in `decisions.json`.
 
 Requirements:
 
@@ -188,7 +211,7 @@ Before finalizing rewrite mode, verify that the rewritten skill addresses `Curre
 
 ## Success Criteria
 
-- Vendored skill-creator writing methodology applied
+- Skill-creator plugin methodology applied (read and followed from `plugins/skill-creator/skills/skill-creator/SKILL.md`)
 - SKILL.md has metadata, overview, trigger conditions, quick reference, and pointers
 - Self-contained reference files
 - Every decision from `decisions.json` addressed in the skill.
@@ -214,6 +237,6 @@ Return JSON only:
 }
 ```
 
-`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `write-skill`, `write-references`, `write-evaluations`. For reference files, use `write-references/<filename>`.
+`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `read-skill-creator-methodology`, `write-skill`, `write-references`, `write-evaluations`. For reference files, use `write-references/<filename>`.
 
 </output_format>
