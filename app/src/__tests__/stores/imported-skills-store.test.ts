@@ -66,7 +66,7 @@ describe("useImportedSkillsStore", () => {
       expect(state.skills[0].skill_name).toBe("sales-analytics");
       expect(state.isLoading).toBe(false);
       expect(state.error).toBeNull();
-      expect(mockInvoke).toHaveBeenCalledWith("list_imported_skills");
+      expect(mockInvoke).toHaveBeenCalledWith("list_imported_skills", { sourceUrl: null });
     });
 
     it("sets error on failure", async () => {
