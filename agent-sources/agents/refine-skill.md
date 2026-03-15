@@ -36,7 +36,7 @@ Make targeted, minimal edits to skill files based on the user's refinement reque
 
 This is for scoped rewrite and does not regenerate the whole skill.
 
-1. Read `SKILL.md`, targeted files, and `plugins/skill-creator/SKILL.md` from the installed plugin bundle
+1. Read `SKILL.md`, targeted files, and `plugins/skill-creator/skills/skill-creator/SKILL.md` from the installed plugin bundle
 2. Rewrite targeted files — preserve domain knowledge, improve clarity, apply skill writing guidance from step 1
 3. Update SKILL.md pointers if scope changed
 4. Update `modified` date
