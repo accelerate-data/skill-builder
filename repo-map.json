@@ -108,11 +108,11 @@
     },
     "rust_commands": {
       "path": "app/src-tauri/src/commands/",
-      "description": "Tauri command handlers. Flat files: agent, workspace, settings, usage, github_auth, skill_test, clarification, feedback, files, git, lifecycle, node, sidecar_lifecycle, workflow_lifecycle, test_utils. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, packaging, runtime, evaluation, tests), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands), skill/ (crud, metadata, suggestions, tests), refine/ (content, diff, output, protocol, tests)"
+      "description": "Tauri command handlers. Flat files: agent, clarification, feedback, files, git, github_auth, lifecycle, node, settings, sidecar_lifecycle, skill_test, test_utils, usage, workflow_artifacts, workflow_lifecycle, workspace. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, packaging, runtime, evaluation, tests), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands), skill/ (crud, metadata, suggestions, tests), refine/ (content, diff, output, protocol, tests)"
     },
     "rust_db": {
       "path": "app/src-tauri/src/db/",
-      "description": "SQLite schema, migrations (code-only), and query helpers. Sub-modules: mod.rs (Db struct, init_db, pub use re-exports, all tests), migrations.rs (NUMBERED_MIGRATIONS + migration functions), skills.rs (skill CRUD/workflow runs/steps/tags), usage.rs (persist_agent_run/usage queries), settings.rs (read/write settings), imported_skills.rs (imported skill CRUD/hash tracking), locks.rs (skill locks/check_pid_alive), workflow.rs (workflow sessions)."
+      "description": "SQLite schema, migrations (code-only), and query helpers. Sub-modules: mod.rs (Db struct, init_db, pub use re-exports), migrations.rs (NUMBERED_MIGRATIONS + migration functions), skills.rs (skill CRUD/workflow runs/steps/tags), usage.rs (persist_agent_run/usage queries), settings.rs (read/write settings), imported_skills.rs (imported skill CRUD/hash tracking), locks.rs (skill locks/check_pid_alive), workflow.rs (workflow sessions), tests.rs (all DB tests)."
     },
     "rust_agents": {
       "path": "app/src-tauri/src/agents/",
@@ -152,7 +152,7 @@
     },
     "rust_types": {
       "path": "app/src-tauri/src/types/",
-      "description": "Shared Rust types split by domain. mod.rs (re-exports), settings.rs (AppSettings, MarketplaceRegistry), github.rs (GitHubUser, DeviceFlowResponse), workflow.rs (WorkflowRunRow, StepConfig, WorkflowStateResponse), skill.rs (SkillSummary, DiscoveredSkill), usage.rs (UsageSummary, AgentRunRecord), refine.rs (refine session types), startup.rs (ReconciliationResult, startup types)."
+      "description": "Shared Rust types split by domain. mod.rs (re-exports), settings.rs (AppSettings, MarketplaceRegistry), github.rs (GitHubUser, DeviceFlowResponse), workflow.rs (WorkflowRunRow, StepConfig, WorkflowStateResponse), skill.rs (SkillSummary, DiscoveredSkill), usage.rs (UsageSummary, AgentRunRecord), refine.rs (refine session types), startup.rs (ReconciliationResult, startup types), secret.rs (SecretString, ApiKey newtypes with redacted Debug/Display)."
     },
     "rust_support": {
       "path": "app/src-tauri/src/",

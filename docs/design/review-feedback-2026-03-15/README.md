@@ -110,7 +110,7 @@ The new file `app/src-tauri/src/commands/workflow_artifacts.rs` exists on disk b
 
 **Fix:** Add `workflow_artifacts` to the flat files list in `repo-map.json` under `rust_commands.description`.
 
-**Status:** Open
+**Status:** Resolved — full audit: added `workflow_artifacts` to rust_commands, fixed db tests.rs attribution (was "all tests" in mod.rs), added `secret.rs` to types, alphabetized flat file list
 
 ---
 
