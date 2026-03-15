@@ -1,9 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps } from "@/lib/types";
 
-// Re-export invoke for flexible Tauri command invocation
-export { invoke };
-
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
 export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps } from "@/lib/types";
 
@@ -13,6 +10,22 @@ export const getSettings = () => invoke<AppSettings>("get_settings");
 
 export const saveSettings = (settings: AppSettings) =>
   invoke<void>("save_settings", { settings });
+
+/** Update user-configurable settings. Backend-owned fields are preserved. */
+export const updateUserSettings = (settings: AppSettings) =>
+  invoke<void>("update_user_settings", { settings });
+
+/** Update only the dashboard view mode. Pass null to clear. */
+export const updateDashboardViewMode = (mode: string | null) =>
+  invoke<void>("update_dashboard_view_mode", { mode });
+
+/** Update GitHub identity fields. Pass null values to clear (logout). */
+export const updateGithubIdentity = (
+  login: string | null,
+  avatar: string | null,
+  email: string | null,
+  token: string | null,
+) => invoke<void>("update_github_identity", { login, avatar, email, token });
 
 export const testApiKey = (apiKey: string) =>
   invoke<boolean>("test_api_key", { apiKey });

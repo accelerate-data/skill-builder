@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { GitHubUser } from "@/lib/types";
-import { githubGetUser, githubLogout, getSettings, saveSettings } from "@/lib/tauri";
+import { githubGetUser, githubLogout, updateGithubIdentity } from "@/lib/tauri";
 import { useSettingsStore } from "@/stores/settings-store";
 
 interface AuthState {
@@ -42,8 +42,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         });
         // Persist GitHub user identity to database
         try {
-          const current = await getSettings();
-          await saveSettings({ ...current, github_user_login: user.login, github_user_avatar: user.avatar_url, github_user_email: user.email });
+          await updateGithubIdentity(user.login, user.avatar_url, user.email ?? null, null);
         } catch (error) {
           console.error("Failed to persist GitHub user identity to database:", error);
         }
@@ -61,8 +60,11 @@ export const useAuthStore = create<AuthState>((set) => ({
       githubUserEmail: user?.email ?? null,
     });
     // Persist GitHub user identity to database
-    void getSettings().then((current) =>
-      saveSettings({ ...current, github_user_login: user?.login ?? null, github_user_avatar: user?.avatar_url ?? null, github_user_email: user?.email ?? null })
+    void updateGithubIdentity(
+      user?.login ?? null,
+      user?.avatar_url ?? null,
+      user?.email ?? null,
+      null,
     ).catch((error: unknown) => {
       console.error("Failed to persist GitHub user identity to database:", error);
     });
@@ -80,8 +82,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       });
       // Persist cleared GitHub user identity to database
       try {
-        const current = await getSettings();
-        await saveSettings({ ...current, github_oauth_token: null, github_user_login: null, github_user_avatar: null, github_user_email: null });
+        await updateGithubIdentity(null, null, null, null);
       } catch (error) {
         console.error("Failed to persist logout state to database:", error);
       }

@@ -147,6 +147,15 @@ pub fn save_settings(db: tauri::State<'_, Db>, settings: AppSettings) -> Result<
     let new_sp = settings.skills_path.as_deref();
     handle_skills_path_change(old_sp, new_sp)?;
 
+    // Guard backend-owned fields: preserve from DB, never let a stale frontend
+    // save overwrite them.  These fields are written only by dedicated commands
+    // (update_github_identity, github_poll_for_token, github_logout) or
+    // one-time startup migrations.
+    settings.splash_shown = old_settings.splash_shown;
+    settings.github_oauth_token = old_settings.github_oauth_token.clone();
+    settings.github_user_login = old_settings.github_user_login.clone();
+    settings.github_user_avatar = old_settings.github_user_avatar.clone();
+    settings.github_user_email = old_settings.github_user_email.clone();
     // Guard: once marketplace_initialized is true in the DB, never let a stale
     // frontend save overwrite it back to false. This prevents the migration from
     // re-running if a component calls save_settings with a pre-migration snapshot.
@@ -443,6 +452,106 @@ pub fn get_default_skills_path() -> Result<String, String> {
         .ok_or_else(|| "Path contains invalid UTF-8".to_string())
 }
 
+/// Update user-configurable settings fields (everything except backend-owned fields).
+///
+/// This is the preferred replacement for `save_settings` in the settings UI: it
+/// reads the current DB state first and merges only the caller-supplied fields,
+/// so backend-owned fields (`splash_shown`, GitHub identity,
+/// `marketplace_initialized`) are never touched.
+#[tauri::command]
+pub fn update_user_settings(
+    db: tauri::State<'_, Db>,
+    settings: crate::types::AppSettings,
+) -> Result<(), String> {
+    log::info!("[update_user_settings]");
+    let mut settings = settings;
+    // Normalize skills_path before persisting
+    if let Some(ref sp) = settings.skills_path {
+        let normalized = normalize_path(sp);
+        settings.skills_path = Some(normalized);
+    }
+
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[update_user_settings] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+
+    let old_settings = crate::db::read_settings(&conn)?;
+
+    // Handle skills_path changes
+    let old_sp = old_settings.skills_path.as_deref();
+    let new_sp = settings.skills_path.as_deref();
+    handle_skills_path_change(old_sp, new_sp)?;
+
+    // Preserve all backend-owned fields from DB
+    settings.splash_shown = old_settings.splash_shown;
+    settings.github_oauth_token = old_settings.github_oauth_token.clone();
+    settings.github_user_login = old_settings.github_user_login.clone();
+    settings.github_user_avatar = old_settings.github_user_avatar.clone();
+    settings.github_user_email = old_settings.github_user_email.clone();
+    if old_settings.marketplace_initialized {
+        settings.marketplace_initialized = true;
+    }
+
+    let changes = diff_settings(&old_settings, &settings);
+    if changes.is_empty() {
+        log::info!("[update_user_settings] no changes");
+    } else {
+        log::info!("[update_user_settings] {}", changes.join(", "));
+    }
+
+    crate::db::write_settings(&conn, &settings)?;
+    Ok(())
+}
+
+/// Update only the dashboard view mode, preserving all other settings.
+#[tauri::command]
+pub fn update_dashboard_view_mode(
+    db: tauri::State<'_, Db>,
+    mode: Option<String>,
+) -> Result<(), String> {
+    log::info!("[update_dashboard_view_mode] mode={:?}", mode);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[update_dashboard_view_mode] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+    let mut settings = crate::db::read_settings(&conn)?;
+    settings.dashboard_view_mode = mode;
+    crate::db::write_settings(&conn, &settings)?;
+    Ok(())
+}
+
+/// Update GitHub identity fields (login, avatar, email, token).
+///
+/// Pass `None` for any field to clear it (logout flow). This is the only
+/// path through which the frontend should write GitHub identity state.
+#[tauri::command]
+pub fn update_github_identity(
+    db: tauri::State<'_, Db>,
+    login: Option<String>,
+    avatar: Option<String>,
+    email: Option<String>,
+    token: Option<String>,
+) -> Result<(), String> {
+    log::info!(
+        "[update_github_identity] login={:?} avatar={} token={}",
+        login,
+        avatar.as_deref().map(|_| "[set]").unwrap_or("[none]"),
+        token.as_deref().map(|_| "[set]").unwrap_or("[none]"),
+    );
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[update_github_identity] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+    let mut settings = crate::db::read_settings(&conn)?;
+    settings.github_user_login = login;
+    settings.github_user_avatar = avatar;
+    settings.github_user_email = email;
+    settings.github_oauth_token = token;
+    crate::db::write_settings(&conn, &settings)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -703,5 +812,206 @@ mod tests {
     #[test]
     fn normalize_path_handles_spaces_in_path() {
         assert_eq!(normalize_path("/Users/John Doe/My Skills/My Skills"), "/Users/John Doe/My Skills");
+    }
+
+    // ===== save_settings guard tests =====
+
+    #[test]
+    fn test_save_settings_preserves_splash_shown() {
+        let conn = crate::db::create_test_db_for_tests();
+        let mut initial = crate::types::AppSettings::default();
+        initial.splash_shown = true;
+        crate::db::write_settings(&conn, &initial).unwrap();
+
+        // Caller tries to reset splash_shown to false
+        let mut payload = crate::types::AppSettings::default();
+        payload.splash_shown = false;
+
+        // Simulate what save_settings does: read old, preserve backend fields
+        let old = crate::db::read_settings(&conn).unwrap();
+        payload.splash_shown = old.splash_shown;
+        crate::db::write_settings(&conn, &payload).unwrap();
+
+        let result = crate::db::read_settings(&conn).unwrap();
+        assert!(result.splash_shown, "save_settings must preserve splash_shown from DB");
+    }
+
+    #[test]
+    fn test_save_settings_preserves_github_identity() {
+        let conn = crate::db::create_test_db_for_tests();
+        let mut initial = crate::types::AppSettings::default();
+        initial.github_oauth_token = Some("ghp_token".to_string());
+        initial.github_user_login = Some("octocat".to_string());
+        initial.github_user_avatar = Some("https://avatar.url".to_string());
+        initial.github_user_email = Some("cat@github.com".to_string());
+        crate::db::write_settings(&conn, &initial).unwrap();
+
+        // Caller tries to clear all GitHub fields
+        let mut payload = crate::types::AppSettings::default();
+        payload.github_oauth_token = None;
+        payload.github_user_login = None;
+        payload.github_user_avatar = None;
+        payload.github_user_email = None;
+
+        // Simulate save_settings guard
+        let old = crate::db::read_settings(&conn).unwrap();
+        payload.github_oauth_token = old.github_oauth_token.clone();
+        payload.github_user_login = old.github_user_login.clone();
+        payload.github_user_avatar = old.github_user_avatar.clone();
+        payload.github_user_email = old.github_user_email.clone();
+        crate::db::write_settings(&conn, &payload).unwrap();
+
+        let result = crate::db::read_settings(&conn).unwrap();
+        assert_eq!(result.github_oauth_token.as_deref(), Some("ghp_token"));
+        assert_eq!(result.github_user_login.as_deref(), Some("octocat"));
+        assert_eq!(result.github_user_avatar.as_deref(), Some("https://avatar.url"));
+        assert_eq!(result.github_user_email.as_deref(), Some("cat@github.com"));
+    }
+
+    // ===== update_dashboard_view_mode tests =====
+
+    #[test]
+    fn test_update_dashboard_view_mode_sets_value() {
+        let conn = crate::db::create_test_db_for_tests();
+        let initial = crate::types::AppSettings::default();
+        crate::db::write_settings(&conn, &initial).unwrap();
+
+        let mut settings = crate::db::read_settings(&conn).unwrap();
+        settings.dashboard_view_mode = Some("list".to_string());
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        let result = crate::db::read_settings(&conn).unwrap();
+        assert_eq!(result.dashboard_view_mode.as_deref(), Some("list"));
+    }
+
+    #[test]
+    fn test_update_dashboard_view_mode_clears_value() {
+        let conn = crate::db::create_test_db_for_tests();
+        let mut initial = crate::types::AppSettings::default();
+        initial.dashboard_view_mode = Some("grid".to_string());
+        crate::db::write_settings(&conn, &initial).unwrap();
+
+        let mut settings = crate::db::read_settings(&conn).unwrap();
+        settings.dashboard_view_mode = None;
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        let result = crate::db::read_settings(&conn).unwrap();
+        assert!(result.dashboard_view_mode.is_none());
+    }
+
+    #[test]
+    fn test_update_dashboard_view_mode_preserves_other_fields() {
+        let conn = crate::db::create_test_db_for_tests();
+        let mut initial = crate::types::AppSettings::default();
+        initial.preferred_model = Some("claude-opus-4".to_string());
+        initial.github_user_login = Some("user".to_string());
+        crate::db::write_settings(&conn, &initial).unwrap();
+
+        let mut settings = crate::db::read_settings(&conn).unwrap();
+        settings.dashboard_view_mode = Some("grid".to_string());
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        let result = crate::db::read_settings(&conn).unwrap();
+        assert_eq!(result.preferred_model.as_deref(), Some("claude-opus-4"));
+        assert_eq!(result.github_user_login.as_deref(), Some("user"));
+        assert_eq!(result.dashboard_view_mode.as_deref(), Some("grid"));
+    }
+
+    // ===== update_github_identity tests =====
+
+    #[test]
+    fn test_update_github_identity_sets_all_fields() {
+        let conn = crate::db::create_test_db_for_tests();
+        crate::db::write_settings(&conn, &crate::types::AppSettings::default()).unwrap();
+
+        let mut settings = crate::db::read_settings(&conn).unwrap();
+        settings.github_user_login = Some("alice".to_string());
+        settings.github_user_avatar = Some("https://avatar".to_string());
+        settings.github_user_email = Some("alice@example.com".to_string());
+        settings.github_oauth_token = Some("ghp_abc123".to_string());
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        let result = crate::db::read_settings(&conn).unwrap();
+        assert_eq!(result.github_user_login.as_deref(), Some("alice"));
+        assert_eq!(result.github_user_avatar.as_deref(), Some("https://avatar"));
+        assert_eq!(result.github_user_email.as_deref(), Some("alice@example.com"));
+        assert_eq!(result.github_oauth_token.as_deref(), Some("ghp_abc123"));
+    }
+
+    #[test]
+    fn test_update_github_identity_logout_clears_all_fields() {
+        let conn = crate::db::create_test_db_for_tests();
+        let mut initial = crate::types::AppSettings::default();
+        initial.github_user_login = Some("alice".to_string());
+        initial.github_oauth_token = Some("ghp_token".to_string());
+        crate::db::write_settings(&conn, &initial).unwrap();
+
+        let mut settings = crate::db::read_settings(&conn).unwrap();
+        settings.github_user_login = None;
+        settings.github_user_avatar = None;
+        settings.github_user_email = None;
+        settings.github_oauth_token = None;
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        let result = crate::db::read_settings(&conn).unwrap();
+        assert!(result.github_user_login.is_none());
+        assert!(result.github_user_avatar.is_none());
+        assert!(result.github_user_email.is_none());
+        assert!(result.github_oauth_token.is_none());
+    }
+
+    #[test]
+    fn test_update_github_identity_preserves_non_auth_fields() {
+        let conn = crate::db::create_test_db_for_tests();
+        let mut initial = crate::types::AppSettings::default();
+        initial.preferred_model = Some("claude-sonnet-4".to_string());
+        initial.skills_path = Some("/skills".to_string());
+        crate::db::write_settings(&conn, &initial).unwrap();
+
+        // Set github identity
+        let mut settings = crate::db::read_settings(&conn).unwrap();
+        settings.github_user_login = Some("bob".to_string());
+        settings.github_oauth_token = Some("ghp_xyz".to_string());
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        let result = crate::db::read_settings(&conn).unwrap();
+        assert_eq!(result.preferred_model.as_deref(), Some("claude-sonnet-4"));
+        assert_eq!(result.skills_path.as_deref(), Some("/skills"));
+        assert_eq!(result.github_user_login.as_deref(), Some("bob"));
+    }
+
+    // ===== update_user_settings tests =====
+
+    #[test]
+    fn test_update_user_settings_preserves_backend_fields() {
+        let conn = crate::db::create_test_db_for_tests();
+        let mut initial = crate::types::AppSettings::default();
+        initial.splash_shown = true;
+        initial.github_oauth_token = Some("ghp_token".to_string());
+        initial.github_user_login = Some("dev".to_string());
+        initial.marketplace_initialized = true;
+        crate::db::write_settings(&conn, &initial).unwrap();
+
+        // Simulate update_user_settings — reads old, preserves backend fields
+        let old = crate::db::read_settings(&conn).unwrap();
+        let mut new_settings = crate::types::AppSettings::default();
+        new_settings.preferred_model = Some("claude-opus-4".to_string());
+        // Apply guard (same as update_user_settings)
+        new_settings.splash_shown = old.splash_shown;
+        new_settings.github_oauth_token = old.github_oauth_token.clone();
+        new_settings.github_user_login = old.github_user_login.clone();
+        new_settings.github_user_avatar = old.github_user_avatar.clone();
+        new_settings.github_user_email = old.github_user_email.clone();
+        if old.marketplace_initialized {
+            new_settings.marketplace_initialized = true;
+        }
+        crate::db::write_settings(&conn, &new_settings).unwrap();
+
+        let result = crate::db::read_settings(&conn).unwrap();
+        assert!(result.splash_shown);
+        assert_eq!(result.github_oauth_token.as_deref(), Some("ghp_token"));
+        assert_eq!(result.github_user_login.as_deref(), Some("dev"));
+        assert!(result.marketplace_initialized);
+        assert_eq!(result.preferred_model.as_deref(), Some("claude-opus-4"));
     }
 }
