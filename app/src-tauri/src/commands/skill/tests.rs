@@ -1445,6 +1445,7 @@ fn test_rename_skill_inner_happy_path_renames_db_and_disk() {
 /// rename is rolled back, but the DB transaction has already committed. This test
 /// uses a read-only directory to trigger the disk failure.
 #[test]
+#[cfg(unix)]
 fn test_rename_skill_inner_disk_failure_returns_error() {
     use std::os::unix::fs::PermissionsExt;
 
