@@ -534,8 +534,8 @@ pub fn update_github_identity(
     token: Option<String>,
 ) -> Result<(), String> {
     log::info!(
-        "[update_github_identity] login={:?} avatar={} token={}",
-        login,
+        "[update_github_identity] login={} avatar={} token={}",
+        login.as_deref().map(|_| "[set]").unwrap_or("[none]"),
         avatar.as_deref().map(|_| "[set]").unwrap_or("[none]"),
         token.as_deref().map(|_| "[set]").unwrap_or("[none]"),
     );

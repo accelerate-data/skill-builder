@@ -1,5 +1,8 @@
+import os from "os";
 import { describe, it, expect } from "vitest";
 import { parseSidecarConfig, redactConfig } from "../config.js";
+
+const TEST_CWD = os.tmpdir();
 
 describe("parseSidecarConfig", () => {
   it("throws on null", () => {
@@ -13,19 +16,19 @@ describe("parseSidecarConfig", () => {
 
   it("throws when prompt is missing", () => {
     expect(() =>
-      parseSidecarConfig({ apiKey: "key", cwd: "/tmp" })
+      parseSidecarConfig({ apiKey: "key", cwd: TEST_CWD })
     ).toThrow("Invalid SidecarConfig: missing prompt");
   });
 
   it("throws when apiKey is missing", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", cwd: "/tmp" })
+      parseSidecarConfig({ prompt: "hello", cwd: TEST_CWD })
     ).toThrow("Invalid SidecarConfig: missing apiKey");
   });
 
   it("throws when apiKey is empty string", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "", cwd: "/tmp" })
+      parseSidecarConfig({ prompt: "hello", apiKey: "", cwd: TEST_CWD })
     ).toThrow("Invalid SidecarConfig: missing apiKey");
   });
 
@@ -37,22 +40,22 @@ describe("parseSidecarConfig", () => {
 
   it("throws when requiredPlugins contains non-string", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", requiredPlugins: [1, 2] })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, requiredPlugins: [1, 2] })
     ).toThrow("Invalid SidecarConfig: requiredPlugins must be string[]");
   });
 
   it("accepts valid config with all required fields", () => {
-    const result = parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp" });
+    const result = parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD });
     expect(result.prompt).toBe("hello");
     expect(result.apiKey).toBe("key");
-    expect(result.cwd).toBe("/tmp");
+    expect(result.cwd).toBe(TEST_CWD);
   });
 
   it("accepts valid config with optional requiredPlugins", () => {
     const result = parseSidecarConfig({
       prompt: "hello",
       apiKey: "key",
-      cwd: "/tmp",
+      cwd: TEST_CWD,
       requiredPlugins: ["computer", "bash"],
     });
     expect(result.requiredPlugins).toEqual(["computer", "bash"]);
@@ -71,7 +74,7 @@ describe("parseSidecarConfig", () => {
     const result = parseSidecarConfig({
       prompt: "hello",
       apiKey: "key",
-      cwd: "/tmp",
+      cwd: TEST_CWD,
       extraField: "should survive",
     });
     expect((result as Record<string, unknown>).extraField).toBe("should survive");
@@ -81,85 +84,85 @@ describe("parseSidecarConfig", () => {
 
   it("throws when model is not a string", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", model: 123 })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, model: 123 })
     ).toThrow("model must be a string");
   });
 
   it("throws when maxTurns is not a positive integer", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", maxTurns: "fifty" })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, maxTurns: "fifty" })
     ).toThrow("maxTurns must be a positive integer");
   });
 
   it("throws when maxTurns is zero", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", maxTurns: 0 })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, maxTurns: 0 })
     ).toThrow("maxTurns must be a positive integer");
   });
 
   it("throws when maxTurns is negative", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", maxTurns: -5 })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, maxTurns: -5 })
     ).toThrow("maxTurns must be a positive integer");
   });
 
   it("throws when permissionMode is invalid", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", permissionMode: "yolo" })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, permissionMode: "yolo" })
     ).toThrow("permissionMode must be one of");
   });
 
   it("throws when effort is invalid", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", effort: "extreme" })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, effort: "extreme" })
     ).toThrow("effort must be one of");
   });
 
   it("throws when runSource is invalid", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", runSource: "deploy" })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, runSource: "deploy" })
     ).toThrow("runSource must be one of");
   });
 
   it("throws when stepId is not a number", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", stepId: "two" })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, stepId: "two" })
     ).toThrow("stepId must be a number");
   });
 
   it("throws when promptSuggestions is not a boolean", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", promptSuggestions: "yes" })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, promptSuggestions: "yes" })
     ).toThrow("promptSuggestions must be a boolean");
   });
 
   it("throws when allowedTools is not a string array", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", allowedTools: [1, 2] })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, allowedTools: [1, 2] })
     ).toThrow("allowedTools must be string[]");
   });
 
   it("throws when betas is not a string array", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", betas: [true] })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, betas: [true] })
     ).toThrow("betas must be string[]");
   });
 
   it("throws when thinking is not an object", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", thinking: "enabled" })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, thinking: "enabled" })
     ).toThrow("thinking must be an object");
   });
 
   it("throws when thinking.type is invalid", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", thinking: { type: "turbo" } })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, thinking: { type: "turbo" } })
     ).toThrow("thinking.type must be disabled, adaptive, or enabled");
   });
 
   it("throws when thinking.budgetTokens is not a number", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "/tmp", thinking: { type: "enabled", budgetTokens: "lots" } })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, thinking: { type: "enabled", budgetTokens: "lots" } })
     ).toThrow("thinking.budgetTokens must be a number");
   });
 
@@ -167,7 +170,7 @@ describe("parseSidecarConfig", () => {
     const result = parseSidecarConfig({
       prompt: "hello",
       apiKey: "key",
-      cwd: "/tmp",
+      cwd: TEST_CWD,
       model: "claude-sonnet-4-6",
       agentName: "my-agent",
       maxTurns: 50,
@@ -193,10 +196,10 @@ describe("parseSidecarConfig", () => {
 
 describe("redactConfig", () => {
   it("redacts apiKey", () => {
-    const config = parseSidecarConfig({ prompt: "hello", apiKey: "sk-secret-key", cwd: "/tmp" });
+    const config = parseSidecarConfig({ prompt: "hello", apiKey: "sk-secret-key", cwd: TEST_CWD });
     const redacted = redactConfig(config);
     expect(redacted.apiKey).toBe("[REDACTED]");
     expect(redacted.prompt).toBe("hello");
-    expect(redacted.cwd).toBe("/tmp");
+    expect(redacted.cwd).toBe(TEST_CWD);
   });
 });

@@ -77,7 +77,7 @@ Token and avatar are correctly masked with `[set]`/`[none]`, but `login` is prin
 
 **Fix:** Mask login the same way: `login.as_deref().map(|_| "[set]").unwrap_or("[none]")`
 
-**Status:** Open
+**Status:** Resolved — login now masked with `[set]`/`[none]` pattern matching token and avatar
 
 ---
 
@@ -96,7 +96,7 @@ expect(redacted.cwd).toBe("/tmp"); // line 200
 
 **Fix:** Use `os.tmpdir()` or set the mock config's `cwd` to `os.tmpdir()` and assert against that.
 
-**Status:** Open
+**Status:** Resolved — all `/tmp` literals replaced with `os.tmpdir()` via `TEST_CWD` constant
 
 ---
 
