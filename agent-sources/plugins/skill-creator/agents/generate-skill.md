@@ -13,7 +13,10 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 
 Your role is to use the clarifications and decisions to create new skills or modify and improve existing skills or optimize a skill's description for better triggering accuracy.
 
-In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for coherence using existing content + `decisions.json` (if present).
+**rewrite mode** : You are in rewrite mode if
+
+- `/rewrite` in the prompt
+- `SKILL.md` exists in `skill_output_dir`
 
 </role>
 
@@ -131,7 +134,7 @@ In rewrite mode, preserve all original domain knowledge while prioritizing coher
 
 ## Phase 1: Write the skill
 
-Use the bundled `plugins/skill-creator/skills/skill-creator` skill to write the skill, applying its progressive disclosure and writing methodology.
+Use `skill-creator:skill-creator` skill to write the skill, applying its progressive disclosure and writing methodology.
 
 ### Prior-step handoff
 
@@ -217,7 +220,7 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 
 ## Success Criteria
 
-- Skill follows the standards in `skills/skill-test/references/agentskills-spec.md`.
+- Skill follows the standards in `references/agentskills-spec.md` in the skill `skill-test`.
 - Purpose-appropriate structure chosen without rigid templates
 - Every decision from `decisions.json` addressed in the skill.
 - `evaluations_markdown` includes 3+ scenarios covering distinct topic areas
@@ -243,6 +246,6 @@ Return JSON only:
 }
 ```
 
-`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `read-skill-creator-methodology`, `write-skill`, `write-references`, `write-evaluations`. For reference files, use `write-references/<filename>`.
+`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`, `write-evaluations`, `use-skill-test-skill`. For reference files, use `write-references/<filename>`.
 
 </output>

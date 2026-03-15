@@ -126,7 +126,7 @@ Combine sub-agent outputs into:
 
 </instruction>
 
-<output_format>
+<output>
 
 ## Output Format
 
@@ -148,5 +148,4 @@ Include summary + coverage + structure + content quality + boundary + suggestion
 
 Include summary + per-scenario outcomes + skill content gaps + suggested PM prompts.
 
-</output_format>
-
+</output>

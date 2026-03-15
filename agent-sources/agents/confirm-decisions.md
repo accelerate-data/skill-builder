@@ -145,7 +145,7 @@ If previous decisions context is malformed, start fresh from current clarificati
 
 ---
 
-<output_format>
+<output>
 
 ## Output
 
@@ -194,4 +194,4 @@ Return only this structured JSON (no markdown, no prose outside JSON):
 }
 ```
 
-</output_format>
+</output>
