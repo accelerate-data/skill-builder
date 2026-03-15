@@ -2,10 +2,14 @@
 pub mod claude_md;
 pub mod deploy;
 pub mod evaluation;
+pub mod guards;
 pub mod output_format;
 pub mod packaging;
+pub mod prompt;
 pub mod runtime;
+pub mod settings;
 pub mod step_config;
+pub mod user_context;
 
 // Re-export everything so callers using `commands::workflow::*` continue to work.
 
@@ -37,10 +41,10 @@ pub(crate) use evaluation::{
 };
 
 // runtime
-pub(crate) use runtime::{
-    format_user_context, log_gate_decision, run_answer_evaluator, run_workflow_step,
-    write_user_context_file,
-};
+pub(crate) use runtime::{log_gate_decision, run_answer_evaluator, run_workflow_step};
+
+// user_context
+pub(crate) use user_context::{format_user_context, write_user_context_file};
 
 #[cfg(test)]
 mod tests;

@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::db::Db;
 use crate::types::{StepStatusUpdate, WorkflowStateResponse};
 
-use super::runtime::{parse_decisions_guard, parse_scope_recommendation};
+use super::guards::{parse_decisions_guard, parse_scope_recommendation};
 use super::step_config::validate_clarifications_json;
 
 use crate::commands::imported_skills::validate_skill_name;

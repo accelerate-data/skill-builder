@@ -12,11 +12,12 @@ use super::output_format::{
     materialize_workflow_step_output_value,
 };
 use super::packaging::create_skill_zip;
-use super::runtime::{
-    build_prompt, derive_agent_name, format_user_context, make_agent_id,
-    parse_decisions_guard, parse_scope_recommendation, validate_decisions_exist_inner,
-    workflow_step_runtime_label, write_user_context_file,
+use super::guards::{
+    derive_agent_name, make_agent_id, parse_decisions_guard, parse_scope_recommendation,
+    validate_decisions_exist_inner, workflow_step_runtime_label,
 };
+use super::prompt::build_prompt;
+use super::user_context::{format_user_context, write_user_context_file};
 use super::step_config::{
     build_betas, get_step_config, required_plugins_for_workflow_step,
     thinking_budget_for_step, workflow_output_format_for_agent,
