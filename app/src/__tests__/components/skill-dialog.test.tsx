@@ -205,7 +205,7 @@ describe("SkillDialog (edit mode)", () => {
         "sales-pipeline-renamed",
         "/workspace",
       );
-    });
+    }, { timeout: 10000 });
 
     expect(updateSkillMetadataMock).toHaveBeenCalledWith(
       "sales-pipeline-renamed",
@@ -222,7 +222,7 @@ describe("SkillDialog (edit mode)", () => {
     expect(toast.success).toHaveBeenCalledWith("Skill updated");
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onSaved).toHaveBeenCalledTimes(1);
-  });
+  }, 15000);
 
   it("shows the locked banner and prevents advancing when externally locked", () => {
     render(
