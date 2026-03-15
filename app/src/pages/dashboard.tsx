@@ -31,7 +31,7 @@ import TagFilter from "@/components/tag-filter"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useSkillStore } from "@/stores/skill-store"
 import { useWorkflowStore } from "@/stores/workflow-store"
-import { packageSkill, getLockedSkills, getSettings, saveSettings, copyFile, listSkills, getAllTags } from "@/lib/tauri"
+import { packageSkill, getLockedSkills, copyFile, listSkills, getAllTags, updateDashboardViewMode } from "@/lib/tauri"
 import type { SkillSummary } from "@/lib/types"
 import { PURPOSES, PURPOSE_LABELS } from "@/lib/types"
 import { SOURCE_DISPLAY_LABELS } from "@/components/skill-source-badge"
@@ -148,8 +148,7 @@ export default function DashboardPage() {
     setViewMode(mode)
     useSettingsStore.getState().setSettings({ dashboardViewMode: mode })
     try {
-      const current = await getSettings()
-      await saveSettings({ ...current, dashboard_view_mode: mode })
+      await updateDashboardViewMode(mode)
     } catch {
       console.warn("Failed to persist dashboard view mode")
     }

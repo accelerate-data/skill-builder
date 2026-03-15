@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { toast } from "@/lib/toast"
 import type { AppSettings, MarketplaceRegistry } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
-import { listModels, saveSettings } from "@/lib/tauri"
+import { listModels, updateUserSettings } from "@/lib/tauri"
 
 /** Fields managed by the settings form (local state mirroring the store). */
 export interface SettingsFormFields {
@@ -92,7 +92,7 @@ export function useSettingsForm() {
     }
 
     try {
-      await saveSettings(settings)
+      await updateUserSettings(settings)
       setStoreSettings({
         anthropicApiKey: settings.anthropic_api_key,
         workspacePath: settings.workspace_path,
