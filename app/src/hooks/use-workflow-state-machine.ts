@@ -276,7 +276,7 @@ export function useWorkflowStateMachine({
             }
           } else {
             try {
-              await materializeWorkflowStepOutput(skillName, step, structuredOutput);
+              await materializeWorkflowStepOutput(skillName, step as 0 | 1 | 2 | 3, structuredOutput as import("@/lib/types").WorkflowStepStructuredOutput);
             } catch (err) {
               updateStepStatus(step, "error");
               setRunning(false);
@@ -436,7 +436,7 @@ export function useWorkflowStateMachine({
 
     try {
       if (structuredOutput != null) {
-        await materializeAnswerEvaluationOutput(skillName, workspacePath, structuredOutput);
+        await materializeAnswerEvaluationOutput(skillName, workspacePath, structuredOutput as import("@/lib/types").AnswerEvaluationOutput);
       }
 
       const evalPath = joinPath(workspacePath, skillName, "answer-evaluation.json");

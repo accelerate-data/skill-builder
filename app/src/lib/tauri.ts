@@ -1,8 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry } from "@/lib/types";
+
+// Re-export invoke for flexible Tauri command invocation
+export { invoke };
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepStructuredOutput, AnswerEvaluationOutput, PerQuestionEntry } from "@/lib/types";
 
 // --- Settings ---
 
@@ -148,8 +151,8 @@ export const runWorkflowStep = (
 
 export const materializeWorkflowStepOutput = (
   skillName: string,
-  stepId: number,
-  structuredOutput: unknown,
+  stepId: 0 | 1 | 2 | 3,
+  structuredOutput: ResearchStepOutput | DetailedResearchOutput | DecisionsOutput | GenerateSkillOutput,
 ) => invoke<void>("materialize_workflow_step_output", {
   skillName,
   stepId,
@@ -467,33 +470,11 @@ export const finalizeRefineRun = (
 
 // --- Answer Evaluation (Transition Gate) ---
 
-export type PerQuestionVerdict =
-  | {
-    question_id: string;
-    verdict: "clear" | "needs_refinement" | "not_answered";
-  }
-  | {
-    question_id: string;
-    verdict: "vague";
-    reason: string;
-  }
-  | {
-    question_id: string;
-    verdict: "contradictory";
-    reason: string;
-    contradicts: string;
-  };
+/** @deprecated Use {@link PerQuestionEntry} from `@/lib/types` instead. */
+export type PerQuestionVerdict = PerQuestionEntry;
 
-export interface AnswerEvaluation {
-  verdict: "sufficient" | "mixed" | "insufficient";
-  answered_count: number;
-  empty_count: number;
-  vague_count: number;
-  contradictory_count?: number;
-  total_count: number;
-  reasoning: string;
-  per_question?: PerQuestionVerdict[];
-}
+/** @deprecated Use {@link AnswerEvaluationOutput} from `@/lib/types` instead. */
+export type AnswerEvaluation = AnswerEvaluationOutput;
 
 export const runAnswerEvaluator = (
   skillName: string,
@@ -503,7 +484,7 @@ export const runAnswerEvaluator = (
 export const materializeAnswerEvaluationOutput = (
   skillName: string,
   workspacePath: string,
-  structuredOutput: unknown,
+  structuredOutput: AnswerEvaluationOutput,
 ) => invoke<void>("materialize_answer_evaluation_output", {
   skillName,
   workspacePath,
