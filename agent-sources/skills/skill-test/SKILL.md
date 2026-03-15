@@ -14,6 +14,10 @@ Evaluate whether loading a skill improves planning quality for dbt work on Micro
 
 Use comparative scoring only: `Plan A` (skill loaded) vs `Plan B` (no skill loaded).
 
+## References
+
+- [Agent Skills Specification](references/agentskills-spec.md) — read when evaluating skill format compliance (frontmatter fields, directory structure, progressive disclosure)
+
 ## Quick Reference
 
 - Always compare A vs B for the same prompt
