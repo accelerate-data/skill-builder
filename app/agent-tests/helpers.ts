@@ -5,6 +5,7 @@ import path from "path";
 
 export const REPO_ROOT = path.resolve(__dirname, "../..");
 export const AGENTS_DIR = path.join(REPO_ROOT, "agent-sources", "agents");
+export const PLUGINS_DIR = path.join(REPO_ROOT, "agent-sources", "plugins");
 
 export const CLAUDE_BIN = process.env.CLAUDE_BIN ?? "claude";
 // True when API access is available. Checks for an API key OR the

@@ -183,7 +183,10 @@ pub(super) fn build_refine_config(
         prompt_suggestions: Some(refine_prompt_suggestions),
         path_to_claude_code_executable: None,
         agent_name: Some(REFINE_AGENT_NAME.to_string()),
-        required_plugins: Some(vec!["skill-creator".to_string()]),
+        required_plugins: Some(vec![
+            "skill-content-researcher".to_string(),
+            "skill-creator".to_string(),
+        ]),
         conversation_history: None,
         skill_name: Some(skill_name.to_string()),
         step_id: Some(-10),

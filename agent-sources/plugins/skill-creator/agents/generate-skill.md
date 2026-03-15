@@ -138,6 +138,13 @@ In rewrite mode, preserve all original domain knowledge while prioritizing coher
 
 Use `skill-creator:skill-creator` skill to write the skill, applying its progressive disclosure and writing methodology.
 
+### Read the agentskills spec before writing
+
+Before writing any skill content, locate and read the agentskills specification:
+
+1. Read `skills/skill-test/references/agentskills-spec.md`.
+2. Extract the standards that apply to SKILL.md structure, frontmatter, progressive disclosure, and reference file conventions.
+
 ### Prior-step handoff
 
 The "Capture Intent" and "Interview and Research" phases are complete and authoritative. Do not run those phases.
@@ -224,7 +231,6 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 
 ## Success Criteria
 
-- Skill follows the standards in `references/agentskills-spec.md` in the skill `skill-test`.
 - Purpose-appropriate structure chosen without rigid templates
 - Every decision from `decisions.json` addressed in the skill.
 - `evaluations_markdown` includes 3+ scenarios covering distinct topic areas
@@ -250,7 +256,7 @@ Return JSON only:
 }
 ```
 
-`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`, `write-evaluations`, `use-skill-test-skill`, `read-agentskills-spec-md-using-tools`. For reference files, use `write-references/<filename>`.
+`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`, `write-evaluations`, `use-skill-test-skill`, `read-agentskills-spec-md-using-tools`, `read-skill-creator-using-tools`. For reference files, use `write-references/<filename>`.
 
 </output>
 

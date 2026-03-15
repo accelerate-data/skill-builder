@@ -15,6 +15,14 @@ pub fn resolve_model_id(shorthand: &str) -> String {
     }
 }
 
+/// Canonical step configuration table.
+///
+/// | Step | Agent | Plugins | Source |
+/// |------|-------|---------|--------|
+/// | 0 | research-orchestrator | skill-content-researcher | .claude/agents/ |
+/// | 1 | detailed-research | skill-content-researcher | .claude/agents/ |
+/// | 2 | confirm-decisions | — | .claude/agents/ |
+/// | 3 | generate-skill | skill-creator | plugin agents/ |
 pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     match step_id {
         0 => Ok(StepConfig {
@@ -22,36 +30,39 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             name: "Research".to_string(),
             prompt_template: "research-orchestrator.md".to_string(),
             output_file: "context/clarifications.json".to_string(),
-            // Step 0 must return canonical artifacts via structured output only.
             allowed_tools: CONTRACT_NO_WRITE_TOOLS
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
             max_turns: 50,
+            agent_name: "research-orchestrator".to_string(),
+            required_plugins: vec!["skill-content-researcher".to_string()],
         }),
         1 => Ok(StepConfig {
             step_id: 1,
             name: "Detailed Research".to_string(),
             prompt_template: "detailed-research.md".to_string(),
             output_file: "context/clarifications.json".to_string(),
-            // Step 1 must return canonical artifacts via structured output only.
             allowed_tools: CONTRACT_NO_WRITE_TOOLS
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
             max_turns: 50,
+            agent_name: "detailed-research".to_string(),
+            required_plugins: vec!["skill-content-researcher".to_string()],
         }),
         2 => Ok(StepConfig {
             step_id: 2,
             name: "Confirm Decisions".to_string(),
             prompt_template: "confirm-decisions.md".to_string(),
             output_file: "context/decisions.json".to_string(),
-            // Step 2 returns decisions payload; backend materializes decisions.json.
             allowed_tools: CONTRACT_NO_WRITE_TOOLS
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
             max_turns: 100,
+            agent_name: "confirm-decisions".to_string(),
+            required_plugins: vec![],
         }),
         3 => Ok(StepConfig {
             step_id: 3,
@@ -60,17 +71,10 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             output_file: "skill/SKILL.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 120,
+            agent_name: "generate-skill".to_string(),
+            required_plugins: vec!["skill-creator".to_string()],
         }),
         _ => Err(format!("Unknown step_id {}. Valid steps are 0-3.", step_id)),
-    }
-}
-
-pub(crate) fn required_plugins_for_workflow_step(step_id: u32) -> Option<Vec<String>> {
-    match step_id {
-        0 | 1 => Some(vec!["skill-content-researcher".to_string()]),
-        2 => Some(vec![]),
-        3 => Some(vec!["skill-creator".to_string()]),
-        _ => None,
     }
 }
 
