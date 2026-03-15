@@ -24,6 +24,29 @@ const GENERATE_DIRECT_TOOLS: &[&str] = &[
 const REFINE_AGENT_NAME: &str = "refine-skill";
 const VALIDATE_AGENT_NAME: &str = "validate-skill";
 const GENERATE_AGENT_NAME: &str = "generate-skill";
+
+/// Canonical plugin list for each refine dispatch agent.
+///
+/// | Dispatch | Agent | Plugins |
+/// |----------|-------|---------|
+/// | Stream | refine-skill | skill-content-researcher, skill-creator |
+/// | DirectRewrite | generate-skill | skill-creator |
+/// | DirectValidate | validate-skill | skill-creator |
+fn required_plugins_for_refine_agent(agent_name: &str) -> Vec<String> {
+    match agent_name {
+        REFINE_AGENT_NAME => vec![
+            "skill-content-researcher".to_string(),
+            "skill-creator".to_string(),
+        ],
+        VALIDATE_AGENT_NAME => vec!["skill-creator".to_string()],
+        GENERATE_AGENT_NAME => vec!["skill-creator".to_string()],
+        other => panic!(
+            "No canonical plugin list for refine agent '{}'. \
+             Add it to required_plugins_for_refine_agent().",
+            other
+        ),
+    }
+}
 /// Max agentic turns for the entire streaming session. Each user message may
 /// use multiple turns internally (tool calls, etc.). 400 covers ~20 messages
 /// × 20 turns each. When exhausted, the sidecar emits session_exhausted and
@@ -225,7 +248,7 @@ fn build_refine_config(
         prompt_suggestions: Some(refine_prompt_suggestions),
         path_to_claude_code_executable: None,
         agent_name: Some(REFINE_AGENT_NAME.to_string()),
-        required_plugins: Some(vec!["skill-creator".to_string()]),
+        required_plugins: Some(required_plugins_for_refine_agent(REFINE_AGENT_NAME)),
         conversation_history: None,
         skill_name: Some(skill_name.to_string()),
         step_id: Some(-10),
@@ -293,7 +316,7 @@ fn build_direct_refine_config(
         prompt_suggestions: Some(false),
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name.to_string()),
-        required_plugins: Some(vec!["skill-creator".to_string()]),
+        required_plugins: Some(required_plugins_for_refine_agent(agent_name)),
         conversation_history: None,
         skill_name: Some(skill_name.to_string()),
         step_id: Some(-10),
@@ -1806,8 +1829,20 @@ mod tests {
     }
 
     #[test]
-    fn test_refine_config_requires_skill_creator_plugin() {
+    fn test_refine_stream_requires_both_plugins() {
         let (config, _) = base_refine_config("improve metrics");
+        assert_eq!(
+            config.required_plugins,
+            Some(vec![
+                "skill-content-researcher".to_string(),
+                "skill-creator".to_string(),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_direct_rewrite_requires_skill_creator_plugin() {
+        let (config, _) = base_direct_config(GENERATE_AGENT_NAME);
         assert_eq!(
             config.required_plugins,
             Some(vec!["skill-creator".to_string()])
@@ -1815,12 +1850,18 @@ mod tests {
     }
 
     #[test]
-    fn test_direct_refine_config_requires_skill_creator_plugin() {
-        let (config, _) = base_direct_config(GENERATE_AGENT_NAME);
+    fn test_direct_validate_requires_skill_creator_plugin() {
+        let (config, _) = base_direct_config(VALIDATE_AGENT_NAME);
         assert_eq!(
             config.required_plugins,
             Some(vec!["skill-creator".to_string()])
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "No canonical plugin list for refine agent")]
+    fn test_unknown_refine_agent_panics() {
+        required_plugins_for_refine_agent("nonexistent-agent");
     }
 
     #[test]

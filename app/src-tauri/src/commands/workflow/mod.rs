@@ -59,13 +59,12 @@ mod tests {
     };
     use super::packaging::create_skill_zip;
     use super::runtime::{
-        build_prompt, derive_agent_name, format_user_context, make_agent_id,
-        parse_decisions_guard, parse_scope_recommendation, validate_decisions_exist_inner,
-        workflow_step_runtime_label, write_user_context_file,
+        build_prompt, format_user_context, make_agent_id, parse_decisions_guard,
+        parse_scope_recommendation, validate_decisions_exist_inner, workflow_step_runtime_label,
+        write_user_context_file,
     };
     use super::step_config::{
-        build_betas, get_step_config, required_plugins_for_workflow_step,
-        thinking_budget_for_step, workflow_output_format_for_agent,
+        build_betas, get_step_config, thinking_budget_for_step, workflow_output_format_for_agent,
     };
     use super::evaluation::get_step_output_files;
     use super::claude_md::{generate_skills_section};
@@ -146,21 +145,28 @@ mod tests {
     }
 
     #[test]
-    fn test_required_plugins_for_workflow_step_matches_policy() {
+    fn test_step_config_canonical_agent_names() {
+        assert_eq!(get_step_config(0).unwrap().agent_name, "research-orchestrator");
+        assert_eq!(get_step_config(1).unwrap().agent_name, "detailed-research");
+        assert_eq!(get_step_config(2).unwrap().agent_name, "confirm-decisions");
+        assert_eq!(get_step_config(3).unwrap().agent_name, "generate-skill");
+    }
+
+    #[test]
+    fn test_step_config_canonical_required_plugins() {
         assert_eq!(
-            required_plugins_for_workflow_step(0),
-            Some(vec!["skill-content-researcher".to_string()])
+            get_step_config(0).unwrap().required_plugins,
+            vec!["skill-content-researcher"]
         );
         assert_eq!(
-            required_plugins_for_workflow_step(1),
-            Some(vec!["skill-content-researcher".to_string()])
+            get_step_config(1).unwrap().required_plugins,
+            vec!["skill-content-researcher"]
         );
-        assert_eq!(required_plugins_for_workflow_step(2), Some(vec![]));
+        assert!(get_step_config(2).unwrap().required_plugins.is_empty());
         assert_eq!(
-            required_plugins_for_workflow_step(3),
-            Some(vec!["skill-creator".to_string()])
+            get_step_config(3).unwrap().required_plugins,
+            vec!["skill-creator"]
         );
-        assert_eq!(required_plugins_for_workflow_step(99), None);
     }
 
     #[test]
@@ -1213,37 +1219,18 @@ mod tests {
     }
 
     #[test]
-    fn test_derive_agent_name_fallback() {
-        // Without deployed agent files, falls back to phase name
-        let tmp = tempfile::tempdir().unwrap();
-        let ws = tmp.path().to_str().unwrap();
-        assert_eq!(
-            derive_agent_name(ws, "domain", "research-orchestrator.md"),
-            "research-orchestrator"
-        );
-        assert_eq!(
-            derive_agent_name(ws, "platform", "generate-skill.md"),
-            "generate-skill"
-        );
-    }
-
-    #[test]
-    fn test_derive_agent_name_reads_frontmatter() {
-        let tmp = tempfile::tempdir().unwrap();
-        let ws = tmp.path().to_str().unwrap();
-        let agents_dir = tmp.path().join(".claude").join("agents");
-        std::fs::create_dir_all(&agents_dir).unwrap();
-
-        std::fs::write(
-            agents_dir.join("research-orchestrator.md"),
-            "---\nname: research-orchestrator\nmodel: sonnet\n---\n# Agent\n",
-        )
-        .unwrap();
-
-        assert_eq!(
-            derive_agent_name(ws, "data-engineering", "research-orchestrator.md"),
-            "research-orchestrator"
-        );
+    fn test_step_config_agent_name_matches_prompt_template_stem() {
+        // For non-plugin agents, agent_name must match the prompt_template
+        // filename stem so the SDK finds the right .claude/agents/ file.
+        for step_id in [0, 1, 2] {
+            let config = get_step_config(step_id).unwrap();
+            let stem = config.prompt_template.trim_end_matches(".md");
+            assert_eq!(
+                config.agent_name, stem,
+                "step {} agent_name must match prompt_template stem",
+                step_id
+            );
+        }
     }
 
     #[test]

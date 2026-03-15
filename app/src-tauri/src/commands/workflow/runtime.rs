@@ -10,8 +10,8 @@ use super::deploy::{
 use super::evaluation::workflow_step_log_name;
 use super::output_format::answer_evaluator_output_format;
 use super::step_config::{
-    build_betas, get_step_config, required_plugins_for_workflow_step, resolve_model_id,
-    thinking_budget_for_step, workflow_output_format_for_agent,
+    build_betas, get_step_config, resolve_model_id, thinking_budget_for_step,
+    workflow_output_format_for_agent,
 };
 
 /// Write `user-context.md` to the workspace so sub-agents can read it from disk.
@@ -245,30 +245,6 @@ pub(crate) fn build_prompt(
     prompt
 }
 
-pub(crate) fn read_agent_frontmatter_name(workspace_path: &str, phase: &str) -> Option<String> {
-    let agent_file = Path::new(workspace_path)
-        .join(".claude")
-        .join("agents")
-        .join(format!("{}.md", phase));
-    let content = std::fs::read_to_string(&agent_file).ok()?;
-    if !content.starts_with("---") {
-        return None;
-    }
-    let after_start = &content[3..];
-    let end = after_start.find("---")?;
-    let frontmatter = &after_start[..end];
-    for line in frontmatter.lines() {
-        let trimmed = line.trim();
-        if let Some(name) = trimmed.strip_prefix("name:") {
-            let name = name.trim();
-            if !name.is_empty() {
-                return Some(name.to_string());
-            }
-        }
-    }
-    None
-}
-
 /// Check if clarifications.json has `metadata.scope_recommendation == true`.
 pub(crate) fn parse_scope_recommendation(clarifications_path: &Path) -> bool {
     let content = match std::fs::read_to_string(clarifications_path) {
@@ -307,18 +283,6 @@ pub(crate) fn parse_decisions_guard(decisions_path: &Path) -> bool {
         return true;
     }
     false
-}
-
-/// Derive agent name from prompt template.
-/// Reads the deployed agent file's frontmatter `name:` field (the SDK uses
-/// this to register the agent). Falls back to the phase name if the
-/// file is missing or has no name field.
-pub(crate) fn derive_agent_name(workspace_path: &str, _purpose: &str, prompt_template: &str) -> String {
-    let phase = prompt_template.trim_end_matches(".md");
-    if let Some(name) = read_agent_frontmatter_name(workspace_path, phase) {
-        return name;
-    }
-    phase.to_string()
 }
 
 /// Generate a unique agent ID from skill name, label, and timestamp.
@@ -519,17 +483,17 @@ async fn run_workflow_step_inner(
         prompt
     );
 
-    let agent_name = derive_agent_name(workspace_path, &settings.purpose, &step.prompt_template);
+    let agent_name = step.agent_name.clone();
+    let required_plugins: Vec<String> = step.required_plugins.clone();
     let agent_id = make_agent_id(skill_name, &workflow_step_runtime_label(&step));
     log::info!(
-        "run_workflow_step: skill={} step={} step_id={} model={}",
+        "run_workflow_step: skill={} step={} step_id={} agent={} plugins={:?}",
         skill_name,
         workflow_step_log_name(step_id as i32),
         step_id,
-        settings.preferred_model
+        agent_name,
+        required_plugins,
     );
-
-    let required_plugins = required_plugins_for_workflow_step(step_id);
 
     let config = SidecarConfig {
         prompt,
@@ -556,7 +520,7 @@ async fn run_workflow_step_inner(
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name),
-        required_plugins,
+        required_plugins: Some(required_plugins),
         conversation_history: None,
         skill_name: Some(skill_name.to_string()),
         step_id: Some(step_id as i32),
