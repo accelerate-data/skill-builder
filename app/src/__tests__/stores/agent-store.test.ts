@@ -9,6 +9,7 @@ import {
   getPendingTerminalCount,
   getPendingMetadataCount,
   flushDisplayItems,
+  getPhantomTimerCount,
 } from "@/stores/agent-store";
 import type { DisplayItem } from "@/lib/display-types";
 
@@ -637,6 +638,89 @@ describe("displayItems management", () => {
     expect(useAgentStore.getState().runs).toEqual({});
   });
 
+});
+
+// =============================================================================
+// Phantom run reaper (CM-04)
+// =============================================================================
+
+describe("phantom run reaper", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useAgentStore.getState().clearRuns();
+    resetAgentStoreInternals();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("auto-created run is reaped after 30s if startRun never arrives", () => {
+    // Simulate display items arriving before startRun
+    useAgentStore.getState().addDisplayItem("phantom-1", makeDisplayItem({
+      type: "output",
+      outputText: "early message",
+    }));
+    flushDisplayItems();
+
+    const run = useAgentStore.getState().runs["phantom-1"];
+    expect(run).toBeDefined();
+    expect(run.model).toBe("unknown");
+    expect(run.status).toBe("running");
+    expect(getPhantomTimerCount()).toBe(1);
+
+    // Advance past the 30s TTL
+    vi.advanceTimersByTime(30_000);
+
+    const reaped = useAgentStore.getState().runs["phantom-1"];
+    expect(reaped.status).toBe("error");
+    expect(reaped.endTime).toBeDefined();
+    expect(getPhantomTimerCount()).toBe(0);
+  });
+
+  it("startRun cancels the phantom timer", () => {
+    useAgentStore.getState().addDisplayItem("phantom-2", makeDisplayItem({
+      type: "output",
+      outputText: "early",
+    }));
+    flushDisplayItems();
+    expect(getPhantomTimerCount()).toBe(1);
+
+    // startRun resolves the phantom — timer should be cancelled
+    useAgentStore.getState().startRun("phantom-2", "sonnet");
+    expect(getPhantomTimerCount()).toBe(0);
+
+    // Advancing time should NOT reap it
+    vi.advanceTimersByTime(30_000);
+    const run = useAgentStore.getState().runs["phantom-2"];
+    expect(run.model).toBe("sonnet");
+    expect(run.status).toBe("running");
+  });
+
+  it("completeRun cancels the phantom timer", () => {
+    useAgentStore.getState().addDisplayItem("phantom-3", makeDisplayItem({
+      type: "output",
+      outputText: "early",
+    }));
+    flushDisplayItems();
+    expect(getPhantomTimerCount()).toBe(1);
+
+    useAgentStore.getState().completeRun("phantom-3", true);
+    expect(getPhantomTimerCount()).toBe(0);
+
+    const run = useAgentStore.getState().runs["phantom-3"];
+    expect(run.status).toBe("completed");
+  });
+
+  it("clearRuns cancels all phantom timers", () => {
+    useAgentStore.getState().addDisplayItem("phantom-4", makeDisplayItem({ type: "output", outputText: "a" }));
+    useAgentStore.getState().addDisplayItem("phantom-5", makeDisplayItem({ type: "output", outputText: "b" }));
+    flushDisplayItems();
+    expect(getPhantomTimerCount()).toBe(2);
+
+    useAgentStore.getState().clearRuns();
+    expect(getPhantomTimerCount()).toBe(0);
+  });
 });
 
 // =============================================================================
