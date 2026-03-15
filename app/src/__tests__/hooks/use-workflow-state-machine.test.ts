@@ -235,4 +235,149 @@ describe("useWorkflowStateMachine", () => {
     // The step must have been marked completed and isRunning set to false
     expect(mockSetRunning).toHaveBeenCalledWith(false);
   });
+
+  // --- Gate dialog state management ---
+
+  it("closeGateDialog resets all gate state", () => {
+    const { result } = renderHook(() => useWorkflowStateMachine(defaultOptions));
+
+    act(() => {
+      result.current.setShowGateDialog(true);
+      result.current.setGateVerdict("mixed");
+      result.current.setGateEvaluation({
+        verdict: "mixed",
+        answered_count: 1,
+        empty_count: 0,
+        vague_count: 1,
+        contradictory_count: 0,
+        total_count: 2,
+        reasoning: "test",
+        per_question: [],
+      });
+    });
+
+    expect(result.current.showGateDialog).toBe(true);
+    expect(result.current.gateVerdict).toBe("mixed");
+
+    act(() => {
+      result.current.closeGateDialog();
+    });
+
+    expect(result.current.showGateDialog).toBe(false);
+    expect(result.current.gateVerdict).toBeNull();
+    expect(result.current.gateEvaluation).toBeNull();
+  });
+
+  it("handleGateSkip writes gate log and closes dialog", () => {
+    const { result } = renderHook(() => useWorkflowStateMachine(defaultOptions));
+
+    act(() => {
+      result.current.setShowGateDialog(true);
+      result.current.setGateVerdict("sufficient");
+      result.current.setGateContext("clarifications");
+    });
+
+    act(() => {
+      result.current.handleGateSkip();
+    });
+
+    expect(result.current.showGateDialog).toBe(false);
+    expect(mockWriteFile).toHaveBeenCalled();
+    expect(mockLogGateDecision).toHaveBeenCalledWith("test-skill", "sufficient", "skip");
+  });
+
+  it("handleGateResearch closes dialog and logs decision", () => {
+    const { result } = renderHook(() => useWorkflowStateMachine(defaultOptions));
+
+    act(() => {
+      result.current.setShowGateDialog(true);
+      result.current.setGateContext("clarifications");
+    });
+
+    act(() => {
+      result.current.handleGateResearch();
+    });
+
+    expect(result.current.showGateDialog).toBe(false);
+    expect(mockLogGateDecision).toHaveBeenCalled();
+    expect(mockLogGateDecision.mock.calls[0][2]).toBe("research_anyway");
+  });
+
+  it("handleGateContinueAnyway closes dialog and logs decision", () => {
+    const { result } = renderHook(() => useWorkflowStateMachine(defaultOptions));
+
+    act(() => {
+      result.current.setShowGateDialog(true);
+    });
+
+    act(() => {
+      result.current.handleGateContinueAnyway();
+    });
+
+    expect(result.current.showGateDialog).toBe(false);
+    expect(mockLogGateDecision).toHaveBeenCalled();
+    expect(mockLogGateDecision.mock.calls[0][2]).toBe("continue_anyway");
+  });
+
+  it("handleGateLetMeAnswer fetches clarifications content", () => {
+    mockGetClarificationsContent.mockResolvedValue('{"version":"1","metadata":{},"sections":[]}');
+
+    const { result } = renderHook(() => useWorkflowStateMachine(defaultOptions));
+
+    act(() => {
+      result.current.setShowGateDialog(true);
+    });
+
+    act(() => {
+      result.current.handleGateLetMeAnswer();
+    });
+
+    expect(result.current.showGateDialog).toBe(false);
+    expect(mockGetClarificationsContent).toHaveBeenCalledWith("test-skill", "/workspace");
+  });
+
+  // --- State setters ---
+
+  it("setPendingStepSwitch and setResetTarget work correctly", () => {
+    const { result } = renderHook(() => useWorkflowStateMachine(defaultOptions));
+
+    act(() => {
+      result.current.setPendingStepSwitch(2);
+      result.current.setShowResetConfirm(true);
+      result.current.setResetTarget(1);
+    });
+
+    expect(result.current.pendingStepSwitch).toBe(2);
+    expect(result.current.showResetConfirm).toBe(true);
+    expect(result.current.resetTarget).toBe(1);
+  });
+
+  it("handleStartAgentStep blocks when gateLoading is true", async () => {
+    mockWorkflowState = { ...mockWorkflowState, gateLoading: true };
+    const { toast } = await import("@/lib/toast");
+
+    const { result } = renderHook(() => useWorkflowStateMachine(defaultOptions));
+
+    await act(async () => {
+      await result.current.handleStartAgentStep();
+    });
+
+    expect(mockRunWorkflowStep).not.toHaveBeenCalled();
+    expect(toast.info).toHaveBeenCalled();
+  });
+
+  it("handleStartAgentStep shows error when workspace path missing", async () => {
+    const { toast } = await import("@/lib/toast");
+
+    const { result } = renderHook(() =>
+      useWorkflowStateMachine({ ...defaultOptions, workspacePath: null })
+    );
+
+    await act(async () => {
+      await result.current.handleStartAgentStep();
+    });
+
+    expect(mockRunWorkflowStep).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith("Missing workspace path", expect.any(Object));
+  });
 });
