@@ -28,7 +28,7 @@ if let Some(t) = token { settings.github_oauth_token = Some(t); }
 
 Alternatively, callers should stop passing `null` for the token from the profile-update path (`loadUser`/`setUser`).
 
-**Status:** Open
+**Status:** Resolved — `update_github_identity` now skips token when `None` (`f2b9865`+)
 
 ---
 

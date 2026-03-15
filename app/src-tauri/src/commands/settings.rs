@@ -547,7 +547,13 @@ pub fn update_github_identity(
     settings.github_user_login = login;
     settings.github_user_avatar = avatar;
     settings.github_user_email = email;
-    settings.github_oauth_token = token;
+    // Only overwrite the token when the caller explicitly provides one.
+    // loadUser/setUser pass None (profile-only update) and must not wipe
+    // the token persisted by github_poll_for_token.  The logout flow
+    // clears the token via github_logout_impl instead.
+    if token.is_some() {
+        settings.github_oauth_token = token;
+    }
     crate::db::write_settings(&conn, &settings)?;
     Ok(())
 }
@@ -1013,5 +1019,47 @@ mod tests {
         assert_eq!(result.github_user_login.as_deref(), Some("dev"));
         assert!(result.marketplace_initialized);
         assert_eq!(result.preferred_model.as_deref(), Some("claude-opus-4"));
+    }
+
+    // ===== update_github_identity token-preservation tests =====
+
+    #[test]
+    fn test_update_github_identity_none_token_preserves_existing() {
+        let conn = crate::db::create_test_db_for_tests();
+
+        // Seed a token in the DB (simulates github_poll_for_token)
+        let mut settings = crate::db::read_settings(&conn).unwrap();
+        settings.github_oauth_token = Some("ghp_saved_token".to_string());
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        // Simulate loadUser/setUser calling update_github_identity with None token
+        let mut settings = crate::db::read_settings(&conn).unwrap();
+        settings.github_user_login = Some("octocat".to_string());
+        settings.github_user_avatar = Some("https://avatar".to_string());
+        settings.github_user_email = Some("octo@example.com".to_string());
+        // token is None — must NOT overwrite the saved token
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        let result = crate::db::read_settings(&conn).unwrap();
+        assert_eq!(result.github_oauth_token.as_deref(), Some("ghp_saved_token"));
+        assert_eq!(result.github_user_login.as_deref(), Some("octocat"));
+    }
+
+    #[test]
+    fn test_update_github_identity_some_token_overwrites() {
+        let conn = crate::db::create_test_db_for_tests();
+
+        // Seed a token
+        let mut settings = crate::db::read_settings(&conn).unwrap();
+        settings.github_oauth_token = Some("ghp_old".to_string());
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        // Simulate an explicit token update (e.g. re-auth)
+        let mut settings = crate::db::read_settings(&conn).unwrap();
+        settings.github_oauth_token = Some("ghp_new".to_string());
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        let result = crate::db::read_settings(&conn).unwrap();
+        assert_eq!(result.github_oauth_token.as_deref(), Some("ghp_new"));
     }
 }
