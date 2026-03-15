@@ -332,3 +332,63 @@ export interface SkillFileMeta {
   user_invocable: boolean | null
   disable_model_invocation: boolean | null
 }
+
+// ─── Workflow step structured outputs ────────────────────────────────────────
+
+/** Structured output for workflow step 0 (research-orchestrator agent). */
+export interface ResearchStepOutput {
+  status: "research_complete"
+  dimensions_selected: number
+  question_count: number
+  research_output: unknown
+}
+
+/** Structured output for workflow step 1 (detailed-research agent). */
+export interface DetailedResearchOutput {
+  status: "detailed_research_complete"
+  refinement_count: number
+  section_count: number
+  clarifications_json: unknown
+}
+
+/** Structured output for workflow step 2 (confirm-decisions agent). */
+export interface DecisionsOutput {
+  version: string
+  metadata: unknown
+  decisions: unknown[]
+}
+
+/** Structured output for workflow step 3 (generate-skill agent). */
+export interface GenerateSkillOutput {
+  status: "generated"
+  evaluations_markdown: string
+}
+
+/** Discriminated union narrowing `structuredOutput` per workflow step index. */
+export type WorkflowStepStructuredOutput =
+  | ({ stepId: 0 } & ResearchStepOutput)
+  | ({ stepId: 1 } & DetailedResearchOutput)
+  | ({ stepId: 2 } & DecisionsOutput)
+  | ({ stepId: 3 } & GenerateSkillOutput)
+
+// ─── Answer evaluator structured output ──────────────────────────────────────
+
+/** Per-question verdict entry within an {@link AnswerEvaluationOutput}. Matches `PerQuestionEntry` in `workflow_artifacts.rs`. */
+export interface PerQuestionEntry {
+  question_id: string
+  verdict: "clear" | "needs_refinement" | "not_answered" | "vague" | "contradictory"
+  reason?: string | null
+  contradicts?: string | null
+}
+
+/** Structured output produced by the answer-evaluator agent. Matches `AnswerEvaluationOutput` in `workflow_artifacts.rs`. */
+export interface AnswerEvaluationOutput {
+  verdict: "sufficient" | "mixed" | "insufficient"
+  answered_count: number
+  empty_count: number
+  vague_count: number
+  contradictory_count: number
+  total_count: number
+  reasoning: string
+  per_question: PerQuestionEntry[]
+}
