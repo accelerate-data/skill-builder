@@ -160,7 +160,7 @@ Return:
 
 ---
 
-<output_format>
+<output>
 
 ## Output
 
@@ -175,4 +175,4 @@ Return JSON only in this envelope shape:
 }
 ```
 
-</output_format>
+</output>

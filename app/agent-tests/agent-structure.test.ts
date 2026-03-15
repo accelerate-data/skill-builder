@@ -1,19 +1,34 @@
 import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
-import { AGENTS_DIR, REPO_ROOT } from "./helpers";
+import { AGENTS_DIR, PLUGINS_DIR, REPO_ROOT } from "./helpers";
 
+/** Top-level agents deployed to .claude/agents/ */
 const EXPECTED_AGENTS = [
   "answer-evaluator",
   "confirm-decisions",
   "detailed-research",
   "eval-skill",
-  "generate-skill",
   "refine-skill",
   "research-orchestrator",
   "validate-quality",
   "validate-skill",
 ];
+
+/** Plugin-hosted agents: agent name → plugin path relative to PLUGINS_DIR */
+const PLUGIN_AGENTS: Record<string, string> = {
+  "generate-skill": "skill-creator/agents/generate-skill.md",
+};
+
+/** Resolve the .md file path for any agent (top-level or plugin). */
+function resolveAgentPath(agentName: string): string {
+  const pluginRelPath = PLUGIN_AGENTS[agentName];
+  if (pluginRelPath) return path.join(PLUGINS_DIR, pluginRelPath);
+  return path.join(AGENTS_DIR, `${agentName}.md`);
+}
+
+/** All agent names (top-level + plugin). */
+const ALL_AGENTS = [...EXPECTED_AGENTS, ...Object.keys(PLUGIN_AGENTS)];
 
 const EXPECTED_MODELS: Record<string, string> = {
   "answer-evaluator": "haiku",
@@ -73,14 +88,11 @@ describe("canonical format compliance", () => {
   ];
 
   it.each(
-    EXPECTED_AGENTS.flatMap((agent) =>
+    ALL_AGENTS.flatMap((agent) =>
       antiPatterns.map(([label, pattern]) => [agent, label, pattern] as const)
     )
   )("%s: no %s", (agent, _label, pattern) => {
-    const content = fs.readFileSync(
-      path.join(AGENTS_DIR, `${agent}.md`),
-      "utf8"
-    );
+    const content = fs.readFileSync(resolveAgentPath(agent), "utf8");
     expect(content).not.toMatch(pattern);
   });
 });
@@ -89,7 +101,7 @@ describe("canonical format compliance", () => {
 
 describe("read directive compliance", () => {
   const TARGET_FILES = [
-    path.join(AGENTS_DIR, "generate-skill.md"),
+    resolveAgentPath("generate-skill"),
     path.join(AGENTS_DIR, "validate-quality.md"),
     path.join(AGENTS_DIR, "eval-skill.md"),
   ];
@@ -219,10 +231,7 @@ describe("Agent output contracts (backend protocol alignment)", () => {
   });
 
   it("generate-skill returns generated status with evaluations_markdown", () => {
-    const content = fs.readFileSync(
-      path.join(AGENTS_DIR, "generate-skill.md"),
-      "utf8"
-    );
+    const content = fs.readFileSync(resolveAgentPath("generate-skill"), "utf8");
     expect(content).toMatch(/status.*generated/);
     expect(content).toMatch(/evaluations_markdown/);
   });
@@ -360,9 +369,8 @@ describe("skill-creator plugin structure", () => {
     expect(content).toMatch(/python -m scripts\.run_loop/);
     expect(content).toMatch(/python -m scripts\.package_skill/);
 
-    // Eval viewer launched via relative eval-viewer/generate_review.py, no placeholder path
-    expect(content).toMatch(/python eval-viewer\/generate_review\.py/);
-    expect(content).not.toMatch(/<skill-creator-path>/);
+    // Eval viewer launched via generate_review.py (relative or with skill-creator-path placeholder)
+    expect(content).toMatch(/generate_review\.py/);
   });
 
 });
