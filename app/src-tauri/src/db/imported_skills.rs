@@ -8,11 +8,22 @@ use super::skills::get_skill_master_id;
 
 /// Read SKILL.md frontmatter from disk and populate `description`
 /// on an ImportedSkill struct. This field is not stored in the DB.
+///
+/// **Must be called outside the DB mutex** — this performs disk I/O that
+/// would block all other DB operations if called while holding the lock.
 pub fn hydrate_skill_metadata(skill: &mut ImportedSkill) {
     let skill_md_path = std::path::Path::new(&skill.disk_path).join("SKILL.md");
     if let Ok(content) = fs::read_to_string(&skill_md_path) {
         let fm = crate::commands::imported_skills::parse_frontmatter_full(&content);
         skill.description = fm.description;
+    }
+}
+
+/// Hydrate description for a list of skills from their on-disk SKILL.md files.
+/// Convenience wrapper for batch hydration after releasing the DB lock.
+pub fn hydrate_skills_metadata(skills: &mut [ImportedSkill]) {
+    for skill in skills.iter_mut() {
+        hydrate_skill_metadata(skill);
     }
 }
 
@@ -211,10 +222,7 @@ pub fn get_imported_skill(
     });
 
     match result {
-        Ok(mut skill) => {
-            hydrate_skill_metadata(&mut skill);
-            Ok(Some(skill))
-        }
+        Ok(skill) => Ok(Some(skill)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.to_string()),
     }
@@ -253,13 +261,9 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
         })
         .map_err(|e| e.to_string())?;
 
-    let mut skills: Vec<ImportedSkill> = rows
+    let skills: Vec<ImportedSkill> = rows
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
-
-    for skill in &mut skills {
-        hydrate_skill_metadata(skill);
-    }
 
     Ok(skills)
 }
@@ -312,13 +316,9 @@ pub fn list_imported_skills_filtered(
     }
     .map_err(|e| format!("list_imported_skills_filtered query: {}", e))?;
 
-    let mut skills: Vec<ImportedSkill> = results
+    let skills: Vec<ImportedSkill> = results
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("list_imported_skills_filtered collect: {}", e))?;
-
-    for skill in &mut skills {
-        hydrate_skill_metadata(skill);
-    }
 
     Ok(skills)
 }
@@ -356,10 +356,7 @@ pub fn get_imported_skill_by_id(
     });
 
     match result {
-        Ok(mut skill) => {
-            hydrate_skill_metadata(&mut skill);
-            Ok(Some(skill))
-        }
+        Ok(skill) => Ok(Some(skill)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(format!("get_imported_skill_by_id: {}", e)),
     }
@@ -406,10 +403,7 @@ pub fn get_imported_skill_by_purpose(
         })
     });
     match result {
-        Ok(mut skill) => {
-            hydrate_skill_metadata(&mut skill);
-            Ok(Some(skill))
-        }
+        Ok(skill) => Ok(Some(skill)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e),
     }
@@ -487,10 +481,7 @@ pub fn get_imported_skill_by_name_and_source(
     });
 
     match result {
-        Ok(mut skill) => {
-            hydrate_skill_metadata(&mut skill);
-            Ok(Some(skill))
-        }
+        Ok(skill) => Ok(Some(skill)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(format!("get_imported_skill_by_name_and_source: {}", e)),
     }

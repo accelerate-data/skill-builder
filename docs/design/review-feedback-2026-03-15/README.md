@@ -197,5 +197,5 @@ These were flagged in prior review cycles and remain unresolved:
 | ID | Finding | Source | Severity |
 |---|---|---|---|
 | CM-04 | ~~Phantom runs with `model: "unknown"` from `flushDisplayItems` auto-create~~ — Resolved: 30s reaper marks orphaned auto-created runs as error | review-feedback-2026-03-14c | Medium |
-| CL-02 | `fs::read_to_string` inside DB mutex in `hydrate_skill_metadata` | review-feedback-2026-03-14c | Low |
+| CL-02 | ~~`fs::read_to_string` inside DB mutex in `hydrate_skill_metadata`~~ — Resolved: hydration moved out of DB functions; callers hydrate after releasing lock | review-feedback-2026-03-14c | Low |
 | TC-06 | `save_workflow_state` all-completed override path untested | review-feedback-2026-03-14b | Low |
