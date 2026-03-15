@@ -1,5 +1,6 @@
 mod github;
 mod refine;
+mod secret;
 mod settings;
 mod skill;
 mod startup;
@@ -9,6 +10,7 @@ mod workflow;
 // Re-export all types at the crate::types level so callers don't need to change.
 pub use github::*;
 pub use refine::*;
+pub use secret::*;
 pub use settings::*;
 pub use skill::*;
 pub use startup::*;
@@ -137,7 +139,7 @@ mod tests {
         let config = crate::agents::sidecar::SidecarConfig {
             prompt: "test prompt".to_string(),
             model: Some("sonnet".to_string()),
-            api_key: "sk-test".to_string(),
+            api_key: SecretString::new("sk-test".to_string()),
             cwd: "/tmp".to_string(),
             allowed_tools: Some(vec!["Read".to_string(), "Write".to_string()]),
             max_turns: Some(10),

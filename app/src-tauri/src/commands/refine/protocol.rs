@@ -4,6 +4,7 @@ use crate::agents::sidecar::SidecarConfig;
 use crate::commands::agent::output_format_for_agent;
 use crate::commands::workflow::resolve_model_id;
 use crate::db::{self, Db};
+use crate::types::SecretString;
 
 pub(super) const REFINE_TOOLS: &[&str] = &[
     "Read", "Edit", "Write", "Glob", "Grep", "Bash", "Task", "Skill",
@@ -31,7 +32,7 @@ pub(super) enum RefineDispatch {
 }
 
 pub(super) struct RefineRuntimeSettings {
-    pub api_key: String,
+    pub api_key: SecretString,
     pub extended_thinking: bool,
     pub interleaved_thinking_beta: bool,
     pub sdk_effort: Option<String>,
@@ -91,6 +92,7 @@ pub(super) fn load_refine_runtime_settings(
     })?;
     let api_key = settings
         .anthropic_api_key
+        .map(SecretString::new)
         .ok_or_else(|| "Anthropic API key not configured".to_string())?;
     let model = resolve_model_id(settings.preferred_model.as_deref().unwrap_or("sonnet"));
     let skills_path = settings
@@ -139,7 +141,7 @@ pub(super) fn build_refine_config(
     skill_name: &str,
     usage_session_id: &str,
     workspace_path: &str,
-    api_key: String,
+    api_key: SecretString,
     model: String,
     extended_thinking: bool,
     interleaved_thinking_beta: bool,
@@ -199,7 +201,7 @@ pub(super) fn build_direct_refine_config(
     skill_name: &str,
     usage_session_id: &str,
     workspace_path: &str,
-    api_key: String,
+    api_key: SecretString,
     model: String,
     extended_thinking: bool,
     interleaved_thinking_beta: bool,

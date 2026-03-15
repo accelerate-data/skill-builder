@@ -47,7 +47,7 @@ pub async fn generate_suggestions(
             e
         })?;
         match settings.anthropic_api_key {
-            Some(k) => k,
+            Some(k) => crate::types::SecretString::new(k),
             None => {
                 log::error!("[generate_suggestions] API key not configured");
                 return Err("API key not configured".to_string());
@@ -189,7 +189,7 @@ pub async fn generate_suggestions(
         .map_err(|e| e.to_string())?;
     let resp = client
         .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
+        .header("x-api-key", api_key.expose())
         .header("anthropic-version", "2023-06-01")
         .header("content-type", "application/json")
         .body(

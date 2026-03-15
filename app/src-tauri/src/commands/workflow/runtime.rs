@@ -364,7 +364,7 @@ pub(crate) fn validate_decisions_exist_inner(
 /// Shared settings extracted from the DB, used by `run_workflow_step`.
 pub(crate) struct WorkflowSettings {
     pub skills_path: String,
-    pub api_key: String,
+    pub api_key: crate::types::SecretString,
     pub preferred_model: String,
     pub extended_thinking: bool,
     pub interleaved_thinking_beta: bool,
@@ -402,7 +402,7 @@ pub(crate) fn read_workflow_settings(
             .to_string()
     })?;
     let api_key = match settings.anthropic_api_key {
-        Some(k) => k,
+        Some(k) => crate::types::SecretString::new(k),
         None => return Err("Anthropic API key not configured".to_string()),
     };
     let preferred_model = resolve_model_id(settings.preferred_model.as_deref().unwrap_or("sonnet"));
@@ -712,7 +712,7 @@ pub async fn run_answer_evaluator(
             e.to_string()
         })?;
         let key = match settings.anthropic_api_key {
-            Some(k) => k,
+            Some(k) => crate::types::SecretString::new(k),
             None => {
                 log::error!("run_answer_evaluator: API key not configured");
                 return Err("Anthropic API key not configured".to_string());

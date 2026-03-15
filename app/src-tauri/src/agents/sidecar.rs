@@ -1,12 +1,14 @@
 use serde::{Deserialize, Serialize};
 
+use crate::types::SecretString;
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SidecarConfig {
     pub prompt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     #[serde(rename = "apiKey")]
-    pub api_key: String,
+    pub api_key: SecretString,
     pub cwd: String,
     #[serde(rename = "allowedTools", skip_serializing_if = "Option::is_none")]
     pub allowed_tools: Option<Vec<String>>,
@@ -174,7 +176,7 @@ mod tests {
         let config = SidecarConfig {
             prompt: "Analyze this codebase".to_string(),
             model: Some("sonnet".to_string()),
-            api_key: "sk-ant-test".to_string(),
+            api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             cwd: "/home/user/project".to_string(),
             allowed_tools: Some(vec!["Read".to_string(), "Glob".to_string()]),
             max_turns: Some(25),
@@ -217,7 +219,7 @@ mod tests {
         let config = SidecarConfig {
             prompt: "Reason about this".to_string(),
             model: Some("opus".to_string()),
-            api_key: "sk-ant-test".to_string(),
+            api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             cwd: "/home/user/project".to_string(),
             allowed_tools: None,
             max_turns: None,
@@ -256,7 +258,7 @@ mod tests {
         let config = SidecarConfig {
             prompt: "test".to_string(),
             model: None,
-            api_key: "sk-ant-test".to_string(),
+            api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             cwd: "/tmp".to_string(),
             allowed_tools: None,
             max_turns: None,
@@ -295,7 +297,7 @@ mod tests {
         let config = SidecarConfig {
             prompt: "test".to_string(),
             model: None,
-            api_key: "sk-ant-test".to_string(),
+            api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             cwd: "/tmp".to_string(),
             allowed_tools: None,
             max_turns: None,
