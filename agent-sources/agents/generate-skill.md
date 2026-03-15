@@ -102,7 +102,7 @@ Treat `Current request` as an additional focus area for coverage:
 
 ## Phase 1: Read Skill-Creator Methodology and Plan Structure
 
-Read `plugins/skill-creator/skills/skill-creator/SKILL.md` — this is the authoritative skill-writing methodology. Its "Skill Writing Guide" section (anatomy, progressive disclosure, writing patterns, writing style) governs Phases 2–3.
+Read `plugins/skill-creator/SKILL.md` — this is the authoritative skill-writing methodology. Its "Skill Writing Guide" section (anatomy, progressive disclosure, writing patterns, writing style) governs Phases 2–3.
 
 ### Prior-step handoff
 
@@ -211,7 +211,7 @@ Before finalizing rewrite mode, verify that the rewritten skill addresses `Curre
 
 ## Success Criteria
 
-- Skill-creator plugin methodology applied (read and followed from `plugins/skill-creator/skills/skill-creator/SKILL.md`)
+- Skill-creator plugin methodology applied (read and followed from `plugins/skill-creator/SKILL.md`)
 - SKILL.md has metadata, overview, trigger conditions, quick reference, and pointers
 - Self-contained reference files
 - Every decision from `decisions.json` addressed in the skill.
