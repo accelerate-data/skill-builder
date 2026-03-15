@@ -135,7 +135,7 @@ Summarize: which files changed, what changed in each, how it addresses the reque
 
 </instructions>
 
-<output_format>
+<output>
 
 ### Example Response
 
@@ -153,4 +153,4 @@ Modified 2 files:
 
 These changes add SLA coverage as a first-class topic in the skill rather than burying it in the operational metrics reference.
 
-</output_format>
+</output>
