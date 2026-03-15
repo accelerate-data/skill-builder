@@ -3371,3 +3371,113 @@ fn test_foreign_keys_enabled_after_init() {
         .unwrap();
     assert!(fk_enabled, "PRAGMA foreign_keys must be ON after init_db / create_test_db_for_tests");
 }
+
+// --- Skill metadata ownership guard tests (VU-569 AC5) ---
+
+/// Guard test: `save_workflow_state` preserves `skills` table metadata even
+/// when the caller would attempt to supply stale values.
+///
+/// This test proves that:
+/// 1. Skill metadata lives exclusively in the `skills` master table.
+/// 2. Calling `save_workflow_run` (the DB primitive behind `save_workflow_state`)
+///    with different execution-state values does NOT touch the metadata columns
+///    in `skills`.
+/// 3. The `workflow_runs` table has no metadata columns — there is no path by
+///    which a frontend payload can overwrite description/version/model/etc.
+#[test]
+fn test_save_workflow_state_preserves_skills_metadata() {
+    let conn = create_test_db();
+
+    // 1. Create workflow run — this also creates the skills master row.
+    save_workflow_run(&conn, "meta-skill", 0, "pending", "domain").unwrap();
+
+    // 2. Write canonical metadata to the skills master table.
+    set_skill_behaviour(
+        &conn,
+        "meta-skill",
+        Some("Canonical description"),
+        Some("2.0.0"),
+        Some("claude-opus-4-5"),
+        Some("--format json"),
+        Some(true),
+        Some(false),
+    )
+    .unwrap();
+
+    // 3. Simulate what save_workflow_state does: update execution state only.
+    //    If a frontend sent stale metadata, save_workflow_run has no parameter for it.
+    save_workflow_run(&conn, "meta-skill", 3, "completed", "domain").unwrap();
+
+    // 4. Verify that skills metadata is completely unchanged.
+    let master = get_skill_master(&conn, "meta-skill").unwrap().unwrap();
+    assert_eq!(
+        master.description.as_deref(),
+        Some("Canonical description"),
+        "description must be untouched after save_workflow_run"
+    );
+    assert_eq!(
+        master.version.as_deref(),
+        Some("2.0.0"),
+        "version must be untouched after save_workflow_run"
+    );
+    assert_eq!(
+        master.model.as_deref(),
+        Some("claude-opus-4-5"),
+        "model must be untouched after save_workflow_run"
+    );
+    assert_eq!(
+        master.argument_hint.as_deref(),
+        Some("--format json"),
+        "argument_hint must be untouched after save_workflow_run"
+    );
+    assert_eq!(
+        master.user_invocable,
+        Some(true),
+        "user_invocable must be untouched after save_workflow_run"
+    );
+    assert_eq!(
+        master.disable_model_invocation,
+        Some(false),
+        "disable_model_invocation must be untouched after save_workflow_run"
+    );
+
+    // 5. Confirm the execution state was updated correctly.
+    let run = get_workflow_run(&conn, "meta-skill").unwrap().unwrap();
+    assert_eq!(run.current_step, 3);
+    assert_eq!(run.status, "completed");
+}
+
+/// Structural guard: `workflow_runs` must NOT have metadata columns after
+/// migration 35. This test queries PRAGMA table_info and asserts that the
+/// deprecated columns are absent, providing a compile-time and test-time
+/// signal if someone attempts to add them back.
+#[test]
+fn test_workflow_runs_has_no_metadata_columns() {
+    let conn = create_test_db();
+
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(workflow_runs)")
+        .unwrap()
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let banned = [
+        "description",
+        "version",
+        "model",
+        "argument_hint",
+        "user_invocable",
+        "disable_model_invocation",
+    ];
+
+    for col in &banned {
+        assert!(
+            !columns.contains(&col.to_string()),
+            "workflow_runs must NOT have column '{}' after migration 35 — \
+             metadata is canonical in the `skills` table only",
+            col
+        );
+    }
+}

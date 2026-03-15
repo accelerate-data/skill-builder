@@ -429,7 +429,11 @@ pub(crate) fn read_workflow_settings(
     let author_login = run_row.as_ref().and_then(|r| r.author_login.clone());
     let created_at = run_row.as_ref().map(|r| r.created_at.clone());
     let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
-    // Metadata fields come from the skills master table (canonical since migration 24/35)
+    // Metadata fields are read exclusively from the `skills` master table.
+    // This is the canonical source since migration 24 moved these columns
+    // from `workflow_runs` to `skills`, and migration 35 dropped them from
+    // `workflow_runs` entirely. Never read metadata from `workflow_runs` or
+    // from frontend-supplied payload — always call `get_skill_master` here.
     let master_row = crate::db::get_skill_master(&conn, skill_name).ok().flatten();
     let description = master_row.as_ref().and_then(|m| m.description.clone());
     let version = master_row.as_ref().and_then(|m| m.version.clone());
