@@ -6,6 +6,7 @@
  * Replaces workflow-steps.spec.ts, workflow-agent.spec.ts, and
  * workflow-navigation.spec.ts for the @workflow tag.
  */
+import path from "node:path";
 import { test, expect } from "@playwright/test";
 import { emitTauriEvent, simulateAgentRun, simulateAgentRunWithDisplayItems } from "../helpers/agent-simulator";
 import { waitForAppReady } from "../helpers/app-helpers";
