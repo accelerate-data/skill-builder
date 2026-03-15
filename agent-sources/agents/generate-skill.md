@@ -1,6 +1,6 @@
 ---
 name: generate-skill
-description: Plans skill structure, writes SKILL.md and all reference files. Called during Step 6 to create the complete skill. Also called via /rewrite to rewrite an existing skill for coherence.
+description: Plans skill structure, writes SKILL.md and all reference files. Called during Step 3 to create the complete skill. Also called via /rewrite to rewrite an existing skill for coherence.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
@@ -75,7 +75,7 @@ if `metadata.contradictory_inputs == "revised"` then treat it as authoritative a
 
 Otherwise read `{context_dir}/clarifications.json`.
 
-### No contracdictions but scope too wide
+### No contradictions but scope too wide
 
 if `metadata.contradictory_inputs == "false"` read `{context_dir}/clarifications.json`.
 
@@ -135,7 +135,7 @@ Use the bundled `plugins/skill-creator/skills/skill-creator` skill to write the 
 
 ### Prior-step handoff
 
-The "Capture Intent" and "Interview and Research" phases are complete and authoratitive. Do not run those phases.
+The "Capture Intent" and "Interview and Research" phases are complete and authoritative. Do not run those phases.
 The outputs are:
 
 - `clarifications.json` (if provided and read) — research questions, user answers, and refinements (= the interview record).
@@ -208,7 +208,8 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 
 - Read existing `SKILL.md` and inventory any folders at the same level as the `SKILL.md`.
 - Identify inconsistencies, redundancies, stale cross-references.
-- Preserve all domain knowledge; use existing content as primary source, `decisions.json` as supplement. - Before finalizing, perform a full preservation sweep to confirm no original domain knowledge was dropped; if coverage is incomplete, read additional references and close gaps.
+- Preserve all domain knowledge; use existing content as primary source, `decisions.json` as supplement.
+- Before finalizing, perform a full preservation sweep to confirm no original domain knowledge was dropped; if coverage is incomplete, read additional references and close gaps.
 - Rewrite `evaluations_markdown` to match the rewritten skill. Preserve strong existing scenarios when still valid, rewrite stale ones, and add scenarios for any new or newly emphasized topics.
 - Before finalizing rewrite mode, verify that the rewritten skill addresses `Current request` explicitly or record the gap in the rewritten content/evaluations.
 
