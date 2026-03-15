@@ -1,5 +1,4 @@
 import { useState } from "react"
-import { invoke } from "@tauri-apps/api/core"
 import { toast } from "@/lib/toast"
 import { Loader2, Eye, EyeOff, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -20,7 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useSettingsStore, type ModelInfo } from "@/stores/settings-store"
+import { useSettingsStore } from "@/stores/settings-store"
+import { listModels, testApiKey } from "@/lib/tauri"
 
 interface SdkSectionProps {
   apiKey: string | null
@@ -65,7 +65,7 @@ export function SdkSection({
 
   const fetchModels = async (key: string) => {
     try {
-      const models = await invoke<ModelInfo[]>("list_models", { apiKey: key })
+      const models = await listModels(key)
       setStoreSettings({ availableModels: models ?? [] })
     } catch (err) {
       console.warn("[settings] Could not fetch model list:", err)
@@ -80,7 +80,7 @@ export function SdkSection({
     setTesting(true)
     setApiKeyValid(null)
     try {
-      await invoke("test_api_key", { apiKey })
+      await testApiKey(apiKey)
       setApiKeyValid(true)
       toast.success("API key is valid")
       fetchModels(apiKey)

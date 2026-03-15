@@ -1,3 +1,8 @@
+export interface ModelInfo {
+  id: string;
+  displayName: string;
+}
+
 export const PURPOSES = ["platform", "domain", "source", "data-engineering"] as const;
 export type Purpose = typeof PURPOSES[number];
 

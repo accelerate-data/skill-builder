@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { invoke } from "@tauri-apps/api/core"
 import { toast } from "@/lib/toast"
 import type { AppSettings, MarketplaceRegistry } from "@/lib/types"
-import { useSettingsStore, type ModelInfo } from "@/stores/settings-store"
+import { useSettingsStore } from "@/stores/settings-store"
+import { listModels, saveSettings } from "@/lib/tauri"
 
 /** Fields managed by the settings form (local state mirroring the store). */
 export interface SettingsFormFields {
@@ -52,7 +52,7 @@ export function useSettingsForm() {
   useEffect(() => {
     const key = apiKey || useSettingsStore.getState().anthropicApiKey
     if (key) {
-      invoke<ModelInfo[]>("list_models", { apiKey: key })
+      listModels(key)
         .then((models) => setStoreSettings({ availableModels: models ?? [] }))
         .catch((err) => console.warn("[settings] Could not fetch model list:", err))
     }
@@ -92,7 +92,7 @@ export function useSettingsForm() {
     }
 
     try {
-      await invoke("save_settings", { settings })
+      await saveSettings(settings)
       setStoreSettings({
         anthropicApiKey: settings.anthropic_api_key,
         workspacePath: settings.workspace_path,

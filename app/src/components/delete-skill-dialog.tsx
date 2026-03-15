@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { invoke } from "@tauri-apps/api/core"
+import { deleteSkill } from "@/lib/tauri"
 import { toast } from "@/lib/toast"
 import { Loader2, Lock } from "lucide-react"
 import {
@@ -37,10 +37,7 @@ export default function DeleteSkillDialog({
     if (!skill) return
     setLoading(true)
     try {
-      await invoke("delete_skill", {
-        workspacePath,
-        name: skill.name,
-      })
+      await deleteSkill(workspacePath, skill.name)
       console.log(`[skill] Deleted skill "${skill.name}"`)
       toast.success(`Skill "${skill.name}" deleted`)
       onOpenChange(false)

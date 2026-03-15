@@ -1,10 +1,7 @@
 import { create } from "zustand";
-import type { MarketplaceRegistry } from "@/lib/types";
+import type { MarketplaceRegistry, ModelInfo } from "@/lib/types";
 
-export interface ModelInfo {
-  id: string;
-  displayName: string;
-}
+export type { ModelInfo };
 
 interface SettingsState {
   anthropicApiKey: string | null;

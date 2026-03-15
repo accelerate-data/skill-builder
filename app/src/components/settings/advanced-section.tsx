@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react"
-import { invoke } from "@tauri-apps/api/core"
 import { open } from "@tauri-apps/plugin-dialog"
 import { FolderOpen, FolderSearch } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -19,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { normalizeDirectoryPickerPath } from "@/lib/utils"
-import { getDataDir } from "@/lib/tauri"
+import { getDataDir, setLogLevel as tauriSetLogLevel } from "@/lib/tauri"
 
 interface AdvancedSectionProps {
   logLevel: string
@@ -71,7 +70,7 @@ export function AdvancedSection({
                 onValueChange={(val) => {
                   setLogLevel(val)
                   autoSave({ logLevel: val })
-                  invoke("set_log_level", { level: val }).catch((e) => console.warn("[settings] non-fatal: op=set_log_level err=%s", e))
+                  tauriSetLogLevel(val).catch((e) => console.warn("[settings] non-fatal: op=set_log_level err=%s", e))
                 }}
               >
                 <SelectTrigger id="log-level-select" className="w-fit">
