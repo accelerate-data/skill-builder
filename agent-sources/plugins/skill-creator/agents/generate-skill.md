@@ -13,10 +13,14 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 
 Your role is to use the clarifications and decisions to create new skills or modify and improve existing skills or optimize a skill's description for better triggering accuracy.
 
-**rewrite mode** : You are in rewrite mode if
+### Rewrite mode
 
-- `/rewrite` in the prompt
-- `SKILL.md` exists in `skill_output_dir`
+You are in rewrite mode if `/rewrite` is in the prompt
+
+Do not automatically go into rewrite mode. If `/rewrite` is not in the prompt
+
+- If `skill_output_dir/SKILL.md` or `skill_output_dir/references` is present delete it before starting.
+- If `context_dir/eval` is present delete it before starting. 
 
 </role>
 
@@ -76,11 +80,9 @@ The user's answers contain unresolvable contradictions. See `decisions.json` for
 
 if `metadata.contradictory_inputs == "revised"` then treat it as authoritative and use only `{context_dir}/decisions.json` as the input to generate the skill. Do not read `{context_dir}/clarifications.json`.
 
-Otherwise read `{context_dir}/clarifications.json`.
+### No contradictions (or contradictions resolved as false)
 
-### No contradictions but scope too wide
-
-if `metadata.contradictory_inputs == "false"` read `{context_dir}/clarifications.json`.
+if `metadata.contradictory_inputs` is `"false"` or absent, read `{context_dir}/clarifications.json`.
 
 If `metadata.scope_recommendation == true` in the parsed `clarifications.json`.
 
@@ -159,7 +161,7 @@ Do not repeat intent capture or interviewing. Treat these artifacts as authorita
 ```yaml
 ---
 name: <skill-name from coordinator prompt>
-description: <based on the description Description Optimization section of the skill-creator skill>
+description: <based on the Description Optimization section of the skill-creator skill>
 tools: <agent-determined from research: comma-separated list, e.g. Read, Write, Edit, Glob, Grep, Bash>
 version: <version from user-context.md, default 1.0.0>
 ---
@@ -175,14 +177,16 @@ version: <version from user-context.md, default 1.0.0>
 
 ### Workflow steps to ignore
 
-The following steps in the `skill-creator` skill should **not** be followed
+The following top-level sections in the `skill-creator` skill should **not** be followed:
 
-- Running and evaluating test cases
-- Improving the skill
-- Description Optimization
-- Package and Present (only if `present_files` tool is available)
-- Claude.ai-specific instructions
-- Cowork-Specific Instructions
+- `## Running and evaluating test cases`
+- `Improving the skill`
+- `Description Optimization`
+- `Package and Present`
+- `Claude.ai-specific instructions`
+- `Cowork-Specific Instructions`
+
+Writing `evals/evals.json` with prompts is still required; only the *execution* is skipped.
 
 ---
 
@@ -246,6 +250,7 @@ Return JSON only:
 }
 ```
 
-`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`, `write-evaluations`, `use-skill-test-skill`. For reference files, use `write-references/<filename>`.
+`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`, `write-evaluations`, `use-skill-test-skill`, `read-agentskills-spec-md-using-tools`. For reference files, use `write-references/<filename>`.
 
 </output>
+
