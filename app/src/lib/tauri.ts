@@ -1,11 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps } from "@/lib/types";
 
 // Re-export invoke for flexible Tauri command invocation
 export { invoke };
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps } from "@/lib/types";
 
 // --- Settings ---
 
@@ -588,4 +588,56 @@ export const importSkillFromFile = (params: {
     disableModelInvocation: params.disableModelInvocation ?? null,
     forceOverwrite: params.forceOverwrite,
   })
+
+// --- Additional typed wrappers ---
+
+export const copyFile = (src: string, dest: string) =>
+  invoke<void>("copy_file", { src, dest });
+
+export const listModels = (apiKey: string) =>
+  invoke<ModelInfo[]>("list_models", { apiKey });
+
+export const toggleSkillActive = (skillName: string, active: boolean) =>
+  invoke<void>("toggle_skill_active", { skillName, active });
+
+export const deleteWorkspaceSkill = (skillName: string) =>
+  invoke<void>("delete_workspace_skill", { skillName });
+
+export const createSkill = (params: {
+  workspacePath: string;
+  name: string;
+  tags?: string[] | null;
+  purpose?: string | null;
+  intakeJson?: string | null;
+  description?: string | null;
+  version?: string | null;
+  model?: string | null;
+  argumentHint?: string | null;
+  userInvocable?: boolean | null;
+  disableModelInvocation?: boolean | null;
+}) => invoke<void>("create_skill", {
+  workspacePath: params.workspacePath,
+  name: params.name,
+  tags: params.tags ?? null,
+  purpose: params.purpose ?? null,
+  intakeJson: params.intakeJson ?? null,
+  description: params.description ?? null,
+  version: params.version ?? null,
+  model: params.model ?? null,
+  argumentHint: params.argumentHint ?? null,
+  userInvocable: params.userInvocable ?? null,
+  disableModelInvocation: params.disableModelInvocation ?? null,
+});
+
+export const setLogLevel = (level: string) =>
+  invoke<void>("set_log_level", { level });
+
+export const getSkillContent = (skillName: string) =>
+  invoke<string>("get_skill_content", { skillName });
+
+export const checkStartupDeps = () =>
+  invoke<StartupDeps>("check_startup_deps");
+
+export const getAllTags = () =>
+  invoke<string[]>("get_all_tags");
 

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { invoke } from "@tauri-apps/api/core";
+import { listImportedSkills, deleteImportedSkill } from "@/lib/tauri";
 import type { ImportedSkill } from "@/lib/types";
 
 interface ImportedSkillsState {
@@ -18,7 +18,7 @@ export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
   fetchSkills: async () => {
     set({ isLoading: true, error: null });
     try {
-      const skills = await invoke<ImportedSkill[]>("list_imported_skills");
+      const skills = await listImportedSkills();
       set({ skills, isLoading: false });
     } catch (err) {
       set({
@@ -29,7 +29,7 @@ export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
   },
 
   deleteSkill: async (skillId: string, refetch: () => Promise<void>) => {
-    await invoke<void>("delete_imported_skill", { skillId });
+    await deleteImportedSkill(skillId);
     await refetch();
   },
 }));
