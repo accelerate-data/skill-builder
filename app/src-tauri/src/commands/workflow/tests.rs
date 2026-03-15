@@ -2333,3 +2333,118 @@ fn test_deploy_skill_for_workflow_uses_bundled_source_for_bundled_rows() {
     assert!(content.contains("Bundled Research"));
     assert!(!content.contains("Stale Research"));
 }
+
+// =============================================================================
+// CG-R1: format_user_context (workflow/runtime.rs)
+// =============================================================================
+
+#[test]
+fn test_format_user_context_returns_none_when_all_empty() {
+    let result = format_user_context(None, &[], None, None, None, None, None, None, None, None, None, None);
+    assert!(result.is_none(), "should return None when no fields are provided");
+}
+
+#[test]
+fn test_format_user_context_includes_name_and_tags() {
+    let tags = vec!["finance".to_string(), "analytics".to_string()];
+    let result = format_user_context(
+        Some("my-skill"), &tags, None, None, None, None, None, None, None, None, None, None,
+    );
+    let text = result.unwrap();
+    assert!(text.contains("## User Context"), "should have heading");
+    assert!(text.contains("**Name**: my-skill"), "should include name");
+    assert!(text.contains("**Tags**: finance, analytics"), "should include tags");
+}
+
+#[test]
+fn test_format_user_context_includes_purpose_label_mapping() {
+    let result = format_user_context(
+        None, &[], None, None, None, None, Some("domain"), None, None, None, None, None,
+    );
+    let text = result.unwrap();
+    assert!(text.contains("Business process knowledge"), "domain purpose should map to label");
+}
+
+#[test]
+fn test_format_user_context_includes_profile_section() {
+    let result = format_user_context(
+        None, &[], Some("Healthcare"), Some("Data Engineer"), None, None, None, None, None, None, None, None,
+    );
+    let text = result.unwrap();
+    assert!(text.contains("### About You"), "should have profile heading");
+    assert!(text.contains("**Industry**: Healthcare"), "should include industry");
+    assert!(text.contains("**Function**: Data Engineer"), "should include function");
+}
+
+#[test]
+fn test_format_user_context_includes_configuration() {
+    let result = format_user_context(
+        None, &[], None, None, None, None, None, Some("1.0"), Some("claude-sonnet-4-6"), Some("/ask"), Some(true), Some(false),
+    );
+    let text = result.unwrap();
+    assert!(text.contains("### Configuration"), "should have config heading");
+    assert!(text.contains("**Version**: 1.0"), "should include version");
+    assert!(text.contains("**Preferred Model**: claude-sonnet-4-6"), "should include model");
+    assert!(text.contains("**Argument Hint**: /ask"), "should include argument hint");
+    assert!(text.contains("**User Invocable**: true"), "should include user_invocable");
+    assert!(text.contains("**Disable Model Invocation**: false"), "should include dmi");
+}
+
+#[test]
+fn test_format_user_context_skips_inherit_model() {
+    let result = format_user_context(
+        None, &[], None, None, None, None, None, None, Some("inherit"), None, None, None,
+    );
+    // "inherit" model should be filtered out — if nothing else is set, result is None
+    assert!(result.is_none(), "inherit model alone should produce None");
+}
+
+#[test]
+fn test_format_user_context_includes_intake_json_context() {
+    let intake = r#"{"context": "We use Snowflake and dbt for data pipelines."}"#;
+    let result = format_user_context(
+        None, &[], None, None, Some(intake), None, None, None, None, None, None, None,
+    );
+    let text = result.unwrap();
+    assert!(text.contains("### What Claude Needs to Know"), "should include intake context heading");
+    assert!(text.contains("Snowflake and dbt"), "should include intake content");
+}
+
+#[test]
+fn test_write_user_context_file_creates_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace_path = tmp.path().to_str().unwrap();
+    let skill_name = "test-skill";
+    let tags = vec!["tag1".to_string()];
+
+    write_user_context_file(
+        workspace_path, skill_name, &tags, Some("Tech"), None, None, Some("A test skill"), Some("domain"), None, None, None, None, None,
+    );
+
+    let ctx_path = tmp.path().join(skill_name).join("user-context.md");
+    assert!(ctx_path.exists(), "user-context.md should be created");
+    let content = std::fs::read_to_string(&ctx_path).unwrap();
+    assert!(content.contains("# User Context"), "should contain user context heading");
+    assert!(content.contains("A test skill"), "should contain description");
+}
+
+// =============================================================================
+// CG-R2: extract_customization_section (workflow/claude_md.rs)
+// =============================================================================
+
+use super::claude_md::extract_customization_section;
+
+#[test]
+fn test_extract_customization_section_returns_content_after_marker() {
+    let content = "# Base\nSome base content.\n\n## Customization\n\nMy custom instructions.\n";
+    let result = extract_customization_section(content);
+    assert!(result.starts_with("## Customization"), "should start with the heading");
+    assert!(result.contains("My custom instructions."), "should include user content");
+}
+
+#[test]
+fn test_extract_customization_section_returns_empty_when_missing() {
+    let content = "# Base\nSome content without customization section.\n";
+    let result = extract_customization_section(content);
+    assert!(result.is_empty(), "should return empty when marker not found");
+}

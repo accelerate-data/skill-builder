@@ -1736,3 +1736,82 @@ fn test_resolve_orphan_delete_rejects_empty_name() {
     let result = resolve_orphan(&conn, "", "delete", skills_path);
     assert!(result.is_err());
 }
+
+// =============================================================================
+// CG-R3: Direct reconcile_skill_builder tests
+// =============================================================================
+
+#[test]
+fn test_reconcile_skill_builder_resets_stale_in_progress_steps() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().to_str().unwrap();
+    let skills_path = skills_tmp.path().to_str().unwrap();
+    let conn = create_test_db();
+    let name = "sb-stale-reset";
+
+    // Create skill in master + workflow_runs
+    crate::db::upsert_skill(&conn, name, "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run(&conn, name, 0, "pending", "domain").unwrap();
+
+    // Mark step 0 as in_progress (simulating a crash)
+    crate::db::save_workflow_step(&conn, name, 0, "in_progress").unwrap();
+
+    // Create workspace dir (scenario 5 guard)
+    create_skill_dir(tmp.path(), name, "");
+
+    let mut notifications = Vec::new();
+    super::skill_builder::reconcile_skill_builder(&conn, name, workspace, skills_path, &mut notifications).unwrap();
+
+    // The stale in_progress step should be reset to pending
+    let steps = crate::db::get_workflow_steps(&conn, name).unwrap();
+    let step0 = steps.iter().find(|s| s.step_id == 0).unwrap();
+    assert_eq!(step0.status, "pending", "stale in_progress step should be reset to pending");
+}
+
+#[test]
+fn test_reconcile_skill_builder_scenario_10_missing_workflow_run() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().to_str().unwrap();
+    let skills_path = skills_tmp.path().to_str().unwrap();
+    let conn = create_test_db();
+    let name = "sb-scenario10";
+
+    // Create skill in master but NO workflow_runs row
+    crate::db::upsert_skill(&conn, name, "skill-builder", "domain").unwrap();
+
+    // Create workspace dir with step 0 output (clarifications.json)
+    create_skill_dir(tmp.path(), name, "");
+    create_step_output(tmp.path(), name, 0);
+
+    let mut notifications = Vec::new();
+    super::skill_builder::reconcile_skill_builder(&conn, name, workspace, skills_path, &mut notifications).unwrap();
+
+    // Should auto-create workflow_runs row
+    let run = crate::db::get_workflow_run(&conn, name).unwrap();
+    assert!(run.is_some(), "workflow_runs row should be auto-created");
+    assert!(notifications.iter().any(|n| n.contains("recreated")), "should notify about recreation");
+}
+
+#[test]
+fn test_reconcile_skill_builder_recreates_missing_workspace_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().to_str().unwrap();
+    let skills_path = skills_tmp.path().to_str().unwrap();
+    let conn = create_test_db();
+    let name = "sb-missing-ws";
+
+    // Create skill + workflow_runs but do NOT create workspace dir
+    crate::db::upsert_skill(&conn, name, "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run(&conn, name, 0, "pending", "domain").unwrap();
+
+    let mut notifications = Vec::new();
+    super::skill_builder::reconcile_skill_builder(&conn, name, workspace, skills_path, &mut notifications).unwrap();
+
+    // The workspace dir should be recreated (scenario 5)
+    let skill_dir = tmp.path().join(name);
+    assert!(skill_dir.exists(), "workspace dir should be recreated");
+    assert!(skill_dir.join("context").exists(), "context subdir should be created");
+}
