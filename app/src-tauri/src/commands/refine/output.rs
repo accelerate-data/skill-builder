@@ -151,6 +151,10 @@ pub fn materialize_refine_validation_output(
     );
     let workspace_skill_root = Path::new(&workspace_path).join(&skill_name);
     materialize_refine_validation_output_value(&workspace_skill_root, &structured_output)
+        .map_err(|e| {
+            log::error!("[materialize_refine_validation_output] skill={} error={}", skill_name, e);
+            e
+        })
 }
 
 #[tauri::command]

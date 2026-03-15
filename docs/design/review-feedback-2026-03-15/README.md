@@ -128,7 +128,7 @@ Three commands propagate failures via `?` without `log::error!()`:
 
 **Fix:** Add `map_err` with `log::error!` before `?` on each fallible call, or use a helper that logs before returning the error.
 
-**Status:** Open
+**Status:** Resolved — added `map_err` with `log::error!` on all fallible calls in all 3 commands
 
 ---
 
@@ -155,7 +155,7 @@ let _ = crate::db::set_skill_behaviour(conn, ...);                     // line 3
 
 **Fix:** Restore the `BEGIN`/`COMMIT`/`ROLLBACK` transaction wrapper and change `let _ =` back to `?` propagation (or at minimum `log::warn!`).
 
-**Status:** Open
+**Status:** Resolved — restored BEGIN/COMMIT/ROLLBACK transaction, replaced `let _ =` with `?` + `log::warn!`
 
 ---
 
@@ -172,7 +172,7 @@ The code enforces 50MB limits via `MAX_TEXT_FILE_SIZE` (line 248) and `MAX_WRITE
 - Write payload at 50MB + 1 byte (should fail)
 - Correct error messages
 
-**Status:** Open
+**Status:** Resolved — added 3 boundary tests for text read/write size limits
 
 ---
 

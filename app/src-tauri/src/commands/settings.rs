@@ -476,12 +476,18 @@ pub fn update_user_settings(
         e.to_string()
     })?;
 
-    let old_settings = crate::db::read_settings(&conn)?;
+    let old_settings = crate::db::read_settings(&conn).map_err(|e| {
+        log::error!("[update_user_settings] read_settings failed: {}", e);
+        e
+    })?;
 
     // Handle skills_path changes
     let old_sp = old_settings.skills_path.as_deref();
     let new_sp = settings.skills_path.as_deref();
-    handle_skills_path_change(old_sp, new_sp)?;
+    handle_skills_path_change(old_sp, new_sp).map_err(|e| {
+        log::error!("[update_user_settings] handle_skills_path_change failed: {}", e);
+        e
+    })?;
 
     // Preserve all backend-owned fields from DB
     settings.splash_shown = old_settings.splash_shown;
@@ -500,7 +506,10 @@ pub fn update_user_settings(
         log::info!("[update_user_settings] {}", changes.join(", "));
     }
 
-    crate::db::write_settings(&conn, &settings)?;
+    crate::db::write_settings(&conn, &settings).map_err(|e| {
+        log::error!("[update_user_settings] write_settings failed: {}", e);
+        e
+    })?;
     Ok(())
 }
 
@@ -543,7 +552,10 @@ pub fn update_github_identity(
         log::error!("[update_github_identity] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    let mut settings = crate::db::read_settings(&conn)?;
+    let mut settings = crate::db::read_settings(&conn).map_err(|e| {
+        log::error!("[update_github_identity] read_settings failed: {}", e);
+        e
+    })?;
     settings.github_user_login = login;
     settings.github_user_avatar = avatar;
     settings.github_user_email = email;
@@ -554,7 +566,10 @@ pub fn update_github_identity(
     if token.is_some() {
         settings.github_oauth_token = token;
     }
-    crate::db::write_settings(&conn, &settings)?;
+    crate::db::write_settings(&conn, &settings).map_err(|e| {
+        log::error!("[update_github_identity] write_settings failed: {}", e);
+        e
+    })?;
     Ok(())
 }
 

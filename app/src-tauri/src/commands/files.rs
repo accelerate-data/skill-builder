@@ -863,4 +863,49 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("path traversal"));
     }
+
+    // --- Text file size limit tests (S-08) ---
+
+    #[test]
+    fn test_read_file_rejects_text_exceeding_50mb() {
+        let dir = tempfile::tempdir().unwrap();
+        let big_file = dir.path().join("big.txt");
+        let size: u64 = 50 * 1024 * 1024 + 1;
+        {
+            let f = std::fs::File::create(&big_file).unwrap();
+            f.set_len(size).unwrap();
+        }
+        // Canonicalize the allowed root so it matches on macOS (/var → /private/var)
+        let allowed = vec![dir.path().canonicalize().unwrap()];
+        let result = read_file_with_roots(big_file.to_str().unwrap(), &allowed);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("too large"), "expected 'too large' in error: {}", err);
+    }
+
+    #[test]
+    fn test_read_file_accepts_text_at_50mb() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("exact.txt");
+        let size: u64 = 50 * 1024 * 1024;
+        {
+            let f = std::fs::File::create(&file).unwrap();
+            f.set_len(size).unwrap();
+        }
+        let allowed = vec![dir.path().canonicalize().unwrap()];
+        let result = read_file_with_roots(file.to_str().unwrap(), &allowed);
+        assert!(result.is_ok(), "expected Ok for file at exactly 50MB: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_write_file_rejects_content_exceeding_50mb() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("big_write.txt");
+        let allowed = vec![dir.path().canonicalize().unwrap()];
+        let content = "x".repeat(50 * 1024 * 1024 + 1);
+        let result = write_file_with_roots(target.to_str().unwrap(), &content, &allowed);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("too large"), "expected 'too large' in error: {}", err);
+    }
 }
