@@ -16,6 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const AGENTS_DIR = path.join(REPO_ROOT, "agent-sources", "agents");
+const PLUGINS_DIR = path.join(REPO_ROOT, "agent-sources", "plugins");
 const CLAUDE_BIN = process.env.CLAUDE_BIN ?? "claude";
 const DEFAULT_SKILL_NAME = "pet-store-analytics";
 
@@ -355,8 +356,21 @@ function loadRefineInstructions() {
 }
 
 function loadAgentInstructions(agentName) {
-  const content = fs.readFileSync(path.join(AGENTS_DIR, `${agentName}.md`), "utf8");
-  return stripFrontmatter(content);
+  const primary = path.join(AGENTS_DIR, `${agentName}.md`);
+  if (fs.existsSync(primary)) {
+    return stripFrontmatter(fs.readFileSync(primary, "utf8"));
+  }
+  // Fall back to plugin agents (e.g. generate-skill lives under skill-creator plugin)
+  const pluginDirs = fs.readdirSync(PLUGINS_DIR, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name);
+  for (const plugin of pluginDirs) {
+    const pluginAgent = path.join(PLUGINS_DIR, plugin, "agents", `${agentName}.md`);
+    if (fs.existsSync(pluginAgent)) {
+      return stripFrontmatter(fs.readFileSync(pluginAgent, "utf8"));
+    }
+  }
+  throw new Error(`Agent instructions not found for "${agentName}" in agents/ or plugins/`);
 }
 
 function parseAgentJsonOutput(stdout) {
