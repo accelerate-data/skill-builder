@@ -3372,6 +3372,67 @@ fn test_foreign_keys_enabled_after_init() {
     assert!(fk_enabled, "PRAGMA foreign_keys must be ON after init_db / create_test_db_for_tests");
 }
 
+#[test]
+fn test_fk_cascade_deletes_child_rows_when_skill_deleted() {
+    let conn = create_test_db();
+
+    // Create a skill and workflow run
+    save_workflow_run(&conn, "cascade-test", 0, "pending", "domain").unwrap();
+
+    // Add child rows in skill_tags and skill_locks
+    let tags = vec!["tag1".to_string(), "tag2".to_string()];
+    set_skill_tags(&conn, "cascade-test", &tags).unwrap();
+    conn.execute(
+        "INSERT INTO skill_locks (skill_name, instance_id, pid, skill_id)
+         VALUES ('cascade-test', 'inst-1', 999,
+            (SELECT id FROM skills WHERE name = 'cascade-test'))",
+        [],
+    )
+    .unwrap();
+
+    // Verify child rows exist
+    let tag_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM skill_tags WHERE skill_name = 'cascade-test'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(tag_count, 2, "expected 2 tags before delete");
+
+    let lock_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM skill_locks WHERE skill_name = 'cascade-test'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(lock_count, 1, "expected 1 lock before delete");
+
+    // Delete the skill (parent row) — CASCADE should clean up children
+    conn.execute("DELETE FROM skills WHERE name = 'cascade-test'", [])
+        .unwrap();
+
+    // Verify child rows were cascaded
+    let tag_count_after: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM skill_tags WHERE skill_name = 'cascade-test'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(tag_count_after, 0, "tags should be deleted by CASCADE");
+
+    let lock_count_after: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM skill_locks WHERE skill_name = 'cascade-test'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(lock_count_after, 0, "locks should be deleted by CASCADE");
+}
+
 // --- Skill metadata ownership guard tests (VU-569 AC5) ---
 
 /// Guard test: `save_workflow_state` preserves `skills` table metadata even

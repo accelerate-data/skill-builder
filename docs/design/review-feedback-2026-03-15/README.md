@@ -52,7 +52,7 @@ Migration 23 (`run_fk_columns_migration`) adds FK columns to 7 tables without `O
 
 **Fix:** Add `ON DELETE CASCADE` to each FK definition. Since these are `ALTER TABLE ADD COLUMN`, a new migration is required (SQLite cannot alter column constraints in place).
 
-**Status:** Open
+**Status:** Resolved — migration 37 recreates 8 tables (7 from S-02 + workflow_runs) with ON DELETE CASCADE
 
 ---
 

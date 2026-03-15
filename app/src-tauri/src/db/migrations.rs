@@ -39,6 +39,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (34, run_ghost_running_rows_migration),
     (35, run_drop_workflow_runs_metadata_migration),
     (36, run_consolidate_workspace_skills_migration),
+    (37, run_fk_cascade_migration),
 ];
 
 pub(super) fn ensure_migration_table(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -1437,6 +1438,216 @@ pub(super) fn run_marketplace_source_url_migration(conn: &Connection) -> Result<
             "migration 29: added marketplace_source_url to workspace_skills and imported_skills"
         );
     }
+    Ok(())
+}
+
+/// Migration 37: Recreate 7 child tables to add ON DELETE CASCADE to FK columns.
+///
+/// Migration 23 added integer FK columns via ALTER TABLE ADD COLUMN without CASCADE.
+/// SQLite cannot alter column constraints in place, so we must recreate each table.
+/// With PRAGMA foreign_keys = ON (set after migrations), DELETEs on parent rows would
+/// fail without CASCADE because child rows block the delete.
+pub(super) fn run_fk_cascade_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Idempotency: check if CASCADE is already present in the DDL for workflow_steps.
+    let ws_sql: String = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='workflow_steps'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or_default();
+    if ws_sql.contains("ON DELETE CASCADE") {
+        log::info!("migration 37: FK CASCADE already present, skipping");
+        return Ok(());
+    }
+
+    // --- workflow_steps ---
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS workflow_steps_new;
+        CREATE TABLE workflow_steps_new (
+            skill_name TEXT NOT NULL,
+            step_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            started_at TEXT,
+            completed_at TEXT,
+            workflow_run_id INTEGER REFERENCES workflow_runs(id) ON DELETE CASCADE,
+            PRIMARY KEY (skill_name, step_id)
+        );
+        INSERT INTO workflow_steps_new SELECT skill_name, step_id, status, started_at, completed_at, workflow_run_id FROM workflow_steps;
+        DROP TABLE workflow_steps;
+        ALTER TABLE workflow_steps_new RENAME TO workflow_steps;",
+    )?;
+
+    // --- workflow_artifacts ---
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS workflow_artifacts_new;
+        CREATE TABLE workflow_artifacts_new (
+            skill_name TEXT NOT NULL,
+            step_id INTEGER NOT NULL,
+            relative_path TEXT NOT NULL,
+            content TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            workflow_run_id INTEGER REFERENCES workflow_runs(id) ON DELETE CASCADE,
+            PRIMARY KEY (skill_name, step_id, relative_path)
+        );
+        INSERT INTO workflow_artifacts_new SELECT skill_name, step_id, relative_path, content, size_bytes, created_at, updated_at, workflow_run_id FROM workflow_artifacts;
+        DROP TABLE workflow_artifacts;
+        ALTER TABLE workflow_artifacts_new RENAME TO workflow_artifacts;",
+    )?;
+
+    // --- agent_runs ---
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS agent_runs_new;
+        CREATE TABLE agent_runs_new (
+            agent_id TEXT NOT NULL,
+            skill_name TEXT NOT NULL,
+            step_id INTEGER NOT NULL,
+            model TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'running',
+            input_tokens INTEGER,
+            output_tokens INTEGER,
+            total_cost REAL,
+            session_id TEXT,
+            started_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            completed_at TEXT,
+            cache_read_tokens INTEGER DEFAULT 0,
+            cache_write_tokens INTEGER DEFAULT 0,
+            duration_ms INTEGER,
+            reset_marker TEXT,
+            workflow_session_id TEXT,
+            num_turns INTEGER DEFAULT 0,
+            stop_reason TEXT,
+            duration_api_ms INTEGER,
+            tool_use_count INTEGER DEFAULT 0,
+            compaction_count INTEGER DEFAULT 0,
+            workflow_run_id INTEGER REFERENCES workflow_runs(id) ON DELETE CASCADE,
+            PRIMARY KEY (agent_id, model)
+        );
+        INSERT INTO agent_runs_new
+            SELECT agent_id, skill_name, step_id, model, status,
+                   input_tokens, output_tokens, total_cost, session_id,
+                   started_at, completed_at,
+                   cache_read_tokens, cache_write_tokens, duration_ms,
+                   reset_marker, workflow_session_id,
+                   num_turns, stop_reason, duration_api_ms,
+                   tool_use_count, compaction_count, workflow_run_id
+            FROM agent_runs;
+        DROP TABLE agent_runs;
+        ALTER TABLE agent_runs_new RENAME TO agent_runs;",
+    )?;
+
+    // --- skill_tags ---
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS skill_tags_new;
+        CREATE TABLE skill_tags_new (
+            skill_name TEXT NOT NULL,
+            tag TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            skill_id INTEGER REFERENCES skills(id) ON DELETE CASCADE,
+            PRIMARY KEY (skill_name, tag)
+        );
+        INSERT INTO skill_tags_new SELECT skill_name, tag, created_at, skill_id FROM skill_tags;
+        DROP TABLE skill_tags;
+        ALTER TABLE skill_tags_new RENAME TO skill_tags;",
+    )?;
+
+    // --- skill_locks ---
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS skill_locks_new;
+        CREATE TABLE skill_locks_new (
+            skill_name TEXT PRIMARY KEY,
+            instance_id TEXT NOT NULL,
+            pid INTEGER NOT NULL,
+            acquired_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            skill_id INTEGER REFERENCES skills(id) ON DELETE CASCADE
+        );
+        INSERT INTO skill_locks_new SELECT skill_name, instance_id, pid, acquired_at, skill_id FROM skill_locks;
+        DROP TABLE skill_locks;
+        ALTER TABLE skill_locks_new RENAME TO skill_locks;",
+    )?;
+
+    // --- workflow_sessions ---
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS workflow_sessions_new;
+        CREATE TABLE workflow_sessions_new (
+            session_id TEXT PRIMARY KEY,
+            skill_name TEXT NOT NULL,
+            pid INTEGER NOT NULL,
+            started_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            ended_at TEXT,
+            reset_marker TEXT,
+            skill_id INTEGER REFERENCES skills(id) ON DELETE CASCADE
+        );
+        INSERT INTO workflow_sessions_new SELECT session_id, skill_name, pid, started_at, ended_at, reset_marker, skill_id FROM workflow_sessions;
+        DROP TABLE workflow_sessions;
+        ALTER TABLE workflow_sessions_new RENAME TO workflow_sessions;",
+    )?;
+
+    // --- imported_skills ---
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS imported_skills_new;
+        CREATE TABLE imported_skills_new (
+            skill_id TEXT PRIMARY KEY,
+            skill_name TEXT NOT NULL UNIQUE,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            disk_path TEXT NOT NULL,
+            imported_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            is_bundled INTEGER NOT NULL DEFAULT 0,
+            purpose TEXT,
+            version TEXT,
+            model TEXT,
+            argument_hint TEXT,
+            user_invocable INTEGER,
+            disable_model_invocation INTEGER,
+            skill_master_id INTEGER REFERENCES skills(id) ON DELETE CASCADE,
+            content_hash TEXT,
+            marketplace_source_url TEXT
+        );
+        INSERT INTO imported_skills_new
+            SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+                   purpose, version, model, argument_hint, user_invocable,
+                   disable_model_invocation, skill_master_id, content_hash,
+                   marketplace_source_url
+            FROM imported_skills;
+        DROP TABLE imported_skills;
+        ALTER TABLE imported_skills_new RENAME TO imported_skills;",
+    )?;
+
+    // --- workflow_runs ---
+    // workflow_runs.skill_id also references skills(id) without CASCADE (from m19/m28/m35).
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS workflow_runs_new;
+        CREATE TABLE workflow_runs_new (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            skill_name  TEXT UNIQUE NOT NULL,
+            current_step INTEGER NOT NULL DEFAULT 0,
+            status      TEXT NOT NULL DEFAULT 'pending',
+            purpose     TEXT DEFAULT 'domain',
+            created_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            source      TEXT NOT NULL DEFAULT 'created',
+            author_login TEXT,
+            author_avatar TEXT,
+            display_name TEXT,
+            intake_json TEXT,
+            skill_id    INTEGER REFERENCES skills(id) ON DELETE CASCADE
+        );
+        INSERT INTO workflow_runs_new (id, skill_name, current_step, status, purpose,
+                                       created_at, updated_at, source,
+                                       author_login, author_avatar, display_name,
+                                       intake_json, skill_id)
+            SELECT id, skill_name, current_step, status, purpose,
+                   created_at, updated_at, source,
+                   author_login, author_avatar, display_name,
+                   intake_json, skill_id
+            FROM workflow_runs;
+        DROP TABLE workflow_runs;
+        ALTER TABLE workflow_runs_new RENAME TO workflow_runs;",
+    )?;
+
+    log::info!("migration 37: added ON DELETE CASCADE to 8 child table FK columns");
     Ok(())
 }
 
