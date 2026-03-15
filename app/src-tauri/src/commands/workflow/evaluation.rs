@@ -6,6 +6,8 @@ use crate::types::{StepStatusUpdate, WorkflowStateResponse};
 use super::runtime::{parse_decisions_guard, parse_scope_recommendation};
 use super::step_config::validate_clarifications_json;
 
+use crate::commands::imported_skills::validate_skill_name;
+
 pub(crate) fn read_skills_path(db: &tauri::State<'_, Db>) -> Option<String> {
     let conn = db.0.lock().ok()?;
     crate::db::read_settings(&conn).ok()?.skills_path
@@ -14,26 +16,6 @@ pub(crate) fn read_skills_path(db: &tauri::State<'_, Db>) -> Option<String> {
 pub(crate) fn read_workspace_path(db: &tauri::State<'_, Db>) -> Option<String> {
     let conn = db.0.lock().ok()?;
     crate::db::read_settings(&conn).ok()?.workspace_path
-}
-
-/// Reject skill names that could escape the parent directory.
-/// Accepts only simple names: no path separators, no `..`, no null bytes, no leading `.`.
-pub(crate) fn validate_skill_name(skill_name: &str) -> Result<(), String> {
-    if skill_name.is_empty() {
-        return Err("Skill name cannot be empty".to_string());
-    }
-    if skill_name.contains('/')
-        || skill_name.contains('\\')
-        || skill_name.contains("..")
-        || skill_name.contains('\0')
-        || skill_name.starts_with('.')
-    {
-        return Err(format!(
-            "Invalid skill name '{}': must not contain path separators, '..', null bytes, or start with '.'",
-            skill_name
-        ));
-    }
-    Ok(())
 }
 
 pub(crate) fn workspace_context_dir(workspace_path: &str, skill_name: &str) -> std::path::PathBuf {
@@ -322,43 +304,6 @@ mod tests {
         }
     }
 
-    // --- validate_skill_name tests (TC-01 regression coverage) ---
-
-    #[test]
-    fn test_validate_skill_name_accepts_simple_name() {
-        assert!(validate_skill_name("my-skill").is_ok());
-        assert!(validate_skill_name("skill_v2").is_ok());
-        assert!(validate_skill_name("HR Analytics").is_ok());
-    }
-
-    #[test]
-    fn test_validate_skill_name_rejects_empty() {
-        assert!(validate_skill_name("").is_err());
-    }
-
-    #[test]
-    fn test_validate_skill_name_rejects_traversal() {
-        assert!(validate_skill_name("../../etc").is_err());
-        assert!(validate_skill_name("..").is_err());
-        assert!(validate_skill_name("foo/../bar").is_err());
-    }
-
-    #[test]
-    fn test_validate_skill_name_rejects_path_separators() {
-        assert!(validate_skill_name("foo/bar").is_err());
-        assert!(validate_skill_name("foo\\bar").is_err());
-    }
-
-    #[test]
-    fn test_validate_skill_name_rejects_null_byte() {
-        assert!(validate_skill_name("skill\0name").is_err());
-    }
-
-    #[test]
-    fn test_validate_skill_name_rejects_leading_dot() {
-        assert!(validate_skill_name(".hidden").is_err());
-        assert!(validate_skill_name(".").is_err());
-    }
 }
 
 /// Output files produced by each step, relative to the skill directory.

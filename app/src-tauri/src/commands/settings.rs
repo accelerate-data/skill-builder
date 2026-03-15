@@ -397,12 +397,12 @@ struct ModelsApiItem {
 /// Fetch the list of models available for the given API key from the Anthropic API.
 /// Returns models sorted as returned by the API (newest first).
 #[tauri::command]
-pub async fn list_models(api_key: String) -> Result<Vec<ModelInfo>, String> {
+pub async fn list_models(api_key: ApiKey) -> Result<Vec<ModelInfo>, String> {
     log::info!("[list_models]");
     let client = reqwest::Client::new();
     let resp = client
         .get("https://api.anthropic.com/v1/models")
-        .header("x-api-key", &api_key)
+        .header("x-api-key", api_key.as_ref())
         .header("anthropic-version", "2023-06-01")
         .send()
         .await
