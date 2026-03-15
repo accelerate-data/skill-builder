@@ -15,7 +15,8 @@ pub(crate) fn extract_customization_section(content: &str) -> String {
 /// Generate the "## Custom Skills" section from DB, or empty string if none.
 /// All active workspace skills are treated identically regardless of is_bundled.
 pub(crate) fn generate_skills_section(conn: &rusqlite::Connection) -> Result<String, String> {
-    let skills = crate::db::list_active_skills(conn)?;
+    let mut skills = crate::db::list_active_skills(conn)?;
+    crate::db::hydrate_skills_metadata(&mut skills);
     if skills.is_empty() {
         return Ok(String::new());
     }
