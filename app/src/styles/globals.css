@@ -196,7 +196,8 @@
   .animate-message-in,
   .animate-splash-logo,
   .animate-splash-row,
-  .animate-splash-title {
+  .animate-splash-title,
+  .animate-dot-pulse {
     animation: none !important;
   }
 }
@@ -596,7 +597,4 @@ html, body, #root {
 }
 @utility animate-dot-pulse {
   animation: dot-pulse 1.8s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  @utility animate-dot-pulse { animation: none; }
 }

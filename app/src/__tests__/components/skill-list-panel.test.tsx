@@ -312,8 +312,10 @@ describe("SkillListPanel", () => {
     render(<SkillListPanel />);
 
     const skillBRow = screen.getByText("locked-skill-b").closest('[role="button"]');
-    // Lock icon is rendered inside the locked row (lucide svg)
-    expect(skillBRow?.querySelector("svg")).toBeTruthy();
+    expect(skillBRow?.className).toMatch(/cursor-not-allowed/);
+    // Locked row shows the Lock icon (no "More actions" button inside it)
+    const moreBtn = skillBRow?.querySelector('[aria-label="More actions"]');
+    expect(moreBtn).toBeNull();
   });
 
   // ── Default selection ─────────────────────────────────────────────────────
