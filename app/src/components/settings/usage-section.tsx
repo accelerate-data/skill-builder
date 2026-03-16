@@ -211,7 +211,7 @@ function CostOverTimeChart({ data }: { data: UsageByDay[] }) {
 
 type SortCol = "date" | "skill" | "step" | "model" | "cost" | "tokens"
 
-export default function UsagePage() {
+export function UsageSection() {
   const {
     summary, agentRuns, byStep, byModel, byDay,
     loading, error, fetchUsage, resetCounter,

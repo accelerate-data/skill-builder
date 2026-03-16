@@ -5,7 +5,6 @@ import { CloseGuard } from "@/components/close-guard";
 import { mockInvoke, mockListen, mockGetCurrentWindow, resetTauriMocks } from "@/test/mocks/tauri";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useRefineStore } from "@/stores/refine-store";
-import { useTestStore } from "@/stores/test-store";
 
 describe("CloseGuard", () => {
   let closeRequestedCallback: (() => void) | null = null;
@@ -14,7 +13,6 @@ describe("CloseGuard", () => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
     useRefineStore.setState({ isRunning: false });
-    useTestStore.setState({ isRunning: false });
     closeRequestedCallback = null;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -53,17 +51,6 @@ describe("CloseGuard", () => {
 
   it("shows dialog when refine isRunning is true", async () => {
     useRefineStore.setState({ isRunning: true });
-
-    render(<CloseGuard />);
-    closeRequestedCallback?.();
-
-    await waitFor(() => {
-      expect(screen.getByText("Agents Still Running")).toBeInTheDocument();
-    });
-  });
-
-  it("shows dialog when test isRunning is true", async () => {
-    useTestStore.setState({ isRunning: true });
 
     render(<CloseGuard />);
     closeRequestedCallback?.();

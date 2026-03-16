@@ -714,7 +714,7 @@ describe("DashboardPage", () => {
 
   // --- List view: D5 — download visible for completed/marketplace skills ---
 
-  it("shows Download for completed skills and Refine only for completed skill-builder skills in list view", async () => {
+  it("shows Download for completed skills in list view", async () => {
     const user = userEvent.setup();
     setupMocks({
       settings: { skills_path: "/home/user/skills" },
@@ -728,10 +728,10 @@ describe("DashboardPage", () => {
     await user.click(screen.getByRole("button", { name: "List view" }));
 
     // `sales-pipeline` is at step 3, which now counts as workflow-complete via
-    // `isWorkflowComplete`, so both rows expose Download and Refine.
+    // `isWorkflowComplete`, so both rows expose Download.
     await waitFor(() => {
       expect(screen.getAllByRole("button", { name: /Download skill/i })).toHaveLength(2);
     });
-    expect(screen.getAllByRole("button", { name: /Refine skill/i })).toHaveLength(2);
+    expect(screen.queryAllByRole("button", { name: /Refine skill/i })).toHaveLength(0);
   });
 });
