@@ -99,7 +99,14 @@ function mergeSkills(
     currentStep: null,
   }));
 
-  return [...fromBuilder, ...fromImported].sort((a, b) => {
+  // Deduplicate by name — builder entry wins over imported (has richer status info)
+  const byName = new Map<string, UnifiedSkill>();
+  for (const s of fromBuilder) byName.set(s.name, s);
+  for (const s of fromImported) {
+    if (!byName.has(s.name)) byName.set(s.name, s);
+  }
+
+  return Array.from(byName.values()).sort((a, b) => {
     if (!a.lastModified && !b.lastModified) return 0;
     if (!a.lastModified) return 1;
     if (!b.lastModified) return -1;
