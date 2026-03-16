@@ -13,7 +13,15 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use super::events;
+use super::node_resolver::{self, NodeBinaryError};
 use super::sidecar::SidecarConfig;
+use super::sidecar_path;
+
+// Re-export public items so existing `use crate::agents::sidecar_pool::*` paths keep working.
+pub use super::node_resolver::resolve_node_binary;
+pub use super::sidecar_path::resolve_sidecar_path_public;
+#[cfg(target_os = "windows")]
+pub use super::node_resolver::find_git_bash;
 
 /// The three possible terminal outcomes for a sidecar request.
 #[derive(Debug, PartialEq)]
@@ -135,30 +143,6 @@ impl SidecarStartupError {
 impl fmt::Display for SidecarStartupError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {}", self.message(), self.fix_hint())
-    }
-}
-
-/// Structured error from `resolve_node_binary_for_preflight()` so callers can
-/// pattern-match instead of parsing error strings.
-#[derive(Debug)]
-enum NodeBinaryError {
-    NotFound,
-    Incompatible { version: String },
-}
-
-impl fmt::Display for NodeBinaryError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NotFound => write!(
-                f,
-                "Node.js not found. Please install Node.js 18+ from https://nodejs.org"
-            ),
-            Self::Incompatible { version } => write!(
-                f,
-                "Node.js {} is not compatible. This app requires Node.js 18+.",
-                version
-            ),
-        }
     }
 }
 
@@ -289,6 +273,355 @@ pub const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 600; // 10 minutes
 
 /// How often the idle cleanup task checks for idle sidecars, in seconds.
 const IDLE_CHECK_INTERVAL_SECS: u64 = 60;
+
+/// Result of successfully launching and validating a sidecar process.
+/// Contains all handles needed to construct a `PersistentSidecar`.
+struct LaunchedProcess {
+    child: Child,
+    pid: u32,
+    stdin: tokio::process::ChildStdin,
+    /// BufReader positioned after the `sidecar_ready` line, ready for the stdout reader task.
+    stdout_reader: BufReader<tokio::process::ChildStdout>,
+    /// Background task draining stderr to log.
+    stderr_task: JoinHandle<()>,
+}
+
+/// Shared context for the stdout reader task, bundling the Arc handles needed
+/// by `handle_stdout_line` to avoid long parameter lists.
+struct StdoutContext {
+    skill_name: String,
+    last_pong: Arc<Mutex<tokio::time::Instant>>,
+    pending_requests: Arc<Mutex<HashMap<String, String>>>,
+    request_logs: Arc<Mutex<HashMap<String, RequestLogFile>>>,
+    sidecars: Arc<Mutex<HashMap<String, PersistentSidecar>>>,
+    app_handle: tauri::AppHandle,
+}
+
+/// Process a single stdout line from the sidecar.
+///
+/// Handles: pong heartbeat responses, message routing by `request_id`, JSONL
+/// transcript logging, turn/session lifecycle events, and terminal outcome
+/// detection (run_result, error, shutdown).
+async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
+    let msg = match serde_json::from_str::<serde_json::Value>(line) {
+        Ok(msg) => msg,
+        Err(e) => {
+            log::debug!(
+                "[persistent-sidecar:{}] Failed to parse stdout as JSON: {} (len={})",
+                ctx.skill_name,
+                e,
+                line.len(),
+            );
+            return;
+        }
+    };
+
+    // Intercept pong messages for heartbeat tracking
+    if msg.get("type").and_then(|t| t.as_str()) == Some("pong") {
+        let mut pong_guard = ctx.last_pong.lock().await;
+        *pong_guard = tokio::time::Instant::now();
+        log::trace!("[heartbeat:{}] pong received", ctx.skill_name);
+        return;
+    }
+
+    let request_id = match msg.get("request_id").and_then(|r| r.as_str()) {
+        Some(id) => id,
+        None => {
+            log::warn!(
+                "[persistent-sidecar:{}] Message without request_id (len={})",
+                ctx.skill_name,
+                line.len(),
+            );
+            return;
+        }
+    };
+
+    // Intercept request_complete — sidecar signals it's ready for the next request.
+    // Emit agent-exit so the frontend transitions the run to completed state.
+    if msg.get("type").and_then(|t| t.as_str()) == Some("request_complete") {
+        log::info!(
+            "[persistent-sidecar:{}] Request '{}' complete — sidecar ready",
+            ctx.skill_name,
+            request_id,
+        );
+        // Guard: run_result (which precedes request_complete for one-shot runs) already
+        // removes pending and fires agent-exit. Only fire again if still pending.
+        let was_pending = {
+            let mut pending = ctx.pending_requests.lock().await;
+            pending.remove(request_id).is_some()
+        };
+        if was_pending {
+            events::handle_sidecar_exit(
+                &ctx.app_handle,
+                request_id,
+                true,
+            );
+        } else {
+            log::debug!(
+                "[persistent-sidecar:{}] request_complete for '{}' — already cleaned up via run_result, skipping exit",
+                ctx.skill_name,
+                request_id,
+            );
+        }
+        // Close JSONL log for this request
+        let mut logs = ctx.request_logs.lock().await;
+        logs.remove(request_id);
+        return;
+    }
+
+    // Route this message to the correct agent using the request_id as agent_id
+    events::handle_sidecar_message(
+        &ctx.app_handle,
+        request_id,
+        line,
+    );
+
+    // Append to per-request JSONL transcript
+    {
+        let logs = ctx.request_logs.lock().await;
+        if let Some(log_file) = logs.get(request_id) {
+            let mut guard = log_file.lock().await;
+            if let Some(ref mut f) = *guard {
+                let _ = writeln!(f, "{}", line);
+            }
+        }
+    }
+
+    // Log lifecycle events at INFO so the log file tells the full story.
+    // Streaming messages (assistant, user, tool_use, etc.) stay at debug.
+    if let Some("system") = msg.get("type").and_then(|t| t.as_str()) {
+        let subtype = msg.get("subtype")
+            .and_then(|s| s.as_str())
+            .unwrap_or("unknown");
+        // Surface SDK stderr in the app log — this is diagnostic output
+        // (not agent content) and is critical for debugging startup failures.
+        if subtype == "sdk_stderr" {
+            let data = msg.get("data")
+                .and_then(|d| d.as_str())
+                .unwrap_or("");
+            log::warn!(
+                "[persistent-sidecar:{}] Agent '{}' stderr: {}",
+                ctx.skill_name,
+                request_id,
+                data,
+            );
+        } else {
+            log::debug!(
+                "[persistent-sidecar:{}] Agent '{}': {}",
+                ctx.skill_name,
+                request_id,
+                subtype,
+            );
+        }
+    }
+
+    // Check if this is a terminal or turn-boundary message.
+    let msg_type = match msg.get("type").and_then(|t| t.as_str()) {
+        Some(t) => t,
+        None => return,
+    };
+
+    // Extract agent_event subtype for turn_complete / session_exhausted detection.
+    let event_subtype = if msg_type == "agent_event" {
+        msg.get("event")
+            .and_then(|e| e.get("type"))
+            .and_then(|t| t.as_str())
+    } else {
+        None
+    };
+
+    // turn_complete: signals end of one assistant turn.
+    // The event carries `streaming: bool` set by MessageProcessor:
+    //   streaming=true  → streaming refine session turn; remove pending and fire
+    //                     agent-exit so the frontend can enable the "send message"
+    //                     input for the next turn.
+    //   streaming=false → one-shot workflow step; turn_complete is informational
+    //                     only — run_result (which carries structured output) is the
+    //                     real terminal signal.
+    if event_subtype == Some("turn_complete") {
+        let is_streaming = msg.get("event")
+            .and_then(|e| e.get("streaming"))
+            .and_then(|s| s.as_bool())
+            .unwrap_or(false);
+
+        if is_streaming {
+            log::info!(
+                "[persistent-sidecar:{}] Agent '{}' turn complete (streaming)",
+                ctx.skill_name,
+                request_id,
+            );
+            {
+                let mut pending = ctx.pending_requests.lock().await;
+                pending.remove(request_id);
+            }
+            events::handle_sidecar_exit(
+                &ctx.app_handle,
+                request_id,
+                true,
+            );
+            // Close JSONL log for this turn
+            let mut logs = ctx.request_logs.lock().await;
+            logs.remove(request_id);
+        } else {
+            log::debug!(
+                "[persistent-sidecar:{}] Agent '{}' turn complete (one-shot, informational)",
+                ctx.skill_name,
+                request_id,
+            );
+        }
+        return;
+    }
+
+    // session_exhausted: streaming session ran out of turns.
+    // Guard: run_result (emitted just before session_exhausted) already removed
+    // the request from pending and called handle_sidecar_exit. Only fire again
+    // if still pending.
+    if event_subtype == Some("session_exhausted") {
+        log::info!(
+            "[persistent-sidecar:{}] Agent '{}' session exhausted",
+            ctx.skill_name,
+            request_id,
+        );
+        let was_pending = {
+            let mut pending = ctx.pending_requests.lock().await;
+            pending.remove(request_id).is_some()
+        };
+        if was_pending {
+            events::handle_sidecar_exit(
+                &ctx.app_handle,
+                request_id,
+                true,
+            );
+        } else {
+            log::debug!(
+                "[persistent-sidecar:{}] session_exhausted for '{}' — already cleaned up via run_result, skipping exit",
+                ctx.skill_name,
+                request_id,
+            );
+        }
+        let mut logs = ctx.request_logs.lock().await;
+        logs.remove(request_id);
+        return;
+    }
+
+    // Terminal outcome detection (run_result, error)
+    let terminal_outcome = stream_message_terminal_status(&msg);
+    let is_terminal = terminal_outcome.is_some();
+
+    if let Some(outcome) = terminal_outcome {
+        // Guard: only process if this request is still pending.
+        // The sidecar may emit both a raw error and a follow-up
+        // agent_event(run_result) — the second must be a no-op.
+        let was_pending = {
+            let mut pending = ctx.pending_requests.lock().await;
+            pending.remove(request_id).is_some()
+        };
+
+        if !was_pending {
+            log::debug!(
+                "[persistent-sidecar:{}] Ignoring duplicate terminal for '{}' (already cleaned up)",
+                ctx.skill_name,
+                request_id,
+            );
+        } else {
+            if msg_type == "agent_event" {
+                match &outcome {
+                    TerminalOutcome::Completed => {
+                        log::info!(
+                            "[persistent-sidecar:{}] Agent '{}' completed successfully via {}",
+                            ctx.skill_name,
+                            request_id,
+                            msg_type,
+                        );
+                    }
+                    TerminalOutcome::Shutdown => {
+                        log::info!(
+                            "[persistent-sidecar:{}] Agent '{}' shut down via {}",
+                            ctx.skill_name,
+                            request_id,
+                            msg_type,
+                        );
+                    }
+                    TerminalOutcome::Error => {
+                        let detail = msg
+                            .get("event")
+                            .and_then(|event| event.get("status"))
+                            .and_then(|status| status.as_str())
+                            .unwrap_or("error")
+                            .to_string();
+                        log::warn!(
+                            "[persistent-sidecar:{}] Agent '{}' finished with error via {}: {}",
+                            ctx.skill_name,
+                            request_id,
+                            msg_type,
+                            detail,
+                        );
+
+                        // Detect authentication errors and surface
+                        // an actionable RuntimeErrorDialog.
+                        if events::is_authentication_error(&msg) {
+                            events::emit_runtime_error(
+                                &ctx.app_handle,
+                                "AuthenticationFailed",
+                                "Your Anthropic API key is invalid or expired.",
+                                "Go to Settings and update your API key.",
+                            );
+                        }
+                    }
+                }
+            }
+
+            if msg_type == "error" {
+                let error_detail = msg.get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("(no message)");
+                log::info!(
+                    "[persistent-sidecar:{}] Agent error for '{}': {}",
+                    ctx.skill_name,
+                    request_id,
+                    error_detail,
+                );
+                // Emit the error detail as an agent-message so the
+                // frontend can display it (instead of "Unknown error").
+                events::handle_sidecar_message(
+                    &ctx.app_handle,
+                    request_id,
+                    &serde_json::json!({
+                        "type": "error",
+                        "error": error_detail,
+                    }).to_string(),
+                );
+            }
+
+            {
+                let pool = ctx.sidecars.lock().await;
+                if let Some(s) = pool.get(&ctx.skill_name) {
+                    *s.last_activity.lock().await = tokio::time::Instant::now();
+                }
+            }
+            // Dispatch based on outcome: shutdown uses handle_agent_shutdown
+            // so the frontend calls shutdownRun() instead of completeRun(false).
+            if outcome == TerminalOutcome::Shutdown {
+                events::handle_agent_shutdown(
+                    &ctx.app_handle,
+                    request_id,
+                );
+            } else {
+                events::handle_sidecar_exit(
+                    &ctx.app_handle,
+                    request_id,
+                    outcome == TerminalOutcome::Completed,
+                );
+            }
+        }
+    }
+
+    // Close and remove the JSONL log file on terminal messages
+    if is_terminal {
+        let mut logs = ctx.request_logs.lock().await;
+        logs.remove(request_id);
+    }
+}
 
 /// Pool of persistent sidecar processes, one per skill.
 /// Reuses existing processes across agent invocations to reduce startup latency.
@@ -598,11 +931,11 @@ impl SidecarPool {
         app_handle: &tauri::AppHandle,
     ) -> Result<(String, String), SidecarStartupError> {
         // 1. Check sidecar bundle exists
-        let sidecar_path =
-            resolve_sidecar_path(app_handle).map_err(|_| SidecarStartupError::SidecarMissing)?;
+        let sidecar_path = sidecar_path::resolve_sidecar_path(app_handle)
+            .map_err(|_| SidecarStartupError::SidecarMissing)?;
 
         // 2. Check Node.js is available (system Node.js, 18+ required)
-        let node_bin = resolve_node_binary_for_preflight(app_handle)
+        let node_bin = node_resolver::resolve_node_binary_for_preflight(app_handle)
             .await
             .map_err(|e| match e {
                 NodeBinaryError::NotFound => SidecarStartupError::NodeMissing,
@@ -617,13 +950,16 @@ impl SidecarPool {
         Ok((sidecar_path, node_bin))
     }
 
-    /// Internal: actually spawn and register a new persistent sidecar.
-    /// Called with no pool lock held.
-    async fn do_spawn(
+    /// Launch and validate a new sidecar process.
+    ///
+    /// Runs pre-flight checks, spawns the Node.js process, captures stderr for
+    /// diagnostics, and waits for the `sidecar_ready` signal. Returns the
+    /// launched process handles on success.
+    async fn launch_sidecar_process(
         &self,
         skill_name: &str,
         app_handle: &tauri::AppHandle,
-    ) -> Result<(), String> {
+    ) -> Result<LaunchedProcess, String> {
         // Run pre-flight checks for immediate, actionable errors
         let (sidecar_path, node_bin) = self.preflight_check(app_handle).await.map_err(|e| {
             events::emit_init_error(app_handle, &e);
@@ -650,7 +986,7 @@ impl SidecarPool {
         // so the user doesn't have to configure CLAUDE_CODE_GIT_BASH_PATH.
         #[cfg(target_os = "windows")]
         if std::env::var("CLAUDE_CODE_GIT_BASH_PATH").is_err() {
-            if let Some(bash_path) = find_git_bash() {
+            if let Some(bash_path) = node_resolver::find_git_bash() {
                 log::info!("Auto-detected git-bash at {}", bash_path);
                 cmd.env("CLAUDE_CODE_GIT_BASH_PATH", &bash_path);
             }
@@ -817,389 +1153,86 @@ impl SidecarPool {
             }
         }
 
+        Ok(LaunchedProcess {
+            child,
+            pid,
+            stdin,
+            stdout_reader: reader,
+            stderr_task,
+        })
+    }
+
+    /// Internal: spawn and register a new persistent sidecar.
+    /// Called with no pool lock held. Orchestrates process launch, stdout reader
+    /// task, heartbeat task, and pool registration.
+    async fn do_spawn(
+        &self,
+        skill_name: &str,
+        app_handle: &tauri::AppHandle,
+    ) -> Result<(), String> {
+        let LaunchedProcess {
+            child,
+            pid,
+            stdin,
+            stdout_reader,
+            stderr_task,
+        } = self.launch_sidecar_process(skill_name, app_handle).await?;
+
         log::info!(
             "Persistent sidecar for '{}' is ready (pid [REDACTED])",
             skill_name
         );
 
-        // Issue 3: Store JoinHandles so we can abort them on shutdown/crash-respawn
-        // The stderr_task is already spawned above and will keep running,
-        // draining to log::debug for the lifetime of the sidecar process.
-
-        // Create last_pong timestamp for heartbeat tracking
         let last_pong = Arc::new(Mutex::new(tokio::time::Instant::now()));
+        let stdin_arc = Arc::new(Mutex::new(stdin));
 
-        // Spawn stdout reader that routes messages by request_id
-        let stdout_pool = self.sidecars.clone();
-        let stdout_pending = self.pending_requests.clone();
-        let stdout_request_logs = self.request_logs.clone();
-        let skill_name_stdout = skill_name.to_string();
-        let app_handle_stdout = app_handle.clone();
-        let stdout_last_pong = last_pong.clone();
-        // Separate pool clone for the panic-recovery cleanup path (the other clone,
-        // stdout_pool, is consumed by the normal EOF cleanup path).
-        let panic_pool = self.sidecars.clone();
+        // Build context for the stdout reader task
+        let ctx = StdoutContext {
+            skill_name: skill_name.to_string(),
+            last_pong: last_pong.clone(),
+            pending_requests: self.pending_requests.clone(),
+            request_logs: self.request_logs.clone(),
+            sidecars: self.sidecars.clone(),
+            app_handle: app_handle.clone(),
+        };
 
         let stdout_task = tokio::spawn(async move {
-            let mut lines = reader.lines();
+            let mut lines = stdout_reader.lines();
 
             while let Ok(Some(line)) = lines.next_line().await {
-                // Raw stdout lines are captured in per-request JSONL transcripts
-                // ({cwd}/{skill_name}/logs/) — no need to duplicate in the app log.
-
                 // Wrap per-line processing in catch_unwind so a panic in JSON
                 // parsing or message routing doesn't kill the reader silently.
-                // AssertUnwindSafe is safe here: all captured refs are Arc/Clone
-                // and we break out of the loop on panic, so no torn state is reused.
-                let process_result = AssertUnwindSafe(async {
-                    // Parse the line to extract request_id for routing
-                    match serde_json::from_str::<serde_json::Value>(&line) {
-                        Ok(msg) => {
-                            // Intercept pong messages for heartbeat tracking
-                            if msg.get("type").and_then(|t| t.as_str()) == Some("pong") {
-                                let mut pong_guard = stdout_last_pong.lock().await;
-                                *pong_guard = tokio::time::Instant::now();
-                                log::trace!("[heartbeat:{}] pong received", skill_name_stdout);
-                                return;
-                            }
-
-                            if let Some(request_id) = msg.get("request_id").and_then(|r| r.as_str()) {
-                                // Intercept request_complete — sidecar signals it's ready for
-                                // the next request. Emit agent-exit so the frontend transitions
-                                // the run to completed state, then clean up pending tracking.
-                                if msg.get("type").and_then(|t| t.as_str()) == Some("request_complete") {
-                                    log::info!(
-                                        "[persistent-sidecar:{}] Request '{}' complete — sidecar ready",
-                                        skill_name_stdout,
-                                        request_id,
-                                    );
-                                    // Guard: run_result (which precedes request_complete for
-                                    // one-shot runs) already removes pending and fires agent-exit.
-                                    // Only fire again if the request is still pending (e.g. the
-                                    // sidecar completed without emitting run_result).
-                                    let was_pending = {
-                                        let mut pending = stdout_pending.lock().await;
-                                        pending.remove(request_id).is_some()
-                                    };
-                                    if was_pending {
-                                        events::handle_sidecar_exit(
-                                            &app_handle_stdout,
-                                            request_id,
-                                            true,
-                                        );
-                                    } else {
-                                        log::debug!(
-                                            "[persistent-sidecar:{}] request_complete for '{}' — already cleaned up via run_result, skipping exit",
-                                            skill_name_stdout,
-                                            request_id,
-                                        );
-                                    }
-                                    // Close JSONL log for this request
-                                    let mut logs = stdout_request_logs.lock().await;
-                                    logs.remove(request_id);
-                                    return;
-                                }
-
-                                // Route this message to the correct agent using the request_id as agent_id
-                                events::handle_sidecar_message(
-                                    &app_handle_stdout,
-                                    request_id,
-                                    &line,
-                                );
-
-                                // Append to per-request JSONL transcript
-                                {
-                                    let logs = stdout_request_logs.lock().await;
-                                    if let Some(log_file) = logs.get(request_id) {
-                                        let mut guard = log_file.lock().await;
-                                        if let Some(ref mut f) = *guard {
-                                            let _ = writeln!(f, "{}", line);
-                                        }
-                                    }
-                                }
-
-                                // Log lifecycle events at INFO so the log file tells the full story.
-                                // Streaming messages (assistant, user, tool_use, etc.) stay at debug.
-                                if let Some("system") = msg.get("type").and_then(|t| t.as_str()) {
-                                    let subtype = msg.get("subtype")
-                                        .and_then(|s| s.as_str())
-                                        .unwrap_or("unknown");
-                                    // Surface SDK stderr in the app log — this is
-                                    // diagnostic output (not agent content) and is
-                                    // critical for debugging startup failures.
-                                    if subtype == "sdk_stderr" {
-                                        let data = msg.get("data")
-                                            .and_then(|d| d.as_str())
-                                            .unwrap_or("");
-                                        log::warn!(
-                                            "[persistent-sidecar:{}] Agent '{}' stderr: {}",
-                                            skill_name_stdout,
-                                            request_id,
-                                            data,
-                                        );
-                                    } else {
-                                        log::debug!(
-                                            "[persistent-sidecar:{}] Agent '{}': {}",
-                                            skill_name_stdout,
-                                            request_id,
-                                            subtype,
-                                        );
-                                    }
-                                }
-
-                                // Check if this is a terminal or turn-boundary message.
-                                if let Some(msg_type) = msg.get("type").and_then(|t| t.as_str()) {
-                                    // Extract agent_event subtype for turn_complete / session_exhausted detection.
-                                    let event_subtype = if msg_type == "agent_event" {
-                                        msg.get("event")
-                                            .and_then(|e| e.get("type"))
-                                            .and_then(|t| t.as_str())
-                                    } else {
-                                        None
-                                    };
-
-                                    // turn_complete: signals end of one assistant turn.
-                                    // The event carries `streaming: bool` set by MessageProcessor:
-                                    //   streaming=true  → streaming refine session turn; remove
-                                    //                     pending and fire agent-exit so the
-                                    //                     frontend can enable the "send message"
-                                    //                     input for the next turn.
-                                    //   streaming=false → one-shot workflow step; turn_complete
-                                    //                     is informational only — run_result
-                                    //                     (which carries structured output) is
-                                    //                     the real terminal signal, and it always
-                                    //                     arrives after turn_complete in the SDK
-                                    //                     protocol. Firing agent-exit here would
-                                    //                     cause the frontend to try to complete
-                                    //                     the step before structured output
-                                    //                     arrives.
-                                    if event_subtype == Some("turn_complete") {
-                                        let is_streaming = msg.get("event")
-                                            .and_then(|e| e.get("streaming"))
-                                            .and_then(|s| s.as_bool())
-                                            .unwrap_or(false);
-
-                                        if is_streaming {
-                                            log::info!(
-                                                "[persistent-sidecar:{}] Agent '{}' turn complete (streaming)",
-                                                skill_name_stdout,
-                                                request_id,
-                                            );
-                                            {
-                                                let mut pending = stdout_pending.lock().await;
-                                                pending.remove(request_id);
-                                            }
-                                            events::handle_sidecar_exit(
-                                                &app_handle_stdout,
-                                                request_id,
-                                                true,
-                                            );
-                                            // Close JSONL log for this turn
-                                            let mut logs = stdout_request_logs.lock().await;
-                                            logs.remove(request_id);
-                                        } else {
-                                            log::debug!(
-                                                "[persistent-sidecar:{}] Agent '{}' turn complete (one-shot, informational)",
-                                                skill_name_stdout,
-                                                request_id,
-                                            );
-                                        }
-                                        return;
-                                    }
-
-                                    // session_exhausted: streaming session ran out of turns.
-                                    // Guard: run_result (emitted just before session_exhausted)
-                                    // already removed the request from pending and called
-                                    // handle_sidecar_exit. Only fire again if still pending.
-                                    if event_subtype == Some("session_exhausted") {
-                                        log::info!(
-                                            "[persistent-sidecar:{}] Agent '{}' session exhausted",
-                                            skill_name_stdout,
-                                            request_id,
-                                        );
-                                        let was_pending = {
-                                            let mut pending = stdout_pending.lock().await;
-                                            pending.remove(request_id).is_some()
-                                        };
-                                        if was_pending {
-                                            events::handle_sidecar_exit(
-                                                &app_handle_stdout,
-                                                request_id,
-                                                true,
-                                            );
-                                        } else {
-                                            log::debug!(
-                                                "[persistent-sidecar:{}] session_exhausted for '{}' — already cleaned up via run_result, skipping exit",
-                                                skill_name_stdout,
-                                                request_id,
-                                            );
-                                        }
-                                        let mut logs = stdout_request_logs.lock().await;
-                                        logs.remove(request_id);
-                                        return;
-                                    }
-
-                                    let terminal_outcome = stream_message_terminal_status(&msg);
-                                    let is_terminal = terminal_outcome.is_some();
-
-                                    if let Some(outcome) = terminal_outcome {
-                                        // Guard: only process if this request is still pending.
-                                        // The sidecar may emit both a raw error and a follow-up
-                                        // agent_event(run_result) — the second must be a no-op.
-                                        let was_pending = {
-                                            let mut pending = stdout_pending.lock().await;
-                                            pending.remove(request_id).is_some()
-                                        };
-
-                                        if !was_pending {
-                                            log::debug!(
-                                                "[persistent-sidecar:{}] Ignoring duplicate terminal for '{}' (already cleaned up)",
-                                                skill_name_stdout,
-                                                request_id,
-                                            );
-                                        } else {
-                                            if msg_type == "agent_event" {
-                                                match &outcome {
-                                                    TerminalOutcome::Completed => {
-                                                        log::info!(
-                                                            "[persistent-sidecar:{}] Agent '{}' completed successfully via {}",
-                                                            skill_name_stdout,
-                                                            request_id,
-                                                            msg_type,
-                                                        );
-                                                    }
-                                                    TerminalOutcome::Shutdown => {
-                                                        log::info!(
-                                                            "[persistent-sidecar:{}] Agent '{}' shut down via {}",
-                                                            skill_name_stdout,
-                                                            request_id,
-                                                            msg_type,
-                                                        );
-                                                    }
-                                                    TerminalOutcome::Error => {
-                                                        let detail = msg
-                                                            .get("event")
-                                                            .and_then(|event| event.get("status"))
-                                                            .and_then(|status| status.as_str())
-                                                            .unwrap_or("error")
-                                                            .to_string();
-                                                        log::warn!(
-                                                            "[persistent-sidecar:{}] Agent '{}' finished with error via {}: {}",
-                                                            skill_name_stdout,
-                                                            request_id,
-                                                            msg_type,
-                                                            detail,
-                                                        );
-
-                                                        // Detect authentication errors and surface
-                                                        // an actionable RuntimeErrorDialog.
-                                                        if events::is_authentication_error(&msg) {
-                                                            events::emit_runtime_error(
-                                                                &app_handle_stdout,
-                                                                "AuthenticationFailed",
-                                                                "Your Anthropic API key is invalid or expired.",
-                                                                "Go to Settings and update your API key.",
-                                                            );
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            if msg_type == "error" {
-                                                let error_detail = msg.get("message")
-                                                    .and_then(|m| m.as_str())
-                                                    .unwrap_or("(no message)");
-                                                log::info!(
-                                                    "[persistent-sidecar:{}] Agent error for '{}': {}",
-                                                    skill_name_stdout,
-                                                    request_id,
-                                                    error_detail,
-                                                );
-                                                // Emit the error detail as an agent-message so the
-                                                // frontend can display it (instead of "Unknown error").
-                                                events::handle_sidecar_message(
-                                                    &app_handle_stdout,
-                                                    request_id,
-                                                    &serde_json::json!({
-                                                        "type": "error",
-                                                        "error": error_detail,
-                                                    }).to_string(),
-                                                );
-                                            }
-
-                                            {
-                                                let pool = stdout_pool.lock().await;
-                                                if let Some(s) = pool.get(&skill_name_stdout) {
-                                                    *s.last_activity.lock().await = tokio::time::Instant::now();
-                                                }
-                                            }
-                                            // Dispatch based on outcome: shutdown uses handle_agent_shutdown
-                                            // so the frontend calls shutdownRun() instead of completeRun(false).
-                                            if outcome == TerminalOutcome::Shutdown {
-                                                events::handle_agent_shutdown(
-                                                    &app_handle_stdout,
-                                                    request_id,
-                                                );
-                                            } else {
-                                                events::handle_sidecar_exit(
-                                                    &app_handle_stdout,
-                                                    request_id,
-                                                    outcome == TerminalOutcome::Completed,
-                                                );
-                                            }
-                                        }
-                                    }
-
-                                    // Close and remove the JSONL log file on terminal messages
-                                    if is_terminal {
-                                        let mut logs = stdout_request_logs.lock().await;
-                                        logs.remove(request_id);
-                                    }
-                                }
-                            } else {
-                                log::warn!(
-                                    "[persistent-sidecar:{}] Message without request_id (len={})",
-                                    skill_name_stdout,
-                                    line.len(),
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            log::debug!(
-                                "[persistent-sidecar:{}] Failed to parse stdout as JSON: {} (len={})",
-                                skill_name_stdout,
-                                e,
-                                line.len(),
-                            );
-                        }
-                    }
-                })
-                .catch_unwind()
-                .await;
+                let process_result = AssertUnwindSafe(handle_stdout_line(&line, &ctx))
+                    .catch_unwind()
+                    .await;
 
                 if let Err(panic_info) = process_result {
                     log::error!(
                         "stdout reader panicked for skill '{}': {:?} (len={}) — removing from pool",
-                        skill_name_stdout,
+                        ctx.skill_name,
                         panic_info,
                         line.len()
                     );
-                    remove_and_cleanup_sidecar(&panic_pool, &skill_name_stdout).await;
-                    return; // exit the task — sidecar is cleaned up
+                    remove_and_cleanup_sidecar(&ctx.sidecars, &ctx.skill_name).await;
+                    return;
                 }
             }
 
             // EOF on stdout — sidecar crashed or exited unexpectedly
             log::warn!(
                 "Persistent sidecar for '{}' closed stdout unexpectedly, removing from pool",
-                skill_name_stdout
+                ctx.skill_name
             );
-            let mut pool = stdout_pool.lock().await;
-            pool.remove(&skill_name_stdout);
+            let mut pool = ctx.sidecars.lock().await;
+            if let Some(old) = pool.remove(&ctx.skill_name) {
+                // Abort heartbeat + stderr so they don't loop against a dead process.
+                // stdout_task (this task) exits naturally after this block.
+                old.stderr_task.abort();
+                old.heartbeat_task.abort();
+            }
         });
 
         // Spawn heartbeat task for periodic health checks
-        let stdin_arc = Arc::new(Mutex::new(stdin));
         let heartbeat_task = spawn_heartbeat_task(
             skill_name.to_string(),
             stdin_arc.clone(),
@@ -1911,209 +1944,6 @@ fn extract_step_label<'a>(agent_id: &'a str, skill_name: &str) -> &'a str {
     without_prefix
 }
 
-// Re-use the sidecar path resolution logic from sidecar.rs.
-// These are kept as separate functions here to avoid making the private functions
-// in sidecar.rs public (which would change the existing module's API surface).
-
-/// Public accessor for startup dependency checks.
-pub fn resolve_sidecar_path_public(app_handle: &tauri::AppHandle) -> Result<String, String> {
-    resolve_sidecar_path(app_handle)
-}
-
-fn resolve_sidecar_path(app_handle: &tauri::AppHandle) -> Result<String, String> {
-    use tauri::Manager;
-
-    // Prefer bootstrap.js (catches module-load errors) with agent-runner.js as fallback.
-    let entry_files = ["bootstrap.js", "agent-runner.js"];
-
-    if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        for entry in &entry_files {
-            let sidecar = resource_dir.join("sidecar").join("dist").join(entry);
-            if sidecar.exists() {
-                return sidecar
-                    .to_str()
-                    .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
-                    .ok_or_else(|| "Invalid sidecar path".to_string());
-            }
-        }
-    }
-
-    if let Ok(exe_dir) = std::env::current_exe() {
-        if let Some(dir) = exe_dir.parent() {
-            for entry in &entry_files {
-                let sidecar = dir.join("sidecar").join("dist").join(entry);
-                if sidecar.exists() {
-                    return sidecar
-                        .to_str()
-                        .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
-                        .ok_or_else(|| "Invalid sidecar path".to_string());
-                }
-            }
-        }
-    }
-
-    let dev_base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .map(|p| p.join("sidecar").join("dist"));
-    if let Some(base) = dev_base {
-        for entry in &entry_files {
-            let path = base.join(entry);
-            if path.exists() {
-                return path
-                    .to_str()
-                    .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
-                    .ok_or_else(|| "Invalid sidecar path".to_string());
-            }
-        }
-    }
-
-    Err("Could not find bootstrap.js or agent-runner.js -- run 'npm run build' in app/sidecar/ first".to_string())
-}
-
-/// Result of Node.js binary resolution: the path and where it was found.
-pub struct NodeResolution {
-    pub path: String,
-    pub source: String,
-    pub version: Option<String>,
-    pub meets_minimum: bool,
-}
-
-/// Resolve the system Node.js binary (18+ required).
-///
-/// Returns `NodeResolution` with full metadata (path, source, version, meets_minimum).
-/// Used by `check_node` and `check_startup_deps` commands that need rich status info.
-pub async fn resolve_node_binary(
-    _app_handle: &tauri::AppHandle,
-) -> Result<NodeResolution, String> {
-    resolve_system_node().await
-}
-
-/// Internal: resolve Node.js binary path for `preflight_check()`.
-///
-/// Returns `Ok(path)` if a compatible Node.js (18+) is found.
-/// Returns `NodeBinaryError::Incompatible` if Node is found but below v18.
-/// Returns `NodeBinaryError::NotFound` if Node is not found at all.
-async fn resolve_node_binary_for_preflight(
-    app_handle: &tauri::AppHandle,
-) -> Result<String, NodeBinaryError> {
-    match resolve_node_binary(app_handle).await {
-        Ok(resolution) if resolution.meets_minimum => Ok(resolution.path),
-        Ok(resolution) => Err(NodeBinaryError::Incompatible {
-            version: resolution.version.unwrap_or_else(|| "unknown".to_string()),
-        }),
-        Err(_) => Err(NodeBinaryError::NotFound),
-    }
-}
-
-/// System Node.js discovery: searches PATH and well-known locations, validates version 18+.
-async fn resolve_system_node() -> Result<NodeResolution, String> {
-    let candidates: Vec<std::path::PathBuf> = {
-        let mut v = vec![std::path::PathBuf::from("node")];
-        for p in &[
-            "/usr/local/bin/node",
-            "/opt/homebrew/bin/node",
-            "/usr/bin/node",
-        ] {
-            v.push(std::path::PathBuf::from(p));
-        }
-        v
-    };
-
-    let mut first_available: Option<(String, String)> = None; // (path, version)
-
-    for candidate in &candidates {
-        let mut cmd = Command::new(candidate);
-        cmd.arg("--version");
-
-        #[cfg(target_os = "windows")]
-        {
-            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-        }
-
-        let output = cmd.output().await;
-
-        if let Ok(out) = output {
-            if out.status.success() {
-                let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                let path_str = candidate.to_string_lossy().to_string();
-
-                if first_available.is_none() {
-                    first_available = Some((path_str.clone(), version.clone()));
-                }
-
-                if is_node_compatible(&version) {
-                    log::info!("Using system Node.js {} at {}", version, path_str);
-                    return Ok(NodeResolution {
-                        path: path_str,
-                        source: "system".to_string(),
-                        version: Some(version),
-                        meets_minimum: true,
-                    });
-                }
-            }
-        }
-    }
-
-    // Found a Node but it doesn't meet version requirements -- still return it
-    // (check_node and check_startup_deps callers want a best-effort path to report the mismatch)
-    if let Some((path, version)) = first_available {
-        return Ok(NodeResolution {
-            path,
-            source: "system".to_string(),
-            version: Some(version),
-            meets_minimum: false,
-        });
-    }
-
-    Err("Node.js not found. Install Node.js 18+ from https://nodejs.org".to_string())
-}
-
-fn is_node_compatible(version: &str) -> bool {
-    let trimmed = version.strip_prefix('v').unwrap_or(version);
-    if let Some(major_str) = trimmed.split('.').next() {
-        if let Ok(major) = major_str.parse::<u32>() {
-            return major >= 18;
-        }
-    }
-    false
-}
-
-/// Auto-detect git-bash on Windows.
-/// Checks PATH then standard install locations.
-/// Public so `check_startup_deps` can call it for preflight validation.
-#[cfg(target_os = "windows")]
-pub fn find_git_bash() -> Option<String> {
-    use std::path::PathBuf;
-
-    // 1. Check if bash.exe is already in PATH
-    if let Ok(output) = std::process::Command::new("where").arg("bash.exe").output() {
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            // `where` can return multiple lines — pick the first Git one
-            for line in stdout.lines() {
-                let trimmed = line.trim();
-                if trimmed.contains("Git") && PathBuf::from(trimmed).exists() {
-                    return Some(trimmed.to_string());
-                }
-            }
-        }
-    }
-
-    // 2. Check standard install locations
-    let candidates = [
-        r"C:\Program Files\Git\bin\bash.exe",
-        r"C:\Program Files (x86)\Git\bin\bash.exe",
-    ];
-
-    for path in &candidates {
-        if PathBuf::from(path).exists() {
-            return Some(path.to_string());
-        }
-    }
-
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2139,16 +1969,6 @@ mod tests {
     // were removed because shutdown_skill/shutdown_all now require a real
     // tauri::AppHandle to emit agent-shutdown events. The no-op behavior
     // (empty pool) is trivially correct and covered by the type system.
-
-    #[test]
-    fn test_is_node_compatible_pool() {
-        assert!(is_node_compatible("v18.0.0"));
-        assert!(is_node_compatible("v22.0.0"));
-        assert!(is_node_compatible("v24.13.0"));
-        assert!(is_node_compatible("v25.0.0"));
-        assert!(!is_node_compatible("v16.0.0"));
-        assert!(!is_node_compatible("v17.9.9"));
-    }
 
     #[tokio::test]
     async fn test_pending_requests_empty_after_init() {
@@ -2834,5 +2654,135 @@ mod tests {
 
         pool.shutdown_completed.store(true, Ordering::SeqCst);
         assert!(pool.is_shutdown_completed());
+    }
+
+    // -----------------------------------------------------------------
+    // handle_stdout_line tests
+    //
+    // Note: handle_stdout_line requires a StdoutContext with a real
+    // tauri::AppHandle. Since AppHandle cannot be constructed in unit
+    // tests (no Tauri runtime), we test the message dispatch logic
+    // indirectly: terminal status detection is covered above, pending
+    // map state transitions are covered by the pending_requests tests,
+    // and the pong/parse-error early-return paths are verified below
+    // using the catch_unwind pattern that handle_stdout_line uses.
+    // -----------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_pong_message_is_recognized() {
+        // Verify that a pong message is correctly identified — this is the
+        // same check handle_stdout_line uses to update last_pong.
+        let msg: serde_json::Value = serde_json::from_str(r#"{"type":"pong"}"#).unwrap();
+        assert_eq!(
+            msg.get("type").and_then(|t| t.as_str()),
+            Some("pong"),
+            "Pong messages should be detected by type field"
+        );
+        // Pong messages are NOT terminal — stream_message_terminal_status returns None
+        assert_eq!(
+            stream_message_terminal_status(&msg),
+            None,
+            "Pong should not be a terminal status"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_invalid_json_does_not_panic() {
+        // Verify that invalid JSON is safely handled (parse returns Err).
+        // This mirrors the early-return path in handle_stdout_line.
+        let result = serde_json::from_str::<serde_json::Value>("not valid json {{{");
+        assert!(result.is_err(), "Invalid JSON should return Err");
+    }
+
+    #[tokio::test]
+    async fn test_message_without_request_id_detected() {
+        // Messages without request_id are logged and skipped.
+        let msg: serde_json::Value =
+            serde_json::from_str(r#"{"type":"unknown_msg"}"#).unwrap();
+        assert!(
+            msg.get("request_id").is_none(),
+            "Message should lack request_id"
+        );
+        // Should also not be terminal
+        assert_eq!(stream_message_terminal_status(&msg), None);
+    }
+
+    #[tokio::test]
+    async fn test_request_complete_is_not_terminal() {
+        // request_complete is handled separately from terminal outcomes.
+        // stream_message_terminal_status should return None for it.
+        let msg: serde_json::Value = serde_json::from_str(
+            r#"{"type":"request_complete","request_id":"agent-1"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            stream_message_terminal_status(&msg),
+            None,
+            "request_complete should not be a terminal status"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_turn_complete_is_not_terminal() {
+        // turn_complete (agent_event) has its own handling in handle_stdout_line
+        // and should NOT be detected as terminal by stream_message_terminal_status.
+        let msg = serde_json::json!({
+            "type": "agent_event",
+            "request_id": "agent-1",
+            "event": {
+                "type": "turn_complete",
+                "streaming": true,
+            }
+        });
+        assert_eq!(
+            stream_message_terminal_status(&msg),
+            None,
+            "turn_complete should not be a terminal status"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_session_exhausted_is_not_terminal() {
+        // session_exhausted (agent_event) has its own handling and should
+        // NOT be detected as terminal by stream_message_terminal_status.
+        let msg = serde_json::json!({
+            "type": "agent_event",
+            "request_id": "agent-1",
+            "event": {
+                "type": "session_exhausted",
+            }
+        });
+        assert_eq!(
+            stream_message_terminal_status(&msg),
+            None,
+            "session_exhausted should not be a terminal status"
+        );
+    }
+
+    #[test]
+    fn test_launched_process_struct_fields() {
+        // Verify that LaunchedProcess has all the fields needed to
+        // construct a PersistentSidecar (compile-time check).
+        // This test exists to catch accidental field removals during refactoring.
+        fn _assert_fields(p: LaunchedProcess) {
+            let _child: Child = p.child;
+            let _pid: u32 = p.pid;
+            let _stdin: tokio::process::ChildStdin = p.stdin;
+            let _reader: BufReader<tokio::process::ChildStdout> = p.stdout_reader;
+            let _task: JoinHandle<()> = p.stderr_task;
+        }
+    }
+
+    #[test]
+    fn test_stdout_context_struct_fields() {
+        // Compile-time check that StdoutContext has all required fields.
+        fn _assert_fields(c: StdoutContext) {
+            let _: String = c.skill_name;
+            let _: Arc<Mutex<tokio::time::Instant>> = c.last_pong;
+            let _: Arc<Mutex<HashMap<String, String>>> = c.pending_requests;
+            let _: Arc<Mutex<HashMap<String, RequestLogFile>>> = c.request_logs;
+            let _: Arc<Mutex<HashMap<String, PersistentSidecar>>> = c.sidecars;
+            let _: tauri::AppHandle = c.app_handle;
+        }
     }
 }

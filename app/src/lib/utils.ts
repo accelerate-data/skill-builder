@@ -63,7 +63,7 @@ export function normalizeDirectoryPickerPath(raw: string): string {
   const previousSegment = trimmed.slice(prevSep + 1, lastSep);
   const lastSegment = trimmed.slice(lastSep + 1);
 
-  if (previousSegment !== "" && previousSegment === lastSegment) {
+  if (previousSegment !== "" && previousSegment.toLowerCase() === lastSegment.toLowerCase()) {
     return trimmed.slice(0, lastSep);
   }
 

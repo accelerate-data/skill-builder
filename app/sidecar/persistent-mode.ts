@@ -231,9 +231,18 @@ export async function runPersistent(
 
     if (message.type === "shutdown") {
       process.stderr.write("[sidecar] Shutdown requested\n");
-      // Wait for any in-flight requests to finish
+      // Wait for any in-flight one-shot requests to finish
       if (inFlight.size > 0) {
         await Promise.allSettled(inFlight);
+      }
+      // Wait for active streaming sessions to finish so their final
+      // run_result events are emitted before the process exits.
+      if (activeSessions.size > 0) {
+        const sessionDrains = Array.from(activeSessions.values()).map((s) => s.queryDone);
+        process.stderr.write(
+          `[sidecar] Draining ${sessionDrains.length} active stream session(s)\n`,
+        );
+        await Promise.allSettled(sessionDrains);
       }
       rl.close();
       exitFn(0);

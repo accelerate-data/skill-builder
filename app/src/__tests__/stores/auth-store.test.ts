@@ -6,12 +6,14 @@ const mocks = vi.hoisted(() => ({
   githubGetUser: vi.fn(),
   githubLogout: vi.fn(),
   invoke: vi.fn(),
+  updateGithubIdentity: vi.fn(),
 }));
 
 vi.mock("@/lib/tauri", () => ({
   githubGetUser: mocks.githubGetUser,
   githubLogout: mocks.githubLogout,
   invoke: mocks.invoke,
+  updateGithubIdentity: mocks.updateGithubIdentity,
 }));
 
 describe("useAuthStore", () => {
@@ -20,6 +22,8 @@ describe("useAuthStore", () => {
     mocks.githubLogout.mockReset();
     mocks.invoke.mockReset();
     mocks.invoke.mockResolvedValue(undefined);
+    mocks.updateGithubIdentity.mockReset();
+    mocks.updateGithubIdentity.mockResolvedValue(undefined);
     useAuthStore.getState().reset();
     useSettingsStore.getState().reset();
   });
@@ -114,11 +118,12 @@ describe("useAuthStore", () => {
 
     await useAuthStore.getState().loadUser();
 
-    expect(mocks.invoke).toHaveBeenCalledWith("save_settings", {
-      githubUserLogin: "octocat",
-      githubUserAvatar: "https://github.com/octocat.png",
-      githubUserEmail: "octocat@github.com",
-    });
+    expect(mocks.updateGithubIdentity).toHaveBeenCalledWith(
+      "octocat",
+      "https://github.com/octocat.png",
+      "octocat@github.com",
+      null,
+    );
   });
 
   it("setUser persists GitHub user identity to database via invoke", () => {
@@ -128,21 +133,18 @@ describe("useAuthStore", () => {
       email: "dev@example.com",
     });
 
-    expect(mocks.invoke).toHaveBeenCalledWith("save_settings", {
-      githubUserLogin: "dev",
-      githubUserAvatar: "https://github.com/dev.png",
-      githubUserEmail: "dev@example.com",
-    });
+    expect(mocks.updateGithubIdentity).toHaveBeenCalledWith(
+      "dev",
+      "https://github.com/dev.png",
+      "dev@example.com",
+      null,
+    );
   });
 
   it("setUser persists null values when clearing user", () => {
     useAuthStore.getState().setUser(null);
 
-    expect(mocks.invoke).toHaveBeenCalledWith("save_settings", {
-      githubUserLogin: null,
-      githubUserAvatar: null,
-      githubUserEmail: null,
-    });
+    expect(mocks.updateGithubIdentity).toHaveBeenCalledWith(null, null, null, null);
   });
 
   it("logout persists cleared GitHub user identity to database via invoke", async () => {
@@ -150,12 +152,7 @@ describe("useAuthStore", () => {
 
     await useAuthStore.getState().logout();
 
-    expect(mocks.invoke).toHaveBeenCalledWith("save_settings", {
-      githubOauthToken: null,
-      githubUserLogin: null,
-      githubUserAvatar: null,
-      githubUserEmail: null,
-    });
+    expect(mocks.updateGithubIdentity).toHaveBeenCalledWith(null, null, null, null);
   });
 
   it("loadUser handles invoke errors gracefully and continues", async () => {
@@ -164,7 +161,7 @@ describe("useAuthStore", () => {
       avatar_url: "https://github.com/octocat.png",
       email: "octocat@github.com",
     });
-    mocks.invoke.mockRejectedValue(new Error("Database error"));
+    mocks.updateGithubIdentity.mockRejectedValue(new Error("Database error"));
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await useAuthStore.getState().loadUser();
@@ -183,7 +180,7 @@ describe("useAuthStore", () => {
 
   it("logout handles invoke errors gracefully and continues", async () => {
     mocks.githubLogout.mockResolvedValue(undefined);
-    mocks.invoke.mockRejectedValue(new Error("Database error"));
+    mocks.updateGithubIdentity.mockRejectedValue(new Error("Database error"));
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await useAuthStore.getState().logout();

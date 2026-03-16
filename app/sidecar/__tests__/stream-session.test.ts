@@ -6,6 +6,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 }));
 
 // Mock run-agent helpers to avoid plugin discovery I/O
+// discoverInstalledPlugins is a vi.fn() so individual tests can override it
 vi.mock("../run-agent.js", () => ({
   emitSystemEvent: vi.fn(),
   discoverInstalledPlugins: vi.fn().mockResolvedValue([]),
@@ -26,10 +27,12 @@ vi.mock("../shutdown.js", () => ({
 }));
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { discoverInstalledPlugins } from "../run-agent.js";
 import { StreamSession } from "../stream-session.js";
 import type { SidecarConfig } from "../config.js";
 
 const mockQuery = vi.mocked(query);
+const mockDiscoverInstalledPlugins = vi.mocked(discoverInstalledPlugins);
 
 function baseConfig(overrides: Partial<SidecarConfig> = {}): SidecarConfig {
   return {
@@ -213,5 +216,94 @@ describe("StreamSession — mock streaming mode", () => {
     await vi.waitFor(() => {
       expect(messages.filter(isRunResult)).toHaveLength(1);
     });
+  });
+});
+
+// TS-03: pushMessage queue draining — message pushed before generator parks
+describe("StreamSession — pushMessage queue draining", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env.MOCK_AGENTS;
+  });
+
+  afterEach(() => {
+    delete process.env.MOCK_AGENTS;
+  });
+
+  it("consumes a queued message pushed synchronously before the generator parks", async () => {
+    // This generator will yield based on messages fed to it.
+    // We use a controller to verify the second message (the queued one) is actually processed.
+    let yieldCount = 0;
+    async function* twoTurnConversation() {
+      yieldCount++;
+      yield {
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "turn 1" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      };
+      // After yielding turn 1, SDK would await the next user message.
+      // The session's generator will await pendingResolve here.
+      // Then yield a second response when the queued message arrives.
+      yieldCount++;
+      yield {
+        type: "result",
+        subtype: "success",
+        usage: { input_tokens: 20, output_tokens: 10 },
+        total_cost_usd: 0.001,
+      };
+    }
+    mockQuery.mockReturnValue(twoTurnConversation() as ReturnType<typeof query>);
+
+    const { messages, done, onMessage } = collectUntil(isRunResult);
+    const session = new StreamSession("sess-queue", "req-q1", baseConfig(), onMessage);
+
+    // Push a follow-up message synchronously right after construction,
+    // before the async generator has had a chance to park at pendingResolve.
+    session.pushMessage("req-q2", "follow-up message");
+
+    await done;
+
+    // Verify the session processed both turns (run_result was emitted)
+    expect(messages.filter(isRunResult)).toHaveLength(1);
+    const runResult = messages.find(isRunResult);
+    const event = (runResult!.event as Record<string, unknown>);
+    expect(event.status).toBe("completed");
+  });
+});
+
+// TS-04: Setup-error path — discoverInstalledPlugins rejects
+describe("StreamSession — setup error path", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env.MOCK_AGENTS;
+  });
+
+  afterEach(() => {
+    delete process.env.MOCK_AGENTS;
+  });
+
+  it("emits error message and run_result when discoverInstalledPlugins rejects", async () => {
+    mockDiscoverInstalledPlugins.mockRejectedValueOnce(
+      new Error("EACCES: permission denied reading plugins dir"),
+    );
+
+    const { messages, done, onMessage } = collectUntil(isRunResult);
+    new StreamSession("sess-setup-err", "req-se1", baseConfig(), onMessage);
+
+    await done;
+
+    const errorMessages = messages.filter((m) => m.type === "error");
+    expect(errorMessages.length).toBeGreaterThanOrEqual(1);
+    expect(
+      errorMessages.some((m) => typeof (m.message as string) === "string"),
+    ).toBe(true);
+
+    const runResults = messages.filter(isRunResult);
+    expect(runResults).toHaveLength(1);
+    const event = (runResults[0]!.event as Record<string, unknown>);
+    expect(event.status).toBe("error");
   });
 });

@@ -446,6 +446,40 @@ describe("useUsageStore", () => {
       expect(state.loading).toBe(false);
     });
 
+    it("passes modelFamily: null to get_agent_runs even when modelFamilyFilter is set before reset", async () => {
+      mockInvoke.mockImplementation((cmd: string) => {
+        switch (cmd) {
+          case "get_usage_summary":
+            return Promise.resolve(mockSummary);
+          case "get_recent_workflow_sessions":
+            return Promise.resolve(mockSessions);
+          case "get_agent_runs":
+            return Promise.resolve(mockAgentRuns);
+          case "get_usage_by_step":
+            return Promise.resolve(mockByStep);
+          case "get_usage_by_model":
+            return Promise.resolve(mockByModel);
+          case "get_usage_by_day":
+            return Promise.resolve(mockByDay);
+          case "reset_usage":
+            return Promise.resolve();
+          case "get_workflow_skill_names":
+            return Promise.resolve([]);
+          default:
+            return Promise.reject(new Error(`Unmocked command: ${cmd}`));
+        }
+      });
+
+      // Set modelFamilyFilter before reset
+      useUsageStore.setState({ modelFamilyFilter: "claude-haiku-4-5" });
+
+      await useUsageStore.getState().resetCounter();
+
+      const agentRunsCall = mockInvoke.mock.calls.find((c) => c[0] === "get_agent_runs");
+      expect(agentRunsCall).toBeDefined();
+      expect(agentRunsCall![1].modelFamily).toBeNull();
+    });
+
     it("refetches skill names after reset", async () => {
       mockInvoke.mockImplementation((cmd: string) => {
         switch (cmd) {

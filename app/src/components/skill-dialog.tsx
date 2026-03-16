@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "@tanstack/react-router"
-import { invoke } from "@tauri-apps/api/core"
 import { toast } from "@/lib/toast"
 import { Plus, Loader2, ChevronLeft, ChevronRight, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -23,7 +22,7 @@ import { GhostTextarea } from "@/components/ghost-input"
 import { Textarea } from "@/components/ui/textarea"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useWorkflowStore } from "@/stores/workflow-store"
-import { renameSkill, updateSkillMetadata, generateSuggestions, type FieldSuggestions } from "@/lib/tauri"
+import { renameSkill, updateSkillMetadata, generateSuggestions, createSkill, type FieldSuggestions } from "@/lib/tauri"
 import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
 import type { SkillSummary } from "@/lib/types"
 import { PURPOSES, PURPOSE_LABELS } from "@/lib/types"
@@ -317,7 +316,7 @@ export default function SkillDialog(props: SkillDialogProps) {
         handleOpenChange(false)
         editOnSaved?.()
       } else {
-        await invoke("create_skill", {
+        await createSkill({
           workspacePath: createWorkspacePath,
           name: skillName.trim(),
           tags: tags.length > 0 ? tags : null,

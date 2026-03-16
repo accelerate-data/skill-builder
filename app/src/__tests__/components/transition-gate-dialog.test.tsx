@@ -19,7 +19,7 @@ function makeEvaluation(
     answered_count: answered,
     empty_count: empty,
     vague_count: vague,
-    contradictory_count: contradictory > 0 ? contradictory : undefined,
+    contradictory_count: contradictory,
     total_count: perQuestion.length,
     reasoning: "test evaluation",
     per_question: perQuestion,

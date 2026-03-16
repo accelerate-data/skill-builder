@@ -50,3 +50,18 @@ export function handleShutdown(
   // Force exit after 3s if SDK doesn't respond to abort
   timerFn(() => exitFn(0), 3000).unref();
 }
+
+/**
+ * Register cross-platform shutdown handlers.
+ * SIGTERM/SIGINT work on Unix; 'disconnect' fires on Windows when the
+ * parent process terminates the IPC channel.
+ */
+export function registerShutdownHandlers(
+  state: AbortState,
+  exitFn?: (code: number) => void,
+): void {
+  const handler = () => handleShutdown(state, exitFn);
+  process.on("SIGTERM", handler);
+  process.on("SIGINT", handler);
+  process.on("disconnect", handler);
+}

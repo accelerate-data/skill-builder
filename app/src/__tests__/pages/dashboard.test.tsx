@@ -109,6 +109,7 @@ function setupMocks(
     package_skill: { file_path: "/tmp/test.skill", size_bytes: 1024 },
     copy_file: undefined,
     save_settings: undefined,
+    update_dashboard_view_mode: undefined,
     get_locked_skills: [],
   });
 
@@ -429,11 +430,9 @@ describe("DashboardPage", () => {
     const rows = screen.getAllByRole("button", { name: /Edit workflow/i });
     expect(rows.length).toBeGreaterThan(0);
 
-    // save_settings should have been called to persist the choice
+    // update_dashboard_view_mode should have been called to persist the choice
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("save_settings", expect.objectContaining({
-        settings: expect.objectContaining({ dashboard_view_mode: "list" }),
-      }));
+      expect(mockInvoke).toHaveBeenCalledWith("update_dashboard_view_mode", { mode: "list" });
     });
   });
 

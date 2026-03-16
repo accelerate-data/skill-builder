@@ -250,17 +250,24 @@ export function WorkflowStepComplete({
 
   // Autosave state for decisions editing — hoisted above all early returns to satisfy Rules of Hooks
   const [decisionsEditContent, setDecisionsEditContent] = useState<string | null>(null);
-  const [decisionsEditorDirty, setDecisionsEditorDirty] = useState(false);
+  // Version counter instead of a boolean dirty flag: incrementing on each edit avoids a race where
+  // setDecisionsEditorDirty(false) inside the async save callback re-triggers the effect and
+  // cancels the pending timer for a newer edit that arrived during the await.
+  const [decisionsEditVersion, setDecisionsEditVersion] = useState(0);
   const [decisionsSaveStatus, setDecisionsSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
 
   useEffect(() => {
-    if (!decisionsEditorDirty || !decisionsEditContent || !workspacePath || !skillName || reviewMode) return;
+    if (!decisionsEditContent || !workspacePath || !skillName || reviewMode || decisionsEditVersion === 0) return;
+    const savedVersion = decisionsEditVersion;
     setDecisionsSaveStatus("saving");
     const timer = setTimeout(async () => {
       try {
         await saveDecisionsContent(skillName, workspacePath, decisionsEditContent);
-        setDecisionsEditorDirty(false);
-        setDecisionsSaveStatus("saved");
+        // Only mark saved if no newer edit arrived during the await.
+        setDecisionsEditVersion((current) => {
+          if (current === savedVersion) setDecisionsSaveStatus("saved");
+          return current;
+        });
         // Refresh guard state — user edits may clear contradictions
         // (e.g. contradictory_inputs changed from true to "revised").
         const disabled = await getDisabledSteps(skillName);
@@ -270,7 +277,7 @@ export function WorkflowStepComplete({
       }
     }, 300); // Short debounce — trigger is now blur, not keystroke
     return () => clearTimeout(timer);
-  }, [decisionsEditContent, decisionsEditorDirty, workspacePath, skillName, reviewMode]);
+  }, [decisionsEditContent, decisionsEditVersion, workspacePath, skillName, reviewMode]);
 
   // Loading spinner — shown while files are being fetched (initial or re-fetch)
   if (loadingFiles) {
@@ -486,7 +493,7 @@ export function WorkflowStepComplete({
             allowEdit={!reviewMode}
             onDecisionsChange={(serialized) => {
               setDecisionsEditContent(serialized);
-              setDecisionsEditorDirty(true);
+              setDecisionsEditVersion((v) => v + 1);
               setDecisionsSaveStatus("saving");
             }}
           />

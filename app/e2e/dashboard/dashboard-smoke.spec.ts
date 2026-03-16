@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { waitForAppReady } from "../helpers/app-helpers";
+import { reloadWithOverrides } from "../helpers/app-helpers";
 import { E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "../helpers/test-paths";
 
 const WORKSPACE_OVERRIDES = {
@@ -13,19 +13,8 @@ const WORKSPACE_OVERRIDES = {
 };
 
 test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
-  async function reloadDashboardWithOverrides(
-    page: import("@playwright/test").Page,
-    overrides: Record<string, unknown>,
-  ) {
-    await page.addInitScript((nextOverrides) => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = nextOverrides;
-    }, overrides);
-    await page.goto("/");
-    await waitForAppReady(page);
-  }
-
   test.beforeEach(async ({ page }) => {
-    await reloadDashboardWithOverrides(page, WORKSPACE_OVERRIDES);
+    await reloadWithOverrides(page, WORKSPACE_OVERRIDES);
   });
 
   test("shows empty state when workspace configured but no skills", async ({ page }) => {
@@ -41,7 +30,7 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
   });
 
   test("clicking a skill card navigates to the workflow page", async ({ page }) => {
-    await reloadDashboardWithOverrides(page, {
+    await reloadWithOverrides(page, {
       get_settings: {
         anthropic_api_key: "sk-ant-test",
         workspace_path: E2E_WORKSPACE_PATH,
@@ -84,10 +73,12 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
 
     // Dialog should close (mock returns success) or navigate away
     await expect(page.getByRole("heading", { name: "Create New Skill" })).not.toBeVisible({ timeout: 5_000 });
+    // Should navigate to the workflow page for the new skill
+    await expect(page).toHaveURL(/\/skill\/hr-analytics/, { timeout: 5_000 });
   });
 
   test("can confirm skill deletion", async ({ page }) => {
-    await reloadDashboardWithOverrides(page, {
+    await reloadWithOverrides(page, {
       get_settings: {
         anthropic_api_key: "sk-ant-test",
         workspace_path: E2E_WORKSPACE_PATH,
@@ -114,7 +105,9 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
     const confirmButton = page.getByRole("button", { name: "Delete" });
     await confirmButton.click();
 
-    // Dialog should close
+    // Dialog should close after successful deletion
     await expect(page.getByRole("heading", { name: "Delete Skill" })).not.toBeVisible();
+    // Note: skill card may reappear because list_skills mock returns a static array.
+    // The delete flow is validated by the dialog closing without error.
   });
 });

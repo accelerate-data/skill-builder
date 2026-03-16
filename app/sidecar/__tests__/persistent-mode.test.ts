@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import os from "node:os";
 import { Readable } from "node:stream";
 
 // Mock the SDK before importing anything that uses it
@@ -24,13 +25,13 @@ describe("parseIncomingMessage", () => {
     const line = JSON.stringify({
       type: "agent_request",
       request_id: "req_1",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
     });
     const result = parseIncomingMessage(line);
     expect(result).toEqual({
       type: "agent_request",
       request_id: "req_1",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
     });
   });
 
@@ -78,7 +79,7 @@ describe("parseIncomingMessage", () => {
   it("returns null for agent_request without request_id", () => {
     const line = JSON.stringify({
       type: "agent_request",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
     });
     expect(parseIncomingMessage(line)).toBeNull();
   });
@@ -87,7 +88,7 @@ describe("parseIncomingMessage", () => {
     const line = JSON.stringify({
       type: "agent_request",
       request_id: "",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
     });
     expect(parseIncomingMessage(line)).toBeNull();
   });
@@ -141,14 +142,14 @@ describe("parseIncomingMessage", () => {
       type: "stream_start",
       request_id: "req_1",
       session_id: "sess_1",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
     });
     const result = parseIncomingMessage(line);
     expect(result).toEqual({
       type: "stream_start",
       request_id: "req_1",
       session_id: "sess_1",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
     });
   });
 
@@ -156,7 +157,7 @@ describe("parseIncomingMessage", () => {
     const line = JSON.stringify({
       type: "stream_start",
       request_id: "req_1",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
     });
     expect(parseIncomingMessage(line)).toBeNull();
   });
@@ -373,7 +374,7 @@ describe("runPersistent", () => {
     const config = {
       prompt: "test prompt",
       apiKey: "sk-test",
-      cwd: "/tmp/test",
+      cwd: os.tmpdir(),
     };
 
     const input = createInputStream([
@@ -426,7 +427,7 @@ describe("runPersistent", () => {
     const config = {
       prompt: "test prompt",
       apiKey: "sk-test",
-      cwd: "/tmp/test",
+      cwd: os.tmpdir(),
     };
 
     const input = createInputStream([
@@ -447,17 +448,18 @@ describe("runPersistent", () => {
       capture.restore();
     }
 
-    // Should get an error response wrapped with request_id
-    const errorLine = capture.lines.find((l) => {
+    // query() throw is caught inside runAgentRequest, which emits an error
+    // run_result via the processor. The error surfaces as an agent_event with
+    // request_id wrapping, not a top-level error line.
+    const runResultLine = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.type === "error" && parsed.request_id;
+      return parsed.request_id === "req_err" && parsed.type === "agent_event"
+        && parsed.event?.type === "run_result";
     });
-    expect(errorLine).toBeDefined();
+    expect(runResultLine).toBeDefined();
 
-    const errorMsg = JSON.parse(errorLine!);
-    expect(errorMsg.request_id).toBe("req_err");
-    expect(errorMsg.type).toBe("error");
-    expect(errorMsg.message).toBe("SDK connection failed");
+    const parsed = JSON.parse(runResultLine!);
+    expect(parsed.event.status).toBe("error");
 
     // Process should still be running (exited only on shutdown)
     expect(exitFn).toHaveBeenCalledWith(0);
@@ -494,8 +496,8 @@ describe("runPersistent", () => {
       return fakeConversation() as ReturnType<typeof query>;
     });
 
-    const config1 = { prompt: "first", apiKey: "sk-test", cwd: "/tmp" };
-    const config2 = { prompt: "second", apiKey: "sk-test", cwd: "/tmp" };
+    const config1 = { prompt: "first", apiKey: "sk-test", cwd: os.tmpdir() };
+    const config2 = { prompt: "second", apiKey: "sk-test", cwd: os.tmpdir() };
 
     const { Readable } = await import("node:stream");
     const input = new Readable({ read() {} });
@@ -564,8 +566,8 @@ describe("runPersistent", () => {
       return fakeConversation() as ReturnType<typeof query>;
     });
 
-    const config1 = { prompt: "first", apiKey: "sk-test", cwd: "/tmp" };
-    const config2 = { prompt: "second", apiKey: "sk-test", cwd: "/tmp" };
+    const config1 = { prompt: "first", apiKey: "sk-test", cwd: os.tmpdir() };
+    const config2 = { prompt: "second", apiKey: "sk-test", cwd: os.tmpdir() };
 
     // Send requests one at a time with a gap so the first completes
     const { Readable } = await import("node:stream");
@@ -730,7 +732,7 @@ describe("runPersistent", () => {
     input.push(JSON.stringify({
       type: "agent_request",
       request_id: "req_stuck",
-      config: { prompt: "test", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "test", apiKey: "sk-test", cwd: os.tmpdir() },
     }) + "\n");
     await new Promise((r) => setTimeout(r, 20));
 
@@ -802,7 +804,7 @@ describe("runPersistent", () => {
     input.push(JSON.stringify({
       type: "agent_request",
       request_id: "req_real",
-      config: { prompt: "test", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "test", apiKey: "sk-test", cwd: os.tmpdir() },
     }) + "\n");
     await new Promise((r) => setTimeout(r, 10));
 
@@ -843,7 +845,7 @@ describe("runPersistent", () => {
       JSON.stringify({
         type: "agent_request",
         request_id: "req_json",
-        config: { prompt: "test", apiKey: "sk-test", cwd: "/tmp" },
+        config: { prompt: "test", apiKey: "sk-test", cwd: os.tmpdir() },
       }),
       JSON.stringify({ type: "shutdown" }),
     ]);
@@ -862,6 +864,68 @@ describe("runPersistent", () => {
     }
   });
 
+  // TS-05: Duplicate session_id rejection
+  it("emits error with session_id when stream_start uses a duplicate session_id", async () => {
+    const originalMockAgents = process.env.MOCK_AGENTS;
+    process.env.MOCK_AGENTS = "true";
+
+    const { Readable } = await import("node:stream");
+    const input = new Readable({ read() {} });
+    const exitFn = vi.fn();
+    const capture = captureStdout();
+
+    try {
+      const runPromise = runPersistent(input, exitFn);
+
+      // First stream_start
+      input.push(JSON.stringify({
+        type: "stream_start",
+        request_id: "req-dup-1",
+        session_id: "test-session",
+        config: { prompt: "first prompt", apiKey: "sk-test", cwd: os.tmpdir() },
+      }) + "\n");
+      await new Promise((r) => setTimeout(r, 10));
+
+      // Second stream_start with SAME session_id — should be rejected
+      input.push(JSON.stringify({
+        type: "stream_start",
+        request_id: "req-dup-2",
+        session_id: "test-session",
+        config: { prompt: "second prompt", apiKey: "sk-test", cwd: os.tmpdir() },
+      }) + "\n");
+      await new Promise((r) => setTimeout(r, 20));
+
+      // Clean up
+      input.push(JSON.stringify({ type: "stream_end", session_id: "test-session" }) + "\n");
+      input.push(JSON.stringify({ type: "shutdown" }) + "\n");
+      input.push(null);
+      await runPromise;
+    } finally {
+      if (originalMockAgents === undefined) {
+        delete process.env.MOCK_AGENTS;
+      } else {
+        process.env.MOCK_AGENTS = originalMockAgents;
+      }
+      capture.restore();
+    }
+
+    // The second stream_start should have produced an error response keyed to req-dup-2
+    const errorLine = capture.lines.find((l) => {
+      try {
+        const parsed = JSON.parse(l);
+        return (
+          parsed.type === "error" &&
+          parsed.request_id === "req-dup-2"
+        );
+      } catch {
+        return false;
+      }
+    });
+    expect(errorLine).toBeDefined();
+    const errorMsg = JSON.parse(errorLine!);
+    expect(errorMsg.message).toContain("test-session");
+  });
+
   it("supports stream_start and stream_message in MOCK_AGENTS mode", async () => {
     const originalMockAgents = process.env.MOCK_AGENTS;
     process.env.MOCK_AGENTS = "true";
@@ -878,7 +942,7 @@ describe("runPersistent", () => {
         type: "stream_start",
         request_id: "req_stream_1",
         session_id: "sess_mock",
-        config: { prompt: "initial stream prompt", apiKey: "sk-test", cwd: "/tmp" },
+        config: { prompt: "initial stream prompt", apiKey: "sk-test", cwd: os.tmpdir() },
       }) + "\n");
       await new Promise((r) => setTimeout(r, 40));
 

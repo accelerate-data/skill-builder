@@ -226,7 +226,7 @@ pub fn run() {
                 id: uuid::Uuid::new_v4().to_string(),
                 pid: std::process::id(),
             };
-            log::info!("Instance ID: [REDACTED], PID: [REDACTED]");
+            log::info!("Instance ID: {}, PID: {}", instance_info.id, instance_info.pid);
             app.manage(instance_info);
 
             // Apply persisted log level setting (fall back to info if DB read fails).
@@ -275,6 +275,9 @@ pub fn run() {
             commands::settings::get_data_dir,
             commands::settings::get_settings,
             commands::settings::save_settings,
+            commands::settings::update_user_settings,
+            commands::settings::update_dashboard_view_mode,
+            commands::settings::update_github_identity,
             commands::settings::test_api_key,
             commands::settings::list_models,
             commands::settings::set_log_level,
@@ -362,13 +365,13 @@ pub fn run() {
             commands::git::get_skill_diff,
             commands::git::restore_skill_version,
             commands::skill::list_refinable_skills,
-            commands::refine::get_skill_content_for_refine,
-            commands::refine::get_refine_diff,
+            commands::refine::content::get_skill_content_for_refine,
+            commands::refine::diff::get_refine_diff,
             commands::refine::start_refine_session,
             commands::refine::send_refine_message,
             commands::refine::close_refine_session,
-            commands::refine::materialize_refine_validation_output,
-            commands::refine::finalize_refine_run,
+            commands::refine::output::materialize_refine_validation_output,
+            commands::refine::output::finalize_refine_run,
             commands::skill_test::prepare_skill_test,
             commands::skill_test::cleanup_skill_test,
             commands::imported_skills::upload::parse_skill_file,

@@ -123,9 +123,9 @@ function drainPendingTerminal(agentId: string) {
   useAgentStore.getState().completeRun(agentId, pending === "completed");
 }
 
-/** @deprecated Pending buffers are now in the Zustand store and reset with clearRuns(). */
 export function resetAgentStoreInternals() {
   clearDisplayItemBuffer();
+  clearAllPhantomTimers();
   useAgentStore.setState({ pendingTerminal: {}, pendingMetadata: {} });
 }
 
@@ -138,6 +138,56 @@ export function resetAgentStoreInternals() {
 
 const _displayItemBuffer: Map<string, DisplayItem[]> = new Map();
 let _rafId: number | null = null;
+
+// Phantom run reaper: auto-created runs that never receive startRun/registerRun
+// within PHANTOM_RUN_TTL_MS are marked as "error" so they don't stay stuck at
+// status: "running" with model: "unknown" indefinitely.
+const PHANTOM_RUN_TTL_MS = 30_000;
+const _phantomTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+
+function schedulePhantomReaper(agentId: string): void {
+  clearPhantomTimer(agentId);
+  const timer = setTimeout(() => {
+    _phantomTimers.delete(agentId);
+    const run = useAgentStore.getState().runs[agentId];
+    if (run && run.model === "unknown" && run.status === "running") {
+      console.warn(
+        "[agent-store] event=phantom_run_reaped operation=reaper agent_id=%s age_ms=%d",
+        agentId,
+        Date.now() - run.startTime,
+      );
+      useAgentStore.setState((state) => {
+        const existing = state.runs[agentId];
+        if (!existing || existing.model !== "unknown" || existing.status !== "running") return state;
+        return {
+          runs: {
+            ...state.runs,
+            [agentId]: { ...existing, status: "error" as const, endTime: Date.now() },
+          },
+        };
+      });
+    }
+  }, PHANTOM_RUN_TTL_MS);
+  _phantomTimers.set(agentId, timer);
+}
+
+function clearPhantomTimer(agentId: string): void {
+  const existing = _phantomTimers.get(agentId);
+  if (existing !== undefined) {
+    clearTimeout(existing);
+    _phantomTimers.delete(agentId);
+  }
+}
+
+function clearAllPhantomTimers(): void {
+  for (const timer of _phantomTimers.values()) clearTimeout(timer);
+  _phantomTimers.clear();
+}
+
+/** Visible for testing. */
+export function getPhantomTimerCount(): number {
+  return _phantomTimers.size;
+}
 
 /** Synchronously flush all buffered display items into Zustand state. */
 export function flushDisplayItems(): void {
@@ -174,6 +224,7 @@ export function flushDisplayItems(): void {
           compactionEvents: [],
           thinkingEnabled: false,
         };
+        schedulePhantomReaper(agentId);
         continue;
       }
 
@@ -395,6 +446,7 @@ export const useAgentStore = create<AgentState>((set) => ({
   pendingMetadata: {},
 
   startRun: (agentId, model) => {
+    clearPhantomTimer(agentId);
     const workflow = useWorkflowStore.getState();
     const skillName = workflow.skillName ?? "unknown";
 
@@ -439,6 +491,7 @@ export const useAgentStore = create<AgentState>((set) => ({
   },
 
   registerRun: (agentId, model, skillName?, runSource = "refine", usageSessionId?) => {
+    clearPhantomTimer(agentId);
     set((state) => {
       const existing = state.runs[agentId];
       return {
@@ -619,13 +672,14 @@ export const useAgentStore = create<AgentState>((set) => ({
           ...state.runs,
           [agentId]: {
             ...run,
-            contextWindow: Math.max(run.contextWindow, event.contextWindow),
+            contextWindow: event.contextWindow,
           },
         },
       };
     }),
 
   completeRun: (agentId, success) => {
+    clearPhantomTimer(agentId);
     // Flush any buffered display items so they are visible in the final run state
     flushDisplayItems();
     if (!useAgentStore.getState().runs[agentId]) {
@@ -635,7 +689,19 @@ export const useAgentStore = create<AgentState>((set) => ({
 
     set((state) => {
       const run = state.runs[agentId];
-      if (!run || run.status !== "running") return state;
+      if (!run) return state;
+      // If the run is already in a terminal state (e.g. set by a display-item
+      // flush racing ahead of startRun), only stamp endTime if it is missing —
+      // do not overwrite an existing terminal status or endTime.
+      if (run.status !== "running") {
+        if (run.endTime !== undefined) return state;
+        return {
+          runs: {
+            ...state.runs,
+            [agentId]: { ...run, endTime: Date.now() },
+          },
+        };
+      }
       return {
         runs: {
           ...state.runs,
@@ -651,6 +717,7 @@ export const useAgentStore = create<AgentState>((set) => ({
   },
 
   shutdownRun: (agentId: string) => {
+    clearPhantomTimer(agentId);
     // Flush any buffered display items so they are visible in the final run state
     flushDisplayItems();
     if (!useAgentStore.getState().runs[agentId]) {
@@ -679,6 +746,7 @@ export const useAgentStore = create<AgentState>((set) => ({
 
   clearRuns: () => {
     clearDisplayItemBuffer();
+    clearAllPhantomTimers();
     set({ runs: {}, activeAgentId: null, pendingTerminal: {}, pendingMetadata: {} });
   },
 }));

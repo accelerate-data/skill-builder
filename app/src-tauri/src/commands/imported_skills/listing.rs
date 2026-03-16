@@ -15,11 +15,15 @@ pub fn list_imported_skills(
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<ImportedSkill>, String> {
     log::info!("list_imported_skills: source_url={:?}", source_url);
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[list_imported_skills] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    crate::db::list_imported_skills_filtered(&conn, source_url.as_deref())
+    let mut skills = {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[list_imported_skills] Failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        crate::db::list_imported_skills_filtered(&conn, source_url.as_deref())?
+    }; // lock released
+    crate::db::hydrate_skills_metadata(&mut skills);
+    Ok(skills)
 }
 
 // ---------------------------------------------------------------------------
@@ -29,12 +33,14 @@ pub fn list_imported_skills(
 #[tauri::command]
 pub fn get_skill_content(skill_name: String, db: tauri::State<'_, Db>) -> Result<String, String> {
     log::info!("[get_skill_content] skill_name={}", skill_name);
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[get_skill_content] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    let skill = crate::db::get_imported_skill(&conn, &skill_name)?
-        .ok_or_else(|| format!("Imported skill '{}' not found", skill_name))?;
+    let skill = {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[get_skill_content] Failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        crate::db::get_imported_skill(&conn, &skill_name)?
+            .ok_or_else(|| format!("Imported skill '{}' not found", skill_name))?
+    }; // lock released before disk I/O
 
     let skill_md_path = Path::new(&skill.disk_path).join("SKILL.md");
     fs::read_to_string(&skill_md_path).map_err(|e| format!("Failed to read SKILL.md: {}", e))
@@ -47,13 +53,14 @@ pub fn get_skill_content(skill_name: String, db: tauri::State<'_, Db>) -> Result
 #[tauri::command]
 pub fn export_skill(skill_name: String, db: tauri::State<'_, Db>) -> Result<String, String> {
     log::info!("[export_skill] skill_name={}", skill_name);
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[export_skill] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-
-    let skill = crate::db::get_imported_skill(&conn, &skill_name)?
-        .ok_or_else(|| format!("Skill '{}' not found", skill_name))?;
+    let skill = {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[export_skill] Failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        crate::db::get_imported_skill(&conn, &skill_name)?
+            .ok_or_else(|| format!("Skill '{}' not found", skill_name))?
+    }; // lock released before disk I/O
 
     let skill_dir = Path::new(&skill.disk_path);
     if !skill_dir.is_dir() {

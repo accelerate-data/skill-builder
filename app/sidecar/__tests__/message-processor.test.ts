@@ -1091,6 +1091,41 @@ describe("MessageProcessor", () => {
       expect(out).toHaveLength(0);
     });
 
+    // TS-07: processAuthStatusMessage — explicit return value assertions
+    describe("processAuthStatusMessage — return values", () => {
+      it("returns [] for auth_status with no error field", () => {
+        const p = new MessageProcessor();
+        const out = p.process({ type: "auth_status" });
+        expect(out).toEqual([]);
+      });
+
+      it("returns [] for auth_status with undefined error field", () => {
+        const p = new MessageProcessor();
+        const out = p.process({ type: "auth_status", isAuthenticating: true, output: [] });
+        expect(out).toEqual([]);
+      });
+
+      it("returns display item + run_result for auth_status with error string", () => {
+        const p = new MessageProcessor();
+        const out = p.process({ type: "auth_status", error: "invalid key" });
+
+        const displayItems = out.filter((m) => (m as Record<string, unknown>).type === "display_item");
+        const agentEvents = out.filter((m) => (m as Record<string, unknown>).type === "agent_event");
+
+        expect(displayItems.length).toBeGreaterThanOrEqual(1);
+        expect(agentEvents.length).toBeGreaterThanOrEqual(1);
+
+        const item = (displayItems[0] as Record<string, unknown>).item as Record<string, unknown>;
+        expect(item.type).toBe("error");
+        expect(typeof item.errorMessage).toBe("string");
+
+        const event = (agentEvents[0] as Record<string, unknown>).event as Record<string, unknown>;
+        expect(event.type).toBe("run_result");
+        expect(event.status).toBe("error");
+        expect(event.resultSubtype).toBe("error_authentication");
+      });
+    });
+
     it("reset clears all state", () => {
       processor.process({
         type: "assistant",

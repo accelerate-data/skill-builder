@@ -11,7 +11,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
-import { invoke } from "@tauri-apps/api/core"
+import { getSkillContent } from "@/lib/tauri"
 import type { ImportedSkill } from "@/lib/types"
 
 interface SkillPreviewDialogProps {
@@ -40,7 +40,7 @@ export default function SkillPreviewDialog({
     setLoading(true)
     setError(null)
 
-    invoke<string>("get_skill_content", { skillName: skill.skill_name })
+    getSkillContent(skill.skill_name)
       .then((result) => {
         if (!cancelled) {
           setContent(result)

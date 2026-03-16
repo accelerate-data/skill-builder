@@ -228,6 +228,6 @@ test.describe("Test → Refine navigation", { tag: "@skill-tester" }, () => {
     const callCount = await page.evaluate(
       () => (window as unknown as Record<string, number>).__TEST_REFINE_SESSION_CALLS__ ?? 0,
     );
-    expect(callCount).toBeGreaterThanOrEqual(1);
+    expect(callCount).toBe(1);
   });
 });

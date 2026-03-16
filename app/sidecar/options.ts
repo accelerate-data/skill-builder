@@ -9,6 +9,7 @@ import type { SidecarConfig } from "./config.js";
 const ENV_ALLOWLIST = [
   "PATH",
   "HOME",
+  "USERPROFILE",
   "TMPDIR",
   "TEMP",
   "TMP",

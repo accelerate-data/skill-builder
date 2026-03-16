@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useNavigate } from "@tanstack/react-router"
-import { invoke } from "@tauri-apps/api/core"
 import { save } from "@tauri-apps/plugin-dialog"
 import { toast } from "@/lib/toast"
 import { FolderOpen, Search, Filter, AlertCircle, Settings, Plus, ChevronUp, ChevronDown } from "lucide-react"
@@ -32,8 +31,8 @@ import TagFilter from "@/components/tag-filter"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useSkillStore } from "@/stores/skill-store"
 import { useWorkflowStore } from "@/stores/workflow-store"
-import { packageSkill, getLockedSkills } from "@/lib/tauri"
-import type { SkillSummary, AppSettings } from "@/lib/types"
+import { packageSkill, getLockedSkills, copyFile, listSkills, getAllTags, updateDashboardViewMode } from "@/lib/tauri"
+import type { SkillSummary } from "@/lib/types"
 import { PURPOSES, PURPOSE_LABELS } from "@/lib/types"
 import { SOURCE_DISPLAY_LABELS } from "@/components/skill-source-badge"
 
@@ -98,9 +97,7 @@ export default function DashboardPage() {
     }
     setLoading(true)
     try {
-      const result = await invoke<SkillSummary[]>("list_skills", {
-        workspacePath,
-      })
+      const result = await listSkills(workspacePath)
       setSkills(result)
     } catch (err) {
       console.error("[dashboard] Failed to load skills:", err)
@@ -112,7 +109,7 @@ export default function DashboardPage() {
 
   const loadTags = useCallback(async () => {
     try {
-      const tags = await invoke<string[]>("get_all_tags")
+      const tags = await getAllTags()
       setAvailableTags(tags)
     } catch (err) {
       console.error("[dashboard] Failed to load tags:", err)
@@ -151,8 +148,7 @@ export default function DashboardPage() {
     setViewMode(mode)
     useSettingsStore.getState().setSettings({ dashboardViewMode: mode })
     try {
-      const current = await invoke<AppSettings>("get_settings")
-      await invoke("save_settings", { settings: { ...current, dashboard_view_mode: mode } })
+      await updateDashboardViewMode(mode)
     } catch {
       console.warn("Failed to persist dashboard view mode")
     }
@@ -271,7 +267,7 @@ export default function DashboardPage() {
         filters: [{ name: "Skill Package", extensions: ["skill"] }],
       })
       if (savePath) {
-        await invoke("copy_file", { src: result.file_path, dest: savePath })
+        await copyFile(result.file_path, savePath)
         toast.success("Skill downloaded", { id: toastId })
       } else {
         toast.dismiss(toastId)

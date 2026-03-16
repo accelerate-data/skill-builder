@@ -30,14 +30,11 @@ Adapter files must not duplicate canonical policy unless they are adding agent-s
 
 **Agent runtime:** No hot-reload — restart `npm run dev` after editing `app/sidecar/`. Requires Node.js 18+. See `.claude/rules/agent-sidecar.md` when working in `app/sidecar/`.
 
-**Key directories:**
-
-- Workspace (derived from Tauri `app_local_data_dir()` as `<app_local_data_dir>/workspace`, not user-configurable): agent prompts, per-skill scratch data, logs
-- Skill output (`~/skill-builder/` default): SKILL.md, references, git-managed
-- App database: `~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db` (macOS)
-- Full layout: [`docs/design/agent-specs/storage.md`](docs/design/agent-specs/storage.md)
+**Key directories and paths:** See `repo-map.json` → `key_directories` and `notes_for_agents` (workspace path, DB location, module layout). Full storage layout: [`docs/design/agent-specs/storage.md`](docs/design/agent-specs/storage.md).
 
 ## Dev Commands
+
+See `repo-map.json` → `commands` for the full command reference. Quick start:
 
 ```bash
 cd app && npm install && npm run sidecar:build

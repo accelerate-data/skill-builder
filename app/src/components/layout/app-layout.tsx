@@ -10,9 +10,7 @@ import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useAuthStore } from "@/stores/auth-store";
-import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, checkMarketplaceUpdates, importMarketplaceToLibrary, checkSkillCustomized } from "@/lib/tauri";
-import { invoke } from "@tauri-apps/api/core";
-import type { ModelInfo } from "@/stores/settings-store";
+import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, checkMarketplaceUpdates, importMarketplaceToLibrary, checkSkillCustomized, listModels } from "@/lib/tauri";
 import type { AppSettings, DiscoveredSkill, OrphanSkill, SkillUpdateInfo } from "@/lib/types";
 
 /** Filter out customized skills, returning only those safe to auto-update. */
@@ -176,7 +174,7 @@ export function AppLayout() {
       setSettingsLoaded(true);
       // Fetch available models in the background — no need to await
       if (s.anthropic_api_key) {
-        invoke<ModelInfo[]>("list_models", { apiKey: s.anthropic_api_key })
+        listModels(s.anthropic_api_key)
           .then((models) => { if (!cancelledRef.current) setSettings({ availableModels: models }); })
           .catch((err) => console.warn("[app-layout] Could not fetch model list:", err));
       }

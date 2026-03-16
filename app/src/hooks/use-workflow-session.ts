@@ -41,6 +41,7 @@ export function useWorkflowSession({
 }: UseWorkflowSessionOptions) {
   const navigate = useNavigate();
   const hasUnsavedChangesRef = useRef(false);
+  const sessionCleanedUpRef = useRef(false);
 
   // Track unsaved changes for the shouldBlock check (runs outside React render cycle)
   useEffect(() => {
@@ -70,9 +71,13 @@ export function useWorkflowSession({
   }, [skillName, navigate]);
 
   // Cleanup on unmount (e.g., test unmount, browser close, etc.)
-  // When component unmounts without navigation, ensure session state is cleaned up
+  // Skipped if onLeave already ran cleanup to avoid double IPC calls.
   useEffect(() => {
+    sessionCleanedUpRef.current = false;
     return () => {
+      if (sessionCleanedUpRef.current) return;
+      sessionCleanedUpRef.current = true;
+
       // Revert any in-progress step to pending
       const store = useWorkflowStore.getState();
       const { currentStep: step, steps: curSteps } = store;
@@ -98,6 +103,8 @@ export function useWorkflowSession({
   const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
     shouldBlock: () => shouldBlock(),
     onLeave: (proceed) => {
+      sessionCleanedUpRef.current = true;
+
       const store = useWorkflowStore.getState();
       const { currentStep: step, steps: curSteps } = store;
       const sessionId = store.workflowSessionId;

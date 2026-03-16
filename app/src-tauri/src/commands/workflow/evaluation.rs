@@ -3,8 +3,10 @@ use std::path::Path;
 use crate::db::Db;
 use crate::types::{StepStatusUpdate, WorkflowStateResponse};
 
-use super::runtime::{parse_decisions_guard, parse_scope_recommendation};
+use super::guards::{parse_decisions_guard, parse_scope_recommendation};
 use super::step_config::validate_clarifications_json;
+
+use crate::commands::imported_skills::validate_skill_name;
 
 pub(crate) fn read_skills_path(db: &tauri::State<'_, Db>) -> Option<String> {
     let conn = db.0.lock().ok()?;
@@ -41,6 +43,21 @@ pub fn get_workflow_state(
     Ok(WorkflowStateResponse { run, steps })
 }
 
+/// Persist workflow execution state (step progress and run status) for a skill.
+///
+/// # Metadata ownership guard
+///
+/// This command intentionally accepts ONLY execution-state fields: `current_step`,
+/// `status`, `purpose`, and `step_statuses`. Skill metadata fields
+/// (description, version, model, argument_hint, user_invocable,
+/// disable_model_invocation) are **NOT** parameters here — they are owned
+/// exclusively by the `skills` master table and must be written via
+/// `set_skill_behaviour`. The underlying `workflow_runs` table no longer
+/// contains these columns (dropped in migration 35), so even if a caller
+/// attempted to pass stale metadata values there is no column to receive them.
+///
+/// Reads of skill metadata for agent execution go through `read_workflow_settings`
+/// which queries `get_skill_master` directly, never the frontend payload.
 #[tauri::command]
 pub fn save_workflow_state(
     skill_name: String,
@@ -123,9 +140,13 @@ pub fn save_workflow_state(
         );
         match crate::db::read_settings(&conn) {
             Ok(settings) => {
-                let skills_path = settings
-                    .skills_path
-                    .ok_or_else(|| "Skills path not configured".to_string())?;
+                let Some(skills_path) = settings.skills_path else {
+                    log::warn!(
+                        "[save_workflow_state] skills_path not configured — skipping git auto-commit for '{}'",
+                        skill_name
+                    );
+                    return Ok(());
+                };
                 let completed_steps: Vec<i32> = step_statuses
                     .iter()
                     .filter(|s| s.status == "completed")
@@ -154,6 +175,135 @@ pub fn save_workflow_state(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::test_utils::create_test_db;
+    use crate::types::StepStatusUpdate;
+
+    /// Replicate the effective_status override logic from `save_workflow_state` so it can be
+    /// tested without needing the Tauri runtime or a `tauri::State<'_, Db>`.
+    fn compute_effective_status(status: &str, step_statuses: &[StepStatusUpdate]) -> String {
+        if !step_statuses.is_empty() && step_statuses.iter().all(|s| s.status == "completed") {
+            "completed".to_string()
+        } else {
+            status.to_string()
+        }
+    }
+
+    #[test]
+    fn test_all_steps_completed_overrides_in_progress_status() {
+        let conn = create_test_db();
+
+        // Create a skill and workflow run with status "in_progress".
+        crate::db::save_workflow_run(&conn, "test-skill", 3, "in_progress", "domain").unwrap();
+
+        let step_statuses = vec![
+            StepStatusUpdate { step_id: 0, status: "completed".to_string() },
+            StepStatusUpdate { step_id: 1, status: "completed".to_string() },
+            StepStatusUpdate { step_id: 2, status: "completed".to_string() },
+            StepStatusUpdate { step_id: 3, status: "completed".to_string() },
+        ];
+
+        let effective_status = compute_effective_status("in_progress", &step_statuses);
+
+        // The backend-authoritative override must produce "completed".
+        assert_eq!(
+            effective_status, "completed",
+            "status should be overridden to 'completed' when all steps are completed"
+        );
+
+        // Persist the effective status and verify it lands in the DB.
+        crate::db::save_workflow_run(&conn, "test-skill", 3, &effective_status, "domain").unwrap();
+        for step in &step_statuses {
+            crate::db::save_workflow_step(&conn, "test-skill", step.step_id, &step.status).unwrap();
+        }
+
+        let run = crate::db::get_workflow_run(&conn, "test-skill").unwrap().unwrap();
+        assert_eq!(
+            run.status, "completed",
+            "DB status should be 'completed' after all steps complete"
+        );
+    }
+
+    #[test]
+    fn test_partial_steps_completed_does_not_override_status() {
+        let step_statuses = vec![
+            StepStatusUpdate { step_id: 0, status: "completed".to_string() },
+            StepStatusUpdate { step_id: 1, status: "in_progress".to_string() },
+        ];
+
+        let effective_status = compute_effective_status("in_progress", &step_statuses);
+        assert_eq!(
+            effective_status, "in_progress",
+            "status should NOT be overridden when not all steps are completed"
+        );
+    }
+
+    #[test]
+    fn test_empty_step_statuses_does_not_override_status() {
+        let step_statuses: Vec<StepStatusUpdate> = vec![];
+        let effective_status = compute_effective_status("pending", &step_statuses);
+        assert_eq!(
+            effective_status, "pending",
+            "status should NOT be overridden when step_statuses is empty"
+        );
+    }
+
+    #[test]
+    fn test_completed_status_sent_by_frontend_is_preserved() {
+        // If the frontend already sends "completed" AND all steps are completed, the result
+        // should still be "completed" (override is a no-op).
+        let step_statuses = vec![
+            StepStatusUpdate { step_id: 0, status: "completed".to_string() },
+            StepStatusUpdate { step_id: 1, status: "completed".to_string() },
+        ];
+        let effective_status = compute_effective_status("completed", &step_statuses);
+        assert_eq!(effective_status, "completed");
+    }
+
+    /// TC-06: Test the full DB path of save_workflow_run + save_workflow_step
+    /// with the all-completed override. This exercises the actual database
+    /// persistence, not just the compute_effective_status helper.
+    #[test]
+    fn test_all_completed_override_full_db_path() {
+        let conn = create_test_db();
+
+        // Create initial workflow run as "in_progress"
+        crate::db::save_workflow_run(&conn, "tc06-skill", 3, "in_progress", "domain").unwrap();
+
+        // Simulate what save_workflow_state does: compute effective status, then persist
+        let step_statuses = vec![
+            StepStatusUpdate { step_id: 0, status: "completed".to_string() },
+            StepStatusUpdate { step_id: 1, status: "completed".to_string() },
+            StepStatusUpdate { step_id: 2, status: "completed".to_string() },
+            StepStatusUpdate { step_id: 3, status: "completed".to_string() },
+        ];
+
+        // Frontend sends "pending" but all steps are completed
+        let effective_status = compute_effective_status("pending", &step_statuses);
+        assert_eq!(effective_status, "completed");
+
+        // Persist the override status and all step statuses to DB
+        crate::db::save_workflow_run(&conn, "tc06-skill", 3, &effective_status, "domain").unwrap();
+        for step in &step_statuses {
+            crate::db::save_workflow_step(&conn, "tc06-skill", step.step_id, &step.status).unwrap();
+        }
+
+        // Verify DB state: run status must be "completed"
+        let run = crate::db::get_workflow_run(&conn, "tc06-skill").unwrap().unwrap();
+        assert_eq!(run.status, "completed");
+
+        // Verify all steps are "completed" in DB
+        let steps = crate::db::get_workflow_steps(&conn, "tc06-skill").unwrap();
+        assert_eq!(steps.len(), 4);
+        for step in &steps {
+            assert_eq!(step.status, "completed", "step {} should be completed", step.step_id);
+        }
+    }
+
 }
 
 /// Output files produced by each step, relative to the skill directory.
@@ -212,6 +362,7 @@ pub fn get_disabled_steps(
     skill_name: String,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<u32>, String> {
+    validate_skill_name(&skill_name)?;
     log::info!("[get_disabled_steps] skill={}", skill_name);
     let workspace_path =
         read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
@@ -233,6 +384,7 @@ pub fn get_clarifications_content(
     skill_name: String,
     workspace_path: String,
 ) -> Result<String, String> {
+    validate_skill_name(&skill_name)?;
     let path = workspace_context_dir(&workspace_path, &skill_name).join("clarifications.json");
     std::fs::read_to_string(&path).map_err(|e| {
         format!(
@@ -249,6 +401,7 @@ pub fn save_clarifications_content(
     workspace_path: String,
     content: String,
 ) -> Result<(), String> {
+    validate_skill_name(&skill_name)?;
     let parsed: serde_json::Value = serde_json::from_str(&content)
         .map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
     validate_clarifications_json(&parsed)
@@ -278,6 +431,7 @@ pub fn save_clarifications_content(
 
 #[tauri::command]
 pub fn get_decisions_content(skill_name: String, workspace_path: String) -> Result<String, String> {
+    validate_skill_name(&skill_name)?;
     let path = workspace_context_dir(&workspace_path, &skill_name).join("decisions.json");
     std::fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read decisions from '{}': {}", path.display(), e))
@@ -289,6 +443,7 @@ pub fn save_decisions_content(
     workspace_path: String,
     content: String,
 ) -> Result<(), String> {
+    validate_skill_name(&skill_name)?;
     if content.trim().is_empty() {
         return Err("decisions.json content cannot be empty".to_string());
     }
@@ -312,6 +467,7 @@ pub fn get_context_file_content(
     workspace_path: String,
     file_name: String,
 ) -> Result<String, String> {
+    validate_skill_name(&skill_name)?;
     if file_name.contains('/') || file_name.contains('\\') || file_name.contains("..") {
         return Err("Invalid context file name".to_string());
     }
@@ -327,6 +483,7 @@ pub fn reset_workflow_step(
     from_step_id: u32,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
+    validate_skill_name(&skill_name)?;
     log::info!(
         "[reset_workflow_step] CALLED skill={} from_step={} from_step_id={} workspace={}",
         skill_name,
@@ -491,6 +648,10 @@ pub fn reset_legacy_skills(
         read_skills_path(&db).ok_or_else(|| "Skills path not configured".to_string())?;
     let workspace_path =
         read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
+
+    for name in &skill_names {
+        validate_skill_name(name)?;
+    }
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 

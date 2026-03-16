@@ -20,7 +20,7 @@ export default defineConfig({
     {
       // PR CI subset: fast functional checks for all main features
       name: "smoke",
-      grep: /@workflow|@dashboard|@refine|@settings|@skill-tester|@setup/,
+      grep: /@workflow|@dashboard|@refine|@settings|@skill-tester|@setup|@skills/,
       use: { ...devices["Desktop Chrome"] },
     },
     {

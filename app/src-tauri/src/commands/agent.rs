@@ -128,7 +128,7 @@ pub async fn start_agent(
         })?;
         let settings = crate::db::read_settings_hydrated(&conn)?;
         let key = match settings.anthropic_api_key {
-            Some(k) => k,
+            Some(k) => crate::types::SecretString::new(k),
             None => return Err("Anthropic API key not configured".to_string()),
         };
 

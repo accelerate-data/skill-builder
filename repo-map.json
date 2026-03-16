@@ -88,7 +88,7 @@
   "modules": {
     "frontend_components": {
       "path": "app/src/components/",
-      "description": "Reusable UI components (GitHub login, error boundary, research summary, etc.)"
+      "description": "Reusable UI components. Sub-directories: agent-items/ (display item renderers: base, error, output, result, subagent, thinking, tool), layout/ (app-layout, header, sidebar), refine/ (chat panel, chat input, preview panel, git patch view, skill picker), settings/ (general, github, marketplace, sdk, advanced sections), ui/ (shadcn/ui primitives). Flat components include skill cards, dialogs (delete, import, github, skill, feedback, reset, transition-gate), clarifications-editor, workflow-step-complete, agent panels, and more."
     },
     "frontend_pages": {
       "path": "app/src/pages/",
@@ -100,31 +100,35 @@
     },
     "frontend_hooks": {
       "path": "app/src/hooks/",
-      "description": "Custom React hooks: agent streaming, node validation"
+      "description": "Custom React hooks: agent streaming, workflow state machine, workflow session/persistence/autosave, test orchestration, settings form, scope blocking, marketplace registries, node validation, leave guard"
     },
     "frontend_lib": {
       "path": "app/src/lib/",
-      "description": "Utilities: Tauri invocation, toast, workflow step definitions, clarification types, help URLs"
+      "description": "Utilities and shared types: tauri.ts (typed Tauri command wrappers), types.ts (shared TS types), agent-events.ts (frontend AgentEvent types), display-types.ts (DisplayItem types), agent-results.ts (result parsing), eval-parser.ts (eval output parsing), models.ts (model list), workflow-steps.ts + workflow-step-configs.ts (step definitions), clarifications-types.ts, path-utils.ts, app-log.ts, help-urls.ts, toast.ts, utils.ts"
     },
     "rust_commands": {
       "path": "app/src-tauri/src/commands/",
-      "description": "Tauri command handlers. Flat files: agent, skill, workspace, settings, refine, usage, github_auth, skill_test, clarification, feedback, files, git, lifecycle, node, sidecar_lifecycle, workflow_lifecycle, test_utils. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, packaging, runtime, evaluation), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands)"
+      "description": "Tauri command handlers. Flat files: agent, clarification, feedback, files, git, github_auth, lifecycle, node, settings, sidecar_lifecycle, skill_test, test_utils, usage, workflow_artifacts, workflow_lifecycle, workspace. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, packaging, runtime, evaluation, tests), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands), skill/ (crud, metadata, suggestions, tests), refine/ (content, diff, output, protocol, tests)"
     },
     "rust_db": {
       "path": "app/src-tauri/src/db/",
-      "description": "SQLite schema, migrations (code-only), and query helpers. Sub-modules: mod.rs (Db struct, init_db, pub use re-exports, all tests), migrations.rs (NUMBERED_MIGRATIONS + 41 migration fns), skills.rs (skill CRUD/workflow runs/steps/tags), usage.rs (persist_agent_run/usage queries), settings.rs (read/write settings), imported_skills.rs (imported skill CRUD/hash tracking), locks.rs (skill locks/check_pid_alive), workflow.rs (workflow sessions)."
+      "description": "SQLite schema, migrations (code-only), and query helpers. Sub-modules: mod.rs (Db struct, init_db, pub use re-exports), migrations.rs (NUMBERED_MIGRATIONS + migration functions), skills.rs (skill CRUD/workflow runs/steps/tags), usage.rs (persist_agent_run/usage queries), settings.rs (read/write settings), imported_skills.rs (imported skill CRUD/hash tracking), locks.rs (skill locks/check_pid_alive), workflow.rs (workflow sessions), tests.rs (all DB tests)."
     },
     "rust_agents": {
       "path": "app/src-tauri/src/agents/",
-      "description": "Agent runtime: sidecar process pool, event routing, lifecycle"
+      "description": "Agent runtime. Files: sidecar_pool.rs (persistent sidecar lifecycle, stream dispatch, multi-turn sessions), events.rs (routes agent_event subtypes, persists run_result, emits Tauri frontend events), sidecar.rs (sidecar process spawning), sidecar_path.rs (resolves sidecar binary path), node_resolver.rs (Node.js binary resolution with platform-specific logic)."
     },
     "sidecar_runner": {
       "path": "app/sidecar/agent-runner.ts",
-      "description": "JSONL protocol handler, SDK invocation, reads stdin JSON config, streams events to stdout"
+      "description": "Entry point: reads stdin JSON config, calls SDK query(), streams JSONL events to stdout"
     },
     "sidecar_events": {
       "path": "app/sidecar/agent-events.ts",
       "description": "Canonical AgentEvent type definitions — service boundary contract between sidecar and Rust"
+    },
+    "sidecar_core": {
+      "path": "app/sidecar/",
+      "description": "Supporting sidecar modules: persistent-mode.ts (message demultiplexer, routes one-shot vs streaming requests), run-agent.ts (executes a single agent request), stream-session.ts (async generator push pattern for multi-turn streaming), message-processor.ts (transforms SDK messages into DisplayItems and AgentEvents), message-classifier.ts (classifies SDK message types), run-metadata-accumulator.ts (accumulates run-level metadata), tool-summaries.ts (context-aware tool call summaries), display-types.ts (DisplayItem types), config.ts + options.ts (SDK config builders), error-labels.ts (user-facing error strings), research-tools.ts (research tool definitions), shutdown.ts (graceful shutdown handler)"
     },
     "sidecar_mock": {
       "path": "app/sidecar/mock-agent.ts",
@@ -139,22 +143,42 @@
       "description": "Plugin definitions: skill-content-researcher, skill-creator, vd-agent"
     },
     "workspace_instructions": {
-      "path": "agent-sources/workspace/CLAUDE.md",
-      "description": "Shared agent instructions deployed to workspace .claude/CLAUDE.md at app startup"
+      "path": "agent-sources/workspace/",
+      "description": "Agent workspace instructions deployed at startup. CLAUDE.md (full instructions → workspace .claude/CLAUDE.md), CLAUDE-MINIMAL.md (lightweight variant), prompts/ (shared prompt fragments injected into workspace)"
+    },
+    "rust_reconciliation": {
+      "path": "app/src-tauri/src/reconciliation/",
+      "description": "Startup DB↔filesystem reconciliation state machine. mod.rs (entry point: reconcile_on_startup, resolve_orphan, preview), skill_builder.rs (skill-builder skill reconciliation scenarios), marketplace.rs (marketplace skill reconciliation), tests.rs (scenario coverage tests). See docs/design/startup-recon/ for full scenario matrix."
+    },
+    "rust_types": {
+      "path": "app/src-tauri/src/types/",
+      "description": "Shared Rust types split by domain. mod.rs (re-exports), settings.rs (AppSettings, MarketplaceRegistry), github.rs (GitHubUser, DeviceFlowResponse), workflow.rs (WorkflowRunRow, StepConfig, WorkflowStateResponse), skill.rs (SkillSummary, DiscoveredSkill), usage.rs (UsageSummary, AgentRunRecord), refine.rs (refine session types), startup.rs (ReconciliationResult, startup types), secret.rs (SecretString, ApiKey newtypes with redacted Debug/Display)."
+    },
+    "rust_support": {
+      "path": "app/src-tauri/src/",
+      "description": "Top-level Rust support modules (not commands or DB): cleanup.rs (future-step artifact cleanup), fs_validation.rs (detect_furthest_step, has_skill_output, path validation helpers), git.rs (git commit/init helpers for skill output repos), logging.rs (structured logging setup, log-level management)."
+    },
+    "frontend_test_utils": {
+      "path": "app/src/test/",
+      "description": "Frontend test infrastructure: setup.ts (global Vitest setup), fixtures.ts (shared test data factories), mocks/ (Tauri invoke mocks, store mocks, router mocks used across unit and component tests)."
     }
   },
   "key_directories": {
-    "app/src/": "Frontend React/TypeScript runtime (components, pages, stores, hooks, lib, tests)",
-    "app/src-tauri/src/": "Rust backend runtime (Tauri commands, DB, agents, logging, startup)",
+    "app/src/": "Frontend React/TypeScript runtime (components, pages, stores, hooks, lib, styles, test, router)",
+    "app/src/styles/": "Global CSS: globals.css defines Tailwind 4 base, AD brand CSS variables (--color-seafoam, --color-pacific, --color-ocean), dark-mode tokens. Source of truth for all design tokens — never use raw Tailwind palette classes.",
+    "app/src/test/": "Frontend test infrastructure: setup.ts (Vitest global setup), fixtures.ts (test data factories), mocks/ (Tauri invoke mocks, store mocks, router mocks). Distinguished from app/src/__tests__/ which contains the actual test files.",
+    "app/src/__tests__/": "Frontend unit/integration tests, mirroring src/ structure: components/, guards/, hooks/, lib/, pages/, stores/",
+    "app/src-tauri/src/": "Rust backend runtime (Tauri commands, DB, agents, types, reconciliation, support modules)",
     "app/sidecar/": "Node.js/TypeScript agent sidecar (JSONL protocol, SDK invocation, mock mode)",
-    "app/e2e/": "Playwright E2E tests only",
-    "app/src/__tests__/": "Frontend unit/integration tests",
-    "app/sidecar/__tests__/": "Sidecar unit tests",
-    "agent-sources/agents/": "Agent prompts — flat directory, validated by scripts/validate.sh",
-    "agent-sources/plugins/": "Plugin definitions (skills, agents, MCP config, tooling)",
-    "docs/user-guide/": "VitePress user documentation, deployed via docs.yml",
-    "docs/design/": "Design docs and architecture decision records",
-    ".claude/rules/": "Shared agent rules (agent-agnostic, detailed policy)",
+    "app/sidecar/__tests__/": "Sidecar unit tests (one test file per sidecar module)",
+    "app/e2e/": "Playwright E2E tests. Sub-directories: dashboard, workflow, refine, settings, usage, skill-tester, skills-library, integration, desktop-smoke, fixtures, helpers, setup",
+    "agent-sources/agents/": "Agent prompt .md files — flat directory, structurally validated by test:agents:structural",
+    "agent-sources/workspace/": "Workspace agent instructions: CLAUDE.md (full), CLAUDE-MINIMAL.md (lightweight), prompts/ (shared fragments). Deployed to workspace .claude/ at app startup.",
+    "agent-sources/plugins/": "Plugin definitions: skill-content-researcher, skill-creator, vd-agent",
+    "docs/design/": "Architecture decision records and design specs: agent-specs, backend-design, startup-recon, workflow-state, clarifications-rendering, skill-tester, skills-marketplace, and more. Primary reference for non-obvious design decisions.",
+    "docs/user-guide/": "VitePress user documentation, deployed via docs.yml to GitHub Pages",
+    "docs/references/": "Vendored external reference docs (e.g. Anthropic API snapshots)",
+    ".claude/rules/": "Shared agent rules (agent-agnostic, detailed policy). Referenced from AGENTS.md.",
     ".claude/skills/": "Workflow playbooks for Claude Code CLI skills",
     "scripts/": "Developer and automation scripts"
   },
@@ -213,26 +237,35 @@
     "pr_title": "VU-XXX: short description",
     "pr_body": "Fixes VU-XXX",
     "worktrees": "../worktrees/<branchName> relative to repo root",
-    "linear_project": "All issues for this repo go under Skill Builder"
+    "linear_project": "All issues for this repo go under Skill Builder",
+    "file_size_and_responsibility": "Keep files focused on one concern. Split when a file exceeds ~300 lines (frontend TS/TSX) or ~400 lines (Rust command file). Rust: extract sub-module directories when a command group combines API surface, orchestration, persistence, and filesystem ops. Frontend: extract sub-components, custom hooks, or lib utilities rather than growing a component or page inline.",
+    "no_monoliths": "A Tauri command file should define commands and delegate to helpers — not own query logic, filesystem ops, and business rules simultaneously. A React component should render — not own a state machine, data fetching, and complex transformations inline. When in doubt, split."
   },
   "key_references": {
     "artifact_contracts": "docs/design/agent-specs/canonical-format.md — high-level artifact format contracts",
     "research_output_schema": "agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md — canonical research_output schema",
+    "startup_recon_design": "docs/design/startup-recon/ — reconciliation scenario matrix (scenarios 1–12), used by reconciliation/",
     "coding_conventions": ".claude/rules/coding-conventions.md — naming, error handling",
     "frontend_rules": ".claude/rules/frontend-design.md — AD brand, component constraints, state indicators",
     "rust_rules": ".claude/rules/rust-backend.md — command conventions, error types, Rust testing",
-    "sidecar_rules": ".claude/rules/agent-sidecar.md — JSONL protocol, sidecar constraints"
+    "sidecar_rules": ".claude/rules/agent-sidecar.md — JSONL protocol, sidecar constraints",
+    "db_change_protocol": ".claude/rules/db-schema-change.md — mandatory protocol for any schema, migration, or persistence change",
+    "windows_compat": ".claude/rules/windows-compat.md — path separators, CRLF, env-var syntax, Rust toolchain. Read before writing path assertions, regex, package.json scripts, or CI config.",
+    "logging_policy": ".claude/rules/logging-policy.md — log levels, sensitive data redaction, structured logging, correlation IDs",
+    "test_manifest": "TEST_MANIFEST.md — Rust command → E2E tag mappings, shared infra blast radius, cross-boundary format compliance. Read before choosing tests for Rust or cross-layer changes."
   },
   "notes_for_agents": {
     "startup": "Read this file before exploring code. It is the primary startup context for structure, entrypoints, modules, and commands. Skip repo-wide rediscovery if it covers your task.",
-    "sidecar_hot_reload": "Sidecar has NO hot-reload. Restart `npm run dev` after editing app/sidecar/ files.",
-    "sdk_limitations": "@anthropic-ai/claude-agent-sdk does NOT support TeamCreate, TaskCreate, SendMessage. Use the Task tool for sub-agents. Multiple Task calls in the same turn run in parallel.",
     "test_autonomy": "Only `test:agents:structural` may be run autonomously — no API calls. Never run `test:agents:smoke` autonomously.",
-    "db_location": "Database is at Tauri app_data_dir()/skill-builder.db — NOT in the workspace (~/.vibedata/). macOS: ~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db",
+    "db_location": "Database is at Tauri app_data_dir()/skill-builder.db. macOS: ~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db",
     "migrations": "DB migrations are code-only in db/migrations.rs NUMBERED_MIGRATIONS constant — no separate migration files directory.",
-    "workspace_path": "Default workspace: ~/.vibedata/ (configurable). Set by resolve_workspace_path() in workspace.rs.",
+    "workspace_path": "Workspace: <app_local_data_dir>/workspace (not user-configurable). Resolved from Tauri app_local_data_dir() by resolve_workspace_path() in commands/workspace.rs. Legacy ~/.vibedata/ path is cleaned up automatically on startup.",
     "mock_mode": "MOCK_AGENTS=true replays bundled templates in app/sidecar/mock-templates/ with no API calls.",
     "agent_tests_changed": "When agents/*.md or agent-sources/workspace/** changes, run `cd app && npm run test:agents:structural` before reporting completion.",
+    "sdk_limitations": "See AGENTS.md Gotchas — SDK has no team tools (no TeamCreate/TaskCreate/SendMessage). Use the Task tool for sub-agents; multiple Task calls in the same turn run in parallel.",
+    "pre_commit_checks": "See AGENTS.md Issue Management for the full pre-commit checklist (markdownlint, tsc, cargo check, lint-agent-docs).",
+    "test_selection": "For Rust or cross-layer changes, read TEST_MANIFEST.md to find the correct cargo filter and E2E tag before running tests. Frontend test selection is handled automatically by `vitest --changed`.",
+    "path_safety": "All filesystem operations on user-supplied skill names must call validate_skill_name() and use fs::canonicalize + starts_with before any remove_dir_all or rename. See commands/skill/crud.rs delete_skill_inner for the canonical pattern.",
     "update_repo_map": "Refresh this file whenever you change architecture, entrypoints, commands, modules, or package structure."
   }
 }

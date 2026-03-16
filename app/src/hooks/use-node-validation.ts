@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { checkStartupDeps } from "@/lib/tauri";
 import type { StartupDeps } from "@/lib/types";
 
 interface UseStartupDepsReturn {
@@ -19,7 +19,7 @@ export function useNodeValidation(): UseStartupDepsReturn {
     setError(null);
     setDeps(null);
 
-    invoke<StartupDeps>("check_startup_deps")
+    checkStartupDeps()
       .then((result) => {
         setDeps(result);
         setIsChecking(false);

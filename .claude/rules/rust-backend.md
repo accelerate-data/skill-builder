@@ -42,7 +42,7 @@ message mapping only when adding user-facing context.
 ## Testing
 
 Inline `#[cfg(test)]` tests in the same file as the command where practical. Use
-`crate::db::open_in_memory()` to create a migrated in-memory SQLite connection:
+`crate::db::create_test_db_for_tests()` to create a migrated in-memory SQLite connection:
 
 ```rust
 #[cfg(test)]
@@ -52,7 +52,7 @@ mod tests {
 
     #[test]
     fn creates_workspace_and_retrieves_it() {
-        let conn = db::open_in_memory().expect("in-memory db");
+        let conn = db::create_test_db_for_tests();
         // ... exercise command logic directly against conn
     }
 }
@@ -71,9 +71,9 @@ cargo test --manifest-path app/src-tauri/Cargo.toml db  # module filter
 |---|---|
 | `src/commands/` | One file per command group (workflow, workspace, skill, settings, …) |
 | `src/agents/sidecar_pool.rs` | Persistent sidecar lifecycle and stream dispatch |
-| `src/db.rs` | SQLite via rusqlite — schema in `docs/design/backend-design/database.md` |
-| `src/reconciliation.rs` | Startup state machine — see `docs/design/startup-recon/` |
-| `src/types.rs` | Shared Rust types |
+| `src/db/` | SQLite via rusqlite — schema in `docs/design/backend-design/database.md` |
+| `src/reconciliation/` | Startup state machine — see `docs/design/startup-recon/` |
+| `src/types/` | Shared Rust types |
 | `src/fs_validation.rs` | Filesystem validation helpers |
 
 See `TEST_MANIFEST.md` for the Rust module → E2E tag mapping.

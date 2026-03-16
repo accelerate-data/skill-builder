@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   useAgentStore,
   formatModelName,
@@ -9,6 +9,7 @@ import {
   getPendingTerminalCount,
   getPendingMetadataCount,
   flushDisplayItems,
+  getPhantomTimerCount,
 } from "@/stores/agent-store";
 import type { DisplayItem } from "@/lib/display-types";
 
@@ -640,6 +641,89 @@ describe("displayItems management", () => {
 });
 
 // =============================================================================
+// Phantom run reaper (CM-04)
+// =============================================================================
+
+describe("phantom run reaper", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useAgentStore.getState().clearRuns();
+    resetAgentStoreInternals();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("auto-created run is reaped after 30s if startRun never arrives", () => {
+    // Simulate display items arriving before startRun
+    useAgentStore.getState().addDisplayItem("phantom-1", makeDisplayItem({
+      type: "output",
+      outputText: "early message",
+    }));
+    flushDisplayItems();
+
+    const run = useAgentStore.getState().runs["phantom-1"];
+    expect(run).toBeDefined();
+    expect(run.model).toBe("unknown");
+    expect(run.status).toBe("running");
+    expect(getPhantomTimerCount()).toBe(1);
+
+    // Advance past the 30s TTL
+    vi.advanceTimersByTime(30_000);
+
+    const reaped = useAgentStore.getState().runs["phantom-1"];
+    expect(reaped.status).toBe("error");
+    expect(reaped.endTime).toBeDefined();
+    expect(getPhantomTimerCount()).toBe(0);
+  });
+
+  it("startRun cancels the phantom timer", () => {
+    useAgentStore.getState().addDisplayItem("phantom-2", makeDisplayItem({
+      type: "output",
+      outputText: "early",
+    }));
+    flushDisplayItems();
+    expect(getPhantomTimerCount()).toBe(1);
+
+    // startRun resolves the phantom — timer should be cancelled
+    useAgentStore.getState().startRun("phantom-2", "sonnet");
+    expect(getPhantomTimerCount()).toBe(0);
+
+    // Advancing time should NOT reap it
+    vi.advanceTimersByTime(30_000);
+    const run = useAgentStore.getState().runs["phantom-2"];
+    expect(run.model).toBe("sonnet");
+    expect(run.status).toBe("running");
+  });
+
+  it("completeRun cancels the phantom timer", () => {
+    useAgentStore.getState().addDisplayItem("phantom-3", makeDisplayItem({
+      type: "output",
+      outputText: "early",
+    }));
+    flushDisplayItems();
+    expect(getPhantomTimerCount()).toBe(1);
+
+    useAgentStore.getState().completeRun("phantom-3", true);
+    expect(getPhantomTimerCount()).toBe(0);
+
+    const run = useAgentStore.getState().runs["phantom-3"];
+    expect(run.status).toBe("completed");
+  });
+
+  it("clearRuns cancels all phantom timers", () => {
+    useAgentStore.getState().addDisplayItem("phantom-4", makeDisplayItem({ type: "output", outputText: "a" }));
+    useAgentStore.getState().addDisplayItem("phantom-5", makeDisplayItem({ type: "output", outputText: "b" }));
+    flushDisplayItems();
+    expect(getPhantomTimerCount()).toBe(2);
+
+    useAgentStore.getState().clearRuns();
+    expect(getPhantomTimerCount()).toBe(0);
+  });
+});
+
+// =============================================================================
 // Pending metadata buffer (VU-507)
 // =============================================================================
 
@@ -714,6 +798,54 @@ describe("agent event buffering", () => {
     expect(useAgentStore.getState().runs["agent-buf-5"].sessionId).toBeUndefined();
   });
 
+});
+
+describe("applyContextWindow behavior", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+  });
+
+  it("sets contextWindow when a new value arrives", () => {
+    useAgentStore.getState().startRun("agent-cw", "sonnet");
+
+    useAgentStore.getState().applyContextWindow("agent-cw", {
+      type: "context_window",
+      contextWindow: 150_000,
+    });
+
+    const run = useAgentStore.getState().runs["agent-cw"];
+    expect(run.contextWindow).toBe(150_000);
+  });
+
+  it("accepts a smaller contextWindow replacing a larger one (unconditional update)", () => {
+    useAgentStore.getState().startRun("agent-cw2", "sonnet");
+
+    // First event: large window
+    useAgentStore.getState().applyContextWindow("agent-cw2", {
+      type: "context_window",
+      contextWindow: 300_000,
+    });
+    expect(useAgentStore.getState().runs["agent-cw2"].contextWindow).toBe(300_000);
+
+    // Second event: smaller window — accepted unconditionally (model may shrink window)
+    useAgentStore.getState().applyContextWindow("agent-cw2", {
+      type: "context_window",
+      contextWindow: 100_000,
+    });
+    expect(useAgentStore.getState().runs["agent-cw2"].contextWindow).toBe(100_000);
+  });
+
+  it("ignores zero or negative contextWindow values", () => {
+    useAgentStore.getState().startRun("agent-cw3", "sonnet");
+    const originalWindow = useAgentStore.getState().runs["agent-cw3"].contextWindow;
+
+    useAgentStore.getState().applyContextWindow("agent-cw3", {
+      type: "context_window",
+      contextWindow: 0,
+    });
+
+    expect(useAgentStore.getState().runs["agent-cw3"].contextWindow).toBe(originalWindow);
+  });
 });
 
 describe("module-level internal state", () => {

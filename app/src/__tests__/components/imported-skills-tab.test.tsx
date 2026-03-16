@@ -97,6 +97,7 @@ function setupMocks(skills: ImportedSkill[] = sampleSkills) {
   mockInvoke.mockImplementation((cmd: string) => {
     if (cmd === "get_settings") return Promise.resolve(defaultSettings);
     if (cmd === "list_imported_skills") return Promise.resolve(skills);
+    if (cmd === "import_skill_from_file") return Promise.resolve("skill-id");
     return Promise.reject(new Error(`Unmocked command: ${cmd}`));
   });
 }
@@ -122,7 +123,7 @@ describe("ImportedSkillsTab", () => {
     render(<ImportedSkillsTab />);
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("list_imported_skills");
+      expect(mockInvoke).toHaveBeenCalledWith("list_imported_skills", { sourceUrl: null });
     });
 
     const skeletons = document.querySelectorAll(".animate-pulse");
@@ -174,7 +175,7 @@ describe("ImportedSkillsTab", () => {
     render(<ImportedSkillsTab />);
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("list_imported_skills");
+      expect(mockInvoke).toHaveBeenCalledWith("list_imported_skills", { sourceUrl: null });
     });
 
     await waitFor(() => {

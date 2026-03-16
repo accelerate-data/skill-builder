@@ -1,36 +1,20 @@
 use std::path::Path;
 
 use super::step_config::validate_clarifications_json;
+use crate::commands::workflow_artifacts::{
+    AnswerEvaluationOutput, DecisionsOutput, DetailedResearchOutput, GenerateSkillOutput,
+    ResearchStepOutput,
+};
 
 pub(crate) fn materialize_workflow_step_output_value(
     skill_root: &Path,
     step_id: u32,
     structured_output: &serde_json::Value,
 ) -> Result<(), String> {
-    let payload = structured_output
-        .as_object()
-        .ok_or_else(|| "structured_output must be a JSON object".to_string())?;
-
-    let require_int = |field: &str| -> Result<i64, String> {
-        payload
-            .get(field)
-            .and_then(|v| v.as_i64())
-            .ok_or_else(|| format!("structured_output.{} must be an integer", field))
-    };
-
-    let require_const_status = |expected: &str| -> Result<(), String> {
-        let actual = payload
-            .get("status")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "structured_output.status must be a string".to_string())?;
-        if actual != expected {
-            return Err(format!(
-                "structured_output.status must be '{}' but got '{}'",
-                expected, actual
-            ));
-        }
-        Ok(())
-    };
+    // Require a top-level object so error messages remain identical to the original contract.
+    if !structured_output.is_object() {
+        return Err("structured_output must be a JSON object".to_string());
+    }
 
     let context_dir = skill_root.join("context");
     std::fs::create_dir_all(&context_dir).map_err(|e| {
@@ -43,15 +27,21 @@ pub(crate) fn materialize_workflow_step_output_value(
 
     match step_id {
         0 => {
-            require_const_status("research_complete")?;
-            let _ = require_int("dimensions_selected")?;
-            let _ = require_int("question_count")?;
-            let clarifications = payload
-                .get("research_output")
-                .ok_or_else(|| "structured_output.research_output is required".to_string())?;
-            validate_clarifications_json(clarifications)
+            let parsed =
+                serde_json::from_value::<ResearchStepOutput>(structured_output.clone())
+                    .map_err(|e| format!("invalid research step output: {}", e))?;
+
+            if parsed.status != "research_complete" {
+                return Err(format!(
+                    "structured_output.status must be 'research_complete' but got '{}'",
+                    parsed.status
+                ));
+            }
+
+            validate_clarifications_json(&parsed.research_output)
                 .map_err(|e| format!("Invalid research_output: {}", e))?;
-            let clarifications_pretty = serde_json::to_string_pretty(clarifications)
+
+            let clarifications_pretty = serde_json::to_string_pretty(&parsed.research_output)
                 .map_err(|e| format!("Failed to serialize research_output: {}", e))?;
 
             let clarifications_path = context_dir.join("clarifications.json");
@@ -65,15 +55,21 @@ pub(crate) fn materialize_workflow_step_output_value(
             Ok(())
         }
         1 => {
-            require_const_status("detailed_research_complete")?;
-            let _ = require_int("refinement_count")?;
-            let _ = require_int("section_count")?;
-            let clarifications = payload
-                .get("clarifications_json")
-                .ok_or_else(|| "structured_output.clarifications_json is required".to_string())?;
-            validate_clarifications_json(clarifications)
+            let parsed =
+                serde_json::from_value::<DetailedResearchOutput>(structured_output.clone())
+                    .map_err(|e| format!("invalid detailed research output: {}", e))?;
+
+            if parsed.status != "detailed_research_complete" {
+                return Err(format!(
+                    "structured_output.status must be 'detailed_research_complete' but got '{}'",
+                    parsed.status
+                ));
+            }
+
+            validate_clarifications_json(&parsed.clarifications_json)
                 .map_err(|e| format!("Invalid clarifications_json: {}", e))?;
-            let clarifications_pretty = serde_json::to_string_pretty(clarifications)
+
+            let clarifications_pretty = serde_json::to_string_pretty(&parsed.clarifications_json)
                 .map_err(|e| format!("Failed to serialize clarifications_json: {}", e))?;
 
             let clarifications_path = context_dir.join("clarifications.json");
@@ -87,9 +83,11 @@ pub(crate) fn materialize_workflow_step_output_value(
             Ok(())
         }
         2 => {
-            let decisions_pretty =
-                serde_json::to_string_pretty(&serde_json::Value::Object(payload.clone()))
-                    .map_err(|e| format!("Failed to serialize decisions: {}", e))?;
+            let parsed = serde_json::from_value::<DecisionsOutput>(structured_output.clone())
+                .map_err(|e| format!("invalid decisions output: {}", e))?;
+
+            let decisions_pretty = serde_json::to_string_pretty(&parsed)
+                .map_err(|e| format!("Failed to serialize decisions: {}", e))?;
             let decisions_path = context_dir.join("decisions.json");
             std::fs::write(&decisions_path, decisions_pretty).map_err(|e| {
                 format!(
@@ -101,18 +99,24 @@ pub(crate) fn materialize_workflow_step_output_value(
             Ok(())
         }
         3 => {
-            require_const_status("generated")?;
-            let evaluations_markdown = payload
-                .get("evaluations_markdown")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| {
-                    "structured_output.evaluations_markdown must be a string".to_string()
-                })?;
-            if evaluations_markdown.trim().is_empty() {
-                return Err("structured_output.evaluations_markdown must not be empty".to_string());
+            let parsed =
+                serde_json::from_value::<GenerateSkillOutput>(structured_output.clone())
+                    .map_err(|e| format!("invalid generate skill output: {}", e))?;
+
+            if parsed.status != "generated" {
+                return Err(format!(
+                    "structured_output.status must be 'generated' but got '{}'",
+                    parsed.status
+                ));
             }
+            if parsed.evaluations_markdown.trim().is_empty() {
+                return Err(
+                    "structured_output.evaluations_markdown must not be empty".to_string(),
+                );
+            }
+
             let evaluations_path = context_dir.join("evaluations.md");
-            std::fs::write(&evaluations_path, evaluations_markdown).map_err(|e| {
+            std::fs::write(&evaluations_path, &parsed.evaluations_markdown).map_err(|e| {
                 format!(
                     "Failed to write evaluations '{}': {}",
                     evaluations_path.display(),
@@ -328,8 +332,14 @@ pub(crate) fn materialize_answer_evaluation_output_value(
     workspace_dir: &Path,
     structured_output: &serde_json::Value,
 ) -> Result<(), String> {
+    // Parse into typed struct first — deserialization failure is the boundary check.
+    let parsed = serde_json::from_value::<AnswerEvaluationOutput>(structured_output.clone())
+        .map_err(|e| format!("invalid answer evaluation output: {}", e))?;
+
+    // Run the existing semantic validation on top (verdict enum, vague/contradictory rules).
     validate_answer_evaluation_json(structured_output)
         .map_err(|e| format!("Invalid answer evaluation output: {}", e))?;
+
     std::fs::create_dir_all(workspace_dir).map_err(|e| {
         format!(
             "Failed to create workspace directory '{}': {}",
@@ -338,7 +348,7 @@ pub(crate) fn materialize_answer_evaluation_output_value(
         )
     })?;
     let output_path = workspace_dir.join("answer-evaluation.json");
-    let content = serde_json::to_string_pretty(structured_output)
+    let content = serde_json::to_string_pretty(&parsed)
         .map_err(|e| format!("Failed to serialize answer evaluation output: {}", e))?;
     std::fs::write(&output_path, content).map_err(|e| {
         format!(

@@ -1,5 +1,4 @@
 import { useState } from "react"
-import { invoke } from "@tauri-apps/api/core"
 import { save } from "@tauri-apps/plugin-dialog"
 import { toast } from "@/lib/toast"
 import { Download, Eye, Trash2 } from "lucide-react"
@@ -13,7 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
-import { exportSkill } from "@/lib/tauri"
+import { exportSkill, copyFile } from "@/lib/tauri"
 import type { ImportedSkill } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -71,7 +70,7 @@ export default function ImportedSkillCard({
         filters: [{ name: "Zip Archive", extensions: ["zip"] }],
       })
       if (savePath) {
-        await invoke("copy_file", { src: zipPath, dest: savePath })
+        await copyFile(zipPath, savePath)
         toast.success(`Saved to ${savePath}`, { id: toastId })
       } else {
         toast.dismiss(toastId)

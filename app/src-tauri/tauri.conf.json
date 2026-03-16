@@ -26,6 +26,12 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": false
+      }
+    },
     "resources": {
       "../sidecar/dist/": "sidecar/dist",
       "../../agent-sources/agents/": "agent-sources/agents",

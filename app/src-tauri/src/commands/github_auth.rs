@@ -1,6 +1,7 @@
 use crate::db::Db;
 use crate::types::{DeviceFlowResponse, GitHubAuthResult, GitHubUser};
 
+// Public client ID — intentional for OAuth device flow; not a secret.
 const GITHUB_CLIENT_ID: &str = "Ov23lioPbQz4gAFxEfhM";
 
 /// Start the GitHub Device Flow by requesting a device code.
@@ -281,7 +282,7 @@ mod tests {
     fn test_github_get_user_returns_user_when_token_set() {
         let conn = create_test_db_for_tests();
         let mut settings = crate::db::read_settings(&conn).unwrap();
-        settings.github_oauth_token = Some("ghp_test_token".to_string());
+        settings.github_oauth_token = Some("test-oauth-token".to_string());
         settings.github_user_login = Some("octocat".to_string());
         settings.github_user_avatar = Some("https://github.com/octocat.png".to_string());
         settings.github_user_email = Some("octocat@github.com".to_string());
@@ -306,7 +307,7 @@ mod tests {
     fn test_github_logout_clears_all_oauth_fields() {
         let conn = create_test_db_for_tests();
         let mut settings = crate::db::read_settings(&conn).unwrap();
-        settings.github_oauth_token = Some("ghp_test_token".to_string());
+        settings.github_oauth_token = Some("test-oauth-token".to_string());
         settings.github_user_login = Some("octocat".to_string());
         settings.github_user_avatar = Some("https://github.com/octocat.png".to_string());
         settings.github_user_email = Some("octocat@github.com".to_string());
@@ -326,7 +327,7 @@ mod tests {
         let conn = create_test_db_for_tests();
         let mut settings = crate::db::read_settings(&conn).unwrap();
         settings.anthropic_api_key = Some("sk-ant-test-key".to_string());
-        settings.github_oauth_token = Some("ghp_test_token".to_string());
+        settings.github_oauth_token = Some("test-oauth-token".to_string());
         settings.github_user_login = Some("octocat".to_string());
         crate::db::write_settings(&conn, &settings).unwrap();
 

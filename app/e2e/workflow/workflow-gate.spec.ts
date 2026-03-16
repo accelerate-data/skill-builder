@@ -6,6 +6,7 @@
  * - Gate 1: after Research (step 0), before Detailed Research (step 1)
  * - Gate 2: after Detailed Research (step 1), before Confirm Decisions (step 2)
  */
+import path from "node:path";
 import { test, expect } from "@playwright/test";
 import {
   emitTauriEvent,
@@ -20,6 +21,8 @@ import {
   E2E_WORKSPACE_PATH,
   skillContextPath,
 } from "../helpers/test-paths";
+
+const GATE_AGENT_ID = "gate-agent-001";
 
 const RESEARCH_PLAN_CONTENT = `# Research Plan
 
@@ -99,7 +102,7 @@ const GATE1_OVERRIDES: Record<string, unknown> = {
     [SKILLS_RESEARCH_PLAN_PATH]: RESEARCH_PLAN_CONTENT,
     "*": RESEARCH_PLAN_CONTENT,
   },
-  run_answer_evaluator: "gate-agent-001",
+  run_answer_evaluator: GATE_AGENT_ID,
 };
 
 /** Gate 2 context: step 1 completed, continue from Detailed Research clarifications. */
@@ -116,7 +119,7 @@ const GATE2_OVERRIDES: Record<string, unknown> = {
     [SKILLS_CLARIFICATIONS_PATH]: CLARIFICATIONS_BASE,
     "*": RESEARCH_PLAN_CONTENT,
   },
-  run_answer_evaluator: "gate-agent-001",
+  run_answer_evaluator: GATE_AGENT_ID,
 };
 
 /** Swap read_file to return the evaluation JSON so finishGateEvaluation can parse it. */
@@ -203,7 +206,6 @@ async function clickCompleteStep(page: import("@playwright/test").Page) {
   await expect(continueBtn).toBeVisible({ timeout: 5_000 });
   await expect(continueBtn).toBeEnabled({ timeout: 5_000 });
   await continueBtn.click();
-  await page.waitForTimeout(200);
 }
 
 /** Simulate the gate agent completing (swap read_file before exit). */
@@ -216,14 +218,11 @@ async function simulateGateCompletion(
   await setReadFileToEvaluation(page, verdict);
 
   await simulateAgentRun(page, {
-    agentId: "gate-agent-001",
+    agentId: GATE_AGENT_ID,
     messages: ["Evaluating answers..."],
     result: "Evaluation complete.",
     delays: 50,
   });
-
-  // Wait for the gate completion chain to process
-  await page.waitForTimeout(500);
 }
 
 test.describe("Transition Gate", { tag: "@workflow" }, () => {
@@ -243,10 +242,29 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
 
     // Click Skip to Decisions
     await page.getByRole("button", { name: "Skip to Decisions" }).click();
-    await page.waitForTimeout(500);
+    await expect(page.getByRole("dialog")).not.toBeVisible();
 
     // Should advance to step 3 (Confirm Decisions)
     await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("gate 1 sufficient: run research anyway keeps workflow on step 2", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
+
+    await clickCompleteStep(page);
+    await simulateGateCompletion(page, "sufficient");
+
+    // Dialog should appear with sufficient verdict
+    await expect(
+      page.getByRole("heading", { name: "Skip Detailed Research?" }),
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("button", { name: "Run Research Anyway" })).toBeVisible();
+
+    // Click Run Research Anyway — should advance to step 2 instead of skipping to step 3
+    await page.getByRole("button", { name: "Run Research Anyway" }).click();
+    await expect(page.getByRole("dialog")).not.toBeVisible();
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
   });
 
   test("gate 1 mixed: quality review dialog and continue anyway advances", async ({ page }) => {
@@ -265,7 +283,7 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
 
     // Click Continue Anyway
     await page.getByRole("button", { name: "Continue Anyway" }).click();
-    await page.waitForTimeout(500);
+    await expect(page.getByRole("dialog")).not.toBeVisible();
 
     // Gate 1 continue advances to Detailed Research
     await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
@@ -285,7 +303,7 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
     await expect(page.getByRole("button", { name: "Let Me Answer" })).toBeVisible();
 
     await page.getByRole("button", { name: "Continue Anyway" }).click();
-    await page.waitForTimeout(500);
+    await expect(page.getByRole("dialog")).not.toBeVisible();
 
     await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
   });
@@ -298,17 +316,15 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
 
     // Simulate agent that starts then exits with error
     await emitTauriEvent(page, "agent-init-progress", {
-      agent_id: "gate-agent-001",
+      agent_id: GATE_AGENT_ID,
       stage: "init_start",
       timestamp: Date.now(),
     });
-    await page.waitForTimeout(50);
 
     await emitTauriEvent(page, "agent-exit", {
-      agent_id: "gate-agent-001",
+      agent_id: GATE_AGENT_ID,
       success: false,
     });
-    await page.waitForTimeout(500);
 
     // Should fail-open: no dialog, advance to step 3
     await expect(page.getByRole("heading", { name: "Skip Detailed Research?" })).not.toBeVisible();

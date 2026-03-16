@@ -9,6 +9,19 @@ pub struct AgentEvent {
     pub message: serde_json::Value,
 }
 
+/// Payload emitted as the `agent-exit` Tauri event when a sidecar process terminates.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentExitPayload {
+    pub agent_id: String,
+    pub success: bool,
+}
+
+/// Payload emitted as the `agent-shutdown` Tauri event when an agent is shut down.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentShutdownPayload {
+    pub agent_id: String,
+}
+
 /// Payload for sidecar startup error events sent to the frontend.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentInitError {
@@ -409,13 +422,11 @@ pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
 
 pub fn handle_sidecar_exit(app_handle: &tauri::AppHandle, agent_id: &str, success: bool) {
     log::info!("[event:agent-exit:{}] success={}", agent_id, success);
-    if let Err(e) = app_handle.emit(
-        "agent-exit",
-        serde_json::json!({
-            "agent_id": agent_id,
-            "success": success,
-        }),
-    ) {
+    let payload = AgentExitPayload {
+        agent_id: agent_id.to_string(),
+        success,
+    };
+    if let Err(e) = app_handle.emit("agent-exit", &payload) {
         log::warn!(
             "Failed to emit agent-exit for {} (success={}): {}",
             agent_id,
@@ -427,12 +438,10 @@ pub fn handle_sidecar_exit(app_handle: &tauri::AppHandle, agent_id: &str, succes
 
 pub fn handle_agent_shutdown(app_handle: &tauri::AppHandle, agent_id: &str) {
     log::info!("[event:agent-shutdown:{}]", agent_id);
-    if let Err(e) = app_handle.emit(
-        "agent-shutdown",
-        serde_json::json!({
-            "agent_id": agent_id,
-        }),
-    ) {
+    let payload = AgentShutdownPayload {
+        agent_id: agent_id.to_string(),
+    };
+    if let Err(e) = app_handle.emit("agent-shutdown", &payload) {
         log::warn!("Failed to emit agent-shutdown for {}: {}", agent_id, e);
     }
 }

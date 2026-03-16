@@ -1,7 +1,12 @@
-const E2E_ROOT = "C:/skill-builder-test";
+import path from "node:path";
+import os from "node:os";
 
-export function joinE2ePath(...parts: string[]): string {
-  return [E2E_ROOT, ...parts].join("/");
+const E2E_ROOT = path.join(os.tmpdir(), "skill-builder-test");
+
+// No manual separator normalization needed — the E2E mock's
+// resolveReadFileMock() normalizes both sides of the comparison.
+export function joinE2ePath(...segments: string[]): string {
+  return path.join(E2E_ROOT, ...segments);
 }
 
 export const E2E_WORKSPACE_PATH = joinE2ePath("workspace");
@@ -17,5 +22,5 @@ export function skillOutputPath(skillName: string): string {
 }
 
 export function skillContextPath(basePath: string, skillName: string, fileName: string): string {
-  return `${basePath}/${skillName}/context/${fileName}`;
+  return path.join(basePath, skillName, "context", fileName);
 }

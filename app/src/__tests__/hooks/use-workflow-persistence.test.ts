@@ -17,6 +17,7 @@ const mockLoadWorkflowState = vi.fn();
 const mockSetHydrated = vi.fn();
 const mockSetDisabledSteps = vi.fn();
 const mockSetPendingUpdateMode = vi.fn();
+const mockSetReviewMode = vi.fn();
 const mockClearRuns = vi.fn();
 let mockStoreState = {
   skillName: "",
@@ -29,6 +30,7 @@ let mockStoreState = {
   setHydrated: mockSetHydrated,
   setDisabledSteps: mockSetDisabledSteps,
   setPendingUpdateMode: mockSetPendingUpdateMode,
+  setReviewMode: mockSetReviewMode,
 };
 
 vi.mock("@/stores/workflow-store", () => ({
@@ -79,6 +81,7 @@ describe("useWorkflowPersistence", () => {
       setHydrated: mockSetHydrated,
       setDisabledSteps: mockSetDisabledSteps,
       setPendingUpdateMode: mockSetPendingUpdateMode,
+      setReviewMode: mockSetReviewMode,
     };
   });
 
@@ -153,6 +156,21 @@ describe("useWorkflowPersistence", () => {
 
     await waitFor(() => {
       expect(saveWorkflowState).toHaveBeenCalled();
+    }, { timeout: 500 });
+  });
+
+  it("consumeUpdateMode resets pendingUpdateMode even when getWorkflowState rejects (finally-block)", async () => {
+    // Simulate the main hydration body throwing by making getWorkflowState reject
+    vi.mocked(getWorkflowState).mockRejectedValue(new Error("DB error"));
+
+    // Set pendingUpdateMode so consumeUpdateMode has work to do
+    mockStoreState.pendingUpdateMode = true;
+
+    renderHook(() => useWorkflowPersistence(defaultOptions));
+
+    // The finally block should run consumeUpdateMode even after rejection
+    await waitFor(() => {
+      expect(mockSetPendingUpdateMode).toHaveBeenCalledWith(false);
     }, { timeout: 500 });
   });
 });

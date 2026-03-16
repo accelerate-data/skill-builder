@@ -8,6 +8,21 @@ import type { Page } from "@playwright/test";
  * The splash screen runs startup dependency checks (~1s mock delay),
  * then fades out over 500ms before being unmounted. Total: ~1.5s.
  */
+/**
+ * Reload the app at "/" with the given Tauri mock overrides injected before page load.
+ * Equivalent to addInitScript(__TAURI_MOCK_OVERRIDES__) + goto("/") + waitForAppReady.
+ */
+export async function reloadWithOverrides(
+  page: Page,
+  overrides: Record<string, unknown>,
+): Promise<void> {
+  await page.addInitScript((nextOverrides) => {
+    (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = nextOverrides;
+  }, overrides);
+  await page.goto("/");
+  await waitForAppReady(page);
+}
+
 export async function waitForAppReady(page: Page) {
   const splash = page.getByTestId("splash-screen");
   // Wait for splash to mount (proves React has rendered)
