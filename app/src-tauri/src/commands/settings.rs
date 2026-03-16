@@ -861,7 +861,7 @@ mod tests {
     fn test_save_settings_preserves_github_identity() {
         let conn = crate::db::create_test_db_for_tests();
         let mut initial = crate::types::AppSettings::default();
-        initial.github_oauth_token = Some("ghp_token".to_string());
+        initial.github_oauth_token = Some("test-oauth-token".to_string());
         initial.github_user_login = Some("octocat".to_string());
         initial.github_user_avatar = Some("https://avatar.url".to_string());
         initial.github_user_email = Some("cat@github.com".to_string());
@@ -883,7 +883,7 @@ mod tests {
         crate::db::write_settings(&conn, &payload).unwrap();
 
         let result = crate::db::read_settings(&conn).unwrap();
-        assert_eq!(result.github_oauth_token.as_deref(), Some("ghp_token"));
+        assert_eq!(result.github_oauth_token.as_deref(), Some("test-oauth-token"));
         assert_eq!(result.github_user_login.as_deref(), Some("octocat"));
         assert_eq!(result.github_user_avatar.as_deref(), Some("https://avatar.url"));
         assert_eq!(result.github_user_email.as_deref(), Some("cat@github.com"));
@@ -949,14 +949,14 @@ mod tests {
         settings.github_user_login = Some("alice".to_string());
         settings.github_user_avatar = Some("https://avatar".to_string());
         settings.github_user_email = Some("alice@example.com".to_string());
-        settings.github_oauth_token = Some("ghp_abc123".to_string());
+        settings.github_oauth_token = Some("test-oauth-abc123".to_string());
         crate::db::write_settings(&conn, &settings).unwrap();
 
         let result = crate::db::read_settings(&conn).unwrap();
         assert_eq!(result.github_user_login.as_deref(), Some("alice"));
         assert_eq!(result.github_user_avatar.as_deref(), Some("https://avatar"));
         assert_eq!(result.github_user_email.as_deref(), Some("alice@example.com"));
-        assert_eq!(result.github_oauth_token.as_deref(), Some("ghp_abc123"));
+        assert_eq!(result.github_oauth_token.as_deref(), Some("test-oauth-abc123"));
     }
 
     #[test]
@@ -964,7 +964,7 @@ mod tests {
         let conn = crate::db::create_test_db_for_tests();
         let mut initial = crate::types::AppSettings::default();
         initial.github_user_login = Some("alice".to_string());
-        initial.github_oauth_token = Some("ghp_token".to_string());
+        initial.github_oauth_token = Some("test-oauth-token".to_string());
         crate::db::write_settings(&conn, &initial).unwrap();
 
         let mut settings = crate::db::read_settings(&conn).unwrap();
@@ -992,7 +992,7 @@ mod tests {
         // Set github identity
         let mut settings = crate::db::read_settings(&conn).unwrap();
         settings.github_user_login = Some("bob".to_string());
-        settings.github_oauth_token = Some("ghp_xyz".to_string());
+        settings.github_oauth_token = Some("test-oauth-xyz".to_string());
         crate::db::write_settings(&conn, &settings).unwrap();
 
         let result = crate::db::read_settings(&conn).unwrap();
@@ -1008,7 +1008,7 @@ mod tests {
         let conn = crate::db::create_test_db_for_tests();
         let mut initial = crate::types::AppSettings::default();
         initial.splash_shown = true;
-        initial.github_oauth_token = Some("ghp_token".to_string());
+        initial.github_oauth_token = Some("test-oauth-token".to_string());
         initial.github_user_login = Some("dev".to_string());
         initial.marketplace_initialized = true;
         crate::db::write_settings(&conn, &initial).unwrap();
@@ -1030,7 +1030,7 @@ mod tests {
 
         let result = crate::db::read_settings(&conn).unwrap();
         assert!(result.splash_shown);
-        assert_eq!(result.github_oauth_token.as_deref(), Some("ghp_token"));
+        assert_eq!(result.github_oauth_token.as_deref(), Some("test-oauth-token"));
         assert_eq!(result.github_user_login.as_deref(), Some("dev"));
         assert!(result.marketplace_initialized);
         assert_eq!(result.preferred_model.as_deref(), Some("claude-opus-4"));
@@ -1044,7 +1044,7 @@ mod tests {
 
         // Seed a token in the DB (simulates github_poll_for_token)
         let mut settings = crate::db::read_settings(&conn).unwrap();
-        settings.github_oauth_token = Some("ghp_saved_token".to_string());
+        settings.github_oauth_token = Some("test-oauth-saved".to_string());
         crate::db::write_settings(&conn, &settings).unwrap();
 
         // Simulate loadUser/setUser calling update_github_identity with None token
@@ -1056,7 +1056,7 @@ mod tests {
         crate::db::write_settings(&conn, &settings).unwrap();
 
         let result = crate::db::read_settings(&conn).unwrap();
-        assert_eq!(result.github_oauth_token.as_deref(), Some("ghp_saved_token"));
+        assert_eq!(result.github_oauth_token.as_deref(), Some("test-oauth-saved"));
         assert_eq!(result.github_user_login.as_deref(), Some("octocat"));
     }
 
@@ -1066,15 +1066,15 @@ mod tests {
 
         // Seed a token
         let mut settings = crate::db::read_settings(&conn).unwrap();
-        settings.github_oauth_token = Some("ghp_old".to_string());
+        settings.github_oauth_token = Some("test-oauth-old".to_string());
         crate::db::write_settings(&conn, &settings).unwrap();
 
         // Simulate an explicit token update (e.g. re-auth)
         let mut settings = crate::db::read_settings(&conn).unwrap();
-        settings.github_oauth_token = Some("ghp_new".to_string());
+        settings.github_oauth_token = Some("test-oauth-new".to_string());
         crate::db::write_settings(&conn, &settings).unwrap();
 
         let result = crate::db::read_settings(&conn).unwrap();
-        assert_eq!(result.github_oauth_token.as_deref(), Some("ghp_new"));
+        assert_eq!(result.github_oauth_token.as_deref(), Some("test-oauth-new"));
     }
 }
