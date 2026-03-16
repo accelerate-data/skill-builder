@@ -32,11 +32,11 @@ vi.mock("@tanstack/react-router", () => ({
 
 // Mock layout sub-components to avoid their dependencies (localStorage, next-themes, etc.)
 vi.mock("@/components/layout/sidebar", () => ({
-  Sidebar: () => <aside data-testid="sidebar">Sidebar</aside>,
+  IconRail: () => <aside data-testid="icon-rail">IconRail</aside>,
 }));
 
-vi.mock("@/components/layout/header", () => ({
-  Header: () => <header data-testid="header">Header</header>,
+vi.mock("@/components/skill-list-panel", () => ({
+  SkillListPanel: () => <div data-testid="skill-list-panel">SkillListPanel</div>,
 }));
 
 vi.mock("@/components/close-guard", () => ({
