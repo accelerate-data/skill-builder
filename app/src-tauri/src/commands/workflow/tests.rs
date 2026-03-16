@@ -13,14 +13,13 @@ use super::output_format::{
 };
 use super::packaging::create_skill_zip;
 use super::guards::{
-    derive_agent_name, make_agent_id, parse_decisions_guard, parse_scope_recommendation,
+    make_agent_id, parse_decisions_guard, parse_scope_recommendation,
     validate_decisions_exist_inner, workflow_step_runtime_label,
 };
 use super::prompt::build_prompt;
 use super::user_context::{format_user_context, write_user_context_file};
 use super::step_config::{
-    build_betas, get_step_config, required_plugins_for_workflow_step,
-    thinking_budget_for_step, workflow_output_format_for_agent,
+    build_betas, get_step_config, thinking_budget_for_step, workflow_output_format_for_agent,
 };
 use super::evaluation::get_step_output_files;
 use super::claude_md::{generate_skills_section};
@@ -101,21 +100,28 @@ fn test_get_step_output_files_unknown_step() {
 }
 
 #[test]
-fn test_required_plugins_for_workflow_step_matches_policy() {
+fn test_step_config_canonical_agent_names() {
+    assert_eq!(get_step_config(0).unwrap().agent_name, "research-orchestrator");
+    assert_eq!(get_step_config(1).unwrap().agent_name, "detailed-research");
+    assert_eq!(get_step_config(2).unwrap().agent_name, "confirm-decisions");
+    assert_eq!(get_step_config(3).unwrap().agent_name, "generate-skill");
+}
+
+#[test]
+fn test_step_config_canonical_required_plugins() {
     assert_eq!(
-        required_plugins_for_workflow_step(0),
-        Some(vec!["skill-content-researcher".to_string()])
+        get_step_config(0).unwrap().required_plugins,
+        vec!["skill-content-researcher"]
     );
     assert_eq!(
-        required_plugins_for_workflow_step(1),
-        Some(vec!["skill-content-researcher".to_string()])
+        get_step_config(1).unwrap().required_plugins,
+        vec!["skill-content-researcher"]
     );
-    assert_eq!(required_plugins_for_workflow_step(2), Some(vec![]));
+    assert!(get_step_config(2).unwrap().required_plugins.is_empty());
     assert_eq!(
-        required_plugins_for_workflow_step(3),
-        Some(vec!["skill-creator".to_string()])
+        get_step_config(3).unwrap().required_plugins,
+        vec!["skill-creator"]
     );
-    assert_eq!(required_plugins_for_workflow_step(99), None);
 }
 
 #[test]
@@ -1168,40 +1174,6 @@ fn test_copy_directory_recursive_nonexistent_source_fails() {
     let result =
         copy_directory_recursive(Path::new("/nonexistent/source"), &dest.path().join("dest"));
     assert!(result.is_err());
-}
-
-#[test]
-fn test_derive_agent_name_fallback() {
-    // Without deployed agent files, falls back to phase name
-    let tmp = tempfile::tempdir().unwrap();
-    let ws = tmp.path().to_str().unwrap();
-    assert_eq!(
-        derive_agent_name(ws, "domain", "research-orchestrator.md"),
-        "research-orchestrator"
-    );
-    assert_eq!(
-        derive_agent_name(ws, "platform", "generate-skill.md"),
-        "generate-skill"
-    );
-}
-
-#[test]
-fn test_derive_agent_name_reads_frontmatter() {
-    let tmp = tempfile::tempdir().unwrap();
-    let ws = tmp.path().to_str().unwrap();
-    let agents_dir = tmp.path().join(".claude").join("agents");
-    std::fs::create_dir_all(&agents_dir).unwrap();
-
-    std::fs::write(
-        agents_dir.join("research-orchestrator.md"),
-        "---\nname: research-orchestrator\nmodel: sonnet\n---\n# Agent\n",
-    )
-    .unwrap();
-
-    assert_eq!(
-        derive_agent_name(ws, "data-engineering", "research-orchestrator.md"),
-        "research-orchestrator"
-    );
 }
 
 #[test]

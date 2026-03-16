@@ -86,7 +86,7 @@ Compute `gap_count` = `empty_count` + `vague_count` + `contradictory_count`.
 
 ---
 
-<output_format>
+<output>
 
 ## Output
 
@@ -126,4 +126,4 @@ Field rules:
   - `contradicts` (string question ID of the conflicting answer)
   - `reason` (string) that explicitly references the conflicting ID (for example, `Conflicts with Q4 because ...`).
 
-</output_format>
+</output>

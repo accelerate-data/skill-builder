@@ -1,31 +1,5 @@
 use std::path::Path;
 
-/// Read a deployed agent `.md` file from `.claude/agents/` and extract
-/// the `name:` field from its YAML frontmatter.
-pub(crate) fn read_agent_frontmatter_name(workspace_path: &str, phase: &str) -> Option<String> {
-    let agent_file = Path::new(workspace_path)
-        .join(".claude")
-        .join("agents")
-        .join(format!("{}.md", phase));
-    let content = std::fs::read_to_string(&agent_file).ok()?;
-    if !content.starts_with("---") {
-        return None;
-    }
-    let after_start = content[3..].trim_start_matches(['\r', '\n']);
-    let end = after_start.find("---")?;
-    let frontmatter = &after_start[..end];
-    for line in frontmatter.lines() {
-        let trimmed = line.trim();
-        if let Some(name) = trimmed.strip_prefix("name:") {
-            let name = name.trim();
-            if !name.is_empty() {
-                return Some(name.to_string());
-            }
-        }
-    }
-    None
-}
-
 /// Check if clarifications.json has `metadata.scope_recommendation == true`.
 pub(crate) fn parse_scope_recommendation(clarifications_path: &Path) -> bool {
     let content = match std::fs::read_to_string(clarifications_path) {
@@ -64,18 +38,6 @@ pub(crate) fn parse_decisions_guard(decisions_path: &Path) -> bool {
         return true;
     }
     false
-}
-
-/// Derive agent name from prompt template.
-/// Reads the deployed agent file's frontmatter `name:` field (the SDK uses
-/// this to register the agent). Falls back to the phase name if the
-/// file is missing or has no name field.
-pub(crate) fn derive_agent_name(workspace_path: &str, _purpose: &str, prompt_template: &str) -> String {
-    let phase = prompt_template.trim_end_matches(".md");
-    if let Some(name) = read_agent_frontmatter_name(workspace_path, phase) {
-        return name;
-    }
-    phase.to_string()
 }
 
 /// Generate a unique agent ID from skill name, label, and timestamp.
@@ -119,32 +81,3 @@ pub(crate) fn validate_decisions_exist_inner(
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn read_agent_frontmatter_name_handles_crlf() {
-        let tmp = tempfile::tempdir().unwrap();
-        let agents_dir = tmp.path().join(".claude").join("agents");
-        std::fs::create_dir_all(&agents_dir).unwrap();
-        // Write a frontmatter file with CRLF line endings
-        let content = "---\r\nname: my-agent\r\nmodel: sonnet\r\n---\r\n# Agent\r\n";
-        std::fs::write(agents_dir.join("test-phase.md"), content).unwrap();
-
-        let result = read_agent_frontmatter_name(tmp.path().to_str().unwrap(), "test-phase");
-        assert_eq!(result, Some("my-agent".to_string()));
-    }
-
-    #[test]
-    fn read_agent_frontmatter_name_handles_lf() {
-        let tmp = tempfile::tempdir().unwrap();
-        let agents_dir = tmp.path().join(".claude").join("agents");
-        std::fs::create_dir_all(&agents_dir).unwrap();
-        let content = "---\nname: lf-agent\nmodel: sonnet\n---\n# Agent\n";
-        std::fs::write(agents_dir.join("lf-phase.md"), content).unwrap();
-
-        let result = read_agent_frontmatter_name(tmp.path().to_str().unwrap(), "lf-phase");
-        assert_eq!(result, Some("lf-agent".to_string()));
-    }
-}

@@ -9,15 +9,15 @@ use super::deploy::{
 };
 use super::evaluation::workflow_step_log_name;
 use super::guards::{
-    derive_agent_name, make_agent_id, parse_decisions_guard, parse_scope_recommendation,
+    make_agent_id, parse_decisions_guard, parse_scope_recommendation,
     workflow_step_runtime_label,
 };
 use super::output_format::answer_evaluator_output_format;
 use super::prompt::{build_evaluator_prompt, build_prompt};
 use super::settings::{read_workflow_settings, WorkflowSettings};
 use super::step_config::{
-    build_betas, get_step_config, required_plugins_for_workflow_step, resolve_model_id,
-    thinking_budget_for_step, workflow_output_format_for_agent,
+    build_betas, get_step_config, resolve_model_id, thinking_budget_for_step,
+    workflow_output_format_for_agent,
 };
 use super::user_context::write_user_context_file;
 
@@ -73,17 +73,17 @@ async fn run_workflow_step_inner(
         prompt
     );
 
-    let agent_name = derive_agent_name(workspace_path, &settings.purpose, &step.prompt_template);
+    let agent_name = step.agent_name.clone();
+    let required_plugins: Vec<String> = step.required_plugins.clone();
     let agent_id = make_agent_id(skill_name, &workflow_step_runtime_label(&step));
     log::info!(
-        "run_workflow_step: skill={} step={} step_id={} model={}",
+        "run_workflow_step: skill={} step={} step_id={} agent={} plugins={:?}",
         skill_name,
         workflow_step_log_name(step_id as i32),
         step_id,
-        settings.preferred_model
+        agent_name,
+        required_plugins,
     );
-
-    let required_plugins = required_plugins_for_workflow_step(step_id);
 
     let config = SidecarConfig {
         prompt,
@@ -110,7 +110,7 @@ async fn run_workflow_step_inner(
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name),
-        required_plugins,
+        required_plugins: Some(required_plugins),
         conversation_history: None,
         skill_name: Some(skill_name.to_string()),
         step_id: Some(step_id as i32),

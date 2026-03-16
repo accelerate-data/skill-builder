@@ -474,7 +474,10 @@ fn test_refine_config_requires_skill_creator_plugin() {
     let (config, _) = base_refine_config("improve metrics");
     assert_eq!(
         config.required_plugins,
-        Some(vec!["skill-creator".to_string()])
+        Some(vec![
+            "skill-content-researcher".to_string(),
+            "skill-creator".to_string(),
+        ])
     );
 }
 
