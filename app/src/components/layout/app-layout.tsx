@@ -291,7 +291,7 @@ export function AppLayout() {
     <div className="flex h-screen overflow-hidden">
       <IconRail />
       <SkillListPanel onSelectSkill={handleSelectSkill} />
-      <main className="flex-1 overflow-hidden">
+      <main className="flex flex-1 flex-col overflow-hidden">
         {ready && isConfigured
           ? showWorkspace && selectedSkillData
             ? <WorkspaceShell skill={selectedSkillData} skillType={selectedSkillType} />
