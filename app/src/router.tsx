@@ -8,7 +8,6 @@ import { AppLayout } from "./components/layout/app-layout";
 import DashboardPage from "./pages/dashboard";
 import SettingsPage from "./pages/settings";
 import WorkflowPage from "./pages/workflow";
-import RefinePage from "./pages/refine";
 const rootRoute = createRootRoute({
   component: AppLayout,
 });
@@ -39,13 +38,12 @@ const skillsRedirectRoute = createRoute({
   },
 });
 
-const refineRoute = createRoute({
+const refineRedirectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/refine",
-  component: RefinePage,
-  validateSearch: (search: Record<string, unknown>) => ({
-    skill: typeof search.skill === "string" ? search.skill : undefined,
-  }),
+  beforeLoad: () => {
+    throw redirect({ to: "/settings" });
+  },
 });
 
 const routeTree = rootRoute.addChildren([
@@ -53,7 +51,7 @@ const routeTree = rootRoute.addChildren([
   settingsRoute,
   skillsRedirectRoute,
   workflowRoute,
-  refineRoute,
+  refineRedirectRoute,
 ]);
 
 export const router = createRouter({ routeTree });
