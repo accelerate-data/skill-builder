@@ -511,7 +511,7 @@ export default function WorkflowPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {/* Main header — skill name + status */}
         <WorkflowMainHeader
           skillName={skillName}
