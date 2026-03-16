@@ -44,13 +44,11 @@ pub(super) struct RefineRuntimeSettings {
 
 pub(super) fn dispatch_for_refine_command(
     command: Option<&str>,
-    target_files: Option<&[String]>,
+    _target_files: Option<&[String]>,
 ) -> RefineDispatch {
     match command {
         Some("validate") => RefineDispatch::DirectValidate,
-        Some("rewrite") if target_files.is_none_or(|files| files.is_empty()) => {
-            RefineDispatch::DirectRewrite
-        }
+        Some("rewrite") => RefineDispatch::DirectRewrite,
         _ => RefineDispatch::Stream,
     }
 }
@@ -342,6 +340,7 @@ pub(super) fn build_direct_agent_prompt(
     workspace_path: &str,
     skills_path: &str,
     user_message: &str,
+    target_files: Option<&[String]>,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
@@ -360,6 +359,14 @@ pub(super) fn build_direct_agent_prompt(
 
     if agent_name == GENERATE_AGENT_NAME {
         prompt.push_str("\n\nRun in /rewrite mode for this request.");
+        if let Some(files) = target_files {
+            if !files.is_empty() {
+                prompt.push_str(&format!(
+                    "\n\nFocus the rewrite on these files: {}.",
+                    files.join(", ")
+                ));
+            }
+        }
     }
 
     prompt.push_str(&format!("\n\nCurrent request: {}", user_message));

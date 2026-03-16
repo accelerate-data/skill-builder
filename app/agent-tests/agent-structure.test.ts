@@ -9,7 +9,6 @@ const EXPECTED_AGENTS = [
   "confirm-decisions",
   "detailed-research",
   "eval-skill",
-  "refine-skill",
   "research-orchestrator",
   "validate-quality",
   "validate-skill",
@@ -18,6 +17,7 @@ const EXPECTED_AGENTS = [
 /** Plugin-hosted agents: agent name → plugin path relative to PLUGINS_DIR */
 const PLUGIN_AGENTS: Record<string, string> = {
   "generate-skill": "skill-creator/agents/generate-skill.md",
+  "refine-skill": "skill-creator/agents/refine-skill.md",
 };
 
 /** Resolve the .md file path for any agent (top-level or plugin). */
