@@ -62,17 +62,12 @@ function getStatusDot(skill: UnifiedSkill, isRunning: boolean): DotStyle {
     return { className: isRunning ? "animate-dot-pulse" : "", style: { backgroundColor: "var(--color-seafoam)" } };
   }
 
-  const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
-  const step = stepMatch ? Number(stepMatch[1]) : null;
-
-  if (step === 1) {
-    return { className: `bg-destructive${pulse}` };
+  // Any in-progress skill (has a currentStep) → amber/yellow
+  if (skill.currentStep) {
+    return { className: `bg-amber-500 dark:bg-amber-400${pulse}` };
   }
-  if (step === 2) {
-    return { className: `bg-amber-600 dark:bg-amber-400${pulse}` };
-  }
-  // Never started or step 0 — outlined circle
-  return { className: `border border-muted-foreground/40 bg-transparent${pulse}` };
+  // Never started — outlined circle
+  return { className: `border border-muted-foreground/40 bg-transparent` };
 }
 
 function mergeSkills(
@@ -178,7 +173,7 @@ export function SkillListPanel({
   return (
     <div
       className={cn(
-        "flex h-full w-[260px] flex-shrink-0 flex-col border-r bg-background",
+        "flex h-full w-full flex-col border-r bg-background",
         className,
       )}
     >

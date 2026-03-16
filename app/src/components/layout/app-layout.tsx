@@ -312,7 +312,7 @@ export function AppLayout() {
     <div className="flex h-screen overflow-hidden">
       <IconRail />
       <div style={{ width: skillPanelWidth }} className="relative shrink-0">
-        <SkillListPanel onSelectSkill={handleSelectSkill} className="!w-full" />
+        <SkillListPanel onSelectSkill={handleSelectSkill} />
         <div
           className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 transition-colors"
           onMouseDown={handleResizeStart}
