@@ -11,7 +11,7 @@ pub(crate) fn read_agent_frontmatter_name(workspace_path: &str, phase: &str) -> 
     if !content.starts_with("---") {
         return None;
     }
-    let after_start = &content[3..];
+    let after_start = content[3..].trim_start_matches(['\r', '\n']);
     let end = after_start.find("---")?;
     let frontmatter = &after_start[..end];
     for line in frontmatter.lines() {
@@ -117,4 +117,34 @@ pub(crate) fn validate_decisions_exist_inner(
          Please re-run the Confirm Decisions step first."
             .to_string(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_agent_frontmatter_name_handles_crlf() {
+        let tmp = tempfile::tempdir().unwrap();
+        let agents_dir = tmp.path().join(".claude").join("agents");
+        std::fs::create_dir_all(&agents_dir).unwrap();
+        // Write a frontmatter file with CRLF line endings
+        let content = "---\r\nname: my-agent\r\nmodel: sonnet\r\n---\r\n# Agent\r\n";
+        std::fs::write(agents_dir.join("test-phase.md"), content).unwrap();
+
+        let result = read_agent_frontmatter_name(tmp.path().to_str().unwrap(), "test-phase");
+        assert_eq!(result, Some("my-agent".to_string()));
+    }
+
+    #[test]
+    fn read_agent_frontmatter_name_handles_lf() {
+        let tmp = tempfile::tempdir().unwrap();
+        let agents_dir = tmp.path().join(".claude").join("agents");
+        std::fs::create_dir_all(&agents_dir).unwrap();
+        let content = "---\nname: lf-agent\nmodel: sonnet\n---\n# Agent\n";
+        std::fs::write(agents_dir.join("lf-phase.md"), content).unwrap();
+
+        let result = read_agent_frontmatter_name(tmp.path().to_str().unwrap(), "lf-phase");
+        assert_eq!(result, Some("lf-agent".to_string()));
+    }
 }

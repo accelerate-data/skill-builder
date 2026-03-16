@@ -1042,7 +1042,8 @@ fn test_delete_step_output_files_nonexistent_dir_is_ok() {
     // Should not panic on nonexistent directory
     let tmp = tempfile::tempdir().unwrap();
     let skills_path = tmp.path().to_str().unwrap();
-    crate::cleanup::delete_step_output_files("/tmp/nonexistent", "no-skill", 0, skills_path);
+    let nonexistent = std::env::temp_dir().join("nonexistent");
+    crate::cleanup::delete_step_output_files(nonexistent.to_str().unwrap(), "no-skill", 0, skills_path);
 }
 
 #[test]
@@ -1624,13 +1625,13 @@ fn test_build_betas_none() {
 #[test]
 fn test_workspace_already_copied_returns_false_for_unknown() {
     // Use a unique path to avoid interference from other tests
-    let path = format!("/tmp/test-workspace-unknown-{}", std::process::id());
+    let path = format!("{}/test-workspace-unknown-{}", std::env::temp_dir().display(), std::process::id());
     assert!(!workspace_already_copied(&path));
 }
 
 #[test]
 fn test_mark_workspace_copied_then_already_copied() {
-    let path = format!("/tmp/test-workspace-mark-{}", std::process::id());
+    let path = format!("{}/test-workspace-mark-{}", std::env::temp_dir().display(), std::process::id());
     assert!(!workspace_already_copied(&path));
     mark_workspace_copied(&path);
     assert!(workspace_already_copied(&path));
@@ -1638,8 +1639,8 @@ fn test_mark_workspace_copied_then_already_copied() {
 
 #[test]
 fn test_workspace_copy_cache_is_per_workspace() {
-    let path_a = format!("/tmp/test-ws-a-{}", std::process::id());
-    let path_b = format!("/tmp/test-ws-b-{}", std::process::id());
+    let path_a = format!("{}/test-ws-a-{}", std::env::temp_dir().display(), std::process::id());
+    let path_b = format!("{}/test-ws-b-{}", std::env::temp_dir().display(), std::process::id());
     mark_workspace_copied(&path_a);
     assert!(workspace_already_copied(&path_a));
     assert!(!workspace_already_copied(&path_b));
@@ -1647,7 +1648,7 @@ fn test_workspace_copy_cache_is_per_workspace() {
 
 #[test]
 fn test_invalidate_workspace_cache() {
-    let path = format!("/tmp/test-ws-invalidate-{}", std::process::id());
+    let path = format!("{}/test-ws-invalidate-{}", std::env::temp_dir().display(), std::process::id());
     mark_workspace_copied(&path);
     assert!(workspace_already_copied(&path));
     invalidate_workspace_cache(&path);
@@ -1897,14 +1898,18 @@ fn test_format_user_context_partial_intake() {
 
 #[test]
 fn test_build_prompt_includes_user_context_md_instruction() {
-    let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", None, None, 5);
+    let ws = std::env::temp_dir().join("ws");
+    let skills = std::env::temp_dir().join("skills");
+    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), skills.to_str().unwrap(), None, None, 5);
     assert!(prompt.contains("user-context.md"));
     assert!(prompt.contains("test-skill"));
 }
 
 #[test]
 fn test_build_prompt_without_user_context() {
-    let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", None, None, 5);
+    let ws = std::env::temp_dir().join("ws");
+    let skills = std::env::temp_dir().join("skills");
+    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), skills.to_str().unwrap(), None, None, 5);
     assert!(prompt.contains("user-context.md"));
     assert!(prompt.contains("test-skill"));
 }
@@ -1942,9 +1947,8 @@ fn test_parse_decisions_guard_normal() {
 
 #[test]
 fn test_parse_decisions_guard_missing_file() {
-    assert!(!parse_decisions_guard(Path::new(
-        "/tmp/nonexistent-vd801-decisions.json"
-    )));
+    let nonexistent_path = std::env::temp_dir().join("nonexistent-vd801-decisions.json");
+    assert!(!parse_decisions_guard(&nonexistent_path));
 }
 
 #[test]
@@ -2113,7 +2117,7 @@ fn test_generate_skills_section_inactive_skill_excluded() {
         skill_id: "bundled-test-practices".to_string(),
         skill_name: "test-practices".to_string(),
         is_active: false,
-        disk_path: "/tmp/skills/test-practices".to_string(),
+        disk_path: format!("{}/skills/test-practices", std::env::temp_dir().display()),
         imported_at: "2000-01-01T00:00:00Z".to_string(),
         is_bundled: true,
         description: None,

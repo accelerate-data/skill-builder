@@ -65,10 +65,18 @@ pub(crate) async fn resolve_node_binary_for_preflight(
 async fn resolve_system_node() -> Result<NodeResolution, String> {
     let candidates: Vec<std::path::PathBuf> = {
         let mut v = vec![std::path::PathBuf::from("node")];
+        #[cfg(not(target_os = "windows"))]
         for p in &[
             "/usr/local/bin/node",
             "/opt/homebrew/bin/node",
             "/usr/bin/node",
+        ] {
+            v.push(std::path::PathBuf::from(p));
+        }
+        #[cfg(target_os = "windows")]
+        for p in &[
+            r"C:\Program Files\nodejs\node.exe",
+            r"C:\Program Files (x86)\nodejs\node.exe",
         ] {
             v.push(std::path::PathBuf::from(p));
         }

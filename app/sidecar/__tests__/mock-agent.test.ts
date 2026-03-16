@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as fs from "fs/promises";
+import os from "os";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import {
@@ -17,7 +18,7 @@ function baseMockConfig(overrides: Partial<SidecarConfig> = {}): SidecarConfig {
   return {
     prompt: "test prompt",
     apiKey: "sk-test",
-    cwd: "/tmp/test",
+    cwd: os.tmpdir(),
     ...overrides,
   };
 }

@@ -256,12 +256,16 @@ fn test_session_not_found_returns_none() {
 
 // ===== build_refine_config tests =====
 
+fn test_workspace_path() -> String {
+    std::env::temp_dir().join("vibedata").join("skill-builder").to_string_lossy().to_string()
+}
+
 fn base_refine_config(prompt: &str) -> (crate::agents::sidecar::SidecarConfig, String) {
     build_refine_config(
         prompt.to_string(),
         "my-skill",
         "usage-session-123",
-        "/home/user/.vibedata/skill-builder",
+        &test_workspace_path(),
         crate::types::SecretString::new("sk-test-key".to_string()),
         "sonnet".to_string(),
         false,
@@ -277,7 +281,7 @@ fn base_direct_config(agent_name: &'static str) -> (crate::agents::sidecar::Side
         "direct prompt".to_string(),
         "my-skill",
         "usage-session-123",
-        "/home/user/.vibedata/skill-builder",
+        &test_workspace_path(),
         crate::types::SecretString::new("sk-test-key".to_string()),
         "sonnet".to_string(),
         false,
@@ -356,11 +360,12 @@ fn test_refine_config_includes_all_file_tools() {
 
 #[test]
 fn test_refine_config_cwd_points_to_workspace_root() {
+    let ws = test_workspace_path();
     let (config, _) = build_refine_config(
         "test".to_string(),
         "data-engineering",
         "usage-session-123",
-        "/home/user/.vibedata/skill-builder",
+        &ws,
         crate::types::SecretString::new("sk-key".to_string()),
         "sonnet".to_string(),
         false,
@@ -369,7 +374,7 @@ fn test_refine_config_cwd_points_to_workspace_root() {
         None,
         true,
     );
-    assert_eq!(config.cwd, "/home/user/.vibedata/skill-builder");
+    assert_eq!(config.cwd, ws);
 }
 
 #[test]
@@ -714,18 +719,23 @@ fn test_finalize_refine_validation_writes_workspace_context_without_skill_diff()
 
 #[test]
 fn test_refine_prompt_includes_all_three_paths() {
+    let ws = test_workspace_path();
+    let skills = std::env::temp_dir().join("skills").to_string_lossy().to_string();
     let prompt = build_refine_prompt(
         "my-skill",
-        "/home/user/.vibedata/skill-builder",
-        "/home/user/skills",
+        &ws,
+        &skills,
         "Add metrics section",
         None,
         None,
     );
+    // build_refine_prompt normalises backslashes to forward slashes
+    let ws_fwd = ws.replace('\\', "/");
+    let skills_fwd = skills.replace('\\', "/");
     assert!(prompt
-        .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
+        .contains(&format!("The workspace directory is: {}/my-skill", ws_fwd)));
     assert!(prompt.contains(
-        "The skill output directory (SKILL.md and references/) is: /home/user/skills/my-skill"
+        &format!("The skill output directory (SKILL.md and references/) is: {}/my-skill", skills_fwd)
     ));
     assert!(prompt.contains("Read user-context.md from the workspace directory"));
     assert!(prompt.contains("Derive context_dir as workspace_dir/context"));

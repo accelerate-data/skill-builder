@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import os from "node:os";
 import { Readable } from "node:stream";
 
 // Mock the SDK before importing anything that uses it
@@ -24,13 +25,13 @@ describe("parseIncomingMessage", () => {
     const line = JSON.stringify({
       type: "agent_request",
       request_id: "req_1",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
     });
     const result = parseIncomingMessage(line);
     expect(result).toEqual({
       type: "agent_request",
       request_id: "req_1",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
     });
   });
 
@@ -78,7 +79,7 @@ describe("parseIncomingMessage", () => {
   it("returns null for agent_request without request_id", () => {
     const line = JSON.stringify({
       type: "agent_request",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
     });
     expect(parseIncomingMessage(line)).toBeNull();
   });
@@ -87,7 +88,7 @@ describe("parseIncomingMessage", () => {
     const line = JSON.stringify({
       type: "agent_request",
       request_id: "",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
     });
     expect(parseIncomingMessage(line)).toBeNull();
   });
@@ -141,14 +142,14 @@ describe("parseIncomingMessage", () => {
       type: "stream_start",
       request_id: "req_1",
       session_id: "sess_1",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
     });
     const result = parseIncomingMessage(line);
     expect(result).toEqual({
       type: "stream_start",
       request_id: "req_1",
       session_id: "sess_1",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
     });
   });
 
@@ -156,7 +157,7 @@ describe("parseIncomingMessage", () => {
     const line = JSON.stringify({
       type: "stream_start",
       request_id: "req_1",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
     });
     expect(parseIncomingMessage(line)).toBeNull();
   });
@@ -373,7 +374,7 @@ describe("runPersistent", () => {
     const config = {
       prompt: "test prompt",
       apiKey: "sk-test",
-      cwd: "/tmp/test",
+      cwd: os.tmpdir(),
     };
 
     const input = createInputStream([
@@ -426,7 +427,7 @@ describe("runPersistent", () => {
     const config = {
       prompt: "test prompt",
       apiKey: "sk-test",
-      cwd: "/tmp/test",
+      cwd: os.tmpdir(),
     };
 
     const input = createInputStream([
@@ -495,8 +496,8 @@ describe("runPersistent", () => {
       return fakeConversation() as ReturnType<typeof query>;
     });
 
-    const config1 = { prompt: "first", apiKey: "sk-test", cwd: "/tmp" };
-    const config2 = { prompt: "second", apiKey: "sk-test", cwd: "/tmp" };
+    const config1 = { prompt: "first", apiKey: "sk-test", cwd: os.tmpdir() };
+    const config2 = { prompt: "second", apiKey: "sk-test", cwd: os.tmpdir() };
 
     const { Readable } = await import("node:stream");
     const input = new Readable({ read() {} });
@@ -565,8 +566,8 @@ describe("runPersistent", () => {
       return fakeConversation() as ReturnType<typeof query>;
     });
 
-    const config1 = { prompt: "first", apiKey: "sk-test", cwd: "/tmp" };
-    const config2 = { prompt: "second", apiKey: "sk-test", cwd: "/tmp" };
+    const config1 = { prompt: "first", apiKey: "sk-test", cwd: os.tmpdir() };
+    const config2 = { prompt: "second", apiKey: "sk-test", cwd: os.tmpdir() };
 
     // Send requests one at a time with a gap so the first completes
     const { Readable } = await import("node:stream");
@@ -731,7 +732,7 @@ describe("runPersistent", () => {
     input.push(JSON.stringify({
       type: "agent_request",
       request_id: "req_stuck",
-      config: { prompt: "test", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "test", apiKey: "sk-test", cwd: os.tmpdir() },
     }) + "\n");
     await new Promise((r) => setTimeout(r, 20));
 
@@ -803,7 +804,7 @@ describe("runPersistent", () => {
     input.push(JSON.stringify({
       type: "agent_request",
       request_id: "req_real",
-      config: { prompt: "test", apiKey: "sk-test", cwd: "/tmp" },
+      config: { prompt: "test", apiKey: "sk-test", cwd: os.tmpdir() },
     }) + "\n");
     await new Promise((r) => setTimeout(r, 10));
 
@@ -844,7 +845,7 @@ describe("runPersistent", () => {
       JSON.stringify({
         type: "agent_request",
         request_id: "req_json",
-        config: { prompt: "test", apiKey: "sk-test", cwd: "/tmp" },
+        config: { prompt: "test", apiKey: "sk-test", cwd: os.tmpdir() },
       }),
       JSON.stringify({ type: "shutdown" }),
     ]);
@@ -881,7 +882,7 @@ describe("runPersistent", () => {
         type: "stream_start",
         request_id: "req-dup-1",
         session_id: "test-session",
-        config: { prompt: "first prompt", apiKey: "sk-test", cwd: "/tmp" },
+        config: { prompt: "first prompt", apiKey: "sk-test", cwd: os.tmpdir() },
       }) + "\n");
       await new Promise((r) => setTimeout(r, 10));
 
@@ -890,7 +891,7 @@ describe("runPersistent", () => {
         type: "stream_start",
         request_id: "req-dup-2",
         session_id: "test-session",
-        config: { prompt: "second prompt", apiKey: "sk-test", cwd: "/tmp" },
+        config: { prompt: "second prompt", apiKey: "sk-test", cwd: os.tmpdir() },
       }) + "\n");
       await new Promise((r) => setTimeout(r, 20));
 
@@ -941,7 +942,7 @@ describe("runPersistent", () => {
         type: "stream_start",
         request_id: "req_stream_1",
         session_id: "sess_mock",
-        config: { prompt: "initial stream prompt", apiKey: "sk-test", cwd: "/tmp" },
+        config: { prompt: "initial stream prompt", apiKey: "sk-test", cwd: os.tmpdir() },
       }) + "\n");
       await new Promise((r) => setTimeout(r, 40));
 

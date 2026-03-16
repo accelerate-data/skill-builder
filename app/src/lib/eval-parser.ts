@@ -34,14 +34,14 @@ export function parseEvalOutput(text: string): { lines: EvalLine[]; recommendati
   const markerMatch = /^##\s*recommendations/im.exec(text);
   if (!markerMatch) {
     return {
-      lines: text.split("\n").map(parseEvalLine).filter((l) => l.text.length > 0),
+      lines: text.split(/\r?\n/).map(parseEvalLine).filter((l) => l.text.length > 0),
       recommendations: "",
     };
   }
   const bulletSection = text.slice(0, markerMatch.index).trim();
   const recsSection = text.slice(markerMatch.index + markerMatch[0].length).trim();
   return {
-    lines: bulletSection.split("\n").map(parseEvalLine).filter((l) => l.text.length > 0),
+    lines: bulletSection.split(/\r?\n/).map(parseEvalLine).filter((l) => l.text.length > 0),
     recommendations: recsSection,
   };
 }

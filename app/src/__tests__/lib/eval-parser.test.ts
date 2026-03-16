@@ -133,6 +133,36 @@ describe("evalIconColor", () => {
   });
 });
 
+describe("parseEvalOutput — CRLF handling", () => {
+  it("parses directional lines with CRLF line endings", () => {
+    const text = [
+      "- ↑ **speed** — Plan A is faster",
+      "- ↓ **accuracy** — Plan B wins",
+      "- → **coverage** — both similar",
+    ].join("\r\n");
+
+    const result = parseEvalOutput(text);
+    expect(result.lines).toHaveLength(3);
+    expect(result.lines[0].direction).toBe("up");
+    expect(result.lines[1].direction).toBe("down");
+    expect(result.lines[2].direction).toBe("neutral");
+  });
+
+  it("splits recommendations from bullets with CRLF endings", () => {
+    const text =
+      "- ↑ **speed** — faster\r\n" +
+      "- ↓ **depth** — deeper\r\n" +
+      "\r\n" +
+      "## Recommendations\r\n" +
+      "1. Add more examples\r\n" +
+      "2. Improve error handling";
+
+    const result = parseEvalOutput(text);
+    expect(result.lines).toHaveLength(2);
+    expect(result.recommendations).toContain("Add more examples");
+  });
+});
+
 describe("evalRowBg", () => {
   it("returns seafoam bg for up", () => {
     expect(evalRowBg("up")).toContain("seafoam");

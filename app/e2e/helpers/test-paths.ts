@@ -22,5 +22,5 @@ export function skillOutputPath(skillName: string): string {
 }
 
 export function skillContextPath(basePath: string, skillName: string, fileName: string): string {
-  return `${basePath}/${skillName}/context/${fileName}`;
+  return path.join(basePath, skillName, "context", fileName).replace(/\\/g, "/");
 }

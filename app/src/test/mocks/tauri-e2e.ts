@@ -6,8 +6,12 @@
  * can render without the Rust backend.
  */
 
-const E2E_SKILLS_PATH = "C:/skill-builder-test/skills";
-const E2E_DEFAULT_SKILLS_PATH = "C:/skill-builder-test/default-skills";
+// E2E root matches test-paths.ts joinE2ePath() output at runtime.
+// Browser mocks can't access os.tmpdir(), so we use a synthetic root
+// that E2E tests override via __TAURI_MOCK_OVERRIDES__ when needed.
+const E2E_ROOT = "/e2e-test";
+const E2E_SKILLS_PATH = `${E2E_ROOT}/skills`;
+const E2E_DEFAULT_SKILLS_PATH = `${E2E_ROOT}/default-skills`;
 
 const defaultSettings = {
   anthropic_api_key: "sk-ant-test-e2e",
@@ -71,7 +75,7 @@ const mockResponses: Record<string, unknown> = {
   start_agent: "agent-001",
   run_workflow_step: "agent-001",
   run_parallel_agents: { agent_id_a: "agent-001", agent_id_b: "agent-002" },
-  package_skill: { file_path: "C:/skill-builder-test/package/my-skill.skill", size_bytes: 12345 },
+  package_skill: { file_path: `${E2E_ROOT}/package/my-skill.skill`, size_bytes: 12345 },
   // Workflow state
   get_workflow_state: { run: null, steps: [] },
   save_workflow_state: undefined,
@@ -142,7 +146,7 @@ const mockResponses: Record<string, unknown> = {
   toggle_skill_active: undefined,
   delete_imported_skill: undefined,
   delete_workspace_skill: undefined,
-  export_skill: "C:/skill-builder-test/export/test-skill.zip",
+  export_skill: `${E2E_ROOT}/export/test-skill.zip`,
   get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\nFollow these steps...",
   // GitHub import
   parse_github_url: { owner: "test-owner", repo: "test-repo", branch: "main", subpath: null },
