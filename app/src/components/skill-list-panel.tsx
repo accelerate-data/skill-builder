@@ -12,6 +12,7 @@ import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
 import type { SkillSummary, ImportedSkill, Purpose } from "@/lib/types";
 import { PURPOSE_SHORT_LABELS } from "@/lib/types";
+import { listSkills } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 interface UnifiedSkill {
@@ -117,9 +118,22 @@ export function SkillListPanel({
 
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const builderSkills = useSkillStore((s) => s.skills);
+  const setSkills = useSkillStore((s) => s.setSkills);
   const importedSkills = useImportedSkillsStore((s) => s.skills);
+  const fetchImportedSkills = useImportedSkillsStore((s) => s.fetchSkills);
   const runs = useAgentStore((s) => s.runs);
   const navigate = useNavigate();
+
+  // Fetch both skill lists whenever workspacePath becomes available
+  useEffect(() => {
+    if (!workspacePath) return;
+    listSkills(workspacePath)
+      .then(setSkills)
+      .catch((err) => console.error("event=fetch_skills_failed error=%s", err));
+    fetchImportedSkills().catch((err) =>
+      console.error("event=fetch_imported_skills_failed error=%s", err),
+    );
+  }, [workspacePath, setSkills, fetchImportedSkills]);
 
   const unifiedSkills = mergeSkills(builderSkills, importedSkills);
 
