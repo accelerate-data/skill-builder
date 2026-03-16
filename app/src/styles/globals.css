@@ -196,7 +196,8 @@
   .animate-message-in,
   .animate-splash-logo,
   .animate-splash-row,
-  .animate-splash-title {
+  .animate-splash-title,
+  .animate-dot-pulse {
     animation: none !important;
   }
 }
@@ -589,4 +590,13 @@ html, body, #root {
 }
 .dark .dashboard-texture {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Ccircle cx='1' cy='1' r='1' fill='%23fff' fill-opacity='0.025'/%3E%3C/svg%3E");
+}
+
+/* Status dot pulse animation for active skill runs */
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+@utility animate-dot-pulse {
+  animation: dot-pulse 1.8s ease-in-out infinite;
 }
