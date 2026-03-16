@@ -15,7 +15,7 @@ const mockResetWorkflowStep = vi.fn((..._args: unknown[]) => Promise.resolve());
 const mockMaterializeWorkflowStepOutput = vi.fn((..._args: unknown[]) => Promise.resolve());
 const mockEndWorkflowSession = vi.fn((..._args: unknown[]) => Promise.resolve());
 const mockSaveWorkflowState = vi.fn((..._args: unknown[]) => Promise.resolve());
-const mockGetClarificationsContent = vi.fn((..._args: unknown[]) => Promise.resolve(null));
+const mockGetClarificationsContent = vi.fn((..._args: unknown[]) => Promise.resolve(null as string | null));
 const mockSaveClarificationsContent = vi.fn((..._args: unknown[]) => Promise.resolve());
 const mockReadFile = vi.fn((..._args: unknown[]) => Promise.reject("not found"));
 const mockWriteFile = vi.fn((..._args: unknown[]) => Promise.resolve());

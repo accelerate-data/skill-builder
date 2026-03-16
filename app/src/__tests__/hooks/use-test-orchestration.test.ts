@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -44,7 +44,7 @@ const TEST_SKILL = {
   current_step: null,
   status: null,
   last_modified: null,
-  tags: [],
+  tags: [] as string[],
   purpose: null,
   skill_source: "skill-builder",
   author_login: null,
