@@ -1,9 +1,7 @@
-import { useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { Settings } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 export function IconRail() {
-  const navigate = useNavigate();
   return (
     <aside className="flex h-full w-[52px] flex-shrink-0 flex-col items-center border-r bg-sidebar-background py-2.5">
       {/* Logo mark */}
@@ -13,16 +11,14 @@ export function IconRail() {
       </div>
       {/* Spacer */}
       <div className="mt-auto" />
-      {/* Settings gear — pinned to bottom */}
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className="size-8"
-        onClick={() => navigate({ to: "/settings" })}
-        title="Settings (⌘,)"
+      {/* Settings */}
+      <Link
+        to="/settings"
+        className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+        title="Settings"
       >
         <Settings className="size-4" />
-      </Button>
+      </Link>
     </aside>
   );
 }

@@ -58,16 +58,22 @@ interface DotStyle {
 function getStatusDot(skill: UnifiedSkill, isRunning: boolean): DotStyle {
   const pulse = isRunning ? " animate-dot-pulse" : "";
 
-  if (isSkillComplete(skill)) {
+  const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
+  const step = stepMatch ? Number(stepMatch[1]) : null;
+
+  // Step 2+ (0-indexed: Confirm Decisions / Generate Skill) → amber
+  if (step !== null && step >= 2) {
+    return { className: `bg-amber-500 dark:bg-amber-400${pulse}` };
+  }
+
+  // Complete with no active early step → green
+  // (step === null means no in-progress step, so the skill is truly done)
+  if (isSkillComplete(skill) && step === null) {
     return { className: isRunning ? "animate-dot-pulse" : "", style: { backgroundColor: "var(--color-seafoam)" } };
   }
 
-  // Any in-progress skill (has a currentStep) → amber/yellow
-  if (skill.currentStep) {
-    return { className: `bg-amber-500 dark:bg-amber-400${pulse}` };
-  }
-  // Never started — outlined circle
-  return { className: `border border-muted-foreground/40 bg-transparent` };
+  // null, Step 0, Step 1 (not started or early research stages) → red
+  return { className: `bg-destructive${pulse}` };
 }
 
 function mergeSkills(
@@ -290,7 +296,11 @@ export function SkillListPanel({
           workspacePath={workspacePath}
           open={createOpen}
           onOpenChange={setCreateOpen}
-          onCreated={async () => {}}
+          onCreated={async () => {
+            if (workspacePath) {
+              listSkills(workspacePath).then(setSkills).catch(() => {});
+            }
+          }}
         />
       )}
     </div>
