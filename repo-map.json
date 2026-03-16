@@ -88,7 +88,7 @@
   "modules": {
     "frontend_components": {
       "path": "app/src/components/",
-      "description": "Reusable UI components. Sub-directories: agent-items/ (display item renderers: base, error, output, result, subagent, thinking, tool), layout/ (app-layout, sidebar/icon-rail), refine/ (chat panel, chat input, preview panel, git patch view, skill picker), settings/ (general, github, marketplace, sdk, advanced, usage sections), ui/ (shadcn/ui primitives). Flat components include skill-list-panel (260px panel, stub for VU-603), skill cards, dialogs (delete, import, github, skill, feedback, reset, transition-gate), clarifications-editor, workflow-step-complete, agent panels, and more."
+      "description": "Reusable UI components. Sub-directories: agent-items/ (display item renderers: base, error, output, result, subagent, thinking, tool), layout/ (app-layout, sidebar/icon-rail), refine/ (chat panel, chat input, preview panel, git patch view, skill picker), settings/ (general, github, marketplace, sdk, advanced, usage sections), ui/ (shadcn/ui primitives), workspace/ (workspace-shell, workspace-overview, workspace-refine — shown when a complete/imported/marketplace skill is selected in app-layout). Flat components include skill-list-panel (260px panel), skill cards, dialogs (delete, import, github, skill, feedback, reset, transition-gate), clarifications-editor, workflow-step-complete, agent panels, and more."
     },
     "frontend_pages": {
       "path": "app/src/pages/",
