@@ -248,15 +248,6 @@ export default function DashboardPage() {
     navigate({ to: "/skill/$skillName", params: { skillName: skill.name } })
   }
 
-  const handleRefine = useCallback((skill: SkillSummary) => {
-    navigate({ to: "/refine", search: { skill: skill.name } })
-  }, [navigate])
-
-  const handleTest = useCallback((skill: SkillSummary) => {
-    console.log("[dashboard] navigating to test: skill=%s", skill.name)
-    navigate({ to: "/test", search: { skill: skill.name } })
-  }, [navigate])
-
   const handleDownload = useCallback(async (skill: SkillSummary) => {
     if (!workspacePath) return
     const toastId = toast.loading("Packaging skill...")
@@ -292,8 +283,6 @@ export default function DashboardPage() {
       onDownload: handleDownload,
       onEdit: setEditTarget,
       onEditWorkflow: handleEditWorkflow,
-      onRefine: handleRefine,
-      onTest: handleTest,
     }
   }
 
