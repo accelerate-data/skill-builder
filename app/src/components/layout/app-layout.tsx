@@ -1,14 +1,17 @@
-import { useEffect, useState } from "react";
-import { Outlet, useNavigate, useRouter } from "@tanstack/react-router";
+import { useCallback, useEffect, useState } from "react";
+import { Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { toast } from "@/lib/toast";
 import { IconRail } from "./sidebar";
 import { SkillListPanel } from "@/components/skill-list-panel";
+import { WorkspaceShell } from "@/components/workspace/workspace-shell";
 import { CloseGuard } from "@/components/close-guard";
 import { SplashScreen } from "@/components/splash-screen";
 import { SetupScreen } from "@/components/setup-screen";
 import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useSkillStore } from "@/stores/skill-store";
+import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, checkMarketplaceUpdates, importMarketplaceToLibrary, checkSkillCustomized, listModels } from "@/lib/tauri";
 import type { AppSettings, DiscoveredSkill, OrphanSkill, SkillUpdateInfo } from "@/lib/types";
@@ -125,8 +128,12 @@ function showManualUpdateToasts(
 export function AppLayout() {
   const setSettings = useSettingsStore((s) => s.setSettings);
   const isConfigured = useSettingsStore((s) => s.isConfigured);
+  const builderSkills = useSkillStore((s) => s.skills);
+  const importedSkills = useImportedSkillsStore((s) => s.skills);
   const navigate = useNavigate();
   const router = useRouter();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const [selectedWorkspaceSkillName, setSelectedWorkspaceSkillName] = useState<string | null>(null);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [reconciled, setReconciled] = useState(false);
   const [splashDismissed, setSplashDismissed] = useState(false);
@@ -256,14 +263,40 @@ export function AppLayout() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [navigate]);
 
+  const handleSelectSkill = useCallback(
+    (name: string) => {
+      setSelectedWorkspaceSkillName(name);
+      navigate({ to: "/" });
+    },
+    [navigate],
+  );
+
+  const selectedBuilderSkill = builderSkills.find((s) => s.name === selectedWorkspaceSkillName);
+  const selectedImportedSkill = importedSkills.find(
+    (s) => s.skill_name === selectedWorkspaceSkillName,
+  );
+  const selectedSkillData = selectedBuilderSkill ?? selectedImportedSkill ?? null;
+  const selectedSkillType = selectedBuilderSkill
+    ? selectedBuilderSkill.skill_source === "marketplace"
+      ? "marketplace"
+      : "builder"
+    : selectedImportedSkill?.marketplace_source_url
+      ? "marketplace"
+      : "imported";
+  const showWorkspace = selectedSkillData !== null && pathname === "/";
+
   const ready = settingsLoaded && reconciled && nodeReady && ackDone;
 
   return (
     <div className="flex h-screen overflow-hidden">
       <IconRail />
-      <SkillListPanel />
+      <SkillListPanel onSelectSkill={handleSelectSkill} />
       <main className="flex-1 overflow-hidden">
-        {ready && isConfigured ? <Outlet /> : null}
+        {ready && isConfigured
+          ? showWorkspace && selectedSkillData
+            ? <WorkspaceShell skill={selectedSkillData} skillType={selectedSkillType} />
+            : <Outlet />
+          : null}
       </main>
       <CloseGuard />
       {!splashDismissed && (
