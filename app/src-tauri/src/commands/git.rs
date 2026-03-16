@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::sync::Mutex;
 
 use crate::db::Db;
 use crate::types::{SkillCommit, SkillDiff};
@@ -73,6 +72,7 @@ pub fn restore_skill_version(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use crate::db::create_test_db_for_tests;
     use tempfile::tempdir;
 
