@@ -51,6 +51,13 @@ const REVIEW_STATUS_LABEL: Record<ReviewStatus, string> = {
   needs_refinement: "Needs refinement",
 };
 
+const REVIEW_STATUS_COLOR: Record<ReviewStatus, { cssVar?: string; className?: string }> = {
+  not_answered: { cssVar: "var(--destructive)" },
+  contradictory: { cssVar: "var(--destructive)" },
+  vague: { className: "border-amber-500/40 bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" },
+  needs_refinement: { cssVar: "var(--color-pacific)" },
+};
+
 function parseAnswerFeedback(note: Note): ReviewFeedback | null {
   if (note.type !== "answer_feedback") return null;
 
@@ -133,21 +140,24 @@ export function ClarificationsEditor({
     () => getReviewFeedbackMap(data.answer_evaluator_notes ?? []),
     [data.answer_evaluator_notes],
   );
-  const needsReviewCount = reviewFeedbackByQuestion.size;
   const canContinue = mustUnanswered === 0;
   const progressPct = total > 0 ? Math.round((answered / total) * 100) : 0;
   const isComplete = answered === total;
 
-  // By design: answered questions are excluded from the "Needs Review" filter even
-  // if they have review feedback (e.g. contradictory/vague). The filter is intended
-  // to surface only unanswered required questions and unanswered flagged questions,
-  // not to re-surface questions the user has already addressed.
   const questionNeedsReview = useCallback(
     (question: Question): boolean => {
       if (isQuestionAnswered(question)) return false;
       return reviewFeedbackByQuestion.has(question.id) || question.must_answer;
     },
     [reviewFeedbackByQuestion],
+  );
+
+  const needsReviewCount = useMemo(
+    () =>
+      data.sections
+        .flatMap((s) => s.questions.flatMap((q) => [q, ...q.refinements]))
+        .filter(questionNeedsReview).length,
+    [data.sections, questionNeedsReview],
   );
 
   const toggleCard = useCallback((id: string) => {
@@ -864,30 +874,7 @@ function RefinementItem({
 }
 
 function ReviewFeedbackCallout({ feedback, compact = false }: { feedback: ReviewFeedback; compact?: boolean }) {
-  const chipStyles: Record<ReviewStatus, { bg: string; text: string; border: string; className?: string }> = {
-    not_answered: {
-      bg: "var(--destructive)",
-      text: "var(--destructive)",
-      border: "color-mix(in oklch, var(--destructive), transparent 55%)",
-    },
-    contradictory: {
-      bg: "var(--destructive)",
-      text: "var(--destructive)",
-      border: "color-mix(in oklch, var(--destructive), transparent 55%)",
-    },
-    vague: {
-      bg: "",
-      text: "",
-      border: "",
-      className: "border-amber-500/40 bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
-    },
-    needs_refinement: {
-      bg: "var(--color-pacific)",
-      text: "var(--color-pacific)",
-      border: "color-mix(in oklch, var(--color-pacific), transparent 55%)",
-    },
-  };
-  const statusChip = chipStyles[feedback.status];
+  const { cssVar, className: chipClassName } = REVIEW_STATUS_COLOR[feedback.status];
 
   return (
     <div
@@ -903,15 +890,13 @@ function ReviewFeedbackCallout({ feedback, compact = false }: { feedback: Review
     >
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <span
-          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-            statusChip.className ?? ""
-          }`}
-          style={statusChip.className
+          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${chipClassName ?? ""}`}
+          style={chipClassName
             ? undefined
             : {
-              color: statusChip.text,
-              background: `color-mix(in oklch, ${statusChip.bg}, transparent 88%)`,
-              border: `1px solid ${statusChip.border}`,
+              color: cssVar,
+              background: `color-mix(in oklch, ${cssVar}, transparent 88%)`,
+              border: `1px solid color-mix(in oklch, ${cssVar}, transparent 55%)`,
             }}
         >
           Need Review: {REVIEW_STATUS_LABEL[feedback.status]}
@@ -928,38 +913,19 @@ function ReviewFeedbackCallout({ feedback, compact = false }: { feedback: Review
 }
 
 function ReviewStatusBadge({ status }: { status: ReviewStatus }) {
-  const statusStyles: Record<ReviewStatus, { className?: string; style?: CSSProperties }> = {
-    not_answered: {
-      style: {
-        color: "var(--destructive)",
-        border: "1px solid color-mix(in oklch, var(--destructive), transparent 50%)",
-        background: "color-mix(in oklch, var(--destructive), transparent 88%)",
-      },
-    },
-    contradictory: {
-      style: {
-        color: "var(--destructive)",
-        border: "1px solid color-mix(in oklch, var(--destructive), transparent 50%)",
-        background: "color-mix(in oklch, var(--destructive), transparent 88%)",
-      },
-    },
-    vague: {
-      className: "border-amber-500/40 bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
-    },
-    needs_refinement: {
-      style: {
-        color: "var(--color-pacific)",
-        border: "1px solid color-mix(in oklch, var(--color-pacific), transparent 50%)",
-        background: "color-mix(in oklch, var(--color-pacific), transparent 88%)",
-      },
-    },
-  };
-  const s = statusStyles[status];
+  const { cssVar, className } = REVIEW_STATUS_COLOR[status];
+  const style: CSSProperties | undefined = cssVar
+    ? {
+      color: cssVar,
+      border: `1px solid color-mix(in oklch, ${cssVar}, transparent 50%)`,
+      background: `color-mix(in oklch, ${cssVar}, transparent 88%)`,
+    }
+    : undefined;
 
   return (
     <span
-      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${s.className ?? ""}`}
-      style={s.style}
+      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${className ?? ""}`}
+      style={style}
     >
       {REVIEW_STATUS_LABEL[status]}
     </span>
