@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Lock, MoreHorizontal, Plus, Settings, Search } from "lucide-react";
+import { Lock, MoreHorizontal, Plus, Search, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -289,14 +289,14 @@ export function SkillListPanel({
         })}
       </ScrollArea>
 
-      {/* Footer */}
+      {/* Footer — settings icon only */}
       <div className="border-t p-2">
         <Link
           to="/settings"
-          className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="flex items-center justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          title="Settings"
         >
           <Settings className="size-4" />
-          Settings
         </Link>
       </div>
 
