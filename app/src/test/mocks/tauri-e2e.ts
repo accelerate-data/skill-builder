@@ -1,5 +1,5 @@
 /**
- * E2E mock for Tauri APIs. This file is loaded via Vite plugin
+ * E2E mock for Tauri APIs. This file is loaded via vite plugin
  * when TAURI_E2E=true, replacing @tauri-apps/api/core.
  *
  * It provides mock responses for all invoke commands so the frontend
