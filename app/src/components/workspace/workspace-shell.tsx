@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,29 @@ import type { SkillSummary, ImportedSkill } from "@/lib/types";
 interface WorkspaceShellProps {
   skill: SkillSummary | ImportedSkill;
   skillType: "builder" | "imported" | "marketplace";
+}
+
+function getHeaderDot(
+  skill: SkillSummary | ImportedSkill,
+  skillType: string,
+): { className: string; style?: React.CSSProperties } {
+  // Imported / marketplace → always green
+  if (skillType !== "builder") {
+    return { className: "size-2 shrink-0 rounded-full", style: { background: "var(--color-seafoam)" } };
+  }
+  const s = skill as SkillSummary;
+  // Completed → green (status="completed" wins over current_step)
+  if (s.status === "completed") {
+    return { className: "size-2 shrink-0 rounded-full", style: { background: "var(--color-seafoam)" } };
+  }
+  const stepMatch = s.current_step?.match(/step\s*(\d+)/i);
+  const step = stepMatch ? Number(stepMatch[1]) : null;
+  // Mid-progress (Step 2+) → amber
+  if (step !== null && step >= 2) {
+    return { className: "size-2 shrink-0 rounded-full bg-amber-500 dark:bg-amber-400" };
+  }
+  // Not started / Step 0 / Step 1 → red
+  return { className: "size-2 shrink-0 rounded-full bg-destructive" };
 }
 
 export function WorkspaceShell({ skill, skillType }: WorkspaceShellProps) {
@@ -26,14 +49,13 @@ export function WorkspaceShell({ skill, skillType }: WorkspaceShellProps) {
         ? "Marketplace"
         : "Imported";
 
+  const headerDot = getHeaderDot(skill, skillType);
+
   return (
     <div className="flex h-full flex-col">
       {/* 48px header */}
       <div className="flex h-12 shrink-0 items-center gap-2.5 border-b px-4">
-        <div
-          className="size-2 shrink-0 rounded-full"
-          style={{ background: "var(--color-seafoam)" }}
-        />
+        <div className={headerDot.className} style={headerDot.style} />
         <span className="truncate text-sm font-semibold">{skillName}</span>
         <Badge variant="outline" className="shrink-0 font-mono text-xs">
           {versionLabel}
