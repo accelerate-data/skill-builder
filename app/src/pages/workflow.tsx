@@ -522,7 +522,7 @@ export default function WorkflowPage() {
         />
 
         {/* Workflow body — step sidebar + step content */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
           <WorkflowSidebar
             steps={steps}
             currentStep={currentStep}
@@ -545,7 +545,7 @@ export default function WorkflowPage() {
             }}
           />
 
-          <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {/* Step header */}
             <div className="flex items-center justify-between border-b px-6 py-4">
               <div className="flex flex-col gap-1">
@@ -559,7 +559,7 @@ export default function WorkflowPage() {
             </div>
 
             {/* Content area */}
-            <div className={`flex flex-1 flex-col overflow-hidden ${
+            <div className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
               activeAgentId ? "" : "p-4"
             }`}>
               {renderContent()}

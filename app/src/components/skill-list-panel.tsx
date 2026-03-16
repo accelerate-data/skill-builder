@@ -58,21 +58,20 @@ interface DotStyle {
 function getStatusDot(skill: UnifiedSkill, isRunning: boolean): DotStyle {
   const pulse = isRunning ? " animate-dot-pulse" : "";
 
+  // Complete / imported → green (status="completed" always wins over current_step)
+  if (isSkillComplete(skill)) {
+    return { className: isRunning ? "animate-dot-pulse" : "", style: { backgroundColor: "var(--color-seafoam)" } };
+  }
+
   const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
   const step = stepMatch ? Number(stepMatch[1]) : null;
 
-  // Step 2+ (0-indexed: Confirm Decisions / Generate Skill) → amber
+  // Mid-progress (Step 2: Confirm Decisions, Step 3: Generate Skill) → amber
   if (step !== null && step >= 2) {
     return { className: `bg-amber-500 dark:bg-amber-400${pulse}` };
   }
 
-  // Complete with no active early step → green
-  // (step === null means no in-progress step, so the skill is truly done)
-  if (isSkillComplete(skill) && step === null) {
-    return { className: isRunning ? "animate-dot-pulse" : "", style: { backgroundColor: "var(--color-seafoam)" } };
-  }
-
-  // null, Step 0, Step 1 (not started or early research stages) → red
+  // Not started / Step 0 / Step 1 → red
   return { className: `bg-destructive${pulse}` };
 }
 
