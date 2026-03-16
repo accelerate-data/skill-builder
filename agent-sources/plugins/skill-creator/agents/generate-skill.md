@@ -136,7 +136,7 @@ In rewrite mode, preserve all original domain knowledge while prioritizing coher
 
 ## Phase 1: Write the skill
 
-Use `skill-creator:skill-creator` skill to write the skill, applying its progressive disclosure and writing methodology.
+Use `skill-creator:skill-creator` skill to write the skill.
 
 ### Read the agentskills spec before writing
 
