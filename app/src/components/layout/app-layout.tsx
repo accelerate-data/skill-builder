@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { toast } from "@/lib/toast";
 import { IconRail } from "./sidebar";
@@ -287,10 +287,37 @@ export function AppLayout() {
 
   const ready = settingsLoaded && reconciled && nodeReady && ackDone;
 
+  const [skillPanelWidth, setSkillPanelWidth] = useState(260);
+  const resizeStartX = useRef(0);
+  const resizeStartWidth = useRef(0);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    resizeStartX.current = e.clientX;
+    resizeStartWidth.current = skillPanelWidth;
+
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - resizeStartX.current;
+      setSkillPanelWidth(Math.max(180, Math.min(480, resizeStartWidth.current + dx)));
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [skillPanelWidth]);
+
   return (
     <div className="flex h-screen overflow-hidden">
       <IconRail />
-      <SkillListPanel onSelectSkill={handleSelectSkill} />
+      <div style={{ width: skillPanelWidth }} className="relative shrink-0">
+        <SkillListPanel onSelectSkill={handleSelectSkill} className="!w-full" />
+        <div
+          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 transition-colors"
+          onMouseDown={handleResizeStart}
+        />
+      </div>
       <main className="flex flex-1 flex-col overflow-hidden">
         {ready && isConfigured
           ? showWorkspace && selectedSkillData
