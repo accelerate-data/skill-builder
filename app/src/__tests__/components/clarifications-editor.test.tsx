@@ -361,6 +361,38 @@ describe("Need Review filter toggle", () => {
   });
 });
 
+describe("Needs Review banner count", () => {
+  it("counts only unanswered questions with feedback or must_answer", () => {
+    const data = makeClarifications([
+      makeQuestion({ id: "Q1", title: "Answered Flagged", answer_choice: "A", answer_text: "Choice A" }),
+      makeQuestion({ id: "Q2", title: "Unanswered Flagged", answer_choice: null, answer_text: null }),
+      makeQuestion({ id: "Q3", title: "Unanswered Must", must_answer: true, answer_choice: null, answer_text: null }),
+    ]);
+    data.answer_evaluator_notes = [
+      { type: "answer_feedback", title: "Needs refinement: Q1", body: "More detail needed." },
+      { type: "answer_feedback", title: "Not answered: Q2", body: "Still unanswered." },
+    ];
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+
+    // Q1 is answered (excluded), Q2 is unanswered+flagged (included), Q3 is unanswered+must (included) → count = 2
+    expect(screen.getByText("2 questions currently marked for review by the answer evaluator.")).toBeInTheDocument();
+  });
+
+  it("shows no banner when all flagged questions are answered", () => {
+    const data = makeClarifications([
+      makeQuestion({ id: "Q1", title: "Answered Flagged", answer_choice: "A", answer_text: "Choice A" }),
+    ]);
+    data.answer_evaluator_notes = [
+      { type: "answer_feedback", title: "Needs refinement: Q1", body: "More detail needed." },
+    ];
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+
+    expect(screen.queryByText(/currently marked for review/)).not.toBeInTheDocument();
+  });
+});
+
 describe("Inline evaluator feedback", () => {
   it("shows a status badge on collapsed flagged question cards", () => {
     const data = makeClarifications([makeQuestion({ id: "Q1", title: "Flagged Question" })]);
