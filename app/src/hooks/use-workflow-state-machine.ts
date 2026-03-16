@@ -12,6 +12,8 @@ import {
   endWorkflowSession,
 } from "@/lib/tauri";
 import { resolveModelId } from "@/lib/models";
+import { joinPath } from "@/lib/path-utils";
+import { parseClarifications } from "@/lib/clarifications-types";
 import { type StepConfig } from "@/lib/workflow-step-configs";
 import { toast } from "@/lib/toast";
 import { useWorkflowGate } from "@/hooks/use-workflow-gate";
@@ -363,6 +365,254 @@ export function useWorkflowStateMachine({
         { duration: Infinity },
       );
     }
+  };
+
+  const runGateEvaluation = async () => {
+    if (!workspacePath) return;
+    console.log(`[workflow] Running answer evaluator gate for "${skillName}"`);
+    setPendingAutoStartStep(null);
+    setGateLoading(true);
+
+    try {
+      const agentId = await runAnswerEvaluator(skillName, workspacePath);
+      console.log(`[workflow] Gate evaluator started: agentId=${agentId}`);
+      gateAgentIdRef.current = agentId;
+      agentStartRun(agentId, resolveModelId("haiku"));
+      setActiveAgent(agentId);
+    } catch (err) {
+      console.error("[workflow] Gate evaluation failed to start:", err);
+      setGateLoading(false);
+      updateStepStatus(currentStep, "completed");
+      advanceToNextStep();
+    }
+  };
+
+  const runGateOrAdvance = () => {
+    const { gateLoading: gateLoadingNow } = useWorkflowStore.getState();
+    if (gateLoadingNow || gateAgentIdRef.current) return;
+
+    if (currentStep === 0 && workspacePath && !disabledSteps.includes(1)) {
+      setGateContext("clarifications");
+      runGateEvaluation();
+      return;
+    }
+
+    if (currentStep === 1 && workspacePath && !disabledSteps.includes(2)) {
+      setGateContext("refinements");
+      runGateEvaluation();
+      return;
+    }
+
+    advanceToNextStep();
+  };
+
+  const handleReviewContinue = async () => {
+    // Save is handled by useWorkflowAutosave; just proceed to gate
+    runGateOrAdvance();
+  };
+
+  // --- Gate evaluation logic ---
+
+  const finishGateEvaluation = async (structuredOutput?: unknown) => {
+    const proceedNormally = () => {
+      setGateLoading(false);
+      updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
+      advanceToNextStep();
+    };
+
+    if (!workspacePath) {
+      proceedNormally();
+      return;
+    }
+
+    console.log("[workflow] Gate structured output:", structuredOutput);
+
+    try {
+      if (structuredOutput != null) {
+        await materializeAnswerEvaluationOutput(skillName, workspacePath, structuredOutput);
+      }
+
+      const evalPath = joinPath(workspacePath, skillName, "answer-evaluation.json");
+      const raw = await readFile(evalPath);
+      const evaluation: AnswerEvaluation = JSON.parse(raw);
+
+      if (!["sufficient", "mixed", "insufficient"].includes(evaluation.verdict)) {
+        console.warn("[workflow] Invalid gate verdict:", evaluation.verdict);
+        proceedNormally();
+        return;
+      }
+
+      if (workspacePath) {
+        try {
+          const clarificationsRaw = await getClarificationsContent(skillName, workspacePath);
+          const parsed = parseClarifications(clarificationsRaw);
+          if (parsed) {
+            const next: ClarificationsFile = {
+              ...parsed,
+              answer_evaluator_notes: buildGateFeedbackNotes(evaluation),
+            };
+            const serialized = JSON.stringify(next, null, 2);
+            await saveClarificationsContent(skillName, workspacePath, serialized);
+            onClarificationsUpdated?.(next, serialized);
+          }
+        } catch (err) {
+          console.warn("[workflow] Could not update clarifications notes from gate evaluation:", err);
+        }
+      }
+
+      if (workspacePath) {
+        const gateLog = JSON.stringify({ ...evaluation, action: "show_dialog", timestamp: new Date().toISOString() });
+        writeFile(joinPath(workspacePath, skillName, "gate-result.json"), gateLog).catch((e) => console.warn("[use-workflow-state-machine] non-fatal: op=writeFile err=%s", e));
+      }
+
+      setGateLoading(false);
+      setGateVerdict(evaluation.verdict);
+      setGateEvaluation(evaluation);
+      setShowGateDialog(true);
+    } catch (err) {
+      console.warn("[workflow] Gate evaluation materialization failed — proceeding normally:", err);
+      proceedNormally();
+    }
+  };
+
+  function buildGateFeedbackNotes(evaluation: AnswerEvaluation): Note[] {
+    const perQuestion = evaluation.per_question ?? [];
+    const optionalReason = (q: (typeof perQuestion)[number]): string | null =>
+      "reason" in q && typeof q.reason === "string" && q.reason.trim().length > 0
+        ? q.reason.trim()
+        : null;
+
+    return perQuestion
+      .filter(
+        (q) =>
+          q.verdict === "vague" ||
+          q.verdict === "contradictory" ||
+          q.verdict === "not_answered" ||
+          q.verdict === "needs_refinement"
+      )
+      .map((q) => {
+        if (q.verdict === "contradictory") {
+          const fallback = `This answer conflicts with ${q.contradicts}.`;
+          return {
+            type: "answer_feedback",
+            title: `Contradictory answer: ${q.question_id}`,
+            body: optionalReason(q) || fallback,
+          };
+        }
+        if (q.verdict === "not_answered") {
+          return {
+            type: "answer_feedback",
+            title: `Not answered: ${q.question_id}`,
+            body:
+              optionalReason(q) ||
+              "This question is still unanswered. Add a concrete answer before continuing.",
+          };
+        }
+        if (q.verdict === "needs_refinement") {
+          return {
+            type: "answer_feedback",
+            title: `Needs refinement: ${q.question_id}`,
+            body:
+              optionalReason(q) ||
+              "Answer has useful direction but needs more concrete detail and constraints.",
+          };
+        }
+        return {
+          type: "answer_feedback",
+          title: `Vague answer: ${q.question_id}`,
+          body: optionalReason(q) || "Answer is too general and needs specific details.",
+        };
+      });
+  }
+
+  const closeGateDialog = () => {
+    setShowGateDialog(false);
+    setGateVerdict(null);
+    setGateEvaluation(null);
+  };
+
+  const skipToDecisions = (message: string) => {
+    closeGateDialog();
+    if (gateContext === "refinements") {
+      updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
+      advanceToNextStep();
+    } else {
+      updateStepStatus(1, "completed");
+      setCurrentStep(2);
+    }
+
+    const s = useWorkflowStore.getState();
+    const stepStatuses = s.steps.map((step) => ({ step_id: step.id, status: step.status }));
+    const runStatus = s.steps.every((step) => step.status === "completed") ? "completed" : "pending";
+    saveWorkflowState(skillName, s.currentStep, runStatus, stepStatuses, purpose ?? undefined).catch(
+      (err) => console.error("skipToDecisions: failed to persist state:", err),
+    );
+    toast.success(message);
+  };
+
+  const logGateAction = (decision: string) => {
+    if (!workspacePath) return;
+    const entry = JSON.stringify({ decision, verdict: gateVerdict, timestamp: new Date().toISOString() });
+    writeFile(joinPath(workspacePath, skillName, "gate-result.json"), entry).catch((e) => console.warn("[use-workflow-state-machine] non-fatal: op=writeFile err=%s", e));
+    logGateDecision(skillName, gateVerdict ?? "unknown", decision).catch((e) => console.warn("[use-workflow-state-machine] non-fatal: op=logGateDecision err=%s", e));
+  };
+
+  const handleGateSkip = () => {
+    logGateAction("skip");
+    if (gateContext === "refinements") {
+      skipToDecisions("Refinement answers verified — continuing to decisions");
+    } else {
+      skipToDecisions("Skipped detailed research — answers were sufficient");
+    }
+  };
+
+  const handleGateResearch = () => {
+    logGateAction(gateContext === "refinements" ? "continue_to_decisions" : "research_anyway");
+    closeGateDialog();
+    updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
+    advanceToNextStep();
+  };
+
+  const handleGateContinueAnyway = () => {
+    logGateAction("continue_anyway");
+    closeGateDialog();
+    updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
+    advanceToNextStep();
+    toast.success("Continuing with current answers");
+  };
+
+  const handleGateLetMeAnswer = () => {
+    logGateAction("let_me_answer");
+    closeGateDialog();
+    toast.info("Refreshing evaluator feedback...", { duration: 5000 });
+
+    if (!workspacePath) {
+      toast.warning("Workspace path is missing in settings. Could not refresh feedback from disk.", { duration: Infinity });
+      return;
+    }
+
+    const prevNoteCount = clarificationsData?.answer_evaluator_notes?.length ?? 0;
+    getClarificationsContent(skillName, workspacePath)
+      .then((content) => {
+        const parsed = parseClarifications(content ?? null);
+        if (!parsed) {
+          toast.warning("Feedback file could not be parsed. You can still answer manually.", { duration: Infinity });
+          return;
+        }
+
+        // Update editor state with refreshed feedback
+        onClarificationsUpdated?.(parsed, content ?? "");
+
+        const addedNotes = Math.max(0, (parsed.answer_evaluator_notes?.length ?? 0) - prevNoteCount);
+        if (addedNotes > 0) {
+          toast.success(`Loaded ${addedNotes} feedback note${addedNotes === 1 ? "" : "s"} for review.`);
+        } else {
+          toast.success("Feedback refreshed. You can update your answers now.");
+        }
+      })
+      .catch(() => {
+        toast.warning("Could not refresh feedback from disk. You can still answer manually.", { duration: Infinity });
+      });
   };
 
   // --- Step reset ---

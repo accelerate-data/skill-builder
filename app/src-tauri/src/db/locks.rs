@@ -15,6 +15,7 @@ pub fn acquire_skill_lock(
     conn.execute_batch("BEGIN IMMEDIATE")
         .map_err(|e| e.to_string())?;
 
+
     let result = (|| -> Result<(), String> {
         let s_id = get_skill_master_id(conn, skill_name)?
             .ok_or_else(|| "Skill not found in skills master".to_string())?;
@@ -188,6 +189,7 @@ pub fn check_pid_alive(pid: u32) -> bool {
         })
         .unwrap_or(false)
 }
+
 
 #[cfg(test)]
 mod tests {

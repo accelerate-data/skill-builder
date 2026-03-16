@@ -38,6 +38,7 @@ pub(crate) fn create_test_db_for_tests() -> Connection {
     }
     repair_skills_table_schema(&conn).unwrap();
     run_marketplace_source_url_migration(&conn).unwrap();
+
     conn.pragma_update(None, "foreign_keys", true).unwrap();
     conn
 }
@@ -87,6 +88,7 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
     // Guards against dev builds that recorded migration 29 before the ALTER TABLE statements ran.
     run_marketplace_source_url_migration(&conn)
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
 
     // Re-enable FK enforcement now that all migrations are complete.
     // This ensures ON DELETE CASCADE and other FK constraints are active for all app writes.
@@ -142,6 +144,7 @@ fn migrate_legacy_db_path(
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests;

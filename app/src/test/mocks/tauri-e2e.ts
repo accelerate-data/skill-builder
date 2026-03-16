@@ -6,6 +6,7 @@
  * can render without the Rust backend.
  */
 
+
 // E2E root matches test-paths.ts joinE2ePath() output at runtime.
 // Browser mocks can't access os.tmpdir(), so we use a synthetic root
 // that E2E tests override via __TAURI_MOCK_OVERRIDES__ when needed.
@@ -75,6 +76,7 @@ const mockResponses: Record<string, unknown> = {
   start_agent: "agent-001",
   run_workflow_step: "agent-001",
   run_parallel_agents: { agent_id_a: "agent-001", agent_id_b: "agent-002" },
+
   package_skill: { file_path: `${E2E_ROOT}/package/my-skill.skill`, size_bytes: 12345 },
   // Workflow state
   get_workflow_state: { run: null, steps: [] },
@@ -146,6 +148,7 @@ const mockResponses: Record<string, unknown> = {
   toggle_skill_active: undefined,
   delete_imported_skill: undefined,
   delete_workspace_skill: undefined,
+
   export_skill: `${E2E_ROOT}/export/test-skill.zip`,
   get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\nFollow these steps...",
   // GitHub import

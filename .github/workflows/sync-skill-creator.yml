@@ -1,0 +1,160 @@
+name: Sync skill-creator plugin
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: Git ref in anthropics/skills to sync from
+        required: false
+        default: main
+      dry_run:
+        description: Run sync without committing or pushing changes
+        required: false
+        default: "false"
+  schedule:
+    - cron: "0 6 * * *"
+
+# Deny all permissions by default; job-level blocks grant only what is needed.
+permissions: {}
+
+jobs:
+  sync-skill-creator:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    env:
+      # Public upstream repo; no PAT required — uses default GITHUB_TOKEN.
+      UPSTREAM_REPO: anthropics/skills
+      UPSTREAM_REF: ${{ github.event.inputs.upstream_ref || 'main' }}
+      UPSTREAM_PLUGIN_PATH: skills/skill-creator
+      LOCAL_PLUGIN_PATH: agent-sources/plugins/skill-creator
+      SYNC_BRANCH: chore/sync-anthropic-skills-skill-creator
+
+    steps:
+      - name: Checkout skill-builder
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone --no-single-branch \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            .
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+      - name: Clone anthropics/skills
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "${UPSTREAM_REF}" \
+            "https://github.com/${UPSTREAM_REPO}.git" \
+            upstream
+
+      - name: Show upstream skill-creator commit
+        run: |
+          echo "Upstream repo: ${UPSTREAM_REPO}"
+          echo "Upstream ref:  ${UPSTREAM_REF}"
+          git -C upstream rev-parse HEAD
+
+      - name: Sync skill-creator plugin directory
+        run: |
+          set -euo pipefail
+
+          if [ ! -d "upstream/${UPSTREAM_PLUGIN_PATH}" ]; then
+            echo "Expected upstream plugin path 'upstream/${UPSTREAM_PLUGIN_PATH}' does not exist"
+            exit 1
+          fi
+
+          rm -rf "${LOCAL_PLUGIN_PATH}"
+          mkdir -p "$(dirname "${LOCAL_PLUGIN_PATH}")"
+
+          rsync -a --delete "upstream/${UPSTREAM_PLUGIN_PATH}/" "${LOCAL_PLUGIN_PATH}/"
+
+      - name: Check for changes
+        id: changes
+        run: |
+          # git diff only sees tracked files; use git status --porcelain to also
+          # catch untracked files (e.g. when the plugin directory is new).
+          if git status --porcelain "${LOCAL_PLUGIN_PATH}" | grep -q .; then
+            echo "Changes detected."
+            git status --short "${LOCAL_PLUGIN_PATH}"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No changes after sync; exiting."
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stop on dry run or no changes
+        if: steps.changes.outputs.has_changes == 'false' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == 'true')
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "Dry run enabled; not creating branch or PR."
+          else
+            echo "No changes detected; nothing to do."
+          fi
+
+      - name: Create or switch to sync branch
+        if: steps.changes.outputs.has_changes == 'true' && (github.event_name != 'workflow_dispatch' || inputs.dry_run != 'true')
+        run: |
+          set -euo pipefail
+
+          if git rev-parse --verify "${SYNC_BRANCH}" >/dev/null 2>&1; then
+            git checkout "${SYNC_BRANCH}"
+          else
+            git checkout -b "${SYNC_BRANCH}"
+          fi
+
+      - name: Commit changes
+        if: steps.changes.outputs.has_changes == 'true' && (github.event_name != 'workflow_dispatch' || inputs.dry_run != 'true')
+        run: |
+          set -euo pipefail
+
+          git add "${LOCAL_PLUGIN_PATH}"
+          if git diff --cached --quiet; then
+            echo "No staged changes; skipping commit."
+            exit 0
+          fi
+
+          git commit -m "chore: sync anthropics/skills skill-creator plugin"
+
+      - name: Push branch
+        if: steps.changes.outputs.has_changes == 'true' && (github.event_name != 'workflow_dispatch' || inputs.dry_run != 'true')
+        run: |
+          set -euo pipefail
+
+          git push --set-upstream origin "${SYNC_BRANCH}" || git push --force-with-lease origin "${SYNC_BRANCH}"
+
+      - name: Create or update PR
+        if: steps.changes.outputs.has_changes == 'true' && (github.event_name != 'workflow_dispatch' || inputs.dry_run != 'true')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          PR_TITLE="chore: sync anthropics/skills skill-creator plugin"
+          PR_BODY_FILE="$(mktemp)"
+
+          {
+            echo "## Summary"
+            echo "- Sync skill-creator plugin from anthropics/skills into agent-sources/plugins/skill-creator."
+            echo
+            echo "## Details"
+            echo "- Source: anthropics/skills@${UPSTREAM_REF}"
+            echo "- Path mapping: skills/skill-creator → agent-sources/plugins/skill-creator"
+            echo
+            echo "## Notes"
+            echo "- This PR is auto-generated by the sync-skill-creator workflow."
+          } > "${PR_BODY_FILE}"
+
+          if gh pr list --head "${SYNC_BRANCH}" --state open --json number --limit 1 | jq 'length' | grep -q '1'; then
+            PR_NUMBER="$(gh pr list --head "${SYNC_BRANCH}" --state open --json number --limit 1 | jq -r '.[0].number')"
+            gh pr edit "${PR_NUMBER}" --title "${PR_TITLE}" --body-file "${PR_BODY_FILE}"
+          else
+            gh pr create \
+              --title "${PR_TITLE}" \
+              --body-file "${PR_BODY_FILE}" \
+              --base main \
+              --head "${SYNC_BRANCH}"
+          fi

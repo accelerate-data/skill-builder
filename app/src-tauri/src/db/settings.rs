@@ -32,6 +32,7 @@ pub fn write_settings(conn: &Connection, settings: &AppSettings) -> Result<(), S
     Ok(())
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;

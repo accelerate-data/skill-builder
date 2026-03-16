@@ -168,7 +168,7 @@ Put results in `<skill-name>-workspace/` as a sibling to the skill directory. Wi
 
 ### Step 1: Spawn all runs (with-skill AND baseline) in the same turn
 
-For each test case, spawn two subagents in the same turn — one with the skill, one without. Mode: `bypassPermissions`. This is important: don't spawn the with-skill runs first and then come back for baselines later. Launch everything at once so it all finishes around the same time.
+For each test case, spawn two subagents in the same turn — one with the skill, one without. This is important: don't spawn the with-skill runs first and then come back for baselines later. Launch everything at once so it all finishes around the same time.
 
 **With-skill run:**
 
@@ -222,37 +222,29 @@ This is the only opportunity to capture this data — it comes through the task 
 
 Once all runs are done:
 
-1. **Grade each run** — spawn a grader subagent (or grade inline) that reads `../../agents/grader.md` and evaluates each assertion against the outputs. Save results to `grading.json` in each run directory. The grading.json expectations array must use the fields `text`, `passed`, and `evidence` (not `name`/`met`/`details` or other variants) — the viewer depends on these exact field names. For assertions that can be checked programmatically, write and run a script rather than eyeballing it — scripts are faster, more reliable, and can be reused across iterations.
+1. **Grade each run** — spawn a grader subagent (or grade inline) that reads `agents/grader.md` and evaluates each assertion against the outputs. Save results to `grading.json` in each run directory. The grading.json expectations array must use the fields `text`, `passed`, and `evidence` (not `name`/`met`/`details` or other variants) — the viewer depends on these exact field names. For assertions that can be checked programmatically, write and run a script rather than eyeballing it — scripts are faster, more reliable, and can be reused across iterations.
 
-2. **Aggregate into benchmark** — run the aggregation script from the skill directory (the one containing this `SKILL.md`):
+2. **Aggregate into benchmark** — run the aggregation script from the skill-creator directory:
    ```bash
    python -m scripts.aggregate_benchmark <workspace>/iteration-N --skill-name <name>
    ```
    This produces `benchmark.json` and `benchmark.md` with pass_rate, time, and tokens for each configuration, with mean ± stddev and the delta. If generating benchmark.json manually, see `references/schemas.md` for the exact schema the viewer expects.
 Put each with_skill version before its baseline counterpart.
 
-3. **Do an analyst pass** — read the benchmark data and surface patterns the aggregate stats might hide. See `../../agents/analyzer.md` (the "Analyzing Benchmark Results" section) for what to look for — things like assertions that always pass regardless of skill (non-discriminating), high-variance evals (possibly flaky), and time/token tradeoffs.
+3. **Do an analyst pass** — read the benchmark data and surface patterns the aggregate stats might hide. See `agents/analyzer.md` (the "Analyzing Benchmark Results" section) for what to look for — things like assertions that always pass regardless of skill (non-discriminating), high-variance evals (possibly flaky), and time/token tradeoffs.
 
-4. **Launch the viewer** with both qualitative outputs and quantitative data.
-
-   Run from the skill directory (the one containing this `SKILL.md`) so relative paths resolve:
-
+4. **Launch the viewer** with both qualitative outputs and quantitative data:
    ```bash
-   python eval-viewer/generate_review.py \
+   nohup python <skill-creator-path>/eval-viewer/generate_review.py \
      <workspace>/iteration-N \
      --skill-name "my-skill" \
      --benchmark <workspace>/iteration-N/benchmark.json \
-     --static <workspace>/iteration-N/review.html
+     > /dev/null 2>&1 &
+   VIEWER_PID=$!
    ```
    For iteration 2+, also pass `--previous-workspace <workspace>/iteration-<N-1>`.
 
-   Then open the static HTML file (or tell the user where it is):
-
-   ```bash
-   open <workspace>/iteration-N/review.html
-   ```
-
-   Feedback will be downloaded as a `feedback.json` file when the user clicks "Submit All Reviews". After download, copy `feedback.json` into the workspace directory for the next iteration to pick up.
+   **Cowork / headless environments:** If `webbrowser.open()` is not available or the environment has no display, use `--static <output_path>` to write a standalone HTML file instead of starting a server. Feedback will be downloaded as a `feedback.json` file when the user clicks "Submit All Reviews". After download, copy `feedback.json` into the workspace directory for the next iteration to pick up.
 
 Note: please use generate_review.py to create the viewer; there's no need to write custom HTML.
 
@@ -289,7 +281,11 @@ When the user tells you they're done, read `feedback.json`:
 
 Empty feedback means the user thought it was fine. Focus your improvements on the test cases where the user had specific complaints.
 
-There is no server process when using `--static`, so there is nothing to kill.
+Kill the viewer server when you're done with it:
+
+```bash
+kill $VIEWER_PID 2>/dev/null
+```
 
 ---
 
@@ -328,7 +324,7 @@ Keep going until:
 
 ## Advanced: Blind comparison
 
-For situations where you want a more rigorous comparison between two versions of a skill (e.g., the user asks "is the new version actually better?"), there's a blind comparison system. Read `../../agents/comparator.md` and `../../agents/analyzer.md` for the details. The basic idea is: give two outputs to an independent agent without telling it which is which, and let it judge quality. Then analyze why the winner won.
+For situations where you want a more rigorous comparison between two versions of a skill (e.g., the user asks "is the new version actually better?"), there's a blind comparison system. Read `agents/comparator.md` and `agents/analyzer.md` for the details. The basic idea is: give two outputs to an independent agent without telling it which is which, and let it judge quality. Then analyze why the winner won.
 
 This is optional, requires subagents, and most users won't need it. The human review loop is usually sufficient.
 
@@ -464,9 +460,9 @@ If you're in Cowork, the main things to know are:
 
 The agents/ directory contains instructions for specialized subagents. Read them when you need to spawn the relevant subagent.
 
-- `../../agents/grader.md` — How to evaluate assertions against outputs
-- `../../agents/comparator.md` — How to do blind A/B comparison between two outputs
-- `../../agents/analyzer.md` — How to analyze why one version beat another
+- `agents/grader.md` — How to evaluate assertions against outputs
+- `agents/comparator.md` — How to do blind A/B comparison between two outputs
+- `agents/analyzer.md` — How to analyze why one version beat another
 
 The references/ directory has additional documentation:
 - `references/schemas.md` — JSON structures for evals.json, grading.json, etc.

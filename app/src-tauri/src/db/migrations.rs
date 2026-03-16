@@ -39,6 +39,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (34, run_ghost_running_rows_migration),
     (35, run_drop_workflow_runs_metadata_migration),
     (36, run_consolidate_workspace_skills_migration),
+
     (37, run_fk_cascade_migration),
 ];
 
@@ -75,6 +76,7 @@ pub(super) fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+
 
         -- workflow_runs tracks workflow execution state only.
         -- Metadata fields (description, version, model, argument_hint,
@@ -469,6 +471,7 @@ pub(super) fn run_workflow_runs_extended_migration(conn: &Connection) -> Result<
     Ok(())
 }
 
+
 /// Migration 18: Create the `skills` master table — the single catalog backing
 /// the skills library, test tab, and reconciliation.
 pub(super) fn run_skills_table_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -594,6 +597,7 @@ pub(super) fn run_ghost_running_rows_migration(conn: &Connection) -> Result<(), 
 }
 
 /// Migration 35: Drop deprecated metadata columns from `workflow_runs`.
+
 ///
 /// After migration 24 moved description/version/model/argument_hint/user_invocable/
 /// disable_model_invocation to the `skills` master table, `workflow_runs` retained
@@ -664,6 +668,7 @@ pub(super) fn run_consolidate_workspace_skills_migration(conn: &Connection) -> R
     log::info!("migration 36: dropped workspace_skills table");
     Ok(())
 }
+
 
 /// Migration 19: Backfill `skills` from `workflow_runs`, add FK column, backfill FK,
 /// and remove marketplace rows from `workflow_runs` (now in skills master only).
@@ -753,6 +758,7 @@ pub(super) fn run_workspace_skills_migration(conn: &Connection) -> Result<(), ru
     Ok(())
 }
 
+
 /// Migration 22: Add integer primary key to `workflow_runs`.
 /// The table previously used `skill_name TEXT PRIMARY KEY`. We recreate it with
 /// `id INTEGER PRIMARY KEY AUTOINCREMENT` and `skill_name TEXT UNIQUE NOT NULL`.
@@ -818,6 +824,7 @@ pub(super) fn run_workflow_runs_id_migration(conn: &Connection) -> Result<(), ru
     log::info!("migration 21: added integer PK to workflow_runs");
     Ok(())
 }
+
 
 /// Migration 23: Add integer FK columns to child tables and backfill from skill_name.
 /// After this migration:
@@ -1440,6 +1447,7 @@ pub(super) fn run_marketplace_source_url_migration(conn: &Connection) -> Result<
     }
     Ok(())
 }
+
 
 /// Migration 37: Recreate 7 child tables to add ON DELETE CASCADE to FK columns.
 ///
