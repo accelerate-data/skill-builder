@@ -338,7 +338,7 @@ describe("Need Review filter toggle", () => {
     expect(screen.queryByText("Optional Question")).not.toBeInTheDocument();
   });
 
-  it("hides answered questions even when they have evaluator feedback", async () => {
+  it("hides answered questions with non-contradictory evaluator feedback", async () => {
     const user = userEvent.setup();
     const data = makeClarifications([
       makeQuestion({ id: "Q1", title: "Required Question", must_answer: true, answer_choice: "A", answer_text: "Choice A" }),
@@ -355,9 +355,32 @@ describe("Need Review filter toggle", () => {
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
     await user.click(screen.getByRole("switch", { name: "Need Review" }));
 
-    // Both questions are answered — the toggle should hide them regardless of evaluator feedback
+    // Both questions are answered with non-contradictory feedback — toggle hides them
     expect(screen.queryByText("Required Question")).not.toBeInTheDocument();
     expect(screen.queryByText("Flagged Question")).not.toBeInTheDocument();
+  });
+
+  it("surfaces answered questions with contradictory verdict under Needs Review", async () => {
+    const user = userEvent.setup();
+    const data = makeClarifications([
+      makeQuestion({ id: "Q1", title: "Contradictory Question", answer_choice: "A", answer_text: "Choice A" }),
+      makeQuestion({ id: "Q2", title: "Clean Question", answer_choice: "B", answer_text: "Choice B" }),
+    ]);
+    data.answer_evaluator_notes = [
+      {
+        type: "answer_feedback",
+        title: "Contradictory answer: Q1",
+        body: "Answer conflicts with Q2.",
+      },
+    ];
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+    await user.click(screen.getByRole("switch", { name: "Need Review" }));
+
+    // Contradictory question must appear even though it has an answer
+    expect(screen.getByText("Contradictory Question")).toBeInTheDocument();
+    // Clean answered question must be hidden
+    expect(screen.queryByText("Clean Question")).not.toBeInTheDocument();
   });
 });
 

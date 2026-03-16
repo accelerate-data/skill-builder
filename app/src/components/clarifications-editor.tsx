@@ -140,8 +140,10 @@ export function ClarificationsEditor({
 
   const questionNeedsReview = useCallback(
     (question: Question): boolean => {
+      const feedback = reviewFeedbackByQuestion.get(question.id);
+      if (feedback?.status === "contradictory") return true;
       if (isQuestionAnswered(question)) return false;
-      return reviewFeedbackByQuestion.has(question.id) || question.must_answer;
+      return feedback !== undefined || question.must_answer;
     },
     [reviewFeedbackByQuestion],
   );
