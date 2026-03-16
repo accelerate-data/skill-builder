@@ -43,7 +43,7 @@ export function WorkflowSidebar({
   return (
     <nav className="flex w-64 shrink-0 flex-col border-r bg-muted/30 p-4">
       <h2 className="mb-4 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-        Workflow Steps
+        Steps
       </h2>
       <ol className="flex flex-col gap-1">
         {steps.map((step) => {
