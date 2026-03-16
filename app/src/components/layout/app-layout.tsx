@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Outlet, useNavigate, useRouterState, useRouter } from "@tanstack/react-router";
+import { Outlet, useNavigate, useRouter } from "@tanstack/react-router";
 import { toast } from "@/lib/toast";
-import { Sidebar } from "./sidebar";
-import { Header } from "./header";
+import { IconRail } from "./sidebar";
+import { SkillListPanel } from "@/components/skill-list-panel";
 import { CloseGuard } from "@/components/close-guard";
 import { SplashScreen } from "@/components/splash-screen";
 import { SetupScreen } from "@/components/setup-screen";
@@ -127,8 +127,6 @@ export function AppLayout() {
   const isConfigured = useSettingsStore((s) => s.isConfigured);
   const navigate = useNavigate();
   const router = useRouter();
-  const currentPath = useRouterState({ select: (s) => s.location.pathname });
-  const isSettings = currentPath === "/settings";
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [reconciled, setReconciled] = useState(false);
   const [splashDismissed, setSplashDismissed] = useState(false);
@@ -252,11 +250,6 @@ export function AppLayout() {
         e.preventDefault();
         navigate({ to: "/" });
       }
-      // Cmd+2 -> Usage
-      if ((e.metaKey || e.ctrlKey) && e.key === "2") {
-        e.preventDefault();
-        navigate({ to: "/usage" });
-      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -267,13 +260,11 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {!isSettings && <Sidebar />}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {!isSettings && <Header />}
-        <main className={`flex-1 overflow-y-auto${isSettings ? "" : " p-6"}`}>
-          {ready && isConfigured ? <Outlet /> : null}
-        </main>
-      </div>
+      <IconRail />
+      <SkillListPanel />
+      <main className="flex-1 overflow-hidden">
+        {ready && isConfigured ? <Outlet /> : null}
+      </main>
       <CloseGuard />
       {!splashDismissed && (
         <SplashScreen
