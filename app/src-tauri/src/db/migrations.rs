@@ -597,7 +597,6 @@ pub(super) fn run_ghost_running_rows_migration(conn: &Connection) -> Result<(), 
 }
 
 /// Migration 35: Drop deprecated metadata columns from `workflow_runs`.
-
 ///
 /// After migration 24 moved description/version/model/argument_hint/user_invocable/
 /// disable_model_invocation to the `skills` master table, `workflow_runs` retained

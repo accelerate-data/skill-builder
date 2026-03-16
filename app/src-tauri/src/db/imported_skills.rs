@@ -8,7 +8,6 @@ use super::skills::get_skill_master_id;
 
 /// Read SKILL.md frontmatter from disk and populate `description`
 /// on an ImportedSkill struct. This field is not stored in the DB.
-
 ///
 /// **Must be called outside the DB mutex** — this performs disk I/O that
 /// would block all other DB operations if called while holding the lock.
