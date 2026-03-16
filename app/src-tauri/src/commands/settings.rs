@@ -949,14 +949,14 @@ mod tests {
         settings.github_user_login = Some("alice".to_string());
         settings.github_user_avatar = Some("https://avatar".to_string());
         settings.github_user_email = Some("alice@example.com".to_string());
-        settings.github_oauth_token = Some("test-oauth-abc123".to_string());
+        settings.github_oauth_token = Some("gho_placeholder_for_tests".to_string());
         crate::db::write_settings(&conn, &settings).unwrap();
 
         let result = crate::db::read_settings(&conn).unwrap();
         assert_eq!(result.github_user_login.as_deref(), Some("alice"));
         assert_eq!(result.github_user_avatar.as_deref(), Some("https://avatar"));
         assert_eq!(result.github_user_email.as_deref(), Some("alice@example.com"));
-        assert_eq!(result.github_oauth_token.as_deref(), Some("test-oauth-abc123"));
+        assert_eq!(result.github_oauth_token.as_deref(), Some("gho_placeholder_for_tests"));
     }
 
     #[test]
