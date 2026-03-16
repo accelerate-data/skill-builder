@@ -1,0 +1,173 @@
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import SkillDialog from "@/components/skill-dialog";
+import { useSettingsStore } from "@/stores/settings-store";
+import type { SkillSummary, ImportedSkill, Purpose } from "@/lib/types";
+import { PURPOSE_LABELS } from "@/lib/types";
+
+interface WorkspaceOverviewProps {
+  skill: SkillSummary | ImportedSkill;
+  skillType: "builder" | "imported" | "marketplace";
+  onOpenRefine: () => void;
+}
+
+function getSkillDates(
+  skill: SkillSummary | ImportedSkill,
+): { created: string | null; modified: string | null } {
+  if ("name" in skill) {
+    return { created: skill.last_modified, modified: skill.last_modified };
+  }
+  return { created: skill.imported_at, modified: skill.imported_at };
+}
+
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return "—";
+  return new Date(dateStr).toLocaleDateString();
+}
+
+export function WorkspaceOverview({ skill, skillType, onOpenRefine }: WorkspaceOverviewProps) {
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const workspacePath = useSettingsStore((s) => s.workspacePath);
+
+  const isBuilderSkill = "name" in skill;
+  const purpose = skill.purpose;
+  const description = isBuilderSkill ? skill.description : skill.description;
+  const tags = isBuilderSkill ? skill.tags : [];
+  const { created, modified } = getSkillDates(skill);
+
+  const canEdit = isBuilderSkill && !!workspacePath;
+
+  return (
+    <div className="grid grid-cols-[3fr_2fr] gap-4">
+      {/* Left column */}
+      <div className="flex flex-col gap-4">
+        {/* Skill Details card */}
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Skill Details</h3>
+            {canEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditDialogOpen(true)}
+              >
+                Edit
+              </Button>
+            )}
+          </div>
+
+          {purpose && (
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Purpose</p>
+              <p className="text-sm">
+                {PURPOSE_LABELS[purpose as Purpose] ?? purpose}
+              </p>
+            </div>
+          )}
+
+          {description && (
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Description</p>
+              <p className="text-sm">{description}</p>
+            </div>
+          )}
+
+          <div className="space-y-0.5">
+            <p className="text-xs text-muted-foreground">Tags</p>
+            {tags.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {tags.map((tag) => (
+                  <Badge key={tag} variant="secondary" className="rounded-full">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No tags</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">
+                {skillType === "imported" || skillType === "marketplace" ? "Imported" : "Created"}
+              </p>
+              <p className="text-sm">{formatDate(created)}</p>
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Modified</p>
+              <p className="text-sm">{formatDate(modified)}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Version History card */}
+        <div className="rounded-lg border bg-card p-4">
+          <h3 className="text-sm font-semibold mb-3">Version History</h3>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="font-mono rounded-full bg-muted px-2 py-0.5 text-xs">v1</span>
+            <span className="text-muted-foreground">·</span>
+            <span>Initial</span>
+            <span className="text-muted-foreground">·</span>
+            <span className="text-muted-foreground">{formatDate(created)}</span>
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Full history available in a future update
+          </p>
+        </div>
+      </div>
+
+      {/* Right column */}
+      <div className="flex flex-col gap-4">
+        {/* Stats card */}
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <h3 className="text-sm font-semibold">Stats</h3>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Pass Rate</span>
+              <span>—</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Iterations</span>
+              <span>—</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Tests</span>
+              <span>—</span>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Stats available after running Evals
+          </p>
+        </div>
+
+        {/* Actions card */}
+        <div className="rounded-lg border bg-card p-4 space-y-2">
+          <h3 className="text-sm font-semibold mb-1">Actions</h3>
+          <Button onClick={onOpenRefine} className="w-full">
+            Open Refine
+          </Button>
+          <Button
+            disabled
+            variant="outline"
+            className="w-full"
+            title="Available in a future update"
+          >
+            Redo Workflow
+          </Button>
+        </div>
+      </div>
+
+      {canEdit && editDialogOpen && (
+        <SkillDialog
+          mode="edit"
+          skill={skill as SkillSummary}
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          onSaved={() => setEditDialogOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
