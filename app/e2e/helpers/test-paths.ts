@@ -3,10 +3,10 @@ import os from "node:os";
 
 const E2E_ROOT = path.join(os.tmpdir(), "skill-builder-test");
 
-// Normalize to forward slashes so E2E path constants match the paths the
-// frontend sends via joinPath() (which also normalizes backslashes to "/").
+// No manual separator normalization needed — the E2E mock's
+// resolveReadFileMock() normalizes both sides of the comparison.
 export function joinE2ePath(...segments: string[]): string {
-  return path.join(E2E_ROOT, ...segments).replace(/\\/g, "/");
+  return path.join(E2E_ROOT, ...segments);
 }
 
 export const E2E_WORKSPACE_PATH = joinE2ePath("workspace");
@@ -22,5 +22,5 @@ export function skillOutputPath(skillName: string): string {
 }
 
 export function skillContextPath(basePath: string, skillName: string, fileName: string): string {
-  return path.join(basePath, skillName, "context", fileName).replace(/\\/g, "/");
+  return path.join(basePath, skillName, "context", fileName);
 }

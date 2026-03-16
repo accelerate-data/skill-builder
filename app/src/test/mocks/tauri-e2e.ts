@@ -204,6 +204,11 @@ const mockResponses: Record<string, unknown> = {
   verify_step_output: true,
 };
 
+/** Normalize path separators to forward slashes for OS-agnostic comparison. */
+function normalizeSep(p: string): string {
+  return p.replace(/\\/g, "/");
+}
+
 function resolveReadFileMock(
   value: unknown,
   args?: Record<string, unknown>,
@@ -216,12 +221,21 @@ function resolveReadFileMock(
   //   "/abs/path/to/file": "content",
   //   "*": "fallback content"
   // }
+  // Both the incoming path arg and map keys are normalized to forward
+  // slashes so lookups work regardless of OS path separator conventions.
   if (value && typeof value === "object" && !Array.isArray(value)) {
-    const pathArg = typeof args?.filePath === "string"
+    const rawPathArg = typeof args?.filePath === "string"
       ? args.filePath
       : (typeof args?.path === "string" ? args.path : null);
     const map = value as Record<string, unknown>;
-    if (pathArg && pathArg in map) return map[pathArg];
+    if (rawPathArg) {
+      const normalizedArg = normalizeSep(rawPathArg);
+      // Try direct match first (fast path), then normalized comparison
+      if (normalizedArg in map) return map[normalizedArg];
+      for (const key of Object.keys(map)) {
+        if (key !== "*" && normalizeSep(key) === normalizedArg) return map[key];
+      }
+    }
     if ("*" in map) return map["*"];
   }
 
