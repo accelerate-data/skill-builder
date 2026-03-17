@@ -66,7 +66,11 @@ export function useWorkflowPersistence({
     // Skip if already hydrated for this skill.
     // pendingUpdateMode is handled by use-workflow-state-machine (fires after prevReviewModeRef
     // is initialized, avoiding an ordering race with wasToggle detection).
+    // Reset to Review mode on re-navigation unless an auto-start is pending.
     if (store.skillName === skillName && store.hydrated) {
+      if (!store.pendingUpdateMode) {
+        store.setReviewMode(true);
+      }
       return;
     }
 
