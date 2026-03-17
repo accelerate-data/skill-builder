@@ -564,30 +564,9 @@ export function WorkflowStepComplete({
             <AgentStatsBar runs={agentRuns} />
           </div>
         )}
-        {!reviewMode && (
-          <div className="flex items-center gap-3 shrink-0">
-            <CheckCircle2 className="size-4 shrink-0" style={{ color: "var(--color-seafoam)" }} />
-            <span className="text-sm font-semibold tracking-tight">{stepName} Complete</span>
-            <div className="flex-1" />
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              {duration !== undefined && (
-                <span className="flex items-center gap-1">
-                  <Clock className="size-3" />
-                  {formatElapsed(duration)}
-                </span>
-              )}
-              {displayCost !== undefined && (
-                <span className="flex items-center gap-1">
-                  <DollarSign className="size-3" />
-                  ${displayCost.toFixed(4)}
-                </span>
-              )}
-            </div>
-          </div>
-        )}
         <ScrollArea className="min-h-0 flex-1">
           <div className="pr-4">
-            <BenchmarkSummaryCard benchmarkData={benchmarkData} />
+            <BenchmarkSummaryCard benchmarkData={benchmarkData} duration={!reviewMode ? duration : undefined} cost={displayCost} />
           </div>
         </ScrollArea>
         <StepActionBar

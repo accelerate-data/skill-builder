@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { CheckCircle2, ChevronRight, AlertTriangle, TrendingUp, TrendingDown } from "lucide-react";
+import { formatElapsed } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -64,6 +65,8 @@ export interface BenchmarkData {
 
 interface BenchmarkSummaryCardProps {
   benchmarkData: BenchmarkData | null;
+  duration?: number;
+  cost?: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -84,7 +87,7 @@ function formatPassRate(rate: number): string {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function BenchmarkSummaryCard({ benchmarkData }: BenchmarkSummaryCardProps) {
+export function BenchmarkSummaryCard({ benchmarkData, duration, cost }: BenchmarkSummaryCardProps) {
   if (!benchmarkData) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-8">
@@ -118,17 +121,24 @@ export function BenchmarkSummaryCard({ benchmarkData }: BenchmarkSummaryCardProp
   // Eval IDs
   const evalIds = [...new Set(runs.map((r) => r.eval_id))].sort((a, b) => a - b);
 
-  // Overall status
-  const allPassing = primaryPassRate !== undefined && primaryPassRate >= 1.0;
-  const hasFailures = primaryPassRate !== undefined && primaryPassRate < 0.8;
+  // Aggregate assertion counts from primary config runs
+  const primaryRuns = runs.filter((r) => r.configuration === primaryConfig);
+  const totalAssertionsPassed = primaryRuns.reduce((sum, r) => sum + r.result.passed, 0);
+  const totalAssertions = primaryRuns.reduce((sum, r) => sum + r.result.total, 0);
+  const totalAssertionsFailed = totalAssertions - totalAssertionsPassed;
 
-  const headerIcon = hasFailures ? AlertTriangle : CheckCircle2;
-  const HeaderIcon = headerIcon;
-  const headerTitle = allPassing
-    ? "All evaluations passing"
-    : hasFailures
-      ? "Some evaluations need attention"
-      : "Benchmark complete";
+  // Overall status
+  const allPassing = totalAssertions > 0 && totalAssertionsFailed === 0;
+  const hasFailures = primaryPassRate !== undefined && primaryPassRate < 0.5;
+
+  const HeaderIcon = hasFailures ? AlertTriangle : CheckCircle2;
+
+  // Subtitle: human sentence about assertion results
+  const subtitle = allPassing
+    ? `Passes all ${totalAssertions} domain expectations across ${evalIds.length} evaluation${evalIds.length !== 1 ? "s" : ""}`
+    : totalAssertionsFailed > 0
+      ? `Passes ${totalAssertionsPassed} of ${totalAssertions} expectations — ${totalAssertionsFailed} need${totalAssertionsFailed === 1 ? "s" : ""} refinement`
+      : `Tested against ${evalIds.length} evaluation${evalIds.length !== 1 ? "s" : ""}`;
 
   return (
     <div className="flex flex-col gap-4 min-w-0 overflow-hidden">
@@ -146,12 +156,13 @@ export function BenchmarkSummaryCard({ benchmarkData }: BenchmarkSummaryCardProp
               </div>
               <div className="min-w-0 flex-1 space-y-1">
                 <p className="text-base font-semibold tracking-tight text-foreground">
-                  {headerTitle}
+                  Skill created
+                  {metadata.skill_name && (
+                    <span className="font-normal text-muted-foreground"> · {metadata.skill_name}/SKILL.md</span>
+                  )}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  {evalIds.length} eval{evalIds.length !== 1 ? "s" : ""} run
-                  {primaryPassRate !== undefined && ` · ${formatPassRate(primaryPassRate)} with skill`}
-                  {baselinePassRate !== undefined && ` · ${formatPassRate(baselinePassRate)} baseline`}
+                  {subtitle}
                 </p>
               </div>
             </div>
@@ -159,11 +170,12 @@ export function BenchmarkSummaryCard({ benchmarkData }: BenchmarkSummaryCardProp
             {/* Status chips */}
             <div className="flex flex-wrap items-center gap-2 pl-7">
               <StatusChip label={`${evalIds.length} evals`} />
-              {metadata.runs_per_configuration && (
-                <StatusChip label={`${metadata.runs_per_configuration} runs each`} />
+              <StatusChip label={`${totalAssertionsPassed}/${totalAssertions} assertions`} />
+              {duration !== undefined && (
+                <StatusChip label={formatElapsed(duration)} />
               )}
-              {metadata.timestamp && (
-                <StatusChip label={new Date(metadata.timestamp).toLocaleDateString()} />
+              {cost !== undefined && cost > 0 && (
+                <StatusChip label={`$${cost.toFixed(4)}`} />
               )}
             </div>
           </div>
