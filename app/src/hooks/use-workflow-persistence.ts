@@ -63,9 +63,10 @@ export function useWorkflowPersistence({
 
     const store = useWorkflowStore.getState();
 
-    // Skip if already hydrated for this skill
+    // Skip if already hydrated for this skill.
+    // pendingUpdateMode is handled by use-workflow-state-machine (fires after prevReviewModeRef
+    // is initialized, avoiding an ordering race with wasToggle detection).
     if (store.skillName === skillName && store.hydrated) {
-      consumeUpdateMode();
       return;
     }
 
