@@ -13,6 +13,7 @@ import {
   getContextFileContent,
   saveDecisionsContent,
   getDisabledSteps,
+  resetWorkflowStep,
 } from "@/lib/tauri";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { joinPath } from "@/lib/path-utils";
@@ -193,6 +194,15 @@ export function WorkflowStepComplete({
       });
     return () => { cancelled = true; };
   }, [stepId, workspacePath, skillName]);
+
+  // Auto-cleanup step 3 files when benchmark is missing (broken generation)
+  useEffect(() => {
+    if (!benchmarkMissing || stepId !== 3 || !workspacePath || !skillName || reviewMode) return;
+    console.log("[step-complete] benchmark missing — cleaning up step 3 files");
+    resetWorkflowStep(workspacePath, skillName, 3).catch((err) =>
+      console.error("[step-complete] Failed to clean up step 3 files:", err),
+    );
+  }, [benchmarkMissing, stepId, workspacePath, skillName, reviewMode]);
 
   // Always load file contents when skillName is available (both review and non-review mode)
   useEffect(() => {
