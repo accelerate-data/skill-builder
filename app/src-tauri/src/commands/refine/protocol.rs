@@ -14,9 +14,9 @@ pub(super) const GENERATE_DIRECT_TOOLS: &[&str] = &[
     "Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task", "Skill",
 ];
 
-pub(super) const REFINE_AGENT_NAME: &str = "refine-skill";
+pub(super) const REFINE_AGENT_NAME: &str = "skill-creator:refine-skill";
 pub(super) const VALIDATE_AGENT_NAME: &str = "validate-skill";
-pub(super) const GENERATE_AGENT_NAME: &str = "generate-skill";
+pub(super) const GENERATE_AGENT_NAME: &str = "skill-creator:generate-skill";
 
 /// Max agentic turns for the entire streaming session. Each user message may
 /// use multiple turns internally (tool calls, etc.). 400 covers ~20 messages

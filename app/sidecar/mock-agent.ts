@@ -9,9 +9,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /**
  * Map agent names to step template files.
  *
- * Agents use bare names (e.g., `research-orchestrator`, `generate-skill`,
- * `research-entities`). Shared agents like `detailed-research` and
- * `confirm-decisions` use the same bare names.
+ * Plugin-hosted agents use qualified names (e.g., `skill-creator:generate-skill`,
+ * `skill-content-researcher:research-orchestrator`). Shared agents like
+ * `detailed-research` and `confirm-decisions` use bare names.
  */
 /** @internal Exported for testing only. */
 export function resolveStepTemplate(
@@ -29,14 +29,14 @@ export function resolveStepTemplate(
   // Exact matches first
   if (agentName === "detailed-research") return "step1-detailed-research";
   if (agentName === "confirm-decisions") return "step2-confirm-decisions";
-  if (agentName === "generate-skill") return "step3-generate-skill";
-  if (agentName === "refine-skill") return "refine";
+  if (agentName === "skill-creator:generate-skill") return "step3-generate-skill";
+  if (agentName === "skill-creator:refine-skill") return "refine";
   if (agentName === "rewrite-skill") return "rewrite-skill";
   if (agentName === "answer-evaluator") return "gate-answer-evaluator";
 
-  // All research-related agents (orchestrator, planner, dimension agents, consolidate)
+  // Research orchestrator (plugin-qualified) and all sub-agents spawned by the research skill
   if (
-    agentName === "research-orchestrator" ||
+    agentName === "skill-content-researcher:research-orchestrator" ||
     agentName === "research-planner" ||
     agentName === "consolidate-research" ||
     agentName.startsWith("research-")

@@ -19,10 +19,10 @@ pub fn resolve_model_id(shorthand: &str) -> String {
 ///
 /// | Step | Agent | Plugins | Source |
 /// |------|-------|---------|--------|
-/// | 0 | research-orchestrator | skill-content-researcher | .claude/agents/ |
+/// | 0 | skill-content-researcher:research-orchestrator | skill-content-researcher | plugin agents/ |
 /// | 1 | detailed-research | skill-content-researcher | .claude/agents/ |
 /// | 2 | confirm-decisions | — | .claude/agents/ |
-/// | 3 | generate-skill | skill-creator | plugin agents/ |
+/// | 3 | skill-creator:generate-skill | skill-creator | plugin agents/ |
 pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     match step_id {
         0 => Ok(StepConfig {
@@ -35,7 +35,7 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
                 .map(|s| s.to_string())
                 .collect(),
             max_turns: 50,
-            agent_name: "research-orchestrator".to_string(),
+            agent_name: "skill-content-researcher:research-orchestrator".to_string(),
             required_plugins: vec!["skill-content-researcher".to_string()],
         }),
         1 => Ok(StepConfig {
@@ -71,7 +71,7 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             output_file: "skill/SKILL.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 120,
-            agent_name: "generate-skill".to_string(),
+            agent_name: "skill-creator:generate-skill".to_string(),
             required_plugins: vec!["skill-creator".to_string()],
         }),
         _ => Err(format!("Unknown step_id {}. Valid steps are 0-3.", step_id)),
@@ -84,7 +84,7 @@ pub(crate) fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde
     }
 
     match agent_name {
-        "research-orchestrator" => Some(serde_json::json!({
+        "skill-content-researcher:research-orchestrator" => Some(serde_json::json!({
             "type": "json_schema",
             "schema": {
                 "type": "object",

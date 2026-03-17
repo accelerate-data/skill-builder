@@ -9,7 +9,6 @@ const EXPECTED_AGENTS = [
   "confirm-decisions",
   "detailed-research",
   "eval-skill",
-  "research-orchestrator",
   "validate-quality",
   "validate-skill",
 ];
@@ -18,6 +17,7 @@ const EXPECTED_AGENTS = [
 const PLUGIN_AGENTS: Record<string, string> = {
   "generate-skill": "skill-creator/agents/generate-skill.md",
   "refine-skill": "skill-creator/agents/refine-skill.md",
+  "research-orchestrator": "skill-content-researcher/agents/research-orchestrator.md",
 };
 
 /** Resolve the .md file path for any agent (top-level or plugin). */
@@ -137,7 +137,7 @@ describe("read directive compliance", () => {
 describe("Research scope guard contract prompts", () => {
   it("research orchestrator is thin and calls research skill directly", () => {
     const content = fs.readFileSync(
-      path.join(AGENTS_DIR, "research-orchestrator.md"),
+      resolveAgentPath("research-orchestrator"),
       "utf8"
     );
     expect(content).toMatch(/thin wrapper/i);
@@ -209,7 +209,7 @@ describe("Research scope guard contract prompts", () => {
 describe("Agent output contracts (backend protocol alignment)", () => {
   it("research-orchestrator returns research_complete envelope", () => {
     const content = fs.readFileSync(
-      path.join(AGENTS_DIR, "research-orchestrator.md"),
+      resolveAgentPath("research-orchestrator"),
       "utf8"
     );
     expect(content).toMatch(/status.*research_complete/);

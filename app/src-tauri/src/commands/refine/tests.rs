@@ -332,7 +332,7 @@ fn test_dispatch_for_freeform_stays_streaming() {
 #[test]
 fn test_refine_config_always_uses_refine_skill_agent() {
     let (config, _) = base_refine_config("improve metrics");
-    assert_eq!(config.agent_name.as_deref(), Some("refine-skill"));
+    assert_eq!(config.agent_name.as_deref(), Some(REFINE_AGENT_NAME));
 }
 
 #[test]
@@ -446,7 +446,7 @@ fn test_refine_config_serialization_matches_sidecar_schema() {
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
     assert_eq!(parsed["prompt"], "full prompt here");
-    assert_eq!(parsed["agentName"], "refine-skill");
+    assert_eq!(parsed["agentName"], REFINE_AGENT_NAME);
     assert_eq!(parsed["maxTurns"], REFINE_STREAM_MAX_TURNS);
     assert!(parsed["allowedTools"]
         .as_array()
