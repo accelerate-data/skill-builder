@@ -16,6 +16,9 @@ const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   component: DashboardPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    tab: typeof search.tab === "string" ? search.tab : undefined,
+  }),
 });
 
 const settingsRoute = createRoute({
@@ -42,7 +45,7 @@ const refineRedirectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/refine",
   beforeLoad: () => {
-    throw redirect({ to: "/settings" });
+    throw redirect({ to: "/", search: { tab: "refine" } });
   },
 });
 

@@ -129,11 +129,19 @@ export function AppLayout() {
   const setSettings = useSettingsStore((s) => s.setSettings);
   const isConfigured = useSettingsStore((s) => s.isConfigured);
   const builderSkills = useSkillStore((s) => s.skills);
+  const selectedWorkspaceSkillName = useSkillStore((s) => s.activeSkill);
+  const setSelectedWorkspaceSkillName = useSkillStore((s) => s.setActiveSkill);
   const importedSkills = useImportedSkillsStore((s) => s.skills);
   const navigate = useNavigate();
   const router = useRouter();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const [selectedWorkspaceSkillName, setSelectedWorkspaceSkillName] = useState<string | null>(null);
+  const workspaceInitialTab = useRouterState({
+    select: (s) => {
+      if (s.location.pathname !== "/") return undefined;
+      const search = s.location.search as Record<string, string>;
+      return typeof search.tab === "string" ? search.tab : undefined;
+    },
+  });
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [reconciled, setReconciled] = useState(false);
   const [splashDismissed, setSplashDismissed] = useState(false);
@@ -255,7 +263,7 @@ export function AppLayout() {
       // Cmd+1 -> Dashboard
       if ((e.metaKey || e.ctrlKey) && e.key === "1") {
         e.preventDefault();
-        navigate({ to: "/" });
+        navigate({ to: "/", search: { tab: undefined } });
       }
     };
 
@@ -266,7 +274,7 @@ export function AppLayout() {
   const handleSelectSkill = useCallback(
     (name: string) => {
       setSelectedWorkspaceSkillName(name);
-      navigate({ to: "/" });
+      navigate({ to: "/", search: { tab: undefined } });
     },
     [navigate],
   );
@@ -311,17 +319,19 @@ export function AppLayout() {
   return (
     <div className="flex h-screen overflow-hidden">
       <IconRail />
-      <div style={{ width: skillPanelWidth }} className="relative shrink-0">
-        <SkillListPanel onSelectSkill={handleSelectSkill} />
-        <div
-          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 transition-colors"
-          onMouseDown={handleResizeStart}
-        />
-      </div>
+      {pathname !== "/settings" && (
+        <div style={{ width: skillPanelWidth }} className="relative shrink-0">
+          <SkillListPanel onSelectSkill={handleSelectSkill} />
+          <div
+            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 transition-colors"
+            onMouseDown={handleResizeStart}
+          />
+        </div>
+      )}
       <main className="flex flex-1 flex-col overflow-hidden">
         {ready && isConfigured
           ? showWorkspace && selectedSkillData
-            ? <WorkspaceShell skill={selectedSkillData} skillType={selectedSkillType} />
+            ? <WorkspaceShell skill={selectedSkillData} skillType={selectedSkillType} initialTab={workspaceInitialTab} />
             : <Outlet />
           : null}
       </main>

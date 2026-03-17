@@ -59,7 +59,7 @@ export default function SettingsPage() {
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={() => navigate({ to: "/" })}
+            onClick={() => navigate({ to: "/", search: { tab: undefined } })}
             title="Back to Dashboard"
           >
             <ArrowLeft className="size-4" />
