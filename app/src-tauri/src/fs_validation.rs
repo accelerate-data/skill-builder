@@ -1,4 +1,4 @@
-use crate::cleanup::cleanup_step_files;
+use crate::cleanup::clean_step_output;
 use crate::commands::workflow::get_step_output_files;
 use std::path::Path;
 
@@ -89,7 +89,7 @@ pub fn detect_furthest_step_with_options(
                         "[detect_furthest_step] skill='{}': step {} has partial output, cleaning up",
                         skill_name, step_id
                     );
-                    cleanup_step_files(workspace_path, skill_name, step_id, skills_path);
+                    clean_step_output(workspace_path, skill_name, step_id, skills_path);
                 }
             }
             // Stop at first incomplete step — later steps can't be valid

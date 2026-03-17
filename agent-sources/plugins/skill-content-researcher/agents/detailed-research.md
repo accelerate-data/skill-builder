@@ -2,7 +2,7 @@
 name: detailed-research
 description: Reads answer-evaluation.json to skip clear items, spawns refinement sub-agents for non-clear and needs-refinement answers, may add new top-level questions when a material gap does not fit an existing parent, and returns canonical clarifications payload. Called during Step 3.
 model: sonnet
-tools: Read, Task, Skill
+tools: Read, Task
 ---
 
 # Detailed Research Orchestrator

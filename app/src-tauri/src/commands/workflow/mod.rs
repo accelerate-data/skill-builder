@@ -14,7 +14,7 @@ pub mod user_context;
 // Re-export everything so callers using `commands::workflow::*` continue to work.
 
 // step_config
-pub(crate) use step_config::{build_betas, resolve_model_id};
+pub(crate) use step_config::{build_betas, resolve_model_id, tools_for_agent};
 
 // deploy
 pub(crate) use deploy::{

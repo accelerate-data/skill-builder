@@ -2,17 +2,9 @@ use std::path::Path;
 
 use crate::agents::sidecar::SidecarConfig;
 use crate::commands::agent::output_format_for_agent;
-use crate::commands::workflow::resolve_model_id;
+use crate::commands::workflow::{resolve_model_id, tools_for_agent};
 use crate::db::{self, Db};
 use crate::types::SecretString;
-
-pub(super) const REFINE_TOOLS: &[&str] = &[
-    "Read", "Edit", "Write", "Glob", "Grep", "Bash", "Task", "Skill",
-];
-pub(super) const VALIDATE_DIRECT_TOOLS: &[&str] = &["Read", "Glob", "Grep", "Bash", "Task"];
-pub(super) const GENERATE_DIRECT_TOOLS: &[&str] = &[
-    "Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task", "Skill",
-];
 
 pub(super) const REFINE_AGENT_NAME: &str = "skill-creator:refine-skill";
 pub(super) const VALIDATE_AGENT_NAME: &str = "validate-skill";
@@ -166,7 +158,7 @@ pub(super) fn build_refine_config(
         model: None,
         api_key,
         cwd,
-        allowed_tools: Some(REFINE_TOOLS.iter().map(|s| s.to_string()).collect()),
+        allowed_tools: Some(tools_for_agent(REFINE_AGENT_NAME)),
         max_turns: Some(REFINE_STREAM_MAX_TURNS),
         permission_mode: None,
         thinking: thinking_budget.map(|budget| {
@@ -216,11 +208,7 @@ pub(super) fn build_direct_refine_config(
         skill_name,
         chrono::Utc::now().timestamp_millis()
     );
-    let allowed_tools = match agent_name {
-        VALIDATE_AGENT_NAME => VALIDATE_DIRECT_TOOLS,
-        GENERATE_AGENT_NAME => GENERATE_DIRECT_TOOLS,
-        _ => REFINE_TOOLS,
-    };
+    let allowed_tools = tools_for_agent(agent_name);
     let max_turns = match agent_name {
         VALIDATE_AGENT_NAME => 50,
         GENERATE_AGENT_NAME => 80,
@@ -237,7 +225,7 @@ pub(super) fn build_direct_refine_config(
         model: None,
         api_key,
         cwd: workspace_path.to_string(),
-        allowed_tools: Some(allowed_tools.iter().map(|s| s.to_string()).collect()),
+        allowed_tools: Some(allowed_tools),
         max_turns: Some(max_turns),
         permission_mode: None,
         thinking: thinking_budget.map(|budget| {

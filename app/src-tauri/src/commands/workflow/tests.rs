@@ -1037,7 +1037,7 @@ fn test_clean_step_output_step1_is_noop() {
     std::fs::write(skill_dir.join("context/decisions.json"), "{}").unwrap();
 
     // Clean only step 1 — both files should be untouched (step 1 has no unique output)
-    crate::cleanup::clean_step_output_thorough(workspace, "my-skill", 1, skills_path);
+    crate::cleanup::clean_step_output(workspace, "my-skill", 1, skills_path);
 
     assert!(skill_dir.join("context/clarifications.json").exists());
     assert!(skill_dir.join("context/decisions.json").exists());

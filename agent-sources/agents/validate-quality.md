@@ -2,7 +2,7 @@
 name: validate-quality
 description: Quality assessment of a completed skill and returns findings as text.
 model: sonnet
-tools: Read, Glob, Grep, Bash
+tools: Read, Glob, Grep
 ---
 
 # Quality Checker

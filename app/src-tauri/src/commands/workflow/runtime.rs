@@ -17,7 +17,7 @@ use super::prompt::{build_evaluator_prompt, build_prompt};
 use super::settings::{read_workflow_settings, WorkflowSettings};
 use super::step_config::{
     build_betas, get_step_config, resolve_model_id, thinking_budget_for_step,
-    workflow_output_format_for_agent,
+    tools_for_agent, workflow_output_format_for_agent,
 };
 use super::user_context::write_user_context_file;
 
@@ -328,7 +328,7 @@ pub async fn run_answer_evaluator(
         model: None,
         api_key,
         cwd: workspace_path.clone(),
-        allowed_tools: Some(vec!["Read".to_string()]),
+        allowed_tools: Some(tools_for_agent("answer-evaluator")),
         max_turns: Some(20),
         permission_mode: Some("bypassPermissions".to_string()),
         betas: None,

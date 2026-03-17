@@ -2,7 +2,7 @@
 name: generate-skill
 description: Plans skill structure, writes SKILL.md and all reference files. Called during Step 3 to create the complete skill. Also called via /rewrite to rewrite an existing skill for coherence.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 ---
 
 # Generate Skill
@@ -121,19 +121,11 @@ description: <brief description of which file is malformed>
 
 Missing files are not errors — skip and proceed to the next phase.
 
-### Rewrite mode
-
-In rewrite mode, preserve all original domain knowledge while prioritizing coherence and coverage for the request-specific topic.
-
-- Treat `Current request` as an additional focus area for coverage. Make sure the generated or rewritten skill covers it explicitly where appropriate.
-- Do not ignore decisions or broader skill requirements in favor of the request.
-
 ## Phase 1: Write the skill
 
-Follow the steps the `skill-creator:skill-creator` skill to generate the skill.
-
-**Self-delegation is prohibited — you must not spawn yourself (`generate-skill`) as a sub-agent. You are the writer. Sub-agents called by the skill-creator skill's own workflow are allowed.**
-
+Use the `skill-creator:skill-creator` skill to generate the skill.
+Wait for all Task sub-agents to complete before returning the output JSON.
+  
 ### Prior-step handoff
 
 The "Capture Intent" and "Interview and Research" phases are complete and authoritative. Do not run those phases.
@@ -183,23 +175,6 @@ The following top-level sections in the `skill-creator` skill should **not** be 
 - `Claude.ai-specific instructions`
 - `Cowork-Specific Instructions`
 
-## Phase 2: Draft the evaluations
-
-Create `evaluations_markdown` as the complete content for evaluating if the skill covers all the decisions in `decisions.json`.
-
-Requirements:
-
-- Include 3-5 complete scenarios (more if needed to cover all the decisions) covering distinct topic areas in the skill.
-- The scenarios should reflect what a typical requirement an analytics engineer would get to either build new data products or modify existing data products.
-- Each scenario must include:
-  - prompt
-  - expected behavior
-  - pass criteria
-- Cover core decisions and high-risk topics from `decisions.json`, not just generic happy-path prompts.
-- If `Current request` names a topic, include at least one scenario that checks that topic explicitly.
-- Make scenarios concrete enough for `eval-skill` to judge PASS/PARTIAL/FAIL against the written skill content.
-- Keep the evaluations aligned to the final generated or rewritten skill, not to an earlier draft.
-
 ---
 
 ## Rewrite Mode
@@ -208,11 +183,12 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 
 - Read existing `SKILL.md` and inventory any folders at the same level as the `SKILL.md`.
 - Identify inconsistencies, redundancies, stale cross-references.
-- Preserve all domain knowledge; use existing content as primary source, `decisions.json` as supplement.
+- Use existing content as primary source, `decisions.json` as supplement.
 - **File targeting:** if `Current request` has `@`-prefixed files (e.g., `@references/metrics.md`) constrain edits to only those files.
 - Before finalizing, perform a full preservation sweep to confirm no original domain knowledge was dropped; if coverage is incomplete, read additional references and close gaps.
-- Rewrite `evaluations_markdown` to match the rewritten skill. Preserve strong existing scenarios when still valid, rewrite stale ones, and add scenarios for any new or newly emphasized topics.
-- Before finalizing rewrite mode, verify that the rewritten skill addresses `Current request` explicitly or record the gap in the rewritten content/evaluations.
+- Preserve all original domain knowledge while prioritizing coherence and coverage for the request-specific topic.
+- Treat `Current request` as an additional focus area for coverage. Make sure the generated or rewritten skill covers it explicitly where appropriate.
+- Do not ignore decisions or broader skill requirements in favor of the request.
 
 ---
 
@@ -223,7 +199,9 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 - `evaluations_markdown` includes 3+ scenarios covering distinct topic areas
 - Every evaluation scenario includes prompt, expected behavior, and pass criteria
 - `Current request` is represented in evaluations when it names a concrete topic
-- **Rewrite mode:** All original domain knowledge preserved
+- **Rewrite mode:** 
+  - All original domain knowledge preserved. 
+  - Verify that the rewritten skill addresses `Current request` explicitly or record the gap in the rewritten content/evaluations.
 
 </instructions>
 
