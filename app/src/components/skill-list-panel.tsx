@@ -23,7 +23,7 @@ import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
 import type { SkillSummary, ImportedSkill, Purpose } from "@/lib/types";
 import { PURPOSE_SHORT_LABELS } from "@/lib/types";
-import { listSkills, exportSkill, packageSkill, copyFile, resetWorkflowStep } from "@/lib/tauri";
+import { listSkills, exportSkill, packageSkill, saveExportTo, resetWorkflowStep } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 interface UnifiedSkill {
@@ -214,7 +214,7 @@ export function SkillListPanel({
         filters: [{ name: "Zip Archive", extensions: ["zip"] }],
       });
       if (savePath) {
-        await copyFile(zipPath, savePath);
+        await saveExportTo(zipPath, savePath);
         toast.success(`Saved to ${savePath}`, { id: toastId });
         console.log("event=skill_exported skill=%s dest=%s", skill.name, savePath);
       } else {

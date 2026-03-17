@@ -302,6 +302,7 @@ pub fn run() {
             commands::files::read_file,
             commands::files::write_file,
             commands::files::copy_file,
+            commands::files::save_export_to,
             commands::files::read_file_as_base64,
             commands::files::write_base64_to_temp_file,
             commands::workflow::runtime::run_workflow_step,
