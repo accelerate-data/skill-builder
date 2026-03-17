@@ -436,6 +436,50 @@ pub fn copy_file(src: String, dest: String, db: tauri::State<'_, Db>) -> Result<
     })
 }
 
+/// Copy a packaged export file (zip/skill) to a user-chosen destination.
+///
+/// Unlike `copy_file`, the destination is not constrained to the app's allowed
+/// roots because it was explicitly chosen by the user through the OS file-save
+/// dialog. The source must still be within an allowed root so we cannot be
+/// used to exfiltrate arbitrary app-internal files.
+#[tauri::command]
+pub fn save_export_to(src: String, dest: String, db: tauri::State<'_, Db>) -> Result<(), String> {
+    log::info!("[save_export_to] src={} dest={}", src, dest);
+    let allowed_roots = get_allowed_roots(&db)?;
+
+    let src_path = Path::new(&src);
+    reject_traversal(src_path)?;
+    let canonical_src = fs::canonicalize(src_path)
+        .map_err(|e| format!("Source not found '{}': {}", src_path.display(), e))?;
+    if !is_within_allowed_roots(&canonical_src, &allowed_roots) {
+        // Also allow sources in the system temp dir (e.g. export_skill output)
+        let temp_dir = std::env::temp_dir();
+        if !canonical_src.starts_with(&temp_dir) {
+            log::error!("[save_export_to] source outside allowed roots: {}", canonical_src.display());
+            return Err(format!(
+                "Source '{}' is outside allowed roots",
+                canonical_src.display()
+            ));
+        }
+    }
+
+    let dest_path = Path::new(&dest);
+    reject_traversal(dest_path)?;
+    if let Some(parent) = dest_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create destination directory: {}", e))?;
+        }
+    }
+
+    fs::copy(&canonical_src, dest_path)
+        .map(|_| ())
+        .map_err(|e| {
+            log::error!("[save_export_to] copy failed: {}", e);
+            format!("Failed to save export: {}", e)
+        })
+}
+
 #[tauri::command]
 pub fn read_file_as_base64(file_path: String, db: tauri::State<'_, Db>) -> Result<String, String> {
     log::info!("[read_file_as_base64] path={}", file_path);

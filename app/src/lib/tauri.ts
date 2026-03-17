@@ -588,6 +588,11 @@ export const importSkillFromFile = (params: {
 export const copyFile = (src: string, dest: string) =>
   invoke<void>("copy_file", { src, dest });
 
+/** Copy a packaged export file to a user-chosen path selected via the OS save dialog.
+ *  Unlike copyFile, the destination is not constrained to the app's allowed roots. */
+export const saveExportTo = (src: string, dest: string) =>
+  invoke<void>("save_export_to", { src, dest });
+
 export const listModels = (apiKey: string) =>
   invoke<ModelInfo[]>("list_models", { apiKey });
 
