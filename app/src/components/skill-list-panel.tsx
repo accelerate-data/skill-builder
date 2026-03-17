@@ -1,18 +1,29 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useWorkflowStore } from "@/stores/workflow-store";
+import { useSkillStore } from "@/stores/skill-store";
 import { Lock, MoreHorizontal, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { save } from "@tauri-apps/plugin-dialog";
+import { toast } from "@/lib/toast";
 import SkillDialog from "@/components/skill-dialog";
+import DeleteSkillDialog from "@/components/delete-skill-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
-import { useSkillStore } from "@/stores/skill-store";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
 import type { SkillSummary, ImportedSkill, Purpose } from "@/lib/types";
 import { PURPOSE_SHORT_LABELS } from "@/lib/types";
-import { listSkills } from "@/lib/tauri";
+import { listSkills, exportSkill, copyFile, resetWorkflowStep } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 interface UnifiedSkill {
@@ -66,8 +77,8 @@ function getStatusDot(skill: UnifiedSkill, isRunning: boolean): DotStyle {
   const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
   const step = stepMatch ? Number(stepMatch[1]) : null;
 
-  // Mid-progress (Step 2: Confirm Decisions, Step 3: Generate Skill) → amber
-  if (step !== null && step >= 2) {
+  // Mid-progress (any step past the first) → amber
+  if (step !== null && step >= 1) {
     return { className: `bg-amber-500 dark:bg-amber-400${pulse}` };
   }
 
@@ -122,6 +133,8 @@ export function SkillListPanel({
   const [createOpen, setCreateOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const builderSkills = useSkillStore((s) => s.skills);
@@ -178,8 +191,73 @@ export function SkillListPanel({
     if (isSkillComplete(skill)) {
       onSelectSkill?.(skill.name);
     } else {
+      useWorkflowStore.getState().setPendingNoReviewMode(true);
       navigate({ to: "/skill/$skillName", params: { skillName: skill.name } });
     }
+  }
+
+  async function handleExport(skillName: string) {
+    const toastId = toast.loading("Exporting skill...");
+    try {
+      const zipPath = await exportSkill(skillName);
+      const savePath = await save({
+        defaultPath: `${skillName}.zip`,
+        filters: [{ name: "Zip Archive", extensions: ["zip"] }],
+      });
+      if (savePath) {
+        await copyFile(zipPath, savePath);
+        toast.success(`Saved to ${savePath}`, { id: toastId });
+        console.log("event=skill_exported skill=%s dest=%s", skillName, savePath);
+      } else {
+        toast.dismiss(toastId);
+      }
+    } catch (err) {
+      toast.error(
+        `Export failed: ${err instanceof Error ? err.message : String(err)}`,
+        { id: toastId },
+      );
+      console.error("event=skill_export_failed skill=%s error=%s", skillName, err);
+    }
+  }
+
+  async function handleRedo(skillName: string) {
+    if (!workspacePath) return;
+    try {
+      await resetWorkflowStep(workspacePath, skillName, 0);
+      console.log("event=skill_redo skill=%s", skillName);
+      useWorkflowStore.getState().setPendingUpdateMode(true);
+      navigate({ to: "/skill/$skillName", params: { skillName } });
+    } catch (err) {
+      toast.error(`Failed to reset workflow: ${err instanceof Error ? err.message : String(err)}`);
+      console.error("event=skill_redo_failed skill=%s error=%s", skillName, err);
+    }
+  }
+
+  function handleOverview(skillName: string) {
+    console.log("event=skill_overview skill=%s", skillName);
+    localStorage.setItem("last-selected-skill", skillName);
+    setSelectedSkill(skillName);
+    onSelectSkill?.(skillName);
+  }
+
+  function handleRefine(skillName: string) {
+    console.log("event=skill_refine skill=%s", skillName);
+    useSkillStore.getState().setActiveSkill(skillName);
+    navigate({ to: "/", search: { tab: "refine" } });
+  }
+
+  function handleContinueBuilding(skillName: string) {
+    console.log("event=skill_continue skill=%s", skillName);
+    localStorage.setItem("last-selected-skill", skillName);
+    setSelectedSkill(skillName);
+    useWorkflowStore.getState().setPendingNoReviewMode(true);
+    navigate({ to: "/skill/$skillName", params: { skillName } });
+  }
+
+  function handleDelete(skill: UnifiedSkill) {
+    const summary = builderSkills.find((s) => s.name === skill.name) ?? null;
+    setDeleteTarget(summary);
+    setDeleteOpen(true);
   }
 
   return (
@@ -233,6 +311,12 @@ export function SkillListPanel({
             ? (PURPOSE_SHORT_LABELS[skill.purpose as Purpose] ?? skill.purpose)
             : null;
 
+          const complete = isSkillComplete(skill);
+          const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
+          const step = stepMatch ? Number(stepMatch[1]) : null;
+          // mid-way: incomplete and at step >= 1
+          const isMidWay = !complete && step !== null && step >= 1;
+
           return (
             <div
               key={skill.name}
@@ -281,15 +365,56 @@ export function SkillListPanel({
               {isLocked ? (
                 <Lock className="size-[10px] shrink-0 text-muted-foreground" />
               ) : (
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="size-5 shrink-0 opacity-0 group-hover:opacity-100"
-                  aria-label="More actions"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MoreHorizontal className="size-3" />
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className="size-5 shrink-0 opacity-0 group-hover:opacity-100"
+                      aria-label="More actions"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal className="size-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                    {complete ? (
+                      <>
+                        <DropdownMenuItem
+                          onSelect={() => handleOverview(skill.name)}
+                          className="font-medium"
+                          style={{ color: "var(--color-pacific)" }}
+                        >
+                          Overview
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => handleRefine(skill.name)}>
+                          Refine
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => handleRedo(skill.name)}>
+                          Redo
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => handleExport(skill.name)}>
+                          Export
+                        </DropdownMenuItem>
+                      </>
+                    ) : (
+                      <DropdownMenuItem
+                        onSelect={() => handleContinueBuilding(skill.name)}
+                        className="font-medium"
+                        style={{ color: "var(--color-pacific)" }}
+                      >
+                        {isMidWay ? "Continue Building" : "Continue Building"}
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => handleDelete(skill)}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
             </div>
           );
@@ -309,6 +434,17 @@ export function SkillListPanel({
           }}
         />
       )}
+
+      <DeleteSkillDialog
+        skill={deleteTarget}
+        workspacePath={workspacePath ?? ""}
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        onDeleted={() => {
+          setDeleteTarget(null);
+          if (workspacePath) listSkills(workspacePath).then(setSkills).catch(() => {});
+        }}
+      />
     </div>
   );
 }
