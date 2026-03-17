@@ -246,7 +246,8 @@ export function SkillListPanel({
     console.log("event=skill_overview skill=%s", skillName);
     localStorage.setItem("last-selected-skill", skillName);
     setSelectedSkill(skillName);
-    onSelectSkill?.(skillName);
+    useSkillStore.getState().setActiveSkill(skillName);
+    navigate({ to: "/", search: { tab: "overview" } });
   }
 
   function handleRefine(skillName: string) {
