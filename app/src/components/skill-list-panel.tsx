@@ -23,7 +23,7 @@ import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
 import type { SkillSummary, ImportedSkill, Purpose } from "@/lib/types";
 import { PURPOSE_SHORT_LABELS } from "@/lib/types";
-import { listSkills, exportSkill, copyFile, resetWorkflowStep } from "@/lib/tauri";
+import { listSkills, exportSkill, packageSkill, copyFile, resetWorkflowStep } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 interface UnifiedSkill {
@@ -196,18 +196,27 @@ export function SkillListPanel({
     }
   }
 
-  async function handleExport(skillName: string) {
+  async function handleExport(skill: UnifiedSkill) {
     const toastId = toast.loading("Exporting skill...");
     try {
-      const zipPath = await exportSkill(skillName);
+      // Builder skills live in the workspace — use package_skill.
+      // Imported/marketplace skills are in the installed-skills DB — use export_skill.
+      let zipPath: string;
+      if (skill.source === "builder") {
+        if (!workspacePath) throw new Error("Workspace path not set");
+        const result = await packageSkill(skill.name, workspacePath);
+        zipPath = result.file_path;
+      } else {
+        zipPath = await exportSkill(skill.name);
+      }
       const savePath = await save({
-        defaultPath: `${skillName}.zip`,
+        defaultPath: `${skill.name}.zip`,
         filters: [{ name: "Zip Archive", extensions: ["zip"] }],
       });
       if (savePath) {
         await copyFile(zipPath, savePath);
         toast.success(`Saved to ${savePath}`, { id: toastId });
-        console.log("event=skill_exported skill=%s dest=%s", skillName, savePath);
+        console.log("event=skill_exported skill=%s dest=%s", skill.name, savePath);
       } else {
         toast.dismiss(toastId);
       }
@@ -216,7 +225,7 @@ export function SkillListPanel({
         `Export failed: ${err instanceof Error ? err.message : String(err)}`,
         { id: toastId },
       );
-      console.error("event=skill_export_failed skill=%s error=%s", skillName, err);
+      console.error("event=skill_export_failed skill=%s error=%s", skill.name, err);
     }
   }
 
@@ -393,7 +402,7 @@ export function SkillListPanel({
                         <DropdownMenuItem onSelect={() => handleRedo(skill.name)}>
                           Redo
                         </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => handleExport(skill.name)}>
+                        <DropdownMenuItem onSelect={() => handleExport(skill)}>
                           Export
                         </DropdownMenuItem>
                       </>

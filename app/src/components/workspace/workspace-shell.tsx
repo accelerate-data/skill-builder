@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import type { SkillSummary, ImportedSkill } from "@/lib/types";
 interface WorkspaceShellProps {
   skill: SkillSummary | ImportedSkill;
   skillType: "builder" | "imported" | "marketplace";
+  initialTab?: string;
 }
 
 function getHeaderDot(
@@ -27,16 +28,21 @@ function getHeaderDot(
   }
   const stepMatch = s.current_step?.match(/step\s*(\d+)/i);
   const step = stepMatch ? Number(stepMatch[1]) : null;
-  // Mid-progress (Step 2+) → amber
-  if (step !== null && step >= 2) {
+  // Mid-progress (any step past the first) → amber
+  if (step !== null && step >= 1) {
     return { className: "size-2 shrink-0 rounded-full bg-amber-500 dark:bg-amber-400" };
   }
   // Not started / Step 0 / Step 1 → red
   return { className: "size-2 shrink-0 rounded-full bg-destructive" };
 }
 
-export function WorkspaceShell({ skill, skillType }: WorkspaceShellProps) {
-  const [activeTab, setActiveTab] = useState("overview");
+export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellProps) {
+  const [activeTab, setActiveTab] = useState(initialTab ?? "overview");
+
+  // Sync tab when a navigation sets initialTab (e.g. "Refine" from the More menu)
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab]);
 
   const skillName = "name" in skill ? skill.name : skill.skill_name;
   const version = ("name" in skill ? skill.version : skill.version) ?? "1";
