@@ -5,7 +5,11 @@ import {
   AlertCircle,
   RotateCcw,
   Loader2,
+  CircleHelp,
 } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { FeedbackDialog } from "@/components/feedback-dialog";
+import { getWorkflowStepUrl } from "@/lib/help-urls";
 import { cn } from "@/lib/utils";
 import type { WorkflowStep } from "@/stores/workflow-store";
 import { useSkillStore } from "@/stores/skill-store";
@@ -45,13 +49,14 @@ import { useWorkflowStateMachine } from "@/hooks/use-workflow-state-machine";
 
 interface WorkflowMainHeaderProps {
   skillName: string;
+  currentStep: number;
   isRunning: boolean;
   isInitializing: boolean;
   gateLoading: boolean;
   stepStatus: WorkflowStep["status"] | undefined;
 }
 
-function WorkflowMainHeader({ skillName, isRunning, isInitializing, gateLoading, stepStatus }: WorkflowMainHeaderProps) {
+function WorkflowMainHeader({ skillName, currentStep, isRunning, isInitializing, gateLoading, stepStatus }: WorkflowMainHeaderProps) {
   const active = isRunning || isInitializing;
 
   let dotColor: string | undefined;
@@ -70,9 +75,6 @@ function WorkflowMainHeader({ skillName, isRunning, isInitializing, gateLoading,
   } else if (stepStatus === "waiting_for_user") {
     dotColor = "bg-amber-600 dark:bg-amber-400";
     label = "Awaiting input";
-  } else if (stepStatus === "completed") {
-    dotStyle = { backgroundColor: "var(--color-seafoam)" };
-    label = "Complete";
   }
 
   const showStatus = label.length > 0;
@@ -96,6 +98,15 @@ function WorkflowMainHeader({ skillName, isRunning, isInitializing, gateLoading,
             </span>
           </div>
         )}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => openUrl(getWorkflowStepUrl(currentStep))}
+          title="Help"
+        >
+          <CircleHelp className="size-4" />
+        </Button>
+        <FeedbackDialog />
       </div>
     </div>
   );
@@ -521,6 +532,7 @@ export default function WorkflowPage() {
         {/* Main header — skill name + status */}
         <WorkflowMainHeader
           skillName={skillName}
+          currentStep={currentStep}
           isRunning={isRunning}
           isInitializing={isInitializing}
           gateLoading={gateLoading}
