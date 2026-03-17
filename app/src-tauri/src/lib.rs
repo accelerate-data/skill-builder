@@ -295,6 +295,7 @@ pub fn run() {
             commands::skill::acquire_lock,
             commands::skill::release_lock,
             commands::skill::get_locked_skills,
+            commands::skill::get_externally_locked_skills,
             commands::skill::check_lock,
             commands::skill::list_refinable_skills,
             commands::clarification::save_raw_file,

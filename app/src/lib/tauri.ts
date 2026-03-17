@@ -342,6 +342,9 @@ export const releaseLock = (skillName: string) =>
 export const getLockedSkills = () =>
   invoke<SkillLock[]>("get_locked_skills");
 
+export const getExternallyLockedSkills = () =>
+  invoke<string[]>("get_externally_locked_skills");
+
 // --- Usage Tracking ---
 
 export const getUsageSummary = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
