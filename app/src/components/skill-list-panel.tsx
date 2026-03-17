@@ -390,11 +390,7 @@ export function SkillListPanel({
                   <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                     {complete ? (
                       <>
-                        <DropdownMenuItem
-                          onSelect={() => handleOverview(skill.name)}
-                          className="font-medium"
-                          style={{ color: "var(--color-pacific)" }}
-                        >
+                        <DropdownMenuItem onSelect={() => handleOverview(skill.name)}>
                           Overview
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => handleRefine(skill.name)}>
@@ -408,12 +404,8 @@ export function SkillListPanel({
                         </DropdownMenuItem>
                       </>
                     ) : (
-                      <DropdownMenuItem
-                        onSelect={() => handleContinueBuilding(skill.name)}
-                        className="font-medium"
-                        style={{ color: "var(--color-pacific)" }}
-                      >
-                        {isMidWay ? "Continue Building" : "Continue Building"}
+                      <DropdownMenuItem onSelect={() => handleContinueBuilding(skill.name)}>
+                        Continue Building
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator />
