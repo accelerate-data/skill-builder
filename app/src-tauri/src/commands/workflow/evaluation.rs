@@ -719,7 +719,6 @@ pub fn preview_step_reset(
     );
     let skills_path = read_skills_path(&db)
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
-    let skill_output_dir = Path::new(&skills_path).join(&skill_name);
 
     let step_names = [
         "Research",
@@ -730,40 +729,8 @@ pub fn preview_step_reset(
 
     let mut result = Vec::new();
     for step_id in from_step_id..=3 {
-        // skills_path is required — single code path, no workspace fallback
-        let mut existing_files: Vec<String> = Vec::new();
-
-        for file in get_step_output_files(step_id) {
-            let exists = if step_id == 3 {
-                skill_output_dir.join(file).exists()
-            } else {
-                Path::new(&workspace_path)
-                    .join(&skill_name)
-                    .join(file)
-                    .exists()
-            };
-            if exists {
-                existing_files.push(file.to_string());
-            }
-        }
-
-        // Step 3: also list individual files in references/ directory
-        if step_id == 3 {
-            let refs_dir = skill_output_dir.join("references");
-            if refs_dir.is_dir() {
-                if let Ok(entries) = std::fs::read_dir(&refs_dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.is_file() {
-                            if let Some(name) = path.file_name() {
-                                existing_files
-                                    .push(format!("references/{}", name.to_string_lossy()));
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        let existing_files =
+            crate::cleanup::list_step_output_files(&workspace_path, &skill_name, step_id, &skills_path);
 
         if !existing_files.is_empty() {
             let name = step_names

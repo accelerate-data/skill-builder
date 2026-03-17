@@ -83,7 +83,8 @@ Your output should be raw research text only (500-800 words).
 Frame your research such that user responses will answer:
 - What should this skill enable Claude to do?
 - When should this skill trigger?
-- What's the expected output format?
+- What's the expected output ?
+- Who's the typical user? 
 - Should we set up test cases?
 
 Proactively think about edge cases, input/output formats, example files, success criteria, and dependencies.
