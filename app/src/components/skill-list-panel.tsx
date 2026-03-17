@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSkillStore } from "@/stores/skill-store";
@@ -31,6 +31,7 @@ interface UnifiedSkill {
   description: string | null;
   purpose: string | null;
   lastModified: Date | null;
+  createdAt: Date | null;
   source: "builder" | "imported" | "marketplace";
   status: string | null;
   currentStep: string | null;
@@ -95,6 +96,7 @@ function mergeSkills(
     description: s.description ?? null,
     purpose: s.purpose,
     lastModified: s.last_modified ? new Date(s.last_modified) : null,
+    createdAt: s.created_at ? new Date(s.created_at) : null,
     source: s.skill_source === "marketplace" ? "marketplace" : ("builder" as const),
     status: s.status,
     currentStep: s.current_step,
@@ -105,6 +107,7 @@ function mergeSkills(
     description: s.description,
     purpose: s.purpose,
     lastModified: new Date(s.imported_at),
+    createdAt: new Date(s.imported_at),
     source: s.marketplace_source_url ? ("marketplace" as const) : ("imported" as const),
     status: null,
     currentStep: null,
@@ -117,11 +120,11 @@ function mergeSkills(
     if (!byName.has(s.name)) byName.set(s.name, s);
   }
 
+  // Sort by creation date descending — newest skill first, stable across edits
   return Array.from(byName.values()).sort((a, b) => {
-    if (!a.lastModified && !b.lastModified) return 0;
-    if (!a.lastModified) return 1;
-    if (!b.lastModified) return -1;
-    return b.lastModified.getTime() - a.lastModified.getTime();
+    const at = a.createdAt?.getTime() ?? 0;
+    const bt = b.createdAt?.getTime() ?? 0;
+    return bt - at;
   });
 }
 
@@ -155,21 +158,11 @@ export function SkillListPanel({
     );
   }, [workspacePath, setSkills, fetchImportedSkills]);
 
-  // Stable display order: new skills appear at top, existing skills keep their
-  // position even when timestamps update (e.g. workflow-persistence re-fetches).
-  const skillOrderRef = useRef<string[]>([]);
-  const unifiedSkills = useMemo(() => {
-    const merged = mergeSkills(builderSkills, importedSkills);
-    const newNames = merged
-      .filter((s) => !skillOrderRef.current.includes(s.name))
-      .map((s) => s.name);
-    const existingInOrder = skillOrderRef.current.filter((name) =>
-      merged.some((s) => s.name === name),
-    );
-    skillOrderRef.current = [...newNames, ...existingInOrder];
-    const orderMap = new Map(skillOrderRef.current.map((name, i) => [name, i]));
-    return merged.sort((a, b) => (orderMap.get(a.name) ?? 999) - (orderMap.get(b.name) ?? 999));
-  }, [builderSkills, importedSkills]);
+  // Sort by creation date (newest first) — stable across edits since created_at never changes.
+  const unifiedSkills = useMemo(
+    () => mergeSkills(builderSkills, importedSkills),
+    [builderSkills, importedSkills],
+  );
 
   // Default selection — run once on mount after stores are populated
   useEffect(() => {

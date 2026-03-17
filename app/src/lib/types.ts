@@ -97,6 +97,7 @@ export interface SkillSummary {
   current_step: string | null
   status: string | null
   last_modified: string | null
+  created_at?: string | null
   tags: string[]
   purpose: string | null
   skill_source?: string | null
