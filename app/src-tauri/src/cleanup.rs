@@ -1,55 +1,123 @@
 use crate::commands::workflow::get_step_output_files;
 use std::path::Path;
 
-/// Delete output files for a single step from workspace and skills_path.
-/// Used defensively to clean up partial output from interrupted agent runs.
-pub fn cleanup_step_files(workspace_path: &str, skill_name: &str, step_id: u32, skills_path: &str) {
+/// Try to remove a file, logging the outcome.
+fn remove_file_logged(label: &str, path: &Path) {
+    if path.exists() {
+        match std::fs::remove_file(path) {
+            Ok(()) => log::debug!("[{}] deleted {}", label, path.display()),
+            Err(e) => log::warn!("[{}] FAILED to delete {}: {}", label, path.display(), e),
+        }
+    }
+}
+
+/// Try to remove a directory tree, logging the outcome.
+fn remove_dir_logged(label: &str, path: &Path) {
+    if path.is_dir() {
+        match std::fs::remove_dir_all(path) {
+            Ok(()) => log::debug!("[{}] deleted dir {}", label, path.display()),
+            Err(e) => log::warn!("[{}] FAILED to delete dir {}: {}", label, path.display(), e),
+        }
+    }
+}
+
+/// List existing output files for a single step (display names, not full paths).
+///
+/// For step 3 (generate skill), checks:
+///   - `skills_path/skill_name/` — SKILL.md, references/*, .skill zip
+///   - `workspace_path/skill_name/` — evals/, eval-review.html
+///
+/// For other steps, checks context files in `workspace_path/skill_name/`.
+pub fn list_step_output_files(
+    workspace_path: &str,
+    skill_name: &str,
+    step_id: u32,
+    skills_path: &str,
+) -> Vec<String> {
+    let skill_dir = Path::new(workspace_path).join(skill_name);
+    let mut files = Vec::new();
+
+    if step_id == 3 {
+        let skill_output_dir = Path::new(skills_path).join(skill_name);
+        if skill_output_dir.exists() {
+            for file in get_step_output_files(3) {
+                if skill_output_dir.join(file).exists() {
+                    files.push(file.to_string());
+                }
+            }
+            let refs_dir = skill_output_dir.join("references");
+            if refs_dir.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(&refs_dir) {
+                    for entry in entries.flatten() {
+                        if entry.path().is_file() {
+                            if let Some(name) = entry.path().file_name() {
+                                files.push(format!("references/{}", name.to_string_lossy()));
+                            }
+                        }
+                    }
+                }
+            }
+            let skill_zip = format!("{}.skill", skill_name);
+            if skill_output_dir.join(&skill_zip).exists() {
+                files.push(skill_zip);
+            }
+        }
+        if skill_dir.join("evals").is_dir() {
+            files.push("evals/".to_string());
+        }
+        if skill_dir.join("eval-review.html").exists() {
+            files.push("eval-review.html".to_string());
+        }
+        return files;
+    }
+
+    // Steps 0-2: context files in workspace_path/skill_name/
+    for file in get_step_output_files(step_id) {
+        if skill_dir.join(file).exists() {
+            files.push(file.to_string());
+        }
+    }
+    files
+}
+
+/// Delete output files for a single step.
+pub fn clean_step_output(
+    workspace_path: &str,
+    skill_name: &str,
+    step_id: u32,
+    skills_path: &str,
+) {
+    const LABEL: &str = "clean_step_output";
     log::debug!(
-        "[cleanup_step_files] skill='{}': step={} workspace={} skills_path={}",
+        "[{}] skill='{}': step={} workspace={} skills_path={}",
+        LABEL,
         skill_name,
         step_id,
         workspace_path,
         skills_path
     );
+
     let skill_dir = Path::new(workspace_path).join(skill_name);
-    let files = get_step_output_files(step_id);
 
     if step_id == 3 {
-        let output_dir = Path::new(skills_path).join(skill_name);
-        let skill_md = output_dir.join("SKILL.md");
-        if skill_md.exists() {
-            let _ = std::fs::remove_file(&skill_md);
-            log::debug!("[cleanup_step_files] deleted {}", skill_md.display());
-        }
-        let refs_dir = output_dir.join("references");
-        if refs_dir.is_dir() {
-            // Only delete if non-empty (empty dir is from create_skill_inner)
-            if std::fs::read_dir(&refs_dir)
-                .map(|mut d| d.next().is_some())
-                .unwrap_or(false)
-            {
-                let _ = std::fs::remove_dir_all(&refs_dir);
-                // Recreate empty dir (create_skill_inner expects it)
-                let _ = std::fs::create_dir_all(&refs_dir);
-                log::debug!(
-                    "[cleanup_step_files] cleaned references/ in {}",
-                    output_dir.display()
-                );
+        let skill_output_dir = Path::new(skills_path).join(skill_name);
+        if skill_output_dir.exists() {
+            for file in get_step_output_files(3) {
+                remove_file_logged(LABEL, &skill_output_dir.join(file));
             }
+            remove_dir_logged(LABEL, &skill_output_dir.join("references"));
+            remove_file_logged(
+                LABEL,
+                &skill_output_dir.join(format!("{}.skill", skill_name)),
+            );
         }
+        remove_dir_logged(LABEL, &skill_dir.join("evals"));
+        remove_file_logged(LABEL, &skill_dir.join("eval-review.html"));
         return;
     }
 
-    let context_dir = skill_dir.clone();
-
-    for file in &files {
-        for dir in [&skill_dir, &context_dir] {
-            let path = dir.join(file);
-            if path.exists() {
-                let _ = std::fs::remove_file(&path);
-                log::debug!("[cleanup_step_files] deleted {}", path.display());
-            }
-        }
+    for file in get_step_output_files(step_id) {
+        remove_file_logged(LABEL, &skill_dir.join(file));
     }
 }
 
@@ -73,113 +141,7 @@ pub fn cleanup_future_steps(
         if (step_id as i32) <= after_step {
             continue;
         }
-        cleanup_step_files(workspace_path, skill_name, step_id, skills_path);
-    }
-}
-
-/// Delete output files for a single step (thorough version).
-/// For step 3 (generate skill), files are in `skill_output_dir` (skills_path/skill_name).
-/// For other steps, files are in skills_path/skill_name/ (context files).
-/// More thorough than `cleanup_step_files` — used by the reset flow.
-pub fn clean_step_output_thorough(
-    workspace_path: &str,
-    skill_name: &str,
-    step_id: u32,
-    skills_path: &str,
-) {
-    let skill_dir = Path::new(workspace_path).join(skill_name);
-    log::debug!(
-        "[clean_step_output_thorough] skill='{}': step={} workspace={} skills_path={}",
-        skill_name,
-        step_id,
-        workspace_path,
-        skills_path
-    );
-
-    if step_id == 3 {
-        // Step 3 output lives in skills_path/skill_name/
-        let skill_output_dir = Path::new(skills_path).join(skill_name);
-        log::debug!(
-            "[clean_step_output_thorough] step=3 output_dir={} exists={}",
-            skill_output_dir.display(),
-            skill_output_dir.exists()
-        );
-        if skill_output_dir.exists() {
-            for file in get_step_output_files(3) {
-                let path = skill_output_dir.join(file);
-                if path.exists() {
-                    match std::fs::remove_file(&path) {
-                        Ok(()) => {
-                            log::debug!("[clean_step_output_thorough] deleted {}", path.display())
-                        }
-                        Err(e) => log::warn!(
-                            "[clean_step_output_thorough] FAILED to delete {}: {}",
-                            path.display(),
-                            e
-                        ),
-                    }
-                }
-            }
-            let refs_dir = skill_output_dir.join("references");
-            if refs_dir.is_dir() {
-                match std::fs::remove_dir_all(&refs_dir) {
-                    Ok(()) => log::debug!(
-                        "[clean_step_output_thorough] deleted dir {}",
-                        refs_dir.display()
-                    ),
-                    Err(e) => log::warn!(
-                        "[clean_step_output_thorough] FAILED to delete dir {}: {}",
-                        refs_dir.display(),
-                        e
-                    ),
-                }
-            }
-            // Clean up .skill zip from skill output dir
-            let skill_file = skill_output_dir.join(format!("{}.skill", skill_name));
-            if skill_file.exists() {
-                match std::fs::remove_file(&skill_file) {
-                    Ok(()) => log::debug!(
-                        "[clean_step_output_thorough] deleted {}",
-                        skill_file.display()
-                    ),
-                    Err(e) => log::warn!(
-                        "[clean_step_output_thorough] FAILED to delete {}: {}",
-                        skill_file.display(),
-                        e
-                    ),
-                }
-            }
-        }
-        return;
-    }
-
-    let context_dir = skill_dir.clone();
-    log::debug!(
-        "[clean_step_output_thorough] step={} skill_dir={} context_dir={}",
-        step_id,
-        skill_dir.display(),
-        context_dir.display()
-    );
-
-    for file in get_step_output_files(step_id) {
-        // Check both locations — workspace and skills_path
-        for dir in [&skill_dir, &context_dir] {
-            let path = dir.join(file);
-            if path.exists() {
-                match std::fs::remove_file(&path) {
-                    Ok(()) => {
-                        log::debug!("[clean_step_output_thorough] deleted {}", path.display())
-                    }
-                    Err(e) => log::warn!(
-                        "[clean_step_output_thorough] FAILED to delete {}: {}",
-                        path.display(),
-                        e
-                    ),
-                }
-            } else {
-                log::debug!("[clean_step_output_thorough] not found: {}", path.display());
-            }
-        }
+        clean_step_output(workspace_path, skill_name, step_id, skills_path);
     }
 }
 
@@ -198,7 +160,7 @@ pub fn delete_step_output_files(
         skills_path
     );
     for step_id in from_step_id..=3 {
-        clean_step_output_thorough(workspace_path, skill_name, step_id, skills_path);
+        clean_step_output(workspace_path, skill_name, step_id, skills_path);
     }
 }
 
@@ -298,8 +260,8 @@ mod tests {
     }
 
     #[test]
-    fn test_clean_step_output_thorough_step1_is_noop() {
-        // Step 1 has no unique output files, so clean_step_output_thorough for step 1 is a no-op.
+    fn test_clean_step_output_step1_is_noop() {
+        // Step 1 has no unique output files, so clean_step_output for step 1 is a no-op.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
@@ -310,9 +272,143 @@ mod tests {
         create_step_output(skills_tmp.path(), "my-skill", 0);
 
         // Cleaning step 1 should leave step 0 files untouched
-        clean_step_output_thorough(workspace, "my-skill", 1, skills_path);
+        clean_step_output(workspace, "my-skill", 1, skills_path);
 
         let skill_dir = skills_tmp.path().join("my-skill");
         assert!(skill_dir.join("context/clarifications.json").exists());
+    }
+
+    #[test]
+    fn test_clean_step3_deletes_evals_and_review() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+
+        // Create workspace dir with eval artifacts
+        let skill_dir = tmp.path().join("my-skill");
+        std::fs::create_dir_all(skill_dir.join("evals")).unwrap();
+        std::fs::write(skill_dir.join("evals/evals.json"), "{}").unwrap();
+        std::fs::write(skill_dir.join("eval-review.html"), "<html>").unwrap();
+
+        // Create skill output dir with SKILL.md
+        let output_dir = skills_tmp.path().join("my-skill");
+        std::fs::create_dir_all(output_dir.join("references")).unwrap();
+        std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
+
+        clean_step_output(workspace, "my-skill", 3, skills_path);
+
+        assert!(!skill_dir.join("evals").exists());
+        assert!(!skill_dir.join("eval-review.html").exists());
+        assert!(!output_dir.join("SKILL.md").exists());
+        assert!(!output_dir.join("references").exists());
+    }
+
+    // ── list_step_output_files tests ──
+
+    #[test]
+    fn test_list_step0_returns_clarifications() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+
+        create_step_output(tmp.path(), "my-skill", 0);
+
+        let files = list_step_output_files(workspace, "my-skill", 0, skills_path);
+        assert_eq!(files, vec!["context/clarifications.json"]);
+    }
+
+    #[test]
+    fn test_list_step1_returns_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+
+        create_skill_dir(tmp.path(), "my-skill", "test");
+
+        let files = list_step_output_files(workspace, "my-skill", 1, skills_path);
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_list_step2_returns_decisions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+
+        create_step_output(tmp.path(), "my-skill", 2);
+
+        let files = list_step_output_files(workspace, "my-skill", 2, skills_path);
+        assert_eq!(files, vec!["context/decisions.json"]);
+    }
+
+    #[test]
+    fn test_list_step3_includes_all_artifacts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+
+        // Skill output in skills_path
+        let output_dir = skills_tmp.path().join("my-skill");
+        std::fs::create_dir_all(output_dir.join("references")).unwrap();
+        std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
+        std::fs::write(output_dir.join("references/foo.md"), "ref").unwrap();
+        std::fs::write(output_dir.join("references/bar.md"), "ref").unwrap();
+        std::fs::write(output_dir.join("my-skill.skill"), "zip").unwrap();
+
+        // Eval artifacts in workspace
+        let skill_dir = tmp.path().join("my-skill");
+        std::fs::create_dir_all(skill_dir.join("evals")).unwrap();
+        std::fs::write(skill_dir.join("evals/evals.json"), "{}").unwrap();
+        std::fs::write(skill_dir.join("eval-review.html"), "<html>").unwrap();
+
+        let files = list_step_output_files(workspace, "my-skill", 3, skills_path);
+
+        assert!(files.contains(&"SKILL.md".to_string()));
+        assert!(files.contains(&"references/foo.md".to_string()));
+        assert!(files.contains(&"references/bar.md".to_string()));
+        assert!(files.contains(&"my-skill.skill".to_string()));
+        assert!(files.contains(&"evals/".to_string()));
+        assert!(files.contains(&"eval-review.html".to_string()));
+    }
+
+    #[test]
+    fn test_list_step3_without_evals_omits_them() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+
+        // Only SKILL.md, no evals
+        let output_dir = skills_tmp.path().join("my-skill");
+        std::fs::create_dir_all(&output_dir).unwrap();
+        std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
+
+        // Empty workspace dir
+        std::fs::create_dir_all(tmp.path().join("my-skill")).unwrap();
+
+        let files = list_step_output_files(workspace, "my-skill", 3, skills_path);
+
+        assert_eq!(files, vec!["SKILL.md"]);
+        assert!(!files.contains(&"evals/".to_string()));
+        assert!(!files.contains(&"eval-review.html".to_string()));
+    }
+
+    #[test]
+    fn test_list_step0_missing_files_returns_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+
+        // Create workspace dir but no output files
+        create_skill_dir(tmp.path(), "my-skill", "test");
+
+        let files = list_step_output_files(workspace, "my-skill", 0, skills_path);
+        assert!(files.is_empty());
     }
 }

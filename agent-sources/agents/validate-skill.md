@@ -2,7 +2,7 @@
 name: validate-skill
 description: Validates a completed skill and returns structured validation output.
 model: sonnet
-tools: Read, Glob, Grep, Bash, Task
+tools: Read, Task
 ---
 
 # Validate Skill
@@ -125,6 +125,8 @@ Combine sub-agent outputs into:
 - Every result includes specific evidence and actionable next steps
 
 </instruction>
+
+---
 
 <output>
 

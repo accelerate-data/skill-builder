@@ -1,36 +1,13 @@
 ---
 name: research
-description: >
-  ALWAYS use this skill when producing clarification questions for any skill-building purpose (domain, source,
-  data-engineering, platform). Invoke immediately in the research phase: score candidate dimensions, select top
-  dimensions, run parallel dimension research, and return the complete clarifications.json payload. Do not attempt to
-  produce clarifications without using this skill.
+description: ALWAYS use this skill when producing clarification questions for any skill-building purpose (domain, source, data-engineering, platform). Invoke immediately in the research phase: score candidate dimensions, select top dimensions, run parallel dimension research, and return the complete clarifications.json payload. Do not attempt to produce clarifications without using this skill.
 user_invocable: false
 ---
 
-# Research Skill
+# Research Skill needs
 
-## Overview
-
-Given a `purpose`, produce clarification questions to be answered by the user to create a skill fit for purpose for Vibedata.
-
-Always apply the purpose-aware lens:
-
-- Prioritize the selected purpose dimension set first.
-- If purpose is `platform` or `data-engineering` enforce Lakehouse-first constraints explicitly.
-- For other purposes include Lakehouse constraints only when they materially change design, risk, or validation.
-- Avoid generic warehouse guidance and do not include any guidance that conflicts with Fabric Lakehouse, dbt Core or Azure context.
-
-### Purpose → Dimension Set Mapping
-
-| Purpose (label or token) | Dimension set |
-| --- | --- |
-| Business process knowledge (`domain`) | Domain Dimensions |
-| Source system customizations (`source`) | Source Dimensions |
-| Organization specific data engineering standards (`data-engineering`) | Data-Engineering Dimensions |
-| Organization specific Azure or Fabric standards (`platform`) | Platform Dimensions |
-
-## Quick Reference
+Given a `purpose`, produce clarification questions which can be used for writing the skill. 
+The overall flow is as follows 
 
 - Resolve `purpose` to one dimension set from `references/dimension-sets.md`
 - Score all candidate dimensions using `references/scoring-rubric.md`
@@ -44,6 +21,14 @@ Always apply the purpose-aware lens:
 ## Step 1 — Select Dimension Set
 
 Read `references/dimension-sets.md` and select the matching section.
+Use table below to resolve `purpose` to one dimension set from `references/dimension-sets.md`
+
+| Purpose (label or token) | Dimension set |
+| --- | --- |
+| Business process knowledge (`domain`) | Domain Dimensions |
+| Source system customizations (`source`) | Source Dimensions |
+| Organization specific data engineering standards (`data-engineering`) | Data-Engineering Dimensions |
+| Organization specific Azure or Fabric standards (`platform`) | Platform Dimensions |
 
 ## Step 2 — Score dimensions
 
@@ -55,6 +40,7 @@ Use that scoring JSON to construct `metadata.research_plan` which is part of cla
 - Set `dimension_scores` from `candidate_dimension_scores` (`name`, `score`, `reason`, `focus`).
 - If `topic_relevance` is `not_relevant`, return canonical minimal/scope-recommendation clarifications output per `references/schemas.md` with:
   - `metadata.scope_recommendation: true`
+  - `metadata.scope_reason`: one-sentence explanation of why no dimensions scored high enough
   - `metadata.warning.code: "all_dimensions_low_score"`
   - `metadata.warning.message`: concise explanation for UI
   - `metadata.research_plan` present and schema-valid with minimal values per `references/schemas.md` Scope/Error Minimal Output (including `topic_relevance: "not_relevant"`, zero counts, and empty selected arrays)
@@ -78,33 +64,77 @@ Update the `metadata.research_plan` created in Step 2.
 
 For each selected dimension object in `metadata.research_plan.selected_dimensions`:
 
-- Read the dimension spec file `references/dimensions/{name}.md` (use the selected object's `name` field as the slug)
 - Spawn one Task sub-agent per selected dimension. Mode: `bypassPermissions`.
-- Include in the sub-agent prompt: the full content of the dimension spec file, the full user context, and the tailored focus line from `metadata.research_plan.selected_dimensions`
-- Require raw research text only (500-800 words)
+- Wait for all tasks before consolidation.
 
-Wait for all tasks before consolidation.
+### Sub-agent prompt
+
+Spawn each sub-agent with the following prompt verbatim, substituting `{name}`, `{focus}`, and `{user_context}`:
+
+---
+**Dimension**: {name}
+**Focus**: {focus}
+
+{user_context}
+
+Read `references/dimensions/{name}.md`.
+
+Your output should be raw research text only (500-800 words).
+Frame your research such that user responses will answer:
+- What should this skill enable Claude to do?
+- When should this skill trigger?
+- What's the expected output ?
+- Who's the typical user? 
+- Should we set up test cases?
+
+Proactively think about edge cases, input/output formats, example files, success criteria, and dependencies.
+
+---
 
 ## Step 5 — Consolidate
 
-Use `references/consolidation-handoff.md` to produce canonical `clarifications.json` and return.
+- Use `references/consolidation-handoff.md` to produce `clarifications_json`. 
+- Return the results as JSON only (no wrappers and no additional text). 
+
+  ```json
+  {
+    "dimensions_selected": `metadata.research_plan.dimensions_selected` ,
+    "question_count": `metadata.question_count` from `clarifications_json`, 
+    "research_output" : { 
+      "version": "1",
+      "metadata": {
+        "question_count": `metadata.question_count` from `clarifications_json`,
+        "section_count": `metadata.section_count` from `clarifications_json`,
+        "refinement_count": `metadata.refinement_count` from `clarifications_json`,
+        "must_answer_count": `metadata.must_answer_count` from `clarifications_json`,
+        "priority_questions": `metadata.priority_questions` from `clarifications_json`,
+        "scope_recommendation": `metadata.scope_recommendation` from `clarifications_json`,
+        "scope_reason": `metadata.scope_reason` from `clarifications_json`,
+        "warning": {... : `metadata.warning` } , 
+        "error": null,
+        "research_plan" : `metadata.research_plan`
+      }
+      "sections": `sections` from `clarifications_json`,
+      "notes" : `notes` from `clarifications_json`,
+      "answer_evaluator_notes": []
+    }
+  }
+  ```
 
 ### Output Contract
 
-Return only the canonical clarifications JSON object as top-level output (no wrappers and no additional text).
-
-Before returning:
+1. `research_output` should follow the the canonical clarifications JSON object. 
+2. Before returning:
 
 - Validate against `references/schemas.md` exactly.
 - Ensure `metadata.research_plan` is present and schema-valid.
 - Ensure `metadata.research_plan.selected_dimensions` is present as `{ name, focus }` objects aligned to selected dimensions.
-- Preserve note separation (`notes` vs `answer_evaluator_notes`).
+- Preserve note separation (`notes` vs `answer_evaluator_notes`). Always emit `answer_evaluator_notes: []` — this field is populated by a downstream agent after user answers are evaluated, never during research.
 - Keep warning/error channels separate (`metadata.warning` and `metadata.error`).
 
-All-low-scores behavior:
-
+2. All-low-scores behavior:
 - If `topic_relevance` is `not_relevant`, emit the minimal scope-recommendation payload from `references/schemas.md` with `metadata.scope_recommendation: true` and no dimension fan-out.
 
-Runtime resilience:
-
-- If a dimension task fails, score that dimension as `1` with reason `Research task failed`, then continue with available results.
+3. If the research task fails for a selected dimension 
+- Remove the dimension from `metadata.research_plan.selected_dimensions`.  
+- Update the score of that dimension in `metadata.research_plan.dimension_scores` as `1` with reason `Research task failed`. This is not an error. 

@@ -30,10 +30,7 @@ The skills path defaults to `~/skill-builder/` but is set by the user on first l
     ├── .claude/
     │   ├── CLAUDE.md                 # Rebuilt on startup: base + active skills + user customization
     │   ├── agents/                   # Bundled agent prompts, copied from agents/ on startup
-    │   │   ├── research-orchestrator.md
-    │   │   ├── detailed-research.md
     │   │   ├── confirm-decisions.md
-    │   │   ├── generate-skill.md
     │   │   └── ...
     │   └── skills/                   # Bundled and imported skills (seeded on startup)
     │       ├── research/

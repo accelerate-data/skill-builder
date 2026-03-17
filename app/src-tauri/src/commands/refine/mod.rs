@@ -206,6 +206,7 @@ pub async fn send_refine_message(
             &workspace_path,
             &runtime.skills_path,
             &user_message,
+            target_files.as_deref(),
         );
         log::debug!(
             "[send_refine_message] direct prompt ({} chars) for skill '{}' command={:?}",

@@ -127,7 +127,7 @@ export function BaseItem({
         }`}
       >
         <div
-          className="ml-[7px] min-w-0 overflow-x-hidden pl-3 pr-2 pt-1 pb-1"
+          className="ml-[7px] min-w-0 overflow-x-hidden pl-4 pr-2 pt-1 pb-1"
           style={{ borderLeft: `3px solid ${borderColor}` }}
         >
           {children}

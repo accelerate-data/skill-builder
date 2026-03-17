@@ -313,11 +313,11 @@ fn test_dispatch_for_unscoped_rewrite_is_direct() {
 }
 
 #[test]
-fn test_dispatch_for_scoped_rewrite_stays_streaming() {
+fn test_dispatch_for_scoped_rewrite_is_direct() {
     let targets = vec!["SKILL.md".to_string()];
     assert_eq!(
         dispatch_for_refine_command(Some("rewrite"), Some(&targets)),
-        RefineDispatch::Stream
+        RefineDispatch::DirectRewrite
     );
 }
 
@@ -332,7 +332,7 @@ fn test_dispatch_for_freeform_stays_streaming() {
 #[test]
 fn test_refine_config_always_uses_refine_skill_agent() {
     let (config, _) = base_refine_config("improve metrics");
-    assert_eq!(config.agent_name.as_deref(), Some("refine-skill"));
+    assert_eq!(config.agent_name.as_deref(), Some(REFINE_AGENT_NAME));
 }
 
 #[test]
@@ -446,7 +446,7 @@ fn test_refine_config_serialization_matches_sidecar_schema() {
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
     assert_eq!(parsed["prompt"], "full prompt here");
-    assert_eq!(parsed["agentName"], "refine-skill");
+    assert_eq!(parsed["agentName"], REFINE_AGENT_NAME);
     assert_eq!(parsed["maxTurns"], REFINE_STREAM_MAX_TURNS);
     assert!(parsed["allowedTools"]
         .as_array()
@@ -831,6 +831,7 @@ fn test_direct_validate_prompt_includes_required_paths() {
         "/ws",
         "/skills",
         "Run validation now",
+        None,
     );
     assert!(prompt.contains("The workspace directory is: /ws/my-skill"));
     assert!(prompt.contains(
@@ -851,12 +852,45 @@ fn test_direct_rewrite_prompt_enables_rewrite_mode() {
         "/ws",
         "/skills",
         "Rewrite this skill for coherence",
+        None,
     );
     assert!(prompt.contains("Run in /rewrite mode for this request."));
     assert!(prompt.contains(
         "Treat Current request as an additional focus area for coverage"
     ));
     assert!(prompt.contains("Current request: Rewrite this skill for coherence"));
+    assert!(!prompt.contains("Focus the rewrite on these files"));
+}
+
+#[test]
+fn test_direct_rewrite_prompt_includes_target_files() {
+    let files = vec!["SKILL.md".to_string(), "references/metrics.md".to_string()];
+    let prompt = build_direct_agent_prompt(
+        GENERATE_AGENT_NAME,
+        "my-skill",
+        "/ws",
+        "/skills",
+        "Improve the metrics section",
+        Some(&files),
+    );
+    assert!(prompt.contains("Run in /rewrite mode for this request."));
+    assert!(prompt.contains("Focus the rewrite on these files: SKILL.md, references/metrics.md."));
+    assert!(prompt.contains("Current request: Improve the metrics section"));
+}
+
+#[test]
+fn test_direct_validate_prompt_ignores_target_files() {
+    let files = vec!["SKILL.md".to_string()];
+    let prompt = build_direct_agent_prompt(
+        VALIDATE_AGENT_NAME,
+        "my-skill",
+        "/ws",
+        "/skills",
+        "Run validation now",
+        Some(&files),
+    );
+    assert!(!prompt.contains("Focus the rewrite on these files"));
+    assert!(!prompt.contains("/rewrite mode"));
 }
 
 #[test]

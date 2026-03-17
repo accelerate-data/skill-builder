@@ -527,9 +527,11 @@
   overflow-x: hidden;
 }
 
-.markdown-body.compact.agent-markdown ul,
+.markdown-body.compact.agent-markdown ul {
+  padding-left: 1.4em;
+}
 .markdown-body.compact.agent-markdown ol {
-  padding-left: 1.2em;
+  padding-left: 1.8em;
 }
 
 .markdown-body.compact.agent-markdown li {

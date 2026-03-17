@@ -2,21 +2,13 @@ use std::path::Path;
 
 use crate::agents::sidecar::SidecarConfig;
 use crate::commands::agent::output_format_for_agent;
-use crate::commands::workflow::resolve_model_id;
+use crate::commands::workflow::{resolve_model_id, tools_for_agent};
 use crate::db::{self, Db};
 use crate::types::SecretString;
 
-pub(super) const REFINE_TOOLS: &[&str] = &[
-    "Read", "Edit", "Write", "Glob", "Grep", "Bash", "Task", "Skill",
-];
-pub(super) const VALIDATE_DIRECT_TOOLS: &[&str] = &["Read", "Glob", "Grep", "Bash", "Task"];
-pub(super) const GENERATE_DIRECT_TOOLS: &[&str] = &[
-    "Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task", "Skill",
-];
-
-pub(super) const REFINE_AGENT_NAME: &str = "refine-skill";
+pub(super) const REFINE_AGENT_NAME: &str = "skill-creator:refine-skill";
 pub(super) const VALIDATE_AGENT_NAME: &str = "validate-skill";
-pub(super) const GENERATE_AGENT_NAME: &str = "generate-skill";
+pub(super) const GENERATE_AGENT_NAME: &str = "skill-creator:generate-skill";
 
 /// Max agentic turns for the entire streaming session. Each user message may
 /// use multiple turns internally (tool calls, etc.). 400 covers ~20 messages
@@ -44,13 +36,11 @@ pub(super) struct RefineRuntimeSettings {
 
 pub(super) fn dispatch_for_refine_command(
     command: Option<&str>,
-    target_files: Option<&[String]>,
+    _target_files: Option<&[String]>,
 ) -> RefineDispatch {
     match command {
         Some("validate") => RefineDispatch::DirectValidate,
-        Some("rewrite") if target_files.is_none_or(|files| files.is_empty()) => {
-            RefineDispatch::DirectRewrite
-        }
+        Some("rewrite") => RefineDispatch::DirectRewrite,
         _ => RefineDispatch::Stream,
     }
 }
@@ -168,7 +158,7 @@ pub(super) fn build_refine_config(
         model: None,
         api_key,
         cwd,
-        allowed_tools: Some(REFINE_TOOLS.iter().map(|s| s.to_string()).collect()),
+        allowed_tools: Some(tools_for_agent(REFINE_AGENT_NAME)),
         max_turns: Some(REFINE_STREAM_MAX_TURNS),
         permission_mode: None,
         thinking: thinking_budget.map(|budget| {
@@ -218,11 +208,7 @@ pub(super) fn build_direct_refine_config(
         skill_name,
         chrono::Utc::now().timestamp_millis()
     );
-    let allowed_tools = match agent_name {
-        VALIDATE_AGENT_NAME => VALIDATE_DIRECT_TOOLS,
-        GENERATE_AGENT_NAME => GENERATE_DIRECT_TOOLS,
-        _ => REFINE_TOOLS,
-    };
+    let allowed_tools = tools_for_agent(agent_name);
     let max_turns = match agent_name {
         VALIDATE_AGENT_NAME => 50,
         GENERATE_AGENT_NAME => 80,
@@ -239,7 +225,7 @@ pub(super) fn build_direct_refine_config(
         model: None,
         api_key,
         cwd: workspace_path.to_string(),
-        allowed_tools: Some(allowed_tools.iter().map(|s| s.to_string()).collect()),
+        allowed_tools: Some(allowed_tools),
         max_turns: Some(max_turns),
         permission_mode: None,
         thinking: thinking_budget.map(|budget| {
@@ -342,6 +328,7 @@ pub(super) fn build_direct_agent_prompt(
     workspace_path: &str,
     skills_path: &str,
     user_message: &str,
+    target_files: Option<&[String]>,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
@@ -360,6 +347,14 @@ pub(super) fn build_direct_agent_prompt(
 
     if agent_name == GENERATE_AGENT_NAME {
         prompt.push_str("\n\nRun in /rewrite mode for this request.");
+        if let Some(files) = target_files {
+            if !files.is_empty() {
+                prompt.push_str(&format!(
+                    "\n\nFocus the rewrite on these files: {}.",
+                    files.join(", ")
+                ));
+            }
+        }
     }
 
     prompt.push_str(&format!("\n\nCurrent request: {}", user_message));

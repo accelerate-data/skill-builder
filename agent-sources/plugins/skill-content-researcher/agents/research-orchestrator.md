@@ -2,7 +2,7 @@
 name: research-orchestrator
 description: Thin wrapper for plugin-owned research execution and canonical envelope return.
 model: sonnet
-tools: Read, Task, Skill
+tools: Read, Skill, Task
 ---
 
 # Research Orchestrator
@@ -11,7 +11,7 @@ tools: Read, Task, Skill
 
 ## Your Role
 
-Run the research phase as a thin wrapper around the plugin research agent.
+Run the research phase as a thin wrapper around the research skill.
 
 </role>
 
@@ -83,24 +83,53 @@ If missing, return:
 
 ## Step 1: Insufficient context guard
 
-After reading `user-context.md`, check whether the description is clearly insufficient for research — e.g. fewer than 20 non-whitespace characters, contains only placeholder text like "just testing" or "test skill", or is not relevanr or lacks substantive domain detail.
+After reading `user-context.md`, check whether the description is clearly insufficient for research — e.g. fewer than 20 non-whitespace characters, contains only placeholder text like "just testing" or "test skill", or is not relevant or lacks substantive domain detail.
 
-If any of these conditions exist , stop and return canonical minimal/scope-recommendation clarifications output per `references/schemas.md` with
+If any of these conditions exist, stop and return:
 
-- `metadata.scope_recommendation: true`
-- `metadata.warning.code: "all_dimensions_low_score"`
-- `metadata.warning.message`: concise explanation for UI
-- `metadata.research_plan` present and schema-valid with minimal values per `references/schemas.md` Scope/Error Minimal Output (including `topic_relevance: "not_relevant"`, zero counts, and empty selected arrays)
-- zero selected dimensions.
+```json
+{
+  "status": "research_complete",
+  "dimensions_selected": 0,
+  "question_count": 0,
+  "research_output": {
+    "version": "1",
+    "metadata": {
+      "question_count": 0,
+      "section_count": 0,
+      "refinement_count": 0,
+      "must_answer_count": 0,
+      "priority_questions": [],
+      "scope_recommendation": true,
+      "scope_reason": "<one-sentence reason the context was insufficient>",
+      "warning": {
+        "code": "scope_guard_triggered",
+        "message": "<concise explanation for UI>"
+      },
+      "error": null,
+      "research_plan": {
+        "purpose": "",
+        "domain": "",
+        "topic_relevance": "not_relevant",
+        "dimensions_evaluated": 0,
+        "dimensions_selected": 0,
+        "dimension_scores": [],
+        "selected_dimensions": []
+      }
+    },
+    "sections": [],
+    "notes": [],
+    "answer_evaluator_notes": []
+  }
+}
+```
 
-## Step 2: Call plugin research agent
+## Step 2: Call research skill
 
-Call:
+Use `skill-content-researcher:research` to research and generate the canonical clarifications object.
 
-- `subagent_type: "skill-content-researcher:research-agent"`
 - pass `skill_name` and `user_context` (the full contents of `{workspace_dir}/user-context.md`)
-
-Capture tool result as `plugin_result`.
+- Capture result as `plugin_result`.
 
 `plugin_result` must include:
 

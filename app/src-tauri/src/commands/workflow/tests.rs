@@ -101,10 +101,10 @@ fn test_get_step_output_files_unknown_step() {
 
 #[test]
 fn test_step_config_canonical_agent_names() {
-    assert_eq!(get_step_config(0).unwrap().agent_name, "research-orchestrator");
-    assert_eq!(get_step_config(1).unwrap().agent_name, "detailed-research");
+    assert_eq!(get_step_config(0).unwrap().agent_name, "skill-content-researcher:research-orchestrator");
+    assert_eq!(get_step_config(1).unwrap().agent_name, "skill-content-researcher:detailed-research");
     assert_eq!(get_step_config(2).unwrap().agent_name, "confirm-decisions");
-    assert_eq!(get_step_config(3).unwrap().agent_name, "generate-skill");
+    assert_eq!(get_step_config(3).unwrap().agent_name, "skill-creator:generate-skill");
 }
 
 #[test]
@@ -126,15 +126,15 @@ fn test_step_config_canonical_required_plugins() {
 
 #[test]
 fn test_workflow_output_format_is_set_for_json_contract_workflow_agents() {
-    assert!(workflow_output_format_for_agent("research-orchestrator").is_some());
-    assert!(workflow_output_format_for_agent("detailed-research").is_some());
+    assert!(workflow_output_format_for_agent("skill-content-researcher:research-orchestrator").is_some());
+    assert!(workflow_output_format_for_agent("skill-content-researcher:detailed-research").is_some());
     assert!(workflow_output_format_for_agent("confirm-decisions").is_some());
-    assert!(workflow_output_format_for_agent("generate-skill").is_some());
+    assert!(workflow_output_format_for_agent("skill-creator:generate-skill").is_some());
 }
 
 #[test]
 fn test_research_output_format_requires_artifact_fields() {
-    let format = workflow_output_format_for_agent("research-orchestrator").unwrap();
+    let format = workflow_output_format_for_agent("skill-content-researcher:research-orchestrator").unwrap();
     let required = format["schema"]["required"]
         .as_array()
         .expect("required array");
@@ -145,7 +145,7 @@ fn test_research_output_format_requires_artifact_fields() {
 
 #[test]
 fn test_detailed_research_output_format_requires_clarifications_payload() {
-    let format = workflow_output_format_for_agent("detailed-research").unwrap();
+    let format = workflow_output_format_for_agent("skill-content-researcher:detailed-research").unwrap();
     let required = format["schema"]["required"]
         .as_array()
         .expect("required array");
@@ -976,8 +976,8 @@ fn test_resolve_prompts_dir_dev_mode() {
     );
     // Verify flat agent files exist (no subdirectories)
     assert!(
-        agents_dir.join("research-orchestrator.md").exists(),
-        "agent-sources/agents/research-orchestrator.md should exist"
+        agents_dir.join("confirm-decisions.md").exists(),
+        "agent-sources/agents/confirm-decisions.md should exist"
     );
     assert!(
         agents_dir.join("validate-skill.md").exists(),
@@ -1037,7 +1037,7 @@ fn test_clean_step_output_step1_is_noop() {
     std::fs::write(skill_dir.join("context/decisions.json"), "{}").unwrap();
 
     // Clean only step 1 — both files should be untouched (step 1 has no unique output)
-    crate::cleanup::clean_step_output_thorough(workspace, "my-skill", 1, skills_path);
+    crate::cleanup::clean_step_output(workspace, "my-skill", 1, skills_path);
 
     assert!(skill_dir.join("context/clarifications.json").exists());
     assert!(skill_dir.join("context/decisions.json").exists());
@@ -1362,7 +1362,7 @@ fn test_debug_max_turns_removed() {
         (0, 50),  // research
         (1, 50),  // detailed research
         (2, 100), // confirm decisions
-        (3, 120), // generate skill
+        (3, 500), // generate skill
     ];
     for (step_id, expected_turns) in expected {
         let config = get_step_config(step_id).unwrap();
@@ -1376,7 +1376,7 @@ fn test_debug_max_turns_removed() {
 
 #[test]
 fn test_step_max_turns() {
-    let steps_with_expected_turns = [(0, 50), (1, 50), (2, 100), (3, 120)];
+    let steps_with_expected_turns = [(0, 50), (1, 50), (2, 100), (3, 500)];
     for (step_id, normal_turns) in steps_with_expected_turns {
         let config = get_step_config(step_id).unwrap();
         assert_eq!(

@@ -2,7 +2,7 @@
 name: validate-quality
 description: Quality assessment of a completed skill and returns findings as text.
 model: sonnet
-tools: Read, Glob, Grep, Bash
+tools: Read, Glob, Grep
 ---
 
 # Quality Checker
@@ -15,6 +15,8 @@ You are assisting an analytics engineer or business analyst to evaluate the effe
 
 </role>
 
+---
+
 <context>
 
 ## Inputs
@@ -25,6 +27,8 @@ You are assisting an analytics engineer or business analyst to evaluate the effe
 - Derive `context_dir` as `workspace_dir/context`
 
 </context>
+
+---
 
 <instructions>
 

@@ -71,7 +71,7 @@ pub(crate) fn output_format_for_agent(
         }));
     }
 
-    if agent_name == Some("generate-skill") {
+    if agent_name == Some("skill-creator:generate-skill") {
         return Some(serde_json::json!({
             "type": "json_schema",
             "schema": {
@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn test_output_format_for_generate_skill_agent() {
-        let fmt = output_format_for_agent("my-skill", Some("generate-skill"));
+        let fmt = output_format_for_agent("my-skill", Some("skill-creator:generate-skill"));
         assert!(fmt.is_some());
         let schema = fmt.expect("schema");
         assert_eq!(

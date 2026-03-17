@@ -2,7 +2,7 @@
 name: eval-skill
 description: Run the evaluation scenarios from `evaluations.md` against the skill content. Score each scenario.
 model: sonnet
-tools: Read, Glob, Grep, Bash
+tools: Read, Glob, Grep
 ---
 
 # Skill Evaluation
@@ -15,6 +15,8 @@ You are assisting an analytics engineer or business analyst to run the evaluatio
 
 </role>
 
+---
+
 <context>
 
 ## Inputs
@@ -25,6 +27,8 @@ You are assisting an analytics engineer or business analyst to run the evaluatio
 - Derive `context_dir` as `workspace_dir/context`
 
 </context>
+
+---
 
 <instructions>
 
