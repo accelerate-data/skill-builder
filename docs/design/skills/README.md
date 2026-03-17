@@ -70,11 +70,9 @@ agent-sources/plugins/skill-content-researcher/
 At a high level:
 
 1. The user invokes the `skill-content-researcher` wrapper skill. It collects `purpose`, `description`, `industry`, and `function_role` **interactively** via `AskUserQuestion`, with Skip/Other options for each.
-2. The wrapper constructs a markdown **User Context** block from the answers and passes it, along with `purpose` and an internal `skill_name` placeholder, to the plugin’s `research-agent`.
-3. `research-agent` runs the research flow using the reference material in `skills/research/references/`, then calls a Python tool (`normalize_research_output.py`) to:
-   - Parse and validate the `research_output` JSON against the minimal required shape.
-   - Derive `question_count` and `dimensions_selected` deterministically.
-4. The Python tool emits a **normalized envelope**:
+2. The wrapper constructs a markdown **User Context** block from the answers and passes it, along with `purpose` and an internal `skill_name` placeholder, to the plugin’s `research-orchestrator`.
+3. `research-orchestrator` calls the `skill-content-researcher:research` skill, which runs the research flow using the reference material in `skills/research/references/` and derives `question_count` and `dimensions_selected` inline from its output.
+4. The research skill returns a **normalized envelope**:
 
    ```json
    {
