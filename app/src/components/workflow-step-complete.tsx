@@ -147,6 +147,7 @@ export function WorkflowStepComplete({
   const [agentRuns, setAgentRuns] = useState<AgentRunRecord[]>([]);
   const [benchmarkData, setBenchmarkData] = useState<BenchmarkData | null>(null);
   const [benchmarkLoaded, setBenchmarkLoaded] = useState(false);
+  const [benchmarkMissing, setBenchmarkMissing] = useState(false);
 
   useEffect(() => {
     if (!skillName || stepId == null) {
@@ -164,6 +165,7 @@ export function WorkflowStepComplete({
     if (stepId !== 3 || !workspacePath || !skillName) {
       setBenchmarkData(null);
       setBenchmarkLoaded(false);
+      setBenchmarkMissing(false);
       return;
     }
 
@@ -174,16 +176,19 @@ export function WorkflowStepComplete({
         if (cancelled) return;
         try {
           setBenchmarkData(JSON.parse(content) as BenchmarkData);
+          setBenchmarkMissing(false);
         } catch {
           console.warn("[step-complete] Failed to parse benchmark.json");
           setBenchmarkData(null);
+          setBenchmarkMissing(true);
         }
         setBenchmarkLoaded(true);
       })
       .catch(() => {
         if (cancelled) return;
-        console.log("[step-complete] benchmark.json not found — showing fallback");
+        console.log("[step-complete] benchmark.json not found — missing");
         setBenchmarkData(null);
+        setBenchmarkMissing(true);
         setBenchmarkLoaded(true);
       });
     return () => { cancelled = true; };
@@ -566,7 +571,7 @@ export function WorkflowStepComplete({
         )}
         <ScrollArea className="min-h-0 flex-1">
           <div className="pr-4">
-            <BenchmarkSummaryCard benchmarkData={benchmarkData} duration={!reviewMode ? duration : undefined} cost={displayCost} />
+            <BenchmarkSummaryCard benchmarkData={benchmarkData} missing={benchmarkMissing} duration={!reviewMode ? duration : undefined} cost={displayCost} onResetStep={onResetStep} />
           </div>
         </ScrollArea>
         <StepActionBar

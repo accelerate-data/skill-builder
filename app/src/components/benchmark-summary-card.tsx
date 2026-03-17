@@ -65,8 +65,11 @@ export interface BenchmarkData {
 
 interface BenchmarkSummaryCardProps {
   benchmarkData: BenchmarkData | null;
+  /** True when benchmark.json was not found on disk (vs data being null because of skipped status) */
+  missing?: boolean;
   duration?: number;
   cost?: number;
+  onResetStep?: () => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -87,15 +90,40 @@ function formatPassRate(rate: number): string {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function BenchmarkSummaryCard({ benchmarkData, duration, cost }: BenchmarkSummaryCardProps) {
+export function BenchmarkSummaryCard({ benchmarkData, missing, duration, cost, onResetStep }: BenchmarkSummaryCardProps) {
+  // Missing = benchmark.json not found on disk — error state, offer reset
+  if (missing) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-8">
+        <AlertTriangle className="size-8 text-destructive/50" />
+        <div className="text-center">
+          <p className="font-medium text-destructive">Benchmark data missing</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            The evaluation run did not produce benchmark results. This can happen if the agent returned before graders finished.
+          </p>
+        </div>
+        {onResetStep && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+            onClick={onResetStep}
+          >
+            Re-run Step
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // No data but not missing (e.g. skipped status) — show simple complete state
   if (!benchmarkData) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-8">
-        <AlertTriangle className="size-8 text-amber-600 dark:text-amber-400" />
+        <CheckCircle2 className="size-8" style={{ color: "var(--color-seafoam)" }} />
         <div className="text-center">
-          <p className="text-sm font-semibold">Benchmark data unavailable</p>
+          <p className="text-sm font-semibold">Skill created</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            The evaluation run did not produce benchmark results. This can happen if eval scripts failed.
+            No evaluations were run for this generation (stub or skipped).
           </p>
         </div>
       </div>

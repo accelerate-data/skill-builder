@@ -135,7 +135,14 @@ After writing the skill and test cases, you MUST follow the **Running and evalua
 - Grading output must include a `summary` object with `passed`, `failed`, `total`, and `pass_rate` fields. The `aggregate_benchmark.py` script reads these — missing summary produces 0% pass rates.
 - We are running in a headless environment. Use `--static` to write a standalone HTML file inside the iteration directory.
 - We are running in headless mode — do not wait for user feedback after generating the viewer.
-- Wait for all Task sub-agents to complete before returning the output JSON.
+- **CRITICAL sequencing rule — do NOT return early:** The entire "Running and evaluating test cases" pipeline (executor runs, grading, `aggregate_benchmark.py`, review HTML generation) MUST complete before you call StructuredOutput. You MUST NOT call StructuredOutput while any spawned Task/Agent sub-agent is still running. The correct sequence is:
+  1. Spawn executor sub-agents (with_skill + without_skill) → **wait for ALL to finish**
+  2. Spawn grader sub-agents → **wait for ALL to finish**
+  3. Run `aggregate_benchmark.py` → **wait for it to finish**
+  4. Run review HTML generation → **wait for it to finish**
+  5. Verify `benchmark.json` exists in the iteration directory
+  6. Only THEN return structured output with the correct `benchmark_status`
+  If you return structured output before step 5, the user sees missing or partial benchmark data and must re-run the entire step.
   
 ### Prior-step handoff
 
