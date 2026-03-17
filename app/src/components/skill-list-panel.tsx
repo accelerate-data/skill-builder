@@ -31,7 +31,7 @@ import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
 import type { SkillSummary, ImportedSkill, Purpose } from "@/lib/types";
 import { PURPOSE_SHORT_LABELS } from "@/lib/types";
-import { listSkills, exportSkill, packageSkill, saveExportTo, resetWorkflowStep } from "@/lib/tauri";
+import { listSkills, exportSkill, packageSkill, saveExportTo, resetWorkflowStep, getLockedSkills } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 interface UnifiedSkill {
@@ -147,6 +147,7 @@ export function SkillListPanel({
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [redoTarget, setRedoTarget] = useState<string | null>(null);
+  const [externalLockedSkills, setExternalLockedSkills] = useState<Set<string>>(new Set());
 
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const builderSkills = useSkillStore((s) => s.skills);
@@ -156,7 +157,7 @@ export function SkillListPanel({
   const runs = useAgentStore((s) => s.runs);
   const navigate = useNavigate();
 
-  // Fetch both skill lists whenever workspacePath becomes available
+  // Fetch both skill lists and external lock state whenever workspacePath becomes available
   useEffect(() => {
     if (!workspacePath) return;
     listSkills(workspacePath)
@@ -165,6 +166,9 @@ export function SkillListPanel({
     fetchImportedSkills().catch((err) =>
       console.error("event=fetch_imported_skills_failed error=%s", err),
     );
+    getLockedSkills()
+      .then((locks) => setExternalLockedSkills(new Set(locks.map((l) => l.skill_name))))
+      .catch(() => { /* non-fatal */ });
   }, [workspacePath, setSkills, fetchImportedSkills]);
 
   // Sort by creation date (newest first) — stable across edits since created_at never changes.
@@ -340,7 +344,7 @@ export function SkillListPanel({
       {/* Skill rows */}
       <ScrollArea className="flex-1">
         {filteredSkills.map((skill) => {
-          const isLocked = !!runningSkillName && skill.name !== runningSkillName;
+          const isLocked = (!!runningSkillName && skill.name !== runningSkillName) || externalLockedSkills.has(skill.name);
           const isRunning = skill.name === runningSkillName;
           const isSelected = skill.name === selectedSkill;
           const dot = getStatusDot(skill, isRunning);
