@@ -60,7 +60,7 @@ function getStatusDot(skill: UnifiedSkill, isRunning: boolean): DotStyle {
 
   // Complete / imported → green (status="completed" always wins over current_step)
   if (isSkillComplete(skill)) {
-    return { className: isRunning ? "animate-dot-pulse" : "", style: { backgroundColor: "var(--color-seafoam)" } };
+    return { className: pulse.trim(), style: { backgroundColor: "var(--color-seafoam)" } };
   }
 
   const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
