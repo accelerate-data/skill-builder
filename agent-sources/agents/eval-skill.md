@@ -15,6 +15,8 @@ You are assisting an analytics engineer or business analyst to run the evaluatio
 
 </role>
 
+---
+
 <context>
 
 ## Inputs
@@ -25,6 +27,8 @@ You are assisting an analytics engineer or business analyst to run the evaluatio
 - Derive `context_dir` as `workspace_dir/context`
 
 </context>
+
+---
 
 <instructions>
 

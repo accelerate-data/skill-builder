@@ -32,3 +32,6 @@ screenshots-gitignore/
 # Vibedata agent artifacts 
 vd-memory/*
 
+# Python temp files
+__pycache__
+

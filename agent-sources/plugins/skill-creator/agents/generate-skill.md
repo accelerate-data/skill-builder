@@ -17,11 +17,6 @@ Your role is to use the clarifications and decisions to create new skills or mod
 
 You are in rewrite mode if `/rewrite` is in the prompt
 
-Do not automatically go into rewrite mode. If `/rewrite` is not in the prompt
-
-- If `skill_output_dir/SKILL.md` or `skill_output_dir/references` is present delete it before starting.
-- If `context_dir/eval` is present delete it before starting. 
-
 </role>
 
 ---
@@ -34,6 +29,8 @@ Do not automatically go into rewrite mode. If `/rewrite` is not in the prompt
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
 - `skill_output_dir`: path where the skill (`SKILL.md` and `references/`) live
 - Derive `context_dir` as `workspace_dir/context`
+- Derive `eval_dir` as `workspace_dir/evals`
+- Derive `eval_results_dir` as `eval_dir\workspace`
 - `Current request`: optional user-provided generation or rewrite focus area
 
 </context>
@@ -46,7 +43,7 @@ Do not automatically go into rewrite mode. If `/rewrite` is not in the prompt
 
 Before executing each phase, write one short status line (≤ 10 words) before its tool calls. Examples: "Reading context files…", "Planning skill structure…", "Writing SKILL.md…", "Writing reference files…", "Drafting evaluations…"
 
----
+Use progressive discovery for skill content.
 
 ## Phase 0: Read the inputs
 
@@ -132,18 +129,9 @@ In rewrite mode, preserve all original domain knowledge while prioritizing coher
 - Treat `Current request` as an additional focus area for coverage:
 - Do not ignore decisions or broader skill requirements in favor of the request.
 
----
-
 ## Phase 1: Write the skill
 
 Use `skill-creator:skill-creator` skill to write the skill.
-
-### Read the agentskills spec before writing
-
-Before writing any skill content, locate and read the agentskills specification:
-
-1. Read `skills/skill-test/references/agentskills-spec.md`.
-2. Extract the standards that apply to SKILL.md structure, frontmatter, progressive disclosure, and reference file conventions.
 
 ### Prior-step handoff
 
@@ -174,7 +162,9 @@ version: <version from user-context.md, default 1.0.0>
 ---
 ```
 
-- The eval folder used to store the test cases should be created in the `context_dir`.
+- `evals.json` should be created in `eval_dir` (created in `Test Cases` section of the skill)
+- The eval results in `Running and evaluating test cases` step in the skill should be in the `eval_results_dir`.
+- We are running in a headless mode. Set the `output_path` to `workspace_dir`. 
 
 ### Context alignment rules
 
@@ -186,7 +176,6 @@ version: <version from user-context.md, default 1.0.0>
 
 The following top-level sections in the `skill-creator` skill should **not** be followed:
 
-- `## Running and evaluating test cases`
 - `Improving the skill`
 - `Description Optimization`
 - `Package and Present`
@@ -194,8 +183,6 @@ The following top-level sections in the `skill-creator` skill should **not** be 
 - `Cowork-Specific Instructions`
 
 Writing `evals/evals.json` with prompts is still required; only the *execution* is skipped.
-
----
 
 ## Phase 2: Draft the evaluations
 
@@ -223,6 +210,7 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 - Read existing `SKILL.md` and inventory any folders at the same level as the `SKILL.md`.
 - Identify inconsistencies, redundancies, stale cross-references.
 - Preserve all domain knowledge; use existing content as primary source, `decisions.json` as supplement.
+- **File targeting:** if `Current request` has `@`-prefixed files (e.g., `@references/metrics.md`) constrain edits to only those files.
 - Before finalizing, perform a full preservation sweep to confirm no original domain knowledge was dropped; if coverage is incomplete, read additional references and close gaps.
 - Rewrite `evaluations_markdown` to match the rewritten skill. Preserve strong existing scenarios when still valid, rewrite stale ones, and add scenarios for any new or newly emphasized topics.
 - Before finalizing rewrite mode, verify that the rewritten skill addresses `Current request` explicitly or record the gap in the rewritten content/evaluations.
@@ -259,4 +247,3 @@ Return JSON only:
 `call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`, `write-evaluations`, `use-skill-test-skill`, `read-agentskills-spec-md-using-tools`, `read-skill-creator-using-tools`. For reference files, use `write-references/<filename>`.
 
 </output>
-

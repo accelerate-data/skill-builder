@@ -126,6 +126,8 @@ Combine sub-agent outputs into:
 
 </instruction>
 
+---
+
 <output>
 
 ## Output Format

@@ -25,22 +25,6 @@ Make targeted, minimal edits to skill files based on the user's refinement reque
 - Derive `context_dir` as `workspace_dir/context`
 - `Current request`: the user's refinement request and optional focus area
 
-## Skill Structure
-
-- `SKILL.md` — main entry point with YAML frontmatter (name, description, author, created, modified), overview, sections, reference pointers
-- `references/` — deep-dive files, one level deep from SKILL.md
-
-## Commands
-
-**`/rewrite @file1 @file2 ...`**
-
-This is for scoped rewrite and does not regenerate the whole skill.
-
-1. Read `SKILL.md`, targeted files, and `plugins/skill-creator/skills/skill-creator/SKILL.md` from the installed plugin bundle
-2. Rewrite targeted files — preserve domain knowledge, improve clarity, apply skill writing guidance from step 1
-3. Update SKILL.md pointers if scope changed
-4. Update `modified` date
-
 </context>
 
 ---
@@ -51,23 +35,149 @@ This is for scoped rewrite and does not regenerate the whole skill.
 
 Before each phase, write one short status line (≤ 10 words). Write it before tool calls. Examples: "Reading context and decisions…", "Reading skill files…", "Planning targeted edits…", "Applying edits…"
 
-## Phase 0: Read inputs and guard checks
+## Phase 0: Read the inputs
 
 Read `{workspace_dir}/user-context.md`.
-Read `{context_dir}/clarifications.json`.
-Read `{context_dir}/decisions.json`.
+Read `{context_dir}/decisions.json`. Parse the JSON.
 
-**Scope guard (mandatory — check before any other work):**
+### Contradictory Decisions
 
-If `metadata.scope_recommendation == true` in `clarifications.json`, stop immediately. Do not read skill files, do not plan edits, do not edit any files. Output exactly this message and nothing else:
+If `metadata.contradictory_inputs == true` in `decisions.json`
 
-> Scope recommendation active. Blocked until resolved.
+- Write this stub to `SKILL.md` and return this JSON:
 
-If `metadata.contradictory_inputs == true` in `decisions.json`, stop immediately. Do not read skill files, do not plan edits, do not edit any files. Output exactly this message and nothing else:
+```text
+---
+name: (contradictory inputs)
+description: Contradictory inputs detected — no skill generated.
+contradictory_inputs: true
+---
+## Contradictory Inputs Detected
 
-> Contradictory inputs detected. Blocked until resolved. See decisions.json.
+The user's answers contain unresolvable contradictions. See `decisions.json` for details. Resolve the contradictions before generating the skill.
+```
 
-## Step 1: Read Before Editing
+- return this JSON
+
+```json
+{ "status": "generated", "evaluations_markdown": "<!-- Skill not generated: contradictory inputs -->" }
+```
+
+### Contradictions resolved
+
+if `metadata.contradictory_inputs == "revised"` then treat it as authoritative and use only `{context_dir}/decisions.json` as the input to generate the skill. Do not read `{context_dir}/clarifications.json`.
+
+### No contradictions (or contradictions resolved as false)
+
+if `metadata.contradictory_inputs` is `"false"` or absent, read `{context_dir}/clarifications.json`.
+
+If `metadata.scope_recommendation == true` in the parsed `clarifications.json`.
+
+- Write this stub to `SKILL.md`
+
+```text
+---
+name: (scope too broad)
+description: Scope recommendation active — no skill generated.
+scope_recommendation: true
+---
+## Scope Recommendation Active
+
+The research planner determined the skill scope is too broad. See `clarifications.json` for recommended narrower skills. No skill was generated.
+```
+
+- Return this JSON
+
+```json
+{ "status": "generated", "evaluations_markdown": "<!-- Skill not generated: scope too broad -->" }
+```
+
+### Malformed input
+
+If any JSON file that is present is malformed, write this stub to `SKILL.md` and return this JSON:
+
+```text
+---
+name: (malformed input)
+description: <brief description of which file is malformed>
+---
+```
+
+```json
+{ "status": "generated", "evaluations_markdown": "<!-- Skill not generated: malformed input -->" }
+```
+
+### Missing inputs
+
+Missing files are not errors — skip and proceed to the next phase.
+
+---
+
+## Phase 1: Refine the skill 
+
+Use `skill-creator:skill-creator` skill to write the skill following these guidelines 
+
+### Read the agentskills spec before writing
+
+Before writing any skill content, locate and read the agentskills specification:
+
+1. Read `skills/skill-test/references/agentskills-spec.md`.
+2. Extract the standards that apply to SKILL.md structure, frontmatter, progressive disclosure, and reference file conventions.
+
+### Prior-step handoff
+
+The "Capture Intent" and "Interview and Research" phases are complete and authoritative. Do not run those phases.
+The outputs are:
+
+- `clarifications.json` (if provided and read) — research questions, user answers, and refinements (= the interview record).
+- `decisions.json` (if provided and read) — distilled design decisions with rationale and implications (= the design spec).
+- `user-context.md` (always provided) — skill name, version, author, dates, purpose, and any user-provided description
+
+Do not repeat intent capture or interviewing. Treat these artifacts as authoritative input and proceed directly to skill writing.
+
+### Critical Information needed for skill writing
+
+- Read the provided inputs to come to a conclusion on the following questions before proceeding with writing the skill
+
+1. What should this skill enable Claude to do?
+2. When should this skill trigger? (what user phrases/contexts)
+
+- Decide the frontmatter field values as per the direction below. `tools` is the only field the skill determines.
+
+```yaml
+---
+name: <skill-name from coordinator prompt>
+description: <based on the Description Optimization section of the skill-creator skill>
+tools: <agent-determined from research: comma-separated list, e.g. Read, Write, Edit, Glob, Grep, Bash>
+version: <version from user-context.md, default 1.0.0>
+---
+```
+
+- The eval folder used to store the test cases should be created in the `context_dir`.
+
+### Context alignment rules
+
+- Keep generated guidance aligned with purpose and user context first.
+- For `platform` purpose, enforce fabric lakehouse-first recommendations where technical behavior depends on endpoint/runtime constraints.
+- For non-platform purposes, include fabric lakehouse specific detail only when it materially affects the skill's decisions, risks, or tests.
+
+### Targeting the changes
+
+**File targeting:**
+`@`-prefixed files (e.g., `@references/metrics.md`) constrain edits to **only** those files.
+
+**Multi-file changes:**
+Update both SKILL.md and reference files when a request spans them. Keep pointers accurate.
+
+**New reference files:**
+Create in `references/` with kebab-case naming, add pointer in SKILL.md.
+
+**Removing content:**
+Clean up pointers and cross-references to removed content.
+
+**Rewrite the test cases**
+
+Delete the `context_dir/evals/evals.json` and regenate the test cases in **Test Cases** substep of **Creating a skill** step. 
 
 Tailor tone, examples, and emphasis accordingly as per `user-context.md`.
 
