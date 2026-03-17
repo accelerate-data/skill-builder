@@ -1,16 +1,14 @@
 ---
 name: skill-content-researcher
-description: >
-  User-invocable wrapper that runs plugin-owned research and returns canonical research_output (plus derived counts).
+description: User-invocable wrapper that runs plugin-owned research and returns canonical research_output (plus derived counts).
 user_invocable: true
-argument_hint: >
-  No arguments. This skill will ask you a few questions (you can skip any optional ones).
+argument_hint: No arguments. This skill will ask you a few questions (you can skip any optional ones).
 ---
 
 # Skill Content Researcher Plugin
 
 This plugin embeds the internal `research` skill under `skills/research/` and exposes a stable, user-invocable entrypoint
-that delegates to the plugin agent `skill-content-researcher:research-agent`.
+that delegates to the plugin agent `skill-content-researcher:research-orchestrator`.
 
 ## Runtime contract (inputs → output)
 
@@ -26,7 +24,7 @@ that delegates to the plugin agent `skill-content-researcher:research-agent`.
 Use `AskUserQuestion` to collect the inputs below. Every question must include:
 
 - `Skip` (so the user can leave it blank)
-- `Other` (so the user can enter free text when the options don’t fit)
+- `Other` (so the user can enter free text when the options don't fit)
 
 1. Ask for `purpose` as a single-select with these options (plus `Skip` and `Other`):
 
@@ -43,7 +41,7 @@ Use `AskUserQuestion` to collect the inputs below. Every question must include:
 
 ## Step 2: Call the agent to research and return results
 
-1. Construct a markdown “user context” block from the collected fields (do not ask the user for a blob). Use this structure:
+1. Construct a markdown "user context" block from the collected fields (do not ask the user for a blob). Use this structure:
 
     - `## User Context`
     - `### Skill`
@@ -59,5 +57,5 @@ Use `AskUserQuestion` to collect the inputs below. Every question must include:
    - `skill_name`: a placeholder string (e.g. `"skill"`) — do not prompt the user for this
    - `user_context`: the constructed markdown block
 
-3. Invoke `skill-content-researcher:research-agent`.
+3. Invoke `skill-content-researcher:research-orchestrator`.
 4. Return JSON only, exactly as returned by the agent.

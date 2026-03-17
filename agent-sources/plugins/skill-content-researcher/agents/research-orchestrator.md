@@ -11,7 +11,7 @@ tools: Read, Task, Skill
 
 ## Your Role
 
-Run the research phase as a thin wrapper around the plugin research agent.
+Run the research phase as a thin wrapper around the research skill.
 
 </role>
 

@@ -135,13 +135,14 @@ describe("read directive compliance", () => {
 });
 
 describe("Research scope guard contract prompts", () => {
-  it("research orchestrator is thin and calls plugin research agent", () => {
+  it("research orchestrator is thin and calls research skill directly", () => {
     const content = fs.readFileSync(
       path.join(AGENTS_DIR, "research-orchestrator.md"),
       "utf8"
     );
-    expect(content).toMatch(/thin wrapper around the plugin research agent/i);
-    expect(content).toMatch(/subagent_type:\s*"skill-content-researcher:research-agent"/i);
+    expect(content).toMatch(/thin wrapper/i);
+    expect(content).toMatch(/skill-content-researcher:research/);
+    expect(content).not.toMatch(/skill-content-researcher:research-agent/);
     expect(content).not.toMatch(/Preflight scope guard requirements:/i);
   });
 
@@ -312,7 +313,7 @@ describe("skill-content-researcher plugin structure", () => {
     expect(fm.user_invocable).toBe("true");
 
     expect(content).toMatch(/AskUserQuestion/);
-    expect(content).toMatch(/skill-content-researcher:research-agent/);
+    expect(content).toMatch(/skill-content-researcher:research-orchestrator/);
   });
 
   it("embedded research skill is internal-only (not user-invocable)", () => {
@@ -326,15 +327,6 @@ describe("skill-content-researcher plugin structure", () => {
     expect(fm.user_invocable).toBe("false");
   });
 
-  it("python normalizer tool is referenced from research-agent instructions", () => {
-    const agentPath = path.join(
-      pluginRoot,
-      "agents",
-      "research-agent.md",
-    );
-    const content = fs.readFileSync(agentPath, "utf8");
-    expect(content).toMatch(/python3 ".claude\/plugins\/skill-content-researcher\/skills\/research\/tools\/normalize_research_output\.py"/);
-  });
 });
 
 describe("skill-creator plugin structure", () => {
