@@ -125,13 +125,14 @@ Missing files are not errors — skip and proceed to the next phase.
 
 In rewrite mode, preserve all original domain knowledge while prioritizing coherence and coverage for the request-specific topic.
 
-- If `Current request` names a topic, make sure the generated or rewritten skill covers it explicitly where appropriate.
-- Treat `Current request` as an additional focus area for coverage:
+- Treat `Current request` as an additional focus area for coverage. Make sure the generated or rewritten skill covers it explicitly where appropriate.
 - Do not ignore decisions or broader skill requirements in favor of the request.
 
 ## Phase 1: Write the skill
 
-Use `skill-creator:skill-creator` skill to write the skill.
+Follow the steps the `skill-creator:skill-creator` skill to generate the skill.
+
+**Self-delegation is prohibited — you must not spawn yourself (`generate-skill`) as a sub-agent. You are the writer. Sub-agents called by the skill-creator skill's own workflow are allowed.**
 
 ### Prior-step handoff
 
@@ -162,9 +163,9 @@ version: <version from user-context.md, default 1.0.0>
 ---
 ```
 
-- `evals.json` should be created in `eval_dir` (created in `Test Cases` section of the skill)
-- The eval results in `Running and evaluating test cases` step in the skill should be in the `eval_results_dir`.
-- We are running in a headless mode. Set the `output_path` to `workspace_dir`. 
+- Writing `evals/evals.json` with prompts is required. `evals.json` should be created in `eval_dir`.
+- Running the evaluation in `Running and evaluating test cases` step in the skill should be followed. The results should be put in the `eval_results_dir`.
+- We are running in a headless mode. Set the `output_path` to `workspace_dir`.
 
 ### Context alignment rules
 
@@ -177,12 +178,10 @@ version: <version from user-context.md, default 1.0.0>
 The following top-level sections in the `skill-creator` skill should **not** be followed:
 
 - `Improving the skill`
-- `Description Optimization`
+- `Advanced: Blind comparison`
 - `Package and Present`
 - `Claude.ai-specific instructions`
 - `Cowork-Specific Instructions`
-
-Writing `evals/evals.json` with prompts is still required; only the *execution* is skipped.
 
 ## Phase 2: Draft the evaluations
 

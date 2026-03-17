@@ -23,6 +23,8 @@ Make targeted, minimal edits to skill files based on the user's refinement reque
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
 - `skill_output_dir`: path where the skill to be refined (`SKILL.md` and `references/`) live
 - Derive `context_dir` as `workspace_dir/context`
+- Derive `eval_dir` as `workspace_dir/evals`
+- Derive `eval_results_dir` as `eval_dir\workspace`
 - `Current request`: the user's refinement request and optional focus area
 
 </context>
@@ -111,18 +113,9 @@ description: <brief description of which file is malformed>
 
 Missing files are not errors — skip and proceed to the next phase.
 
----
+## Phase 1: Refine the skill
 
-## Phase 1: Refine the skill 
-
-Use `skill-creator:skill-creator` skill to write the skill following these guidelines 
-
-### Read the agentskills spec before writing
-
-Before writing any skill content, locate and read the agentskills specification:
-
-1. Read `skills/skill-test/references/agentskills-spec.md`.
-2. Extract the standards that apply to SKILL.md structure, frontmatter, progressive disclosure, and reference file conventions.
+Follow the steps in the `Improving the skill` section in `skill-creator:skill-creator` skill to make targeted edits to the skill.
 
 ### Prior-step handoff
 
@@ -134,26 +127,6 @@ The outputs are:
 - `user-context.md` (always provided) — skill name, version, author, dates, purpose, and any user-provided description
 
 Do not repeat intent capture or interviewing. Treat these artifacts as authoritative input and proceed directly to skill writing.
-
-### Critical Information needed for skill writing
-
-- Read the provided inputs to come to a conclusion on the following questions before proceeding with writing the skill
-
-1. What should this skill enable Claude to do?
-2. When should this skill trigger? (what user phrases/contexts)
-
-- Decide the frontmatter field values as per the direction below. `tools` is the only field the skill determines.
-
-```yaml
----
-name: <skill-name from coordinator prompt>
-description: <based on the Description Optimization section of the skill-creator skill>
-tools: <agent-determined from research: comma-separated list, e.g. Read, Write, Edit, Glob, Grep, Bash>
-version: <version from user-context.md, default 1.0.0>
----
-```
-
-- The eval folder used to store the test cases should be created in the `context_dir`.
 
 ### Context alignment rules
 
@@ -175,52 +148,26 @@ Create in `references/` with kebab-case naming, add pointer in SKILL.md.
 **Removing content:**
 Clean up pointers and cross-references to removed content.
 
-**Rewrite the test cases**
+**Directories used for evalutions**
 
-Delete the `context_dir/evals/evals.json` and regenate the test cases in **Test Cases** substep of **Creating a skill** step. 
+- We are running in a headless mode. Set the `output_path` to `workspace_dir`.
+- Use `eval_dir` for `evals.json`. 
+- The results of running and evaluating test cases should be in `eval_results_dir`. 
 
-Tailor tone, examples, and emphasis accordingly as per `user-context.md`.
+**Current Request Handling**
 
-Read `SKILL.md` before making changes. Read relevant reference files if the request mentions them. Use Glob when exact filenames are unclear.
-
-Treat `Current request` as an additional focus area for rewrite coverage:
-
+- Treat `Current request` as an additional focus area for coverage. Make sure the generated or rewritten skill covers it explicitly where appropriate.
 - Do not broaden the edit scope unnecessarily; keep changes minimal.
 - If the request names a topic, ensure the edited files address that topic explicitly or explain why no change was made.
 
-## Step 2: Plan the Change
+### Workflow steps to ignore
 
-Identify the minimal edits:
+The following top-level sections in the `skill-creator` skill should **not** be followed:
 
-- Which files need changes
-- Which sections are affected
-- New content vs. modified content
-
-If ambiguous, use conversation history to resolve intent.
-
-## Step 3: Make Targeted Edits
-
-**File targeting:**
-`@`-prefixed files (e.g., `@references/metrics.md`) constrain edits to only those files. Otherwise, use judgment from Step 2.
-
-**Editing rules:**
-
-- Use Edit for surgical changes; only use Write for explicit full-rewrite requests
-- Preserve formatting, structure, and content of untouched sections
-- Keep SKILL.md and reference files consistent (e.g., renamed concepts update both)
-- Update `modified` date in SKILL.md frontmatter whenever you edit it
-- Never remove or overwrite frontmatter fields unless the user explicitly asks
-- Re-evaluate `tools` if scope changes significantly; never remove still-used tools
-- Stay within Skill Best Practices (under 500 lines for SKILL.md, concise, no over-explaining)
-
-**Multi-file changes:**
-Update both SKILL.md and reference files when a request spans them. Keep pointers accurate.
-
-**New reference files:**
-Create in `references/` with kebab-case naming, add pointer in SKILL.md.
-
-**Removing content:**
-Clean up pointers and cross-references to removed content.
+- `Creating a skill`
+- `Package and Present`
+- `Claude.ai-specific instructions`
+- `Cowork-Specific Instructions`
 
 ## Step 4: Explain Changes
 

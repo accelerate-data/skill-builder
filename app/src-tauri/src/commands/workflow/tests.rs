@@ -1362,7 +1362,7 @@ fn test_debug_max_turns_removed() {
         (0, 50),  // research
         (1, 50),  // detailed research
         (2, 100), // confirm decisions
-        (3, 120), // generate skill
+        (3, 500), // generate skill
     ];
     for (step_id, expected_turns) in expected {
         let config = get_step_config(step_id).unwrap();
@@ -1376,7 +1376,7 @@ fn test_debug_max_turns_removed() {
 
 #[test]
 fn test_step_max_turns() {
-    let steps_with_expected_turns = [(0, 50), (1, 50), (2, 100), (3, 120)];
+    let steps_with_expected_turns = [(0, 50), (1, 50), (2, 100), (3, 500)];
     for (step_id, normal_turns) in steps_with_expected_turns {
         let config = get_step_config(step_id).unwrap();
         assert_eq!(

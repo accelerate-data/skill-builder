@@ -70,7 +70,7 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             prompt_template: "generate-skill.md".to_string(),
             output_file: "skill/SKILL.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 120,
+            max_turns: 500,
             agent_name: "skill-creator:generate-skill".to_string(),
             required_plugins: vec!["skill-creator".to_string()],
         }),
