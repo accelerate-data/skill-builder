@@ -976,8 +976,8 @@ fn test_resolve_prompts_dir_dev_mode() {
     );
     // Verify flat agent files exist (no subdirectories)
     assert!(
-        agents_dir.join("research-orchestrator.md").exists(),
-        "agent-sources/agents/research-orchestrator.md should exist"
+        agents_dir.join("confirm-decisions.md").exists(),
+        "agent-sources/agents/confirm-decisions.md should exist"
     );
     assert!(
         agents_dir.join("validate-skill.md").exists(),
