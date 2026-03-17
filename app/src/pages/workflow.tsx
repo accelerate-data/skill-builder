@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+import { ReviewModeToggle } from "@/components/review-mode-toggle";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { AgentInitializingIndicator } from "@/components/agent-initializing-indicator";
@@ -82,17 +83,20 @@ function WorkflowMainHeader({ skillName, isRunning, isInitializing, gateLoading,
         {skillName}
       </span>
       <span className="text-[13px] text-muted-foreground">· Workflow</span>
-      {showStatus && (
-        <div className="ml-auto flex items-center gap-1.5">
-          <div
-            className={cn("size-2.5 shrink-0 rounded-full", dotColor, pulse && "animate-dot-pulse")}
-            style={dotStyle}
-          />
-          <span className="font-mono text-[11px]" style={{ color: "var(--color-pacific)" }}>
-            {label}
-          </span>
-        </div>
-      )}
+      <div className="ml-auto flex items-center gap-3">
+        <ReviewModeToggle />
+        {showStatus && (
+          <div className="flex items-center gap-1.5">
+            <div
+              className={cn("size-2.5 shrink-0 rounded-full", dotColor, pulse && "animate-dot-pulse")}
+              style={dotStyle}
+            />
+            <span className="font-mono text-[11px]" style={{ color: "var(--color-pacific)" }}>
+              {label}
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

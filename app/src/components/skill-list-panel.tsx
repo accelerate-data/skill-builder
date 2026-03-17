@@ -8,6 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -138,6 +146,7 @@ export function SkillListPanel({
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [redoTarget, setRedoTarget] = useState<string | null>(null);
 
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const builderSkills = useSkillStore((s) => s.skills);
@@ -198,7 +207,13 @@ export function SkillListPanel({
     if (isSkillComplete(skill)) {
       onSelectSkill?.(skill.name);
     } else {
-      useWorkflowStore.getState().setPendingNoReviewMode(true);
+      const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
+      const step = stepMatch ? Number(stepMatch[1]) : null;
+      const isFresh = step === null || step === 0;
+      if (isFresh) {
+        useWorkflowStore.getState().setPendingUpdateMode(true); // auto-start fresh skills
+      }
+      // Mid-way: no pending flag → default reviewMode=true (Review mode, no auto-start)
       navigate({ to: "/skill/$skillName", params: { skillName: skill.name } });
     }
   }
@@ -236,12 +251,17 @@ export function SkillListPanel({
     }
   }
 
-  async function handleRedo(skillName: string) {
+  function handleRedo(skillName: string) {
+    setRedoTarget(skillName);
+  }
+
+  async function confirmRedo(skillName: string) {
     if (!workspacePath) return;
     try {
       await resetWorkflowStep(workspacePath, skillName, 0);
       console.log("event=skill_redo skill=%s", skillName);
       useWorkflowStore.getState().setPendingUpdateMode(true);
+      setRedoTarget(null);
       navigate({ to: "/skill/$skillName", params: { skillName } });
     } catch (err) {
       toast.error(`Failed to reset workflow: ${err instanceof Error ? err.message : String(err)}`);
@@ -267,7 +287,7 @@ export function SkillListPanel({
     console.log("event=skill_continue skill=%s", skillName);
     localStorage.setItem("last-selected-skill", skillName);
     setSelectedSkill(skillName);
-    useWorkflowStore.getState().setPendingNoReviewMode(true);
+    useWorkflowStore.getState().setPendingUpdateMode(true); // always auto-start
     navigate({ to: "/skill/$skillName", params: { skillName } });
   }
 
@@ -450,6 +470,26 @@ export function SkillListPanel({
           if (workspacePath) listSkills(workspacePath).then(setSkills).catch(() => {});
         }}
       />
+
+      <Dialog open={redoTarget !== null} onOpenChange={(open) => { if (!open) setRedoTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Redo Workflow?</DialogTitle>
+            <DialogDescription>
+              This will reset the workflow to Step 1 and overwrite all generated artifacts and files for &ldquo;{redoTarget}&rdquo;. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRedoTarget(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => { if (redoTarget) confirmRedo(redoTarget); }}
+            >
+              Redo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
