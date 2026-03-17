@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skill Builder — Skill List · More Menu (3 states)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: oklch(0.956 0 0);
+    --fg: oklch(0.145 0.005 250);
+    --card: oklch(1 0 0);
+    --muted: oklch(0.955 0.005 85);
+    --muted-fg: oklch(0.530 0.006 85);
+    --border: oklch(0.910 0.006 85);
+    --sidebar-bg: oklch(0.965 0.004 85);
+    --seafoam: oklch(0.780 0.175 160);
+    --pacific: oklch(0.680 0.120 210);
+    --destructive: oklch(0.570 0.180 25);
+    --accent: oklch(0.940 0.010 240);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+  }
+  h1 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--fg);
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    font-size: 12px;
+    color: var(--muted-fg);
+    margin-bottom: 32px;
+  }
+
+  .states-row {
+    display: flex;
+    gap: 48px;
+    align-items: flex-start;
+  }
+
+  .state-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .state-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted-fg);
+    margin-bottom: 4px;
+  }
+
+  /* Skill panel strip */
+  .panel-strip {
+    width: 260px;
+    background: var(--sidebar-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    /* No overflow:hidden — dropdowns are absolutely positioned and must not be clipped */
+  }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    height: 44px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-title {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  /* Skill row */
+  .skill-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    height: 46px;
+    cursor: pointer;
+    position: relative;
+  }
+  .skill-row.selected { background: var(--accent); }
+  .skill-row:not(.selected):hover { background: color-mix(in oklch, var(--accent), transparent 50%); }
+  .skill-row.open { background: var(--accent); }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-green { background: var(--seafoam); }
+  .dot-red { background: var(--destructive); }
+  .dot-amber { background: oklch(0.760 0.160 60); }
+  .dot-outline { background: transparent; border: 1.5px solid var(--muted-fg); }
+
+  .skill-text {
+    flex: 1;
+    min-width: 0;
+  }
+  .skill-name {
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .skill-purpose {
+    font-size: 11px;
+    color: var(--muted-fg);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .skill-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted-fg);
+    flex-shrink: 0;
+  }
+
+  /* More button */
+  .more-btn {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: none;
+    background: none;
+    color: var(--muted-fg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .more-btn:hover { background: var(--muted); color: var(--fg); }
+  .more-btn.active { background: var(--muted); color: var(--fg); }
+
+  /* Dropdown menu */
+  .dropdown-wrapper {
+    position: relative;
+  }
+  .dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    width: 180px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px oklch(0 0 0 / 0.12);
+    padding: 4px;
+    z-index: 50;
+  }
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 5px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--fg);
+    user-select: none;
+  }
+  .menu-item:hover { background: var(--accent); }
+  .menu-item.default-action {
+    font-weight: 500;
+    color: var(--pacific);
+  }
+  .menu-item.destructive {
+    color: var(--destructive);
+  }
+  .menu-item.destructive:hover { background: color-mix(in oklch, var(--destructive), transparent 90%); }
+  .menu-separator {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+  }
+  .menu-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    opacity: 0.75;
+  }
+  .menu-item.default-action .menu-icon { opacity: 1; }
+  /* Space below last row so open dropdowns don't get cut by the panel edge */
+  .dropdown-spacer { height: 180px; }
+</style>
+</head>
+<body>
+
+<div>
+  <h1>Skill List Panel — More Menu</h1>
+  <p class="subtitle">Three dropdown states: Completed skill · New/fresh skill · Mid-way skill</p>
+</div>
+
+<div class="states-row">
+
+  <!-- STATE 1: COMPLETED -->
+  <div class="state-block">
+    <div class="state-label">Completed skill</div>
+    <div class="panel-strip">
+      <div class="panel-header">
+        <span class="panel-title">Skills</span>
+      </div>
+
+      <div class="skill-row">
+        <div class="dot dot-outline"></div>
+        <div class="skill-text">
+          <div class="skill-name">data-cleaning-agent</div>
+          <div class="skill-purpose">Analysis</div>
+        </div>
+        <span class="skill-time">3d ago</span>
+        <button class="more-btn" style="opacity:0;">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="12" cy="8" r="1"/></svg>
+        </button>
+      </div>
+
+      <div class="skill-row">
+        <div class="dot dot-green"></div>
+        <div class="skill-text">
+          <div class="skill-name">sql-query-builder</div>
+          <div class="skill-purpose">Data</div>
+        </div>
+        <span class="skill-time">2d ago</span>
+        <button class="more-btn" style="opacity:0;">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="12" cy="8" r="1"/></svg>
+        </button>
+      </div>
+
+      <!-- Active row with dropdown open — last so dropdown has space below -->
+      <div class="skill-row open">
+        <div class="dot dot-green"></div>
+        <div class="skill-text">
+          <div class="skill-name">code-reviewer</div>
+          <div class="skill-purpose">Engineering</div>
+        </div>
+        <span class="skill-time">1h ago</span>
+        <div class="dropdown-wrapper">
+          <button class="more-btn active">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="12" cy="8" r="1"/></svg>
+          </button>
+          <div class="dropdown">
+            <div class="menu-item default-action">
+              <svg class="menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="3" width="12" height="10" rx="1.5"/>
+                <path d="M5 7h6M5 9.5h4"/>
+              </svg>
+              Overview
+            </div>
+            <div class="menu-item">
+              <svg class="menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M11 2.5H5a1.5 1.5 0 0 0-1.5 1.5v8A1.5 1.5 0 0 0 5 13.5h6a1.5 1.5 0 0 0 1.5-1.5V4A1.5 1.5 0 0 0 11 2.5Z"/>
+                <path d="M5.5 6.5h5M5.5 9h3"/>
+              </svg>
+              Refine
+            </div>
+            <div class="menu-item">
+              <svg class="menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3 8a5 5 0 1 0 5-5"/>
+                <path d="M3 5V3m0 2H1"/>
+              </svg>
+              Redo
+            </div>
+            <div class="menu-item">
+              <svg class="menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M8 3v7m0 0-2.5-2.5M8 10l2.5-2.5"/>
+                <path d="M3.5 12.5h9"/>
+              </svg>
+              Export
+            </div>
+            <div class="menu-separator"></div>
+            <div class="menu-item destructive">
+              <svg class="menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3 4.5h10M6 4.5V3h4v1.5M5.5 4.5v8h5v-8"/>
+                <path d="M6.5 7v3.5M9.5 7v3.5"/>
+              </svg>
+              Delete
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="dropdown-spacer"></div>
+    </div>
+  </div>
+
+  <!-- STATE 2: NEW / FRESH -->
+  <div class="state-block">
+    <div class="state-label">New / fresh skill</div>
+    <div class="panel-strip">
+      <div class="panel-header">
+        <span class="panel-title">Skills</span>
+      </div>
+
+      <div class="skill-row">
+        <div class="dot dot-green"></div>
+        <div class="skill-text">
+          <div class="skill-name">code-reviewer</div>
+          <div class="skill-purpose">Engineering</div>
+        </div>
+        <span class="skill-time">1h ago</span>
+        <button class="more-btn" style="opacity:0;">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="12" cy="8" r="1"/></svg>
+        </button>
+      </div>
+
+      <div class="skill-row">
+        <div class="dot dot-green"></div>
+        <div class="skill-text">
+          <div class="skill-name">sql-query-builder</div>
+          <div class="skill-purpose">Data</div>
+        </div>
+        <span class="skill-time">2d ago</span>
+        <button class="more-btn" style="opacity:0;">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="12" cy="8" r="1"/></svg>
+        </button>
+      </div>
+
+      <!-- Active row with dropdown open — red dot for new/unstarted skill -->
+      <div class="skill-row open">
+        <div class="dot dot-red"></div>
+        <div class="skill-text">
+          <div class="skill-name">new-skill-draft</div>
+          <div class="skill-purpose">Engineering</div>
+        </div>
+        <span class="skill-time">just now</span>
+        <div class="dropdown-wrapper">
+          <button class="more-btn active">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="12" cy="8" r="1"/></svg>
+          </button>
+          <div class="dropdown">
+            <div class="menu-item default-action">
+              <svg class="menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3 8h10m-3.5-3.5L13 8l-3.5 3.5"/>
+              </svg>
+              Continue Building
+            </div>
+            <div class="menu-separator"></div>
+            <div class="menu-item destructive">
+              <svg class="menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3 4.5h10M6 4.5V3h4v1.5M5.5 4.5v8h5v-8"/>
+                <path d="M6.5 7v3.5M9.5 7v3.5"/>
+              </svg>
+              Delete
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="dropdown-spacer"></div>
+    </div>
+  </div>
+
+  <!-- STATE 3: MID-WAY -->
+  <div class="state-block">
+    <div class="state-label">Mid-way skill (Step 2)</div>
+    <div class="panel-strip">
+      <div class="panel-header">
+        <span class="panel-title">Skills</span>
+      </div>
+
+      <div class="skill-row">
+        <div class="dot dot-green"></div>
+        <div class="skill-text">
+          <div class="skill-name">code-reviewer</div>
+          <div class="skill-purpose">Engineering</div>
+        </div>
+        <span class="skill-time">1h ago</span>
+        <button class="more-btn" style="opacity:0;">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="12" cy="8" r="1"/></svg>
+        </button>
+      </div>
+
+      <div class="skill-row">
+        <div class="dot dot-green"></div>
+        <div class="skill-text">
+          <div class="skill-name">sql-query-builder</div>
+          <div class="skill-purpose">Data</div>
+        </div>
+        <span class="skill-time">2d ago</span>
+        <button class="more-btn" style="opacity:0;">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="12" cy="8" r="1"/></svg>
+        </button>
+      </div>
+
+      <!-- Active row with dropdown open — last so dropdown has space below -->
+      <div class="skill-row open">
+        <div class="dot dot-amber"></div>
+        <div class="skill-text">
+          <div class="skill-name">pipeline-debugger</div>
+          <div class="skill-purpose">Engineering</div>
+        </div>
+        <span class="skill-time">5m ago</span>
+        <div class="dropdown-wrapper">
+          <button class="more-btn active">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="12" cy="8" r="1"/></svg>
+          </button>
+          <div class="dropdown">
+            <div class="menu-item default-action">
+              <svg class="menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3 8h10m-3.5-3.5L13 8l-3.5 3.5"/>
+              </svg>
+              Continue Building
+            </div>
+            <div class="menu-separator"></div>
+            <div class="menu-item destructive">
+              <svg class="menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3 4.5h10M6 4.5V3h4v1.5M5.5 4.5v8h5v-8"/>
+                <path d="M6.5 7v3.5M9.5 7v3.5"/>
+              </svg>
+              Delete
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="dropdown-spacer"></div>
+    </div>
+  </div>
+
+</div>
+
+<div style="margin-top: 16px; padding: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; max-width: 780px;">
+  <p style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Design notes</p>
+  <ul style="font-size: 12px; color: var(--muted-fg); line-height: 1.8; padding-left: 16px;">
+    <li>Default / highlighted action uses <code style="font-family: monospace; font-size: 11px;">var(--pacific)</code> text + <code style="font-family: monospace; font-size: 11px;">font-weight: 500</code></li>
+    <li>Delete uses <code style="font-family: monospace; font-size: 11px;">var(--destructive)</code> text; hover bg is destructive at 10% opacity</li>
+    <li>Separator is a 1px border line between main actions and Delete</li>
+    <li><code style="font-family: monospace; font-size: 11px;">...​</code> button: <code style="font-family: monospace; font-size: 11px;">opacity-0 group-hover:opacity-100</code> — visible only on row hover (shown open here for review)</li>
+    <li>Clicking <code style="font-family: monospace; font-size: 11px;">...</code> calls <code style="font-family: monospace; font-size: 11px;">e.stopPropagation()</code> — does NOT navigate the row</li>
+  </ul>
+</div>
+
+</body>
+</html>
