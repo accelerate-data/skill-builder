@@ -7,7 +7,6 @@ import { AGENTS_DIR, PLUGINS_DIR, REPO_ROOT } from "./helpers";
 const EXPECTED_AGENTS = [
   "answer-evaluator",
   "confirm-decisions",
-  "detailed-research",
   "eval-skill",
   "validate-quality",
   "validate-skill",
@@ -18,6 +17,7 @@ const PLUGIN_AGENTS: Record<string, string> = {
   "generate-skill": "skill-creator/agents/generate-skill.md",
   "refine-skill": "skill-creator/agents/refine-skill.md",
   "research-orchestrator": "skill-content-researcher/agents/research-orchestrator.md",
+  "detailed-research": "skill-content-researcher/agents/detailed-research.md",
 };
 
 /** Resolve the .md file path for any agent (top-level or plugin). */
@@ -174,7 +174,7 @@ describe("Research scope guard contract prompts", () => {
 
   it("detailed-research includes scope recommendation short-circuit contract", () => {
     const content = fs.readFileSync(
-      path.join(AGENTS_DIR, "detailed-research.md"),
+      resolveAgentPath("detailed-research"),
       "utf8"
     );
     expect(content).toMatch(/Scope (Recommendation )?[Gg]uard|scope_recommendation/);
@@ -186,7 +186,7 @@ describe("Research scope guard contract prompts", () => {
 
   it("detailed-research preserves original questions and canonical metadata", () => {
     const content = fs.readFileSync(
-      path.join(AGENTS_DIR, "detailed-research.md"),
+      resolveAgentPath("detailed-research"),
       "utf8"
     );
     expect(content).toMatch(/strictly additive/i);

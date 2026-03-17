@@ -20,7 +20,7 @@ pub fn resolve_model_id(shorthand: &str) -> String {
 /// | Step | Agent | Plugins | Source |
 /// |------|-------|---------|--------|
 /// | 0 | skill-content-researcher:research-orchestrator | skill-content-researcher | plugin agents/ |
-/// | 1 | detailed-research | skill-content-researcher | .claude/agents/ |
+/// | 1 | skill-content-researcher:detailed-research | skill-content-researcher | plugin agents/ |
 /// | 2 | confirm-decisions | — | .claude/agents/ |
 /// | 3 | skill-creator:generate-skill | skill-creator | plugin agents/ |
 pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
@@ -48,7 +48,7 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
                 .map(|s| s.to_string())
                 .collect(),
             max_turns: 50,
-            agent_name: "detailed-research".to_string(),
+            agent_name: "skill-content-researcher:detailed-research".to_string(),
             required_plugins: vec!["skill-content-researcher".to_string()],
         }),
         2 => Ok(StepConfig {
@@ -103,7 +103,7 @@ pub(crate) fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde
                 "additionalProperties": true
             }
         })),
-        "detailed-research" => Some(serde_json::json!({
+        "skill-content-researcher:detailed-research" => Some(serde_json::json!({
             "type": "json_schema",
             "schema": {
                 "type": "object",

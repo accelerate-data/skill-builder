@@ -10,8 +10,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * Map agent names to step template files.
  *
  * Plugin-hosted agents use qualified names (e.g., `skill-creator:generate-skill`,
- * `skill-content-researcher:research-orchestrator`). Shared agents like
- * `detailed-research` and `confirm-decisions` use bare names.
+ * `skill-content-researcher:research-orchestrator`,
+ * `skill-content-researcher:detailed-research`). Shared agents like
+ * `confirm-decisions` use bare names.
  */
 /** @internal Exported for testing only. */
 export function resolveStepTemplate(
@@ -27,7 +28,7 @@ export function resolveStepTemplate(
   }
 
   // Exact matches first
-  if (agentName === "detailed-research") return "step1-detailed-research";
+  if (agentName === "skill-content-researcher:detailed-research") return "step1-detailed-research";
   if (agentName === "confirm-decisions") return "step2-confirm-decisions";
   if (agentName === "skill-creator:generate-skill") return "step3-generate-skill";
   if (agentName === "skill-creator:refine-skill") return "refine";

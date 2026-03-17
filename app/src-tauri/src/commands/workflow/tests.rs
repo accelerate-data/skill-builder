@@ -101,10 +101,10 @@ fn test_get_step_output_files_unknown_step() {
 
 #[test]
 fn test_step_config_canonical_agent_names() {
-    assert_eq!(get_step_config(0).unwrap().agent_name, "research-orchestrator");
-    assert_eq!(get_step_config(1).unwrap().agent_name, "detailed-research");
+    assert_eq!(get_step_config(0).unwrap().agent_name, "skill-content-researcher:research-orchestrator");
+    assert_eq!(get_step_config(1).unwrap().agent_name, "skill-content-researcher:detailed-research");
     assert_eq!(get_step_config(2).unwrap().agent_name, "confirm-decisions");
-    assert_eq!(get_step_config(3).unwrap().agent_name, "generate-skill");
+    assert_eq!(get_step_config(3).unwrap().agent_name, "skill-creator:generate-skill");
 }
 
 #[test]
@@ -126,15 +126,15 @@ fn test_step_config_canonical_required_plugins() {
 
 #[test]
 fn test_workflow_output_format_is_set_for_json_contract_workflow_agents() {
-    assert!(workflow_output_format_for_agent("research-orchestrator").is_some());
-    assert!(workflow_output_format_for_agent("detailed-research").is_some());
+    assert!(workflow_output_format_for_agent("skill-content-researcher:research-orchestrator").is_some());
+    assert!(workflow_output_format_for_agent("skill-content-researcher:detailed-research").is_some());
     assert!(workflow_output_format_for_agent("confirm-decisions").is_some());
-    assert!(workflow_output_format_for_agent("generate-skill").is_some());
+    assert!(workflow_output_format_for_agent("skill-creator:generate-skill").is_some());
 }
 
 #[test]
 fn test_research_output_format_requires_artifact_fields() {
-    let format = workflow_output_format_for_agent("research-orchestrator").unwrap();
+    let format = workflow_output_format_for_agent("skill-content-researcher:research-orchestrator").unwrap();
     let required = format["schema"]["required"]
         .as_array()
         .expect("required array");
@@ -145,7 +145,7 @@ fn test_research_output_format_requires_artifact_fields() {
 
 #[test]
 fn test_detailed_research_output_format_requires_clarifications_payload() {
-    let format = workflow_output_format_for_agent("detailed-research").unwrap();
+    let format = workflow_output_format_for_agent("skill-content-researcher:detailed-research").unwrap();
     let required = format["schema"]["required"]
         .as_array()
         .expect("required array");

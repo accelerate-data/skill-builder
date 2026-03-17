@@ -42,13 +42,13 @@ describe("resolveStepTemplate", () => {
   });
 
   it("maps workflow step agents correctly", () => {
-    expect(resolveStepTemplate("detailed-research")).toBe(
+    expect(resolveStepTemplate("skill-content-researcher:detailed-research")).toBe(
       "step1-detailed-research",
     );
     expect(resolveStepTemplate("confirm-decisions")).toBe(
       "step2-confirm-decisions",
     );
-    expect(resolveStepTemplate("generate-skill")).toBe("step3-generate-skill");
+    expect(resolveStepTemplate("skill-creator:generate-skill")).toBe("step3-generate-skill");
   });
 
   it("returns null for unknown agents", () => {
