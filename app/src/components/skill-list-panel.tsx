@@ -271,6 +271,9 @@ export function SkillListPanel({
     try {
       await resetWorkflowStep(workspacePath, skillName, 0);
       console.log("event=skill_redo skill=%s", skillName);
+      // Reset store so persistence hook re-hydrates from DB (picks up the step reset),
+      // then set pendingUpdateMode so the state machine auto-starts on hydration.
+      useWorkflowStore.getState().reset();
       useWorkflowStore.getState().setPendingUpdateMode(true);
       setRedoTarget(null);
       navigate({ to: "/skill/$skillName", params: { skillName } });
