@@ -99,6 +99,7 @@ export function useWorkflowStateMachine({
   const runs = useAgentStore((s) => s.runs);
   const isRunning = useWorkflowStore((s) => s.isRunning);
   const gateLoading = useWorkflowStore((s) => s.gateLoading);
+  const pendingUpdateMode = useWorkflowStore((s) => s.pendingUpdateMode);
 
   const isAgentType = stepConfig?.type === "agent" || stepConfig?.type === "reasoning";
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
@@ -192,6 +193,23 @@ export function useWorkflowStateMachine({
     setPendingAutoStartStep(currentStep);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, reviewMode]);
+
+  // Consume pendingUpdateMode when the skill is already hydrated (early-return path in
+  // use-workflow-persistence skips wasToggle setup because it fires before prevReviewModeRef
+  // is initialized). This effect is defined AFTER wasToggle so prevReviewModeRef is already
+  // set to the current reviewMode value when this runs.
+  useEffect(() => {
+    if (!hydrated || !pendingUpdateMode) return;
+    const store = useWorkflowStore.getState();
+    store.setPendingUpdateMode(false);
+    store.setReviewMode(false);
+    const status = steps[currentStep]?.status;
+    if ((status === undefined || status === "pending") && isAgentType && !isRunning && pendingAutoStartStep === null && !gateLoading) {
+      console.log(`[workflow] Auto-starting step ${currentStep} (pendingUpdateMode→hydrated)`);
+      setPendingAutoStartStep(currentStep);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, pendingUpdateMode]);
 
   // Reposition to first incomplete step when switching to Update mode
   useEffect(() => {
