@@ -123,16 +123,68 @@ Keep callout text concise (1-3 sentences). Don't overuse — one or two per resp
 
 ## Sub-Agents
 
-Spawn via Task tool **only when building or testing 1 or more models**.
+Four specialized sub-agents handle distinct phases. Spawn via Task tool following the dependency graph below.
 
-Trigger signals: "build all staging models", "generate all", "create models for [1+ tables]", "add tests to all models", "write tests for everything".
+### Dependency Graph
 
-- **model-builder** — Generates ONE dbt model. Spawn ×N for parallel builds.
-  Pass: `sourceName`, `modelType`, `tableSchema`, `materialization`, `domainSlug`, `availableSkills`.
-- **test-generator** — Generates tests for ONE model. Spawn ×N for parallel testing.
-  Pass: `modelPath`, `testType` (schema | unit | both), `domainSlug`, `columnList`, `availableSkills`.
+```
+design-firmer ───┬──→ model-builder(s) ──→ test-generator(s)
+                 │                              │
+                 └──→ validator (parallel) ◄────┘
+```
 
-Everything else inline with tools: source exploration, lineage analysis, schema drift, model fixing, validation, PR creation.
+- **design-firmer** must complete before model-builder starts (it validates the design against source reality).
+- **model-builder** instances can run in parallel (one per model).
+- **test-generator** depends on model-builder (needs the written model SQL).
+- **validator** runs in parallel with test-generator (if user uploaded expected CSV).
+
+### Sub-Agent Dispatch
+
+**Phase 1: Firm the design** (after user approves design.md)
+
+Spawn `design-firmer` with: `designPath`, `intentPath`, `domainSlug`, `sourceName`, `availableSkills`, `lakehouseConfig` or `sqliteDbPath`.
+
+Parse result JSON. If `status: "issues_found"` → present issues to user, wait for confirmation before proceeding. If `status: "error"` → report error, stop.
+
+**Phase 2: Build models** (after design-firmer succeeds)
+
+For each model in the firmed design:
+- Spawn `model-builder` ×N in parallel with: `sourceName`, `modelType`, `tableSchema`, `materialization`, `domainSlug`, `designContext` (relevant excerpt), `availableSkills`.
+
+Collect all results. If any `compiled: false` → attempt fix inline or report to user.
+
+**Phase 3: Generate tests + validate** (after Phase 2)
+
+In parallel:
+- For each completed model → spawn `test-generator` with: `modelPath`, `modelName`, `testType`, `columnList`, `domainSlug`, `sourceName`, `availableSkills`.
+- If user uploaded expected CSV → spawn `validator` with: `modelName`, `modelPath`, `validationType`, `expectedCsvPath`, `sourceName`, connection config.
+
+**Phase 4: Merge & commit** (after Phases 2-3 complete)
+
+1. Verify all sub-agent `call_trace` arrays contain expected labels (sanity check).
+2. Run `Bash("dbt compile")` on all models as a final gate.
+3. `git add` specific files, `git commit`, `git push`.
+
+### call_trace Validation
+
+After each sub-agent returns, check its `call_trace` for expected labels:
+
+| Agent | Required labels (in order) |
+|-------|---------------------------|
+| design-firmer | `read-design`, `profile-schema`, `validate-design` |
+| model-builder | `write-model`, `dbt-compile` |
+| test-generator | `read-model`, `write-schema-tests` or `write-unit-tests` |
+| validator | `read-model`, either `run-validation` or `schema-drift-check` |
+
+If required labels are missing, log a warning but don't block — the agent may have taken a valid alternate path (e.g., scope-guard).
+
+### Trigger Signals
+
+Spawn sub-agents when: "build all staging models", "generate all", "create models for [1+ tables]", "add tests to all models", "write tests for everything", or when the auto-design gate has been satisfied for a complex request.
+
+### Inline Work (No Sub-Agent Needed)
+
+Everything else inline with tools: source exploration, lineage analysis, schema drift, model fixing, single-model edits, validation, PR creation.
 
 ## Patterns & Triggers
 
