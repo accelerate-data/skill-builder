@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSkillStore } from "@/stores/skill-store";
 import { Lock, MoreHorizontal, Plus, Search } from "lucide-react";
@@ -156,8 +156,9 @@ export function SkillListPanel({
   const fetchImportedSkills = useImportedSkillsStore((s) => s.fetchSkills);
   const runs = useAgentStore((s) => s.runs);
   const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  // Fetch both skill lists and external lock state whenever workspacePath becomes available
+  // Fetch both skill lists whenever workspacePath becomes available
   useEffect(() => {
     if (!workspacePath) return;
     listSkills(workspacePath)
@@ -166,10 +167,14 @@ export function SkillListPanel({
     fetchImportedSkills().catch((err) =>
       console.error("event=fetch_imported_skills_failed error=%s", err),
     );
+  }, [workspacePath, setSkills, fetchImportedSkills]);
+
+  // Refresh external locks on every navigation so stale lock state clears after leaving a skill
+  useEffect(() => {
     getLockedSkills()
       .then((locks) => setExternalLockedSkills(new Set(locks.map((l) => l.skill_name))))
       .catch(() => { /* non-fatal */ });
-  }, [workspacePath, setSkills, fetchImportedSkills]);
+  }, [pathname]);
 
   // Sort by creation date (newest first) — stable across edits since created_at never changes.
   const unifiedSkills = useMemo(
@@ -203,6 +208,8 @@ export function SkillListPanel({
     if (runningSkillName && skill.name !== runningSkillName) return;
     // Running skill is also a no-op
     if (skill.name === runningSkillName) return;
+    // Skill locked by another instance
+    if (externalLockedSkills.has(skill.name)) return;
 
     console.log("event=skill_selected skill=%s", skill.name);
     localStorage.setItem("last-selected-skill", skill.name);
