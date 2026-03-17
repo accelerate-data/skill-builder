@@ -31,7 +31,7 @@ import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
 import type { SkillSummary, ImportedSkill, Purpose } from "@/lib/types";
 import { PURPOSE_SHORT_LABELS } from "@/lib/types";
-import { listSkills, exportSkill, packageSkill, saveExportTo, resetWorkflowStep, getLockedSkills } from "@/lib/tauri";
+import { listSkills, exportSkill, packageSkill, saveExportTo, resetWorkflowStep, getExternallyLockedSkills } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 interface UnifiedSkill {
@@ -171,8 +171,8 @@ export function SkillListPanel({
 
   // Refresh external locks on every navigation so stale lock state clears after leaving a skill
   useEffect(() => {
-    getLockedSkills()
-      .then((locks) => setExternalLockedSkills(new Set(locks.map((l) => l.skill_name))))
+    getExternallyLockedSkills()
+      .then((names) => setExternalLockedSkills(new Set(names)))
       .catch(() => { /* non-fatal */ });
   }, [pathname]);
 
