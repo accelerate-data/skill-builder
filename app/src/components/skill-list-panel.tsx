@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSkillStore } from "@/stores/skill-store";
@@ -155,7 +155,21 @@ export function SkillListPanel({
     );
   }, [workspacePath, setSkills, fetchImportedSkills]);
 
-  const unifiedSkills = mergeSkills(builderSkills, importedSkills);
+  // Stable display order: new skills appear at top, existing skills keep their
+  // position even when timestamps update (e.g. workflow-persistence re-fetches).
+  const skillOrderRef = useRef<string[]>([]);
+  const unifiedSkills = useMemo(() => {
+    const merged = mergeSkills(builderSkills, importedSkills);
+    const newNames = merged
+      .filter((s) => !skillOrderRef.current.includes(s.name))
+      .map((s) => s.name);
+    const existingInOrder = skillOrderRef.current.filter((name) =>
+      merged.some((s) => s.name === name),
+    );
+    skillOrderRef.current = [...newNames, ...existingInOrder];
+    const orderMap = new Map(skillOrderRef.current.map((name, i) => [name, i]));
+    return merged.sort((a, b) => (orderMap.get(a.name) ?? 999) - (orderMap.get(b.name) ?? 999));
+  }, [builderSkills, importedSkills]);
 
   // Default selection — run once on mount after stores are populated
   useEffect(() => {
@@ -279,8 +293,8 @@ export function SkillListPanel({
     >
       {/* Topbar */}
       <div className="flex h-11 items-center gap-2 border-b px-3">
-        <span className="flex-1 text-[13px] font-semibold">Skills</span>
-        <Badge variant="secondary" className="rounded-full px-1.5 py-px text-[11px]">
+        <span className="flex-1 text-[15px] font-semibold">Skills</span>
+        <Badge variant="secondary" className="rounded-full px-1.5 py-px text-[13px]">
           {filteredSkills.length}
         </Badge>
         <Button
@@ -303,7 +317,7 @@ export function SkillListPanel({
           <Search className="absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search skills…"
-            className="h-7 pl-6 text-xs"
+            className="h-7 pl-6 text-sm"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -322,10 +336,6 @@ export function SkillListPanel({
             : null;
 
           const complete = isSkillComplete(skill);
-          const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
-          const step = stepMatch ? Number(stepMatch[1]) : null;
-          // mid-way: incomplete and at step >= 1
-          const isMidWay = !complete && step !== null && step >= 1;
 
           return (
             <div
@@ -356,9 +366,9 @@ export function SkillListPanel({
 
               {/* Name + purpose */}
               <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-sm font-medium">{skill.name}</span>
+                <span className="truncate text-base font-medium">{skill.name}</span>
                 {purposeLabel && (
-                  <span className="truncate text-[11px] text-muted-foreground">
+                  <span className="truncate text-[13px] text-muted-foreground">
                     {purposeLabel}
                   </span>
                 )}
@@ -366,7 +376,7 @@ export function SkillListPanel({
 
               {/* Timestamp */}
               {skill.lastModified && (
-                <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                <span className="shrink-0 font-mono text-xs text-muted-foreground">
                   {formatRelativeDate(skill.lastModified)}
                 </span>
               )}
