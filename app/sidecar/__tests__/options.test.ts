@@ -245,57 +245,13 @@ describe("buildQueryOptions", () => {
     expect(plugins[1]).toEqual({ type: "local", path: "/workspace/.claude/plugins/skill-creator" });
   });
 
-  it("includes SubagentStart hook when agentName is set", () => {
+  it("does not include hooks", () => {
     const opts = buildQueryOptions(
       makeConfig({ agentName: "skill-creator:generate-skill" }),
-      new AbortController(),
-      []
-    );
-    expect(opts).toHaveProperty("hooks");
-    const hooks = (opts as Record<string, unknown>).hooks as Record<string, unknown>;
-    expect(hooks).toHaveProperty("SubagentStart");
-  });
-
-  it("omits hooks when no agentName is set", () => {
-    const opts = buildQueryOptions(
-      makeConfig({ model: "claude-sonnet-4-6" }),
       new AbortController(),
       []
     );
     expect(opts).not.toHaveProperty("hooks");
-  });
-
-  it("SubagentStart hook blocks self-recursive spawn", async () => {
-    const agentName = "skill-creator:generate-skill";
-    const opts = buildQueryOptions(
-      makeConfig({ agentName }),
-      new AbortController(),
-      []
-    );
-    const hooks = (opts as Record<string, unknown>).hooks as Record<string, Array<{ hooks: Array<Function> }>>;
-    const hookFn = hooks.SubagentStart[0].hooks[0];
-    const result = await hookFn(
-      { hook_event_name: "SubagentStart", agent_type: agentName, agent_id: "abc" },
-      undefined,
-      { signal: new AbortController().signal }
-    );
-    expect(result.decision).toBe("block");
-  });
-
-  it("SubagentStart hook approves different agent types", async () => {
-    const opts = buildQueryOptions(
-      makeConfig({ agentName: "skill-creator:generate-skill" }),
-      new AbortController(),
-      []
-    );
-    const hooks = (opts as Record<string, unknown>).hooks as Record<string, Array<{ hooks: Array<Function> }>>;
-    const hookFn = hooks.SubagentStart[0].hooks[0];
-    const result = await hookFn(
-      { hook_event_name: "SubagentStart", agent_type: "skill-creator:analyzer", agent_id: "def" },
-      undefined,
-      { signal: new AbortController().signal }
-    );
-    expect(result.decision).toBe("approve");
   });
 
   it("env contains only allowlisted vars plus ANTHROPIC_API_KEY", () => {

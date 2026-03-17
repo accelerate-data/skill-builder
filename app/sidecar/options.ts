@@ -1,4 +1,4 @@
-import type { Options, HookEvent, HookCallbackMatcher, HookInput } from "@anthropic-ai/claude-agent-sdk";
+import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
 
 /**
@@ -68,39 +68,11 @@ export function buildQueryOptions(
     ? { plugins: pluginPaths.map((p) => ({ type: "local" as const, path: p })) }
     : {};
 
-  // Block self-recursive sub-agent spawning: if the agent tries to spawn
-  // itself as a sub-agent, the SDK will reject the tool call and tell the
-  // model to work inline instead.
-  const hooksField = hasAgent
-    ? {
-        hooks: {
-          SubagentStart: [{
-            hooks: [async (input: HookInput, _toolUseId: string | undefined, _opts: { signal: AbortSignal }) => {
-              if (input.hook_event_name !== "SubagentStart") {
-                return { decision: "approve" as const };
-              }
-              if (input.agent_type === config.agentName) {
-                process.stderr.write(
-                  `[sidecar] Blocked self-recursive sub-agent spawn: ${input.agent_type}\n`,
-                );
-                return {
-                  decision: "block" as const,
-                  reason: `Self-recursion blocked: ${input.agent_type} cannot spawn itself as a sub-agent. Perform the work inline using your own tool calls.`,
-                };
-              }
-              return { decision: "approve" as const };
-            }],
-          }],
-        } satisfies Partial<Record<HookEvent, HookCallbackMatcher[]>>,
-      }
-    : {};
-
   return {
     ...agentField,
     ...modelField,
     ...envField,
     ...pluginsField,
-    ...hooksField,
     // Load project settings from the project workspace at {cwd}
     // (workspace-root CLAUDE.md plus .claude/ skills/agents).
     // 'user' is intentionally excluded — it causes the SDK to scan
