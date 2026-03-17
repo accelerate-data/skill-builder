@@ -65,8 +65,8 @@ export interface BenchmarkData {
 
 interface BenchmarkSummaryCardProps {
   benchmarkData: BenchmarkData | null;
-  /** True when benchmark.json was not found on disk (vs data being null because of skipped status) */
-  missing?: boolean;
+  /** "skipped" = agent reported no evals (stub); "missing" = expected but not found; false = ok */
+  status?: "skipped" | "missing" | false;
   duration?: number;
   cost?: number;
   onResetStep?: () => void;
@@ -90,9 +90,9 @@ function formatPassRate(rate: number): string {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function BenchmarkSummaryCard({ benchmarkData, missing, duration, cost, onResetStep }: BenchmarkSummaryCardProps) {
-  // Missing = benchmark.json not found on disk — error state, offer reset
-  if (missing) {
+export function BenchmarkSummaryCard({ benchmarkData, status, duration, cost, onResetStep }: BenchmarkSummaryCardProps) {
+  // Missing = benchmark.json expected but not found on disk — error state, offer reset
+  if (status === "missing") {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-8">
         <AlertTriangle className="size-8 text-destructive/50" />
@@ -115,8 +115,8 @@ export function BenchmarkSummaryCard({ benchmarkData, missing, duration, cost, o
     );
   }
 
-  // No data but not missing (e.g. skipped status) — show simple complete state
-  if (!benchmarkData) {
+  // Skipped = agent reported no evals (stub case) — show simple complete state
+  if (status === "skipped" || !benchmarkData) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-8">
         <CheckCircle2 className="size-8" style={{ color: "var(--color-seafoam)" }} />

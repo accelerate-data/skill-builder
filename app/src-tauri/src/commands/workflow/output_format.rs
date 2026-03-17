@@ -132,6 +132,21 @@ pub(crate) fn materialize_workflow_step_output_value(
                 }
             }
 
+            // Write benchmark-meta.json so the frontend can distinguish skipped from missing
+            let meta = serde_json::json!({
+                "benchmark_status": parsed.benchmark_status,
+                "benchmark_path": parsed.benchmark_path,
+            });
+            let meta_path = context_dir.join("benchmark-meta.json");
+            std::fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap_or_default())
+                .map_err(|e| {
+                    format!(
+                        "Failed to write benchmark-meta '{}': {}",
+                        meta_path.display(),
+                        e
+                    )
+                })?;
+
             Ok(())
         }
         _ => Err(format!(

@@ -148,7 +148,8 @@ export function WorkflowStepComplete({
   const [agentRuns, setAgentRuns] = useState<AgentRunRecord[]>([]);
   const [benchmarkData, setBenchmarkData] = useState<BenchmarkData | null>(null);
   const [benchmarkLoaded, setBenchmarkLoaded] = useState(false);
-  const [benchmarkMissing, setBenchmarkMissing] = useState(false);
+  /** "skipped" = agent reported no evals (stub); "missing" = expected but not found; false = ok */
+  const [benchmarkStatus, setBenchmarkStatus] = useState<"skipped" | "missing" | false>(false);
 
   useEffect(() => {
     if (!skillName || stepId == null) {
@@ -161,48 +162,70 @@ export function WorkflowStepComplete({
       .catch((err) => console.error("Failed to load agent stats:", err));
   }, [skillName, stepId]);
 
-  // Load benchmark.json for step 3
+  // Load benchmark meta + data for step 3
   useEffect(() => {
     if (stepId !== 3 || !workspacePath || !skillName) {
       setBenchmarkData(null);
       setBenchmarkLoaded(false);
-      setBenchmarkMissing(false);
+      setBenchmarkStatus(false);
       return;
     }
 
     let cancelled = false;
-    const benchmarkPath = joinPath(workspacePath, skillName, "evals", "workspace", "iteration-1", "benchmark.json");
-    readFile(benchmarkPath)
-      .then((content) => {
-        if (cancelled) return;
-        try {
-          setBenchmarkData(JSON.parse(content) as BenchmarkData);
-          setBenchmarkMissing(false);
-        } catch {
-          console.warn("[step-complete] Failed to parse benchmark.json");
-          setBenchmarkData(null);
-          setBenchmarkMissing(true);
-        }
+
+    (async () => {
+      // 1. Read benchmark-meta.json to get the agent's reported status
+      const metaPath = joinPath(workspacePath, skillName, "context", "benchmark-meta.json");
+      let agentStatus: string | null = null;
+      let benchmarkPath: string | null = null;
+      try {
+        const metaContent = await readFile(metaPath);
+        const meta = JSON.parse(metaContent);
+        agentStatus = meta.benchmark_status ?? null;
+        benchmarkPath = meta.benchmark_path ?? null;
+      } catch {
+        // No meta file — older run or materializer didn't write it
+      }
+
+      if (cancelled) return;
+
+      // 2. If agent reported "skipped", no benchmark.json expected
+      if (agentStatus === "skipped") {
+        setBenchmarkData(null);
+        setBenchmarkStatus("skipped");
         setBenchmarkLoaded(true);
-      })
-      .catch(() => {
+        return;
+      }
+
+      // 3. Try to load benchmark.json
+      const jsonPath = benchmarkPath
+        ? joinPath(workspacePath, skillName, benchmarkPath, "benchmark.json")
+        : joinPath(workspacePath, skillName, "evals", "workspace", "iteration-1", "benchmark.json");
+      try {
+        const content = await readFile(jsonPath);
+        if (cancelled) return;
+        setBenchmarkData(JSON.parse(content) as BenchmarkData);
+        setBenchmarkStatus(false);
+      } catch {
         if (cancelled) return;
         console.log("[step-complete] benchmark.json not found — missing");
         setBenchmarkData(null);
-        setBenchmarkMissing(true);
-        setBenchmarkLoaded(true);
-      });
+        setBenchmarkStatus("missing");
+      }
+      setBenchmarkLoaded(true);
+    })();
+
     return () => { cancelled = true; };
   }, [stepId, workspacePath, skillName]);
 
-  // Auto-cleanup step 3 files when benchmark is missing (broken generation)
+  // Auto-cleanup step 3 files when benchmark is truly missing (not skipped)
   useEffect(() => {
-    if (!benchmarkMissing || stepId !== 3 || !workspacePath || !skillName || reviewMode) return;
+    if (benchmarkStatus !== "missing" || stepId !== 3 || !workspacePath || !skillName || reviewMode) return;
     console.log("[step-complete] benchmark missing — cleaning up step 3 files");
     resetWorkflowStep(workspacePath, skillName, 3).catch((err) =>
       console.error("[step-complete] Failed to clean up step 3 files:", err),
     );
-  }, [benchmarkMissing, stepId, workspacePath, skillName, reviewMode]);
+  }, [benchmarkStatus, stepId, workspacePath, skillName, reviewMode]);
 
   // Always load file contents when skillName is available (both review and non-review mode)
   useEffect(() => {
@@ -581,7 +604,7 @@ export function WorkflowStepComplete({
         )}
         <ScrollArea className="min-h-0 flex-1">
           <div className="pr-4">
-            <BenchmarkSummaryCard benchmarkData={benchmarkData} missing={benchmarkMissing} duration={!reviewMode ? duration : undefined} cost={displayCost} onResetStep={onResetStep} />
+            <BenchmarkSummaryCard benchmarkData={benchmarkData} status={benchmarkStatus} duration={!reviewMode ? duration : undefined} cost={displayCost} onResetStep={onResetStep} />
           </div>
         </ScrollArea>
         <StepActionBar

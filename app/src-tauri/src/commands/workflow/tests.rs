@@ -736,6 +736,14 @@ fn test_materialize_step3_accepts_complete_benchmark() {
         "benchmark_path": "evals/workspace/iteration-1"
     });
     materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
+
+    // Verify benchmark-meta.json was written
+    let meta_path = skill_root.join("context/benchmark-meta.json");
+    assert!(meta_path.exists(), "benchmark-meta.json should be written");
+    let meta: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
+    assert_eq!(meta["benchmark_status"], "complete");
+    assert_eq!(meta["benchmark_path"], "evals/workspace/iteration-1");
 }
 
 #[test]
@@ -747,6 +755,14 @@ fn test_materialize_step3_accepts_skipped_benchmark() {
         "benchmark_status": "skipped"
     });
     materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
+
+    // Verify benchmark-meta.json was written with skipped status
+    let meta_path = skill_root.join("context/benchmark-meta.json");
+    assert!(meta_path.exists(), "benchmark-meta.json should be written for skipped");
+    let meta: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
+    assert_eq!(meta["benchmark_status"], "skipped");
+    assert!(meta["benchmark_path"].is_null());
 }
 
 #[test]
