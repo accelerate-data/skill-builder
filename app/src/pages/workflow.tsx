@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WorkflowStep } from "@/stores/workflow-store";
+import { useSkillStore } from "@/stores/skill-store";
 import { Button } from "@/components/ui/button";
 
 import {
@@ -237,9 +238,10 @@ export default function WorkflowPage() {
     const nextStepBlocked = !isTerminalStep && disabledSteps.includes(nextStep);
     const showDecisionConflictResolution = currentStep === 2 && nextStepBlocked;
     const isLastStep = isTerminalStep || (nextStepBlocked && !showDecisionConflictResolution);
-    const handleClose = () => navigate({ to: "/" });
+    const handleClose = () => navigate({ to: "/", search: { tab: undefined } });
     const handleRefine = () => {
-      navigate({ to: "/refine", search: { skill: skillName } });
+      useSkillStore.getState().setActiveSkill(skillName);
+      navigate({ to: "/", search: { tab: "refine" } });
     };
     const nextStepLabel = !isTerminalStep ? steps[nextStep]?.name ?? "Next Step" : undefined;
 

@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "devtools": "react-devtools",
     "dev": "node scripts/dev.mjs",
     "dev:frontend": "vite",
     "dev:test": "cross-env TAURI_E2E=true vite",

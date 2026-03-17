@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
+import { useSkillStore } from "@/stores/skill-store";
 import {
   getWorkflowState,
   getDisabledSteps,
   saveWorkflowState,
+  listSkills,
   readFile,
   getContextFileContent,
 } from "@/lib/tauri";
@@ -67,6 +69,15 @@ export function useWorkflowPersistence({
       return;
     }
 
+    // Capture and clear pendingNoReviewMode synchronously before async work.
+    // When true (sidebar navigation to in-progress skill), we pass initialReviewMode=false
+    // directly to initWorkflow so reviewMode never transitions true→false — preventing the
+    // wasToggle auto-start in use-workflow-state-machine.ts.
+    const isNoReviewMode = store.pendingNoReviewMode;
+    if (isNoReviewMode) {
+      store.setPendingNoReviewMode(false);
+    }
+
     // Clear stale agent data from previous skill
     clearRuns();
 
@@ -78,8 +89,9 @@ export function useWorkflowPersistence({
       .then(([state, disabled]) => {
         if (cancelled) return;
 
-        // Initialize workflow with purpose from saved state
-        initWorkflow(skillName, state.run?.purpose);
+        // Initialize workflow with purpose from saved state.
+        // Pass initialReviewMode=false for sidebar navigation to suppress wasToggle auto-start.
+        initWorkflow(skillName, state.run?.purpose, isNoReviewMode ? false : undefined);
 
         // Apply disabled steps immediately
         useWorkflowStore.getState().setDisabledSteps(disabled);
@@ -173,9 +185,15 @@ export function useWorkflowPersistence({
         status = "pending";
       }
 
-      saveWorkflowState(skillName, latestStore.currentStep, status, stepStatuses, purpose ?? undefined).catch(
-        (err) => console.error("Failed to persist workflow state:", err)
-      );
+      saveWorkflowState(skillName, latestStore.currentStep, status, stepStatuses, purpose ?? undefined)
+        .then(() => {
+          if (workspacePath) {
+            listSkills(workspacePath)
+              .then(useSkillStore.getState().setSkills)
+              .catch((err) => console.error("event=refresh_skills_failed error=%s", err));
+          }
+        })
+        .catch((err) => console.error("Failed to persist workflow state:", err));
     }, 300);
 
     return () => clearTimeout(timer);

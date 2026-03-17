@@ -59,7 +59,7 @@ export function useWorkflowSession({
           cause: err,
           context: { operation: "workflow_acquire_lock", skillName },
         });
-        navigate({ to: "/" });
+        navigate({ to: "/", search: { tab: undefined } });
       }
     });
 

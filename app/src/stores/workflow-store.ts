@@ -36,8 +36,10 @@ interface WorkflowState {
 
   /** Transient: signals the workflow page to start in update mode. Set before navigation, consumed once by the init effect. */
   pendingUpdateMode: boolean;
+  /** Transient: like pendingUpdateMode but suppresses auto-start. Used when navigating to an existing in-progress skill from the sidebar. */
+  pendingNoReviewMode: boolean;
 
-  initWorkflow: (skillName: string, purpose?: string) => void;
+  initWorkflow: (skillName: string, purpose?: string, initialReviewMode?: boolean) => void;
   setPurpose: (purpose: string | null) => void;
   setReviewMode: (mode: boolean) => void;
   setCurrentStep: (step: number) => void;
@@ -59,6 +61,7 @@ interface WorkflowState {
   clearRuntimeError: () => void;
   setGateLoading: (loading: boolean) => void;
   setPendingUpdateMode: (mode: boolean) => void;
+  setPendingNoReviewMode: (mode: boolean) => void;
   reset: () => void;
 }
 
@@ -81,17 +84,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   runtimeError: null,
   gateLoading: false,
   pendingUpdateMode: false,
+  pendingNoReviewMode: false,
   hydrated: false,
   disabledSteps: [],
 
-  initWorkflow: (skillName, purpose) =>
+  initWorkflow: (skillName, purpose, initialReviewMode) =>
     set({
       skillName,
       purpose: purpose ?? null,
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
-      reviewMode: true,
+      reviewMode: initialReviewMode ?? true,
       workflowSessionId: null,
       isInitializing: false,
       initStartTime: null,
@@ -152,6 +156,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   setGateLoading: (loading) => set({ gateLoading: loading }),
   setPendingUpdateMode: (mode) => set({ pendingUpdateMode: mode }),
+  setPendingNoReviewMode: (mode) => set({ pendingNoReviewMode: mode }),
 
   resetToStep: (stepId) =>
     set((state) => ({
