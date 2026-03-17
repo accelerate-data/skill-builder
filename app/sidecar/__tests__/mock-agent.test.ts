@@ -311,7 +311,7 @@ describe("runMockAgent", () => {
 
     const messages: Record<string, unknown>[] = [];
     await runMockAgent(
-      baseMockConfig({ agentName: "generate-skill" }),
+      baseMockConfig({ agentName: "skill-creator:generate-skill" }),
       (msg) => messages.push(msg),
       controller.signal,
     );
