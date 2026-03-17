@@ -21,6 +21,7 @@ import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
 import { ResearchSummaryCard } from "@/components/research-summary-card";
 import { DecisionsSummaryCard } from "@/components/decisions-summary-card";
+import { BenchmarkSummaryCard, type BenchmarkData } from "@/components/benchmark-summary-card";
 import { type ClarificationsFile, parseClarifications } from "@/lib/clarifications-types";
 import type { AgentRunRecord } from "@/lib/types";
 import { formatElapsed } from "@/lib/utils";
@@ -144,6 +145,8 @@ export function WorkflowStepComplete({
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [agentRuns, setAgentRuns] = useState<AgentRunRecord[]>([]);
+  const [benchmarkData, setBenchmarkData] = useState<BenchmarkData | null>(null);
+  const [benchmarkLoaded, setBenchmarkLoaded] = useState(false);
 
   useEffect(() => {
     if (!skillName || stepId == null) {
@@ -155,6 +158,36 @@ export function WorkflowStepComplete({
       .then((runs) => setAgentRuns(runs))
       .catch((err) => console.error("Failed to load agent stats:", err));
   }, [skillName, stepId]);
+
+  // Load benchmark.json for step 3
+  useEffect(() => {
+    if (stepId !== 3 || !workspacePath || !skillName) {
+      setBenchmarkData(null);
+      setBenchmarkLoaded(false);
+      return;
+    }
+
+    let cancelled = false;
+    const benchmarkPath = joinPath(workspacePath, skillName, "evals", "workspace", "iteration-1", "benchmark.json");
+    readFile(benchmarkPath)
+      .then((content) => {
+        if (cancelled) return;
+        try {
+          setBenchmarkData(JSON.parse(content) as BenchmarkData);
+        } catch {
+          console.warn("[step-complete] Failed to parse benchmark.json");
+          setBenchmarkData(null);
+        }
+        setBenchmarkLoaded(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        console.log("[step-complete] benchmark.json not found — showing fallback");
+        setBenchmarkData(null);
+        setBenchmarkLoaded(true);
+      });
+    return () => { cancelled = true; };
+  }, [stepId, workspacePath, skillName]);
 
   // Always load file contents when skillName is available (both review and non-review mode)
   useEffect(() => {
@@ -509,6 +542,54 @@ export function WorkflowStepComplete({
             </span>
           </div>
         )}
+        <StepActionBar
+          isLastStep={isLastStep}
+          nextStepBlocked={nextStepBlocked}
+          nextStepLabel={nextStepLabel}
+          reviewMode={reviewMode}
+          onRefine={onRefine}
+          onClose={onClose}
+          onNextStep={onNextStep}
+        />
+      </div>
+    );
+  }
+
+  // Step 3 (Generate Skill): show benchmark results instead of file viewer
+  if (stepId === 3 && benchmarkLoaded) {
+    return (
+      <div className="flex h-full flex-col gap-4 overflow-hidden">
+        {reviewMode && agentRuns.length > 0 && (
+          <div className="shrink-0">
+            <AgentStatsBar runs={agentRuns} />
+          </div>
+        )}
+        {!reviewMode && (
+          <div className="flex items-center gap-3 shrink-0">
+            <CheckCircle2 className="size-4 shrink-0" style={{ color: "var(--color-seafoam)" }} />
+            <span className="text-sm font-semibold tracking-tight">{stepName} Complete</span>
+            <div className="flex-1" />
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              {duration !== undefined && (
+                <span className="flex items-center gap-1">
+                  <Clock className="size-3" />
+                  {formatElapsed(duration)}
+                </span>
+              )}
+              {displayCost !== undefined && (
+                <span className="flex items-center gap-1">
+                  <DollarSign className="size-3" />
+                  ${displayCost.toFixed(4)}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="pr-4">
+            <BenchmarkSummaryCard benchmarkData={benchmarkData} />
+          </div>
+        </ScrollArea>
         <StepActionBar
           isLastStep={isLastStep}
           nextStepBlocked={nextStepBlocked}

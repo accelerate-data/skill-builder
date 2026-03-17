@@ -76,10 +76,14 @@ pub(crate) fn output_format_for_agent(
             "type": "json_schema",
             "schema": {
                 "type": "object",
-                "required": ["status", "evaluations_markdown"],
+                "required": ["status", "benchmark_status"],
                 "properties": {
                     "status": { "type": "string", "const": "generated" },
-                    "evaluations_markdown": { "type": "string", "minLength": 1 }
+                    "benchmark_status": {
+                        "type": "string",
+                        "enum": ["complete", "partial", "skipped"]
+                    },
+                    "benchmark_path": { "type": "string" }
                 },
                 "additionalProperties": true
             }

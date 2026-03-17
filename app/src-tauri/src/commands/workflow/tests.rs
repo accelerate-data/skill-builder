@@ -722,15 +722,31 @@ fn test_materialize_step2_rejects_null_payload() {
 }
 
 #[test]
-fn test_materialize_step3_writes_evaluations() {
+fn test_materialize_step3_accepts_complete_benchmark() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skill_root = tmp.path().join("my-skill");
+    // Create benchmark.json on disk so the materializer can verify it
+    let bench_dir = skill_root.join("evals/workspace/iteration-1");
+    std::fs::create_dir_all(&bench_dir).unwrap();
+    std::fs::write(bench_dir.join("benchmark.json"), "{}").unwrap();
+
+    let payload = serde_json::json!({
+        "status": "generated",
+        "benchmark_status": "complete",
+        "benchmark_path": "evals/workspace/iteration-1"
+    });
+    materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
+}
+
+#[test]
+fn test_materialize_step3_accepts_skipped_benchmark() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
     let payload = serde_json::json!({
         "status": "generated",
-        "evaluations_markdown": "## Scenario 1\n- input\n- expected output\n"
+        "benchmark_status": "skipped"
     });
     materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
-    assert!(skill_root.join("context/evaluations.md").exists());
 }
 
 #[test]
@@ -739,7 +755,7 @@ fn test_materialize_step3_rejects_wrong_status() {
     let skill_root = tmp.path().join("my-skill");
     let payload = serde_json::json!({
         "status": "decisions_complete",
-        "evaluations_markdown": "## Scenario 1\n- input\n- expected output\n"
+        "benchmark_status": "complete"
     });
     let err =
         materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
@@ -747,33 +763,27 @@ fn test_materialize_step3_rejects_wrong_status() {
 }
 
 #[test]
-fn test_materialize_step3_rejects_missing_or_invalid_evaluations_markdown() {
+fn test_materialize_step3_rejects_invalid_benchmark_status() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
 
+    // Missing benchmark_status field
     let missing = serde_json::json!({
         "status": "generated"
     });
     let err_missing =
         materialize_workflow_step_output_value(&skill_root, 3, &missing).unwrap_err();
     assert!(err_missing.contains("invalid generate skill output"));
-    assert!(err_missing.contains("evaluations_markdown"));
+    assert!(err_missing.contains("benchmark_status"));
 
-    let non_string = serde_json::json!({
+    // Invalid benchmark_status value
+    let invalid = serde_json::json!({
         "status": "generated",
-        "evaluations_markdown": ["not", "markdown"]
+        "benchmark_status": "unknown"
     });
-    let err_non_string =
-        materialize_workflow_step_output_value(&skill_root, 3, &non_string).unwrap_err();
-    assert!(err_non_string.contains("invalid generate skill output"));
-
-    let empty = serde_json::json!({
-        "status": "generated",
-        "evaluations_markdown": ""
-    });
-    let err_empty =
-        materialize_workflow_step_output_value(&skill_root, 3, &empty).unwrap_err();
-    assert!(err_empty.contains("structured_output.evaluations_markdown must not be empty"));
+    let err_invalid =
+        materialize_workflow_step_output_value(&skill_root, 3, &invalid).unwrap_err();
+    assert!(err_invalid.contains("benchmark_status must be one of"));
 }
 
 #[test]

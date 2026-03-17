@@ -231,10 +231,10 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     expect(content).toMatch(/Top-level keys|version.*metadata.*decisions/i);
   });
 
-  it("generate-skill returns generated status with evaluations_markdown", () => {
+  it("generate-skill returns generated status with benchmark_status", () => {
     const content = fs.readFileSync(resolveAgentPath("generate-skill"), "utf8");
     expect(content).toMatch(/status.*generated/);
-    expect(content).toMatch(/evaluations_markdown/);
+    expect(content).toMatch(/benchmark_status/);
   });
 
   it("answer-evaluator returns verdict enum and per_question array", () => {

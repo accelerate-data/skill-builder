@@ -963,7 +963,8 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
     const payload = {
       status: "generated",
-      evaluations_markdown: "## Scenario 1\n- input\n- expected output\n",
+      benchmark_status: "complete",
+      benchmark_path: "evals/workspace/iteration-1",
     };
 
     act(() => {
@@ -2699,7 +2700,8 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
         outputText_result: "Agent completed",
         structuredOutput: {
           status: "generated",
-          evaluations_markdown: "## Scenario 1\n- input\n- expected output\n",
+          benchmark_status: "complete",
+      benchmark_path: "evals/workspace/iteration-1",
         },
         resultStatus: "success",
       });
@@ -3549,7 +3551,8 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
         outputText_result: "Agent completed",
         structuredOutput: {
           status: "generated",
-          evaluations_markdown: "## Test",
+          benchmark_status: "complete",
+          benchmark_path: "evals/workspace/iteration-1",
         },
         resultStatus: "success",
       });

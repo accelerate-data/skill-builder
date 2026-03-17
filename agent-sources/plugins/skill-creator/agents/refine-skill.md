@@ -62,7 +62,7 @@ The user's answers contain unresolvable contradictions. See `decisions.json` for
 - return this JSON
 
 ```json
-{ "status": "generated", "evaluations_markdown": "<!-- Skill not generated: contradictory inputs -->" }
+{ "status": "generated", "benchmark_status": "skipped" }
 ```
 
 ### Contradictions resolved
@@ -91,7 +91,7 @@ The research planner determined the skill scope is too broad. See `clarification
 - Return this JSON
 
 ```json
-{ "status": "generated", "evaluations_markdown": "<!-- Skill not generated: scope too broad -->" }
+{ "status": "generated", "benchmark_status": "skipped" }
 ```
 
 ### Malformed input
@@ -106,7 +106,7 @@ description: <brief description of which file is malformed>
 ```
 
 ```json
-{ "status": "generated", "evaluations_markdown": "<!-- Skill not generated: malformed input -->" }
+{ "status": "generated", "benchmark_status": "skipped" }
 ```
 
 ### Missing inputs

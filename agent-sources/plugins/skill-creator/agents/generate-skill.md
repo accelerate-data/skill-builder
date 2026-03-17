@@ -70,7 +70,7 @@ The user's answers contain unresolvable contradictions. See `decisions.json` for
 - return this JSON
 
 ```json
-{ "status": "generated", "evaluations_markdown": "<!-- Skill not generated: contradictory inputs -->" }
+{ "status": "generated", "benchmark_status": "skipped" }
 ```
 
 ### Contradictions resolved
@@ -99,7 +99,7 @@ The research planner determined the skill scope is too broad. See `clarification
 - Return this JSON
 
 ```json
-{ "status": "generated", "evaluations_markdown": "<!-- Skill not generated: scope too broad -->" }
+{ "status": "generated", "benchmark_status": "skipped" }
 ```
 
 ### Malformed input
@@ -114,7 +114,7 @@ description: <brief description of which file is malformed>
 ```
 
 ```json
-{ "status": "generated", "evaluations_markdown": "<!-- Skill not generated: malformed input -->" }
+{ "status": "generated", "benchmark_status": "skipped" }
 ```
 
 ### Missing inputs
@@ -203,7 +203,7 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 
 - Purpose-appropriate structure chosen without rigid templates
 - Every decision from `decisions.json` addressed in the skill.
-- `evaluations_markdown` includes 3+ scenarios covering distinct topic areas
+- Benchmark produced with 3+ evaluation scenarios covering distinct topic areas
 - Every evaluation scenario includes prompt, expected behavior, and pass criteria
 - `Current request` is represented in evaluations when it names a concrete topic
 - **Rewrite mode:** 
@@ -223,10 +223,15 @@ Return JSON only:
 ```json
 {
   "status": "generated",
-  "evaluations_markdown": "<full evaluations.md content with at least 3 scenarios>",
+  "benchmark_status": "complete",
+  "benchmark_path": "evals/workspace/iteration-1",
   "call_trace": ["read-user-context", "read-decisions", "write-skill", "write-references/foo.md", "..."]
 }
 ```
+
+`benchmark_status`: `"complete"` when all evals ran and benchmark.json was produced, `"partial"` when some evals had errors, `"skipped"` for stub cases (contradictory inputs, scope too broad, malformed input).
+
+`benchmark_path`: path to the iteration directory relative to `{workspace_dir}`, e.g. `evals/workspace/iteration-1`. Contains `benchmark.json`, `benchmark.md`, `review.html`, and per-eval subdirectories. Omit when `benchmark_status` is `"skipped"`.
 
 `call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`, `write-evaluations`, `use-skill-test-skill`, `read-agentskills-spec-md-using-tools`, `read-skill-creator-using-tools`. For reference files, use `write-references/<filename>`.
 
