@@ -361,7 +361,8 @@ export interface DecisionsOutput {
 /** Structured output for workflow step 3 (generate-skill agent). */
 export interface GenerateSkillOutput {
   status: "generated"
-  evaluations_markdown: string
+  benchmark_status: "complete" | "partial" | "skipped"
+  benchmark_path?: string
 }
 
 /** Discriminated union narrowing `structuredOutput` per workflow step index. */

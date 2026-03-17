@@ -70,7 +70,7 @@ The user's answers contain unresolvable contradictions. See `decisions.json` for
 - return this JSON
 
 ```json
-{ "status": "generated", "evaluations_markdown": "<!-- Skill not generated: contradictory inputs -->" }
+{ "status": "generated", "benchmark_status": "skipped" }
 ```
 
 ### Contradictions resolved
@@ -99,7 +99,7 @@ The research planner determined the skill scope is too broad. See `clarification
 - Return this JSON
 
 ```json
-{ "status": "generated", "evaluations_markdown": "<!-- Skill not generated: scope too broad -->" }
+{ "status": "generated", "benchmark_status": "skipped" }
 ```
 
 ### Malformed input
@@ -114,7 +114,7 @@ description: <brief description of which file is malformed>
 ```
 
 ```json
-{ "status": "generated", "evaluations_markdown": "<!-- Skill not generated: malformed input -->" }
+{ "status": "generated", "benchmark_status": "skipped" }
 ```
 
 ### Missing inputs
@@ -135,7 +135,14 @@ After writing the skill and test cases, you MUST follow the **Running and evalua
 - Grading output must include a `summary` object with `passed`, `failed`, `total`, and `pass_rate` fields. The `aggregate_benchmark.py` script reads these — missing summary produces 0% pass rates.
 - We are running in a headless environment. Use `--static` to write a standalone HTML file inside the iteration directory.
 - We are running in headless mode — do not wait for user feedback after generating the viewer.
-- Wait for all Task sub-agents to complete before returning the output JSON.
+- **CRITICAL sequencing rule — do NOT return early:** The entire "Running and evaluating test cases" pipeline (executor runs, grading, `aggregate_benchmark.py`, review HTML generation) MUST complete before you call StructuredOutput. You MUST NOT call StructuredOutput while any spawned Task/Agent sub-agent is still running. The correct sequence is:
+  1. Spawn executor sub-agents (with_skill + without_skill) → **wait for ALL to finish**
+  2. Spawn grader sub-agents → **wait for ALL to finish**
+  3. Run `aggregate_benchmark.py` → **wait for it to finish**
+  4. Run review HTML generation → **wait for it to finish**
+  5. Verify `benchmark.json` exists in the iteration directory
+  6. Only THEN return structured output with the correct `benchmark_status`
+  If you return structured output before step 5, the user sees missing or partial benchmark data and must re-run the entire step.
   
 ### Prior-step handoff
 
@@ -203,7 +210,7 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 
 - Purpose-appropriate structure chosen without rigid templates
 - Every decision from `decisions.json` addressed in the skill.
-- `evaluations_markdown` includes 3+ scenarios covering distinct topic areas
+- Benchmark produced with 3+ evaluation scenarios covering distinct topic areas
 - Every evaluation scenario includes prompt, expected behavior, and pass criteria
 - `Current request` is represented in evaluations when it names a concrete topic
 - **Rewrite mode:** 
@@ -223,10 +230,15 @@ Return JSON only:
 ```json
 {
   "status": "generated",
-  "evaluations_markdown": "<full evaluations.md content with at least 3 scenarios>",
+  "benchmark_status": "complete",
+  "benchmark_path": "evals/workspace/iteration-1",
   "call_trace": ["read-user-context", "read-decisions", "write-skill", "write-references/foo.md", "..."]
 }
 ```
+
+`benchmark_status`: `"complete"` when all evals ran and benchmark.json was produced, `"partial"` when some evals had errors, `"skipped"` for stub cases (contradictory inputs, scope too broad, malformed input).
+
+`benchmark_path`: path to the iteration directory relative to `{workspace_dir}`, e.g. `evals/workspace/iteration-1`. Contains `benchmark.json`, `benchmark.md`, `review.html`, and per-eval subdirectories. Omit when `benchmark_status` is `"skipped"`.
 
 `call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`, `write-evaluations`, `use-skill-test-skill`, `read-agentskills-spec-md-using-tools`, `read-skill-creator-using-tools`. For reference files, use `write-references/<filename>`.
 

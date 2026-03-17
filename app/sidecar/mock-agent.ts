@@ -337,6 +337,16 @@ async function writeMockOutputFiles(
   } else if (stepTemplate === "step3-generate-skill") {
     // Step 3: files go to skill output dir (may differ from skill dir when skills_path is set)
     destRoot = paths.skillOutputDir ?? paths.skillDir ?? config.cwd;
+
+    // Also write mock benchmark.json to workspace dir for the frontend benchmark card
+    if (paths.workspaceDir) {
+      const benchDir = path.join(paths.workspaceDir, "evals", "workspace", "iteration-1");
+      await fs.mkdir(benchDir, { recursive: true });
+      const mockBenchmarkSrc = path.join(__dirname, "mock-templates", "outputs", "step3", "benchmark.json");
+      if (await pathExists(mockBenchmarkSrc)) {
+        await fs.copyFile(mockBenchmarkSrc, path.join(benchDir, "benchmark.json"));
+      }
+    }
   } else {
     // Steps 0, 1, 2: context files go under the skill directory.
     // The mock template has outputs/{stepN}/context/... so we strip the
@@ -475,11 +485,8 @@ export async function buildStructuredMockResult(
     if (!skillMd) return null;
     return {
       status: "generated",
-      evaluations_markdown:
-        "## Mock Evaluation\n\n" +
-        "- **Completeness:** All required sections present.\n" +
-        "- **Accuracy:** Patterns match domain best practices.\n" +
-        "- **Actionability:** Code examples are copy-paste ready.\n",
+      benchmark_status: "complete",
+      benchmark_path: "evals/workspace/iteration-1",
     };
   }
 

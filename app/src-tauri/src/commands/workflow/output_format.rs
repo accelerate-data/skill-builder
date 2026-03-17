@@ -109,20 +109,44 @@ pub(crate) fn materialize_workflow_step_output_value(
                     parsed.status
                 ));
             }
-            if parsed.evaluations_markdown.trim().is_empty() {
-                return Err(
-                    "structured_output.evaluations_markdown must not be empty".to_string(),
-                );
+
+            let valid_statuses = ["complete", "partial", "skipped"];
+            if !valid_statuses.contains(&parsed.benchmark_status.as_str()) {
+                return Err(format!(
+                    "structured_output.benchmark_status must be one of {:?} but got '{}'",
+                    valid_statuses, parsed.benchmark_status
+                ));
             }
 
-            let evaluations_path = context_dir.join("evaluations.md");
-            std::fs::write(&evaluations_path, &parsed.evaluations_markdown).map_err(|e| {
-                format!(
-                    "Failed to write evaluations '{}': {}",
-                    evaluations_path.display(),
-                    e
-                )
-            })?;
+            // When benchmark is complete or partial, verify benchmark.json exists on disk
+            if parsed.benchmark_status != "skipped" {
+                if let Some(ref bench_path) = parsed.benchmark_path {
+                    let benchmark_json = skill_root.join(bench_path).join("benchmark.json");
+                    if !benchmark_json.exists() {
+                        log::warn!(
+                            "benchmark_status='{}' but benchmark.json not found at '{}'",
+                            parsed.benchmark_status,
+                            benchmark_json.display()
+                        );
+                    }
+                }
+            }
+
+            // Write benchmark-meta.json so the frontend can distinguish skipped from missing
+            let meta = serde_json::json!({
+                "benchmark_status": parsed.benchmark_status,
+                "benchmark_path": parsed.benchmark_path,
+            });
+            let meta_path = context_dir.join("benchmark-meta.json");
+            std::fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap_or_default())
+                .map_err(|e| {
+                    format!(
+                        "Failed to write benchmark-meta '{}': {}",
+                        meta_path.display(),
+                        e
+                    )
+                })?;
+
             Ok(())
         }
         _ => Err(format!(

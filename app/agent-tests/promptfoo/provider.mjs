@@ -910,18 +910,17 @@ Skill output directory: ${dir}/${skillName}
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"generated", "evaluations_markdown", and "call_trace".`;
+Return JSON only with "status":"generated", "benchmark_status", "benchmark_path", and "call_trace".`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 300_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
   const skillMdPath = path.join(dir, skillName, "SKILL.md");
-  const evaluationsMarkdown = response?.evaluations_markdown ?? "";
   return finalizeScenario(
     "generate-skill",
     {
       skillMdExists: fs.existsSync(skillMdPath),
       hasReferencesDir: fs.existsSync(path.join(dir, skillName, "references")),
-      evaluationsExists:
-        typeof evaluationsMarkdown === "string" && evaluationsMarkdown.trim().length > 0,
+      benchmarkStatusValid:
+        ["complete", "partial", "skipped"].includes(response?.benchmark_status),
     },
     ["read-user-context", "read-decisions", "write-skill", "write-references", "write-evaluations"],
     response?.call_trace ?? [],
@@ -942,14 +941,13 @@ Skill output directory: ${dir}/${skillName}
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"generated", "evaluations_markdown", and "call_trace".`;
+Return JSON only with "status":"generated", "benchmark_status", "benchmark_path", and "call_trace".`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
   const content = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
   return finalizeScenario("generate-skill-scope-guard", {
     structuredResponseObject: Boolean(response && typeof response === "object"),
-    evaluationsPayloadExists:
-      typeof response?.evaluations_markdown === "string" && response.evaluations_markdown.trim().length > 0,
+    benchmarkStatusSkipped: response?.benchmark_status === "skipped",
     scopeStubWritten: /scope_recommendation:\s*true/.test(content),
     scopeStubHeading: /## Scope Recommendation Active/.test(content),
   });
@@ -978,14 +976,13 @@ Skill output directory: ${dir}/${skillName}
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"generated", "evaluations_markdown", and "call_trace".`;
+Return JSON only with "status":"generated", "benchmark_status", "benchmark_path", and "call_trace".`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
   const content = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
   return finalizeScenario("generate-skill-contradictory", {
     structuredResponseObject: Boolean(response && typeof response === "object"),
-    evaluationsPayloadExists:
-      typeof response?.evaluations_markdown === "string" && response.evaluations_markdown.trim().length > 0,
+    benchmarkStatusSkipped: response?.benchmark_status === "skipped",
     contradictionStubWritten: /contradictory_inputs:\s*true/.test(content),
     contradictionStubHeading: /## Contradictory Inputs Detected/.test(content),
   });
@@ -1014,7 +1011,7 @@ Skill output directory: ${dir}/${skillName}
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"generated", "evaluations_markdown", and "call_trace".`;
+Return JSON only with "status":"generated", "benchmark_status", "benchmark_path", and "call_trace".`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 300_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
   const content = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
