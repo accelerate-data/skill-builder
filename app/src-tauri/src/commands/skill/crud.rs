@@ -66,6 +66,7 @@ pub(crate) fn list_skills_inner(
                         current_step: Some(format!("Step {}", run.current_step)),
                         status: Some(run.status.clone()),
                         last_modified: Some(run.updated_at.clone()),
+                        created_at: Some(master.created_at.clone()),
                         tags,
                         purpose: Some(run.purpose.clone()),
                         author_login: run.author_login.clone(),
@@ -91,6 +92,7 @@ pub(crate) fn list_skills_inner(
                 current_step: Some("Step 5".to_string()),
                 status: Some("completed".to_string()),
                 last_modified: Some(master.updated_at.clone()),
+                created_at: Some(master.created_at.clone()),
                 tags,
                 purpose: master.purpose.clone(),
                 author_login: None,
@@ -123,8 +125,8 @@ pub(crate) fn list_skills_inner(
         skills.retain(|s| scoped_names.contains(&s.name));
     }
 
-    // Sort by last_modified descending (most recent first)
-    skills.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
+    // Sort by created_at descending (newest skill first, stable across edits)
+    skills.sort_by(|a, b| b.created_at.cmp(&a.created_at));
     Ok(skills)
 }
 

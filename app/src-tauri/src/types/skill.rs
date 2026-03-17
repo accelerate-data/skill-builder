@@ -7,6 +7,8 @@ pub struct SkillSummary {
     pub status: Option<String>,
     pub last_modified: Option<String>,
     #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
     pub tags: Vec<String>,
     pub purpose: Option<String>,
     #[serde(default)]
