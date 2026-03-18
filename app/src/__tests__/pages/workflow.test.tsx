@@ -178,6 +178,13 @@ function makeClarificationsJson(overrides?: Partial<ClarificationsFile>): Clarif
   };
 }
 
+// Global reset: ensure location state doesn't leak between describe blocks.
+// Each describe's beforeEach may set mockLocation.state; this outer reset guarantees
+// every test starts with a clean slate regardless of describe-level setup order.
+beforeEach(() => {
+  mockLocation.state = {};
+});
+
 describe("WorkflowPage — agent completion lifecycle", () => {
   beforeEach(() => {
     resetTauriMocks();
