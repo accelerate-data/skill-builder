@@ -13,9 +13,9 @@ describe("SkillSourceBadge", () => {
     expect(screen.getByText("Marketplace")).toBeInTheDocument();
   });
 
-  it("renders 'Imported' badge for imported source", () => {
+  it("renders 'Uploaded' badge for imported source", () => {
     render(<SkillSourceBadge skillSource="imported" />);
-    expect(screen.getByText("Imported")).toBeInTheDocument();
+    expect(screen.getByText("Uploaded")).toBeInTheDocument();
   });
 
   it("renders nothing for null source", () => {

@@ -97,6 +97,7 @@
   --color-pacific: oklch(0.680 0.120 210);
   --color-arctic: oklch(0.870 0.065 208);
   --color-pearl: oklch(0.956 0 0);
+  --color-violet: oklch(0.580 0.150 290);
   --heading-foreground: oklch(0.215 0.105 265);
 
   /* Purpose accent colors (skill card header bands) */
@@ -157,6 +158,7 @@
   --color-pacific: oklch(0.750 0.120 210);
   --color-arctic: oklch(0.700 0.070 208);
   --color-pearl: oklch(0.200 0 0);
+  --color-violet: oklch(0.650 0.150 290);
   --heading-foreground: oklch(0.870 0.065 208);
 
   /* Purpose accent colors (dark) */
