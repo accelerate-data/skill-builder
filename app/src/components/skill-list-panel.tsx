@@ -139,9 +139,9 @@ function mergeSkills(
   for (const s of fromImported) {
     if (!byName.has(s.name)) {
       byName.set(s.name, s);
-    } else if (s.source === "marketplace" && byName.get(s.name)!.source === "builder") {
-      // Builder record exists but is missing skill_source="marketplace" — override source.
-      byName.set(s.name, { ...byName.get(s.name)!, source: "marketplace" });
+    } else if (s.source !== "builder" && byName.get(s.name)!.source === "builder") {
+      // Builder record exists but imported entry indicates non-builder origin — override source.
+      byName.set(s.name, { ...byName.get(s.name)!, source: s.source });
     }
   }
 
