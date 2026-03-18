@@ -1,6 +1,8 @@
 # Write → Eval → Test → Refine Loop
 
-**Status:** Design — not yet implemented
+**Status:** Partially implemented — shell layout, skill list navigation, and navigation
+model are shipped (VU-550). Skill Workspace tabs (Evals, Description, Improvement
+State Machine) remain design-only.
 
 **Mockups:** [`mockups/`](mockups/) — open `mockups/index.html` to browse all screens.
 

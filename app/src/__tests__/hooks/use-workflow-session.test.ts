@@ -143,7 +143,7 @@ describe("useWorkflowSession", () => {
     renderHook(() => useWorkflowSession(defaultOptions));
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith({ to: "/" });
+      expect(mockNavigate).toHaveBeenCalledWith({ to: "/", search: { tab: undefined } });
     });
   });
 

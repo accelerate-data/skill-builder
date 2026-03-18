@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useScopeBlocked } from "@/hooks/use-scope-blocked";
 import { toast } from "@/lib/toast";
@@ -18,7 +18,6 @@ import { useRefineStore } from "@/stores/refine-store";
 import type { RefineCommand, SkillFile } from "@/stores/refine-store";
 import { useAgentStore } from "@/stores/agent-store";
 import {
-  listRefinableSkills,
   getSkillContentForRefine,
   startRefineSession,
   sendRefineMessage,
@@ -29,23 +28,29 @@ import {
   acquireLock,
   releaseLock,
 } from "@/lib/tauri";
-import { useSkillStore } from "@/stores/skill-store";
 import type { SkillSummary } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
 import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
 import { ResizableSplitPane } from "@/components/refine/resizable-split-pane";
-import { SkillPicker } from "@/components/refine/skill-picker";
 import { ChatPanel } from "@/components/refine/chat-panel";
 import { PreviewPanel } from "@/components/refine/preview-panel";
 
 // Ensure agent-stream listeners are registered
 import "@/hooks/use-agent-stream";
 
+interface WorkspaceRefineProps {
+  skill: SkillSummary;
+}
+
 /** Fire-and-forget: release skill lock and shut down persistent sidecar. */
 function releaseSkillResources(skillName: string, reason: string): void {
-  releaseLock(skillName).catch((e) => console.warn("[refine] non-fatal: op=releaseLock err=%s", e));
-  console.log("[refine] releaseLock: %s (%s)", skillName, reason);
-  cleanupSkillSidecar(skillName).catch((e) => console.warn("[refine] non-fatal: op=cleanupSkillSidecar err=%s", e));
+  releaseLock(skillName).catch((e) =>
+    console.warn("[workspace-refine] non-fatal: op=releaseLock err=%s", e),
+  );
+  console.log("[workspace-refine] releaseLock: %s (%s)", skillName, reason);
+  cleanupSkillSidecar(skillName).catch((e) =>
+    console.warn("[workspace-refine] non-fatal: op=cleanupSkillSidecar err=%s", e),
+  );
 }
 
 /** Load skill files from disk, returning null on failure. */
@@ -60,30 +65,24 @@ async function loadSkillFiles(basePath: string, skillName: string): Promise<Skil
         return a.filename.localeCompare(b.filename);
       });
   } catch (err) {
-    console.error("[refine] Failed to load skill files:", err);
+    console.error("[workspace-refine] Failed to load skill files:", err);
     return null;
   }
 }
 
-export default function RefinePage() {
-  const { skill: skillParam } = useSearch({ from: "/refine" });
+export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const navigate = useNavigate();
 
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const preferredModel = useSettingsStore((s) => s.preferredModel);
   const availableModels = useSettingsStore((s) => s.availableModels);
-  const lockedSkills = useSkillStore((s) => s.lockedSkills);
 
   const selectedSkill = useRefineStore((s) => s.selectedSkill);
-  const refinableSkills = useRefineStore((s) => s.refinableSkills);
-  const isLoadingSkills = useRefineStore((s) => s.isLoadingSkills);
   const skillFiles = useRefineStore((s) => s.skillFiles);
   const previewRevision = useRefineStore((s) => s.previewRevision);
   const isRunning = useRefineStore((s) => s.isRunning);
   const activeAgentId = useRefineStore((s) => s.activeAgentId);
 
-  // Subscribe only to the active run's status — NOT the entire runs object.
-  // Subscribing to `s.runs` causes the whole page to re-render on every agent message flush.
   const activeRunStatus = useAgentStore((s) =>
     activeAgentId ? s.runs[activeAgentId]?.status : undefined,
   );
@@ -92,11 +91,6 @@ export default function RefinePage() {
   );
   const [lastTurnCost, setLastTurnCost] = useState<number | undefined>(undefined);
 
-  // Track which skillParam was last auto-selected so navigating back with a
-  // different skill (e.g. from the skill library) triggers a fresh selection.
-  const autoSelectedRef = useRef<string | null>(null);
-
-  // --- Scope recommendation guard ---
   const scopeBlocked = useScopeBlocked(selectedSkill, "refine");
 
   const extractStructuredResultPayload = useCallback((agentId: string) => {
@@ -104,21 +98,15 @@ export default function RefinePage() {
     return extractStructuredResultFromDisplayItems(run?.displayItems);
   }, []);
 
-  // Release skill lock on unmount — covers the case where the agent has already
-  // finished and the user navigates away without triggering the leave-guard dialog.
-  // The leave-guard onLeave also calls releaseSkillResources when the agent IS
-  // running; the double-release is safe (fire-and-forget, idempotent on the backend).
-  //
-  // IMPORTANT: close the backend session before clearing the React store's sessionId.
-  // If we clear sessionId first, handleSelectSkill's guard sees null and skips
-  // closeRefineSession on re-select — leaving a stale session in the Rust in-memory
-  // map which makes the next startRefineSession fail with "already exists".
+  // Release skill lock on unmount
   useEffect(() => {
     return () => {
       const store = useRefineStore.getState();
       if (store.selectedSkill) {
         if (store.sessionId) {
-          closeRefineSession(store.sessionId).catch((e) => console.warn("[refine] non-fatal: op=closeRefineSession err=%s", e));
+          closeRefineSession(store.sessionId).catch((e) =>
+            console.warn("[workspace-refine] non-fatal: op=closeRefineSession err=%s", e),
+          );
         }
         releaseSkillResources(store.selectedSkill.name, "unmount");
         store.clearSession();
@@ -126,122 +114,83 @@ export default function RefinePage() {
     };
   }, []);
 
-
-  // --- Navigation guard ---
-  // Block navigation while an agent is running and show a confirmation dialog.
+  // Navigation guard
   const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
     shouldBlock: () => useRefineStore.getState().isRunning,
     onLeave: (proceed) => {
       const store = useRefineStore.getState();
-
       store.setRunning(false);
       store.setActiveAgentId(null);
       useAgentStore.getState().clearRuns();
 
-      // Fire-and-forget: close refine session
       if (store.sessionId) {
-        closeRefineSession(store.sessionId).catch((e) => console.warn("[refine] non-fatal: op=closeRefineSession err=%s", e));
+        closeRefineSession(store.sessionId).catch((e) =>
+          console.warn("[workspace-refine] non-fatal: op=closeRefineSession err=%s", e),
+        );
       }
 
       if (store.selectedSkill) {
         releaseSkillResources(store.selectedSkill.name, "navigation");
       }
 
-      // Clear session state so that returning to this page always creates a
-      // fresh session. Without this, the stale sessionId remains in the store
-      // and the auto-select guard skips session creation, causing send_refine_message
-      // to fail on the dead session.
       store.clearSession();
-      autoSelectedRef.current = null;
-
       proceed();
     },
   });
 
-  // Available filenames for @file autocomplete
-  const availableFiles = useMemo(
-    () => skillFiles.map((f) => f.filename),
-    [skillFiles],
-  );
+  const availableFiles = useMemo(() => skillFiles.map((f) => f.filename), [skillFiles]);
 
-  // --- Load refinable skills on mount ---
-  useEffect(() => {
-    if (!workspacePath) return;
-
-    const store = useRefineStore.getState();
-    store.setLoadingSkills(true);
-
-    listRefinableSkills(workspacePath)
-      .then((skills) => {
-        store.setRefinableSkills(skills);
-        store.setLoadingSkills(false);
-      })
-      .catch((err) => {
-        console.error("[refine] Failed to load skills:", err);
-        store.setLoadingSkills(false);
-        toast.error("Failed to load skills", { duration: Infinity });
-      });
-  }, [workspacePath]);
-
-  // --- Select a skill ---
+  // --- Select skill on mount ---
   const handleSelectSkill = useCallback(
-    async (skill: SkillSummary) => {
-      console.log("[refine] selectSkill: %s", skill.name);
+    async (s: SkillSummary) => {
+      console.log("[workspace-refine] selectSkill: %s", s.name);
       const store = useRefineStore.getState();
 
-      // Skip re-selection only when the same skill is already active with a live session.
-      // After navigation away, clearSession() nulls sessionId, so we fall through
-      // and create a fresh session even for the same skill.
-      if (store.selectedSkill?.name === skill.name && store.sessionId) return;
+      if (store.selectedSkill?.name === s.name && store.sessionId) return;
 
-      // Release lock on previous skill (if any) before acquiring new lock
       const prevSkill = store.selectedSkill;
-      if (prevSkill && prevSkill.name !== skill.name) {
-        await releaseLock(prevSkill.name).catch((e) => console.warn("[refine] non-fatal: op=releaseLock err=%s", e));
-        console.log("[refine] releaseLock: %s (skill switch)", prevSkill.name);
+      if (prevSkill && prevSkill.name !== s.name) {
+        await releaseLock(prevSkill.name).catch((e) =>
+          console.warn("[workspace-refine] non-fatal: op=releaseLock err=%s", e),
+        );
       }
 
-      // Acquire lock on the new skill before proceeding
       try {
-        await acquireLock(skill.name);
-        console.log("[refine] acquireLock: %s", skill.name);
+        await acquireLock(s.name);
+        console.log("[workspace-refine] acquireLock: %s", s.name);
       } catch (err) {
-        console.error("[refine] acquireLock failed: %s", skill.name, err);
-        toast.error(`Cannot select skill: ${err instanceof Error ? err.message : String(err)}`, {
+        console.error("[workspace-refine] acquireLock failed: %s", s.name, err);
+        toast.error(`Cannot open Refine: ${err instanceof Error ? err.message : String(err)}`, {
           duration: Infinity,
           cause: err,
-          context: { operation: "refine_acquire_lock", skillName: skill.name },
+          context: { operation: "workspace_refine_acquire_lock", skillName: s.name },
         });
         return;
       }
 
-      // Close previous backend session if any
       const prevSessionId = store.sessionId;
       if (prevSessionId) {
         await closeRefineSession(prevSessionId).catch((err) =>
-          console.warn("[refine] Failed to close previous session:", err),
+          console.warn("[workspace-refine] Failed to close previous session:", err),
         );
       }
 
-      // Reset store state (clears sessionId, messages, etc.)
-      store.selectSkill(skill);
+      store.selectSkill(s);
       store.setLoadingFiles(true);
 
       if (workspacePath) {
-        // Start backend refine session — pass workspacePath (app-managed workspace dir),
-        // Rust resolves skills_path from DB for file lookups.
         try {
-          const session = await startRefineSession(skill.name, workspacePath);
+          const session = await startRefineSession(s.name, workspacePath);
           useRefineStore.getState().setSessionId(session.session_id);
         } catch (err) {
-          console.error("[refine] Failed to start refine session:", err);
+          console.error("[workspace-refine] Failed to start refine session:", err);
           toast.error("Failed to start refine session", { duration: Infinity });
           store.setLoadingFiles(false);
           return;
         }
 
-        const files = await loadSkillFiles(workspacePath, skill.name);
-      if (files) {
+        const files = await loadSkillFiles(workspacePath, s.name);
+        if (files) {
           store.setSkillFiles(files);
           store.setGitDiff(null);
           if (files.length > 0) {
@@ -258,33 +207,29 @@ export default function RefinePage() {
     [workspacePath],
   );
 
-  // --- Auto-select skill from search param ---
   useEffect(() => {
-    if (!skillParam || refinableSkills.length === 0) return;
-    // Re-run if skillParam changes (e.g. navigating back with a different skill).
-    if (autoSelectedRef.current === skillParam) return;
+    handleSelectSkill(skill);
+    // Run once per skill identity — re-run only if skill.name changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skill.name]);
 
-    const match = refinableSkills.find((s) => s.name === skillParam);
-    if (match) {
-      autoSelectedRef.current = skillParam;
-      handleSelectSkill(match);
-    }
-  }, [skillParam, refinableSkills, handleSelectSkill]);
-
-  // --- Watch agent completion (only re-runs when status changes, not every message) ---
+  // --- Watch agent completion ---
   useEffect(() => {
     if (!activeAgentId || !activeRunStatus) return;
 
     const isTerminal = ["completed", "error", "shutdown"].includes(activeRunStatus);
     if (!isTerminal) return;
 
-    console.log("[refine] agent %s finished: status=%s", activeAgentId, activeRunStatus);
+    console.log(
+      "[workspace-refine] agent %s finished: status=%s",
+      activeAgentId,
+      activeRunStatus,
+    );
 
     if (activeRunStatus === "error" || activeRunStatus === "shutdown") {
       toast.error("Agent failed — check the chat for details", { duration: Infinity });
     }
 
-    // Track last turn cost for display
     const agentRun = useAgentStore.getState().runs[activeAgentId];
     setLastTurnCost(agentRun?.totalCost);
 
@@ -293,9 +238,10 @@ export default function RefinePage() {
 
       if (activeRunStatus === "completed" && workspacePath && selectedSkill) {
         const structuredOutput = extractStructuredResultPayload(activeAgentId);
-        const hasStructuredObject = !!structuredOutput
-          && typeof structuredOutput === "object"
-          && !Array.isArray(structuredOutput);
+        const hasStructuredObject =
+          !!structuredOutput &&
+          typeof structuredOutput === "object" &&
+          !Array.isArray(structuredOutput);
 
         try {
           const finalized = await finalizeRefineRun(
@@ -311,9 +257,12 @@ export default function RefinePage() {
           );
           store.setGitDiff(finalized.diff);
           toast.info("Refinement complete");
-        } catch (err) {
+        } catch {
           try {
-            if (hasStructuredObject && (structuredOutput as Record<string, unknown>).status === "validation_complete") {
+            if (
+              hasStructuredObject &&
+              (structuredOutput as Record<string, unknown>).status === "validation_complete"
+            ) {
               await materializeRefineValidationOutput(
                 selectedSkill.name,
                 workspacePath,
@@ -348,31 +297,28 @@ export default function RefinePage() {
     void complete();
   }, [activeAgentId, activeRunStatus, workspacePath, selectedSkill, extractStructuredResultPayload]);
 
-
   // --- Send a message ---
   const handleSend = useCallback(
     async (text: string, targetFiles?: string[], command?: RefineCommand) => {
       const store = useRefineStore.getState();
       const sessionId = store.sessionId;
       if (!selectedSkill || !workspacePath || !sessionId) return;
-      if (isRunning) return; // guard against double-submission race
+      if (isRunning) return;
 
-      console.log("[refine] send: skill=%s command=%s files=%s", selectedSkill.name, command ?? "refine", targetFiles?.join(",") ?? "all");
+      console.log(
+        "[workspace-refine] send: skill=%s command=%s files=%s",
+        selectedSkill.name,
+        command ?? "refine",
+        targetFiles?.join(",") ?? "all",
+      );
 
       const model = preferredModel ?? "sonnet";
 
       store.setGitDiff(null);
-
-      // Add user message
       store.addUserMessage(text, targetFiles, command);
-
-      // Mark running before async call to prevent double-submission
       store.setRunning(true);
 
       try {
-        // sendRefineMessage builds the full prompt server-side with all 3 paths,
-        // skill type, command, and user context. SDK maintains conversation state
-        // across turns via streaming input mode.
         const agentId = await sendRefineMessage(
           sessionId,
           text,
@@ -381,8 +327,6 @@ export default function RefinePage() {
           command,
         );
 
-        // Register run in agent store (events may have already started streaming —
-        // addMessage auto-creates runs, registerRun merges with the correct model)
         useAgentStore.getState().registerRun(
           agentId,
           model,
@@ -391,11 +335,10 @@ export default function RefinePage() {
           `synthetic:refine:${selectedSkill.name}:${sessionId}`,
         );
 
-        // Add agent turn to chat
         store.addAgentTurn(agentId);
         store.setActiveAgentId(agentId);
       } catch (err) {
-        console.error("[refine] Failed to send refine message:", err);
+        console.error("[workspace-refine] Failed to send refine message:", err);
         store.setRunning(false);
         store.setActiveAgentId(null);
         toast.error("Failed to start agent", { duration: Infinity });
@@ -429,8 +372,7 @@ export default function RefinePage() {
 
   const activeModel = preferredModel ?? "claude-sonnet-4-6";
   const modelLabel =
-    availableModels.find((m) => m.id === activeModel)?.displayName ??
-    deriveModelLabel(activeModel);
+    availableModels.find((m) => m.id === activeModel)?.displayName ?? deriveModelLabel(activeModel);
 
   const dotStyle = isRunning
     ? { background: "var(--color-pacific)" }
@@ -438,37 +380,26 @@ export default function RefinePage() {
       ? { background: "var(--color-seafoam)" }
       : undefined;
   const dotClass = isRunning ? "animate-pulse" : selectedSkill ? "" : "bg-zinc-500";
-  const statusLabel = isRunning ? "running..." : selectedSkill ? "ready" : "no skill selected";
+  const statusLabel = isRunning ? "running..." : selectedSkill ? "ready" : "loading...";
   const statusCost = activeRunCost ?? (!isRunning ? lastTurnCost : undefined);
 
   return (
-    <div className="-m-6 flex h-[calc(100%+3rem)] flex-col">
-      {/* Top bar with skill picker */}
-      <div className="flex items-center gap-3 border-b px-4 py-2">
-        <SkillPicker
-          skills={refinableSkills}
-          selected={selectedSkill}
-          isLoading={isLoadingSkills}
-          disabled={isRunning}
-          lockedSkills={lockedSkills}
-          onSelect={handleSelectSkill}
-        />
-      </div>
-
+    <div className="flex h-full flex-col">
       {scopeBlocked && selectedSkill && (
         <div className="flex items-center gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400">
           <AlertTriangle className="size-4 shrink-0" />
           <span>Scope recommendation active — refine is blocked until resolved.</span>
           <button
             className="ml-auto shrink-0 underline underline-offset-2"
-            onClick={() => navigate({ to: "/skill/$skillName", params: { skillName: selectedSkill.name } })}
+            onClick={() =>
+              navigate({ to: "/skill/$skillName", params: { skillName: skill.name } })
+            }
           >
             Go to Workflow →
           </button>
         </div>
       )}
 
-      {/* Main split pane */}
       <div className="min-h-0 w-full flex-1 overflow-hidden">
         <ResizableSplitPane
           left={
@@ -512,7 +443,6 @@ export default function RefinePage() {
         )}
       </div>
 
-      {/* Navigation guard dialog */}
       {blockerStatus === "blocked" && (
         <Dialog open onOpenChange={(open) => { if (!open) handleNavStay(); }}>
           <DialogContent showCloseButton={false}>
@@ -533,7 +463,6 @@ export default function RefinePage() {
           </DialogContent>
         </Dialog>
       )}
-
     </div>
   );
 }

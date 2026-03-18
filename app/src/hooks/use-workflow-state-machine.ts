@@ -185,11 +185,21 @@ export function useWorkflowStateMachine({
 
     if (!wasToggle) return;
     if (!workspacePath) return;
-    const status = steps[currentStep]?.status;
-    if (status && status !== "pending") return;
     if (isRunning || pendingAutoStartStep !== null || gateLoading) return;
-    console.log(`[workflow] Auto-starting step ${currentStep} (review→update toggle)`);
-    setPendingAutoStartStep(currentStep);
+
+    // Use the same target step as the reposition effect (Effect C) so that
+    // pendingAutoStartStep matches where currentStep will land after reposition.
+    // Without this, viewing a later completed step in Review mode causes a mismatch:
+    // wasToggle sets pendingAutoStartStep=viewingStep, reposition moves currentStep
+    // to firstIncompleteStep, and Effect A sees they differ and skips auto-start.
+    const { disabledSteps: disabled } = useWorkflowStore.getState();
+    const first = steps.find((s) => s.status !== "completed" && !disabled.includes(s.id));
+    const targetStep = first ? first.id : currentStep;
+
+    const status = steps[targetStep]?.status;
+    if (status && status !== "pending") return;
+    console.log(`[workflow] Auto-starting step ${targetStep} (review→update toggle)`);
+    setPendingAutoStartStep(targetStep);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, reviewMode]);
 

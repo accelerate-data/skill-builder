@@ -55,11 +55,10 @@ export function useWorkflowSession({
     acquireLock(skillName).catch((err) => {
       if (mounted) {
         toast.error(`Could not lock skill: ${err instanceof Error ? err.message : String(err)}`, {
-          duration: Infinity,
           cause: err,
           context: { operation: "workflow_acquire_lock", skillName },
         });
-        navigate({ to: "/" });
+        navigate({ to: "/", search: { tab: undefined } });
       }
     });
 

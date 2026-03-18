@@ -1,11 +1,18 @@
 import { useCallback } from "react";
-import { useParams, useNavigate } from "@tanstack/react-router";
+import { useParams, useNavigate, useLocation } from "@tanstack/react-router";
 import {
   Play,
   AlertCircle,
   RotateCcw,
   Loader2,
+  CircleHelp,
 } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { FeedbackDialog } from "@/components/feedback-dialog";
+import { getWorkflowStepUrl } from "@/lib/help-urls";
+import { cn } from "@/lib/utils";
+import type { WorkflowStep } from "@/stores/workflow-store";
+import { useSkillStore } from "@/stores/skill-store";
 import { Button } from "@/components/ui/button";
 
 import {
@@ -17,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+import { ReviewModeToggle } from "@/components/review-mode-toggle";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { AgentInitializingIndicator } from "@/components/agent-initializing-indicator";
@@ -39,9 +47,76 @@ import { useWorkflowAutosave } from "@/hooks/use-workflow-autosave";
 import { useWorkflowSession } from "@/hooks/use-workflow-session";
 import { useWorkflowStateMachine } from "@/hooks/use-workflow-state-machine";
 
+interface WorkflowMainHeaderProps {
+  skillName: string;
+  currentStep: number;
+  isRunning: boolean;
+  isInitializing: boolean;
+  gateLoading: boolean;
+  stepStatus: WorkflowStep["status"] | undefined;
+}
+
+function WorkflowMainHeader({ skillName, currentStep, isRunning, isInitializing, gateLoading, stepStatus }: WorkflowMainHeaderProps) {
+  const active = isRunning || isInitializing;
+
+  let dotColor: string | undefined;
+  let dotStyle: React.CSSProperties | undefined;
+  let pulse = false;
+  let label = "";
+
+  if (active) {
+    dotStyle = { backgroundColor: "var(--color-seafoam)" };
+    pulse = true;
+    label = "Running\u2026";
+  } else if (gateLoading) {
+    dotStyle = { backgroundColor: "var(--color-pacific)" };
+    pulse = true;
+    label = "Evaluating\u2026";
+  } else if (stepStatus === "waiting_for_user") {
+    dotColor = "bg-amber-600 dark:bg-amber-400";
+    label = "Awaiting input";
+  }
+
+  const showStatus = label.length > 0;
+
+  return (
+    <div className="flex h-12 shrink-0 items-center gap-2 border-b bg-card px-5">
+      <span className="text-[13px] font-semibold" style={{ color: "var(--color-navy)" }}>
+        {skillName}
+      </span>
+      <span className="text-[13px] text-muted-foreground">· Workflow</span>
+      <div className="ml-auto flex items-center gap-3">
+        <ReviewModeToggle />
+        {showStatus && (
+          <div className="flex items-center gap-1.5">
+            <div
+              className={cn("size-2.5 shrink-0 rounded-full", dotColor, pulse && "animate-dot-pulse")}
+              style={dotStyle}
+            />
+            <span className="font-mono text-[11px]" style={{ color: "var(--color-pacific)" }}>
+              {label}
+            </span>
+          </div>
+        )}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => openUrl(getWorkflowStepUrl(currentStep))}
+          title="Help"
+        >
+          <CircleHelp className="size-4" />
+        </Button>
+        <FeedbackDialog />
+      </div>
+    </div>
+  );
+}
+
 export default function WorkflowPage() {
   const { skillName } = useParams({ from: "/skill/$skillName" });
   const navigate = useNavigate();
+  const location = useLocation();
+  const autoStart = location.state?.autoStart === true;
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const skillsPath = useSettingsStore((s) => s.skillsPath);
   const {
@@ -73,6 +148,7 @@ export default function WorkflowPage() {
     skillsPath,
     stepConfig,
     currentStep,
+    autoStart,
     steps,
     purpose,
     hydrated,
@@ -180,9 +256,10 @@ export default function WorkflowPage() {
     const nextStepBlocked = !isTerminalStep && disabledSteps.includes(nextStep);
     const showDecisionConflictResolution = currentStep === 2 && nextStepBlocked;
     const isLastStep = isTerminalStep || (nextStepBlocked && !showDecisionConflictResolution);
-    const handleClose = () => navigate({ to: "/" });
+    const handleClose = () => navigate({ to: "/", search: { tab: undefined } });
     const handleRefine = () => {
-      navigate({ to: "/refine", search: { skill: skillName } });
+      useSkillStore.getState().setActiveSkill(skillName);
+      navigate({ to: "/", search: { tab: "refine" } });
     };
     const nextStepLabel = !isTerminalStep ? steps[nextStep]?.name ?? "Next Step" : undefined;
 
@@ -454,50 +531,60 @@ export default function WorkflowPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="flex h-[calc(100%+3rem)] -m-6">
-        <WorkflowSidebar
-          steps={steps}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {/* Main header — skill name + status */}
+        <WorkflowMainHeader
+          skillName={skillName}
           currentStep={currentStep}
-          disabledSteps={disabledSteps}
-          onStepClick={(id) => {
-            if (steps[id]?.status !== "completed") return;
-            if (isRunning) {
-              setPendingStepSwitch(id);
-              return;
-            }
-            if (reviewMode) {
-              setCurrentStep(id);
-              return;
-            }
-            if (id < currentStep) {
-              setResetTarget(id);
-              return;
-            }
-            setCurrentStep(id);
-          }}
+          isRunning={isRunning}
+          isInitializing={isInitializing}
+          gateLoading={gateLoading}
+          stepStatus={currentStepDef?.status}
         />
 
-        <div className="flex flex-1 flex-col overflow-hidden">
-          {/* Step header */}
-          <div className="flex items-center justify-between border-b px-6 py-4">
-            <div className="flex flex-col gap-1">
-              <p className="text-xs font-medium text-muted-foreground tracking-wide uppercase">
-                {skillName.replace(/[-_]/g, " ")}
-              </p>
-              <h2 className="text-lg font-semibold">
-                Step {currentStep + 1}: {currentStepDef?.name}
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {currentStepDef?.description}
-              </p>
-            </div>
-          </div>
+        {/* Workflow body — step sidebar + step content */}
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <WorkflowSidebar
+            steps={steps}
+            currentStep={currentStep}
+            disabledSteps={disabledSteps}
+            onStepClick={(id) => {
+              if (steps[id]?.status !== "completed") return;
+              if (isRunning) {
+                setPendingStepSwitch(id);
+                return;
+              }
+              if (reviewMode) {
+                setCurrentStep(id);
+                return;
+              }
+              if (id < currentStep) {
+                setResetTarget(id);
+                return;
+              }
+              setCurrentStep(id);
+            }}
+          />
 
-          {/* Content area */}
-          <div className={`flex flex-1 flex-col overflow-hidden ${
-            activeAgentId ? "" : "p-4"
-          }`}>
-            {renderContent()}
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {/* Step header */}
+            <div className="flex items-center justify-between border-b px-6 py-4">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-lg font-semibold">
+                  Step {currentStep + 1}: {currentStepDef?.name}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {currentStepDef?.description}
+                </p>
+              </div>
+            </div>
+
+            {/* Content area */}
+            <div className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
+              activeAgentId ? "" : "p-4"
+            }`}>
+              {renderContent()}
+            </div>
           </div>
         </div>
       </div>

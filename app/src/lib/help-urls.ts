@@ -2,10 +2,7 @@ const BASE = "https://hbanerjee74.github.io/skill-builder";
 
 export const HELP_URLS: Record<string, string> = {
   "/":         `${BASE}/dashboard`,
-  "/refine":   `${BASE}/refine`,
-  "/test":     `${BASE}/test`,
   "/settings": `${BASE}/settings`,
-  "/usage":    `${BASE}/usage`,
 };
 
 const WORKFLOW_STEP_URLS: Record<number, string> = {

@@ -93,11 +93,18 @@ pub async fn start_refine_session(
         e.to_string()
     })?;
 
-    // Only one session per skill at a time
-    if map.values().any(|s| s.skill_name == skill_name) {
-        let msg = format!("A refine session already exists for skill '{}'", skill_name);
-        log::error!("[start_refine_session] {}", msg);
-        return Err(msg);
+    // If a stale session already exists for this skill (e.g. due to an
+    // unmount/remount race), silently remove it so the new session can start.
+    if let Some(stale_id) = map
+        .iter()
+        .find(|(_, s)| s.skill_name == skill_name)
+        .map(|(id, _)| id.clone())
+    {
+        log::info!(
+            "[start_refine_session] removing stale session for skill '{}' before restart",
+            skill_name
+        );
+        map.remove(&stale_id);
     }
 
     let session_id = uuid::Uuid::new_v4().to_string();

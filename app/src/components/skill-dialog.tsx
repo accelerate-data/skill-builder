@@ -21,7 +21,6 @@ import TagInput from "@/components/tag-input"
 import { GhostTextarea } from "@/components/ghost-input"
 import { Textarea } from "@/components/ui/textarea"
 import { useSettingsStore } from "@/stores/settings-store"
-import { useWorkflowStore } from "@/stores/workflow-store"
 import { renameSkill, updateSkillMetadata, generateSuggestions, createSkill, type FieldSuggestions } from "@/lib/tauri"
 import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
 import type { SkillSummary } from "@/lib/types"
@@ -72,7 +71,7 @@ function parseIntakeContext(json: string | null | undefined): string {
 interface SkillDialogCreateProps {
   mode: "create"
   workspacePath: string
-  onCreated: () => Promise<void>
+  onCreated: (createdName: string) => Promise<void>
   tagSuggestions?: string[]
   existingNames?: string[]
   open?: boolean
@@ -332,10 +331,8 @@ export default function SkillDialog(props: SkillDialogProps) {
         console.log(`[skill] Created skill "${skillName}"`)
         toast.success(`Skill "${skillName}" created`)
         const createdName = skillName.trim()
-        await createOnCreated?.()
-        // Signal the workflow page to start in update mode (auto-start step 0)
-        useWorkflowStore.getState().setPendingUpdateMode(true)
-        navigate({ to: "/skill/$skillName", params: { skillName: createdName } })
+        await createOnCreated?.(createdName)
+        navigate({ to: "/skill/$skillName", params: { skillName: createdName }, state: { autoStart: true } })
         handleOpenChange(false)
       }
     } catch (err) {

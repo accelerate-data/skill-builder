@@ -21,7 +21,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <ThemeProvider>
       <ErrorBoundary>
         <RouterProvider router={router} />
-        <Toaster />
+        <Toaster position="top-right" offset={{ top: 40, right: 12 }} />
       </ErrorBoundary>
     </ThemeProvider>
   </React.StrictMode>

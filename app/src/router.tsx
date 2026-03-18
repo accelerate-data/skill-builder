@@ -8,9 +8,6 @@ import { AppLayout } from "./components/layout/app-layout";
 import DashboardPage from "./pages/dashboard";
 import SettingsPage from "./pages/settings";
 import WorkflowPage from "./pages/workflow";
-import UsagePage from "./pages/usage";
-import RefinePage from "./pages/refine";
-import TestPage from "./pages/test";
 const rootRoute = createRootRoute({
   component: AppLayout,
 });
@@ -19,6 +16,9 @@ const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   component: DashboardPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    tab: typeof search.tab === "string" ? search.tab : undefined,
+  }),
 });
 
 const settingsRoute = createRoute({
@@ -41,38 +41,20 @@ const skillsRedirectRoute = createRoute({
   },
 });
 
-const usageRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/usage",
-  component: UsagePage,
-});
-
-const refineRoute = createRoute({
+const refineRedirectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/refine",
-  component: RefinePage,
-  validateSearch: (search: Record<string, unknown>) => ({
-    skill: typeof search.skill === "string" ? search.skill : undefined,
-  }),
-});
-
-const testRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/test",
-  component: TestPage,
-  validateSearch: (search: Record<string, unknown>) => ({
-    skill: typeof search.skill === "string" ? search.skill : undefined,
-  }),
+  beforeLoad: () => {
+    throw redirect({ to: "/", search: { tab: "refine" } });
+  },
 });
 
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
   settingsRoute,
   skillsRedirectRoute,
-  usageRoute,
   workflowRoute,
-  refineRoute,
-  testRoute,
+  refineRedirectRoute,
 ]);
 
 export const router = createRouter({ routeTree });
@@ -80,5 +62,8 @@ export const router = createRouter({ routeTree });
 declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router;
+  }
+  interface HistoryState {
+    autoStart?: boolean;
   }
 }

@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
+import { useSkillStore } from "@/stores/skill-store";
 import {
   getWorkflowState,
   getDisabledSteps,
   saveWorkflowState,
+  listSkills,
   readFile,
   getContextFileContent,
 } from "@/lib/tauri";
@@ -27,6 +29,8 @@ interface UseWorkflowPersistenceOptions {
   purpose: string | null;
   /** Whether the page has hydrated from saved state */
   hydrated: boolean;
+  /** When true, switch to Update mode after hydration to auto-start the first pending step. */
+  autoStart?: boolean;
 }
 
 export function useWorkflowPersistence({
@@ -38,6 +42,7 @@ export function useWorkflowPersistence({
   steps,
   purpose,
   hydrated,
+  autoStart = false,
 }: UseWorkflowPersistenceOptions) {
   const [errorHasArtifacts, setErrorHasArtifacts] = useState(false);
 
@@ -47,13 +52,6 @@ export function useWorkflowPersistence({
   const setHydrated = useWorkflowStore((state) => state.setHydrated);
 
   const clearRuns = useAgentStore.getState().clearRuns;
-  const consumeUpdateMode = () => {
-    const store = useWorkflowStore.getState();
-    if (store.pendingUpdateMode) {
-      store.setPendingUpdateMode(false);
-      store.setReviewMode(false);
-    }
-  };
 
   // Initialize workflow from saved state on skill change
   useEffect(() => {
@@ -61,10 +59,22 @@ export function useWorkflowPersistence({
 
     const store = useWorkflowStore.getState();
 
-    // Skip if already hydrated for this skill
+    // Skip if already hydrated for this skill.
+    // Always reset reviewMode to match navigation intent: Update for autoStart, Review otherwise.
+    // Without the else branch, re-navigating to a skill previously opened with autoStart=true
+    // would leave reviewMode=false on a plain row-click (no autoStart).
     if (store.skillName === skillName && store.hydrated) {
-      consumeUpdateMode();
+      store.setReviewMode(!autoStart);
       return;
+    }
+
+    // Capture and clear pendingNoReviewMode synchronously before async work.
+    // When true (sidebar navigation to in-progress skill), we pass initialReviewMode=false
+    // directly to initWorkflow so reviewMode never transitions true→false — preventing the
+    // wasToggle auto-start in use-workflow-state-machine.ts.
+    const isNoReviewMode = store.pendingNoReviewMode;
+    if (isNoReviewMode) {
+      store.setPendingNoReviewMode(false);
     }
 
     // Clear stale agent data from previous skill
@@ -78,8 +88,9 @@ export function useWorkflowPersistence({
       .then(([state, disabled]) => {
         if (cancelled) return;
 
-        // Initialize workflow with purpose from saved state
-        initWorkflow(skillName, state.run?.purpose);
+        // Initialize workflow with purpose from saved state.
+        // Pass initialReviewMode=false for sidebar navigation to suppress wasToggle auto-start.
+        initWorkflow(skillName, state.run?.purpose, isNoReviewMode ? false : undefined);
 
         // Apply disabled steps immediately
         useWorkflowStore.getState().setDisabledSteps(disabled);
@@ -99,12 +110,13 @@ export function useWorkflowPersistence({
         }
       })
       .catch(() => {
-        setHydrated(true);
+        if (!cancelled) setHydrated(true);
       })
       .finally(() => {
-        // Consume the pendingUpdateMode flag exactly once
-        if (!cancelled) {
-          consumeUpdateMode();
+        // If autoStart was requested, switch to Update mode after hydration so the
+        // wasToggle effect (reviewMode: true→false) fires and schedules auto-start.
+        if (!cancelled && autoStart) {
+          useWorkflowStore.getState().setReviewMode(false);
         }
       });
 
@@ -173,9 +185,23 @@ export function useWorkflowPersistence({
         status = "pending";
       }
 
-      saveWorkflowState(skillName, latestStore.currentStep, status, stepStatuses, purpose ?? undefined).catch(
-        (err) => console.error("Failed to persist workflow state:", err)
+      // When viewing (not running or completed), persist the highest completed step so
+      // navigating back to view a previous step doesn't decrease current_step in the DB.
+      const highestCompletedStep = latestStore.steps.reduce(
+        (max, s, idx) => s.status === "completed" ? Math.max(max, idx) : max,
+        latestStore.currentStep,
       );
+      const stepToSave = status === "pending" ? highestCompletedStep : latestStore.currentStep;
+
+      saveWorkflowState(skillName, stepToSave, status, stepStatuses, purpose ?? undefined)
+        .then(() => {
+          if (workspacePath) {
+            listSkills(workspacePath)
+              .then(useSkillStore.getState().setSkills)
+              .catch((err) => console.error("event=refresh_skills_failed error=%s", err));
+          }
+        })
+        .catch((err) => console.error("Failed to persist workflow state:", err));
     }, 300);
 
     return () => clearTimeout(timer);

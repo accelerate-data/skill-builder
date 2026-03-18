@@ -14,6 +14,7 @@ import { SdkSection } from "@/components/settings/sdk-section"
 import { MarketplaceSection } from "@/components/settings/marketplace-section"
 import { GitHubSection } from "@/components/settings/github-section"
 import { AdvancedSection } from "@/components/settings/advanced-section"
+import { UsageSection } from "@/components/settings/usage-section"
 import { useSettingsForm } from "@/hooks/use-settings-form"
 
 const sections = [
@@ -23,6 +24,7 @@ const sections = [
   { id: "marketplace", label: "Marketplace" },
   { id: "github", label: "GitHub" },
   { id: "advanced", label: "Advanced" },
+  { id: "usage", label: "Usage" },
 ] as const
 
 type SectionId = typeof sections[number]["id"]
@@ -57,7 +59,7 @@ export default function SettingsPage() {
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={() => navigate({ to: "/" })}
+            onClick={() => navigate({ to: "/", search: { tab: undefined } })}
             title="Back to Dashboard"
           >
             <ArrowLeft className="size-4" />
@@ -154,6 +156,8 @@ export default function SettingsPage() {
               autoSave={form.autoSave}
             />
           )}
+
+          {activeSection === "usage" && <UsageSection />}
         </div>
       </div>
 
