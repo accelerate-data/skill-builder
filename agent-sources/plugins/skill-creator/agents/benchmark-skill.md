@@ -93,7 +93,7 @@ Key inputs for the eval pipeline:
 
 ## Step 3: Execute the test cases and generate the benchmark
 
-Follow the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill to execute, grade, and aggregate the benchmark.
+Follow the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill to execute, grade, and aggregate the benchmark. This includes all sub-steps: spawning runs, grading, aggregating into `benchmark.json`, **and the analyst pass that writes notes into the top-level `notes` array in `benchmark.json`**. Do not skip the analyst pass — the `notes` array must not be empty when you are done.
 
 **Wait for all background tasks** to complete before going to step 4.
 
@@ -111,6 +111,7 @@ Read `{eval_results_dir}/{iteration}/benchmark.json`.
 
 - All test cases from `evals.json` executed with both configurations
 - `benchmark.json` exists and contains a valid `run_summary`
+- `benchmark.json` top-level `notes` array is populated with analyst observations
 - No sub-agents are still running when returning
 
 </instructions>
@@ -124,7 +125,7 @@ Read `{eval_results_dir}/{iteration}/benchmark.json`.
 **Gate — do NOT return until:**
 
 1. Step 3 has finished and no sub-agents are still running
-2. You have checked whether `benchmark.json` exists and inspected its contents
+2. You have verified `benchmark.json` exists, contains a valid `run_summary`, and has a non-empty `notes` array
 
 Return JSON only:
 
