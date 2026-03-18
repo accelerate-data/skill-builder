@@ -60,11 +60,11 @@ export function useWorkflowPersistence({
     const store = useWorkflowStore.getState();
 
     // Skip if already hydrated for this skill.
-    // If autoStart is requested, switch to Update mode; otherwise preserve the existing mode.
+    // Always reset reviewMode to match navigation intent: Update for autoStart, Review otherwise.
+    // Without the else branch, re-navigating to a skill previously opened with autoStart=true
+    // would leave reviewMode=false on a plain row-click (no autoStart).
     if (store.skillName === skillName && store.hydrated) {
-      if (autoStart) {
-        store.setReviewMode(false);
-      }
+      store.setReviewMode(!autoStart);
       return;
     }
 

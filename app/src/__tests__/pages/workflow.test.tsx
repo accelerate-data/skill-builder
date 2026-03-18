@@ -1556,12 +1556,17 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     vi.mocked(runWorkflowStep).mockClear();
     vi.mocked(resetWorkflowStep).mockClear();
     vi.mocked(endWorkflowSession).mockClear();
+
+    // Tests in this block set reviewMode=false (Update mode). Signal autoStart so the
+    // persistence hook's early-return preserves Update mode instead of resetting to Review.
+    mockLocation.state = { autoStart: true };
   });
 
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
     useSettingsStore.getState().reset();
+    mockLocation.state = {};
     // Restore the default sidebar mock in case a test overrode it
     vi.mocked(WorkflowSidebar).mockImplementation(() => <div data-testid="workflow-sidebar" />);
   });
@@ -2050,12 +2055,17 @@ describe("step reset behavior regressions", () => {
     vi.mocked(resetWorkflowStep).mockClear();
     vi.mocked(endWorkflowSession).mockClear();
     vi.mocked(previewStepReset).mockClear();
+
+    // Tests in this block set reviewMode=false (Update mode). Signal autoStart so the
+    // persistence hook's early-return preserves Update mode instead of resetting to Review.
+    mockLocation.state = { autoStart: true };
   });
 
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
     useSettingsStore.getState().reset();
+    mockLocation.state = {};
     // Restore default mocks in case a test overrode them
     vi.mocked(WorkflowSidebar).mockImplementation(() => <div data-testid="workflow-sidebar" />);
     vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);

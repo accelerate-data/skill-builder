@@ -96,7 +96,7 @@ describe("useWorkflowPersistence", () => {
     });
   });
 
-  it("skips hydration if already hydrated for same skill", async () => {
+  it("skips hydration if already hydrated for same skill, resets to Review mode", async () => {
     mockStoreState.skillName = "test-skill";
     mockStoreState.hydrated = true;
 
@@ -104,6 +104,18 @@ describe("useWorkflowPersistence", () => {
 
     await new Promise((r) => setTimeout(r, 10));
     expect(getWorkflowState).not.toHaveBeenCalled();
+    expect(mockSetReviewMode).toHaveBeenCalledWith(true);
+  });
+
+  it("sets Update mode on early-return when autoStart=true and already hydrated", async () => {
+    mockStoreState.skillName = "test-skill";
+    mockStoreState.hydrated = true;
+
+    renderHook(() => useWorkflowPersistence({ ...defaultOptions, autoStart: true }));
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(getWorkflowState).not.toHaveBeenCalled();
+    expect(mockSetReviewMode).toHaveBeenCalledWith(false);
   });
 
   it("returns errorHasArtifacts=false initially", () => {
