@@ -44,26 +44,33 @@ Before executing each step, write one short status line (≤ 10 words) before it
 
 Read and verify that the required inputs exist before proceeding:
 
-1. Read `{skill_output_dir}/SKILL.md` — this is the skill being benchmarked. If it does not exist or is a stub (contains `contradictory_inputs: true` or `scope_recommendation: true` in frontmatter), return immediately:
+- Read `{skill_output_dir}/SKILL.md` — this is the skill being benchmarked. If it does not exist or is a stub (contains `contradictory_inputs: true` or `scope_recommendation: true` in frontmatter), return immediately:
 
 ```json
 { "status": "benchmarked", "benchmark_status": "skipped", "call_trace": ["validate-inputs-stub"] }
 ```
 
-2. Check `{eval_dir}/evals.json` — if it exists from a prior run, read it to understand existing test cases. If it does not exist, you will create it in Step 1.
+- Read `{eval_dir}/evals.json` — this file is required and contains the test case definitions. If it does not exist, return immediately:
+
+```json
+{ "status": "benchmarked", "benchmark_status": "skipped", "call_trace": ["validate-inputs-missing-evals"] }
+```
 
 3. If `baseline_mode` is `"prior_version"`:
    - Read `{prior_skill_snapshot_dir}/SKILL.md` to confirm the snapshot exists. If the snapshot directory or SKILL.md is missing, fall back to `"no_skill"` mode and log a warning: "Prior version snapshot not found — falling back to no_skill baseline."
 
-4. Read `{workspace_dir}/user-context.md` for skill metadata (name, purpose, description) to inform test case design.
+4. Read `{workspace_dir}/user-context.md` for skill metadata (name, purpose, description). If it does not exist, return immediately:
+
+```json
+{ "status": "benchmarked", "benchmark_status": "skipped", "call_trace": ["validate-inputs-missing-user-context"] }
+```
 
 ## Step 1: Spawn executor sub-agents
 
 Follow the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill.
 
-- Use the SKILL.md you read in Step 0 to design 3+ evaluation scenarios covering distinct topic areas.
-- Create `evals.json` in `eval_dir` with the test case prompts (assertions come later in Step 2).
-- For each test case, spawn two sub-agents in the same turn (parallel execution):
+- Use the `evals.json` you read in Step 0 — it contains the test case prompts and assertions. Do NOT create or overwrite `evals.json`.
+- For each test case in `evals.json`, spawn two sub-agents in the same turn (parallel execution):
   - **With-skill run**: provides skill path (`skill_output_dir`), eval prompt, and output directory `{eval_results_dir}/iteration-1/eval-{ID}/with_skill/run-1/outputs/`
   - **Baseline run**: depends on `baseline_mode`:
     - `"no_skill"`: same prompt, no skill at all. Output to `{eval_results_dir}/iteration-1/eval-{ID}/without_skill/run-1/outputs/`
@@ -71,13 +78,7 @@ Follow the **Running and evaluating test cases** section in `skill-creator:skill
 - Create `eval_metadata.json` for each test case with fields: `eval_id`, `eval_name`, `prompt`, `assertions`.
 - Don't create all directories upfront — create them as you go.
 
-## Step 2: While runs execute, draft assertions
-
-- Draft quantitative assertions while executor sub-agents run (don't wait idle).
-- Good assertions are objectively verifiable with descriptive names.
-- Update `eval_metadata.json` and `evals/evals.json` with drafted assertions.
-
-## Step 3: Capture timing data
+## Step 2: Capture timing data
 
 As each executor sub-agent completes, you receive a task notification with `total_tokens` and `duration_ms`.
 
@@ -93,7 +94,7 @@ As each executor sub-agent completes, you receive a task notification with `tota
 
 This is the **only opportunity** to capture this data — it is not persisted elsewhere. Process each notification as it arrives.
 
-## Step 4: Grade evaluations
+## Step 3: Grade evaluations
 
 Spawn grader sub-agents (or grade inline) using `agents/grader.md` from the skill-creator skill. Save results to `grading.json` in each run directory.
 
@@ -103,7 +104,7 @@ Grading output must include a `summary` object with `passed`, `failed`, `total`,
 
 Wait for all grader sub-agents to complete before proceeding.
 
-## Step 5: Aggregate benchmark
+## Step 4: Aggregate benchmark
 
 Run the aggregation script:
 
@@ -115,7 +116,7 @@ This produces `benchmark.json` and `benchmark.md` in the iteration directory.
 
 Wait for aggregation to complete.
 
-## Step 6: Generate review HTML
+## Step 5: Generate review HTML
 
 We are running in a headless environment. Use `--static` to write a standalone HTML file:
 
@@ -131,7 +132,7 @@ Do not wait for user feedback — headless mode.
 
 Wait for HTML generation to complete.
 
-## Step 7: Verify benchmark.json
+## Step 6: Verify benchmark.json
 
 Read `{eval_results_dir}/iteration-1/benchmark.json` and confirm it contains a valid `run_summary`.
 
@@ -164,7 +165,7 @@ Return JSON only:
   "status": "benchmarked",
   "benchmark_status": "complete",
   "benchmark_path": "evals/workspace/iteration-1",
-  "call_trace": ["validate-inputs", "read-skill", "write-evals", "spawn-executors", "capture-timing", "grade", "aggregate", "generate-html", "verify-benchmark"]
+  "call_trace": ["validate-inputs", "read-skill", "read-evals", "spawn-executors", "capture-timing", "grade", "aggregate", "generate-html", "verify-benchmark"]
 }
 ```
 
@@ -178,6 +179,6 @@ For stub/skipped cases, return:
 
 `benchmark_path`: path to the iteration directory relative to `{workspace_dir}`, e.g. `evals/workspace/iteration-1`. Omit when `benchmark_status` is `"skipped"`.
 
-`call_trace`: ordered list of logical steps performed. Use these canonical labels: `validate-inputs`, `read-skill`, `write-evals`, `spawn-executors`, `capture-timing`, `grade`, `aggregate`, `generate-html`, `verify-benchmark`.
+`call_trace`: ordered list of logical steps performed. Use these canonical labels: `validate-inputs`, `read-skill`, `read-evals`, `spawn-executors`, `capture-timing`, `grade`, `aggregate`, `generate-html`, `verify-benchmark`.
 
 </output>

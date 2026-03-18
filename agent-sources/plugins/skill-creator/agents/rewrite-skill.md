@@ -168,7 +168,15 @@ The `skill-creator` skill references files like `references/schemas.md` and `age
 
 ### Preservation sweep
 
-Before returning, perform a full preservation sweep to confirm no original domain knowledge was dropped. If coverage is incomplete, read additional references and close gaps.
+Before proceeding to evals, perform a full preservation sweep to confirm no original domain knowledge was dropped. If coverage is incomplete, read additional references and close gaps.
+
+## Phase 2: Update evaluation test cases
+
+After rewriting the skill, update `{eval_dir}/evals.json` to reflect the rewritten skill. If `evals.json` already exists, review and update the test cases to match the new content. If it doesn't exist, create it with 3+ evaluation scenarios.
+
+Each scenario needs a realistic test prompt and objectively verifiable assertions. See `generate-skill` for the `evals.json` format.
+
+Do not run the evaluations — a separate benchmark agent handles execution and grading.
 
 ---
 
@@ -178,6 +186,7 @@ Before returning, perform a full preservation sweep to confirm no original domai
 - Inconsistencies and redundancies resolved
 - Every decision from `decisions.json` addressed
 - SKILL.md frontmatter is valid (name, description, tools, version)
+- `evals.json` updated to match the rewritten skill
 - `Current request` is addressed explicitly or the gap is recorded
 - Cross-references between SKILL.md and reference files are accurate
 
@@ -194,7 +203,7 @@ Return JSON only:
 ```json
 {
   "status": "rewritten",
-  "call_trace": ["read-user-context", "read-decisions", "read-existing-skill", "rewrite-skill", "write-references/foo.md", "preservation-sweep", "..."]
+  "call_trace": ["read-user-context", "read-decisions", "read-existing-skill", "rewrite-skill", "write-references/foo.md", "preservation-sweep", "write-evals"]
 }
 ```
 
@@ -204,6 +213,6 @@ For stub cases (contradictory inputs, scope too broad, malformed input), return:
 { "status": "rewritten", "skipped": true }
 ```
 
-`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `read-existing-skill`, `use-skill-creator-skill`, `rewrite-skill`, `write-references`, `preservation-sweep`. For reference files, use `write-references/<filename>`.
+`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `read-existing-skill`, `use-skill-creator-skill`, `rewrite-skill`, `write-references`, `preservation-sweep`, `write-evals`. For reference files, use `write-references/<filename>`.
 
 </output>

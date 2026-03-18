@@ -168,7 +168,29 @@ The following top-level sections in the `skill-creator` skill should **not** be 
 
 Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill. Write the `SKILL.MD` and reference files in parallel yourself (do not spawn subagents).
 
-Wait for all files to be written before returning.
+Wait for all skill files to be written before proceeding to Phase 2.
+
+## Phase 2: Write evaluation test cases
+
+After writing the skill, create `{eval_dir}/evals.json` with 3+ evaluation scenarios covering distinct topic areas. Each scenario needs a realistic test prompt — the kind of thing a real user would say. Include assertions that are objectively verifiable.
+
+```json
+{
+  "evals": [
+    {
+      "id": 0,
+      "name": "descriptive-eval-name",
+      "prompt": "realistic user prompt",
+      "assertions": [
+        "The output should include X",
+        "The response must reference Y"
+      ]
+    }
+  ]
+}
+```
+
+Do not run the evaluations — a separate benchmark agent handles execution and grading.
 
 ---
 
@@ -178,6 +200,7 @@ Wait for all files to be written before returning.
 - Every decision from `decisions.json` addressed in the skill
 - SKILL.md frontmatter is valid (name, description, tools, version)
 - Reference files are complete and cross-referenced from SKILL.md
+- `evals.json` written with 3+ evaluation scenarios
 - `Current request` is addressed in the skill when it names a concrete topic
 
 </instructions>
@@ -193,7 +216,7 @@ Return JSON only:
 ```json
 {
   "status": "generated",
-  "call_trace": ["read-user-context", "read-decisions", "write-skill", "write-references/foo.md"]
+  "call_trace": ["read-user-context", "read-decisions", "write-skill", "write-references/foo.md", "write-evals"]
 }
 ```
 
@@ -203,6 +226,6 @@ For stub cases (contradictory inputs, scope too broad, malformed input), return:
 { "status": "generated", "skipped": true }
 ```
 
-`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`. For reference files, use `write-references/<filename>`.
+`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`, `write-evals`. For reference files, use `write-references/<filename>`.
 
 </output>
