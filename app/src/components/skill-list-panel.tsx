@@ -65,9 +65,7 @@ function formatRelativeDate(date: Date): string {
 }
 
 function isSkillComplete(skill: UnifiedSkill): boolean {
-  if (skill.status === "completed") return true;
-  if (skill.source === "imported" || skill.source === "marketplace") return true;
-  return false;
+  return skill.status === "completed";
 }
 
 interface DotStyle {
@@ -78,7 +76,15 @@ interface DotStyle {
 function getStatusDot(skill: UnifiedSkill, isRunning: boolean): DotStyle {
   const pulse = isRunning ? " animate-dot-pulse" : "";
 
-  // Complete / imported → green (status="completed" always wins over current_step)
+  if (skill.source === "marketplace") {
+    return { className: pulse.trim(), style: { backgroundColor: "var(--color-pacific)" } };
+  }
+
+  if (skill.source === "imported") {
+    return { className: pulse.trim(), style: { backgroundColor: "var(--color-violet)" } };
+  }
+
+  // Completed builder skill → seafoam
   if (isSkillComplete(skill)) {
     return { className: pulse.trim(), style: { backgroundColor: "var(--color-seafoam)" } };
   }
@@ -215,7 +221,7 @@ export function SkillListPanel({
     localStorage.setItem("last-selected-skill", skill.name);
     setSelectedSkill(skill.name);
 
-    if (isSkillComplete(skill)) {
+    if (isSkillComplete(skill) || skill.source !== "builder") {
       onSelectSkill?.(skill.name);
     } else {
       const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
@@ -362,7 +368,7 @@ export function SkillListPanel({
             ? (PURPOSE_SHORT_LABELS[skill.purpose as Purpose] ?? skill.purpose)
             : null;
 
-          const complete = isSkillComplete(skill);
+          const complete = isSkillComplete(skill) || skill.source !== "builder";
 
           return (
             <div

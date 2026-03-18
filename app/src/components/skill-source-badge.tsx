@@ -22,15 +22,16 @@ const SOURCE_CONFIG: Record<string, {
   },
   imported: {
     icon: Upload,
-    label: "Imported",
-    colors: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+    label: "Uploaded",
+    colors: "",
+    style: { background: "color-mix(in oklch, var(--color-violet), transparent 85%)", color: "var(--color-violet)" },
   },
 }
 
 export const SOURCE_DISPLAY_LABELS: Record<string, string> = {
   "skill-builder": "Skill Builder",
   "marketplace": "Marketplace",
-  "imported": "Imported",
+  "imported": "Uploaded",
 }
 
 interface SkillSourceBadgeProps {

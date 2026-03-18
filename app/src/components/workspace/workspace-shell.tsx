@@ -17,10 +17,14 @@ function getHeaderDot(
   skill: SkillSummary | ImportedSkill,
   skillType: string,
 ): { className: string; style?: React.CSSProperties } {
-  // Imported / marketplace → always green
-  if (skillType !== "builder") {
-    return { className: "size-2 shrink-0 rounded-full", style: { background: "var(--color-seafoam)" } };
+  if (skillType === "marketplace") {
+    return { className: "size-2 shrink-0 rounded-full", style: { background: "var(--color-pacific)" } };
   }
+
+  if (skillType === "imported") {
+    return { className: "size-2 shrink-0 rounded-full", style: { background: "var(--color-violet)" } };
+  }
+
   const s = skill as SkillSummary;
   // Completed → green (status="completed" wins over current_step)
   if (s.status === "completed") {
