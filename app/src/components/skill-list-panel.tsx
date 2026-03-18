@@ -92,18 +92,13 @@ function getStatusDot(skill: UnifiedSkill, isRunning: boolean): DotStyle {
   const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
   const step = stepMatch ? Number(stepMatch[1]) : null;
 
-  // Mid-progress (step 2+) → amber
-  if (step !== null && step >= 2) {
+  // Step 1+ (step 1+ in 0-indexed, i.e. past Research) → amber
+  if (step !== null && step >= 1) {
     return { className: `bg-amber-500 dark:bg-amber-400${pulse}` };
   }
 
-  // Step 1 (just started) → red
-  if (step !== null && step === 1) {
-    return { className: `bg-destructive${pulse}` };
-  }
-
-  // Never started → outlined
-  return { className: `border border-muted-foreground bg-transparent${pulse}` };
+  // Never started or on Step 1 (step 0 in 0-indexed) → red
+  return { className: `bg-destructive${pulse}` };
 }
 
 function mergeSkills(
@@ -450,9 +445,11 @@ export function SkillListPanel({
                         <DropdownMenuItem onSelect={() => handleRefine(skill.name)}>
                           Refine
                         </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => handleRedo(skill.name)}>
-                          Redo
-                        </DropdownMenuItem>
+                        {skill.source === "builder" && (
+                          <DropdownMenuItem onSelect={() => handleRedo(skill.name)}>
+                            Redo
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem onSelect={() => handleExport(skill)}>
                           Export
                         </DropdownMenuItem>

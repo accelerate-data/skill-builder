@@ -1,8 +1,20 @@
 import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import SkillDialog from "@/components/skill-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useWorkflowStore } from "@/stores/workflow-store";
+import { resetWorkflowStep } from "@/lib/tauri";
+import { toast } from "@/lib/toast";
 import type { SkillSummary, ImportedSkill, Purpose } from "@/lib/types";
 import { PURPOSE_LABELS } from "@/lib/types";
 
@@ -28,7 +40,25 @@ function formatDate(dateStr: string | null): string {
 
 export function WorkspaceOverview({ skill, skillType, onOpenRefine }: WorkspaceOverviewProps) {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [redoDialogOpen, setRedoDialogOpen] = useState(false);
   const workspacePath = useSettingsStore((s) => s.workspacePath);
+  const navigate = useNavigate();
+
+  async function handleConfirmRedo() {
+    if (!workspacePath) return;
+    const skillName = (skill as SkillSummary).name;
+    try {
+      await resetWorkflowStep(workspacePath, skillName, 0);
+      console.log("event=skill_redo skill=%s", skillName);
+      useWorkflowStore.getState().reset();
+      useWorkflowStore.getState().setPendingUpdateMode(true);
+      setRedoDialogOpen(false);
+      navigate({ to: "/skill/$skillName", params: { skillName } });
+    } catch (err) {
+      toast.error(`Failed to reset workflow: ${err instanceof Error ? err.message : String(err)}`);
+      console.error("event=skill_redo_failed skill=%s error=%s", skillName, err);
+    }
+  }
 
   const isBuilderSkill = "name" in skill;
   const purpose = skill.purpose;
@@ -148,14 +178,15 @@ export function WorkspaceOverview({ skill, skillType, onOpenRefine }: WorkspaceO
           <Button onClick={onOpenRefine} className="w-full">
             Open Refine
           </Button>
-          <Button
-            disabled
-            variant="outline"
-            className="w-full"
-            title="Available in a future update"
-          >
-            Redo Workflow
-          </Button>
+          {skillType === "builder" && (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setRedoDialogOpen(true)}
+            >
+              Redo Workflow
+            </Button>
+          )}
         </div>
       </div>
 
@@ -168,6 +199,21 @@ export function WorkspaceOverview({ skill, skillType, onOpenRefine }: WorkspaceO
           onSaved={() => setEditDialogOpen(false)}
         />
       )}
+
+      <Dialog open={redoDialogOpen} onOpenChange={(open) => { if (!open) setRedoDialogOpen(false); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Redo Workflow?</DialogTitle>
+            <DialogDescription>
+              This will reset the workflow to Step 1 and overwrite all generated artifacts and files for &ldquo;{(skill as SkillSummary).name}&rdquo;. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRedoDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleConfirmRedo}>Redo</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

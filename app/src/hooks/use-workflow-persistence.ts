@@ -190,7 +190,15 @@ export function useWorkflowPersistence({
         status = "pending";
       }
 
-      saveWorkflowState(skillName, latestStore.currentStep, status, stepStatuses, purpose ?? undefined)
+      // When viewing (not running or completed), persist the highest completed step so
+      // navigating back to view a previous step doesn't decrease current_step in the DB.
+      const highestCompletedStep = latestStore.steps.reduce(
+        (max, s, idx) => s.status === "completed" ? Math.max(max, idx) : max,
+        latestStore.currentStep,
+      );
+      const stepToSave = status === "pending" ? highestCompletedStep : latestStore.currentStep;
+
+      saveWorkflowState(skillName, stepToSave, status, stepStatuses, purpose ?? undefined)
         .then(() => {
           if (workspacePath) {
             listSkills(workspacePath)
