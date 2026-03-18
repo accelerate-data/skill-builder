@@ -25,7 +25,7 @@ Your role is to use the clarifications and decisions to create a new skill. You 
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
 - `skill_output_dir`: path where the skill (`SKILL.md` and `references/`) live
 - Derive `context_dir` as `workspace_dir/context`
-- `Current request`: optional user-provided generation focus area
+- Derive `eval_dir` as `workspace_dir/evals`
 
 </context>
 
@@ -115,7 +115,7 @@ description: <brief description of which file is malformed>
 
 Missing files are not errors — skip and proceed to the next phase.
 
-## Phase 1: Write the skill
+## Phase 1: Setup the context for creating the skill
 
 ### Prior-step handoff
 
@@ -160,37 +160,17 @@ The following top-level sections in the `skill-creator` skill should **not** be 
 - `Improving the skill`
 - `Advanced: Blind comparison`
 - `Description Optimization`
-- `Package and Present`
 - `Claude.ai-specific instructions`
 - `Cowork-Specific Instructions`
 
-### Invoke the skill
+### Directory for test case generation 
+
+The test cases created in `Test Cases` subsection of **Creating a skill section** should be created in `eval_dir`.
+Do not run the evaluations — a separate benchmark agent handles execution and grading.
+
+## Phase 2: Invoke the skill
 
 Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill. Write the `SKILL.MD` and reference files in parallel yourself (do not spawn subagents).
-
-Wait for all skill files to be written before proceeding to Phase 2.
-
-## Phase 2: Write evaluation test cases
-
-After writing the skill, create `{eval_dir}/evals.json` with 3+ evaluation scenarios covering distinct topic areas. Each scenario needs a realistic test prompt — the kind of thing a real user would say. Include assertions that are objectively verifiable.
-
-```json
-{
-  "evals": [
-    {
-      "id": 0,
-      "name": "descriptive-eval-name",
-      "prompt": "realistic user prompt",
-      "assertions": [
-        "The output should include X",
-        "The response must reference Y"
-      ]
-    }
-  ]
-}
-```
-
-Do not run the evaluations — a separate benchmark agent handles execution and grading.
 
 ---
 

@@ -134,11 +134,14 @@ Do not repeat intent capture or interviewing. Treat these artifacts as authorita
 
 ### Rewrite strategy
 
+- Read the existing `SKILL.MD` and the references under `references/*`.
 - Identify inconsistencies, redundancies, and stale cross-references.
 - Use existing content as primary source, `decisions.json` as supplement.
 - Preserve all original domain knowledge while prioritizing coherence and coverage for the request-specific topic.
 - Treat `Current request` as an additional focus area for coverage. Make sure the rewritten skill covers it explicitly where appropriate.
 - Do not ignore decisions or broader skill requirements in favor of the request.
+- In the `Test Cases` sub-section of **Creating a skill section** in `skill-creator:skill-creator` update `{eval_dir}/evals.json` to reflect the rewritten skill. If `evals.json` already exists, review and update the test cases to match the new content. If it doesn't exist, create it with 3+ evaluation scenarios.
+- Do not run the evaluations — a separate benchmark agent handles execution and grading.
 
 ### File targeting
 
@@ -156,7 +159,7 @@ The following top-level sections in the `skill-creator` skill should **not** be 
 
 - `Running and evaluating test cases`
 - `Advanced: Blind comparison`
-- `Package and Present`
+- `Description Optimization`
 - `Claude.ai-specific instructions`
 - `Cowork-Specific Instructions`
 
@@ -164,19 +167,9 @@ The following top-level sections in the `skill-creator` skill should **not** be 
 
 Use the **Creating a skill section** in `skill-creator:skill-creator` skill to rewrite the skill. Write the `SKILL.MD` and reference files in parallel yourself (do not spawn subagents).
 
-The `skill-creator` skill references files like `references/schemas.md` and `agents/grader.md` — these are internal to the `skill creator` skill and is present in `plugins/skill-creator/skills/skill-creator`.
-
 ### Preservation sweep
 
 Before proceeding to evals, perform a full preservation sweep to confirm no original domain knowledge was dropped. If coverage is incomplete, read additional references and close gaps.
-
-## Phase 2: Update evaluation test cases
-
-After rewriting the skill, update `{eval_dir}/evals.json` to reflect the rewritten skill. If `evals.json` already exists, review and update the test cases to match the new content. If it doesn't exist, create it with 3+ evaluation scenarios.
-
-Each scenario needs a realistic test prompt and objectively verifiable assertions. See `generate-skill` for the `evals.json` format.
-
-Do not run the evaluations — a separate benchmark agent handles execution and grading.
 
 ---
 

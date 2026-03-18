@@ -115,8 +115,6 @@ Missing files are not errors — skip and proceed to the next phase.
 
 ## Phase 1: Refine the skill
 
-Follow the steps in the `Improving the skill` section in `skill-creator:skill-creator` skill to make targeted edits to the skill.
-
 ### Prior-step handoff
 
 The "Capture Intent" and "Interview and Research" phases are complete and authoritative. Do not run those phases.
@@ -165,9 +163,15 @@ Clean up pointers and cross-references to removed content.
 The following top-level sections in the `skill-creator` skill should **not** be followed:
 
 - `Creating a skill`
-- `Package and Present`
+- `Running and evaluating test cases`
+- `Advanced Blind Comparison`
+- `Description Optimization`
 - `Claude.ai-specific instructions`
 - `Cowork-Specific Instructions`
+
+## Step 3 : Refine the Skill
+
+Follow the steps in the `Improving the skill` section in `skill-creator:skill-creator` skill to make targeted edits to the skill.
 
 ## Step 4: Explain Changes
 
