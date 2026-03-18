@@ -187,7 +187,11 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 
 #### Step 1: Write the skill 
 
-Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill.
+Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill. Write the `SKILL.MD` and reference files in parallel yourself (do not spawn subagents).
+
+The `skill-creator` skill references files like `references/schemas.md` and `agents/grader.md` — these are internal to the `skill creator` skill and is present in `plugins/skill-creator/skills/skill-creator`.
+
+Wait for all files to be written and only then proceed to step 2.
 
 #### Step 2: Perform the evaluations
 
@@ -201,6 +205,8 @@ After writing the skill and test cases, you MUST follow the **Running and evalua
 - We are running in a headless environment. Use `--static` to write a standalone HTML file inside the iteration directory.
 - We are running in headless mode — do not wait for user feedback after generating the viewer.
 
+Wait for all subagents launched for evaluation, grading and aggregation of the benchamrk to complete and only then proceed to step 3.
+
 #### Step 3: Commit and tag
 
 After all skill files are written and benchmarks are complete, commit the skill and create a version tag:
@@ -211,7 +217,7 @@ python -m scripts.commit_and_tag {skill_output_dir}/.. --skill-name {skill_name}
 
 This commits all files in the skills repo and creates an auto-incrementing `<skill-name>/v<N>` tag. For initial generation this will be `v1`. Include the returned `tag` value in structured output.
 
-If the script fails, log the error in `call_trace` and omit the `tag` field from output.
+If the script fails, log the error in `call_trace` and omit the `tag` field from output. Wait for this step to complete and only then proceed to returning with structuredOutput. Review the success criteria before returning back results.
 
 ---
 
@@ -235,6 +241,12 @@ If the script fails, log the error in `call_trace` and omit the `tag` field from
 
 ## Output
 
+**Gate — do NOT fill this template until all three conditions are true:**
+
+1. `benchmark.json` exists — you have read the `benchmark.json` in the current iteration directory and it contains a valid `run_summary`
+2. `commit_and_tag.py` has completed — you captured the tag value or the error from its stdout
+3. No sub-agents are still running
+
 Return JSON only:
 
 ```json
@@ -243,6 +255,7 @@ Return JSON only:
   "benchmark_status": "complete",
   "benchmark_path": "evals/workspace/iteration-1",
   "tag": "my-skill/v1",
+  "commit_message" : <success or error message>
   "call_trace": ["read-user-context", "read-decisions", "write-skill", "write-references/foo.md", "commit-and-tag", "..."]
 }
 ```
