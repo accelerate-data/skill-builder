@@ -284,10 +284,12 @@ export function AppLayout() {
     (s) => s.skill_name === selectedWorkspaceSkillName,
   );
   const selectedSkillData = selectedBuilderSkill ?? selectedImportedSkill ?? null;
-  const selectedSkillType = selectedBuilderSkill
-    ? (selectedBuilderSkill.skill_source === "marketplace" || !!selectedImportedSkill?.marketplace_source_url)
+  const selectedSkillType: "builder" | "imported" | "marketplace" = selectedBuilderSkill
+    ? selectedBuilderSkill.skill_source === "marketplace" || !!selectedImportedSkill?.marketplace_source_url
       ? "marketplace"
-      : "builder"
+      : selectedImportedSkill && !selectedImportedSkill.marketplace_source_url
+        ? "imported"
+        : "builder"
     : selectedImportedSkill?.marketplace_source_url
       ? "marketplace"
       : "imported";
