@@ -230,11 +230,9 @@ export function SkillListPanel({
     if (isSkillComplete(skill) || skill.source !== "builder") {
       onSelectSkill?.(skill.name);
     } else {
-      const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
-      const step = stepMatch ? Number(stepMatch[1]) : null;
-      const isFresh = (step === null || step === 0) && skill.status !== "error";
-      // Fresh (no prior run): auto-start. Mid-way: open in Review mode.
-      navigate({ to: "/skill/$skillName", params: { skillName: skill.name }, state: isFresh ? { autoStart: true } : undefined });
+      // Row click always opens in Review mode — auto-start is only for explicit actions
+      // (SkillDialog create, Continue Building, Redo) which pass state: { autoStart: true }.
+      navigate({ to: "/skill/$skillName", params: { skillName: skill.name } });
     }
   }
 
