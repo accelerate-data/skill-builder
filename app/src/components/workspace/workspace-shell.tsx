@@ -57,7 +57,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
       ? "Builder"
       : skillType === "marketplace"
         ? "Marketplace"
-        : "Imported";
+        : "Uploaded";
 
   const headerDot = getHeaderDot(skill, skillType);
 
