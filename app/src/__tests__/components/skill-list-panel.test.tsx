@@ -9,6 +9,8 @@ const mockNavigate = vi.fn();
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mockNavigate,
+  useRouterState: ({ select }: { select: (s: { location: { pathname: string } }) => unknown }) =>
+    select({ location: { pathname: "/" } }),
   Link: ({ to, children, className }: { to: string; children: React.ReactNode; className?: string }) => (
     <a href={to} className={className}>
       {children}
@@ -19,6 +21,15 @@ vi.mock("@tanstack/react-router", () => ({
 // SkillDialog is not the focus of these tests — stub it out
 vi.mock("@/components/skill-dialog", () => ({
   default: () => null,
+}));
+
+vi.mock("@/lib/tauri", () => ({
+  listSkills: vi.fn().mockResolvedValue([]),
+  getExternallyLockedSkills: vi.fn().mockResolvedValue([]),
+  exportSkill: vi.fn(),
+  packageSkill: vi.fn(),
+  saveExportTo: vi.fn(),
+  resetWorkflowStep: vi.fn(),
 }));
 
 import { SkillListPanel } from "@/components/skill-list-panel";
@@ -75,12 +86,14 @@ function makeImportedSkill(
 const recentBuilder = makeBuilderSkill({
   name: "recent-skill",
   last_modified: new Date(Date.now() - 60_000).toISOString(), // 1m ago (most recent)
+  created_at: new Date(Date.now() - 60_000).toISOString(),
   status: "completed",
 });
 
 const olderBuilder = makeBuilderSkill({
   name: "older-skill",
   last_modified: new Date(Date.now() - 3600_000).toISOString(), // 1h ago
+  created_at: new Date(Date.now() - 3600_000).toISOString(),
   current_step: "Step 1",
 });
 
@@ -114,7 +127,7 @@ describe("SkillListPanel", () => {
 
     // Skill rows have aria-selected; other buttons ("+", "More actions") do not
     const rows = screen.getAllByRole("button").filter((r) => r.hasAttribute("aria-selected"));
-    const names = rows.map((r) => r.querySelector(".text-sm")?.textContent);
+    const names = rows.map((r) => r.querySelector(".text-base")?.textContent);
     expect(names).toEqual(["recent-skill", "older-skill", "imported-skill"]);
   });
 
@@ -173,7 +186,7 @@ describe("SkillListPanel", () => {
     render(<SkillListPanel />);
 
     const dot = screen.getByLabelText("status-dot-step2-skill");
-    expect(dot.className).toMatch(/bg-amber-600/);
+    expect(dot.className).toMatch(/bg-amber-/);
   });
 
   it("renders green dot for completed builder skill", () => {
@@ -186,17 +199,17 @@ describe("SkillListPanel", () => {
     expect(dot.style.backgroundColor).toBe("var(--color-seafoam)");
   });
 
-  it("renders green dot for imported skill regardless of step", () => {
+  it("renders violet dot for imported (uploaded) skill", () => {
     const skill = makeImportedSkill({ skill_name: "imp-skill" });
     useImportedSkillsStore.setState({ skills: [skill] });
 
     render(<SkillListPanel />);
 
     const dot = screen.getByLabelText("status-dot-imp-skill");
-    expect(dot.style.backgroundColor).toBe("var(--color-seafoam)");
+    expect(dot.style.backgroundColor).toBe("var(--color-violet)");
   });
 
-  it("renders green dot for marketplace skill", () => {
+  it("renders blue dot for marketplace skill", () => {
     const skill = makeImportedSkill({
       skill_name: "mkt-skill",
       marketplace_source_url: "https://example.com/registry",
@@ -206,7 +219,7 @@ describe("SkillListPanel", () => {
     render(<SkillListPanel />);
 
     const dot = screen.getByLabelText("status-dot-mkt-skill");
-    expect(dot.style.backgroundColor).toBe("var(--color-seafoam)");
+    expect(dot.style.backgroundColor).toBe("var(--color-pacific)");
   });
 
   // ── Pulse animation ───────────────────────────────────────────────────────

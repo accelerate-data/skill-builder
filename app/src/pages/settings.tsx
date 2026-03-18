@@ -20,7 +20,7 @@ import { useSettingsForm } from "@/hooks/use-settings-form"
 const sections = [
   { id: "general", label: "General" },
   { id: "skill-building", label: "Claude SDK" },
-  { id: "skills", label: "Upload" },
+  { id: "skills", label: "Import" },
   { id: "marketplace", label: "Marketplace" },
   { id: "github", label: "GitHub" },
   { id: "advanced", label: "Advanced" },

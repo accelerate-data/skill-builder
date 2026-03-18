@@ -92,13 +92,18 @@ function getStatusDot(skill: UnifiedSkill, isRunning: boolean): DotStyle {
   const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
   const step = stepMatch ? Number(stepMatch[1]) : null;
 
-  // Mid-progress (any step past the first) → amber
-  if (step !== null && step >= 1) {
+  // Mid-progress (step 2+) → amber
+  if (step !== null && step >= 2) {
     return { className: `bg-amber-500 dark:bg-amber-400${pulse}` };
   }
 
-  // Not started / Step 0 / Step 1 → red
-  return { className: `bg-destructive${pulse}` };
+  // Step 1 (just started) → red
+  if (step !== null && step === 1) {
+    return { className: `bg-destructive${pulse}` };
+  }
+
+  // Never started → outlined
+  return { className: `border border-muted-foreground bg-transparent${pulse}` };
 }
 
 function mergeSkills(
@@ -127,11 +132,17 @@ function mergeSkills(
     currentStep: null,
   }));
 
-  // Deduplicate by name — builder entry wins over imported (has richer status info)
+  // Deduplicate by name — builder entry wins for status info, but marketplace imported
+  // entry wins if the builder record lacks the marketplace source flag.
   const byName = new Map<string, UnifiedSkill>();
   for (const s of fromBuilder) byName.set(s.name, s);
   for (const s of fromImported) {
-    if (!byName.has(s.name)) byName.set(s.name, s);
+    if (!byName.has(s.name)) {
+      byName.set(s.name, s);
+    } else if (s.source === "marketplace" && byName.get(s.name)!.source === "builder") {
+      // Builder record exists but is missing skill_source="marketplace" — override source.
+      byName.set(s.name, { ...byName.get(s.name)!, source: "marketplace" });
+    }
   }
 
   // Sort by creation date descending — newest skill first, stable across edits
