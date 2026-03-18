@@ -6,8 +6,8 @@ Stages all changes, commits, and creates an auto-incrementing lightweight
 tag of the form ``<skill-name>/v<N>`` on HEAD.
 
 Usage:
-    python -m scripts.commit_and_tag <skills_path> --skill-name <name>
-    python -m scripts.commit_and_tag <skills_path> --skill-name <name> --message "custom msg"
+    python3 -m scripts.commit_and_tag <skills_path> --skill-name <name>
+    python3 -m scripts.commit_and_tag <skills_path> --skill-name <name> --message "custom msg"
 
 Output (stdout):
     {"commit_sha": "abc123...", "tag": "my-skill/v1", "version": 1}

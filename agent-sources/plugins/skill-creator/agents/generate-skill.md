@@ -219,7 +219,7 @@ Wait for all subagents launched for evaluation, grading and aggregation of the b
 After all skill files are written and benchmarks are complete, commit the skill and create a version tag:
 
 ```bash
-python -m scripts.commit_and_tag {skill_output_dir}/.. --skill-name {skill_name}
+python3 -m scripts.commit_and_tag {skill_output_dir}/.. --skill-name {skill_name}
 ```
 
 This commits all files in the skills repo and creates an auto-incrementing `<skill-name>/v<N>` tag. For initial generation this will be `v1`. Include the returned `tag` value in structured output.
