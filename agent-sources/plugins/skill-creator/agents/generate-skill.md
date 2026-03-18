@@ -208,11 +208,12 @@ After writing the skill and test cases, you MUST follow the **Running and evalua
 Wait for all subagents launched for evaluation, grading and aggregation of the benchamrk to complete and only then proceed to step 3.
 
 1. Spawn executor sub-agents → wait
-2. Spawn grader sub-agents → wait
-3. Run aggregate_benchmark.py → wait
-4. Run review HTML generation → wait
-5. Verify benchmark.json exists
-6. Only THEN return
+2. Capture timing data: for each completed executor, write `timing.json` to its run directory with `total_tokens`, `duration_ms`, and `total_duration_seconds` from the task completion notification (see SKILL.md Step 3). This is the only opportunity — the data is not persisted elsewhere.
+3. Spawn grader sub-agents → wait
+4. Run aggregate_benchmark.py → wait
+5. Run review HTML generation → wait
+6. Verify benchmark.json exists
+7. Only THEN return
 
 #### Step 3: Commit and tag
 

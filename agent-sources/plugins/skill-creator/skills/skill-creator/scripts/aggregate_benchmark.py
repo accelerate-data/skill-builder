@@ -123,18 +123,19 @@ def load_run_results(benchmark_dir: Path) -> dict:
                     print(f"Warning: Invalid JSON in {grading_file}: {e}")
                     continue
 
-                # Extract metrics
+                # Extract metrics (use `or` to guard against explicit null values)
+                summary = grading.get("summary") or {}
                 result = {
                     "eval_id": eval_id,
                     "run_number": run_number,
-                    "pass_rate": grading.get("summary", {}).get("pass_rate", 0.0),
-                    "passed": grading.get("summary", {}).get("passed", 0),
-                    "failed": grading.get("summary", {}).get("failed", 0),
-                    "total": grading.get("summary", {}).get("total", 0),
+                    "pass_rate": summary.get("pass_rate", 0.0),
+                    "passed": summary.get("passed", 0),
+                    "failed": summary.get("failed", 0),
+                    "total": summary.get("total", 0),
                 }
 
                 # Extract timing — check grading.json first, then sibling timing.json
-                timing = grading.get("timing", {})
+                timing = grading.get("timing") or {}
                 result["time_seconds"] = timing.get("total_duration_seconds", 0.0)
                 timing_file = run_dir / "timing.json"
                 if result["time_seconds"] == 0.0 and timing_file.exists():
@@ -147,14 +148,14 @@ def load_run_results(benchmark_dir: Path) -> dict:
                         pass
 
                 # Extract metrics if available
-                metrics = grading.get("execution_metrics", {})
+                metrics = grading.get("execution_metrics") or {}
                 result["tool_calls"] = metrics.get("total_tool_calls", 0)
                 if not result.get("tokens"):
                     result["tokens"] = metrics.get("output_chars", 0)
                 result["errors"] = metrics.get("errors_encountered", 0)
 
                 # Extract expectations — viewer requires fields: text, passed, evidence
-                raw_expectations = grading.get("expectations", [])
+                raw_expectations = grading.get("expectations") or []
                 for exp in raw_expectations:
                     if "text" not in exp or "passed" not in exp:
                         print(f"Warning: expectation in {grading_file} missing required fields (text, passed, evidence): {exp}")
