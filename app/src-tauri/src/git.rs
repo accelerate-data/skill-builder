@@ -353,6 +353,60 @@ pub fn restore_version(repo_path: &Path, sha: &str, skill_name: &str) -> Result<
     Ok(())
 }
 
+// --- Skill version tagging ---
+
+/// Find the highest existing version tag for a skill (`<skill-name>/v<N>`).
+/// Returns 0 if no tags exist yet.
+pub fn latest_skill_version(path: &Path, skill_name: &str) -> Result<u32, String> {
+    let repo = Repository::open(path)
+        .map_err(|e| format!("Failed to open repo at {}: {}", path.display(), e))?;
+    let prefix = format!("{}/v", skill_name);
+    let mut max_version: u32 = 0;
+
+    repo.tag_names(Some(&format!("{}/*", skill_name)))
+        .map_err(|e| format!("Failed to list tags: {}", e))?
+        .iter()
+        .flatten()
+        .for_each(|tag_name| {
+            if let Some(suffix) = tag_name.strip_prefix(&prefix) {
+                if let Ok(v) = suffix.parse::<u32>() {
+                    max_version = max_version.max(v);
+                }
+            }
+        });
+
+    Ok(max_version)
+}
+
+/// Create a lightweight tag `<skill-name>/v<version>` on HEAD.
+/// Returns the tag name that was created.
+pub fn tag_skill_version(path: &Path, skill_name: &str, version: u32) -> Result<String, String> {
+    let repo = Repository::open(path)
+        .map_err(|e| format!("Failed to open repo at {}: {}", path.display(), e))?;
+    let tag_name = format!("{}/v{}", skill_name, version);
+
+    let head = repo
+        .head()
+        .map_err(|e| format!("Failed to get HEAD: {}", e))?;
+    let target = head
+        .peel(git2::ObjectType::Commit)
+        .map_err(|e| format!("Failed to peel HEAD to commit: {}", e))?;
+
+    repo.tag_lightweight(&tag_name, &target, false)
+        .map_err(|e| format!("Failed to create tag '{}': {}", tag_name, e))?;
+
+    log::info!("[git] Created tag '{}' on HEAD", tag_name);
+    Ok(tag_name)
+}
+
+/// Create the next incremental version tag for a skill.
+/// Returns the tag name (e.g. `my-skill/v1`).
+pub fn tag_next_skill_version(path: &Path, skill_name: &str) -> Result<String, String> {
+    let current = latest_skill_version(path, skill_name)?;
+    let next = current + 1;
+    tag_skill_version(path, skill_name, next)
+}
+
 // --- Helpers ---
 
 fn default_signature(repo: &Repository) -> Result<Signature<'static>, String> {
@@ -715,5 +769,124 @@ mod tests {
 
         let untracked = get_untracked_dirs(dir.path()).unwrap();
         assert!(untracked.is_empty());
+    }
+
+    #[test]
+    fn test_tag_skill_version_creates_first_tag() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# My Skill").unwrap();
+        commit_all(dir.path(), "my-skill: generate-skill completed").unwrap();
+
+        let tag = tag_skill_version(dir.path(), "my-skill", 1).unwrap();
+        assert_eq!(tag, "my-skill/v1");
+
+        // Verify the tag exists in the repo
+        let repo = Repository::open(dir.path()).unwrap();
+        let tags = repo.tag_names(Some("my-skill/*")).unwrap();
+        let tag_list: Vec<&str> = tags.iter().flatten().collect();
+        assert_eq!(tag_list, vec!["my-skill/v1"]);
+    }
+
+    #[test]
+    fn test_latest_skill_version_no_tags() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        let version = latest_skill_version(dir.path(), "my-skill").unwrap();
+        assert_eq!(version, 0);
+    }
+
+    #[test]
+    fn test_latest_skill_version_with_tags() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
+        commit_all(dir.path(), "v1").unwrap();
+        tag_skill_version(dir.path(), "my-skill", 1).unwrap();
+
+        std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
+        commit_all(dir.path(), "v2").unwrap();
+        tag_skill_version(dir.path(), "my-skill", 2).unwrap();
+
+        let version = latest_skill_version(dir.path(), "my-skill").unwrap();
+        assert_eq!(version, 2);
+    }
+
+    #[test]
+    fn test_tag_next_skill_version_increments() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+
+        // First version
+        std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
+        commit_all(dir.path(), "v1").unwrap();
+        let tag1 = tag_next_skill_version(dir.path(), "my-skill").unwrap();
+        assert_eq!(tag1, "my-skill/v1");
+
+        // Second version
+        std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
+        commit_all(dir.path(), "v2").unwrap();
+        let tag2 = tag_next_skill_version(dir.path(), "my-skill").unwrap();
+        assert_eq!(tag2, "my-skill/v2");
+
+        // Verify latest
+        let version = latest_skill_version(dir.path(), "my-skill").unwrap();
+        assert_eq!(version, 2);
+    }
+
+    #[test]
+    fn test_tags_are_skill_scoped() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        // Create and tag two different skills
+        let a_dir = dir.path().join("skill-a");
+        let b_dir = dir.path().join("skill-b");
+        std::fs::create_dir_all(&a_dir).unwrap();
+        std::fs::create_dir_all(&b_dir).unwrap();
+
+        std::fs::write(a_dir.join("SKILL.md"), "# A").unwrap();
+        std::fs::write(b_dir.join("SKILL.md"), "# B").unwrap();
+        commit_all(dir.path(), "both skills").unwrap();
+
+        tag_skill_version(dir.path(), "skill-a", 1).unwrap();
+        tag_skill_version(dir.path(), "skill-b", 1).unwrap();
+
+        // Each skill should report version 1 independently
+        assert_eq!(latest_skill_version(dir.path(), "skill-a").unwrap(), 1);
+        assert_eq!(latest_skill_version(dir.path(), "skill-b").unwrap(), 1);
+
+        // Tag skill-a again — skill-b should be unaffected
+        std::fs::write(a_dir.join("SKILL.md"), "# A v2").unwrap();
+        commit_all(dir.path(), "skill-a v2").unwrap();
+        tag_skill_version(dir.path(), "skill-a", 2).unwrap();
+
+        assert_eq!(latest_skill_version(dir.path(), "skill-a").unwrap(), 2);
+        assert_eq!(latest_skill_version(dir.path(), "skill-b").unwrap(), 1);
+    }
+
+    #[test]
+    fn test_duplicate_tag_fails() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
+        commit_all(dir.path(), "v1").unwrap();
+
+        tag_skill_version(dir.path(), "my-skill", 1).unwrap();
+        let result = tag_skill_version(dir.path(), "my-skill", 1);
+        assert!(result.is_err());
     }
 }

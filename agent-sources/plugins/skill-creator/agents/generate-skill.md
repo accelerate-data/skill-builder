@@ -217,6 +217,18 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
   - All original domain knowledge preserved. 
   - Verify that the rewritten skill addresses `Current request` explicitly or record the gap in the rewritten content/evaluations.
 
+## Phase 2: Commit and tag
+
+After all skill files are written and benchmarks are complete, commit the skill and create a version tag:
+
+```bash
+python -m scripts.commit_and_tag {skill_output_dir}/.. --skill-name {skill_name}
+```
+
+This commits all files in the skills repo and creates an auto-incrementing `<skill-name>/v<N>` tag. For initial generation this will be `v1`. Include the returned `tag` value in structured output.
+
+Do not proceed to structured output until the script completes successfully. If the script fails, log the error in `call_trace` and omit the `tag` field from output.
+
 </instructions>
 
 ---
@@ -232,7 +244,8 @@ Return JSON only:
   "status": "generated",
   "benchmark_status": "complete",
   "benchmark_path": "evals/workspace/iteration-1",
-  "call_trace": ["read-user-context", "read-decisions", "write-skill", "write-references/foo.md", "..."]
+  "tag": "my-skill/v1",
+  "call_trace": ["read-user-context", "read-decisions", "write-skill", "write-references/foo.md", "commit-and-tag", "..."]
 }
 ```
 
@@ -240,6 +253,8 @@ Return JSON only:
 
 `benchmark_path`: path to the iteration directory relative to `{workspace_dir}`, e.g. `evals/workspace/iteration-1`. Contains `benchmark.json`, `benchmark.md`, `review.html`, and per-eval subdirectories. Omit when `benchmark_status` is `"skipped"`.
 
-`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`, `write-evaluations`, `use-skill-test-skill`, `read-agentskills-spec-md-using-tools`, `read-skill-creator-using-tools`. For reference files, use `write-references/<filename>`.
+`tag`: the version tag created by `commit_and_tag.py`, e.g. `"my-skill/v1"`. Omit when `benchmark_status` is `"skipped"` or if tagging failed.
+
+`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`, `write-evaluations`, `use-skill-test-skill`, `read-agentskills-spec-md-using-tools`, `read-skill-creator-using-tools`, `commit-and-tag`. For reference files, use `write-references/<filename>`.
 
 </output>
