@@ -285,7 +285,7 @@ export function AppLayout() {
   );
   const selectedSkillData = selectedBuilderSkill ?? selectedImportedSkill ?? null;
   const selectedSkillType = selectedBuilderSkill
-    ? selectedBuilderSkill.skill_source === "marketplace"
+    ? (selectedBuilderSkill.skill_source === "marketplace" || !!selectedImportedSkill?.marketplace_source_url)
       ? "marketplace"
       : "builder"
     : selectedImportedSkill?.marketplace_source_url

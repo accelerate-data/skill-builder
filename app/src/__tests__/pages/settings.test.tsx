@@ -248,7 +248,7 @@ describe("SettingsPage", () => {
 
     expect(screen.getByRole("button", { name: /General/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Claude SDK/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Upload/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Import/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Marketplace/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /GitHub/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Advanced/i })).toBeInTheDocument();

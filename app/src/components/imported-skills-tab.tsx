@@ -120,7 +120,7 @@ export function ImportedSkillsTab() {
         </Button>
         <Button className="w-36" onClick={handleImport}>
           <FolderInput className="size-4" />
-          Import
+          Upload
         </Button>
       </div>
 
