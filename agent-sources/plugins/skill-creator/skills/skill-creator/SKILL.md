@@ -190,7 +190,7 @@ Write an `eval_metadata.json` for each test case (assertions can be empty for no
 ```json
 {
   "eval_id": 0,
-  "eval_name": "eval-0-descriptive-name",
+  "eval_name": "descriptive-name-here",
   "prompt": "The user's task prompt",
   "assertions": []
 }
@@ -228,8 +228,8 @@ Once all runs are done:
    ```bash
    python3 -m scripts.aggregate_benchmark <workspace>/iteration-N --skill-name <name>
    ```
-   This produces `benchmark.json` and `benchmark.md` with pass_rate, time, and tokens for each configuration, with mean ± stddev and the delta. If generating benchmark.json manually, see `references/schemas.md` for the exact schema the viewer expects.
-Put each with_skill version before its baseline counterpart.
+  This produces `benchmark.json` and `benchmark.md` with pass_rate, time, and tokens for each configuration, with mean ± stddev and the delta. If generating benchmark.json manually, see `references/schemas.md` for the exact schema the viewer expects.
+  Put each with_skill version before its baseline counterpart.
 
 3. **Do an analyst pass** — read the benchmark data and surface patterns the aggregate stats might hide. See `agents/analyzer.md` (the "Analyzing Benchmark Results" section) for what to look for — things like assertions that always pass regardless of skill (non-discriminating), high-variance evals (possibly flaky), and time/token tradeoffs.
 

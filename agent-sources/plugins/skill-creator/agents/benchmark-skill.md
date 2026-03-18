@@ -93,11 +93,15 @@ Key inputs for the eval pipeline:
 
 ## Step 3: Execute the test cases and generate the benchmark
 
-Follow the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill to execute, grade, and aggregate the benchmark. This includes all sub-steps: spawning runs, grading, aggregating into `benchmark.json`, **and the analyst pass that writes notes into the top-level `notes` array in `benchmark.json`**. Do not skip the analyst pass — the `notes` array must not be empty when you are done.
+Follow the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill to execute, grade, and aggregate the benchmark.
 
 **Wait for all background tasks** to complete before going to step 4.
 
-## Step 4: Verify benchmark.json
+## Step 4: Write analyst notes into benchmark.json
+
+The analyst pass in Step 3 produces observations about the benchmark results. Write those observations into the top-level `"notes"` array in `{eval_results_dir}/{iteration}/benchmark.json` and save the file. The aggregator creates `"notes": []` — you must populate it before returning.
+
+## Step 5: Verify benchmark.json
 
 Read `{eval_results_dir}/{iteration}/benchmark.json`.
 
@@ -134,7 +138,7 @@ Return JSON only:
   "status": "benchmarked",
   "benchmark_status": "complete",
   "benchmark_path": "evals/workspace/{iteration}",
-  "call_trace": ["validate-inputs", "determine-iteration", "run-evals", "verify-benchmark"]
+  "call_trace": ["validate-inputs", "determine-iteration", "run-evals", "analyst-notes", "verify-benchmark"]
 }
 ```
 
