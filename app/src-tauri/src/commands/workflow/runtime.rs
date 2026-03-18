@@ -342,7 +342,7 @@ pub async fn run_benchmark_phase(
     let skill_output_dir = Path::new(&settings.skills_path).join(&skill_name);
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
 
-    let prompt = format!(
+    let mut prompt = format!(
         "The skill name is: {}. The workspace directory is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
          Read user-context.md from the workspace directory. \
@@ -351,6 +351,17 @@ pub async fn run_benchmark_phase(
          baseline_mode: {}",
         skill_name, workspace_str, skill_output_str, baseline_mode,
     );
+
+    // If prior_version mode, check for a snapshot created before the rewrite
+    if baseline_mode == "prior_version" {
+        let snap = workspace_dir.join("skill-snapshot");
+        if snap.join("SKILL.md").exists() {
+            prompt.push_str(&format!(
+                "\nprior_skill_snapshot_dir: {}",
+                snap.to_string_lossy().replace('\\', "/")
+            ));
+        }
+    }
 
     let agent_name = "skill-creator:benchmark-skill";
     let agent_id = make_agent_id(&skill_name, "benchmark");

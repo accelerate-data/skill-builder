@@ -52,6 +52,82 @@ pub(super) fn new_refine_usage_session_id(skill_name: &str) -> String {
     format!("synthetic:refine:{}:{}", skill_name, uuid::Uuid::new_v4())
 }
 
+/// Snapshot the current skill directory to `{workspace_dir}/skill-snapshot/`
+/// so the benchmark agent can use it as the prior version baseline.
+/// Returns the snapshot directory path, or None if the skill doesn't exist.
+pub(super) fn snapshot_skill_for_benchmark(
+    skills_path: &str,
+    workspace_path: &str,
+    skill_name: &str,
+) -> Option<String> {
+    let src = Path::new(skills_path).join(skill_name);
+    if !src.join("SKILL.md").exists() {
+        log::debug!(
+            "[snapshot_skill] no SKILL.md at {} — skipping snapshot",
+            src.display()
+        );
+        return None;
+    }
+    let workspace_dir = Path::new(workspace_path).join(skill_name);
+    let dest = workspace_dir.join("skill-snapshot");
+
+    // Remove stale snapshot
+    if dest.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&dest) {
+            log::warn!(
+                "[snapshot_skill] failed to remove stale snapshot at {}: {}",
+                dest.display(),
+                e
+            );
+        }
+    }
+
+    // Copy skill directory tree
+    if let Err(e) = copy_dir_recursive(&src, &dest) {
+        log::warn!(
+            "[snapshot_skill] failed to snapshot {} to {}: {}",
+            src.display(),
+            dest.display(),
+            e
+        );
+        return None;
+    }
+
+    let snapshot_str = dest.to_string_lossy().replace('\\', "/");
+    log::info!(
+        "[snapshot_skill] created snapshot for skill={} at {}",
+        skill_name,
+        snapshot_str
+    );
+    Some(snapshot_str)
+}
+
+/// Recursively copy a directory.
+fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(dest)
+        .map_err(|e| format!("create_dir_all {}: {}", dest.display(), e))?;
+    for entry in std::fs::read_dir(src)
+        .map_err(|e| format!("read_dir {}: {}", src.display(), e))?
+    {
+        let entry = entry.map_err(|e| format!("dir entry: {}", e))?;
+        let src_path = entry.path();
+        let dest_path = dest.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dest_path)?;
+        } else {
+            std::fs::copy(&src_path, &dest_path).map_err(|e| {
+                format!(
+                    "copy {} -> {}: {}",
+                    src_path.display(),
+                    dest_path.display(),
+                    e
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn ensure_skill_workspace_dir(workspace_path: &str, skill_name: &str) {
     let skill_workspace_dir = Path::new(workspace_path).join(skill_name);
     if !skill_workspace_dir.exists() {
@@ -334,6 +410,7 @@ pub(super) fn build_direct_agent_prompt(
     user_message: &str,
     target_files: Option<&[String]>,
     baseline_mode: Option<&str>,
+    prior_skill_snapshot_dir: Option<&str>,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
@@ -364,6 +441,12 @@ pub(super) fn build_direct_agent_prompt(
     if agent_name == BENCHMARK_AGENT_NAME {
         let mode = baseline_mode.unwrap_or("no_skill");
         prompt.push_str(&format!("\n\nbaseline_mode: {}", mode));
+        if let Some(snapshot_dir) = prior_skill_snapshot_dir {
+            prompt.push_str(&format!(
+                "\nprior_skill_snapshot_dir: {}",
+                snapshot_dir.replace('\\', "/")
+            ));
+        }
     }
 
     prompt.push_str(&format!("\n\nCurrent request: {}", user_message));

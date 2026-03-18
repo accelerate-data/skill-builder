@@ -208,10 +208,30 @@ pub async fn send_refine_message(
             RefineDispatch::DirectBenchmark => BENCHMARK_AGENT_NAME,
             RefineDispatch::Stream => unreachable!(),
         };
+
+        // Snapshot the current skill before rewrite so benchmark can compare
+        if dispatch == RefineDispatch::DirectRewrite {
+            snapshot_skill_for_benchmark(&runtime.skills_path, &workspace_path, &skill_name);
+        }
+
         let baseline_mode = match dispatch {
             RefineDispatch::DirectBenchmark => Some("prior_version"),
             _ => None,
         };
+        // Resolve snapshot path for benchmark agent
+        let snapshot_dir = if dispatch == RefineDispatch::DirectBenchmark {
+            let snap = std::path::Path::new(&workspace_path)
+                .join(&skill_name)
+                .join("skill-snapshot");
+            if snap.join("SKILL.md").exists() {
+                Some(snap.to_string_lossy().replace('\\', "/"))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let prompt = build_direct_agent_prompt(
             direct_agent_name,
             &skill_name,
@@ -220,6 +240,7 @@ pub async fn send_refine_message(
             &user_message,
             target_files.as_deref(),
             baseline_mode,
+            snapshot_dir.as_deref(),
         );
         log::debug!(
             "[send_refine_message] direct prompt ({} chars) for skill '{}' command={:?}",

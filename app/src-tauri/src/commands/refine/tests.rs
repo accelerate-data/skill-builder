@@ -847,6 +847,7 @@ fn test_direct_validate_prompt_includes_required_paths() {
         "Run validation now",
         None,
         None,
+        None,
     );
     assert!(prompt.contains("The workspace directory is: /ws/my-skill"));
     assert!(prompt.contains(
@@ -869,6 +870,7 @@ fn test_direct_rewrite_prompt_uses_rewrite_agent() {
         "Rewrite this skill for coherence",
         None,
         None,
+        None,
     );
     assert!(prompt.contains(
         "Treat Current request as an additional focus area for coverage"
@@ -889,6 +891,7 @@ fn test_direct_rewrite_prompt_includes_target_files() {
         "Improve the metrics section",
         Some(&files),
         None,
+        None,
     );
     assert!(prompt.contains("Focus the rewrite on these files: SKILL.md, references/metrics.md."));
     assert!(prompt.contains("Current request: Improve the metrics section"));
@@ -904,8 +907,10 @@ fn test_direct_benchmark_prompt_includes_baseline_mode() {
         "Benchmark the skill",
         None,
         Some("prior_version"),
+        Some("/ws/my-skill/skill-snapshot"),
     );
     assert!(prompt.contains("baseline_mode: prior_version"));
+    assert!(prompt.contains("prior_skill_snapshot_dir: /ws/my-skill/skill-snapshot"));
     assert!(prompt.contains("Current request: Benchmark the skill"));
 }
 
@@ -919,6 +924,7 @@ fn test_direct_validate_prompt_ignores_target_files() {
         "/skills",
         "Run validation now",
         Some(&files),
+        None,
         None,
     );
     assert!(!prompt.contains("Focus the rewrite on these files"));

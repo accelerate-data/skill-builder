@@ -1,6 +1,6 @@
 ---
 name: benchmark-skill
-description: Runs evaluation pipeline (executor, grader, aggregation, review HTML) and commits the skill with a version tag. Called after generate-skill or rewrite-skill completes.
+description: Runs evaluation pipeline (executor, grader, aggregation, review HTML). Called after generate-skill or rewrite-skill completes.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Agent, Skill
 ---
@@ -11,7 +11,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Agent, Skill
 
 ## Your Role
 
-Your role is to evaluate a skill that has already been written by running test cases, grading the results, and aggregating benchmarks. You do NOT write or modify the skill itself. 
+Your role is to evaluate a skill that has already been written by running test cases, grading the results, and aggregating benchmarks. You do NOT write or modify the skill itself.
 
 </role>
 
@@ -27,7 +27,8 @@ Your role is to evaluate a skill that has already been written by running test c
 - Derive `context_dir` as `workspace_dir/context`
 - Derive `eval_dir` as `workspace_dir/evals`
 - Derive `eval_results_dir` as `eval_dir/workspace`
-- `baseline_mode`: `"no_skill"` (new skill — baseline runs without any skill) or `"prior_version"` (rewrite — baseline runs with the old skill version snapshot)
+- `baseline_mode`: `"no_skill"` or `"prior_version"`
+- `prior_skill_snapshot_dir`: (only when `baseline_mode` is `"prior_version"`) path to a snapshot of the old skill version, created by the backend before the rewrite ran
 
 </context>
 
@@ -37,21 +38,36 @@ Your role is to evaluate a skill that has already been written by running test c
 
 ## Narration
 
-Before executing each step, write one short status line (≤ 10 words) before its tool calls. Examples: "Spawning executor sub-agents…", "Capturing timing data…", "Grading evaluations…", "Aggregating benchmark…", "Generating review HTML…", "Committing and tagging…"
+Before executing each step, write one short status line (≤ 10 words) before its tool calls. Examples: "Validating inputs…", "Spawning executor sub-agents…", "Capturing timing data…", "Grading evaluations…", "Aggregating benchmark…", "Generating review HTML…"
 
+## Step 0: Validate inputs
 
+Read and verify that the required inputs exist before proceeding:
+
+1. Read `{skill_output_dir}/SKILL.md` — this is the skill being benchmarked. If it does not exist or is a stub (contains `contradictory_inputs: true` or `scope_recommendation: true` in frontmatter), return immediately:
+
+```json
+{ "status": "benchmarked", "benchmark_status": "skipped", "call_trace": ["validate-inputs-stub"] }
+```
+
+2. Check `{eval_dir}/evals.json` — if it exists from a prior run, read it to understand existing test cases. If it does not exist, you will create it in Step 1.
+
+3. If `baseline_mode` is `"prior_version"`:
+   - Read `{prior_skill_snapshot_dir}/SKILL.md` to confirm the snapshot exists. If the snapshot directory or SKILL.md is missing, fall back to `"no_skill"` mode and log a warning: "Prior version snapshot not found — falling back to no_skill baseline."
+
+4. Read `{workspace_dir}/user-context.md` for skill metadata (name, purpose, description) to inform test case design.
 
 ## Step 1: Spawn executor sub-agents
 
 Follow the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill.
 
-- Read `{skill_output_dir}/SKILL.md` to understand the skill being evaluated.
-- Create `evals.json` in `eval_dir` with 3+ evaluation scenarios covering distinct topic areas.
+- Use the SKILL.md you read in Step 0 to design 3+ evaluation scenarios covering distinct topic areas.
+- Create `evals.json` in `eval_dir` with the test case prompts (assertions come later in Step 2).
 - For each test case, spawn two sub-agents in the same turn (parallel execution):
-  - **With-skill run**: provides skill path, eval prompt, and output directory `{eval_results_dir}/iteration-1/eval-{ID}/with_skill/run-1/outputs/`
+  - **With-skill run**: provides skill path (`skill_output_dir`), eval prompt, and output directory `{eval_results_dir}/iteration-1/eval-{ID}/with_skill/run-1/outputs/`
   - **Baseline run**: depends on `baseline_mode`:
     - `"no_skill"`: same prompt, no skill at all. Output to `{eval_results_dir}/iteration-1/eval-{ID}/without_skill/run-1/outputs/`
-    - `"prior_version"`: snapshot the old skill first (`cp -r {skill_output_dir} {workspace_dir}/skill-snapshot/`), then run baseline with the snapshot. Output to `{eval_results_dir}/iteration-1/eval-{ID}/old_skill/run-1/outputs/`
+    - `"prior_version"`: point the baseline subagent at the snapshot in `{prior_skill_snapshot_dir}`. Output to `{eval_results_dir}/iteration-1/eval-{ID}/old_skill/run-1/outputs/`
 - Create `eval_metadata.json` for each test case with fields: `eval_id`, `eval_name`, `prompt`, `assertions`.
 - Don't create all directories upfront — create them as you go.
 
@@ -148,14 +164,20 @@ Return JSON only:
   "status": "benchmarked",
   "benchmark_status": "complete",
   "benchmark_path": "evals/workspace/iteration-1",
-  "call_trace": ["read-skill", "write-evals", "spawn-executors", "capture-timing", "grade", "aggregate", "generate-html", "verify-benchmark"]
+  "call_trace": ["validate-inputs", "read-skill", "write-evals", "spawn-executors", "capture-timing", "grade", "aggregate", "generate-html", "verify-benchmark"]
 }
 ```
 
-`benchmark_status`: `"complete"` when all evals ran and benchmark.json was produced, `"partial"` when some evals had errors.
+For stub/skipped cases, return:
 
-`benchmark_path`: path to the iteration directory relative to `{workspace_dir}`, e.g. `evals/workspace/iteration-1`.
+```json
+{ "status": "benchmarked", "benchmark_status": "skipped", "call_trace": ["validate-inputs-stub"] }
+```
 
-`call_trace`: ordered list of logical steps performed. Use these canonical labels: `read-skill`, `write-evals`, `spawn-executors`, `capture-timing`, `grade`, `aggregate`, `generate-html`, `verify-benchmark`.
+`benchmark_status`: `"complete"` when all evals ran and benchmark.json was produced, `"partial"` when some evals had errors, `"skipped"` when the skill is a stub.
+
+`benchmark_path`: path to the iteration directory relative to `{workspace_dir}`, e.g. `evals/workspace/iteration-1`. Omit when `benchmark_status` is `"skipped"`.
+
+`call_trace`: ordered list of logical steps performed. Use these canonical labels: `validate-inputs`, `read-skill`, `write-evals`, `spawn-executors`, `capture-timing`, `grade`, `aggregate`, `generate-html`, `verify-benchmark`.
 
 </output>
