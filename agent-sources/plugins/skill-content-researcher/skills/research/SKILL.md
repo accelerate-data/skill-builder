@@ -62,14 +62,13 @@ Update the `metadata.research_plan` created in Step 2.
 
 ## Step 4 — Parallel Dimension Research
 
-For each selected dimension object in `metadata.research_plan.selected_dimensions`:
+For each selected dimension object in `metadata.research_plan.selected_dimensions` spawn one subagent in parallel the same turn, mode: bypassPermissions. **This is important:** don't spawn one and and then come back for the others. Launch everything at once so it all finishes around the same time.
 
-- Spawn one Task sub-agent per selected dimension. Mode: `bypassPermissions`.
-- Wait for all tasks before consolidation.
+Wait for all subagents to complete and return results before proceeding to step 5.
 
 ### Sub-agent prompt
 
-Spawn each sub-agent with the following prompt verbatim, substituting `{name}`, `{focus}`, and `{user_context}`:
+Spawn each subagent with the following prompt verbatim, substituting `{name}`, `{focus}`, and `{user_context}`:
 
 ---
 **Dimension**: {name}

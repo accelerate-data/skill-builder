@@ -357,37 +357,7 @@ describe("MessageProcessor", () => {
   // =========================================================================
 
   describe("subagent grouping", () => {
-    it("creates subagent DisplayItem for Task tool_use", () => {
-      const raw = {
-        type: "assistant",
-        message: {
-          content: [
-            {
-              type: "tool_use",
-              id: "tu-task-1",
-              name: "Task",
-              input: {
-                description: "Research entities",
-                subagent_type: "Explore",
-                prompt: "Find all entity definitions",
-              },
-            },
-          ],
-        },
-      };
-      const out = processor.process(raw);
-      const items = extractDisplayItems(out);
-
-      expect(items).toHaveLength(1);
-      expect(items[0].type).toBe("subagent");
-      expect(items[0].subagentDescription).toBe("Research entities");
-      expect(items[0].subagentType).toBe("Explore");
-      expect(items[0].subagentStatus).toBe("running");
-      expect(items[0].toolUseId).toBe("tu-task-1");
-      expect(processor.activeSubagentCount).toBe(1);
-    });
-
-    it('creates subagent DisplayItem for Agent tool_use (SDK "Agent" tool name)', () => {
+    it("creates subagent DisplayItem for Agent tool_use", () => {
       const raw = {
         type: "assistant",
         message: {
@@ -426,7 +396,7 @@ describe("MessageProcessor", () => {
             {
               type: "tool_use",
               id: "tu-parent-1",
-              name: "Task",
+              name: "Agent",
               input: { description: "Research" },
             },
           ],
@@ -485,8 +455,8 @@ describe("MessageProcessor", () => {
             {
               type: "tool_use",
               id: "tu-sub-err",
-              name: "Task",
-              input: { description: "Failing task" },
+              name: "Agent",
+              input: { description: "Failing agent" },
             },
           ],
         },
@@ -500,7 +470,7 @@ describe("MessageProcessor", () => {
             {
               type: "tool_result",
               tool_use_id: "tu-sub-err",
-              content: "Task failed",
+              content: "Agent failed",
               is_error: true,
             },
           ],

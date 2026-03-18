@@ -340,8 +340,8 @@ fn test_refine_config_includes_task_tool_for_streaming_edits() {
     let (config, _) = base_refine_config("test prompt");
     let tools = config.allowed_tools.unwrap();
     assert!(
-        tools.contains(&"Task".to_string()),
-        "Task tool required for scoped rewrite delegation and installed skills"
+        tools.contains(&"Agent".to_string()),
+        "Agent tool required for scoped rewrite delegation and installed skills"
     );
 }
 
@@ -451,7 +451,7 @@ fn test_refine_config_serialization_matches_sidecar_schema() {
     assert!(parsed["allowedTools"]
         .as_array()
         .unwrap()
-        .contains(&serde_json::json!("Task")));
+        .contains(&serde_json::json!("Agent")));
     assert_eq!(parsed["skillName"], "my-skill");
     assert_eq!(parsed["usageSessionId"], expected_usage_session_id);
     assert!(parsed.get("conversationHistory").is_none());

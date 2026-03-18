@@ -93,7 +93,7 @@ export class MessageProcessor {
   /** Map from parent_tool_use_id → child display items (subagent grouping). */
   private subagentMap = new Map<string, DisplayItem[]>();
 
-  /** Map from toolUseId → subagent DisplayItem (Task tool calls). */
+  /** Map from toolUseId → subagent DisplayItem (Agent tool calls). */
   private subagentByToolUseId = new Map<string, DisplayItem>();
 
   /** Accumulates run-level state for run_result events. */
@@ -349,7 +349,7 @@ export class MessageProcessor {
             results.push(this.makeEnvelope(updatedItem));
           }
 
-          // If this was a subagent (Task), update its status
+          // If this was a subagent (Agent), update its status
           const subagentItem = this.subagentByToolUseId.get(toolUseId);
           if (subagentItem) {
             const childItems = this.subagentMap.get(toolUseId) ?? [];
@@ -536,7 +536,7 @@ export class MessageProcessor {
           });
           this.toolCallTimestamps.set(toolUseId, now);
 
-          // Count Task/Agent tool uses
+          // Count Agent tool uses
           this.accumulator.recordToolUse();
 
           process.stderr.write(

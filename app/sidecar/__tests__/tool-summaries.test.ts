@@ -56,12 +56,12 @@ describe("computeToolSummary", () => {
     expect(computeToolSummary("WebFetch", { url: "https://example.com" })).toBe("Fetching: https://example.com");
   });
 
-  it("summarizes Task with description", () => {
-    expect(computeToolSummary("Task", { description: "Analyze code" })).toBe("Agent: Analyze code");
-  });
-
   it("summarizes Agent with description", () => {
     expect(computeToolSummary("Agent", { description: "Review PR" })).toBe("Agent: Review PR");
+  });
+
+  it("summarizes legacy Task with description (backward compat)", () => {
+    expect(computeToolSummary("Task", { description: "Analyze code" })).toBe("Agent: Analyze code");
   });
 
   it("summarizes NotebookEdit with notebook_path", () => {

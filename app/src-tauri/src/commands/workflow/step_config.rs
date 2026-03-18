@@ -6,15 +6,15 @@ use crate::types::StepConfig;
 pub fn tools_for_agent(agent_name: &str) -> Vec<String> {
     let tools: &[&str] = match agent_name {
         "skill-content-researcher:research-orchestrator" => &["Read", "Skill"],
-        "skill-content-researcher:detailed-research" => &["Read", "Task"],
+        "skill-content-researcher:detailed-research" => &["Read", "Agent"],
         "confirm-decisions" => &["Read"],
         "answer-evaluator" => &["Read"],
-        "validate-skill" => &["Read", "Task"],
+        "validate-skill" => &["Read", "Agent"],
         "validate-quality" => &["Read", "Glob", "Grep"],
         "eval-skill" => &["Read", "Glob", "Grep"],
-        "skill-creator:generate-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task", "Skill"],
-        "skill-creator:refine-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task", "Skill"],
-        _ => &["Read", "Glob", "Grep", "Task", "Skill"],
+        "skill-creator:generate-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill"],
+        "skill-creator:refine-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill"],
+        _ => &["Read", "Glob", "Grep", "Agent", "Skill"],
     };
     tools.iter().map(|s| s.to_string()).collect()
 }

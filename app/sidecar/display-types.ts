@@ -60,7 +60,7 @@ export interface DisplayItem {
   /** Pre-computed summary (e.g. "Reading foo.ts"). */
   toolSummary?: string;
 
-  // --- subagent (Task tool calls with nested execution) ---
+  // --- subagent (Agent tool calls with nested execution) ---
   subagentDescription?: string;
   subagentType?: string;
   parentToolUseId?: string;
