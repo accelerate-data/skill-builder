@@ -23,11 +23,9 @@ fn remove_dir_logged(label: &str, path: &Path) {
 
 /// List existing output files for a single step (display names, not full paths).
 ///
-/// For step 3 (generate skill), checks:
-///   - `skills_path/skill_name/` — SKILL.md, references/*, .skill zip
-///   - `workspace_path/skill_name/` — evals/, eval-review.html
-///
-/// For other steps, checks context files in `workspace_path/skill_name/`.
+/// For step 0, also lists workflow-level files (gate-result.json, answer-evaluation.json).
+/// For step 3, checks skills_path for skill artifacts and workspace for evals.
+/// For other steps, checks context files in workspace_path/skill_name/.
 pub fn list_step_output_files(
     workspace_path: &str,
     skill_name: &str,
@@ -37,44 +35,57 @@ pub fn list_step_output_files(
     let skill_dir = Path::new(workspace_path).join(skill_name);
     let mut files = Vec::new();
 
-    if step_id == 3 {
-        let skill_output_dir = Path::new(skills_path).join(skill_name);
-        if skill_output_dir.exists() {
-            for file in get_step_output_files(3) {
-                if skill_output_dir.join(file).exists() {
+    match step_id {
+        0 => {
+            for file in get_step_output_files(0) {
+                if skill_dir.join(file).exists() {
                     files.push(file.to_string());
                 }
             }
-            let refs_dir = skill_output_dir.join("references");
-            if refs_dir.is_dir() {
-                if let Ok(entries) = std::fs::read_dir(&refs_dir) {
-                    for entry in entries.flatten() {
-                        if entry.path().is_file() {
-                            if let Some(name) = entry.path().file_name() {
-                                files.push(format!("references/{}", name.to_string_lossy()));
+            for extra in ["gate-result.json", "answer-evaluation.json"] {
+                if skill_dir.join(extra).exists() {
+                    files.push(extra.to_string());
+                }
+            }
+        }
+        3 => {
+            let skill_output_dir = Path::new(skills_path).join(skill_name);
+            if skill_output_dir.exists() {
+                for file in get_step_output_files(3) {
+                    if skill_output_dir.join(file).exists() {
+                        files.push(file.to_string());
+                    }
+                }
+                let refs_dir = skill_output_dir.join("references");
+                if refs_dir.is_dir() {
+                    if let Ok(entries) = std::fs::read_dir(&refs_dir) {
+                        for entry in entries.flatten() {
+                            if entry.path().is_file() {
+                                if let Some(name) = entry.path().file_name() {
+                                    files.push(format!(
+                                        "references/{}",
+                                        name.to_string_lossy()
+                                    ));
+                                }
                             }
                         }
                     }
                 }
+                let skill_zip = format!("{}.skill", skill_name);
+                if skill_output_dir.join(&skill_zip).exists() {
+                    files.push(skill_zip);
+                }
             }
-            let skill_zip = format!("{}.skill", skill_name);
-            if skill_output_dir.join(&skill_zip).exists() {
-                files.push(skill_zip);
+            if skill_dir.join("evals").is_dir() {
+                files.push("evals/".to_string());
             }
         }
-        if skill_dir.join("evals").is_dir() {
-            files.push("evals/".to_string());
-        }
-        if skill_dir.join("eval-review.html").exists() {
-            files.push("eval-review.html".to_string());
-        }
-        return files;
-    }
-
-    // Steps 0-2: context files in workspace_path/skill_name/
-    for file in get_step_output_files(step_id) {
-        if skill_dir.join(file).exists() {
-            files.push(file.to_string());
+        _ => {
+            for file in get_step_output_files(step_id) {
+                if skill_dir.join(file).exists() {
+                    files.push(file.to_string());
+                }
+            }
         }
     }
     files
@@ -99,25 +110,37 @@ pub fn clean_step_output(
 
     let skill_dir = Path::new(workspace_path).join(skill_name);
 
-    if step_id == 3 {
-        let skill_output_dir = Path::new(skills_path).join(skill_name);
-        if skill_output_dir.exists() {
-            for file in get_step_output_files(3) {
-                remove_file_logged(LABEL, &skill_output_dir.join(file));
+    match step_id {
+        0 => {
+            // Step 0 output + workflow-level files written to skill_dir
+            for file in get_step_output_files(0) {
+                remove_file_logged(LABEL, &skill_dir.join(file));
             }
-            remove_dir_logged(LABEL, &skill_output_dir.join("references"));
-            remove_file_logged(
-                LABEL,
-                &skill_output_dir.join(format!("{}.skill", skill_name)),
-            );
+            remove_file_logged(LABEL, &skill_dir.join("gate-result.json"));
+            remove_file_logged(LABEL, &skill_dir.join("answer-evaluation.json"));
         }
-        remove_dir_logged(LABEL, &skill_dir.join("evals"));
-        remove_file_logged(LABEL, &skill_dir.join("eval-review.html"));
-        return;
-    }
-
-    for file in get_step_output_files(step_id) {
-        remove_file_logged(LABEL, &skill_dir.join(file));
+        3 => {
+            // Skill artifacts in skills_path
+            let skill_output_dir = Path::new(skills_path).join(skill_name);
+            if skill_output_dir.exists() {
+                for file in get_step_output_files(3) {
+                    remove_file_logged(LABEL, &skill_output_dir.join(file));
+                }
+                remove_dir_logged(LABEL, &skill_output_dir.join("references"));
+                remove_file_logged(
+                    LABEL,
+                    &skill_output_dir.join(format!("{}.skill", skill_name)),
+                );
+            }
+            // Eval artifacts in workspace (eval-review.html is inside evals/)
+            remove_dir_logged(LABEL, &skill_dir.join("evals"));
+        }
+        _ => {
+            // Steps 1, 2: context files in workspace
+            for file in get_step_output_files(step_id) {
+                remove_file_logged(LABEL, &skill_dir.join(file));
+            }
+        }
     }
 }
 
@@ -238,25 +261,41 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_step0_deletes_context_files() {
-        // Deleting from step 0 must remove all context files including step 2 output.
+    fn test_delete_step0_deletes_all_artifacts() {
+        // Deleting from step 0 must remove all files: context, gate, evaluation, skill, evals.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
         create_skill_dir(tmp.path(), "my-skill", "test");
 
-        // Create step 0 output and step 2 output
+        // Step 0 + workflow-level files
         create_step_output(tmp.path(), "my-skill", 0);
+        let skill_dir = tmp.path().join("my-skill");
+        std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
+        std::fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
+
+        // Step 2
         create_step_output(tmp.path(), "my-skill", 2);
+
+        // Step 3 artifacts
+        let output_dir = skills_tmp.path().join("my-skill");
+        std::fs::create_dir_all(output_dir.join("references")).unwrap();
+        std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
+        std::fs::create_dir_all(skill_dir.join("evals")).unwrap();
+        std::fs::write(skill_dir.join("evals/evals.json"), "{}").unwrap();
 
         // Delete from step 0 onwards
         delete_step_output_files(workspace, "my-skill", 0, skills_path);
 
-        let skill_dir = tmp.path().join("my-skill");
-        // All context files must be gone
+        // Everything must be gone
         assert!(!skill_dir.join("context/clarifications.json").exists());
+        assert!(!skill_dir.join("gate-result.json").exists());
+        assert!(!skill_dir.join("answer-evaluation.json").exists());
         assert!(!skill_dir.join("context/decisions.json").exists());
+        assert!(!output_dir.join("SKILL.md").exists());
+        assert!(!output_dir.join("references").exists());
+        assert!(!skill_dir.join("evals").exists());
     }
 
     #[test]
@@ -279,17 +318,17 @@ mod tests {
     }
 
     #[test]
-    fn test_clean_step3_deletes_evals_and_review() {
+    fn test_clean_step3_deletes_evals_and_skill() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
-        // Create workspace dir with eval artifacts
+        // Create workspace dir with eval artifacts (eval-review.html is inside evals/)
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("evals")).unwrap();
         std::fs::write(skill_dir.join("evals/evals.json"), "{}").unwrap();
-        std::fs::write(skill_dir.join("eval-review.html"), "<html>").unwrap();
+        std::fs::write(skill_dir.join("evals/eval-review.html"), "<html>").unwrap();
 
         // Create skill output dir with SKILL.md
         let output_dir = skills_tmp.path().join("my-skill");
@@ -299,9 +338,28 @@ mod tests {
         clean_step_output(workspace, "my-skill", 3, skills_path);
 
         assert!(!skill_dir.join("evals").exists());
-        assert!(!skill_dir.join("eval-review.html").exists());
         assert!(!output_dir.join("SKILL.md").exists());
         assert!(!output_dir.join("references").exists());
+    }
+
+    #[test]
+    fn test_clean_step0_deletes_gate_and_evaluation_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+
+        let skill_dir = tmp.path().join("my-skill");
+        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+        std::fs::write(skill_dir.join("context/clarifications.json"), "{}").unwrap();
+        std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
+        std::fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
+
+        clean_step_output(workspace, "my-skill", 0, skills_path);
+
+        assert!(!skill_dir.join("context/clarifications.json").exists());
+        assert!(!skill_dir.join("gate-result.json").exists());
+        assert!(!skill_dir.join("answer-evaluation.json").exists());
     }
 
     // ── list_step_output_files tests ──
@@ -316,7 +374,26 @@ mod tests {
         create_step_output(tmp.path(), "my-skill", 0);
 
         let files = list_step_output_files(workspace, "my-skill", 0, skills_path);
-        assert_eq!(files, vec!["context/clarifications.json"]);
+        assert!(files.contains(&"context/clarifications.json".to_string()));
+    }
+
+    #[test]
+    fn test_list_step0_includes_gate_and_evaluation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+
+        let skill_dir = tmp.path().join("my-skill");
+        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+        std::fs::write(skill_dir.join("context/clarifications.json"), "{}").unwrap();
+        std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
+        std::fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
+
+        let files = list_step_output_files(workspace, "my-skill", 0, skills_path);
+        assert!(files.contains(&"context/clarifications.json".to_string()));
+        assert!(files.contains(&"gate-result.json".to_string()));
+        assert!(files.contains(&"answer-evaluation.json".to_string()));
     }
 
     #[test]
@@ -360,11 +437,10 @@ mod tests {
         std::fs::write(output_dir.join("references/bar.md"), "ref").unwrap();
         std::fs::write(output_dir.join("my-skill.skill"), "zip").unwrap();
 
-        // Eval artifacts in workspace
+        // Eval artifacts in workspace (eval-review.html is inside evals/)
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("evals")).unwrap();
         std::fs::write(skill_dir.join("evals/evals.json"), "{}").unwrap();
-        std::fs::write(skill_dir.join("eval-review.html"), "<html>").unwrap();
 
         let files = list_step_output_files(workspace, "my-skill", 3, skills_path);
 
@@ -373,7 +449,6 @@ mod tests {
         assert!(files.contains(&"references/bar.md".to_string()));
         assert!(files.contains(&"my-skill.skill".to_string()));
         assert!(files.contains(&"evals/".to_string()));
-        assert!(files.contains(&"eval-review.html".to_string()));
     }
 
     #[test]
@@ -395,7 +470,110 @@ mod tests {
 
         assert_eq!(files, vec!["SKILL.md"]);
         assert!(!files.contains(&"evals/".to_string()));
-        assert!(!files.contains(&"eval-review.html".to_string()));
+    }
+
+    // ── Pre-run cleanup contract tests ──
+    // These verify the cleanup behavior when re-running each step,
+    // matching the call in runtime.rs run_workflow_step().
+
+    #[test]
+    fn test_prerun_step0_deletes_own_output() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+
+        // Step 0 produced clarifications.json + workflow-level files
+        create_step_output(tmp.path(), "my-skill", 0);
+        let skill_dir = tmp.path().join("my-skill");
+        std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
+        std::fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
+
+        // Re-running step 0 should delete all of them
+        clean_step_output(workspace, "my-skill", 0, skills_path);
+        assert!(!skill_dir.join("context/clarifications.json").exists());
+        assert!(!skill_dir.join("gate-result.json").exists());
+        assert!(!skill_dir.join("answer-evaluation.json").exists());
+    }
+
+    #[test]
+    fn test_prerun_step1_preserves_clarifications() {
+        // Step 1 edits clarifications.json in-place — re-running step 1
+        // must NOT delete it, otherwise the agent has no input.
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+
+        create_step_output(tmp.path(), "my-skill", 0); // clarifications.json
+        create_step_output(tmp.path(), "my-skill", 2); // decisions.json
+
+        let skill_dir = tmp.path().join("my-skill");
+        assert!(skill_dir.join("context/clarifications.json").exists());
+        assert!(skill_dir.join("context/decisions.json").exists());
+
+        // Re-running step 1 should not touch any files
+        clean_step_output(workspace, "my-skill", 1, skills_path);
+
+        assert!(skill_dir.join("context/clarifications.json").exists());
+        assert!(skill_dir.join("context/decisions.json").exists());
+    }
+
+    #[test]
+    fn test_prerun_step2_deletes_decisions_preserves_clarifications() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+
+        create_step_output(tmp.path(), "my-skill", 0); // clarifications.json
+        create_step_output(tmp.path(), "my-skill", 2); // decisions.json
+
+        let skill_dir = tmp.path().join("my-skill");
+
+        // Re-running step 2 should delete decisions.json but keep clarifications.json
+        clean_step_output(workspace, "my-skill", 2, skills_path);
+
+        assert!(skill_dir.join("context/clarifications.json").exists());
+        assert!(!skill_dir.join("context/decisions.json").exists());
+    }
+
+    #[test]
+    fn test_prerun_step3_deletes_skill_and_evals_preserves_context() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+
+        // Context files from earlier steps
+        create_step_output(tmp.path(), "my-skill", 0);
+        create_step_output(tmp.path(), "my-skill", 2);
+
+        // Step 3 artifacts
+        let output_dir = skills_tmp.path().join("my-skill");
+        std::fs::create_dir_all(output_dir.join("references")).unwrap();
+        std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
+        std::fs::write(output_dir.join("references/data-model.md"), "ref").unwrap();
+        std::fs::write(output_dir.join("my-skill.skill"), "zip").unwrap();
+
+        // Eval artifacts (eval-review.html is inside evals/)
+        let skill_dir = tmp.path().join("my-skill");
+        std::fs::create_dir_all(skill_dir.join("evals/workspace")).unwrap();
+        std::fs::write(skill_dir.join("evals/evals.json"), "{}").unwrap();
+        std::fs::write(skill_dir.join("evals/eval-review.html"), "<html>").unwrap();
+
+        // Re-running step 3 should delete all step 3 artifacts
+        clean_step_output(workspace, "my-skill", 3, skills_path);
+
+        // Step 3 artifacts gone (evals/ dir removal covers eval-review.html inside it)
+        assert!(!output_dir.join("SKILL.md").exists());
+        assert!(!output_dir.join("references").exists());
+        assert!(!output_dir.join("my-skill.skill").exists());
+        assert!(!skill_dir.join("evals").exists());
+
+        // Context files from earlier steps preserved
+        assert!(skill_dir.join("context/clarifications.json").exists());
+        assert!(skill_dir.join("context/decisions.json").exists());
     }
 
     #[test]

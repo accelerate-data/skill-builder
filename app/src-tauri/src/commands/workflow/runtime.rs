@@ -207,17 +207,39 @@ pub async fn run_workflow_step(
         }
     }
 
-    // Step 0 fresh start — wipe the context directory and all artifacts so
-    // the agent doesn't see stale files from a previous workflow run.
-    // Context lives in workspace_path.
-    if step_id == 0 && context_dir.is_dir() {
+    // Clean stale artifacts before the agent runs so it starts from a
+    // known-clean state. Crash or re-run scenarios can leave partial output.
+    // Step 0 is a full reset — wipe context dir and all downstream artifacts
+    // (same scope as reset_workflow_step to step 0).
+    // Steps 1-3 clean only their own output.
+    // Rewrite mode goes through the refine command, not this path.
+    if step_id == 0 {
         log::debug!(
-            "[run_workflow_step] step={} step_id=0 wiping context dir {}",
-            workflow_step_log_name(0),
-            context_dir.display()
+            "[run_workflow_step] step=0 full cleanup for skill={}",
+            skill_name
         );
-        let _ = std::fs::remove_dir_all(&context_dir);
-        let _ = std::fs::create_dir_all(&context_dir);
+        if context_dir.is_dir() {
+            let _ = std::fs::remove_dir_all(&context_dir);
+            let _ = std::fs::create_dir_all(&context_dir);
+        }
+        crate::cleanup::delete_step_output_files(
+            &workspace_path,
+            &skill_name,
+            0,
+            &settings.skills_path,
+        );
+    } else {
+        log::debug!(
+            "[run_workflow_step] step={} cleaning previous artifacts for skill={}",
+            step_id,
+            skill_name
+        );
+        crate::cleanup::clean_step_output(
+            &workspace_path,
+            &skill_name,
+            step_id,
+            &settings.skills_path,
+        );
     }
 
     run_workflow_step_inner(
