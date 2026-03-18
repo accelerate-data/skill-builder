@@ -71,9 +71,9 @@ The user's answers contain unresolvable contradictions. See `decisions.json` for
 
 if `metadata.contradictory_inputs == "revised"` then treat it as authoritative and use only `{context_dir}/decisions.json` as the input to generate the skill. Do not read `{context_dir}/clarifications.json`.
 
-### No contradictions (or contradictions resolved as false)
+### No contradictions
 
-if `metadata.contradictory_inputs` is `"false"` or absent, read `{context_dir}/clarifications.json`.
+If `metadata.contradictory_inputs` is absent (the normal case), read `{context_dir}/clarifications.json`.
 
 If `metadata.scope_recommendation == true` in the parsed `clarifications.json`.
 
@@ -152,6 +152,11 @@ version: <version from user-context.md, default 1.0.0>
 - For `platform` purpose, enforce fabric lakehouse-first recommendations where technical behavior depends on endpoint/runtime constraints.
 - For non-platform purposes, include fabric lakehouse specific detail only when it materially affects the skill's decisions, risks, or tests.
 
+### Directory for test case generation
+
+Write test cases from the `Test Cases` subsection of **Creating a skill section** to `{eval_dir}/evals.json`.
+Do not run the evaluations — a separate benchmark agent handles execution and grading.
+
 ### Workflow steps to ignore
 
 The following top-level sections in the `skill-creator` skill should **not** be followed:
@@ -163,14 +168,9 @@ The following top-level sections in the `skill-creator` skill should **not** be 
 - `Claude.ai-specific instructions`
 - `Cowork-Specific Instructions`
 
-### Directory for test case generation 
-
-The test cases created in `Test Cases` subsection of **Creating a skill section** should be created in `eval_dir`.
-Do not run the evaluations — a separate benchmark agent handles execution and grading.
-
 ## Phase 2: Invoke the skill
 
-Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill. Write the `SKILL.MD` and reference files in parallel yourself (do not spawn subagents).
+Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill. Write the `SKILL.md` and reference files in parallel yourself (do not spawn subagents).
 
 ---
 
@@ -181,7 +181,6 @@ Use the **Creating a skill section** in `skill-creator:skill-creator` skill to g
 - SKILL.md frontmatter is valid (name, description, tools, version)
 - Reference files are complete and cross-referenced from SKILL.md
 - `evals.json` written with 3+ evaluation scenarios
-- `Current request` is addressed in the skill when it names a concrete topic
 
 </instructions>
 

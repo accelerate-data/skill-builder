@@ -44,30 +44,38 @@ Before executing each step, write one short status line (≤ 10 words) before it
 
 Read and verify that the required inputs exist before proceeding:
 
-1. Read `{skill_output_dir}/SKILL.md` — this is the skill being benchmarked. If it does not exist or is a stub (contains `contradictory_inputs: true` or `scope_recommendation: true` in frontmatter), return immediately:
+- Read `{skill_output_dir}/SKILL.md` — this is the skill being benchmarked. If it does not exist or is a stub (contains `contradictory_inputs: true` or `scope_recommendation: true` in frontmatter), return immediately:
 
 ```json
 { "status": "benchmarked", "benchmark_status": "skipped", "call_trace": ["validate-inputs-stub"] }
 ```
 
-2. Read `{eval_dir}/evals.json` — this file is required and contains the test case definitions. If it does not exist, return immediately:
+- Read `{eval_dir}/evals.json` — this file is required and contains the test case definitions. If it does not exist, return immediately:
 
 ```json
 { "status": "benchmarked", "benchmark_status": "skipped", "call_trace": ["validate-inputs-missing-evals"] }
 ```
 
-3. If `baseline_mode` is `"prior_version"`:
-   - Read `{prior_skill_snapshot_dir}/SKILL.md` to confirm the snapshot exists. If the snapshot directory or SKILL.md is missing, fall back to `"no_skill"` mode and log a warning: "Prior version snapshot not found — falling back to no_skill baseline."
+- If `baseline_mode` is `"prior_version"`:
+  - Read `{prior_skill_snapshot_dir}/SKILL.md` to confirm the snapshot exists. If the snapshot directory or SKILL.md is missing, fall back to `"no_skill"` mode and log a warning: "Prior version snapshot not found — falling back to no_skill baseline."
 
-4. Read `{workspace_dir}/user-context.md` for skill metadata (name, purpose, description). If it does not exist, return immediately:
+- Read `{workspace_dir}/user-context.md` for skill metadata (name, purpose, description). If it does not exist, return immediately:
 
 ```json
 { "status": "benchmarked", "benchmark_status": "skipped", "call_trace": ["validate-inputs-missing-user-context"] }
 ```
 
-## Step 1: Run evaluations
+## Step 1: Determine iteration number
 
-Follow the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill to execute, grade, and aggregate the benchmark.
+Scan `{eval_results_dir}` for existing `iteration-*` directories. Pick the next sequential number:
+
+- If no `iteration-*` directories exist, use `iteration-1`.
+- If `iteration-1` through `iteration-N` exist, use `iteration-{N+1}`.
+
+Store the result as `{iteration}` (e.g. `iteration-3`) for use in all subsequent steps.
+All files generated when executing test cases, grading results, and aggregating the benchmark only be in `evals/workspace/{iteration}` folder.
+
+## Step 2: Setup the context for benchmarking the skill
 
 Key inputs for the eval pipeline:
 
@@ -76,12 +84,26 @@ Key inputs for the eval pipeline:
 - **Baseline run**: depends on `baseline_mode`:
   - `"no_skill"`: same prompt, no skill at all. Save to `without_skill/` directories.
   - `"prior_version"`: point the baseline subagent at `{prior_skill_snapshot_dir}`. Save to `old_skill/` directories.
-- **Results directory**: `{eval_results_dir}/iteration-1/`
-- **Environment**: headless — use `--static` for the review HTML viewer, do not wait for user feedback.
+- **Results directory**: `{eval_results_dir}/{iteration}/`
+- **Environment**: 
+  - The skill is running in headless mode and environment has no display. 
+  - When executing Step 4 of the Running and evaluating test cases section, use `--static {eval_results_dir}/{iteration}/review.html` instead of starting a server. Do not open a browser.
+  - Do not wait for user feedback.
+- The `skill-creator` skill references files like `references/schemas.md` and `agents/grader.md` — these are internal to the `skill creator` skill and is present in `plugins/skill-creator/skills/skill-creator`.
 
-## Step 2: Verify benchmark.json
+## Step 3: Execute the test cases and generate the benchmark
 
-Read `{eval_results_dir}/iteration-1/benchmark.json` and confirm it contains a valid `run_summary` with per-configuration statistics.
+Follow the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill to execute, grade, and aggregate the benchmark.
+
+**Wait for all background tasks** to complete before going to step 4.
+
+## Step 4: Verify benchmark.json
+
+Read `{eval_results_dir}/{iteration}/benchmark.json`.
+
+- If it exists and contains a valid `run_summary` with per-configuration statistics, return `benchmark_status: "complete"`.
+- If it exists but is missing some configurations or some evals had errors, return `benchmark_status: "partial"`.
+- If it does not exist after Step 3 completed (aggregation script failed), return `benchmark_status: "partial"` with `"benchmark_path": "evals/workspace/{iteration}"`.
 
 ---
 
@@ -101,8 +123,8 @@ Read `{eval_results_dir}/iteration-1/benchmark.json` and confirm it contains a v
 
 **Gate — do NOT return until:**
 
-1. `benchmark.json` exists and you have verified it contains a valid `run_summary`
-2. No sub-agents are still running
+1. Step 3 has finished and no sub-agents are still running
+2. You have checked whether `benchmark.json` exists and inspected its contents
 
 Return JSON only:
 
@@ -110,8 +132,8 @@ Return JSON only:
 {
   "status": "benchmarked",
   "benchmark_status": "complete",
-  "benchmark_path": "evals/workspace/iteration-1",
-  "call_trace": ["validate-inputs", "run-evals", "verify-benchmark"]
+  "benchmark_path": "evals/workspace/{iteration}",
+  "call_trace": ["validate-inputs", "determine-iteration", "run-evals", "verify-benchmark"]
 }
 ```
 
@@ -123,7 +145,7 @@ For stub/skipped cases, return:
 
 `benchmark_status`: `"complete"` when all evals ran and benchmark.json was produced, `"partial"` when some evals had errors, `"skipped"` when a required input is missing or the skill is a stub.
 
-`benchmark_path`: path to the iteration directory relative to `{workspace_dir}`, e.g. `evals/workspace/iteration-1`. Omit when `benchmark_status` is `"skipped"`.
+`benchmark_path`: relative path from `{workspace_dir}` to the iteration directory, always in the form `evals/workspace/{iteration}` — do not return an absolute path. Omit when `benchmark_status` is `"skipped"`.
 
 `call_trace`: ordered list of logical steps performed.
 

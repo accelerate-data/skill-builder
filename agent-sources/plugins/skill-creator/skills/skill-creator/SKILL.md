@@ -185,12 +185,12 @@ Execute this task:
 - **Creating a new skill**: no skill at all. Same prompt, no skill path, save to `without_skill/outputs/`.
 - **Improving an existing skill**: the old version. Before editing, snapshot the skill (`cp -r <skill-path> <workspace>/skill-snapshot/`), then point the baseline subagent at the snapshot. Save to `old_skill/outputs/`.
 
-Write an `eval_metadata.json` for each test case (assertions can be empty for now). Give each eval a descriptive name based on what it's testing — not just "eval-0". Use this name for the directory too. If this iteration uses new or modified eval prompts, create these files for each new eval directory — don't assume they carry over from previous iterations.
+Write an `eval_metadata.json` for each test case (assertions can be empty for now). Directory names **must** start with `eval-<ID>-` followed by a descriptive slug (e.g. `eval-0-hybrid-cogs`, `eval-1-returns-treatment`). The `eval-` prefix is required — the aggregator uses `eval-*` to discover directories. If this iteration uses new or modified eval prompts, create these files for each new eval directory — don't assume they carry over from previous iterations.
 
 ```json
 {
   "eval_id": 0,
-  "eval_name": "descriptive-name-here",
+  "eval_name": "eval-0-descriptive-name",
   "prompt": "The user's task prompt",
   "assertions": []
 }

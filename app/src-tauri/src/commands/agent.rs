@@ -111,7 +111,7 @@ pub(crate) fn output_format_for_agent(
                     "status": { "type": "string", "const": "benchmarked" },
                     "benchmark_status": {
                         "type": "string",
-                        "enum": ["complete", "partial"]
+                        "enum": ["complete", "partial", "skipped"]
                     },
                     "benchmark_path": { "type": "string" }
                 },

@@ -158,7 +158,7 @@ pub(crate) fn materialize_workflow_step_output_value(
                         serde_json::from_value::<GenerateSkillOutput>(structured_output.clone())
                             .map_err(|e| format!("invalid benchmark skill output: {}", e))?;
 
-                    let valid_statuses = ["complete", "partial"];
+                    let valid_statuses = ["complete", "partial", "skipped"];
                     if !valid_statuses.contains(&parsed.benchmark_status.as_str()) {
                         return Err(format!(
                             "structured_output.benchmark_status must be one of {:?} but got '{}'",
