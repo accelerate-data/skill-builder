@@ -219,8 +219,20 @@ pub async fn run_workflow_step(
             skill_name
         );
         if context_dir.is_dir() {
-            let _ = std::fs::remove_dir_all(&context_dir);
-            let _ = std::fs::create_dir_all(&context_dir);
+            if let Err(e) = std::fs::remove_dir_all(&context_dir) {
+                log::warn!(
+                    "[run_workflow_step] step=0 failed to remove context dir {}: {}",
+                    context_dir.display(),
+                    e
+                );
+            }
+            if let Err(e) = std::fs::create_dir_all(&context_dir) {
+                log::warn!(
+                    "[run_workflow_step] step=0 failed to recreate context dir {}: {}",
+                    context_dir.display(),
+                    e
+                );
+            }
         }
         crate::cleanup::delete_step_output_files(
             &workspace_path,

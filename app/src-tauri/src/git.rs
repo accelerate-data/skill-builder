@@ -358,6 +358,11 @@ pub fn restore_version(repo_path: &Path, sha: &str, skill_name: &str) -> Result<
 /// Find the highest existing version tag for a skill (`<skill-name>/v<N>`).
 /// Returns 0 if no tags exist yet.
 pub fn latest_skill_version(path: &Path, skill_name: &str) -> Result<u32, String> {
+    log::debug!(
+        "[git] latest_skill_version: skill='{}' repo={}",
+        skill_name,
+        path.display()
+    );
     let repo = Repository::open(path)
         .map_err(|e| format!("Failed to open repo at {}: {}", path.display(), e))?;
     let prefix = format!("{}/v", skill_name);
@@ -375,6 +380,11 @@ pub fn latest_skill_version(path: &Path, skill_name: &str) -> Result<u32, String
             }
         });
 
+    log::debug!(
+        "[git] latest_skill_version: skill='{}' result=v{}",
+        skill_name,
+        max_version
+    );
     Ok(max_version)
 }
 
@@ -402,6 +412,11 @@ pub fn tag_skill_version(path: &Path, skill_name: &str, version: u32) -> Result<
 /// Create the next incremental version tag for a skill.
 /// Returns the tag name (e.g. `my-skill/v1`).
 pub fn tag_next_skill_version(path: &Path, skill_name: &str) -> Result<String, String> {
+    log::debug!(
+        "[git] tag_next_skill_version: skill='{}' repo={}",
+        skill_name,
+        path.display()
+    );
     let current = latest_skill_version(path, skill_name)?;
     let next = current + 1;
     tag_skill_version(path, skill_name, next)

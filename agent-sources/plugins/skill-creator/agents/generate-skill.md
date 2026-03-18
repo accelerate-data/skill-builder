@@ -207,6 +207,13 @@ After writing the skill and test cases, you MUST follow the **Running and evalua
 
 Wait for all subagents launched for evaluation, grading and aggregation of the benchamrk to complete and only then proceed to step 3.
 
+1. Spawn executor sub-agents → wait
+2. Spawn grader sub-agents → wait
+3. Run aggregate_benchmark.py → wait
+4. Run review HTML generation → wait
+5. Verify benchmark.json exists
+6. Only THEN return
+
 #### Step 3: Commit and tag
 
 After all skill files are written and benchmarks are complete, commit the skill and create a version tag:
@@ -255,7 +262,7 @@ Return JSON only:
   "benchmark_status": "complete",
   "benchmark_path": "evals/workspace/iteration-1",
   "tag": "my-skill/v1",
-  "commit_message" : <success or error message>
+  "commit_message": "<success or error message>",
   "call_trace": ["read-user-context", "read-decisions", "write-skill", "write-references/foo.md", "commit-and-tag", "..."]
 }
 ```
@@ -265,6 +272,8 @@ Return JSON only:
 `benchmark_path`: path to the iteration directory relative to `{workspace_dir}`, e.g. `evals/workspace/iteration-1`. Contains `benchmark.json`, `benchmark.md`, `review.html`, and per-eval subdirectories. Omit when `benchmark_status` is `"skipped"`.
 
 `tag`: the version tag created by `commit_and_tag.py`, e.g. `"my-skill/v1"`. Omit when `benchmark_status` is `"skipped"` or if tagging failed.
+
+`commit_message`: the commit/tag result message from `commit_and_tag.py`. Include the success confirmation or error text verbatim.
 
 `call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`, `write-evaluations`, `use-skill-test-skill`, `read-agentskills-spec-md-using-tools`, `read-skill-creator-using-tools`, `commit-and-tag`. For reference files, use `write-references/<filename>`.
 

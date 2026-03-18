@@ -32,6 +32,13 @@ pub fn list_step_output_files(
     step_id: u32,
     skills_path: &str,
 ) -> Vec<String> {
+    log::debug!(
+        "[list_step_output_files] skill='{}': step={} workspace={} skills_path={}",
+        skill_name,
+        step_id,
+        workspace_path,
+        skills_path
+    );
     let skill_dir = Path::new(workspace_path).join(skill_name);
     let mut files = Vec::new();
 
