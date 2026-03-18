@@ -41,7 +41,7 @@ pub(crate) use evaluation::{
 };
 
 // runtime
-pub(crate) use runtime::{log_gate_decision, run_answer_evaluator, run_workflow_step};
+pub(crate) use runtime::{log_gate_decision, run_answer_evaluator, run_benchmark_phase, run_workflow_step};
 
 // user_context
 pub(crate) use user_context::{format_user_context, write_user_context_file};

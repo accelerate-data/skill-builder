@@ -200,12 +200,17 @@ pub async fn send_refine_message(
 
     if matches!(
         dispatch,
-        RefineDispatch::DirectValidate | RefineDispatch::DirectRewrite
+        RefineDispatch::DirectValidate | RefineDispatch::DirectRewrite | RefineDispatch::DirectBenchmark
     ) {
         let direct_agent_name = match dispatch {
             RefineDispatch::DirectValidate => VALIDATE_AGENT_NAME,
-            RefineDispatch::DirectRewrite => GENERATE_AGENT_NAME,
+            RefineDispatch::DirectRewrite => REWRITE_AGENT_NAME,
+            RefineDispatch::DirectBenchmark => BENCHMARK_AGENT_NAME,
             RefineDispatch::Stream => unreachable!(),
+        };
+        let baseline_mode = match dispatch {
+            RefineDispatch::DirectBenchmark => Some("prior_version"),
+            _ => None,
         };
         let prompt = build_direct_agent_prompt(
             direct_agent_name,
@@ -214,6 +219,7 @@ pub async fn send_refine_message(
             &runtime.skills_path,
             &user_message,
             target_files.as_deref(),
+            baseline_mode,
         );
         log::debug!(
             "[send_refine_message] direct prompt ({} chars) for skill '{}' command={:?}",

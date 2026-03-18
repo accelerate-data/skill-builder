@@ -48,6 +48,10 @@ interface RefineState {
   pendingInitialMessage: string | null;
   setPendingInitialMessage: (msg: string | null) => void;
 
+  // Pending benchmark prompt (shown after rewrite/refine completes)
+  pendingBenchmark: boolean;
+  setPendingBenchmark: (v: boolean) => void;
+
   // Actions
   setRefinableSkills: (skills: SkillSummary[]) => void;
   setLoadingSkills: (v: boolean) => void;
@@ -96,10 +100,12 @@ export const useRefineStore = create<RefineState>((set) => ({
   isLoadingSkills: false,
   isLoadingFiles: false,
   pendingInitialMessage: null,
+  pendingBenchmark: false,
   ...SESSION_DEFAULTS,
 
   // Actions
   setPendingInitialMessage: (msg) => set({ pendingInitialMessage: msg }),
+  setPendingBenchmark: (v) => set({ pendingBenchmark: v }),
   setRefinableSkills: (skills) => set({ refinableSkills: skills }),
   setLoadingSkills: (v) => set({ isLoadingSkills: v }),
 

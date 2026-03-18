@@ -76,12 +76,42 @@ pub(crate) fn output_format_for_agent(
             "type": "json_schema",
             "schema": {
                 "type": "object",
-                "required": ["status", "benchmark_status"],
+                "required": ["status"],
                 "properties": {
                     "status": { "type": "string", "const": "generated" },
+                    "skipped": { "type": "boolean" }
+                },
+                "additionalProperties": true
+            }
+        }));
+    }
+
+    if agent_name == Some("skill-creator:rewrite-skill") {
+        return Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status"],
+                "properties": {
+                    "status": { "type": "string", "const": "rewritten" },
+                    "skipped": { "type": "boolean" }
+                },
+                "additionalProperties": true
+            }
+        }));
+    }
+
+    if agent_name == Some("skill-creator:benchmark-skill") {
+        return Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status", "benchmark_status"],
+                "properties": {
+                    "status": { "type": "string", "const": "benchmarked" },
                     "benchmark_status": {
                         "type": "string",
-                        "enum": ["complete", "partial", "skipped"]
+                        "enum": ["complete", "partial"]
                     },
                     "benchmark_path": { "type": "string" }
                 },

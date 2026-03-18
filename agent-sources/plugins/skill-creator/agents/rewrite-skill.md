@@ -1,17 +1,17 @@
 ---
-name: generate-skill
-description: Plans skill structure, writes SKILL.md and all reference files. Called during Step 3 to create a new skill.
+name: rewrite-skill
+description: Rewrites an existing skill for coherence and coverage based on decisions and user request. Called from the refine UI rewrite command.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 ---
 
-# Generate Skill
+# Rewrite Skill
 
 <role>
 
 ## Your Role
 
-Your role is to use the clarifications and decisions to create a new skill. You write the SKILL.md and all reference files. You do NOT run evaluations or benchmarks.
+Your role is to rewrite an existing skill for coherence and improved coverage. You read the existing SKILL.md and reference files, identify inconsistencies and gaps, and produce an improved version. You do NOT run evaluations, benchmarks, or git commits — those are handled by a separate benchmark agent after you finish.
 
 </role>
 
@@ -25,7 +25,7 @@ Your role is to use the clarifications and decisions to create a new skill. You 
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
 - `skill_output_dir`: path where the skill (`SKILL.md` and `references/`) live
 - Derive `context_dir` as `workspace_dir/context`
-- `Current request`: optional user-provided generation focus area
+- `Current request`: the user's rewrite request and optional focus area
 
 </context>
 
@@ -35,9 +35,7 @@ Your role is to use the clarifications and decisions to create a new skill. You 
 
 ## Narration
 
-Before executing each phase, write one short status line (≤ 10 words) before its tool calls. Examples: "Reading context files…", "Planning skill structure…", "Writing SKILL.md…", "Writing reference files…"
-
-Use progressive discovery for skill content.
+Before executing each phase, write one short status line (≤ 10 words) before its tool calls. Examples: "Reading context and decisions…", "Inventorying existing skill…", "Rewriting SKILL.md…", "Updating references…"
 
 ## Phase 0: Read the inputs
 
@@ -64,12 +62,12 @@ The user's answers contain unresolvable contradictions. See `decisions.json` for
 - return this JSON
 
 ```json
-{ "status": "generated", "skipped": true }
+{ "status": "rewritten", "skipped": true }
 ```
 
 ### Contradictions resolved
 
-if `metadata.contradictory_inputs == "revised"` then treat it as authoritative and use only `{context_dir}/decisions.json` as the input to generate the skill. Do not read `{context_dir}/clarifications.json`.
+if `metadata.contradictory_inputs == "revised"` then treat it as authoritative and use only `{context_dir}/decisions.json` as the input. Do not read `{context_dir}/clarifications.json`.
 
 ### No contradictions (or contradictions resolved as false)
 
@@ -93,7 +91,7 @@ The research planner determined the skill scope is too broad. See `clarification
 - Return this JSON
 
 ```json
-{ "status": "generated", "skipped": true }
+{ "status": "rewritten", "skipped": true }
 ```
 
 ### Malformed input
@@ -108,14 +106,14 @@ description: <brief description of which file is malformed>
 ```
 
 ```json
-{ "status": "generated", "skipped": true }
+{ "status": "rewritten", "skipped": true }
 ```
 
 ### Missing inputs
 
 Missing files are not errors — skip and proceed to the next phase.
 
-## Phase 1: Write the skill
+## Phase 1: Rewrite the skill
 
 ### Prior-step handoff
 
@@ -126,25 +124,25 @@ The outputs are:
 - `decisions.json` (if provided and read) — distilled design decisions with rationale and implications (= the design spec).
 - `user-context.md` (always provided) — skill name, version, author, dates, purpose, and any user-provided description
 
-Do not repeat intent capture or interviewing. Treat these artifacts as authoritative input and proceed directly to skill writing.
+Do not repeat intent capture or interviewing. Treat these artifacts as authoritative input.
 
-### Critical Information needed for skill writing
+### Inventory existing skill
 
-- Read the provided inputs to come to a conclusion on the following questions before proceeding with writing the skill
+- Read existing `SKILL.md` at `{skill_output_dir}/SKILL.md`.
+- Inventory any folders at the same level as the `SKILL.md` (e.g. `references/`, `scripts/`, `assets/`).
+- Read all reference files to understand the full scope of existing content.
 
-1. What should this skill enable Claude to do?
-2. When should this skill trigger? (what user phrases/contexts)
+### Rewrite strategy
 
-- Decide the frontmatter field values as per the direction below. `tools` is the only field the skill determines.
+- Identify inconsistencies, redundancies, and stale cross-references.
+- Use existing content as primary source, `decisions.json` as supplement.
+- Preserve all original domain knowledge while prioritizing coherence and coverage for the request-specific topic.
+- Treat `Current request` as an additional focus area for coverage. Make sure the rewritten skill covers it explicitly where appropriate.
+- Do not ignore decisions or broader skill requirements in favor of the request.
 
-```yaml
----
-name: <skill-name from coordinator prompt>
-description: <based on the Description Optimization section of the skill-creator skill>
-tools: <agent-determined from research: comma-separated list, e.g. Read, Write, Edit, Glob, Grep, Bash>
-version: <version from user-context.md, default 1.0.0>
----
-```
+### File targeting
+
+If `Current request` has `@`-prefixed files (e.g., `@references/metrics.md`) constrain edits to **only** those files. Do not modify other files.
 
 ### Context alignment rules
 
@@ -157,28 +155,31 @@ version: <version from user-context.md, default 1.0.0>
 The following top-level sections in the `skill-creator` skill should **not** be followed:
 
 - `Running and evaluating test cases`
-- `Improving the skill`
 - `Advanced: Blind comparison`
-- `Description Optimization`
 - `Package and Present`
 - `Claude.ai-specific instructions`
 - `Cowork-Specific Instructions`
 
 ### Invoke the skill
 
-Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill. Write the `SKILL.MD` and reference files in parallel yourself (do not spawn subagents).
+Use the **Creating a skill section** in `skill-creator:skill-creator` skill to rewrite the skill. Write the `SKILL.MD` and reference files in parallel yourself (do not spawn subagents).
 
-Wait for all files to be written before returning.
+The `skill-creator` skill references files like `references/schemas.md` and `agents/grader.md` — these are internal to the `skill creator` skill and is present in `plugins/skill-creator/skills/skill-creator`.
+
+### Preservation sweep
+
+Before returning, perform a full preservation sweep to confirm no original domain knowledge was dropped. If coverage is incomplete, read additional references and close gaps.
 
 ---
 
 ## Success Criteria
 
-- Purpose-appropriate structure chosen without rigid templates
-- Every decision from `decisions.json` addressed in the skill
+- All original domain knowledge preserved
+- Inconsistencies and redundancies resolved
+- Every decision from `decisions.json` addressed
 - SKILL.md frontmatter is valid (name, description, tools, version)
-- Reference files are complete and cross-referenced from SKILL.md
-- `Current request` is addressed in the skill when it names a concrete topic
+- `Current request` is addressed explicitly or the gap is recorded
+- Cross-references between SKILL.md and reference files are accurate
 
 </instructions>
 
@@ -192,17 +193,17 @@ Return JSON only:
 
 ```json
 {
-  "status": "generated",
-  "call_trace": ["read-user-context", "read-decisions", "write-skill", "write-references/foo.md"]
+  "status": "rewritten",
+  "call_trace": ["read-user-context", "read-decisions", "read-existing-skill", "rewrite-skill", "write-references/foo.md", "preservation-sweep", "..."]
 }
 ```
 
 For stub cases (contradictory inputs, scope too broad, malformed input), return:
 
 ```json
-{ "status": "generated", "skipped": true }
+{ "status": "rewritten", "skipped": true }
 ```
 
-`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`. For reference files, use `write-references/<filename>`.
+`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `read-existing-skill`, `use-skill-creator-skill`, `rewrite-skill`, `write-references`, `preservation-sweep`. For reference files, use `write-references/<filename>`.
 
 </output>

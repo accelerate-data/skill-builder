@@ -103,6 +103,26 @@ pub(crate) fn finalize_refine_run_inner(
     let commit_msg = format!("{}: refine", skill_name);
     let commit_sha = crate::git::commit_all(Path::new(skills_path), &commit_msg)?;
 
+    // Create a version tag after successful commit
+    if commit_sha.is_some() {
+        match crate::git::tag_next_skill_version(Path::new(skills_path), skill_name) {
+            Ok(tag) => {
+                log::info!(
+                    "[finalize_refine_run] tagged skill={} tag={}",
+                    skill_name,
+                    tag
+                );
+            }
+            Err(e) => {
+                log::warn!(
+                    "[finalize_refine_run] tagging failed for skill={}: {}",
+                    skill_name,
+                    e
+                );
+            }
+        }
+    }
+
     let diff = if let Some(sha) = commit_sha.as_ref() {
         let repo = git2::Repository::open(Path::new(skills_path))
             .map_err(|e| format!("Failed to open repo: {}", e))?;

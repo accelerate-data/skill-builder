@@ -8,7 +8,8 @@ use crate::types::SecretString;
 
 pub(super) const REFINE_AGENT_NAME: &str = "skill-creator:refine-skill";
 pub(super) const VALIDATE_AGENT_NAME: &str = "validate-skill";
-pub(super) const GENERATE_AGENT_NAME: &str = "skill-creator:generate-skill";
+pub(super) const REWRITE_AGENT_NAME: &str = "skill-creator:rewrite-skill";
+pub(super) const BENCHMARK_AGENT_NAME: &str = "skill-creator:benchmark-skill";
 
 /// Max agentic turns for the entire streaming session. Each user message may
 /// use multiple turns internally (tool calls, etc.). 400 covers ~20 messages
@@ -21,6 +22,7 @@ pub(super) enum RefineDispatch {
     Stream,
     DirectValidate,
     DirectRewrite,
+    DirectBenchmark,
 }
 
 pub(super) struct RefineRuntimeSettings {
@@ -41,6 +43,7 @@ pub(super) fn dispatch_for_refine_command(
     match command {
         Some("validate") => RefineDispatch::DirectValidate,
         Some("rewrite") => RefineDispatch::DirectRewrite,
+        Some("benchmark") => RefineDispatch::DirectBenchmark,
         _ => RefineDispatch::Stream,
     }
 }
@@ -211,7 +214,8 @@ pub(super) fn build_direct_refine_config(
     let allowed_tools = tools_for_agent(agent_name);
     let max_turns = match agent_name {
         VALIDATE_AGENT_NAME => 50,
-        GENERATE_AGENT_NAME => 80,
+        REWRITE_AGENT_NAME => 80,
+        BENCHMARK_AGENT_NAME => 200,
         _ => REFINE_STREAM_MAX_TURNS,
     };
 
@@ -329,6 +333,7 @@ pub(super) fn build_direct_agent_prompt(
     skills_path: &str,
     user_message: &str,
     target_files: Option<&[String]>,
+    baseline_mode: Option<&str>,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
@@ -345,8 +350,7 @@ pub(super) fn build_direct_agent_prompt(
         skill_name, workspace_str, skill_output_str,
     );
 
-    if agent_name == GENERATE_AGENT_NAME {
-        prompt.push_str("\n\nRun in /rewrite mode for this request.");
+    if agent_name == REWRITE_AGENT_NAME {
         if let Some(files) = target_files {
             if !files.is_empty() {
                 prompt.push_str(&format!(
@@ -355,6 +359,11 @@ pub(super) fn build_direct_agent_prompt(
                 ));
             }
         }
+    }
+
+    if agent_name == BENCHMARK_AGENT_NAME {
+        let mode = baseline_mode.unwrap_or("no_skill");
+        prompt.push_str(&format!("\n\nbaseline_mode: {}", mode));
     }
 
     prompt.push_str(&format!("\n\nCurrent request: {}", user_message));

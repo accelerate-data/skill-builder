@@ -136,7 +136,7 @@
     },
     "agent_prompts": {
       "path": "agent-sources/agents/",
-      "description": "Flat directory of .md agent prompts: answer-evaluator, confirm-decisions, eval-skill, validate-quality, validate-skill. Plugin-hosted agents: generate-skill and refine-skill under agent-sources/plugins/skill-creator/agents/; research-orchestrator and detailed-research under agent-sources/plugins/skill-content-researcher/agents/"
+      "description": "Flat directory of .md agent prompts: answer-evaluator, confirm-decisions, eval-skill, validate-quality, validate-skill. Plugin-hosted agents: generate-skill, rewrite-skill, benchmark-skill, and refine-skill under agent-sources/plugins/skill-creator/agents/; research-orchestrator and detailed-research under agent-sources/plugins/skill-content-researcher/agents/"
     },
     "agent_plugins": {
       "path": "agent-sources/plugins/",

@@ -81,6 +81,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const skillFiles = useRefineStore((s) => s.skillFiles);
   const previewRevision = useRefineStore((s) => s.previewRevision);
   const isRunning = useRefineStore((s) => s.isRunning);
+  const pendingBenchmark = useRefineStore((s) => s.pendingBenchmark);
   const activeAgentId = useRefineStore((s) => s.activeAgentId);
 
   const activeRunStatus = useAgentStore((s) =>

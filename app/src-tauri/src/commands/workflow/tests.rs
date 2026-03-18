@@ -722,22 +722,55 @@ fn test_materialize_step2_rejects_null_payload() {
 }
 
 #[test]
-fn test_materialize_step3_accepts_complete_benchmark() {
+fn test_materialize_step3_generate_writes_pending_benchmark() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
-    // Create benchmark.json on disk so the materializer can verify it
+    let payload = serde_json::json!({
+        "status": "generated",
+        "call_trace": ["read-user-context", "write-skill"]
+    });
+    materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
+
+    // Verify benchmark-meta.json was written with pending status
+    let meta_path = skill_root.join("context/benchmark-meta.json");
+    assert!(meta_path.exists(), "benchmark-meta.json should be written");
+    let meta: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
+    assert_eq!(meta["benchmark_status"], "pending");
+    assert!(meta["benchmark_path"].is_null());
+}
+
+#[test]
+fn test_materialize_step3_generate_skipped_writes_skipped_benchmark() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skill_root = tmp.path().join("my-skill");
+    let payload = serde_json::json!({
+        "status": "generated",
+        "skipped": true
+    });
+    materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
+
+    let meta_path = skill_root.join("context/benchmark-meta.json");
+    let meta: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
+    assert_eq!(meta["benchmark_status"], "skipped");
+}
+
+#[test]
+fn test_materialize_step3_benchmark_complete() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skill_root = tmp.path().join("my-skill");
     let bench_dir = skill_root.join("evals/workspace/iteration-1");
     std::fs::create_dir_all(&bench_dir).unwrap();
     std::fs::write(bench_dir.join("benchmark.json"), "{}").unwrap();
 
     let payload = serde_json::json!({
-        "status": "generated",
+        "status": "benchmarked",
         "benchmark_status": "complete",
         "benchmark_path": "evals/workspace/iteration-1"
     });
     materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
 
-    // Verify benchmark-meta.json was written
     let meta_path = skill_root.join("context/benchmark-meta.json");
     assert!(meta_path.exists(), "benchmark-meta.json should be written");
     let meta: serde_json::Value =
@@ -747,35 +780,15 @@ fn test_materialize_step3_accepts_complete_benchmark() {
 }
 
 #[test]
-fn test_materialize_step3_accepts_skipped_benchmark() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
-    let payload = serde_json::json!({
-        "status": "generated",
-        "benchmark_status": "skipped"
-    });
-    materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
-
-    // Verify benchmark-meta.json was written with skipped status
-    let meta_path = skill_root.join("context/benchmark-meta.json");
-    assert!(meta_path.exists(), "benchmark-meta.json should be written for skipped");
-    let meta: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
-    assert_eq!(meta["benchmark_status"], "skipped");
-    assert!(meta["benchmark_path"].is_null());
-}
-
-#[test]
 fn test_materialize_step3_rejects_wrong_status() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
     let payload = serde_json::json!({
-        "status": "decisions_complete",
-        "benchmark_status": "complete"
+        "status": "decisions_complete"
     });
     let err =
         materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
-    assert!(err.contains("structured_output.status must be 'generated'"));
+    assert!(err.contains("must be 'generated', 'rewritten', or 'benchmarked'"));
 }
 
 #[test]
@@ -783,18 +796,8 @@ fn test_materialize_step3_rejects_invalid_benchmark_status() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
 
-    // Missing benchmark_status field
-    let missing = serde_json::json!({
-        "status": "generated"
-    });
-    let err_missing =
-        materialize_workflow_step_output_value(&skill_root, 3, &missing).unwrap_err();
-    assert!(err_missing.contains("invalid generate skill output"));
-    assert!(err_missing.contains("benchmark_status"));
-
-    // Invalid benchmark_status value
     let invalid = serde_json::json!({
-        "status": "generated",
+        "status": "benchmarked",
         "benchmark_status": "unknown"
     });
     let err_invalid =

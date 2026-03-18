@@ -307,6 +307,7 @@ pub fn run() {
             commands::files::read_file_as_base64,
             commands::files::write_base64_to_temp_file,
             commands::workflow::runtime::run_workflow_step,
+            commands::workflow::runtime::run_benchmark_phase,
             commands::workflow::output_format::materialize_workflow_step_output,
             commands::workflow::packaging::package_skill,
             commands::workflow::evaluation::reset_workflow_step,

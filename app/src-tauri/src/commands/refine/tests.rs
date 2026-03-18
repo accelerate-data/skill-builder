@@ -483,7 +483,7 @@ fn test_refine_config_requires_skill_creator_plugin() {
 
 #[test]
 fn test_direct_refine_config_requires_skill_creator_plugin() {
-    let (config, _) = base_direct_config(GENERATE_AGENT_NAME);
+    let (config, _) = base_direct_config(REWRITE_AGENT_NAME);
     assert_eq!(
         config.required_plugins,
         Some(vec!["skill-creator".to_string()])
@@ -525,16 +525,30 @@ fn test_direct_validate_config_uses_validate_agent_contract() {
 }
 
 #[test]
-fn test_direct_rewrite_config_uses_generate_agent_contract() {
-    let (config, _) = base_direct_config(GENERATE_AGENT_NAME);
-    assert_eq!(config.agent_name.as_deref(), Some(GENERATE_AGENT_NAME));
+fn test_direct_rewrite_config_uses_rewrite_agent_contract() {
+    let (config, _) = base_direct_config(REWRITE_AGENT_NAME);
+    assert_eq!(config.agent_name.as_deref(), Some(REWRITE_AGENT_NAME));
     assert_eq!(config.max_turns, Some(80));
     assert_eq!(
         config.output_format.as_ref().unwrap()["schema"]["properties"]["status"]["const"],
-        "generated"
+        "rewritten"
     );
     let tools = config.allowed_tools.unwrap();
     assert!(tools.contains(&"Write".to_string()));
+    assert!(tools.contains(&"Skill".to_string()));
+}
+
+#[test]
+fn test_direct_benchmark_config_uses_benchmark_agent_contract() {
+    let (config, _) = base_direct_config(BENCHMARK_AGENT_NAME);
+    assert_eq!(config.agent_name.as_deref(), Some(BENCHMARK_AGENT_NAME));
+    assert_eq!(config.max_turns, Some(200));
+    assert_eq!(
+        config.output_format.as_ref().unwrap()["schema"]["properties"]["status"]["const"],
+        "benchmarked"
+    );
+    let tools = config.allowed_tools.unwrap();
+    assert!(tools.contains(&"Agent".to_string()));
     assert!(tools.contains(&"Skill".to_string()));
 }
 
@@ -832,6 +846,7 @@ fn test_direct_validate_prompt_includes_required_paths() {
         "/skills",
         "Run validation now",
         None,
+        None,
     );
     assert!(prompt.contains("The workspace directory is: /ws/my-skill"));
     assert!(prompt.contains(
@@ -845,37 +860,53 @@ fn test_direct_validate_prompt_includes_required_paths() {
 }
 
 #[test]
-fn test_direct_rewrite_prompt_enables_rewrite_mode() {
+fn test_direct_rewrite_prompt_uses_rewrite_agent() {
     let prompt = build_direct_agent_prompt(
-        GENERATE_AGENT_NAME,
+        REWRITE_AGENT_NAME,
         "my-skill",
         "/ws",
         "/skills",
         "Rewrite this skill for coherence",
         None,
+        None,
     );
-    assert!(prompt.contains("Run in /rewrite mode for this request."));
     assert!(prompt.contains(
         "Treat Current request as an additional focus area for coverage"
     ));
     assert!(prompt.contains("Current request: Rewrite this skill for coherence"));
     assert!(!prompt.contains("Focus the rewrite on these files"));
+    assert!(!prompt.contains("baseline_mode"));
 }
 
 #[test]
 fn test_direct_rewrite_prompt_includes_target_files() {
     let files = vec!["SKILL.md".to_string(), "references/metrics.md".to_string()];
     let prompt = build_direct_agent_prompt(
-        GENERATE_AGENT_NAME,
+        REWRITE_AGENT_NAME,
         "my-skill",
         "/ws",
         "/skills",
         "Improve the metrics section",
         Some(&files),
+        None,
     );
-    assert!(prompt.contains("Run in /rewrite mode for this request."));
     assert!(prompt.contains("Focus the rewrite on these files: SKILL.md, references/metrics.md."));
     assert!(prompt.contains("Current request: Improve the metrics section"));
+}
+
+#[test]
+fn test_direct_benchmark_prompt_includes_baseline_mode() {
+    let prompt = build_direct_agent_prompt(
+        BENCHMARK_AGENT_NAME,
+        "my-skill",
+        "/ws",
+        "/skills",
+        "Benchmark the skill",
+        None,
+        Some("prior_version"),
+    );
+    assert!(prompt.contains("baseline_mode: prior_version"));
+    assert!(prompt.contains("Current request: Benchmark the skill"));
 }
 
 #[test]
@@ -888,9 +919,10 @@ fn test_direct_validate_prompt_ignores_target_files() {
         "/skills",
         "Run validation now",
         Some(&files),
+        None,
     );
     assert!(!prompt.contains("Focus the rewrite on these files"));
-    assert!(!prompt.contains("/rewrite mode"));
+    assert!(!prompt.contains("baseline_mode"));
 }
 
 #[test]
