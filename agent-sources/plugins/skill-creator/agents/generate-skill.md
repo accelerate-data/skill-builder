@@ -2,7 +2,7 @@
 name: generate-skill
 description: Plans skill structure, writes SKILL.md and all reference files. Called during Step 3 to create the complete skill. Also called via /rewrite to rewrite an existing skill for coherence.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Skill
+tools: Read, Write, Edit, Glob, Grep, Bash, Agent, Skill
 ---
 
 # Generate Skill
@@ -123,27 +123,6 @@ Missing files are not errors — skip and proceed to the next phase.
 
 ## Phase 1: Write the skill
 
-Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill. 
-
-- `evals.json` should be created in `eval_dir`.
-
-After writing the skill and test cases, you MUST follow the **Running and evaluating test cases** section to evaluate the created skill.
-
-- Results of this step should be put in the `eval_results_dir`.
-- Within the `eval_results_dir`, organize results by iteration (`iteration-1/`, `iteration-2/`, etc.) and within that, each test case gets a directory (`eval-0/`, `eval-1/`, etc.). Don't create all of this upfront — just create directories as you go.
-- Save the outputs to: `eval_results_dir/iteration-1/eval-1/with_skill/run-1/outputs/`.
-- Grading output must include a `summary` object with `passed`, `failed`, `total`, and `pass_rate` fields. The `aggregate_benchmark.py` script reads these — missing summary produces 0% pass rates.
-- We are running in a headless environment. Use `--static` to write a standalone HTML file inside the iteration directory.
-- We are running in headless mode — do not wait for user feedback after generating the viewer.
-- **CRITICAL sequencing rule — do NOT return early:** The entire "Running and evaluating test cases" pipeline (executor runs, grading, `aggregate_benchmark.py`, review HTML generation) MUST complete before you call StructuredOutput. You MUST NOT call StructuredOutput while any spawned Task/Agent sub-agent is still running. The correct sequence is:
-  1. Spawn executor sub-agents (with_skill + without_skill) → **wait for ALL to finish**
-  2. Spawn grader sub-agents → **wait for ALL to finish**
-  3. Run `aggregate_benchmark.py` → **wait for it to finish**
-  4. Run review HTML generation → **wait for it to finish**
-  5. Verify `benchmark.json` exists in the iteration directory
-  6. Only THEN return structured output with the correct `benchmark_status`
-  If you return structured output before step 5, the user sees missing or partial benchmark data and must re-run the entire step.
-  
 ### Prior-step handoff
 
 The "Capture Intent" and "Interview and Research" phases are complete and authoritative. Do not run those phases.
@@ -189,9 +168,7 @@ The following top-level sections in the `skill-creator` skill should **not** be 
 - `Claude.ai-specific instructions`
 - `Cowork-Specific Instructions`
 
----
-
-## Rewrite Mode
+### Rewrite Mode
 
 When the prompt contains `/rewrite`, all phases still apply with these additions:
 
@@ -204,20 +181,27 @@ When the prompt contains `/rewrite`, all phases still apply with these additions
 - Treat `Current request` as an additional focus area for coverage. Make sure the generated or rewritten skill covers it explicitly where appropriate.
 - Do not ignore decisions or broader skill requirements in favor of the request.
 
----
+### Invoke the skill
 
-## Success Criteria
+**CRITICAL sequencing rule — do NOT return early:** All the 3 steps below **MUST** complete before you call StructuredOutput and return.
 
-- Purpose-appropriate structure chosen without rigid templates
-- Every decision from `decisions.json` addressed in the skill.
-- Benchmark produced with 3+ evaluation scenarios covering distinct topic areas
-- Every evaluation scenario includes prompt, expected behavior, and pass criteria
-- `Current request` is represented in evaluations when it names a concrete topic
-- **Rewrite mode:** 
-  - All original domain knowledge preserved. 
-  - Verify that the rewritten skill addresses `Current request` explicitly or record the gap in the rewritten content/evaluations.
+#### Step 1: Write the skill 
 
-## Phase 2: Commit and tag
+Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill.
+
+#### Step 2: Perform the evaluations
+
+After writing the skill and test cases, you MUST follow the **Running and evaluating test cases** section to evaluate the created skill.
+
+- `evals.json` should be created in `eval_dir`.
+- Results of this step should be put in the `eval_results_dir`.
+- Within the `eval_results_dir`, organize results by iteration (`iteration-1/`, `iteration-2/`, etc.) and within that, each test case gets a directory (`eval-0/`, `eval-1/`, etc.). Don't create all of this upfront — just create directories as you go.
+- Save the outputs to: `eval_results_dir/iteration-1/eval-1/with_skill/run-1/outputs/`.
+- Grading output must include a `summary` object with `passed`, `failed`, `total`, and `pass_rate` fields. The `aggregate_benchmark.py` script reads these — missing summary produces 0% pass rates.
+- We are running in a headless environment. Use `--static` to write a standalone HTML file inside the iteration directory.
+- We are running in headless mode — do not wait for user feedback after generating the viewer.
+
+#### Step 3: Commit and tag
 
 After all skill files are written and benchmarks are complete, commit the skill and create a version tag:
 
@@ -227,7 +211,21 @@ python -m scripts.commit_and_tag {skill_output_dir}/.. --skill-name {skill_name}
 
 This commits all files in the skills repo and creates an auto-incrementing `<skill-name>/v<N>` tag. For initial generation this will be `v1`. Include the returned `tag` value in structured output.
 
-Do not proceed to structured output until the script completes successfully. If the script fails, log the error in `call_trace` and omit the `tag` field from output.
+If the script fails, log the error in `call_trace` and omit the `tag` field from output.
+
+---
+
+## Success Criteria
+
+- All skill files are created or updated and committed to git with the correct version tag.
+- Purpose-appropriate structure chosen without rigid templates
+- Every decision from `decisions.json` addressed in the skill.
+- Benchmark produced with 3+ evaluation scenarios covering distinct topic areas
+- Every evaluation scenario includes prompt, expected behavior, and pass criteria
+- `Current request` is represented in evaluations when it names a concrete topic
+- **Rewrite mode:** 
+  - All original domain knowledge preserved. 
+  - Verify that the rewritten skill addresses `Current request` explicitly or record the gap in the rewritten content/evaluations.
 
 </instructions>
 
