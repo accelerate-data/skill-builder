@@ -99,7 +99,9 @@ Follow the **Running and evaluating test cases** section in `skill-creator:skill
 
 ## Step 4: Write analyst notes into benchmark.json
 
-The analyst pass in Step 3 produces observations about the benchmark results. Write those observations into the top-level `"notes"` array in `{eval_results_dir}/{iteration}/benchmark.json` and save the file. The aggregator creates `"notes": []` — you must populate it before returning.
+Read the benchmark data and surface patterns the aggregate stats might hide. See `agents/analyzer.md` (the "Analyzing Benchmark Results" section) for what to look for — things like assertions that always pass regardless of skill (non-discriminating), high-variance evals (possibly flaky), and time/token tradeoffs.
+
+**Action:** Use the Edit tool (or read the JSON, modify it, and write it back) to replace the empty `"notes": []` array in `{eval_results_dir}/{iteration}/benchmark.json` with the observations as a JSON array of strings. Each string is one observation. 
 
 ## Step 5: Verify benchmark.json
 
