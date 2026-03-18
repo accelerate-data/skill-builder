@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useParams, useNavigate } from "@tanstack/react-router";
+import { useParams, useNavigate, useLocation } from "@tanstack/react-router";
 import {
   Play,
   AlertCircle,
@@ -115,6 +115,8 @@ function WorkflowMainHeader({ skillName, currentStep, isRunning, isInitializing,
 export default function WorkflowPage() {
   const { skillName } = useParams({ from: "/skill/$skillName" });
   const navigate = useNavigate();
+  const location = useLocation();
+  const autoStart = location.state?.autoStart === true;
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const skillsPath = useSettingsStore((s) => s.skillsPath);
   const {
@@ -146,6 +148,7 @@ export default function WorkflowPage() {
     skillsPath,
     stepConfig,
     currentStep,
+    autoStart,
     steps,
     purpose,
     hydrated,
