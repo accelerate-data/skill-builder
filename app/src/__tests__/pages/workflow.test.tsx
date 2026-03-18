@@ -12,11 +12,13 @@ const mockBlocker = vi.hoisted(() => ({
   status: "idle" as string,
 }));
 const mockNavigate = vi.hoisted(() => vi.fn());
+const mockLocation = vi.hoisted(() => ({ state: {} as Record<string, unknown> }));
 vi.mock("@tanstack/react-router", () => ({
   useParams: () => ({ skillName: "test-skill" }),
   Link: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
   useBlocker: () => mockBlocker,
   useNavigate: () => mockNavigate,
+  useLocation: () => mockLocation,
 }));
 
 // Mock toast wrapper — use vi.hoisted so the object is available in hoisted vi.mock factory
@@ -201,6 +203,9 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Clear module-level tauri mock call records so tests don't leak
     vi.mocked(saveWorkflowState).mockClear();
     vi.mocked(getWorkflowState).mockClear();
+
+    // Reset location state so tests don't accidentally inherit autoStart
+    mockLocation.state = {};
   });
 
   afterEach(() => {
@@ -493,21 +498,17 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(useAgentStore.getState().runs).not.toHaveProperty("old-agent");
   });
 
-  it("shows Start Step button on initial create-flow load (no auto-start)", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    useWorkflowStore.getState().setPendingUpdateMode(true);
-    useWorkflowStore.getState().setReviewMode(false);
+  it("auto-starts step 0 on create-flow navigation (autoStart router state)", async () => {
+    mockLocation.state = { autoStart: true };
+    vi.mocked(getWorkflowState).mockResolvedValueOnce({ run: null, steps: [] });
+    vi.mocked(runWorkflowStep).mockResolvedValueOnce("agent-1");
 
     render(<WorkflowPage />);
 
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
-    });
-
-    // New skills show Start Step button — auto-start only on review→update toggle
-    expect(screen.getByText("Start Step")).toBeDefined();
-    expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalled();
+    // persistence hook hydrates → .finally() sets reviewMode=false → wasToggle fires → auto-start
+    await waitFor(() => {
+      expect(vi.mocked(runWorkflowStep)).toHaveBeenCalled();
+    }, { timeout: 500 });
   });
 
   it("renders completion screen on last step (step 3)", async () => {
@@ -1988,10 +1989,9 @@ describe("WorkflowPage — review mode default state", () => {
     expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalled();
   });
 
-  it("consumeUpdateMode works even when getWorkflowState returns saved state", async () => {
-    // Simulate the race: create-flow sets pendingUpdateMode, but persistence
-    // saved state before getWorkflowState resolved, so state.run exists.
-    useWorkflowStore.getState().setPendingUpdateMode(true);
+  it("autoStart via router state puts workflow in Update mode even when saved state exists", async () => {
+    // Simulate the create-flow navigating to a skill that already has a saved run in DB.
+    mockLocation.state = { autoStart: true };
 
     vi.mocked(getWorkflowState).mockResolvedValueOnce({
       run: {
@@ -2007,7 +2007,7 @@ describe("WorkflowPage — review mode default state", () => {
 
     render(<WorkflowPage />);
 
-    // After init, reviewMode should be false (create flow) even though state.run exists
+    // After hydration, reviewMode should be false (autoStart=true) even though state.run exists
     await waitFor(() => {
       expect(useWorkflowStore.getState().hydrated).toBe(true);
     });

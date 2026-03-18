@@ -233,11 +233,8 @@ export function SkillListPanel({
       const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
       const step = stepMatch ? Number(stepMatch[1]) : null;
       const isFresh = step === null || step === 0;
-      if (isFresh) {
-        useWorkflowStore.getState().setPendingUpdateMode(true); // auto-start fresh skills
-      }
-      // Mid-way: no pending flag → default reviewMode=true (Review mode, no auto-start)
-      navigate({ to: "/skill/$skillName", params: { skillName: skill.name } });
+      // Fresh (no prior run): auto-start. Mid-way: open in Review mode.
+      navigate({ to: "/skill/$skillName", params: { skillName: skill.name }, state: isFresh ? { autoStart: true } : undefined });
     }
   }
 
@@ -283,12 +280,10 @@ export function SkillListPanel({
     try {
       await resetWorkflowStep(workspacePath, skillName, 0);
       console.log("event=skill_redo skill=%s", skillName);
-      // Reset store so persistence hook re-hydrates from DB (picks up the step reset),
-      // then set pendingUpdateMode so the state machine auto-starts on hydration.
+      // Reset store so persistence hook re-hydrates from DB (picks up the step reset).
       useWorkflowStore.getState().reset();
-      useWorkflowStore.getState().setPendingUpdateMode(true);
       setRedoTarget(null);
-      navigate({ to: "/skill/$skillName", params: { skillName } });
+      navigate({ to: "/skill/$skillName", params: { skillName }, state: { autoStart: true } });
     } catch (err) {
       toast.error(`Failed to reset workflow: ${err instanceof Error ? err.message : String(err)}`);
       console.error("event=skill_redo_failed skill=%s error=%s", skillName, err);
@@ -313,8 +308,7 @@ export function SkillListPanel({
     console.log("event=skill_continue skill=%s", skillName);
     localStorage.setItem("last-selected-skill", skillName);
     setSelectedSkill(skillName);
-    useWorkflowStore.getState().setPendingUpdateMode(true); // always auto-start
-    navigate({ to: "/skill/$skillName", params: { skillName } });
+    navigate({ to: "/skill/$skillName", params: { skillName }, state: { autoStart: true } });
   }
 
   function handleDelete(skill: UnifiedSkill) {

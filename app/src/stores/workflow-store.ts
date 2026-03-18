@@ -34,8 +34,6 @@ interface WorkflowState {
   /** Transient: true while the answer-evaluator gate agent is running (not persisted to SQLite). */
   gateLoading: boolean;
 
-  /** Transient: signals the workflow page to start in update mode. Set before navigation, consumed once by the init effect. */
-  pendingUpdateMode: boolean;
   /** Transient: like pendingUpdateMode but suppresses auto-start. Used when navigating to an existing in-progress skill from the sidebar. */
   pendingNoReviewMode: boolean;
 
@@ -60,7 +58,6 @@ interface WorkflowState {
   /** Clear the runtime error (e.g. after user dismisses the dialog). */
   clearRuntimeError: () => void;
   setGateLoading: (loading: boolean) => void;
-  setPendingUpdateMode: (mode: boolean) => void;
   setPendingNoReviewMode: (mode: boolean) => void;
   reset: () => void;
 }
@@ -83,7 +80,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   initProgressMessage: null,
   runtimeError: null,
   gateLoading: false,
-  pendingUpdateMode: false,
   pendingNoReviewMode: false,
   hydrated: false,
   disabledSteps: [],
@@ -155,7 +151,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   clearRuntimeError: () => set({ runtimeError: null }),
 
   setGateLoading: (loading) => set({ gateLoading: loading }),
-  setPendingUpdateMode: (mode) => set({ pendingUpdateMode: mode }),
   setPendingNoReviewMode: (mode) => set({ pendingNoReviewMode: mode }),
 
   resetToStep: (stepId) =>
@@ -225,7 +220,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       initProgressMessage: null,
       runtimeError: null,
       gateLoading: false,
-      pendingUpdateMode: false,
       hydrated: false,
       disabledSteps: [],
     }),

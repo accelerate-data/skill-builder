@@ -29,6 +29,8 @@ interface UseWorkflowPersistenceOptions {
   purpose: string | null;
   /** Whether the page has hydrated from saved state */
   hydrated: boolean;
+  /** When true, switch to Update mode after hydration to auto-start the first pending step. */
+  autoStart?: boolean;
 }
 
 export function useWorkflowPersistence({
@@ -40,6 +42,7 @@ export function useWorkflowPersistence({
   steps,
   purpose,
   hydrated,
+  autoStart = false,
 }: UseWorkflowPersistenceOptions) {
   const [errorHasArtifacts, setErrorHasArtifacts] = useState(false);
 
@@ -49,13 +52,6 @@ export function useWorkflowPersistence({
   const setHydrated = useWorkflowStore((state) => state.setHydrated);
 
   const clearRuns = useAgentStore.getState().clearRuns;
-  const consumeUpdateMode = () => {
-    const store = useWorkflowStore.getState();
-    if (store.pendingUpdateMode) {
-      store.setPendingUpdateMode(false);
-      store.setReviewMode(false);
-    }
-  };
 
   // Initialize workflow from saved state on skill change
   useEffect(() => {
@@ -64,12 +60,10 @@ export function useWorkflowPersistence({
     const store = useWorkflowStore.getState();
 
     // Skip if already hydrated for this skill.
-    // pendingUpdateMode is handled by use-workflow-state-machine (fires after prevReviewModeRef
-    // is initialized, avoiding an ordering race with wasToggle detection).
-    // Reset to Review mode on re-navigation unless an auto-start is pending.
+    // If autoStart is requested, switch to Update mode; otherwise preserve the existing mode.
     if (store.skillName === skillName && store.hydrated) {
-      if (!store.pendingUpdateMode) {
-        store.setReviewMode(true);
+      if (autoStart) {
+        store.setReviewMode(false);
       }
       return;
     }
@@ -116,12 +110,13 @@ export function useWorkflowPersistence({
         }
       })
       .catch(() => {
-        setHydrated(true);
+        if (!cancelled) setHydrated(true);
       })
       .finally(() => {
-        // Consume the pendingUpdateMode flag exactly once
-        if (!cancelled) {
-          consumeUpdateMode();
+        // If autoStart was requested, switch to Update mode after hydration so the
+        // wasToggle effect (reviewMode: true→false) fires and schedules auto-start.
+        if (!cancelled && autoStart) {
+          useWorkflowStore.getState().setReviewMode(false);
         }
       });
 
