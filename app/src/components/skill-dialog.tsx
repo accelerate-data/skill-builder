@@ -71,7 +71,7 @@ function parseIntakeContext(json: string | null | undefined): string {
 interface SkillDialogCreateProps {
   mode: "create"
   workspacePath: string
-  onCreated: () => Promise<void>
+  onCreated: (createdName: string) => Promise<void>
   tagSuggestions?: string[]
   existingNames?: string[]
   open?: boolean
@@ -331,7 +331,7 @@ export default function SkillDialog(props: SkillDialogProps) {
         console.log(`[skill] Created skill "${skillName}"`)
         toast.success(`Skill "${skillName}" created`)
         const createdName = skillName.trim()
-        await createOnCreated?.()
+        await createOnCreated?.(createdName)
         navigate({ to: "/skill/$skillName", params: { skillName: createdName }, state: { autoStart: true } })
         handleOpenChange(false)
       }

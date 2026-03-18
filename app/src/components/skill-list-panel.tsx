@@ -232,7 +232,7 @@ export function SkillListPanel({
     } else {
       const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
       const step = stepMatch ? Number(stepMatch[1]) : null;
-      const isFresh = step === null || step === 0;
+      const isFresh = (step === null || step === 0) && skill.status !== "error";
       // Fresh (no prior run): auto-start. Mid-way: open in Review mode.
       navigate({ to: "/skill/$skillName", params: { skillName: skill.name }, state: isFresh ? { autoStart: true } : undefined });
     }
@@ -474,7 +474,9 @@ export function SkillListPanel({
           workspacePath={workspacePath}
           open={createOpen}
           onOpenChange={setCreateOpen}
-          onCreated={async () => {
+          onCreated={async (createdName) => {
+            localStorage.setItem("last-selected-skill", createdName);
+            setSelectedSkill(createdName);
             if (workspacePath) {
               listSkills(workspacePath).then(setSkills).catch(() => {});
             }
