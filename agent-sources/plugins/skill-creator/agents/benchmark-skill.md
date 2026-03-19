@@ -45,9 +45,8 @@ Before executing each step, write one short status line (≤ 10 words) before it
 0. **Validate inputs** — confirm SKILL.md, evals.json, user-context.md exist; handle stubs/missing files.
 1. **Determine iteration number** — scan for existing `iteration-*` dirs, pick the next one.
 2. **Setup context** — gather test cases, skill path, baseline mode, results directory.
-3. **Execute** — spawn runs → grade → aggregate → generate review HTML. Each sub-step gates on the previous.
-4. **Analyst notes** — read benchmark data (current + prior iterations), write observations into `benchmark.json` `notes` array.
-5. **Verify** — confirm `benchmark.json` has valid `run_summary` and non-empty `notes`.
+3. **Execute** — spawn runs → grade → aggregate → analyst pass → generate review HTML. Each sub-step gates on the previous. The analyst pass writes `analyst-notes.md` and embeds it into `benchmark.json` `notes` field.
+4. **Verify** — confirm `benchmark.json` has valid `run_summary` and non-empty `notes`.
 
 Do not stop, return or produce structuredOutput in the middle.
 
@@ -84,7 +83,7 @@ Scan `{eval_results_dir}` for existing `iteration-*` directories. Pick the next 
 - If `iteration-1` through `iteration-N` exist, use `iteration-{N+1}`.
 
 Store the result as `{iteration}` (e.g. `iteration-3`) for use in all subsequent steps.
-All files generated when executing test cases, grading results, and aggregating the benchmark only be in `evals/workspace/{iteration}` folder.
+All generated files (test results, grading, benchmark) must only be written to `evals/workspace/{iteration}/`. This overrides any relative paths in the skill-creator SKILL.md.
 
 ## Step 2: Setup the context for benchmarking the skill
 
@@ -106,43 +105,25 @@ Key inputs for the eval pipeline:
 
 Follow the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill. Execute the sub-steps in order — each depends on the previous one completing:
 
-**3a. Spawn all runs** — for each test case, spawn with-skill and baseline runs in the same turn. Wait for **all** run subagents to finish before proceeding.
+**3a. Spawn all runs** — for each test case, spawn with-skill and baseline runs in the same turn. As each sub-agent returns, capture timing data (`total_tokens`, `duration_ms`) into `timing.json` in the run directory. Wait for **all** run subagents to finish before proceeding.
 
-**3b. Grade each run** — follow the grading instructions in the skill. Confirm `grading.json` exists in every eval directory (both `with_skill/` and baseline) before proceeding.
+**3b. Grade each run** — follow the grading instructions in the skill. Confirm `grading.json` exists in every eval directory (both `with_skill/` and the baseline directory — `without_skill/` for `no_skill` mode, `old_skill/` for `prior_version` mode) before proceeding.
 
 **3c. Aggregate into benchmark** — run `aggregate_benchmark.py`. Confirm `{eval_results_dir}/{iteration}/benchmark.json` exists before proceeding.
 
-**3d. Generate review HTML** — run `generate_review.py` with `--static {eval_results_dir}/{iteration}/review.html`.
+**3d. Analyst pass** — follow SKILL.md Step 4.3: read benchmark data, write observations to `{eval_results_dir}/{iteration}/analyst-notes.md`, embed the markdown into the `"notes"` field of `benchmark.json`. Confirm `notes` is non-empty before proceeding.
 
-## Step 4: Write analyst notes into benchmark.json
+**3e. Generate review HTML** — run `generate_review.py` with `--static {eval_results_dir}/{iteration}/review.html`.
 
-Read `{eval_results_dir}/{iteration}/benchmark.json` and the grading results in each eval directory. Also read `benchmark.json` from all prior `iteration-*` directories in `{eval_results_dir}` to compare across iterations.
-
-Surface patterns the aggregate stats might hide — see `agents/analyzer.md` for guidance:
-
-- Assertions that pass in both configurations (non-discriminating — don't prove skill value)
-- High-variance evals across configurations (possibly flaky)
-- Time/token tradeoffs (does the skill cost significantly more?)
-- Surprising results (e.g. baseline outperforms skill on a specific eval)
-
-For iteration-2+, also include cross-iteration observations:
-
-- Baseline stability (is without_skill mean consistent or drifting across iterations?)
-- Whether skill improvement is consistent across iterations
-- Evals that regressed or improved compared to prior iterations
-
-**Action:**
-
-1. Write the observations as a markdown file to `{eval_results_dir}/{iteration}/analyst-notes.md`. Use tables, bullet lists, and headings as appropriate for rich formatting.
-2. Read `{eval_results_dir}/{iteration}/benchmark.json`, set the `"notes"` field to the markdown content as a single string, and write it back.
-
-## Step 5: Verify benchmark.json
+## Step 4: Verify benchmark.json
 
 Read `{eval_results_dir}/{iteration}/benchmark.json`.
 
 - If it exists and contains a valid `run_summary` with per-configuration statistics, return `benchmark_status: "complete"`.
 - If it exists but is missing some configurations or some evals had errors, return `benchmark_status: "partial"`.
-- If it does not exist after Step 3 completed (aggregation script failed), return `benchmark_status: "partial"` with `"benchmark_path": "evals/workspace/{iteration}"`.
+- If it does not exist after Step 3 completed (aggregation script failed), return `benchmark_status: "partial"`.
+
+All non-skipped returns must include `"benchmark_path": "evals/workspace/{iteration}"`.
 
 ---
 
@@ -163,7 +144,7 @@ Read `{eval_results_dir}/{iteration}/benchmark.json`.
 
 **Gate — do NOT return until:**
 
-1. Steps 3 and 4 have finished and no sub-agents are still running
+1. Step 3 has finished (including analyst pass) and no sub-agents are still running
 2. You have verified `benchmark.json` exists, contains a valid `run_summary`, and has a non-empty `notes` array
 
 Return JSON only:
@@ -173,7 +154,7 @@ Return JSON only:
   "status": "benchmarked",
   "benchmark_status": "complete",
   "benchmark_path": "evals/workspace/{iteration}",
-  "call_trace": ["validate-inputs", "determine-iteration", "run-evals", "analyst-notes", "verify-benchmark"]
+  "call_trace": ["validate-inputs", "determine-iteration", "run-evals", "verify-benchmark"]
 }
 ```
 

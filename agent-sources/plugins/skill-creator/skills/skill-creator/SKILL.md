@@ -231,7 +231,7 @@ Once all runs are done:
   This produces `benchmark.json` and `benchmark.md` with pass_rate, time, and tokens for each configuration, with mean ± stddev and the delta. If generating benchmark.json manually, see `references/schemas.md` for the exact schema the viewer expects.
   Put each with_skill version before its baseline counterpart.
 
-3. **Do an analyst pass** — read the benchmark data and surface patterns the aggregate stats might hide. See `agents/analyzer.md` (the "Analyzing Benchmark Results" section) for what to look for — things like assertions that always pass regardless of skill (non-discriminating), high-variance evals (possibly flaky), and time/token tradeoffs.
+3. **Do an analyst pass** — read the benchmark data and surface patterns the aggregate stats might hide. See `agents/analyzer.md` for what to look for — non-discriminating assertions, high-variance evals, time/token tradeoffs. Write the observations as markdown to `<workspace>/iteration-<N>/analyst-notes.md`, then read `benchmark.json`, set the `"notes"` field to the markdown content, and write it back.
 
 4. **Launch the viewer** with both qualitative outputs and quantitative data:
    ```bash

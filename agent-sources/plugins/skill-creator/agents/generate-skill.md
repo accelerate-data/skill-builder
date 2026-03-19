@@ -2,7 +2,7 @@
 name: generate-skill
 description: Plans skill structure, writes SKILL.md and all reference files. Called during Step 3 to create a new skill.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash, Skill
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill, Agent
 ---
 
 # Generate Skill
@@ -25,7 +25,7 @@ Your role is to use the clarifications and decisions to create a new skill. You 
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
 - `skill_output_dir`: path where the skill (`SKILL.md` and `references/`) live
 - Derive `context_dir` as `workspace_dir/context`
-- Derive `eval_dir` as `workspace_dir/evals`
+- Derive `eval_dir` as `workspace_dir/evals` (`eval.json` **must** be created in this location)
 
 </context>
 
@@ -154,8 +154,12 @@ version: <version from user-context.md, default 1.0.0>
 
 ### Directory for test case generation
 
-Write test cases from the `Test Cases` subsection of **Creating a skill section** to `{eval_dir}/evals.json`.
-Do not run the evaluations — a separate benchmark agent handles execution and grading.
+**This is important** 
+
+- Test cases from the **`Test Cases` subsection of Creating a skill section must be written to to `{eval_dir}/evals.json`**.
+- Do not write in the `skill_dir`.
+- Do not create the `eval` folder in the `skill_dir`.
+- Do not run the evaluations — a separate benchmark agent handles execution and grading.
 
 ### Workflow steps to ignore
 
@@ -170,7 +174,7 @@ The following top-level sections in the `skill-creator` skill should **not** be 
 
 ## Phase 2: Invoke the skill
 
-Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill. Write the `SKILL.md` and reference files in parallel yourself (do not spawn subagents).
+Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill. 
 
 ---
 

@@ -2,7 +2,7 @@
 name: rewrite-skill
 description: Rewrites an existing skill for coherence and coverage based on decisions and user request. Called from the refine UI rewrite command.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash, Skill
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill, Agent
 ---
 
 # Rewrite Skill
@@ -25,6 +25,7 @@ Your role is to rewrite an existing skill for coherence and improved coverage. Y
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
 - `skill_output_dir`: path where the skill (`SKILL.md` and `references/`) live
 - Derive `context_dir` as `workspace_dir/context`
+- Derive `eval_dir` as `workspace_dir/evals`
 - `Current request`: the user's rewrite request and optional focus area
 
 </context>
@@ -69,9 +70,9 @@ The user's answers contain unresolvable contradictions. See `decisions.json` for
 
 if `metadata.contradictory_inputs == "revised"` then treat it as authoritative and use only `{context_dir}/decisions.json` as the input. Do not read `{context_dir}/clarifications.json`.
 
-### No contradictions (or contradictions resolved as false)
+### No contradictions
 
-if `metadata.contradictory_inputs` is `"false"` or absent, read `{context_dir}/clarifications.json`.
+If `metadata.contradictory_inputs` is absent (the normal case), read `{context_dir}/clarifications.json`.
 
 If `metadata.scope_recommendation == true` in the parsed `clarifications.json`.
 
@@ -161,7 +162,7 @@ description: <brief description of which file is malformed>
 
 ### Rewrite strategy
 
-- Read the existing `SKILL.MD` and all the folders at the same level as the `SKILL.md` (e.g. `references/`, `scripts/`, `assets/`).
+- Read the existing `SKILL.md` and all the folders at the same level as the `SKILL.md` (e.g. `references/`, `scripts/`, `assets/`).
 - Identify inconsistencies, redundancies, and stale cross-references.
 - Use existing content as primary source, `decisions.json` as supplement.
 - Preserve all original domain knowledge while prioritizing coherence and coverage for the request-specific topic.
@@ -192,7 +193,7 @@ The following top-level sections in the `skill-creator` skill should **not** be 
 
 ## Phase 2: Invoke the skill
 
-Use the **Improving the skill** section in `skill-creator:skill-creator` skill to rewrite the skill. Write the `SKILL.MD` and reference files in parallel yourself (do not spawn subagents).
+Use the **Improving the skill** section in `skill-creator:skill-creator` skill to rewrite the skill.
 
 Perform a full preservation sweep to confirm no original domain knowledge was dropped. If coverage is incomplete, read additional references and close gaps.
 
@@ -204,7 +205,6 @@ Perform a full preservation sweep to confirm no original domain knowledge was dr
 - Inconsistencies and redundancies resolved
 - Every decision from `decisions.json` addressed
 - SKILL.md frontmatter is valid (name, description, tools, version)
-- `evals.json` updated to match the rewritten skill
 - `Current request` is addressed explicitly or the gap is recorded
 - Cross-references between SKILL.md and reference files are accurate
 
@@ -221,7 +221,7 @@ Return JSON only:
 ```json
 {
   "status": "rewritten",
-  "call_trace": ["read-user-context", "read-decisions", "read-existing-skill", "rewrite-skill", "write-references/foo.md", "preservation-sweep", "write-evals"]
+  "call_trace": ["read-user-context", "read-decisions", "read-existing-skill", "rewrite-skill", "write-references/foo.md", "preservation-sweep"]
 }
 ```
 
