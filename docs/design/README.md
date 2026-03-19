@@ -17,3 +17,4 @@
 | [startup-recon/](startup-recon/README.md) | Startup reconciliation: three-pass state machine, discovery scenarios, ACK dialog |
 | [workflow-state/](workflow-state/README.md) | Workflow step state machine: transitions, file deletion cascade, reset vs navigate-back, disabled-step guards |
 | [write-eval-test-refine-loop/](write-eval-test-refine-loop/README.md) | Write → Eval → Test → Refine loop: one-shot skill generation, batch eval with with/without comparison, feedback capture, iterative improvement, description optimization |
+| [code-review-vu-618/](code-review-vu-618/README.md) | Code review: skill-creator plugin delegation (VU-618/627/630/631) — mock path fixes, race conditions, stale closures |
