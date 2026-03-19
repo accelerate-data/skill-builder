@@ -6,7 +6,6 @@ use crate::commands::workflow::{resolve_model_id, tools_for_agent};
 use crate::db::{self, Db};
 use crate::types::SecretString;
 
-pub(super) const REFINE_AGENT_NAME: &str = "skill-creator:refine-skill";
 pub(super) const VALIDATE_AGENT_NAME: &str = "validate-skill";
 pub(super) const REWRITE_AGENT_NAME: &str = "skill-creator:rewrite-skill";
 pub(super) const BENCHMARK_AGENT_NAME: &str = "skill-creator:benchmark-skill";
@@ -237,7 +236,7 @@ pub(super) fn build_refine_config(
         model: None,
         api_key,
         cwd,
-        allowed_tools: Some(tools_for_agent(REFINE_AGENT_NAME)),
+        allowed_tools: Some(tools_for_agent(REWRITE_AGENT_NAME)),
         max_turns: Some(REFINE_STREAM_MAX_TURNS),
         permission_mode: None,
         thinking: thinking_budget.map(|budget| {
@@ -251,7 +250,7 @@ pub(super) fn build_refine_config(
         output_format: None,
         prompt_suggestions: Some(refine_prompt_suggestions),
         path_to_claude_code_executable: None,
-        agent_name: Some(REFINE_AGENT_NAME.to_string()),
+        agent_name: Some(REWRITE_AGENT_NAME.to_string()),
         required_plugins: Some(vec![
             "skill-content-researcher".to_string(),
             "skill-creator".to_string(),

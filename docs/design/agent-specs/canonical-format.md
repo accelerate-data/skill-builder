@@ -40,7 +40,7 @@ Scenarios currently covering the behavior contract:
 - `research-orchestrator`
 - `answer-evaluator`
 - `confirm-decisions`
-- `refine-skill`
+- `rewrite-skill`
 
 ---
 

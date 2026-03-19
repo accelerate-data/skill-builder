@@ -351,7 +351,7 @@ function loadWorkspaceContext() {
 }
 
 function loadRefineInstructions() {
-  const content = fs.readFileSync(path.join(AGENTS_DIR, "refine-skill.md"), "utf8");
+  const content = fs.readFileSync(path.join(AGENTS_DIR, "rewrite-skill.md"), "utf8");
   return stripFrontmatter(content);
 }
 
@@ -1034,7 +1034,7 @@ function runRefineSkill({ budgetUsd }) {
   const refineInstructions = loadRefineInstructions();
   const skillMdPath = path.join(dir, skillName, "SKILL.md");
 
-  const prompt = `You are the refine-skill agent for the skill-builder plugin.
+  const prompt = `You are the rewrite-skill agent for the skill-builder plugin.
 
 Skill directory: ${dir}/${skillName}
 Context directory: ${dir}/workspace/${skillName}/context
@@ -1056,7 +1056,7 @@ Current user message: Add to the description that this skill works well with dbt
   const frontmatter = frontmatterMatch ? frontmatterMatch[1] : "";
   const modifiedMatch = frontmatter.match(/^modified:\s*(.+)$/m);
 
-  return finalizeScenario("refine-skill", {
+  return finalizeScenario("rewrite-skill", {
     descriptionUpdated: /dbt.testing/i.test(content),
     descriptionPreserved: frontmatter.includes("Guides data engineers"),
     modifiedUpdated: modifiedMatch != null && modifiedMatch[1].trim() !== "2026-01-15",
@@ -1081,7 +1081,7 @@ function runRefineSkillScopeGuard({ budgetUsd }) {
   const workspaceContext = loadWorkspaceContext();
   const refineInstructions = loadRefineInstructions();
   const before = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
-  const prompt = `You are refine-skill.
+  const prompt = `You are rewrite-skill.
 Skill directory: ${dir}/${skillName}
 Context directory: ${dir}/workspace/${skillName}/context
 Workspace directory: ${dir}/workspace/${skillName}
@@ -1090,7 +1090,7 @@ Workspace directory: ${dir}/workspace/${skillName}
 Current user message: update description`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
   const after = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
-  return finalizeScenario("refine-skill-scope-guard", {
+  return finalizeScenario("rewrite-skill-scope-guard", {
     blockedMessage: /Scope recommendation active\. Blocked until resolved\./i.test(stdout),
     noFileEdits: before === after,
   });
@@ -1180,8 +1180,8 @@ const scenarioHandlers = {
   "generate-skill-scope-guard": runGenerateSkillScopeGuard,
   "generate-skill-contradictory": runGenerateSkillContradictory,
   "generate-skill-revised": runGenerateSkillRevised,
-  "refine-skill": runRefineSkill,
-  "refine-skill-scope-guard": runRefineSkillScopeGuard,
+  "rewrite-skill": runRefineSkill,
+  "rewrite-skill-scope-guard": runRefineSkillScopeGuard,
   "validate-skill-scope-guard": runValidateSkillScopeGuard,
   "validate-skill-missing-skill-md": runValidateSkillMissingSkillMd,
   "skill-test-contract": runSkillTestContract,

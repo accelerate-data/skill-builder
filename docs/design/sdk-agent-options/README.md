@@ -167,7 +167,7 @@ Decision candidate: **keep** (`effort` configurable, `fallbackModel` derived).
   - Direct `start_agent` contract paths: `_feedback`, `validate-skill`
 - Contract-unset coverage includes:
   - Workflow non-contract agents: `confirm-decisions`, `generate-skill`
-  - Refine conversational flow: `refine-skill`
+  - Refine conversational flow: `rewrite-skill`
   - Test conversational/text agents: `test-plan-with`, `test-plan-without`, `test-evaluator`
 
 Decision candidate: **keep selective** (avoid forcing JSON on conversational/text agents).

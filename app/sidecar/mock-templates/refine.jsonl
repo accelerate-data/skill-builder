@@ -1,4 +1,0 @@
-{"type":"system","subtype":"init_start","timestamp":0}
-{"type":"system","subtype":"sdk_ready","timestamp":0}
-{"type":"assistant","message":{"id":"msg_mock","type":"message","role":"assistant","content":[{"type":"text","text":"I've reviewed the skill and made the requested changes to SKILL.md. Here's what I updated:\n\n1. **Modified section**: Updated the Quick Reference section with the new terminology\n2. **Preserved**: All other sections remain unchanged\n\nThe changes are minimal and targeted to your request."}],"model":"claude-sonnet-4-20250514","stop_reason":"end_turn","usage":{"input_tokens":1000,"output_tokens":200}}}
-{"type":"result","subtype":"success","is_error":false,"result":"I've reviewed the skill and made the requested changes.","duration_ms":3000,"duration_api_ms":2500,"num_turns":2,"total_cost_usd":0.01,"usage":{"input_tokens":1000,"output_tokens":200}}

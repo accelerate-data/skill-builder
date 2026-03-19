@@ -17,7 +17,6 @@ const PLUGIN_AGENTS: Record<string, string> = {
   "generate-skill": "skill-creator/agents/generate-skill.md",
   "rewrite-skill": "skill-creator/agents/rewrite-skill.md",
   "benchmark-skill": "skill-creator/agents/benchmark-skill.md",
-  "refine-skill": "skill-creator/agents/refine-skill.md",
   "research-orchestrator": "skill-content-researcher/agents/research-orchestrator.md",
   "detailed-research": "skill-content-researcher/agents/detailed-research.md",
 };

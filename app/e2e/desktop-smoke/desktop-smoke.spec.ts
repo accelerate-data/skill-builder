@@ -127,7 +127,7 @@ test.describe("Desktop Smoke", { tag: "@desktop-smoke" }, () => {
       await thinking.waitFor({ timeout: 5_000 });
 
       // Run the real sidecar with MOCK_AGENTS=true for the refine agent
-      await bridge.runAgent(page, "refine-skill", agentId, { skillName: "test-skill", runSource: "refine" });
+      await bridge.runAgent(page, "skill-creator:rewrite-skill", agentId, { skillName: "test-skill", runSource: "refine" });
 
       // Wait for the thinking indicator to disappear — deterministic signal that
       // the refine completion effect chain has fully settled.

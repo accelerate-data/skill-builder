@@ -111,7 +111,7 @@ The app‑level contract is the JSON envelope (`status`, `dimensions_selected`, 
 `validate-skill` is not a numbered workflow step in the desktop app. Invoked by:
 
 - **Plugin workflow** — coordinator spawns it via `Task(subagent_type: "skill-builder:validate-skill")` after the Generation phase
-- **Refine workflow** — `refine-skill.md` spawns it on `/validate` or a full `/rewrite` cycle
+- **Refine workflow** — `rewrite-skill.md` spawns it on `/validate` or a full `/rewrite` cycle
 
 ### Structure
 
