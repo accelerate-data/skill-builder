@@ -110,12 +110,10 @@ const baseBuilderSkill: SkillSummary = {
 };
 
 describe("WorkspaceShell", () => {
-  it("renders skill name, seafoam dot, and Builder badge", () => {
+  it("renders skill name and seafoam dot in header", () => {
     render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" />);
 
     expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
-    // Version badge removed from header — version history is in overview card
-    expect(screen.getByText("Builder")).toBeInTheDocument();
 
     // Seafoam dot — rendered as a div with seafoam background style
     const dot = document.querySelector('[style*="var(--color-seafoam)"]');
