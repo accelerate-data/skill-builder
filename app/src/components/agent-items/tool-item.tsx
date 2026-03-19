@@ -1,3 +1,4 @@
+import { memo } from "react";
 import {
   FileText,
   Pencil,
@@ -51,7 +52,7 @@ function ToolViewer({ item }: { item: DisplayItem }) {
   }
 }
 
-export function ToolItem({ item }: { item: DisplayItem }) {
+export const ToolItem = memo(function ToolItem({ item }: { item: DisplayItem }) {
   const toolName = item.toolName ?? "unknown";
   const summary = item.toolSummary ?? toolName;
   const hasContent =
@@ -74,4 +75,4 @@ export function ToolItem({ item }: { item: DisplayItem }) {
       {hasContent ? <ToolViewer item={item} /> : undefined}
     </BaseItem>
   );
-}
+});

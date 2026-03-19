@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { OutputItem } from "@/components/agent-items/output-item";
 import { ThinkingItem } from "@/components/agent-items/thinking-item";
 import type { DisplayItem } from "@/lib/display-types";
@@ -33,7 +34,8 @@ describe("agent markdown items", () => {
     expect(markdown).toHaveClass("markdown-body", "compact", "agent-markdown");
   });
 
-  it("renders thinking items with the left-panel agent markdown class", () => {
+  it("renders thinking items with the left-panel agent markdown class after expanding", async () => {
+    const user = userEvent.setup();
     render(
       <ThinkingItem
         item={makeItem({
@@ -42,6 +44,10 @@ describe("agent markdown items", () => {
         })}
       />,
     );
+
+    // ThinkingItem starts collapsed — click to expand so content is mounted
+    const expandButton = screen.getByRole("button", { expanded: false });
+    await user.click(expandButton);
 
     const markdown = screen.getByTestId("markdown-render").parentElement;
     expect(markdown).toHaveClass("markdown-body", "compact", "agent-markdown");

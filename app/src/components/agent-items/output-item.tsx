@@ -1,13 +1,11 @@
+import { memo } from "react";
 import { MessageSquare } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeSanitize from "rehype-sanitize";
-import { markdownComponents } from "@/components/markdown-link";
+import { MemoizedMarkdown } from "./memoized-markdown";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { BaseItem } from "./base-item";
 import type { DisplayItem } from "@/lib/display-types";
 
-export function OutputItem({ item }: { item: DisplayItem }) {
+export const OutputItem = memo(function OutputItem({ item }: { item: DisplayItem }) {
   const text = item.outputText ?? "";
   if (text.length === 0) return null;
   const summary = text.length > 60 ? text.slice(0, 60) + "..." : text;
@@ -22,12 +20,8 @@ export function OutputItem({ item }: { item: DisplayItem }) {
       defaultExpanded={true}
     >
       <ErrorBoundary fallback={<pre className="whitespace-pre-wrap break-words text-sm">{text}</pre>}>
-        <div className="markdown-body compact agent-markdown">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={markdownComponents}>
-            {text}
-          </ReactMarkdown>
-        </div>
+        <MemoizedMarkdown content={text} />
       </ErrorBoundary>
     </BaseItem>
   );
-}
+});

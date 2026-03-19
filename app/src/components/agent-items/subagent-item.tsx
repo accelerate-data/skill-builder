@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Bot } from "lucide-react";
 import { BaseItem } from "./base-item";
 import type { DisplayItem } from "@/lib/display-types";
@@ -7,7 +8,7 @@ import { DisplayItemList } from "./display-item-list";
 
 const MAX_NESTING_DEPTH = 3;
 
-export function SubagentItem({ item, depth = 0 }: { item: DisplayItem; depth?: number }) {
+export const SubagentItem = memo(function SubagentItem({ item, depth = 0 }: { item: DisplayItem; depth?: number }) {
   const description = item.subagentDescription ?? "Sub-agent";
   const subagentType = item.subagentType;
   const childItems = item.subagentItems ?? [];
@@ -36,4 +37,4 @@ export function SubagentItem({ item, depth = 0 }: { item: DisplayItem; depth?: n
       )}
     </BaseItem>
   );
-}
+});

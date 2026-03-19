@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { ChevronRight, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { ToolStatus, SubagentStatus } from "@/lib/display-types";
@@ -66,6 +66,10 @@ export function BaseItem({
   children,
 }: BaseItemProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  // Track whether content has ever been expanded to enable lazy mounting.
+  // Once mounted, keep it in the DOM to preserve scroll position and state.
+  const hasBeenExpanded = useRef(defaultExpanded);
+  if (expanded) hasBeenExpanded.current = true;
   const hasContent = children !== undefined && children !== null;
 
   const header = (
@@ -126,12 +130,14 @@ export function BaseItem({
           expanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
         }`}
       >
-        <div
-          className="ml-[7px] min-w-0 overflow-x-hidden pl-4 pr-2 pt-1 pb-1"
-          style={{ borderLeft: `3px solid ${borderColor}` }}
-        >
-          {children}
-        </div>
+        {hasBeenExpanded.current && (
+          <div
+            className="ml-[7px] min-w-0 overflow-x-hidden pl-4 pr-2 pt-1 pb-1"
+            style={{ borderLeft: `3px solid ${borderColor}` }}
+          >
+            {children}
+          </div>
+        )}
       </div>
     </div>
   );
