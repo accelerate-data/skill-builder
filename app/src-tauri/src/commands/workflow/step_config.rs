@@ -1,4 +1,3 @@
-use crate::commands::agent::output_format_for_agent as shared_output_format_for_agent;
 use crate::types::StepConfig;
 
 /// Canonical allowed-tools lookup keyed by agent name.
@@ -96,11 +95,47 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
 }
 
 pub(crate) fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Value> {
-    if let Some(format) = shared_output_format_for_agent("_workflow", Some(agent_name)) {
-        return Some(format);
-    }
-
     match agent_name {
+        "skill-creator:generate-skill" => Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status"],
+                "properties": {
+                    "status": { "type": "string", "const": "generated" },
+                    "skipped": { "type": "boolean" }
+                },
+                "additionalProperties": true
+            }
+        })),
+        "skill-creator:rewrite-skill" => Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status"],
+                "properties": {
+                    "status": { "type": "string", "const": "rewritten" },
+                    "skipped": { "type": "boolean" }
+                },
+                "additionalProperties": true
+            }
+        })),
+        "skill-creator:benchmark-skill" => Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status", "benchmark_status"],
+                "properties": {
+                    "status": { "type": "string", "const": "benchmarked" },
+                    "benchmark_status": {
+                        "type": "string",
+                        "enum": ["complete", "partial", "skipped"]
+                    },
+                    "benchmark_path": { "type": "string" }
+                },
+                "additionalProperties": true
+            }
+        })),
         "skill-content-researcher:research-orchestrator" => Some(serde_json::json!({
             "type": "json_schema",
             "schema": {

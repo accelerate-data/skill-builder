@@ -17,10 +17,10 @@ pub fn resolve_prompt_source_dirs_public(app_handle: &tauri::AppHandle) -> (Path
     resolve_prompt_source_dirs(app_handle)
 }
 
-/// Resolve the path to the bundled skills directory.
-/// In dev mode: `{CARGO_MANIFEST_DIR}/../../agent-sources/skills/`.
-/// In production: Tauri resource directory `agent-sources/skills/`.
-pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
+/// Resolve the path to a bundled agent-sources subdirectory.
+/// In dev mode: `{CARGO_MANIFEST_DIR}/../../agent-sources/{subdir}/`.
+/// In production: Tauri resource directory `agent-sources/{subdir}/`.
+fn resolve_bundled_agent_sources_subdir(app_handle: &tauri::AppHandle, subdir: &str) -> PathBuf {
     use tauri::Manager;
 
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -30,41 +30,24 @@ pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
 
     let dev_path = repo_root
         .as_ref()
-        .map(|r| r.join("agent-sources").join("skills"));
+        .map(|r| r.join("agent-sources").join(subdir));
 
     match dev_path {
         Some(ref p) if p.is_dir() => p.clone(),
         _ => app_handle
             .path()
             .resource_dir()
-            .map(|r| r.join("agent-sources").join("skills"))
+            .map(|r| r.join("agent-sources").join(subdir))
             .unwrap_or_default(),
     }
 }
 
-/// Resolve the path to bundled plugins source directory.
-/// In dev mode: `{CARGO_MANIFEST_DIR}/../../agent-sources/plugins/`.
-/// In production: Tauri resource directory `agent-sources/plugins/`.
+pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
+    resolve_bundled_agent_sources_subdir(app_handle, "skills")
+}
+
 pub fn resolve_bundled_plugins_dir(app_handle: &tauri::AppHandle) -> PathBuf {
-    use tauri::Manager;
-
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.to_path_buf());
-
-    let dev_path = repo_root
-        .as_ref()
-        .map(|r| r.join("agent-sources").join("plugins"));
-
-    match dev_path {
-        Some(ref p) if p.is_dir() => p.clone(),
-        _ => app_handle
-            .path()
-            .resource_dir()
-            .map(|r| r.join("agent-sources").join("plugins"))
-            .unwrap_or_default(),
-    }
+    resolve_bundled_agent_sources_subdir(app_handle, "plugins")
 }
 
 /// Deploy a single skill into the workspace `.claude/skills/` directory.

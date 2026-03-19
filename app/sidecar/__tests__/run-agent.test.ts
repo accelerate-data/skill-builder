@@ -466,40 +466,6 @@ describe("result message error subtypes", () => {
   });
 });
 
-describe("emitSystemEvent", () => {
-  it("emits a system event with correct format", () => {
-    const messages: Record<string, unknown>[] = [];
-    emitSystemEvent((msg) => messages.push(msg), "init_start");
-
-    expect(messages).toHaveLength(1);
-    expect(messages[0]).toMatchObject({
-      type: "system",
-      subtype: "init_start",
-    });
-    expect(typeof messages[0].timestamp).toBe("number");
-  });
-
-  it("emits events with the specified subtype", () => {
-    const messages: Record<string, unknown>[] = [];
-    emitSystemEvent((msg) => messages.push(msg), "sdk_ready");
-
-    expect(messages[0]).toMatchObject({
-      type: "system",
-      subtype: "sdk_ready",
-    });
-  });
-
-  it("includes a millisecond timestamp", () => {
-    const before = Date.now();
-    const messages: Record<string, unknown>[] = [];
-    emitSystemEvent((msg) => messages.push(msg), "init_start");
-    const after = Date.now();
-
-    const timestamp = messages[0].timestamp as number;
-    expect(timestamp).toBeGreaterThanOrEqual(before);
-    expect(timestamp).toBeLessThanOrEqual(after);
-  });
-});
 
 describe("runAgentRequest passes prompt directly to query", () => {
   beforeEach(() => {

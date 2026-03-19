@@ -394,7 +394,7 @@ pub async fn run_benchmark_phase(
         }),
         fallback_model: settings.fallback_model.clone(),
         effort: settings.sdk_effort.clone(),
-        output_format: crate::commands::agent::output_format_for_agent("_workflow", Some(agent_name)),
+        output_format: workflow_output_format_for_agent(agent_name),
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name.to_string()),

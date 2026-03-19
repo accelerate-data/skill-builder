@@ -18,10 +18,8 @@ fn suppress_same_fallback_model(
     }
 }
 
-fn required_plugins_for_run_source(_run_source: Option<&str>) -> Option<Vec<String>> {
-    Some(vec![])
-}
-
+/// Output format schemas for non-workflow agents (feedback, validate-skill).
+/// Workflow agent schemas live in `workflow/step_config.rs`.
 pub(crate) fn output_format_for_agent(
     skill_name: &str,
     agent_name: Option<&str>,
@@ -64,55 +62,6 @@ pub(crate) fn output_format_for_agent(
                     "test_results_markdown": { "type": "string", "minLength": 1 }
                 },
                 "additionalProperties": false
-            }
-        }));
-    }
-
-    if agent_name == Some("skill-creator:generate-skill") {
-        return Some(serde_json::json!({
-            "type": "json_schema",
-            "schema": {
-                "type": "object",
-                "required": ["status"],
-                "properties": {
-                    "status": { "type": "string", "const": "generated" },
-                    "skipped": { "type": "boolean" }
-                },
-                "additionalProperties": true
-            }
-        }));
-    }
-
-    if agent_name == Some("skill-creator:rewrite-skill") {
-        return Some(serde_json::json!({
-            "type": "json_schema",
-            "schema": {
-                "type": "object",
-                "required": ["status"],
-                "properties": {
-                    "status": { "type": "string", "const": "rewritten" },
-                    "skipped": { "type": "boolean" }
-                },
-                "additionalProperties": true
-            }
-        }));
-    }
-
-    if agent_name == Some("skill-creator:benchmark-skill") {
-        return Some(serde_json::json!({
-            "type": "json_schema",
-            "schema": {
-                "type": "object",
-                "required": ["status", "benchmark_status"],
-                "properties": {
-                    "status": { "type": "string", "const": "benchmarked" },
-                    "benchmark_status": {
-                        "type": "string",
-                        "enum": ["complete", "partial", "skipped"]
-                    },
-                    "benchmark_path": { "type": "string" }
-                },
-                "additionalProperties": true
             }
         }));
     }
@@ -206,8 +155,6 @@ pub async fn start_agent(
     }
     let fallback_model = suppress_same_fallback_model(model_for_config.as_deref(), fallback_model);
 
-    let required_plugins = required_plugins_for_run_source(run_source.as_deref());
-
     let config = SidecarConfig {
         prompt,
         model: model_for_config,
@@ -228,7 +175,7 @@ pub async fn start_agent(
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name,
-        required_plugins,
+        required_plugins: Some(vec![]),
         conversation_history: None,
         skill_name: Some(skill_name.clone()),
         step_id: Some(step_id.unwrap_or(-1)),
@@ -252,9 +199,7 @@ pub async fn start_agent(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        output_format_for_agent, required_plugins_for_run_source, suppress_same_fallback_model,
-    };
+    use super::{output_format_for_agent, suppress_same_fallback_model};
 
     #[test]
     fn test_output_format_for_feedback() {
@@ -273,22 +218,12 @@ mod tests {
     }
 
     #[test]
-    fn test_output_format_for_generate_skill_agent() {
-        let fmt = output_format_for_agent("my-skill", Some("skill-creator:generate-skill"));
-        assert!(fmt.is_some());
-        let schema = fmt.expect("schema");
-        assert_eq!(
-            schema["schema"]["properties"]["status"]["const"],
-            "generated"
-        );
-    }
-
-    #[test]
     fn test_output_format_is_unset_for_non_contract_agent_names() {
         assert!(output_format_for_agent("my-skill", Some("confirm-decisions")).is_none());
         assert!(output_format_for_agent("my-skill", Some("test-plan-with")).is_none());
         assert!(output_format_for_agent("my-skill", Some("test-plan-without")).is_none());
         assert!(output_format_for_agent("my-skill", Some("test-evaluator")).is_none());
+        assert!(output_format_for_agent("my-skill", Some("skill-creator:generate-skill")).is_none());
     }
 
     #[test]
@@ -328,10 +263,4 @@ mod tests {
         assert!(result.is_none());
     }
 
-    #[test]
-    fn test_required_plugins_for_run_source_always_empty() {
-        assert_eq!(required_plugins_for_run_source(Some("test")), Some(vec![]));
-        assert_eq!(required_plugins_for_run_source(Some("workflow")), Some(vec![]));
-        assert_eq!(required_plugins_for_run_source(None), Some(vec![]));
-    }
 }
