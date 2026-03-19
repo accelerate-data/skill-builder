@@ -152,7 +152,7 @@ test.describe("Sidecar Integration — Generate Skill Step", { tag: "@integratio
 
     await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 8_000 });
 
-    await bridge.runAgent(page, "generate-skill", agentId, { skillName, stepId: 3 });
+    await bridge.runAgent(page, "skill-creator:generate-skill", agentId, { skillName, stepId: 3 });
 
     // The mock sidecar copies mock-templates/outputs/step3/SKILL.md.
     const skillMd = bridge.readWorkspaceFile(`${skillName}/SKILL.md`);
