@@ -91,7 +91,6 @@ export function useWorkflowStateMachine({
   const [pendingAutoStartStep, setPendingAutoStartStep] = useState<number | null>(null);
 
   // Refs for cross-effect communication
-  const lastCompletedCostRef = useRef<number | undefined>(undefined);
   const prevReviewModeRef = useRef<boolean | null>(null);
 
   // Current state selectors
@@ -256,9 +255,6 @@ export function useWorkflowStateMachine({
 
     if (activeRunStatus === "completed") {
       const completedAgentId = activeAgentId;
-      lastCompletedCostRef.current = completedAgentId
-        ? useAgentStore.getState().runs[completedAgentId]?.totalCost
-        : undefined;
       setActiveAgent(null);
 
       const finish = async () => {
@@ -422,7 +418,5 @@ export function useWorkflowStateMachine({
     handleStartAgentStep,
     performStepReset,
 
-    // Refs
-    lastCompletedCostRef,
   };
 }

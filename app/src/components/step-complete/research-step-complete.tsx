@@ -11,7 +11,7 @@ type Props = StepCompleteBaseProps & ClarificationsEditableProps & Pick<StepFile
 
 export function ResearchStepComplete(props: Props) {
   const {
-    fileContents, agentRuns, reviewMode, duration, displayCost,
+    fileContents, agentRuns, reviewMode, duration,
     isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onRefine, onResetStep,
     clarificationsEditable, clarificationsData: controlledClarData,
     onClarificationsChange, onClarificationsContinue, onReset, saveStatus, evaluating,
@@ -68,7 +68,6 @@ export function ResearchStepComplete(props: Props) {
             researchPlan={researchPlanContent}
             clarificationsData={controlledClarData ?? clarData}
             duration={!reviewMode ? duration : undefined}
-            cost={displayCost}
             editable
             onClarificationsChange={onClarificationsChange}
             onClarificationsContinue={onClarificationsContinue}
@@ -85,7 +84,6 @@ export function ResearchStepComplete(props: Props) {
                 researchPlan={researchPlanContent}
                 clarificationsData={clarData}
                 duration={!reviewMode ? duration : undefined}
-                cost={displayCost}
               />
             </div>
           </ScrollArea>

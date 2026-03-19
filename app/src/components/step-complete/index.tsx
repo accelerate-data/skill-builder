@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Loader2, CheckCircle2, FileText, Clock, DollarSign } from "lucide-react";
+import { Loader2, CheckCircle2, FileText, Clock } from "lucide-react";
 import { getStepAgentRuns } from "@/lib/tauri";
 import type { AgentRunRecord } from "@/lib/types";
 import type { ClarificationsFile } from "@/lib/clarifications-types";
@@ -16,7 +16,6 @@ interface WorkflowStepCompleteProps {
   stepId?: number;
   outputFiles: string[];
   duration?: number;
-  cost?: number;
   onNextStep?: () => void;
   onClose?: () => void;
   onRefine?: () => void;
@@ -42,7 +41,6 @@ export function WorkflowStepComplete({
   stepId,
   outputFiles,
   duration,
-  cost,
   onNextStep,
   onClose,
   onRefine,
@@ -78,12 +76,6 @@ export function WorkflowStepComplete({
   const { fileContents, resolvedFiles, selectedFile, setSelectedFile, loadingFiles } =
     useStepFiles(skillName, workspacePath, skillsPath, outputFiles);
 
-  // Display cost: review mode uses DB, live mode uses Zustand
-  const dbCost = agentRuns.length > 0
-    ? agentRuns.reduce((sum, r) => sum + r.total_cost, 0)
-    : undefined;
-  const displayCost = reviewMode ? dbCost : cost;
-
   // --- Loading ---
   if (loadingFiles) {
     return (
@@ -96,7 +88,7 @@ export function WorkflowStepComplete({
   // Shared base props for step components
   const baseProps = {
     stepName, isLastStep, reviewMode, nextStepBlocked, nextStepLabel,
-    onNextStep, onClose, onRefine, onResetStep, agentRuns, duration, displayCost,
+    onNextStep, onClose, onRefine, onResetStep, agentRuns, duration,
   };
 
   const clarProps = {
@@ -157,20 +149,14 @@ export function WorkflowStepComplete({
               ))}
             </div>
           )}
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            {duration !== undefined && (
+          {duration !== undefined && (
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Clock className="size-3" />
                 {formatElapsed(duration)}
               </span>
-            )}
-            {displayCost !== undefined && (
-              <span className="flex items-center gap-1">
-                <DollarSign className="size-3" />
-                ${displayCost.toFixed(4)}
-              </span>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
       <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onRefine={onRefine} onClose={onClose} onNextStep={onNextStep} />

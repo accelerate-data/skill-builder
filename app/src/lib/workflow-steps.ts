@@ -8,22 +8,22 @@ export const WORKFLOW_STEP_DEFINITIONS: readonly WorkflowStepDefinition[] = [
   {
     id: 0,
     name: "Research",
-    description: "Research key concepts, terminology, and frameworks for the domain",
+    description: "Survey the domain — concepts, terminology, and frameworks",
   },
   {
     id: 1,
     name: "Detailed Research",
-    description: "Research detailed patterns, implementation, and data modeling",
+    description: "Dig into patterns, implementation details, and data modeling",
   },
   {
     id: 2,
     name: "Confirm Decisions",
-    description: "Analyze responses for implications, gaps, and contradictions",
+    description: "Resolve gaps, contradictions, and implications from your answers",
   },
   {
     id: 3,
     name: "Generate Skill",
-    description: "Generate skill files from decisions",
+    description: "Produce skill files from confirmed decisions",
   },
 ];
 

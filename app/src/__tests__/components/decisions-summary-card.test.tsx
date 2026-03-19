@@ -69,10 +69,9 @@ describe("DecisionsSummaryCard — Summary Stats", () => {
     expect(screen.getByText("Decisions confirmed")).toBeInTheDocument();
   });
 
-  it("shows duration and cost when provided", () => {
-    render(<DecisionsSummaryCard decisionsContent={sampleDecisions} duration={125000} cost={0.5234} />);
+  it("shows duration when provided", () => {
+    render(<DecisionsSummaryCard decisionsContent={sampleDecisions} duration={125000} />);
     expect(screen.getAllByText("2m 5s").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("$0.5234").length).toBeGreaterThanOrEqual(1);
   });
 
   it("does not show review-required copy when flag is absent", () => {

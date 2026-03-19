@@ -46,7 +46,7 @@ export function AboutDialog({ open, onOpenChange }: AboutDialogProps) {
               className="size-16 rounded-xl block dark:hidden"
             />
             <img
-              src="/icon-256.png"
+              src="/icon-light-256.png"
               alt="Skill Builder"
               className="size-16 rounded-xl hidden dark:block"
             />

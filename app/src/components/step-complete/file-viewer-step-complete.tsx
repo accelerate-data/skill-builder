@@ -1,4 +1,4 @@
-import { CheckCircle2, FileText, Clock, DollarSign, RotateCcw } from "lucide-react";
+import { CheckCircle2, FileText, Clock, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -18,7 +18,7 @@ function fileLabel(f: string): string {
 export function FileViewerStepComplete(props: Props) {
   const {
     stepName, fileContents, resolvedFiles, selectedFile, setSelectedFile,
-    agentRuns, reviewMode, duration, displayCost,
+    agentRuns, reviewMode, duration,
     isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onRefine, onResetStep,
   } = props;
 
@@ -37,20 +37,14 @@ export function FileViewerStepComplete(props: Props) {
           <CheckCircle2 className="size-4 shrink-0" style={{ color: "var(--color-seafoam)" }} />
           <span className="text-sm font-semibold tracking-tight">{stepName} Complete</span>
           <div className="flex-1" />
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            {duration !== undefined && (
+          {duration !== undefined && (
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Clock className="size-3" />
                 {formatElapsed(duration)}
               </span>
-            )}
-            {displayCost !== undefined && (
-              <span className="flex items-center gap-1">
-                <DollarSign className="size-3" />
-                ${displayCost.toFixed(4)}
-              </span>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
       <div className="shrink-0">

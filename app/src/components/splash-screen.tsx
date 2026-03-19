@@ -99,7 +99,7 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
           className="size-20 animate-splash-logo block dark:hidden"
         />
         <img
-          src="/icon-256.png"
+          src="/icon-light-256.png"
           alt="Skill Builder"
           className="size-20 animate-splash-logo hidden dark:block"
         />
