@@ -5,7 +5,6 @@ import { useSkillStore } from "@/stores/skill-store";
 import { Lock, MoreHorizontal, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
@@ -155,7 +154,6 @@ export function SkillListPanel({
 }: SkillListPanelProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [redoTarget, setRedoTarget] = useState<string | null>(null);
@@ -164,6 +162,8 @@ export function SkillListPanel({
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const builderSkills = useSkillStore((s) => s.skills);
   const setSkills = useSkillStore((s) => s.setSkills);
+  const selectedSkill = useSkillStore((s) => s.activeSkill);
+  const setSelectedSkill = useSkillStore((s) => s.setActiveSkill);
   const importedSkills = useImportedSkillsStore((s) => s.skills);
   const fetchImportedSkills = useImportedSkillsStore((s) => s.fetchSkills);
   const runs = useAgentStore((s) => s.runs);
@@ -325,9 +325,6 @@ export function SkillListPanel({
       {/* Topbar */}
       <div className="flex h-11 items-center gap-2 border-b px-3">
         <span className="flex-1 text-[15px] font-semibold">Skills</span>
-        <Badge variant="secondary" className="rounded-full px-1.5 py-px text-[13px]">
-          {filteredSkills.length}
-        </Badge>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -376,10 +373,12 @@ export function SkillListPanel({
               aria-selected={isSelected}
               className={cn(
                 "group flex h-[46px] cursor-pointer items-center gap-2 px-3 transition-colors",
-                isSelected && "bg-accent",
+                isSelected && "border-l-2 bg-muted/60 pl-[10px]",
+                !isSelected && "border-l-2 border-l-transparent",
                 !isSelected && !isLocked && "hover:bg-accent/50",
                 isLocked && "cursor-not-allowed opacity-[0.45]",
               )}
+              style={isSelected ? { borderLeftColor: "var(--color-pacific)" } : undefined}
               onClick={() => handleRowClick(skill)}
               onKeyDown={(e) => {
                 if (!isLocked && (e.key === "Enter" || e.key === " ")) {
@@ -421,7 +420,7 @@ export function SkillListPanel({
                     <Button
                       variant="ghost"
                       size="icon-xs"
-                      className="size-5 shrink-0 opacity-0 group-hover:opacity-100"
+                      className="size-5 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
                       aria-label="More actions"
                       onClick={(e) => e.stopPropagation()}
                     >

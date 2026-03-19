@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useScopeBlocked } from "@/hooks/use-scope-blocked";
 import { toast } from "@/lib/toast";
@@ -71,8 +69,6 @@ async function loadSkillFiles(basePath: string, skillName: string): Promise<Skil
 }
 
 export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
-  const navigate = useNavigate();
-
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const preferredModel = useSettingsStore((s) => s.preferredModel);
   const availableModels = useSettingsStore((s) => s.availableModels);
@@ -416,21 +412,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
   return (
     <div className="flex h-full flex-col">
-      {scopeBlocked && selectedSkill && (
-        <div className="flex items-center gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400">
-          <AlertTriangle className="size-4 shrink-0" />
-          <span>Scope recommendation active — refine is blocked until resolved.</span>
-          <button
-            className="ml-auto shrink-0 underline underline-offset-2"
-            onClick={() =>
-              navigate({ to: "/skill/$skillName", params: { skillName: skill.name } })
-            }
-          >
-            Go to Workflow →
-          </button>
-        </div>
-      )}
-
       <div className="min-h-0 w-full flex-1 overflow-hidden">
         <ResizableSplitPane
           left={
@@ -452,26 +433,26 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       <div className="flex h-6 shrink-0 items-center gap-2.5 border-t border-border bg-background/80 px-4">
         <div className="flex items-center gap-1.5">
           <div className={`size-[5px] rounded-full ${dotClass}`} style={dotStyle} />
-          <span className="text-xs text-muted-foreground/60">{statusLabel}</span>
+          <span className="text-xs text-muted-foreground">{statusLabel}</span>
         </div>
         {selectedSkill && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-xs text-muted-foreground/60">{selectedSkill.name}</span>
+            <span className="text-xs text-muted-foreground">{selectedSkill.name}</span>
           </>
         )}
         <span className="text-muted-foreground/20">&middot;</span>
-        <span className="text-xs text-muted-foreground/60">{modelLabel}</span>
+        <span className="text-xs text-muted-foreground">{modelLabel}</span>
         {isRunning && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-xs text-muted-foreground/60">{(elapsed / 1000).toFixed(1)}s</span>
+            <span className="text-xs text-muted-foreground">{(elapsed / 1000).toFixed(1)}s</span>
           </>
         )}
         {statusCost !== undefined && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-xs text-muted-foreground/60">${statusCost.toFixed(4)}</span>
+            <span className="text-xs text-muted-foreground">${statusCost.toFixed(4)}</span>
           </>
         )}
       </div>

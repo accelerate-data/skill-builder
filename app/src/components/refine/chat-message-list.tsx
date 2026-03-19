@@ -25,8 +25,13 @@ export function ChatMessageList({ messages, onBenchmarkConfirm, onBenchmarkSkip 
 
   if (messages.length === 0) {
     return (
-      <div data-testid="refine-chat-empty" className="flex flex-1 items-center justify-center text-muted-foreground">
-        Send a message to start refining
+      <div data-testid="refine-chat-empty" className="flex flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
+        <p className="text-sm text-muted-foreground">Describe what you want to change and the agent will update your skill files.</p>
+        <div className="flex flex-wrap justify-center gap-2 text-xs text-muted-foreground">
+          <span className="rounded-md border px-2 py-1 font-mono">/rewrite</span>
+          <span className="rounded-md border px-2 py-1 font-mono">/validate</span>
+          <span className="rounded-md border px-2 py-1 font-mono">@SKILL.md</span>
+        </div>
       </div>
     );
   }

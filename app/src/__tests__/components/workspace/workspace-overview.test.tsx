@@ -43,7 +43,6 @@ describe("WorkspaceOverview", () => {
       <WorkspaceOverview
         skill={baseSkill}
         skillType="builder"
-        onOpenRefine={vi.fn()}
       />,
     );
 
@@ -54,7 +53,6 @@ describe("WorkspaceOverview", () => {
     // Purpose label from PURPOSE_LABELS["domain"]
     expect(screen.getByText("Business process knowledge")).toBeInTheDocument();
 
-    // Dates — "2026-01-15T10:00:00Z" -> toLocaleDateString (locale-dependent)
     // Just check the "Created" and "Modified" labels exist
     expect(screen.getByText("Created")).toBeInTheDocument();
     expect(screen.getByText("Modified")).toBeInTheDocument();
@@ -66,7 +64,6 @@ describe("WorkspaceOverview", () => {
       <WorkspaceOverview
         skill={baseSkill}
         skillType="builder"
-        onOpenRefine={vi.fn()}
       />,
     );
 
@@ -78,21 +75,5 @@ describe("WorkspaceOverview", () => {
     const dialog = screen.getByTestId("skill-dialog");
     expect(dialog).toBeInTheDocument();
     expect(dialog).toHaveAttribute("data-open", "true");
-  });
-
-  it("renders stub stats card with three dash values without crashing", () => {
-    render(
-      <WorkspaceOverview
-        skill={baseSkill}
-        skillType="builder"
-        onOpenRefine={vi.fn()}
-      />,
-    );
-
-    const dashes = screen.getAllByText("—");
-    expect(dashes.length).toBeGreaterThanOrEqual(3);
-    expect(screen.getByText("Pass Rate")).toBeInTheDocument();
-    expect(screen.getByText("Iterations")).toBeInTheDocument();
-    expect(screen.getByText("Tests")).toBeInTheDocument();
   });
 });
