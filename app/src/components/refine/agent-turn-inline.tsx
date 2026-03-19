@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { Loader2 } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 import { useAgentStore } from "@/stores/agent-store";
 import { DisplayItemList } from "@/components/agent-items/display-item-list";
 
@@ -12,9 +13,13 @@ function formatCost(cost: number): string {
 }
 
 export const AgentTurnInline = memo(function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
-  const displayItems = useAgentStore((s) => s.runs[agentId]?.displayItems);
-  const status = useAgentStore((s) => s.runs[agentId]?.status);
-  const totalCost = useAgentStore((s) => s.runs[agentId]?.totalCost);
+  const { displayItems, status, totalCost } = useAgentStore(
+    useShallow((s) => ({
+      displayItems: s.runs[agentId]?.displayItems,
+      status: s.runs[agentId]?.status,
+      totalCost: s.runs[agentId]?.totalCost,
+    })),
+  );
 
   if (!displayItems) return null;
 
