@@ -169,7 +169,7 @@ pub async fn run_workflow_step(
             &bundled_skills_dir,
             "skill-creator",
             "skill-building",
-        );
+        )?;
     }
 
     let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
@@ -310,7 +310,7 @@ pub async fn run_benchmark_phase(
             &bundled_skills_dir,
             "skill-creator",
             "skill-building",
-        );
+        )?;
     }
 
     let settings = read_workflow_settings(&db, &skill_name, 3, &workspace_path)?;

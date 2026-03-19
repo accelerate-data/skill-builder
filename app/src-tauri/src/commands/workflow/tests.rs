@@ -2333,7 +2333,7 @@ fn test_deploy_skill_for_workflow_uses_bundled_source_for_bundled_rows() {
         bundled_skills_dir,
         "research",
         "research",
-    );
+    ).unwrap();
 
     let content = std::fs::read_to_string(deployed_research_dir.join("SKILL.md")).unwrap();
     assert!(content.contains("Bundled Research"));

@@ -82,7 +82,7 @@ pub(crate) fn deploy_skill_for_workflow(
     bundled_skills_dir: &std::path::Path,
     skill_name: &str,
     purpose: &str,
-) {
+) -> Result<(), String> {
     let dest_skills_dir = std::path::Path::new(workspace_path)
         .join(".claude")
         .join("skills");
@@ -129,42 +129,45 @@ pub(crate) fn deploy_skill_for_workflow(
     };
 
     if !source_dir.is_dir() {
-        log::debug!(
-            "[deploy_skill_for_workflow] source dir not found for '{}' ({}), skipping",
+        let msg = format!(
+            "Plugin source directory not found for '{}' at {}",
             skill_name,
             source_dir.display()
         );
-        return;
+        log::error!("[deploy_skill_for_workflow] {}", msg);
+        return Err(msg);
     }
 
     if source_dir == dest {
-        log::warn!(
-            "[deploy_skill_for_workflow] source and destination are identical for '{}': {}; skipping copy to avoid self-overwrite",
+        log::debug!(
+            "[deploy_skill_for_workflow] source and destination are identical for '{}': {}; already deployed",
             skill_name,
             source_dir.display()
         );
-        return;
+        return Ok(());
     }
 
     // Remove existing copy so we always get a fresh deployment
     if dest.exists() {
         let _ = std::fs::remove_dir_all(&dest);
     }
-    if let Err(e) = std::fs::create_dir_all(&dest) {
-        log::warn!(
-            "[deploy_skill_for_workflow] failed to create dest dir for '{}': {}",
-            skill_name,
-            e
+    std::fs::create_dir_all(&dest).map_err(|e| {
+        let msg = format!(
+            "Failed to create dest dir for '{}': {}",
+            skill_name, e
         );
-        return;
-    }
-    if let Err(e) = crate::commands::imported_skills::copy_dir_recursive(&source_dir, &dest) {
-        log::warn!(
-            "[deploy_skill_for_workflow] failed to copy '{}': {}",
-            skill_name,
-            e
+        log::error!("[deploy_skill_for_workflow] {}", msg);
+        msg
+    })?;
+    crate::commands::imported_skills::copy_dir_recursive(&source_dir, &dest).map_err(|e| {
+        let msg = format!(
+            "Failed to copy plugin '{}': {}",
+            skill_name, e
         );
-    }
+        log::error!("[deploy_skill_for_workflow] {}", msg);
+        msg
+    })?;
+    Ok(())
 }
 
 /// Resolve source paths for agents and workspace CLAUDE.md from the app handle.
@@ -262,8 +265,19 @@ pub async fn ensure_workspace_prompts(
     app_handle: &tauri::AppHandle,
     workspace_path: &str,
 ) -> Result<(), String> {
-    if workspace_already_copied(workspace_path) {
-        return Ok(());
+    // Atomically check-and-mark to prevent TOCTOU races: two concurrent
+    // run_workflow_step calls for the same workspace would both pass a
+    // separate check, then race on remove_dir_all + create_dir_all inside
+    // copy_agents_to_claude_dir.  By marking *before* the copy, the second
+    // caller sees the flag and skips.  If the copy fails, we clear the flag
+    // so a retry will attempt the copy again.
+    {
+        let mut cache = COPIED_WORKSPACES.lock().unwrap_or_else(|e| e.into_inner());
+        let set = cache.get_or_insert_with(HashSet::new);
+        if set.contains(workspace_path) {
+            return Ok(());
+        }
+        set.insert(workspace_path.to_string());
     }
 
     // Extract paths from AppHandle before moving into the blocking closure
@@ -280,12 +294,17 @@ pub async fn ensure_workspace_prompts(
     let plugins = plugins_dir.clone();
     let cmd = claude_md.clone();
 
-    tokio::task::spawn_blocking(move || copy_prompts_sync(&agents, &plugins, &cmd, &workspace))
+    let result = tokio::task::spawn_blocking(move || copy_prompts_sync(&agents, &plugins, &cmd, &workspace))
         .await
-        .map_err(|e| format!("Prompt copy task failed: {}", e))??;
+        .map_err(|e| format!("Prompt copy task failed: {}", e))?;
 
-    mark_workspace_copied(workspace_path);
-    Ok(())
+    if let Err(ref e) = result {
+        // Copy failed — clear the optimistic flag so a retry will re-attempt.
+        log::error!("[ensure_workspace_prompts] copy failed, clearing cache: {}", e);
+        invalidate_workspace_cache(workspace_path);
+    }
+
+    result
 }
 
 /// Synchronous inner copy logic shared by async and sync entry points.

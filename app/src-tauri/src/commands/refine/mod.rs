@@ -275,6 +275,17 @@ pub async fn send_refine_message(
                 e
             })?;
 
+        // Direct-dispatch agents run outside the streaming session.
+        // Reset stream_started so a follow-up streaming message will
+        // correctly start a new stream instead of pushing into the
+        // (now-stale) previous streaming context.
+        {
+            let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
+            if let Some(session) = map.get_mut(&session_id) {
+                session.stream_started = false;
+            }
+        }
+
         return Ok(agent_id);
     }
 

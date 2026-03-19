@@ -91,6 +91,11 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   );
   const [lastTurnCost, setLastTurnCost] = useState<number | undefined>(undefined);
 
+  // Capture the skill that was active when the agent started, so the
+  // completion effect attributes output to the correct skill even if the
+  // user switches skills while an agent is running.
+  const runSkillRef = useRef<SkillSummary | null>(null);
+
   const scopeBlocked = useScopeBlocked(selectedSkill, "refine");
 
   const extractStructuredResultPayload = useCallback((agentId: string) => {
@@ -233,10 +238,15 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     const agentRun = useAgentStore.getState().runs[activeAgentId];
     setLastTurnCost(agentRun?.totalCost);
 
+    // Use the skill that was active when the agent started, not the
+    // current reactive selectedSkill, to avoid attributing output to
+    // the wrong skill if the user switches skills mid-flight.
+    const completionSkill = runSkillRef.current ?? selectedSkill;
+
     const complete = async () => {
       const store = useRefineStore.getState();
 
-      if (activeRunStatus === "completed" && workspacePath && selectedSkill) {
+      if (activeRunStatus === "completed" && workspacePath && completionSkill) {
         const structuredOutput = extractStructuredResultPayload(activeAgentId);
         const hasStructuredObject =
           !!structuredOutput &&
@@ -245,7 +255,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
         try {
           const finalized = await finalizeRefineRun(
-            selectedSkill.name,
+            completionSkill.name,
             workspacePath,
             hasStructuredObject ? structuredOutput : undefined,
           );
@@ -273,13 +283,13 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
               (structuredOutput as Record<string, unknown>).status === "validation_complete"
             ) {
               await materializeRefineValidationOutput(
-                selectedSkill.name,
+                completionSkill.name,
                 workspacePath,
                 structuredOutput,
               );
             }
 
-            const files = await loadSkillFiles(workspacePath, selectedSkill.name);
+            const files = await loadSkillFiles(workspacePath, completionSkill.name);
             if (files) {
               store.updateSkillFiles(files);
               store.setGitDiff(null);
@@ -291,8 +301,8 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
             );
           }
         }
-      } else if (workspacePath && selectedSkill) {
-        const files = await loadSkillFiles(workspacePath, selectedSkill.name);
+      } else if (workspacePath && completionSkill) {
+        const files = await loadSkillFiles(workspacePath, completionSkill.name);
         if (files) {
           store.updateSkillFiles(files);
           store.setGitDiff(null);
@@ -301,6 +311,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
       store.setRunning(false);
       store.setActiveAgentId(null);
+      runSkillRef.current = null;
     };
 
     void complete();
@@ -323,6 +334,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
       const model = preferredModel ?? "sonnet";
 
+      runSkillRef.current = selectedSkill;
       store.setGitDiff(null);
       store.addUserMessage(text, targetFiles, command);
       store.setRunning(true);
