@@ -29,7 +29,7 @@ pub(crate) use claude_md::{rebuild_claude_md, update_skills_section};
 pub(crate) use evaluation::get_step_output_files;
 
 // user_context
-pub(crate) use user_context::{format_user_context, write_user_context_file};
+pub(crate) use user_context::write_user_context_file;
 
 #[cfg(test)]
 mod tests;

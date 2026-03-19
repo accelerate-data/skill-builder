@@ -31,7 +31,7 @@ fn dir_is_empty(path: &Path) -> Result<bool, io::Error> {
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), io::Error> {
     crate::fs_utils::copy_dir_recursive(src, dst)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        .map_err(io::Error::other)
 }
 
 /// One-time migration from historical app-local dir to the current bundle identifier path.

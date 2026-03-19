@@ -383,6 +383,7 @@ pub(super) fn build_refine_prompt(
     prompt
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn build_direct_agent_prompt(
     agent_name: &'static str,
     skill_name: &str,
