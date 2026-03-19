@@ -27,16 +27,11 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
-          cache-dependency-path: |
-            app/package-lock.json
-            app/sidecar/package-lock.json
-
-      - name: Upgrade npm to v11
-        run: npm install -g npm@11
+          cache-dependency-path: app/package-lock.json
 
       - name: Install npm dependencies
         working-directory: app
-        run: npm ci
+        run: npm ci --prefer-offline --ignore-scripts
 
       - name: Type check
         working-directory: app
