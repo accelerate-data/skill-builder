@@ -9,6 +9,10 @@ vi.mock("@/stores/settings-store", () => ({
   ),
 }));
 
+vi.mock("@/lib/tauri", () => ({
+  getSkillHistory: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock("@/components/skill-dialog", () => ({
   default: ({ open }: { open: boolean }) => (
     <div data-testid="skill-dialog" data-open={String(open)} />

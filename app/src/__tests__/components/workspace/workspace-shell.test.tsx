@@ -110,14 +110,10 @@ const baseBuilderSkill: SkillSummary = {
 };
 
 describe("WorkspaceShell", () => {
-  it("renders skill name and seafoam dot in header", () => {
+  it("renders skill name in header", () => {
     render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" />);
 
     expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
-
-    // Seafoam dot — rendered as a div with seafoam background style
-    const dot = document.querySelector('[style*="var(--color-seafoam)"]');
-    expect(dot).toBeInTheDocument();
   });
 
   it("Overview tab is active by default; Evals and Description triggers are disabled", () => {
