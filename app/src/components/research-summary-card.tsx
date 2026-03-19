@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle2, Clock, DollarSign, Layers, AlertTriangle, ChevronRight, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, Layers, AlertTriangle, ChevronRight, XCircle } from "lucide-react";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
 import type { SaveStatus } from "@/components/clarifications-editor";
 import { type ClarificationsFile } from "@/lib/clarifications-types";
@@ -49,7 +49,6 @@ interface ResearchSummaryCardProps {
   researchPlan?: string;
   clarificationsData: ClarificationsFile;
   duration?: number;
-  cost?: number;
   /** When true, make the research plan collapsible (default collapsed) and clarifications editable */
   editable?: boolean;
   onClarificationsChange?: (data: ClarificationsFile) => void;
@@ -205,7 +204,6 @@ export function ResearchSummaryCard({
   researchPlan,
   clarificationsData,
   duration,
-  cost,
   editable,
   onClarificationsChange,
   onClarificationsContinue,
@@ -314,12 +312,6 @@ export function ResearchSummaryCard({
             <span className="flex items-center gap-1">
               <Clock className="size-3" />
               {formatElapsed(duration)}
-            </span>
-          )}
-          {cost !== undefined && cost > 0 && (
-            <span className="flex items-center gap-1">
-              <DollarSign className="size-3" />
-              ${cost.toFixed(4)}
             </span>
           )}
         </div>

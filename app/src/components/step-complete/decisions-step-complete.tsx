@@ -15,7 +15,7 @@ type Props = StepCompleteBaseProps & Pick<StepFileProps, "fileContents"> & {
 
 export function DecisionsStepComplete(props: Props) {
   const {
-    stepName, fileContents, agentRuns, reviewMode, duration, displayCost,
+    stepName, fileContents, agentRuns, reviewMode, duration,
     isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onRefine, onResetStep,
     skillName, workspacePath,
   } = props;
@@ -79,7 +79,6 @@ export function DecisionsStepComplete(props: Props) {
         <DecisionsSummaryCard
           decisionsContent={decisionsContent}
           duration={reviewMode ? dbDuration : duration}
-          cost={displayCost}
           allowEdit={!reviewMode}
           onDecisionsChange={(serialized) => {
             setDecisionsEditContent(serialized);

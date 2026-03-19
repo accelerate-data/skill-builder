@@ -24,7 +24,6 @@ export interface Decision {
 interface DecisionsSummaryCardProps {
   decisionsContent: string;
   duration?: number;
-  cost?: number;
   allowEdit?: boolean;
   onDecisionsChange?: (serialized: string) => void;
 }
@@ -95,7 +94,6 @@ function formatDuration(ms: number): string {
 export function DecisionsSummaryCard({
   decisionsContent,
   duration,
-  cost,
   allowEdit,
   onDecisionsChange,
 }: DecisionsSummaryCardProps) {
@@ -233,9 +231,6 @@ export function DecisionsSummaryCard({
               )}
               {duration !== undefined && (
                 <StatusChip className={headerTone.chipClassName} label={formatDuration(duration)} />
-              )}
-              {cost !== undefined && cost > 0 && (
-                <StatusChip className={headerTone.chipClassName} label={`$${cost.toFixed(4)}`} />
               )}
             </div>
           </div>

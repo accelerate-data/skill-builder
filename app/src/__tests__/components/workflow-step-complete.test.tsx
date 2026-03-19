@@ -97,37 +97,11 @@ beforeEach(() => {
   mockGetDisabledSteps.mockResolvedValue([]);
 });
 
-describe("WorkflowStepComplete — cost display", () => {
-  // --- Non-review mode: Zustand (cost prop) is source of truth ---
-
-  it("shows cost from cost prop in non-review mode (Zustand is source of truth)", async () => {
-    mockGetStepAgentRuns.mockResolvedValue([makeRun(0.0)]);  // DB has stale data with 0
-
-    render(<WorkflowStepComplete {...baseProps} cost={0.042} />);
-
-    await waitFor(() => {
-      expect(mockGetStepAgentRuns).toHaveBeenCalled();
-    });
-    // Should show the Zustand cost, NOT the stale DB value of 0
-    expect(screen.getByText(/\$0\.0420/)).toBeInTheDocument();
-  });
-
-  it("shows no cost in non-review mode when cost prop is undefined", async () => {
-    mockGetStepAgentRuns.mockResolvedValue([makeRun(0.042)]);
-
-    render(<WorkflowStepComplete {...baseProps} />);  // no cost prop
-
-    await waitFor(() => {
-      expect(mockGetStepAgentRuns).toHaveBeenCalled();
-    });
-    // DB data is ignored in non-review mode; no cost prop means no display
-    expect(screen.queryByText(/\$0\./)).not.toBeInTheDocument();
-  });
-
+describe("WorkflowStepComplete — agent runs", () => {
   it("does not show AgentStatsBar in non-review mode", async () => {
     mockGetStepAgentRuns.mockResolvedValue([makeRun(0.042)]);
 
-    render(<WorkflowStepComplete {...baseProps} cost={0.042} />);
+    render(<WorkflowStepComplete {...baseProps} />);
 
     await waitFor(() => {
       expect(mockGetStepAgentRuns).toHaveBeenCalled();
@@ -136,42 +110,28 @@ describe("WorkflowStepComplete — cost display", () => {
     expect(screen.queryByText("Cost")).not.toBeInTheDocument();
   });
 
-  // --- Review mode: DB is source of truth ---
+  it("does not display inline cost in non-review mode", async () => {
+    mockGetStepAgentRuns.mockResolvedValue([makeRun(0.042)]);
 
-  it("shows cost from DB in review mode", async () => {
+    render(<WorkflowStepComplete {...baseProps} />);
+
+    await waitFor(() => {
+      expect(mockGetStepAgentRuns).toHaveBeenCalled();
+    });
+    expect(screen.queryByText(/\$0\./)).not.toBeInTheDocument();
+  });
+
+  it("does not display inline cost in review mode", async () => {
     mockGetStepAgentRuns.mockResolvedValue([makeRun(0.042)]);
 
     render(<WorkflowStepComplete {...baseProps} reviewMode />);
 
     await waitFor(() => {
-      expect(screen.getByText(/\$0\.0420/)).toBeInTheDocument();
-    });
-    expect(mockGetStepAgentRuns).toHaveBeenCalledWith("my-skill", 0);
-  });
-
-  it("sums multiple agent runs for the step cost in review mode", async () => {
-    mockGetStepAgentRuns.mockResolvedValue([makeRun(0.03), makeRun(0.015)]);
-
-    render(<WorkflowStepComplete {...baseProps} reviewMode />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/\$0\.0450/)).toBeInTheDocument();
-    });
-  });
-
-  it("shows no cost in review mode when DB returns empty", async () => {
-    mockGetStepAgentRuns.mockResolvedValue([]);
-
-    render(<WorkflowStepComplete {...baseProps} reviewMode cost={0.042} />);
-
-    await waitFor(() => {
       expect(mockGetStepAgentRuns).toHaveBeenCalled();
     });
-    // In review mode the cost prop is ignored; DB is empty so no cost shown
-    expect(screen.queryByText(/\$0\./)).not.toBeInTheDocument();
+    // Cost is only shown via AgentStatsBar in review mode, not inline
+    expect(screen.queryByText(/\$0\.0420/)).not.toBeInTheDocument();
   });
-
-  // --- Both modes: agent runs are always loaded from DB ---
 
   it("loads agent runs in both review and non-review mode", async () => {
     mockGetStepAgentRuns.mockResolvedValue([]);

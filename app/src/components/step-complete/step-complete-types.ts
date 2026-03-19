@@ -14,8 +14,6 @@ export interface StepCompleteBaseProps {
   onResetStep?: () => void;
   agentRuns: AgentRunRecord[];
   duration?: number;
-  /** Display cost — review mode uses DB cost, live mode uses Zustand cost. */
-  displayCost?: number;
 }
 
 /** Extra props for steps 0/1 that support editable clarifications. */

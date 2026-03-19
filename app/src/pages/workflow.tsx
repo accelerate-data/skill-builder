@@ -186,7 +186,6 @@ export default function WorkflowPage() {
     handleGateResearch,
     handleGateContinueAnyway,
     handleGateLetMeAnswer,
-    lastCompletedCostRef,
   } = useWorkflowStateMachine({
     skillName,
     workspacePath,
@@ -252,7 +251,6 @@ export default function WorkflowPage() {
         stepName={currentStepDef.name}
         stepId={currentStep}
         outputFiles={stepConfig?.outputFiles ?? []}
-        cost={lastCompletedCostRef.current}
         onNextStep={async () => {
           if (editorDirty) await handleSave(true);
           handleReviewContinue();
