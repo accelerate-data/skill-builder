@@ -154,7 +154,6 @@ export default function SkillDialog(props: SkillDialogProps) {
   const [tags, setTags] = useState<string[]>([])
   const [contextQuestions, setContextQuestions] = useState("")
   // Step 2 behaviour fields
-  const [version, setVersion] = useState("1.0.0")
   const [argumentHint, setArgumentHint] = useState("")
   const [userInvocable, setUserInvocable] = useState(true)
   const [disableModelInvocation, setDisableModelInvocation] = useState(false)
@@ -187,7 +186,6 @@ export default function SkillDialog(props: SkillDialogProps) {
     setDescription("")
     setTags([])
     setContextQuestions("")
-    setVersion("1.0.0")
     setArgumentHint("")
     setUserInvocable(true)
     setDisableModelInvocation(false)
@@ -207,7 +205,6 @@ export default function SkillDialog(props: SkillDialogProps) {
       setTags([...editSkill.tags])
       setDescription(editSkill.description || "")
       setContextQuestions(parseIntakeContext(editSkill.intake_json))
-      setVersion(editSkill.version || "1.0.0")
       setArgumentHint(editSkill.argumentHint || "")
       setUserInvocable(editSkill.userInvocable ?? true)
       setDisableModelInvocation(editSkill.disableModelInvocation ?? false)
@@ -304,7 +301,7 @@ export default function SkillDialog(props: SkillDialogProps) {
           tags,
           buildIntakeJson({ context: contextQuestions }),
           description.trim() || null,
-          version.trim() || null,
+          null,
           null,
           argumentHint.trim() || null,
           userInvocable,
@@ -322,7 +319,7 @@ export default function SkillDialog(props: SkillDialogProps) {
           purpose: purpose || null,
           intakeJson: buildIntakeJson({ context: contextQuestions }),
           description: description.trim() || null,
-          version: version.trim() || null,
+          version: null,
           model: null,
           argumentHint: argumentHint.trim() || null,
           userInvocable,
@@ -523,16 +520,6 @@ export default function SkillDialog(props: SkillDialogProps) {
             {/* Step 2: Behaviour settings */}
             {step === 2 && (
               <>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="version">Version{isImported && <LockedIcon message="Version is managed by the skill package" />}</Label>
-                  <Input
-                    id="version"
-                    placeholder="1.0.0"
-                    value={version}
-                    onChange={(e) => setVersion(e.target.value)}
-                    disabled={submitting || isImported}
-                  />
-                </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="argument-hint">Argument Hint</Label>
                   <Input

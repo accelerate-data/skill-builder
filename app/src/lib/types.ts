@@ -113,6 +113,12 @@ export interface SkillSummary {
   disableModelInvocation?: boolean | null
 }
 
+export interface SkillCommit {
+  sha: string
+  message: string
+  timestamp: string
+}
+
 export interface SkillFileContent {
   path: string
   content: string

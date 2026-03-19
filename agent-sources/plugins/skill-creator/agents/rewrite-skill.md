@@ -162,6 +162,16 @@ description: <brief description of which file is malformed>
 { "status": "rewritten", "skipped": true }
 ```
 
+### Version management
+
+Before rewriting, read the `version` field from the existing SKILL.md frontmatter. If no `version` field exists, treat the current version as `1.0.0`. After the rewrite, apply a semver bump and update the `version` field in SKILL.md frontmatter:
+
+- `patch`: bug fixes, typo corrections, minor wording improvements
+- `minor`: feature additions, significant content changes, new reference files
+- `major`: breaking structural changes (e.g. renamed sections that other tools reference)
+
+Write the bumped version back to the SKILL.md frontmatter before returning.
+
 ### Rewrite strategy
 
 - Read the existing `SKILL.md` and all the folders at the same level as the `SKILL.md` (e.g. `references/`, `scripts/`, `assets/`).
@@ -235,6 +245,8 @@ For full rewrite (direct rewrite command), return JSON only:
 ```json
 {
   "status": "rewritten",
+  "commit_summary": "Add error handling patterns and update testing references",
+  "version_bump": "minor",
   "call_trace": ["read-user-context", "read-decisions", "read-existing-skill", "rewrite-skill", "write-references/foo.md", "preservation-sweep"]
 }
 ```
@@ -245,7 +257,11 @@ For stub cases (contradictory inputs, scope too broad, malformed input), return:
 { "status": "rewritten", "skipped": true }
 ```
 
-`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `read-existing-skill`, `use-skill-creator-skill`, `rewrite-skill`, `write-references`, `preservation-sweep`, `write-evals`. For reference files, use `write-references/<filename>`.
+### Field definitions
+
+- `commit_summary` (required for non-stub): A concise one-line description of what changed, suitable as a git commit message. Focus on the substance of changes (e.g. "Add error handling patterns and update testing references"), not boilerplate.
+- `version_bump` (required for non-stub): One of `"patch"`, `"minor"`, or `"major"`. Use `patch` for bug fixes and minor wording corrections, `minor` for feature additions or significant content changes, `major` for breaking structural changes. When in doubt, use `minor`.
+- `call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `read-existing-skill`, `use-skill-creator-skill`, `rewrite-skill`, `write-references`, `preservation-sweep`, `write-evals`. For reference files, use `write-references/<filename>`.
 
 For targeted edits (streaming refine), summarize changes instead:
 

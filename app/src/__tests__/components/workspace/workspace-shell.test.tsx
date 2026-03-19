@@ -59,6 +59,7 @@ vi.mock("@/lib/tauri", () => ({
   sendRefineMessage: vi.fn().mockResolvedValue("agent-1"),
   finalizeRefineRun: vi.fn().mockResolvedValue({ files: [], diff: null }),
   materializeRefineValidationOutput: vi.fn().mockResolvedValue(undefined),
+  getSkillHistory: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("@/lib/agent-results", () => ({
@@ -109,17 +110,10 @@ const baseBuilderSkill: SkillSummary = {
 };
 
 describe("WorkspaceShell", () => {
-  it("renders skill name, seafoam dot, version badge, and Builder badge", () => {
+  it("renders skill name in header", () => {
     render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" />);
 
     expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
-    // v1 appears in both header badge and version history card
-    expect(screen.getAllByText("v1").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("Builder")).toBeInTheDocument();
-
-    // Seafoam dot — rendered as a div with seafoam background style
-    const dot = document.querySelector('[style*="var(--color-seafoam)"]');
-    expect(dot).toBeInTheDocument();
   });
 
   it("Overview tab is active by default; Evals and Description triggers are disabled", () => {

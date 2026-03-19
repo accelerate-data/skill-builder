@@ -103,7 +103,9 @@ pub(crate) fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde
                 "required": ["status"],
                 "properties": {
                     "status": { "type": "string", "const": "generated" },
-                    "skipped": { "type": "boolean" }
+                    "skipped": { "type": "boolean" },
+                    "commit_summary": { "type": "string" },
+                    "version_bump": { "type": "string", "enum": ["major", "minor", "patch"] }
                 },
                 "additionalProperties": true
             }
@@ -115,7 +117,9 @@ pub(crate) fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde
                 "required": ["status"],
                 "properties": {
                     "status": { "type": "string", "const": "rewritten" },
-                    "skipped": { "type": "boolean" }
+                    "skipped": { "type": "boolean" },
+                    "commit_summary": { "type": "string" },
+                    "version_bump": { "type": "string", "enum": ["major", "minor", "patch"] }
                 },
                 "additionalProperties": true
             }
