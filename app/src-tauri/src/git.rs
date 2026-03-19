@@ -412,10 +412,8 @@ pub fn latest_skill_semver(path: &Path, skill_name: &str) -> Result<String, Stri
             if let Some(suffix) = tag_name.strip_prefix(&prefix) {
                 let parsed = parse_semver(suffix);
                 // Only accept valid X.Y.Z (all three parts present)
-                if suffix.matches('.').count() == 2 {
-                    if parsed > best {
-                        best = parsed;
-                    }
+                if suffix.matches('.').count() == 2 && parsed > best {
+                    best = parsed;
                 }
             }
         });
