@@ -746,3 +746,199 @@ pub fn preview_step_reset(
 
     Ok(result)
 }
+
+#[derive(serde::Serialize)]
+pub struct LatestBenchmarkResult {
+    pub iteration: u32,
+    pub data: serde_json::Value,
+}
+
+/// Read benchmark.json from the latest iteration directory for a skill.
+///
+/// Scans `{workspace}/{skill}/evals/workspace/` for `iteration-{N}` dirs,
+/// picks the highest N, and reads its `benchmark.json`. Returns `None` when
+/// no benchmark data exists (no evals dir, no iterations, or no JSON file).
+#[tauri::command]
+pub fn read_latest_benchmark(
+    skill_name: String,
+    workspace_path: String,
+) -> Result<Option<LatestBenchmarkResult>, String> {
+    log::info!("[read_latest_benchmark] skill={}", skill_name);
+    validate_skill_name(&skill_name)?;
+
+    let evals_dir = Path::new(&workspace_path)
+        .join(&skill_name)
+        .join("evals")
+        .join("workspace");
+
+    if !evals_dir.is_dir() {
+        log::debug!(
+            "[read_latest_benchmark] evals dir does not exist: {}",
+            evals_dir.display()
+        );
+        return Ok(None);
+    }
+
+    let entries = std::fs::read_dir(&evals_dir).map_err(|e| {
+        log::error!(
+            "[read_latest_benchmark] failed to read evals dir '{}': {}",
+            evals_dir.display(),
+            e
+        );
+        format!("Failed to read evals directory: {}", e)
+    })?;
+
+    let mut latest: Option<(u32, std::path::PathBuf)> = None;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if let Some(n_str) = name_str.strip_prefix("iteration-") {
+            if let Ok(n) = n_str.parse::<u32>() {
+                if entry.path().is_dir()
+                    && latest.as_ref().is_none_or(|(cur, _)| n > *cur)
+                {
+                    latest = Some((n, entry.path()));
+                }
+            }
+        }
+    }
+
+    let Some((iteration, iter_dir)) = latest else {
+        log::debug!(
+            "[read_latest_benchmark] no iteration dirs found in {}",
+            evals_dir.display()
+        );
+        return Ok(None);
+    };
+
+    let benchmark_path = iter_dir.join("benchmark.json");
+    if !benchmark_path.is_file() {
+        log::debug!(
+            "[read_latest_benchmark] benchmark.json not found at {}",
+            benchmark_path.display()
+        );
+        return Ok(None);
+    }
+
+    let content = std::fs::read_to_string(&benchmark_path).map_err(|e| {
+        log::error!(
+            "[read_latest_benchmark] failed to read '{}': {}",
+            benchmark_path.display(),
+            e
+        );
+        format!("Failed to read benchmark file: {}", e)
+    })?;
+
+    let value: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
+        log::error!(
+            "[read_latest_benchmark] failed to parse '{}': {}",
+            benchmark_path.display(),
+            e
+        );
+        format!("Failed to parse benchmark JSON: {}", e)
+    })?;
+
+    Ok(Some(LatestBenchmarkResult {
+        iteration,
+        data: value,
+    }))
+}
+
+#[cfg(test)]
+mod benchmark_tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn returns_none_when_no_evals_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap().to_string();
+        fs::create_dir_all(tmp.path().join("my-skill")).unwrap();
+
+        let result = read_latest_benchmark("my-skill".into(), workspace).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn returns_none_when_no_iterations() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap().to_string();
+        fs::create_dir_all(
+            tmp.path()
+                .join("my-skill")
+                .join("evals")
+                .join("workspace"),
+        )
+        .unwrap();
+
+        let result = read_latest_benchmark("my-skill".into(), workspace).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn returns_latest_iteration() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap().to_string();
+        let evals_dir = tmp
+            .path()
+            .join("my-skill")
+            .join("evals")
+            .join("workspace");
+
+        // Create iteration-1 with lower pass rate
+        let iter1 = evals_dir.join("iteration-1");
+        fs::create_dir_all(&iter1).unwrap();
+        fs::write(
+            iter1.join("benchmark.json"),
+            r#"{"metadata":{"skill_name":"my-skill"},"run_summary":{"with_skill":{"pass_rate":{"mean":0.5}}}}"#,
+        )
+        .unwrap();
+
+        // Create iteration-3 (latest) with higher pass rate
+        let iter3 = evals_dir.join("iteration-3");
+        fs::create_dir_all(&iter3).unwrap();
+        fs::write(
+            iter3.join("benchmark.json"),
+            r#"{"metadata":{"skill_name":"my-skill"},"run_summary":{"with_skill":{"pass_rate":{"mean":0.9}}}}"#,
+        )
+        .unwrap();
+
+        // Create iteration-2 (middle)
+        let iter2 = evals_dir.join("iteration-2");
+        fs::create_dir_all(&iter2).unwrap();
+        fs::write(
+            iter2.join("benchmark.json"),
+            r#"{"metadata":{"skill_name":"my-skill"},"run_summary":{"with_skill":{"pass_rate":{"mean":0.7}}}}"#,
+        )
+        .unwrap();
+
+        let result = read_latest_benchmark("my-skill".into(), workspace)
+            .unwrap()
+            .unwrap();
+        // Should pick iteration-3
+        assert_eq!(result.iteration, 3);
+        let mean = result
+            .data
+            .pointer("/run_summary/with_skill/pass_rate/mean")
+            .and_then(|v| v.as_f64())
+            .unwrap();
+        assert!((mean - 0.9).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn returns_none_when_benchmark_json_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap().to_string();
+        let iter1 = tmp
+            .path()
+            .join("my-skill")
+            .join("evals")
+            .join("workspace")
+            .join("iteration-1");
+        fs::create_dir_all(&iter1).unwrap();
+        // No benchmark.json written
+
+        let result = read_latest_benchmark("my-skill".into(), workspace).unwrap();
+        assert!(result.is_none());
+    }
+}
