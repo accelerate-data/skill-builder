@@ -126,6 +126,25 @@ describe("parseFrontmatter", () => {
     expect(result.frontmatter?.description).toBeUndefined();
   });
 
+  it("rejects closing --- with trailing non-whitespace content", () => {
+    const content = ["---", "name: test", "--- end", "", "Body."].join("\n");
+    const result = parseFrontmatter(content);
+    expect(result.frontmatter).toBeNull();
+    expect(result.body).toBe(content);
+  });
+
+  it("preserves mismatched quotes instead of stripping them", () => {
+    const content = ['---', 'name: "mismatched\'', "---", "", "Body."].join("\n");
+    const result = parseFrontmatter(content);
+    expect(result.frontmatter?.name).toBe("\"mismatched'");
+  });
+
+  it("preserves single-sided quotes", () => {
+    const content = ['---', 'name: "hello', "---", "", "Body."].join("\n");
+    const result = parseFrontmatter(content);
+    expect(result.frontmatter?.name).toBe('"hello');
+  });
+
   it("converts hyphens in keys to underscores", () => {
     const content = [
       "---",
