@@ -13,10 +13,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { BenchmarkConfirmDialog } from "@/components/benchmark-confirm-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
-import type { RefineCommand, SkillFile } from "@/stores/refine-store";
+import type { RefineCommand, RefineMessage, SkillFile } from "@/stores/refine-store";
 import { useAgentStore } from "@/stores/agent-store";
 import {
   getSkillContentForRefine,
@@ -82,7 +81,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const skillFiles = useRefineStore((s) => s.skillFiles);
   const previewRevision = useRefineStore((s) => s.previewRevision);
   const isRunning = useRefineStore((s) => s.isRunning);
-  const pendingBenchmark = useRefineStore((s) => s.pendingBenchmark);
   const activeAgentId = useRefineStore((s) => s.activeAgentId);
 
   const activeRunStatus = useAgentStore((s) =>
@@ -259,6 +257,15 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           );
           store.setGitDiff(finalized.diff);
           toast.info("Refinement complete");
+
+          // Offer benchmark when skill files actually changed and this wasn't
+          // already a benchmark or validation run.
+          const userMessages = store.messages.filter((m: RefineMessage) => m.role === "user");
+          const lastMsg = userMessages.length > 0 ? userMessages[userMessages.length - 1] : undefined;
+          const wasEditCommand = !lastMsg?.command || lastMsg.command === "rewrite";
+          if (wasEditCommand && finalized.diff.files.length > 0) {
+            store.addBenchmarkPrompt();
+          }
         } catch {
           try {
             if (
@@ -349,6 +356,16 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     [selectedSkill, workspacePath, preferredModel, isRunning],
   );
 
+  // --- Benchmark prompt callbacks ---
+  const handleBenchmarkConfirm = useCallback(() => {
+    console.log("[workspace-refine] benchmark confirmed");
+    void handleSend("Run benchmarks on the updated skill", undefined, "benchmark");
+  }, [handleSend]);
+
+  const handleBenchmarkSkip = useCallback(() => {
+    console.log("[workspace-refine] benchmark skipped");
+  }, []);
+
   // --- Status bar ---
   const [elapsed, setElapsed] = useState(0);
   const runStartRef = useRef<number | null>(null);
@@ -411,6 +428,8 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
               hasSkill={!!selectedSkill}
               availableFiles={availableFiles}
               scopeBlocked={scopeBlocked}
+              onBenchmarkConfirm={handleBenchmarkConfirm}
+              onBenchmarkSkip={handleBenchmarkSkip}
             />
           }
           right={<PreviewPanel key={previewRevision} />}

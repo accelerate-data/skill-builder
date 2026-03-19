@@ -4,12 +4,15 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import type { RefineMessage } from "@/stores/refine-store";
 import { AgentTurnInline } from "./agent-turn-inline";
+import { BenchmarkPromptInline } from "./benchmark-prompt-inline";
 
 interface ChatMessageListProps {
   messages: RefineMessage[];
+  onBenchmarkConfirm?: () => void;
+  onBenchmarkSkip?: () => void;
 }
 
-export function ChatMessageList({ messages }: ChatMessageListProps) {
+export function ChatMessageList({ messages, onBenchmarkConfirm, onBenchmarkSkip }: ChatMessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -64,6 +67,16 @@ export function ChatMessageList({ messages }: ChatMessageListProps) {
                 <Separator />
                 <AgentTurnInline agentId={msg.agentId} />
               </div>
+            );
+          }
+
+          if (msg.role === "benchmark-prompt") {
+            return (
+              <BenchmarkPromptInline
+                key={msg.id}
+                onConfirm={onBenchmarkConfirm ?? (() => {})}
+                onSkip={onBenchmarkSkip ?? (() => {})}
+              />
             );
           }
 

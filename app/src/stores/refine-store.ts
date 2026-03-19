@@ -6,8 +6,8 @@ export interface SkillFile {
   content: string;
 }
 
-export type RefineMessageRole = "user" | "agent";
-export type RefineCommand = "rewrite" | "validate";
+export type RefineMessageRole = "user" | "agent" | "benchmark-prompt";
+export type RefineCommand = "rewrite" | "validate" | "benchmark";
 
 export interface RefineMessage {
   id: string;
@@ -48,10 +48,6 @@ interface RefineState {
   pendingInitialMessage: string | null;
   setPendingInitialMessage: (msg: string | null) => void;
 
-  // Pending benchmark prompt (shown after rewrite/refine completes)
-  pendingBenchmark: boolean;
-  setPendingBenchmark: (v: boolean) => void;
-
   // Actions
   setRefinableSkills: (skills: SkillSummary[]) => void;
   setLoadingSkills: (v: boolean) => void;
@@ -62,6 +58,7 @@ interface RefineState {
   setDiffMode: (v: boolean) => void;
   addUserMessage: (text: string, targetFiles?: string[], command?: RefineCommand) => RefineMessage;
   addAgentTurn: (agentId: string) => RefineMessage;
+  addBenchmarkPrompt: () => RefineMessage;
   updateSkillFiles: (files: SkillFile[]) => void;
   setGitDiff: (diff: RefineDiff | null) => void;
   setActiveAgentId: (id: string | null) => void;
@@ -100,12 +97,10 @@ export const useRefineStore = create<RefineState>((set) => ({
   isLoadingSkills: false,
   isLoadingFiles: false,
   pendingInitialMessage: null,
-  pendingBenchmark: false,
   ...SESSION_DEFAULTS,
 
   // Actions
   setPendingInitialMessage: (msg) => set({ pendingInitialMessage: msg }),
-  setPendingBenchmark: (v) => set({ pendingBenchmark: v }),
   setRefinableSkills: (skills) => set({ refinableSkills: skills }),
   setLoadingSkills: (v) => set({ isLoadingSkills: v }),
 
@@ -140,6 +135,16 @@ export const useRefineStore = create<RefineState>((set) => ({
       id: crypto.randomUUID(),
       role: "agent",
       agentId,
+      timestamp: Date.now(),
+    };
+    set((state) => ({ messages: [...state.messages, message] }));
+    return message;
+  },
+
+  addBenchmarkPrompt: () => {
+    const message: RefineMessage = {
+      id: crypto.randomUUID(),
+      role: "benchmark-prompt",
       timestamp: Date.now(),
     };
     set((state) => ({ messages: [...state.messages, message] }));
