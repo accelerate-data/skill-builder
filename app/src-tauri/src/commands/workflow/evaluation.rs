@@ -763,11 +763,7 @@ pub fn read_latest_benchmark(
     skill_name: String,
     workspace_path: String,
 ) -> Result<Option<LatestBenchmarkResult>, String> {
-    log::info!(
-        "[read_latest_benchmark] skill={} workspace={}",
-        skill_name,
-        workspace_path
-    );
+    log::info!("[read_latest_benchmark] skill={}", skill_name);
     validate_skill_name(&skill_name)?;
 
     let evals_dir = Path::new(&workspace_path)

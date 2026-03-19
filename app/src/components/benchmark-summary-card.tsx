@@ -28,6 +28,7 @@ interface BenchmarkRunResult {
 
 interface BenchmarkRun {
   eval_id: number;
+  eval_name?: string;
   configuration: string;
   run_number: number;
   result: BenchmarkRunResult;
@@ -42,13 +43,13 @@ interface BenchmarkStat {
   max: number;
 }
 
-interface BenchmarkConfigSummary {
+export interface BenchmarkConfigSummary {
   pass_rate: BenchmarkStat;
   time_seconds?: BenchmarkStat;
   tokens?: BenchmarkStat;
 }
 
-interface BenchmarkDelta {
+export interface BenchmarkDelta {
   pass_rate: string;
   time_seconds?: string;
   tokens?: string;

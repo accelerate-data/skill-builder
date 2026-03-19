@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 import { markdownComponents } from "@/components/markdown-link";
-import type { BenchmarkData } from "@/components/benchmark-summary-card";
+import type { BenchmarkData, BenchmarkConfigSummary, BenchmarkDelta } from "@/components/benchmark-summary-card";
 
 interface BenchmarkOverviewCardProps {
   benchmarkData: BenchmarkData;
@@ -29,8 +29,8 @@ export function BenchmarkOverviewCard({ benchmarkData, iteration }: BenchmarkOve
 
   const configs = Object.keys(summary).filter((k) => k !== "delta");
   const primaryConfig = configs[0] ?? "with_skill";
-  const primaryStats = summary[primaryConfig] as { pass_rate?: { mean: number } } | undefined;
-  const delta = summary.delta as { pass_rate?: string } | undefined;
+  const primaryStats = summary[primaryConfig] as BenchmarkConfigSummary | undefined;
+  const delta = summary.delta as BenchmarkDelta | undefined;
 
   const primaryPassRate = primaryStats?.pass_rate?.mean;
   const deltaPassRate = delta?.pass_rate ? parseFloat(delta.pass_rate) : undefined;
@@ -104,7 +104,7 @@ export function BenchmarkOverviewCard({ benchmarkData, iteration }: BenchmarkOve
           <div className="flex-1 min-w-[200px] space-y-1 pt-0.5">
             {evalIds.map((evalId, idx) => {
               const evalRuns = primaryRuns.filter((r) => r.eval_id === evalId);
-              const evalName = (evalRuns[0] as unknown as Record<string, unknown>)?.eval_name as string | undefined ?? `Eval ${evalId}`;
+              const evalName = evalRuns[0]?.eval_name ?? `Eval ${evalId}`;
               const evalPassed = evalRuns.reduce((s, r) => s + r.result.passed, 0);
               const evalTotal = evalRuns.reduce((s, r) => s + r.result.total, 0);
               const evalRate = evalTotal > 0 ? evalPassed / evalTotal : 0;
