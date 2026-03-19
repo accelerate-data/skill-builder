@@ -1,53 +1,33 @@
-import { Badge } from "@/components/ui/badge";
 import type { SkillFrontmatter } from "@/lib/frontmatter";
 
 interface SkillFrontmatterHeaderProps {
   frontmatter: SkillFrontmatter;
 }
 
-const BADGE_FIELDS = ["domain", "type", "model"] as const;
-
+/** Renders parsed YAML frontmatter as a two-column table (GitHub-style). */
 export function SkillFrontmatterHeader({ frontmatter }: SkillFrontmatterHeaderProps) {
-  const { name, description, version, tools, author, ...rest } = frontmatter;
-  const badges = BADGE_FIELDS.map((key) => rest[key] ?? frontmatter[key as keyof SkillFrontmatter])
-    .filter(Boolean) as string[];
+  const entries = Object.entries(frontmatter).filter(
+    (entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0,
+  );
 
-  // Add tools as individual badges (comma-separated list)
-  const toolList = tools?.split(",").map((t) => t.trim()).filter(Boolean) ?? [];
+  if (entries.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-2 border-b px-4 py-3">
-      {name && <h3 className="text-sm font-semibold tracking-tight">{name}</h3>}
-      {description && <p className="text-xs text-muted-foreground">{description}</p>}
-      <div className="flex flex-wrap items-center gap-1.5">
-        {version && (
-          <Badge variant="outline" className="font-mono text-[11px]">
-            v{version}
-          </Badge>
-        )}
-        {badges.map((value) => (
-          <Badge key={value} variant="secondary" className="text-[11px]">
-            {value}
-          </Badge>
+    <table className="m-4 w-auto border-collapse text-sm">
+      <thead>
+        <tr className="border-b">
+          <th className="px-3 py-1.5 text-left text-xs font-semibold text-muted-foreground">key</th>
+          <th className="px-3 py-1.5 text-left text-xs font-semibold text-muted-foreground">value</th>
+        </tr>
+      </thead>
+      <tbody>
+        {entries.map(([key, value]) => (
+          <tr key={key} className="border-b last:border-b-0">
+            <td className="px-3 py-1.5 align-top font-medium">{key}</td>
+            <td className="px-3 py-1.5 align-top">{value}</td>
+          </tr>
         ))}
-        {toolList.map((tool) => (
-          <Badge
-            key={tool}
-            variant="outline"
-            className="text-[11px]"
-            style={{
-              background: "color-mix(in oklch, var(--color-pacific), transparent 90%)",
-              borderColor: "color-mix(in oklch, var(--color-pacific), transparent 70%)",
-              color: "var(--color-pacific)",
-            }}
-          >
-            {tool}
-          </Badge>
-        ))}
-        {author && (
-          <span className="text-[11px] text-muted-foreground">by {author}</span>
-        )}
-      </div>
-    </div>
+      </tbody>
+    </table>
   );
 }
