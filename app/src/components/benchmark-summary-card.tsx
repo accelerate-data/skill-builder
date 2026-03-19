@@ -133,6 +133,7 @@ export function BenchmarkSummaryCard({ benchmarkData, status, duration, cost, on
   const runs = benchmarkData.runs ?? [];
   const summary = benchmarkData.run_summary ?? {};
   const metadata = benchmarkData.metadata ?? {};
+  const notes = benchmarkData.notes ?? [];
 
   // Discover config names (everything except "delta")
   const configs = Object.keys(summary).filter((k) => k !== "delta");
@@ -261,6 +262,21 @@ export function BenchmarkSummaryCard({ benchmarkData, status, duration, cost, on
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Analyst Notes */}
+      {notes.length > 0 && (
+        <div className="rounded-lg border p-4">
+          <p className="text-xs font-medium text-muted-foreground mb-2">Analyst Observations</p>
+          <ul className="space-y-1.5">
+            {notes.map((note, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-foreground">
+                <span className="mt-1 size-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+                {note}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

@@ -40,6 +40,17 @@ Your role is to evaluate a skill that has already been written by running test c
 
 Before executing each step, write one short status line (≤ 10 words) before its tool calls. Examples: "Validating inputs…", "Running evaluations…", "Verifying benchmark…"
 
+## Overall Flow
+
+0. **Validate inputs** — confirm SKILL.md, evals.json, user-context.md exist; handle stubs/missing files.
+1. **Determine iteration number** — scan for existing `iteration-*` dirs, pick the next one.
+2. **Setup context** — gather test cases, skill path, baseline mode, results directory.
+3. **Execute** — spawn runs → grade → aggregate → generate review HTML. Each sub-step gates on the previous.
+4. **Analyst notes** — read benchmark data (current + prior iterations), write observations into `benchmark.json` `notes` array.
+5. **Verify** — confirm `benchmark.json` has valid `run_summary` and non-empty `notes`.
+
+Do not stop, return or produce structuredOutput in the middle.
+
 ## Step 0: Validate inputs
 
 Read and verify that the required inputs exist before proceeding:
@@ -93,15 +104,34 @@ Key inputs for the eval pipeline:
 
 ## Step 3: Execute the test cases and generate the benchmark
 
-Follow the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill to execute, grade, and aggregate the benchmark.
+Follow the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill. Execute the sub-steps in order — each depends on the previous one completing:
 
-**Wait for all background tasks** to complete before going to step 4.
+**3a. Spawn all runs** — for each test case, spawn with-skill and baseline runs in the same turn. Wait for **all** run subagents to finish before proceeding.
+
+**3b. Grade each run** — follow the grading instructions in the skill. Confirm `grading.json` exists in every eval directory (both `with_skill/` and baseline) before proceeding.
+
+**3c. Aggregate into benchmark** — run `aggregate_benchmark.py`. Confirm `{eval_results_dir}/{iteration}/benchmark.json` exists before proceeding.
+
+**3d. Generate review HTML** — run `generate_review.py` with `--static {eval_results_dir}/{iteration}/review.html`.
 
 ## Step 4: Write analyst notes into benchmark.json
 
-Read the benchmark data and surface patterns the aggregate stats might hide. See `agents/analyzer.md` (the "Analyzing Benchmark Results" section) for what to look for — things like assertions that always pass regardless of skill (non-discriminating), high-variance evals (possibly flaky), and time/token tradeoffs.
+Read `{eval_results_dir}/{iteration}/benchmark.json` and the grading results in each eval directory. Also read `benchmark.json` from all prior `iteration-*` directories in `{eval_results_dir}` to compare across iterations.
 
-**Action:** Use the Edit tool (or read the JSON, modify it, and write it back) to replace the empty `"notes": []` array in `{eval_results_dir}/{iteration}/benchmark.json` with the observations as a JSON array of strings. Each string is one observation. 
+Surface patterns the aggregate stats might hide — see `agents/analyzer.md` for guidance:
+
+- Assertions that pass in both configurations (non-discriminating — don't prove skill value)
+- High-variance evals across configurations (possibly flaky)
+- Time/token tradeoffs (does the skill cost significantly more?)
+- Surprising results (e.g. baseline outperforms skill on a specific eval)
+
+For iteration-2+, also include cross-iteration observations:
+
+- Baseline stability (is without_skill mean consistent or drifting across iterations?)
+- Whether skill improvement is consistent across iterations
+- Evals that regressed or improved compared to prior iterations
+
+**Action:** Use the Edit tool (or read the JSON, modify it, and write it back) to replace the empty `"notes": []` array in `{eval_results_dir}/{iteration}/benchmark.json` with the observations as a JSON array of strings. Each string is one observation.
 
 ## Step 5: Verify benchmark.json
 
@@ -130,7 +160,7 @@ Read `{eval_results_dir}/{iteration}/benchmark.json`.
 
 **Gate — do NOT return until:**
 
-1. Step 3 has finished and no sub-agents are still running
+1. Steps 3 and 4 have finished and no sub-agents are still running
 2. You have verified `benchmark.json` exists, contains a valid `run_summary`, and has a non-empty `notes` array
 
 Return JSON only:

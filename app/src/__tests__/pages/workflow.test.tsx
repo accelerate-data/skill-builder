@@ -987,12 +987,21 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       useAgentStore.getState().completeRun("agent-step3-structured", true);
     });
 
+    // Step 3 generate-skill triggers benchmark confirmation dialog
     await waitFor(() => {
       expect(vi.mocked(materializeWorkflowStepOutput)).toHaveBeenCalledWith(
         "test-skill",
         3,
         payload
       );
+      expect(useWorkflowStore.getState().benchmarkPending).toBe(true);
+    });
+
+    // Skip benchmark to complete the step
+    const skipBtn = screen.getByRole("button", { name: /skip/i });
+    await act(async () => { skipBtn.click(); });
+
+    await waitFor(() => {
       expect(useWorkflowStore.getState().steps[3].status).toBe("completed");
     });
   });
@@ -2725,6 +2734,15 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
       useAgentStore.getState().completeRun("agent-build", true);
     });
 
+    // Step 3 generate-skill triggers benchmark confirmation dialog
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().benchmarkPending).toBe(true);
+    });
+
+    // Skip benchmark to complete the step
+    const skipBtn = screen.getByRole("button", { name: /skip/i });
+    await act(async () => { skipBtn.click(); });
+
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[3].status).toBe("completed");
     });
@@ -2740,7 +2758,7 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
     // Running flag cleared
     expect(wf.isRunning).toBe(false);
 
-    expect(mockToast.success).toHaveBeenCalledWith("Step 4 completed");
+    expect(mockToast.success).toHaveBeenCalledWith("Step 4 completed (benchmark skipped)");
   });
 });
 

@@ -12,9 +12,9 @@ Usage:
 Example:
     python3 aggregate_benchmark.py benchmarks/2026-01-15T10-30-00/
 
-The script supports two directory layouts:
+The script supports three directory layouts:
 
-    Workspace layout (from skill-creator iterations):
+    Multi-run layout (run-1/, run-2/, etc.):
     <benchmark_dir>/
     └── eval-N/
         ├── with_skill/
@@ -23,6 +23,14 @@ The script supports two directory layouts:
         └── without_skill/
             ├── run-1/grading.json
             └── run-2/grading.json
+
+    Flat layout (grading.json directly in config dir, treated as run-1):
+    <benchmark_dir>/
+    └── eval-N/
+        ├── with_skill/
+        │   └── grading.json
+        └── without_skill/
+            └── grading.json
 
     Legacy layout (with runs/ subdirectory):
     <benchmark_dir>/
@@ -101,15 +109,26 @@ def load_run_results(benchmark_dir: Path) -> dict:
         for config_dir in sorted(eval_dir.iterdir()):
             if not config_dir.is_dir():
                 continue
+
+            has_runs = list(config_dir.glob("run-*"))
+            has_flat_grading = (config_dir / "grading.json").exists()
+
             # Skip non-config directories (inputs, outputs, etc.)
-            if not list(config_dir.glob("run-*")):
+            if not has_runs and not has_flat_grading:
                 continue
+
             config = config_dir.name
             if config not in results:
                 results[config] = []
 
-            for run_dir in sorted(config_dir.glob("run-*")):
-                run_number = int(run_dir.name.split("-")[1])
+            if has_runs:
+                # Multi-run layout: run-1/grading.json, run-2/grading.json, ...
+                run_dirs = [(rd, int(rd.name.split("-")[1])) for rd in sorted(config_dir.glob("run-*"))]
+            else:
+                # Flat layout: grading.json directly in config dir, treat as run-1
+                run_dirs = [(config_dir, 1)]
+
+            for run_dir, run_number in run_dirs:
                 grading_file = run_dir / "grading.json"
 
                 if not grading_file.exists():
@@ -269,7 +288,10 @@ def generate_benchmark(benchmark_dir: Path, skill_name: str = "", skill_path: st
             "analyzer_model": "<model-name>",
             "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "evals_run": eval_ids,
-            "runs_per_configuration": 3
+            "runs_per_configuration": max(
+                (len(config_runs) for config_runs in results.values()),
+                default=1,
+            )
         },
         "runs": runs,
         "run_summary": run_summary,

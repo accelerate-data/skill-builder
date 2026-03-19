@@ -37,6 +37,9 @@ interface WorkflowState {
   /** Transient: like pendingUpdateMode but suppresses auto-start. Used when navigating to an existing in-progress skill from the sidebar. */
   pendingNoReviewMode: boolean;
 
+  /** Transient: true while waiting for user to confirm benchmark launch after generate-skill completes. */
+  benchmarkPending: boolean;
+
   initWorkflow: (skillName: string, purpose?: string, initialReviewMode?: boolean) => void;
   setPurpose: (purpose: string | null) => void;
   setReviewMode: (mode: boolean) => void;
@@ -59,6 +62,8 @@ interface WorkflowState {
   clearRuntimeError: () => void;
   setGateLoading: (loading: boolean) => void;
   setPendingNoReviewMode: (mode: boolean) => void;
+  updateStepLabel: (stepId: number, name: string, description: string) => void;
+  setBenchmarkPending: (pending: boolean) => void;
   reset: () => void;
 }
 
@@ -81,6 +86,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   runtimeError: null,
   gateLoading: false,
   pendingNoReviewMode: false,
+  benchmarkPending: false,
   hydrated: false,
   disabledSteps: [],
 
@@ -98,6 +104,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       initProgressMessage: null,
       runtimeError: null,
       gateLoading: false,
+      benchmarkPending: false,
       hydrated: false,
       disabledSteps: [],
     }),
@@ -152,6 +159,15 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   setGateLoading: (loading) => set({ gateLoading: loading }),
   setPendingNoReviewMode: (mode) => set({ pendingNoReviewMode: mode }),
+
+  updateStepLabel: (stepId, name, description) =>
+    set((state) => ({
+      steps: state.steps.map((s) =>
+        s.id === stepId ? { ...s, name, description } : s
+      ),
+    })),
+
+  setBenchmarkPending: (pending) => set({ benchmarkPending: pending }),
 
   resetToStep: (stepId) =>
     set((state) => ({
@@ -220,6 +236,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       initProgressMessage: null,
       runtimeError: null,
       gateLoading: false,
+      benchmarkPending: false,
       hydrated: false,
       disabledSteps: [],
     }),

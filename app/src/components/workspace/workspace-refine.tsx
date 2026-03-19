@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { BenchmarkConfirmDialog } from "@/components/benchmark-confirm-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import type { RefineCommand, SkillFile } from "@/stores/refine-store";

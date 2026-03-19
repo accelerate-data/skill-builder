@@ -14,6 +14,7 @@ import {
 } from "@/lib/tauri";
 import { resolveModelId } from "@/lib/models";
 import { type StepConfig } from "@/lib/workflow-step-configs";
+import { WORKFLOW_STEP_DEFINITIONS } from "@/lib/workflow-steps";
 import { toast } from "@/lib/toast";
 import { useWorkflowGate } from "@/hooks/use-workflow-gate";
 
@@ -96,6 +97,8 @@ export function useWorkflowStateMachine({
   const prevReviewModeRef = useRef<boolean | null>(null);
   /** Tracks whether we're in the benchmark phase of step 3 */
   const benchmarkPhaseRef = useRef(false);
+  /** Stores the baseline mode while waiting for user confirmation */
+  const pendingBaselineModeRef = useRef<"no_skill" | "prior_version">("no_skill");
 
   // Current state selectors
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
@@ -298,39 +301,21 @@ export function useWorkflowStateMachine({
               const skipped = output.skipped as boolean | undefined;
 
               if ((status === "generated" || status === "rewritten") && !skipped && workspacePath) {
-                benchmarkPhaseRef.current = true;
-                toast.info("Skill written — starting benchmark\u2026", { duration: 5000 });
-                console.log("[workflow] Starting benchmark phase for skill=%s", skillName);
-                try {
-                  clearRuns();
-                  const sessionId = useWorkflowStore.getState().workflowSessionId;
-                  const benchAgentId = await runBenchmarkPhase(
-                    skillName,
-                    workspacePath,
-                    "no_skill",
-                    sessionId ?? undefined,
-                  );
-                  agentStartRun(
-                    benchAgentId,
-                    resolveModelId(
-                      useSettingsStore.getState().preferredModel ?? stepConfig?.model ?? "sonnet"
-                    )
-                  );
-                  // Return without completing step — the benchmark agent's completion
-                  // will re-enter this watcher and complete the step.
-                  return;
-                } catch (err) {
-                  benchmarkPhaseRef.current = false;
-                  // Benchmark launch failed — complete the step without benchmark
-                  console.warn("[workflow] Benchmark launch failed: %s", err);
-                  toast.warning("Benchmark failed to start — skill was saved without benchmark");
-                }
+                console.log("[workflow] %s completed for skill=%s, awaiting benchmark confirmation", status, skillName);
+                // Pause here — show confirmation dialog instead of auto-starting benchmark.
+                // Store the baseline mode so confirmBenchmark can use it later.
+                pendingBaselineModeRef.current = status === "rewritten" ? "prior_version" : "no_skill";
+                useWorkflowStore.getState().setBenchmarkPending(true);
+                // Return without completing step — confirmBenchmark or skipBenchmark will resume.
+                return;
               }
             }
 
-            // If we just finished the benchmark phase, materialize its output too
+            // If we just finished the benchmark phase, restore the original step label
             if (step === 3 && benchmarkPhaseRef.current) {
               benchmarkPhaseRef.current = false;
+              const orig = WORKFLOW_STEP_DEFINITIONS[3];
+              useWorkflowStore.getState().updateStepLabel(3, orig.name, orig.description);
             }
           }
         }
@@ -450,6 +435,50 @@ export function useWorkflowStateMachine({
     toast.success(`Reset to step ${stepId + 1}`);
   };
 
+  // --- Benchmark confirmation handlers ---
+
+  const confirmBenchmark = useCallback(async () => {
+    useWorkflowStore.getState().setBenchmarkPending(false);
+    useWorkflowStore.getState().updateStepLabel(3, "Benchmark Skill", "Running evaluations and grading results");
+    benchmarkPhaseRef.current = true;
+    console.log("[workflow] User confirmed benchmark for skill=%s", skillName);
+
+    try {
+      clearRuns();
+      const sessionId = useWorkflowStore.getState().workflowSessionId;
+      const benchAgentId = await runBenchmarkPhase(
+        skillName,
+        workspacePath!,
+        pendingBaselineModeRef.current,
+        sessionId ?? undefined,
+      );
+      agentStartRun(
+        benchAgentId,
+        resolveModelId(
+          useSettingsStore.getState().preferredModel ?? stepConfig?.model ?? "sonnet"
+        )
+      );
+    } catch (err) {
+      benchmarkPhaseRef.current = false;
+      const orig = WORKFLOW_STEP_DEFINITIONS[3];
+      useWorkflowStore.getState().updateStepLabel(3, orig.name, orig.description);
+      console.warn("[workflow] Benchmark launch failed: %s", err);
+      toast.warning("Benchmark failed to start — skill was saved without benchmark", { duration: Infinity });
+      // Complete the step without benchmark
+      updateStepStatus(3, "completed");
+      setRunning(false);
+    }
+  }, [skillName, workspacePath, stepConfig, clearRuns, agentStartRun, updateStepStatus, setRunning]);
+
+  const skipBenchmark = useCallback(() => {
+    useWorkflowStore.getState().setBenchmarkPending(false);
+    console.log("[workflow] User skipped benchmark for skill=%s", skillName);
+    // Complete step 3 without benchmarking
+    updateStepStatus(3, "completed");
+    setRunning(false);
+    toast.success("Step 4 completed (benchmark skipped)");
+  }, [skillName, updateStepStatus, setRunning]);
+
   return {
     // State
     ...gate,
@@ -466,6 +495,8 @@ export function useWorkflowStateMachine({
     // Handlers
     handleStartAgentStep,
     performStepReset,
+    confirmBenchmark,
+    skipBenchmark,
 
     // Refs
     lastCompletedCostRef,

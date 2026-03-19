@@ -110,6 +110,8 @@ pub(crate) fn materialize_workflow_step_output_value(
             match status {
                 "generated" => {
                     // generate-skill output — write a pending benchmark-meta
+                    log::info!("generate-skill completed for skill={}, skipped={}", skill_root.display(),
+                        structured_output.get("skipped").and_then(|s| s.as_bool()).unwrap_or(false));
                     let skipped = structured_output
                         .get("skipped")
                         .and_then(|s| s.as_bool())
@@ -132,6 +134,8 @@ pub(crate) fn materialize_workflow_step_output_value(
                 }
                 "rewritten" => {
                     // rewrite-skill output — same handling as generate
+                    log::info!("rewrite-skill completed for skill={}, skipped={}", skill_root.display(),
+                        structured_output.get("skipped").and_then(|s| s.as_bool()).unwrap_or(false));
                     let skipped = structured_output
                         .get("skipped")
                         .and_then(|s| s.as_bool())
@@ -154,6 +158,7 @@ pub(crate) fn materialize_workflow_step_output_value(
                 }
                 "benchmarked" => {
                     // benchmark-skill output
+                    log::info!("benchmark-skill completed for skill={}", skill_root.display());
                     let parsed =
                         serde_json::from_value::<GenerateSkillOutput>(structured_output.clone())
                             .map_err(|e| format!("invalid benchmark skill output: {}", e))?;
