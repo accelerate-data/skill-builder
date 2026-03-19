@@ -276,7 +276,7 @@ export function AppLayout() {
       setSelectedWorkspaceSkillName(name);
       navigate({ to: "/", search: { tab: undefined } });
     },
-    [navigate],
+    [navigate, setSelectedWorkspaceSkillName],
   );
 
   const selectedBuilderSkill = builderSkills.find((s) => s.name === selectedWorkspaceSkillName);

@@ -550,10 +550,11 @@ pub async fn run_answer_evaluator(
 /// Log the user's gate decision so it appears in the backend log stream.
 #[tauri::command]
 pub fn log_gate_decision(skill_name: String, verdict: String, decision: String) {
+    let sanitize = |s: &str| s.replace('\n', "\\n").replace('\r', "\\r");
     log::info!(
         "gate_decision: skill={} verdict={} decision={}",
-        skill_name,
-        verdict,
-        decision
+        sanitize(&skill_name),
+        sanitize(&verdict),
+        sanitize(&decision)
     );
 }

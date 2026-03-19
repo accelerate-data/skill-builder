@@ -1,6 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { MoreHorizontal } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { WorkspaceOverview } from "./workspace-overview";
@@ -73,9 +71,6 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
         <Badge variant="outline" className="shrink-0 capitalize">
           {sourceLabel}
         </Badge>
-        <Button variant="outline" size="icon" className="ml-auto size-7 shrink-0">
-          <MoreHorizontal className="size-4" />
-        </Button>
       </div>
 
       {/* Tabs */}

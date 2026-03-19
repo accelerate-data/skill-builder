@@ -101,7 +101,7 @@ pub(super) fn snapshot_skill_for_benchmark(
     Some(snapshot_str)
 }
 
-/// Recursively copy a directory.
+/// Recursively copy a directory. Skips symlinks to prevent infinite cycles.
 fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dest)
         .map_err(|e| format!("create_dir_all {}: {}", dest.display(), e))?;
@@ -111,6 +111,13 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
         let entry = entry.map_err(|e| format!("dir entry: {}", e))?;
         let src_path = entry.path();
         let dest_path = dest.join(entry.file_name());
+        if src_path.is_symlink() {
+            log::debug!(
+                "[copy_dir_recursive] skipping symlink: {}",
+                src_path.display()
+            );
+            continue;
+        }
         if src_path.is_dir() {
             copy_dir_recursive(&src_path, &dest_path)?;
         } else {
