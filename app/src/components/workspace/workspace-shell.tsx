@@ -1,6 +1,16 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useSkillStore } from "@/stores/skill-store";
+import { useRefineStore } from "@/stores/refine-store";
 import { WorkspaceOverview } from "./workspace-overview";
 import { WorkspaceRefine } from "./workspace-refine";
 import type { SkillSummary, ImportedSkill } from "@/lib/types";
@@ -13,12 +23,36 @@ interface WorkspaceShellProps {
 
 export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellProps) {
   const [activeTab, setActiveTab] = useState(initialTab ?? "overview");
+  const [pendingTab, setPendingTab] = useState<string | null>(null);
   const isSkillStoreLoading = useSkillStore((s) => s.isLoading);
 
   // Sync tab when a navigation sets initialTab (e.g. "Refine" from the More menu)
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab);
   }, [initialTab]);
+
+  const handleTabChange = useCallback((value: string) => {
+    // Guard: block switching away from Refine while agent is running
+    if (activeTab === "refine" && value !== "refine") {
+      const refineRunning = useRefineStore.getState().isRunning;
+      if (refineRunning) {
+        setPendingTab(value);
+        return;
+      }
+    }
+    setActiveTab(value);
+  }, [activeTab]);
+
+  const handleTabStay = useCallback(() => {
+    setPendingTab(null);
+  }, []);
+
+  const handleTabLeave = useCallback(() => {
+    if (pendingTab) {
+      setActiveTab(pendingTab);
+      setPendingTab(null);
+    }
+  }, [pendingTab]);
 
   const skillName = "name" in skill ? skill.name : skill.skill_name;
 
@@ -32,7 +66,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
       {/* Tabs */}
       <Tabs
         value={activeTab}
-        onValueChange={setActiveTab}
+        onValueChange={handleTabChange}
         className="flex min-h-0 flex-1 flex-col"
       >
         <TabsList variant="line" className="shrink-0 border-b px-4">
@@ -64,6 +98,27 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
           )}
         </TabsContent>
       </Tabs>
+
+      {pendingTab !== null && (
+        <Dialog open onOpenChange={(open) => { if (!open) handleTabStay(); }}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Agent Running</DialogTitle>
+              <DialogDescription>
+                A refine agent is still running. Switching tabs will abandon it.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={handleTabStay}>
+                Stay
+              </Button>
+              <Button variant="destructive" onClick={handleTabLeave}>
+                Leave
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

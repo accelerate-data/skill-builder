@@ -208,17 +208,17 @@ export function SkillListPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const runningWorkflow = Object.values(runs).find(
-    (r) => r.status === "running" && r.runSource === "workflow",
+  const runningAgent = Object.values(runs).find(
+    (r) => r.status === "running" && (r.runSource === "workflow" || r.runSource === "refine"),
   );
-  const runningSkillName = runningWorkflow?.skillName ?? null;
+  const runningSkillName = runningAgent?.skillName ?? null;
 
   const filteredSkills = unifiedSkills.filter((s) =>
     s.name.toLowerCase().includes(search.toLowerCase()),
   );
 
   function handleRowClick(skill: UnifiedSkill) {
-    // All other rows are locked while a workflow runs
+    // All other rows are locked while a workflow or refine agent runs
     if (runningSkillName && skill.name !== runningSkillName) return;
     // Running skill is also a no-op
     if (skill.name === runningSkillName) return;
