@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 import { markdownComponents } from "@/components/markdown-link";
+import { Button } from "@/components/ui/button";
 import { formatElapsed } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -69,8 +70,8 @@ export interface BenchmarkData {
 
 interface BenchmarkSummaryCardProps {
   benchmarkData: BenchmarkData | null;
-  /** "skipped" = agent reported no evals (stub); "missing" = expected but not found; false = ok */
-  status?: "skipped" | "missing" | false;
+  /** "skipped" = agent reported no evals (stub); "missing" = expected but not found; "partial" = incomplete run; false = ok */
+  status?: "skipped" | "missing" | "partial" | false;
   duration?: number;
   cost?: number;
   onResetStep?: () => void;
@@ -82,12 +83,6 @@ function evalDisplayName(evalId: number): string {
   return `Eval ${evalId}`;
 }
 
-function passRateClass(rate: number): string {
-  if (rate >= 0.8) return "";
-  if (rate >= 0.5) return "text-amber-600 dark:text-amber-400";
-  return "text-destructive";
-}
-
 function formatPassRate(rate: number): string {
   return `${(rate * 100).toFixed(0)}%`;
 }
@@ -95,6 +90,8 @@ function formatPassRate(rate: number): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function BenchmarkSummaryCard({ benchmarkData, status, duration, cost, onResetStep }: BenchmarkSummaryCardProps) {
+  const [notesExpanded, setNotesExpanded] = useState(false);
+
   // Missing = benchmark.json expected but not found on disk — error state, offer reset
   if (status === "missing") {
     return (
@@ -107,13 +104,9 @@ export function BenchmarkSummaryCard({ benchmarkData, status, duration, cost, on
           </p>
         </div>
         {onResetStep && (
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
-            onClick={onResetStep}
-          >
+          <Button variant="outline" size="sm" className="transition-colors duration-150" onClick={onResetStep}>
             Re-run Step
-          </button>
+          </Button>
         )}
       </div>
     );
@@ -127,7 +120,7 @@ export function BenchmarkSummaryCard({ benchmarkData, status, duration, cost, on
         <div className="text-center">
           <p className="text-sm font-semibold">Skill created</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            No evaluations were run for this generation (stub or skipped).
+            No evaluations were configured for this skill.
           </p>
         </div>
       </div>
@@ -175,6 +168,19 @@ export function BenchmarkSummaryCard({ benchmarkData, status, duration, cost, on
 
   return (
     <div className="flex flex-col gap-4 min-w-0 overflow-hidden">
+      {/* Partial benchmark warning banner */}
+      {status === "partial" && (
+        <div className="flex items-start gap-3 rounded-lg border p-4 bg-amber-100 dark:bg-amber-900/30">
+          <AlertTriangle className="size-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+          <div>
+            <p className="text-sm font-medium text-amber-600 dark:text-amber-400">Evaluation incomplete</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Some evaluations did not finish. Results below may be partial.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Summary Card */}
       <div className="rounded-lg border shadow-sm overflow-hidden">
         <div className="p-4">
@@ -214,6 +220,31 @@ export function BenchmarkSummaryCard({ benchmarkData, status, duration, cost, on
           </div>
         </div>
       </div>
+
+      {/* Analyst Notes — collapsible, positioned before delta for narrative flow */}
+      {notes && (
+        <div className="rounded-lg border shadow-sm overflow-hidden">
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 p-4 text-left hover:bg-muted/50 transition-colors duration-150"
+            onClick={() => setNotesExpanded(!notesExpanded)}
+          >
+            <ChevronRight
+              className={`size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ${notesExpanded ? "rotate-90" : ""}`}
+            />
+            <span className="text-xs font-medium text-muted-foreground">Analyst Observations</span>
+          </button>
+          {notesExpanded && (
+            <div className="border-t px-4 pb-4 pt-2">
+              <div className="prose prose-sm dark:prose-invert max-w-none [&_*]:text-sm [&_table]:text-xs [&_th]:text-xs [&_td]:text-xs">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={markdownComponents}>
+                  {notes}
+                </ReactMarkdown>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Delta Hero */}
       {deltaPassRate !== undefined && (
@@ -265,18 +296,6 @@ export function BenchmarkSummaryCard({ benchmarkData, status, duration, cost, on
                 <p className="text-xs text-muted-foreground">Without Skill</p>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Analyst Notes */}
-      {notes && (
-        <div className="rounded-lg border p-4">
-          <p className="text-xs font-medium text-muted-foreground mb-2">Analyst Observations</p>
-          <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={markdownComponents}>
-              {notes}
-            </ReactMarkdown>
           </div>
         </div>
       )}
@@ -336,7 +355,7 @@ function EvalAccordion({
   }
 
   return (
-    <div className="rounded-lg border overflow-hidden">
+    <div className="rounded-lg border shadow-sm overflow-hidden">
       <button
         type="button"
         className="flex w-full items-center gap-3 p-3 text-left hover:bg-muted/50 transition-colors duration-150"
@@ -349,17 +368,19 @@ function EvalAccordion({
           {evalDisplayName(evalId)}
         </span>
         <span
-          className={`rounded-full px-2 py-0.5 text-xs font-medium ${passRateClass(primaryAvg)}`}
+          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+            primaryAvg >= 0.8
+              ? ""
+              : primaryAvg >= 0.5
+                ? "text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30"
+                : "text-destructive"
+          }`}
           style={primaryAvg >= 0.8 ? {
             color: "var(--color-seafoam)",
             background: "color-mix(in oklch, var(--color-seafoam), transparent 85%)",
-          } : primaryAvg >= 0.5 ? {
-            color: "rgb(217 119 6)",
-            background: "color-mix(in oklch, rgb(217 119 6), transparent 85%)",
-          } : {
-            color: "var(--destructive)",
+          } : primaryAvg < 0.5 ? {
             background: "color-mix(in oklch, var(--destructive), transparent 85%)",
-          }}
+          } : undefined}
         >
           {formatPassRate(primaryAvg)} ({primaryPassed}/{primaryTotal})
         </span>
@@ -383,6 +404,7 @@ function EvalAccordion({
                 <AssertionRow
                   key={idx}
                   assertion={exp.text}
+                  hasEvidence={!!findEvidence(exp.text, runs)}
                   configs={configs}
                   runs={runs}
                 />
@@ -399,34 +421,44 @@ function configLabel(config: string): string {
   return config.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function findEvidence(assertion: string, runs: BenchmarkRun[]): string | undefined {
+  for (const run of runs) {
+    const exp = run.expectations?.find((e) => e.text === assertion);
+    if (exp?.evidence) return exp.evidence;
+  }
+  return undefined;
+}
+
 function AssertionRow({
   assertion,
+  hasEvidence,
   configs,
   runs,
 }: {
   assertion: string;
+  hasEvidence: boolean;
   configs: string[];
   runs: BenchmarkRun[];
 }) {
   const [showEvidence, setShowEvidence] = useState(false);
-
-  // Collect evidence from first run that has it
-  let evidence: string | undefined;
-  for (const run of runs) {
-    const exp = run.expectations?.find((e) => e.text === assertion);
-    if (exp?.evidence) {
-      evidence = exp.evidence;
-      break;
-    }
-  }
+  const evidence = hasEvidence ? findEvidence(assertion, runs) : undefined;
 
   return (
     <>
       <tr
-        className="border-b last:border-b-0 hover:bg-muted/20 transition-colors duration-150 cursor-pointer"
-        onClick={() => evidence && setShowEvidence(!showEvidence)}
+        className={`border-b last:border-b-0 transition-colors duration-150 ${hasEvidence ? "hover:bg-muted/20 cursor-pointer" : ""}`}
+        onClick={() => hasEvidence && setShowEvidence(!showEvidence)}
       >
-        <td className="px-3 py-2 text-xs">{assertion}</td>
+        <td className="px-3 py-2 text-xs">
+          <span className="flex items-center gap-1.5">
+            {hasEvidence && (
+              <ChevronRight
+                className={`size-3 shrink-0 text-muted-foreground/50 transition-transform duration-150 ${showEvidence ? "rotate-90" : ""}`}
+              />
+            )}
+            {assertion}
+          </span>
+        </td>
         {configs.map((config) => {
           const configRuns = runs.filter((r) => r.configuration === config);
           return (

@@ -2758,7 +2758,7 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
     // Running flag cleared
     expect(wf.isRunning).toBe(false);
 
-    expect(mockToast.success).toHaveBeenCalledWith("Step 4 completed (benchmark skipped)");
+    // No toast — skip path renders WorkflowStepComplete completion screen instead
   });
 });
 

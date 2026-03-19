@@ -439,8 +439,11 @@ export function useWorkflowStateMachine({
 
   const confirmBenchmark = useCallback(async () => {
     useWorkflowStore.getState().setBenchmarkPending(false);
-    useWorkflowStore.getState().updateStepLabel(3, "Benchmark Skill", "Running evaluations and grading results");
     benchmarkPhaseRef.current = true;
+    // Delay heading update so dialog closes first — avoids visual flicker
+    requestAnimationFrame(() => {
+      useWorkflowStore.getState().updateStepLabel(3, "Benchmark Skill", "Running evaluations and grading results");
+    });
     console.log("[workflow] User confirmed benchmark for skill=%s", skillName);
 
     try {
@@ -473,10 +476,9 @@ export function useWorkflowStateMachine({
   const skipBenchmark = useCallback(() => {
     useWorkflowStore.getState().setBenchmarkPending(false);
     console.log("[workflow] User skipped benchmark for skill=%s", skillName);
-    // Complete step 3 without benchmarking
+    // Complete step 3 without benchmarking — normal completion renders WorkflowStepComplete
     updateStepStatus(3, "completed");
     setRunning(false);
-    toast.success("Step 4 completed (benchmark skipped)");
   }, [skillName, updateStepStatus, setRunning]);
 
   return {
