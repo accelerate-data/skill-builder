@@ -156,7 +156,6 @@ export function useWorkflowStateMachine({
     clarificationsData,
     onClarificationsUpdated,
     advanceToNextStep,
-    requestAutoStart: setPendingAutoStartStep,
   });
 
   // --- Auto-start effects ---

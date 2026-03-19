@@ -2370,12 +2370,10 @@ fn test_deploy_skill_for_workflow_uses_bundled_source_for_bundled_rows() {
     };
     crate::db::insert_imported_skill(&conn, &ws).unwrap();
 
-    let empty_plugins_dir = tempfile::tempdir().unwrap();
     super::deploy::deploy_skill_for_workflow(
         &conn,
         &workspace_path,
         bundled_skills_dir,
-        empty_plugins_dir.path(),
         "research",
         "research",
     ).unwrap();
