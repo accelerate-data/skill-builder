@@ -1,0 +1,86 @@
+import { describe, expect, it, vi } from "vitest";
+import { render } from "@testing-library/react";
+import type { DisplayItem } from "@/lib/display-types";
+
+// Track render counts for each item component
+const outputRenderCount = vi.fn();
+const thinkingRenderCount = vi.fn();
+const toolRenderCount = vi.fn();
+
+vi.mock("@/components/agent-items/output-item", () => ({
+  OutputItem: ({ item }: { item: DisplayItem }) => {
+    outputRenderCount(item.id);
+    return <div data-testid={`output-${item.id}`}>output</div>;
+  },
+}));
+
+vi.mock("@/components/agent-items/thinking-item", () => ({
+  ThinkingItem: ({ item }: { item: DisplayItem }) => {
+    thinkingRenderCount(item.id);
+    return <div data-testid={`thinking-${item.id}`}>thinking</div>;
+  },
+}));
+
+vi.mock("@/components/agent-items/tool-item", () => ({
+  ToolItem: ({ item }: { item: DisplayItem }) => {
+    toolRenderCount(item.id);
+    return <div data-testid={`tool-${item.id}`}>tool</div>;
+  },
+}));
+
+// Must import DisplayItemList AFTER mocks are set up
+const { DisplayItemList } = await import("@/components/agent-items/display-item-list");
+
+function makeItem(
+  overrides: Partial<DisplayItem> & { id: string; type: DisplayItem["type"] },
+): DisplayItem {
+  return { timestamp: Date.now(), ...overrides } as DisplayItem;
+}
+
+describe("DisplayItemList memoization", () => {
+  it("does not re-render unchanged items when the list is re-rendered with the same items", () => {
+    const items: DisplayItem[] = [
+      makeItem({ id: "o-1", type: "output", outputText: "hello" }),
+      makeItem({ id: "t-1", type: "thinking", thinkingText: "hmm" }),
+      makeItem({ id: "tc-1", type: "tool_call", toolName: "Read" }),
+    ];
+
+    const { rerender } = render(<DisplayItemList items={items} />);
+
+    expect(outputRenderCount).toHaveBeenCalledTimes(1);
+    expect(thinkingRenderCount).toHaveBeenCalledTimes(1);
+    expect(toolRenderCount).toHaveBeenCalledTimes(1);
+
+    // Re-render with the same items array — memo should prevent child re-renders
+    rerender(<DisplayItemList items={items} />);
+
+    expect(outputRenderCount).toHaveBeenCalledTimes(1);
+    expect(thinkingRenderCount).toHaveBeenCalledTimes(1);
+    expect(toolRenderCount).toHaveBeenCalledTimes(1);
+  });
+
+  it("only re-renders the item that changed when a single item is updated", () => {
+    const items: DisplayItem[] = [
+      makeItem({ id: "o-1", type: "output", outputText: "hello" }),
+      makeItem({ id: "t-1", type: "thinking", thinkingText: "hmm" }),
+    ];
+
+    outputRenderCount.mockClear();
+    thinkingRenderCount.mockClear();
+
+    const { rerender } = render(<DisplayItemList items={items} />);
+
+    expect(outputRenderCount).toHaveBeenCalledTimes(1);
+    expect(thinkingRenderCount).toHaveBeenCalledTimes(1);
+
+    // Update only the output item — thinking should not re-render
+    const updatedItems = [
+      makeItem({ id: "o-1", type: "output", outputText: "hello updated" }),
+      items[1],
+    ];
+    rerender(<DisplayItemList items={updatedItems} />);
+
+    expect(outputRenderCount).toHaveBeenCalledTimes(2);
+    expect(thinkingRenderCount).toHaveBeenCalledTimes(1);
+  });
+});

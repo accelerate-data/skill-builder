@@ -7,7 +7,13 @@ import { SubagentItem } from "./subagent-item";
 import { ResultItem } from "./result-item";
 import { ErrorItem } from "./error-item";
 
-function DisplayItemRenderer({ item, depth = 0 }: { item: DisplayItem; depth?: number }) {
+const DisplayItemRenderer = memo(function DisplayItemRenderer({
+  item,
+  depth = 0,
+}: {
+  item: DisplayItem;
+  depth?: number;
+}) {
   switch (item.type) {
     case "thinking":
       return <ThinkingItem item={item} />;
@@ -34,7 +40,7 @@ function DisplayItemRenderer({ item, depth = 0 }: { item: DisplayItem; depth?: n
     default:
       return null;
   }
-}
+});
 
 interface DisplayItemListProps {
   items: DisplayItem[];
