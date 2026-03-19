@@ -304,6 +304,13 @@ export function SkillListPanel({
     navigate({ to: "/", search: { tab: "refine" } });
   }
 
+  function handleReview(skillName: string) {
+    console.log("event=skill_review skill=%s", skillName);
+    localStorage.setItem("last-selected-skill", skillName);
+    setSelectedSkill(skillName);
+    navigate({ to: "/skill/$skillName", params: { skillName } });
+  }
+
   function handleContinueBuilding(skillName: string) {
     console.log("event=skill_continue skill=%s", skillName);
     localStorage.setItem("last-selected-skill", skillName);
@@ -449,6 +456,11 @@ export function SkillListPanel({
                         <DropdownMenuItem onSelect={() => handleRefine(skill.name)}>
                           Refine
                         </DropdownMenuItem>
+                        {skill.source === "builder" && (
+                          <DropdownMenuItem onSelect={() => handleReview(skill.name)}>
+                            Review
+                          </DropdownMenuItem>
+                        )}
                         {skill.source === "builder" && (
                           <DropdownMenuItem onSelect={() => handleRedo(skill.name)}>
                             Redo
