@@ -66,7 +66,6 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
           <WorkspaceOverview
             skill={skill}
             skillType={skillType}
-            onOpenRefine={() => setActiveTab("refine")}
             isLoading={isSkillStoreLoading}
           />
         </TabsContent>
