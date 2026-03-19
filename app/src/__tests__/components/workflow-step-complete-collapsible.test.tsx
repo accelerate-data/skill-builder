@@ -17,7 +17,7 @@ vi.mock("react-markdown", () => ({
 }));
 vi.mock("remark-gfm", () => ({ default: () => {} }));
 
-import { WorkflowStepComplete } from "@/components/workflow-step-complete";
+import { WorkflowStepComplete } from "@/components/step-complete";
 
 const researchPlanMd = `---
 purpose: Test purpose

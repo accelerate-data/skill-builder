@@ -86,7 +86,7 @@ vi.mock("@/components/workflow-sidebar", () => ({
 vi.mock("@/components/agent-output-panel", () => ({
   AgentOutputPanel: () => <div data-testid="agent-output" />,
 }));
-vi.mock("@/components/workflow-step-complete", () => ({
+vi.mock("@/components/step-complete", () => ({
   WorkflowStepComplete: vi.fn(() => (
     <div data-testid="step-complete" />
   )),
@@ -115,7 +115,7 @@ import {
   verifyStepOutput,
 } from "@/lib/tauri";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
-import { WorkflowStepComplete } from "@/components/workflow-step-complete";
+import { WorkflowStepComplete } from "@/components/step-complete";
 import type { ClarificationsFile } from "@/lib/clarifications-types";
 
 // Bridge new domain context commands to existing read/write path-based assertions.
