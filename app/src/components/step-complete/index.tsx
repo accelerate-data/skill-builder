@@ -5,12 +5,10 @@ import type { AgentRunRecord } from "@/lib/types";
 import type { ClarificationsFile } from "@/lib/clarifications-types";
 import { formatElapsed } from "@/lib/utils";
 import { useStepFiles } from "./use-step-files";
-import { useBenchmarkData } from "./use-benchmark-data";
 import { StepActionBar } from "./step-action-bar";
 import { ResearchStepComplete } from "./research-step-complete";
 import { DetailedResearchStepComplete } from "./detailed-research-step-complete";
 import { DecisionsStepComplete } from "./decisions-step-complete";
-import { BenchmarkStepComplete } from "./benchmark-step-complete";
 import { FileViewerStepComplete } from "./file-viewer-step-complete";
 
 interface WorkflowStepCompleteProps {
@@ -80,9 +78,6 @@ export function WorkflowStepComplete({
   const { fileContents, resolvedFiles, selectedFile, setSelectedFile, loadingFiles } =
     useStepFiles(skillName, workspacePath, skillsPath, outputFiles);
 
-  const { benchmarkData, benchmarkLoaded, benchmarkStatus } =
-    useBenchmarkData(stepId, workspacePath, skillName, reviewMode);
-
   // Display cost: review mode uses DB, live mode uses Zustand
   const dbCost = agentRuns.length > 0
     ? agentRuns.reduce((sum, r) => sum + r.total_cost, 0)
@@ -128,11 +123,6 @@ export function WorkflowStepComplete({
   // --- Step 2: Decisions ---
   if (outputFiles.includes("context/decisions.json")) {
     return <DecisionsStepComplete {...baseProps} fileContents={fileContents} skillName={skillName} workspacePath={workspacePath} />;
-  }
-
-  // --- Step 3: Benchmark ---
-  if (stepId === 3 && benchmarkLoaded) {
-    return <BenchmarkStepComplete {...baseProps} benchmarkData={benchmarkData} benchmarkStatus={benchmarkStatus} />;
   }
 
   // --- Default: File viewer ---

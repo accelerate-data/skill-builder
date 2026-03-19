@@ -29,7 +29,6 @@ import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { AgentInitializingIndicator } from "@/components/agent-initializing-indicator";
 import { RuntimeErrorDialog } from "@/components/runtime-error-dialog";
-import { BenchmarkConfirmDialog } from "@/components/benchmark-confirm-dialog";
 import { WorkflowStepComplete } from "@/components/step-complete";
 import ResetStepDialog from "@/components/reset-step-dialog";
 import "@/hooks/use-agent-stream";
@@ -203,8 +202,6 @@ export default function WorkflowPage() {
     handleGateResearch,
     handleGateContinueAnyway,
     handleGateLetMeAnswer,
-    confirmBenchmark,
-    skipBenchmark,
     lastCompletedCostRef,
   } = useWorkflowStateMachine({
     skillName,
@@ -440,9 +437,6 @@ export default function WorkflowPage() {
           </DialogContent>
         </Dialog>
       )}
-
-      {/* Benchmark confirmation dialog — shown after generate-skill completes */}
-      <BenchmarkConfirmDialog open={useWorkflowStore((s) => s.benchmarkPending)} onConfirm={confirmBenchmark} onSkip={skipBenchmark} />
 
       {/* Runtime error dialog */}
       <RuntimeErrorDialog

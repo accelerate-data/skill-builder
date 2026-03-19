@@ -54,7 +54,6 @@ vi.mock("@/lib/tauri", () => ({
   previewStepReset: vi.fn(() => Promise.resolve([])),
   getDisabledSteps: vi.fn(() => Promise.resolve([])),
   runAnswerEvaluator: vi.fn(() => Promise.reject("not available")),
-  runBenchmarkPhase: vi.fn(() => Promise.resolve("agent-benchmark")),
   logGateDecision: vi.fn(() => Promise.resolve()),
   navigateBackToStepDb: vi.fn(() => Promise.resolve()),
   getContextFileContent: vi.fn(() => Promise.resolve(null)),
@@ -108,7 +107,6 @@ import {
   endWorkflowSession,
   previewStepReset,
   runAnswerEvaluator,
-  runBenchmarkPhase,
   getDisabledSteps,
   materializeWorkflowStepOutput,
   materializeAnswerEvaluationOutput,
@@ -988,76 +986,15 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       useAgentStore.getState().completeRun("agent-step3-structured", true);
     });
 
-    // Step 3 generate-skill triggers benchmark confirmation dialog
+    // Step 3 generate-skill completes directly (no benchmark phase)
     await waitFor(() => {
       expect(vi.mocked(materializeWorkflowStepOutput)).toHaveBeenCalledWith(
         "test-skill",
         3,
         payload
       );
-      expect(useWorkflowStore.getState().benchmarkPending).toBe(true);
-    });
-
-    // Skip benchmark to complete the step
-    const skipBtn = screen.getByRole("button", { name: /skip/i });
-    await act(async () => { skipBtn.click(); });
-
-    await waitFor(() => {
       expect(useWorkflowStore.getState().steps[3].status).toBe("completed");
     });
-  });
-
-  it("skipping benchmark writes benchmark-meta.json with status=skipped", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    useWorkflowStore.getState().updateStepStatus(0, "completed");
-    useWorkflowStore.getState().updateStepStatus(1, "completed");
-    useWorkflowStore.getState().updateStepStatus(2, "completed");
-    useWorkflowStore.getState().setCurrentStep(3);
-    useWorkflowStore.getState().updateStepStatus(3, "in_progress");
-    useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-skip-meta", "sonnet");
-
-    render(<WorkflowPage />);
-
-    const payload = {
-      status: "generated",
-      benchmark_status: "complete",
-      benchmark_path: "evals/workspace/iteration-1",
-    };
-
-    act(() => {
-      useAgentStore.getState().addDisplayItem("agent-skip-meta", {
-        id: "result-skip-meta",
-        type: "result",
-        timestamp: Date.now(),
-        outputText_result: "Agent completed",
-        structuredOutput: payload,
-        resultStatus: "success",
-      });
-      useAgentStore.getState().completeRun("agent-skip-meta", true);
-    });
-
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().benchmarkPending).toBe(true);
-    });
-
-    vi.mocked(writeFile).mockClear();
-
-    const skipBtn = screen.getByRole("button", { name: /skip/i });
-    await act(async () => { skipBtn.click(); });
-
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[3].status).toBe("completed");
-    });
-
-    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
-      ([path]) => typeof path === "string" && path.includes("benchmark-meta.json"),
-    );
-    expect(writeCalls).toHaveLength(1);
-    const written = JSON.parse(writeCalls[0][1] as string);
-    expect(written.benchmark_status).toBe("skipped");
-    expect(written.benchmark_path).toBeNull();
   });
 
   it("step 3 errors when structured output payload is missing", async () => {
@@ -2788,102 +2725,20 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
       useAgentStore.getState().completeRun("agent-build", true);
     });
 
-    // Step 3 generate-skill triggers benchmark confirmation dialog
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().benchmarkPending).toBe(true);
-    });
-
-    // Skip benchmark to complete the step
-    const skipBtn = screen.getByRole("button", { name: /skip/i });
-    await act(async () => { skipBtn.click(); });
-
+    // Step 3 completes directly (no benchmark phase)
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[3].status).toBe("completed");
     });
 
     const wf = useWorkflowStore.getState();
 
-    // Step 3 completed
-    expect(wf.steps[3].status).toBe("completed");
-
-    // Stays on step 3 completion screen — user clicks "Next Step" to proceed
+    // Stays on step 3 completion screen — user clicks "Done" or "Refine" to proceed
     expect(wf.currentStep).toBe(3);
 
     // Running flag cleared
     expect(wf.isRunning).toBe(false);
-
-    // No toast — skip path renders WorkflowStepComplete completion screen instead
   });
 
-  it("benchmark phase failure completes step 3 successfully with warning (not error)", async () => {
-    vi.mocked(runBenchmarkPhase).mockResolvedValue("agent-bench-fail");
-
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 3; i++) {
-      useWorkflowStore.getState().updateStepStatus(i, "completed");
-    }
-    useWorkflowStore.getState().setCurrentStep(3);
-    useWorkflowStore.getState().updateStepStatus(3, "in_progress");
-    useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-gen-then-bench", "sonnet");
-
-    render(<WorkflowPage />);
-
-    // Generate-skill agent completes with structured output
-    act(() => {
-      useAgentStore.getState().addDisplayItem("agent-gen-then-bench", {
-        id: "result-gen",
-        type: "result",
-        timestamp: Date.now(),
-        outputText_result: "Skill generated",
-        structuredOutput: {
-          status: "generated",
-          benchmark_status: "complete",
-          benchmark_path: "evals/workspace/iteration-1",
-        },
-        resultStatus: "success",
-      });
-      useAgentStore.getState().completeRun("agent-gen-then-bench", true);
-    });
-
-    // Benchmark confirmation dialog appears
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().benchmarkPending).toBe(true);
-    });
-
-    // User confirms benchmark
-    const runBtn = screen.getByRole("button", { name: /run benchmark/i });
-    await act(async () => { runBtn.click(); });
-
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().benchmarkPending).toBe(false);
-    });
-
-    // Benchmark agent is now active
-    useAgentStore.getState().startRun("agent-bench-fail", "sonnet");
-    await waitFor(() => {
-      expect(useAgentStore.getState().activeAgentId).toBe("agent-bench-fail");
-    });
-
-    // Benchmark agent errors
-    act(() => {
-      useAgentStore.getState().completeRun("agent-bench-fail", false);
-    });
-
-    // Step 3 should complete successfully — benchmark failure is non-fatal
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[3].status).toBe("completed");
-    });
-
-    expect(useWorkflowStore.getState().isRunning).toBe(false);
-    // Warning shown, not error
-    expect(mockToast.warning).toHaveBeenCalledWith(
-      expect.stringContaining("Benchmark failed"),
-      expect.anything(),
-    );
-    expect(mockToast.error).not.toHaveBeenCalled();
-  });
 });
 
 // ---------------------------------------------------------------------------

@@ -5,18 +5,14 @@ import { useSettingsStore } from "@/stores/settings-store";
 import type { ClarificationsFile } from "@/lib/clarifications-types";
 import {
   runWorkflowStep,
-  runBenchmarkPhase,
   verifyStepOutput,
   getDisabledSteps,
   materializeWorkflowStepOutput,
   resetWorkflowStep,
   endWorkflowSession,
-  writeFile,
 } from "@/lib/tauri";
-import { joinPath } from "@/lib/path-utils";
 import { resolveModelId } from "@/lib/models";
 import { type StepConfig } from "@/lib/workflow-step-configs";
-import { WORKFLOW_STEP_DEFINITIONS } from "@/lib/workflow-steps";
 import { toast } from "@/lib/toast";
 import { useWorkflowGate } from "@/hooks/use-workflow-gate";
 
@@ -97,10 +93,6 @@ export function useWorkflowStateMachine({
   // Refs for cross-effect communication
   const lastCompletedCostRef = useRef<number | undefined>(undefined);
   const prevReviewModeRef = useRef<boolean | null>(null);
-  /** Tracks whether we're in the benchmark phase of step 3 */
-  const benchmarkPhaseRef = useRef(false);
-  /** Stores the baseline mode while waiting for user confirmation */
-  const pendingBaselineModeRef = useRef<"no_skill" | "prior_version">("no_skill");
 
   // Current state selectors
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
@@ -297,29 +289,6 @@ export function useWorkflowStateMachine({
               return;
             }
 
-            // Step 3 generate-skill: chain benchmark phase if not skipped
-            if (step === 3 && !benchmarkPhaseRef.current) {
-              const output = structuredOutput as Record<string, unknown>;
-              const status = output.status as string | undefined;
-              const skipped = output.skipped as boolean | undefined;
-
-              if ((status === "generated" || status === "rewritten") && !skipped && workspacePath) {
-                console.log("[workflow] %s completed for skill=%s, awaiting benchmark confirmation", status, skillName);
-                // Pause here — show confirmation dialog instead of auto-starting benchmark.
-                // Store the baseline mode so confirmBenchmark can use it later.
-                pendingBaselineModeRef.current = status === "rewritten" ? "prior_version" : "no_skill";
-                useWorkflowStore.getState().setBenchmarkPending(true);
-                // Return without completing step — confirmBenchmark or skipBenchmark will resume.
-                return;
-              }
-            }
-
-            // If we just finished the benchmark phase, restore the original step label
-            if (step === 3 && benchmarkPhaseRef.current) {
-              benchmarkPhaseRef.current = false;
-              const orig = WORKFLOW_STEP_DEFINITIONS[3];
-              useWorkflowStore.getState().updateStepLabel(3, orig.name, orig.description);
-            }
           }
         }
 
@@ -353,19 +322,6 @@ export function useWorkflowStateMachine({
 
       finish();
     } else if (activeRunStatus === "error") {
-      // Benchmark phase failure is non-fatal — the skill was already generated.
-      // Complete step 3 successfully and surface a warning instead of erroring.
-      if (step === 3 && benchmarkPhaseRef.current) {
-        benchmarkPhaseRef.current = false;
-        const orig = WORKFLOW_STEP_DEFINITIONS[3];
-        useWorkflowStore.getState().updateStepLabel(3, orig.name, orig.description);
-        updateStepStatus(step, "completed");
-        setRunning(false);
-        setActiveAgent(null);
-        console.warn("[workflow] Benchmark phase failed for skill=%s — skill saved without benchmark results", skillName);
-        toast.warning("Benchmark failed — skill was saved without benchmark results", { duration: Infinity });
-        return;
-      }
       updateStepStatus(step, "error");
       setRunning(false);
       setActiveAgent(null);
@@ -450,65 +406,6 @@ export function useWorkflowStateMachine({
     }
   };
 
-  // --- Benchmark confirmation handlers ---
-
-  const confirmBenchmark = useCallback(async () => {
-    useWorkflowStore.getState().setBenchmarkPending(false);
-    benchmarkPhaseRef.current = true;
-    // Delay heading update so dialog closes first — avoids visual flicker
-    requestAnimationFrame(() => {
-      useWorkflowStore.getState().updateStepLabel(3, "Benchmark Skill", "Running evaluations and grading results");
-    });
-    console.log("[workflow] User confirmed benchmark for skill=%s", skillName);
-
-    try {
-      clearRuns();
-      const sessionId = useWorkflowStore.getState().workflowSessionId;
-      const benchAgentId = await runBenchmarkPhase(
-        skillName,
-        workspacePath!,
-        pendingBaselineModeRef.current,
-        sessionId ?? undefined,
-      );
-      agentStartRun(
-        benchAgentId,
-        resolveModelId(
-          useSettingsStore.getState().preferredModel ?? stepConfig?.model ?? "sonnet"
-        )
-      );
-    } catch (err) {
-      benchmarkPhaseRef.current = false;
-      const orig = WORKFLOW_STEP_DEFINITIONS[3];
-      useWorkflowStore.getState().updateStepLabel(3, orig.name, orig.description);
-      console.warn("[workflow] Benchmark launch failed: %s", err);
-      toast.warning("Benchmark failed to start — skill was saved without benchmark", { duration: Infinity });
-      // Complete the step without benchmark
-      updateStepStatus(3, "completed");
-      setRunning(false);
-    }
-  }, [skillName, workspacePath, stepConfig, clearRuns, agentStartRun, updateStepStatus, setRunning]);
-
-  const skipBenchmark = useCallback(async () => {
-    useWorkflowStore.getState().setBenchmarkPending(false);
-    console.log("[workflow] User skipped benchmark for skill=%s", skillName);
-
-    // Write benchmark-meta.json as "skipped" so the completion screen shows the
-    // "Skill created" card instead of treating the missing benchmark.json as an
-    // error and auto-resetting step 3.
-    if (workspacePath) {
-      try {
-        const metaPath = joinPath(workspacePath, skillName, "context", "benchmark-meta.json");
-        await writeFile(metaPath, JSON.stringify({ benchmark_status: "skipped", benchmark_path: null }));
-      } catch (e) {
-        console.warn("[workflow] op=skip_benchmark event=write_meta status=failure skill=%s err=%s", skillName, e);
-      }
-    }
-
-    // Complete step 3 without benchmarking — normal completion renders WorkflowStepComplete
-    updateStepStatus(3, "completed");
-    setRunning(false);
-  }, [skillName, workspacePath, updateStepStatus, setRunning]);
-
   return {
     // State
     ...gate,
@@ -525,8 +422,6 @@ export function useWorkflowStateMachine({
     // Handlers
     handleStartAgentStep,
     performStepReset,
-    confirmBenchmark,
-    skipBenchmark,
 
     // Refs
     lastCompletedCostRef,
