@@ -162,6 +162,7 @@ export function useWorkflowStateMachine({
     clarificationsData,
     onClarificationsUpdated,
     advanceToNextStep,
+    requestAutoStart: setPendingAutoStartStep,
   });
 
   // --- Auto-start effects ---
@@ -350,6 +351,19 @@ export function useWorkflowStateMachine({
 
       finish();
     } else if (activeRunStatus === "error") {
+      // Benchmark phase failure is non-fatal — the skill was already generated.
+      // Complete step 3 successfully and surface a warning instead of erroring.
+      if (step === 3 && benchmarkPhaseRef.current) {
+        benchmarkPhaseRef.current = false;
+        const orig = WORKFLOW_STEP_DEFINITIONS[3];
+        useWorkflowStore.getState().updateStepLabel(3, orig.name, orig.description);
+        updateStepStatus(step, "completed");
+        setRunning(false);
+        setActiveAgent(null);
+        console.warn("[workflow] Benchmark phase failed for skill=%s — skill saved without benchmark results", skillName);
+        toast.warning("Benchmark failed — skill was saved without benchmark results", { duration: Infinity });
+        return;
+      }
       updateStepStatus(step, "error");
       setRunning(false);
       setActiveAgent(null);
@@ -432,7 +446,6 @@ export function useWorkflowStateMachine({
     if (!disabled.includes(stepId)) {
       autoStartAfterReset(stepId);
     }
-    toast.success(`Reset to step ${stepId + 1}`);
   };
 
   // --- Benchmark confirmation handlers ---

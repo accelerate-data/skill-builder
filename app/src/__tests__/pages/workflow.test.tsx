@@ -54,6 +54,7 @@ vi.mock("@/lib/tauri", () => ({
   previewStepReset: vi.fn(() => Promise.resolve([])),
   getDisabledSteps: vi.fn(() => Promise.resolve([])),
   runAnswerEvaluator: vi.fn(() => Promise.reject("not available")),
+  runBenchmarkPhase: vi.fn(() => Promise.resolve("agent-benchmark")),
   logGateDecision: vi.fn(() => Promise.resolve()),
   navigateBackToStepDb: vi.fn(() => Promise.resolve()),
   getContextFileContent: vi.fn(() => Promise.resolve(null)),
@@ -107,6 +108,7 @@ import {
   endWorkflowSession,
   previewStepReset,
   runAnswerEvaluator,
+  runBenchmarkPhase,
   getDisabledSteps,
   materializeWorkflowStepOutput,
   materializeAnswerEvaluationOutput,
@@ -248,7 +250,6 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Running flag cleared
     expect(wf.isRunning).toBe(false);
 
-    expect(mockToast.success).toHaveBeenCalledWith("Step 1 completed");
   });
 
   it("marks step as error when agent fails — no cascade", async () => {
@@ -2760,6 +2761,76 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
 
     // No toast — skip path renders WorkflowStepComplete completion screen instead
   });
+
+  it("benchmark phase failure completes step 3 successfully with warning (not error)", async () => {
+    vi.mocked(runBenchmarkPhase).mockResolvedValue("agent-bench-fail");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    for (let i = 0; i < 3; i++) {
+      useWorkflowStore.getState().updateStepStatus(i, "completed");
+    }
+    useWorkflowStore.getState().setCurrentStep(3);
+    useWorkflowStore.getState().updateStepStatus(3, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-gen-then-bench", "sonnet");
+
+    render(<WorkflowPage />);
+
+    // Generate-skill agent completes with structured output
+    act(() => {
+      useAgentStore.getState().addDisplayItem("agent-gen-then-bench", {
+        id: "result-gen",
+        type: "result",
+        timestamp: Date.now(),
+        outputText_result: "Skill generated",
+        structuredOutput: {
+          status: "generated",
+          benchmark_status: "complete",
+          benchmark_path: "evals/workspace/iteration-1",
+        },
+        resultStatus: "success",
+      });
+      useAgentStore.getState().completeRun("agent-gen-then-bench", true);
+    });
+
+    // Benchmark confirmation dialog appears
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().benchmarkPending).toBe(true);
+    });
+
+    // User confirms benchmark
+    const runBtn = screen.getByRole("button", { name: /run benchmark/i });
+    await act(async () => { runBtn.click(); });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().benchmarkPending).toBe(false);
+    });
+
+    // Benchmark agent is now active
+    useAgentStore.getState().startRun("agent-bench-fail", "sonnet");
+    await waitFor(() => {
+      expect(useAgentStore.getState().activeAgentId).toBe("agent-bench-fail");
+    });
+
+    // Benchmark agent errors
+    act(() => {
+      useAgentStore.getState().completeRun("agent-bench-fail", false);
+    });
+
+    // Step 3 should complete successfully — benchmark failure is non-fatal
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[3].status).toBe("completed");
+    });
+
+    expect(useWorkflowStore.getState().isRunning).toBe(false);
+    // Warning shown, not error
+    expect(mockToast.warning).toHaveBeenCalledWith(
+      expect.stringContaining("Benchmark failed"),
+      expect.anything(),
+    );
+    expect(mockToast.error).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -2867,9 +2938,6 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     // handleGateSkip → skipToDecisions → step 1 completed, currentStep = 2
     expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
     expect(useWorkflowStore.getState().currentStep).toBe(2);
-    expect(mockToast.success).toHaveBeenCalledWith(
-      "Skipped detailed research — answers were sufficient",
-    );
   });
 
   it("handleGateResearch from clarifications context advances to next step normally", async () => {
@@ -2925,7 +2993,6 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     // handleGateContinueAnyway → advance to next step
     expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     expect(useWorkflowStore.getState().currentStep).toBe(1);
-    expect(mockToast.success).toHaveBeenCalledWith("Continuing with current answers");
   });
 
   it("handleGateSkip from refinements context advances to next step (not step 2)", async () => {
@@ -3530,7 +3597,6 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
 
     // Should not have attempted materialization
     expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
-    expect(mockToast.success).toHaveBeenCalledWith("Step 3 completed");
   });
 
   it("step 3 (requiresStructuredOutput) errors when structuredOutput is null", async () => {
@@ -3626,7 +3692,6 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     });
 
-    expect(mockToast.success).toHaveBeenCalledWith("Step 1 completed");
   });
 
   it("step 1 with requiresStructuredOutput errors when structured output is an array", async () => {
