@@ -72,6 +72,17 @@ def calculate_stats(values: list[float]) -> dict:
     }
 
 
+def _load_analyst_notes(benchmark_dir: Path) -> str:
+    """Read analyst-notes.md from the benchmark directory if it exists."""
+    notes_path = benchmark_dir / "analyst-notes.md"
+    if notes_path.exists():
+        try:
+            return notes_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
+    return ""
+
+
 def load_run_results(benchmark_dir: Path) -> dict:
     """
     Load all run results from a benchmark directory.
@@ -295,7 +306,7 @@ def generate_benchmark(benchmark_dir: Path, skill_name: str = "", skill_path: st
         },
         "runs": runs,
         "run_summary": run_summary,
-        "notes": []  # To be filled by analyzer
+        "notes": _load_analyst_notes(benchmark_dir)  # Markdown string from analyst-notes.md
     }
 
     return benchmark
@@ -346,14 +357,16 @@ def generate_markdown(benchmark: dict) -> str:
     lines.append(f"| Tokens | {a_tokens.get('mean', 0):.0f} ± {a_tokens.get('stddev', 0):.0f} | {b_tokens.get('mean', 0):.0f} ± {b_tokens.get('stddev', 0):.0f} | {delta.get('tokens', '—')} |")
 
     # Notes section
-    if benchmark.get("notes"):
-        lines.extend([
-            "",
-            "## Notes",
-            ""
-        ])
-        for note in benchmark["notes"]:
-            lines.append(f"- {note}")
+    notes = benchmark.get("notes", "")
+    if notes:
+        lines.extend(["", "## Notes", ""])
+        if isinstance(notes, list):
+            # Legacy array format
+            for note in notes:
+                lines.append(f"- {note}")
+        else:
+            # Markdown string format
+            lines.append(str(notes))
 
     return "\n".join(lines)
 

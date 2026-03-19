@@ -131,7 +131,10 @@ For iteration-2+, also include cross-iteration observations:
 - Whether skill improvement is consistent across iterations
 - Evals that regressed or improved compared to prior iterations
 
-**Action:** Use the Edit tool (or read the JSON, modify it, and write it back) to replace the empty `"notes": []` array in `{eval_results_dir}/{iteration}/benchmark.json` with the observations as a JSON array of strings. Each string is one observation.
+**Action:**
+
+1. Write the observations as a markdown file to `{eval_results_dir}/{iteration}/analyst-notes.md`. Use tables, bullet lists, and headings as appropriate for rich formatting.
+2. Read `{eval_results_dir}/{iteration}/benchmark.json`, set the `"notes"` field to the markdown content as a single string, and write it back.
 
 ## Step 5: Verify benchmark.json
 

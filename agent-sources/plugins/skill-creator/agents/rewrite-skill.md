@@ -113,7 +113,7 @@ description: <brief description of which file is malformed>
 
 Missing files are not errors — skip and proceed to the next phase.
 
-## Phase 1: Rewrite the skill
+## Phase 1: Setup the context to rewrite the skill
 
 ### Prior-step handoff
 
@@ -128,19 +128,45 @@ Do not repeat intent capture or interviewing. Treat these artifacts as authorita
 
 ### Inventory existing skill
 
-- Read existing `SKILL.md` at `{skill_output_dir}/SKILL.md`.
+- Find `SKILL.md` at `{skill_output_dir}`.
 - Inventory any folders at the same level as the `SKILL.md` (e.g. `references/`, `scripts/`, `assets/`).
-- Read all reference files to understand the full scope of existing content.
+
+If `SKILL.md` is missing or any of the reference files cross referenced in `SKILL.md` is missing return immediately this JSON:
+
+```text
+---
+name: (malformed input)
+description: <brief description of which file is malformed>
+---
+```
+
+```json
+{ "status": "rewritten", "skipped": true }
+```
+
+### Inventory evaluation test cases
+
+- Find `{eval_dir}/evals.json`. If its missing return immediately this JSON:
+
+```text
+---
+name: (malformed input)
+description: <brief description of which file is malformed>
+---
+```
+
+```json
+{ "status": "rewritten", "skipped": true }
+```
 
 ### Rewrite strategy
 
-- Read the existing `SKILL.MD` and the references under `references/*`.
+- Read the existing `SKILL.MD` and all the folders at the same level as the `SKILL.md` (e.g. `references/`, `scripts/`, `assets/`).
 - Identify inconsistencies, redundancies, and stale cross-references.
 - Use existing content as primary source, `decisions.json` as supplement.
 - Preserve all original domain knowledge while prioritizing coherence and coverage for the request-specific topic.
 - Treat `Current request` as an additional focus area for coverage. Make sure the rewritten skill covers it explicitly where appropriate.
 - Do not ignore decisions or broader skill requirements in favor of the request.
-- In the `Test Cases` sub-section of **Creating a skill section** in `skill-creator:skill-creator` update `{eval_dir}/evals.json` to reflect the rewritten skill. If `evals.json` already exists, review and update the test cases to match the new content. If it doesn't exist, create it with 3+ evaluation scenarios.
 - Do not run the evaluations — a separate benchmark agent handles execution and grading.
 
 ### File targeting
@@ -157,19 +183,18 @@ If `Current request` has `@`-prefixed files (e.g., `@references/metrics.md`) con
 
 The following top-level sections in the `skill-creator` skill should **not** be followed:
 
+- `Creating a skill`
 - `Running and evaluating test cases`
 - `Advanced: Blind comparison`
 - `Description Optimization`
 - `Claude.ai-specific instructions`
 - `Cowork-Specific Instructions`
 
-### Invoke the skill
+## Phase 2: Invoke the skill
 
-Use the **Creating a skill section** in `skill-creator:skill-creator` skill to rewrite the skill. Write the `SKILL.MD` and reference files in parallel yourself (do not spawn subagents).
+Use the **Improving the skill** section in `skill-creator:skill-creator` skill to rewrite the skill. Write the `SKILL.MD` and reference files in parallel yourself (do not spawn subagents).
 
-### Preservation sweep
-
-Before proceeding to evals, perform a full preservation sweep to confirm no original domain knowledge was dropped. If coverage is incomplete, read additional references and close gaps.
+Perform a full preservation sweep to confirm no original domain knowledge was dropped. If coverage is incomplete, read additional references and close gaps.
 
 ---
 

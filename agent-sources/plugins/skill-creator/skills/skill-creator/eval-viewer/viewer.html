@@ -1303,15 +1303,25 @@
         }
       }
 
-      // Notes
-      if (notes.length > 0) {
+      // Notes — supports both markdown string and legacy string array
+      if (notes && (typeof notes === "string" ? notes.length > 0 : notes.length > 0)) {
         html += '<div class="benchmark-notes">';
         html += "<h3>Analysis Notes</h3>";
-        html += "<ul>";
-        for (const note of notes) {
-          html += "<li>" + escapeHtml(note) + "</li>";
+        if (typeof notes === "string") {
+          // Markdown string — render with marked if available, otherwise preformatted
+          if (typeof marked !== "undefined") {
+            html += marked.parse(notes);
+          } else {
+            html += "<pre style='white-space:pre-wrap;font-family:inherit'>" + escapeHtml(notes) + "</pre>";
+          }
+        } else {
+          html += "<ul>";
+          for (const note of notes) {
+            html += "<li>" + escapeHtml(note) + "</li>";
+          }
+          html += "</ul>";
         }
-        html += "</ul></div>";
+        html += "</div>";
       }
 
       container.innerHTML = html;
