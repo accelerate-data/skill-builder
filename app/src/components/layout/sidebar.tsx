@@ -6,8 +6,8 @@ export function IconRail() {
     <aside className="flex h-full w-[64px] flex-shrink-0 flex-col items-center border-r bg-sidebar-background py-2.5">
       {/* Logo mark */}
       <div className="flex size-11 items-center justify-center rounded-xl bg-white">
-        <img src="/icon-256.png" alt="Skill Builder" className="size-8 block dark:hidden" />
-        <img src="/icon-dark-256.png" alt="Skill Builder" className="size-8 hidden dark:block" />
+        <img src="/icon-dark-256.png" alt="Skill Builder" className="size-8 block dark:hidden" />
+        <img src="/icon-256.png" alt="Skill Builder" className="size-8 hidden dark:block" />
       </div>
       {/* Spacer */}
       <div className="mt-auto" />
