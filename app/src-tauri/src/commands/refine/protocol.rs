@@ -3,6 +3,7 @@ use std::path::Path;
 use crate::agents::sidecar::SidecarConfig;
 use crate::commands::agent::output_format_for_agent;
 use crate::commands::workflow::{resolve_model_id, tools_for_agent};
+use crate::commands::workflow::step_config::workflow_output_format_for_agent;
 use crate::db::{self, Db};
 use crate::types::SecretString;
 
@@ -295,7 +296,8 @@ pub(super) fn build_direct_refine_config(
         }),
         fallback_model,
         effort: sdk_effort,
-        output_format: output_format_for_agent(skill_name, Some(agent_name)),
+        output_format: workflow_output_format_for_agent(agent_name)
+            .or_else(|| output_format_for_agent(skill_name, Some(agent_name))),
         prompt_suggestions: Some(false),
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name.to_string()),
