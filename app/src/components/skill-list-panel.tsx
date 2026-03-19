@@ -377,10 +377,12 @@ export function SkillListPanel({
               aria-selected={isSelected}
               className={cn(
                 "group flex h-[46px] cursor-pointer items-center gap-2 px-3 transition-colors",
-                isSelected && "bg-accent",
+                isSelected && "border-l-2 bg-muted/60 pl-[10px]",
+                !isSelected && "border-l-2 border-l-transparent",
                 !isSelected && !isLocked && "hover:bg-accent/50",
                 isLocked && "cursor-not-allowed opacity-[0.45]",
               )}
+              style={isSelected ? { borderLeftColor: "var(--color-pacific)" } : undefined}
               onClick={() => handleRowClick(skill)}
               onKeyDown={(e) => {
                 if (!isLocked && (e.key === "Enter" || e.key === " ")) {
