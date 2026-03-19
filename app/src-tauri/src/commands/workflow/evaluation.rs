@@ -794,10 +794,10 @@ pub fn read_latest_benchmark(
         let name_str = name.to_string_lossy();
         if let Some(n_str) = name_str.strip_prefix("iteration-") {
             if let Ok(n) = n_str.parse::<u32>() {
-                if entry.path().is_dir() {
-                    if latest.as_ref().map_or(true, |(cur, _)| n > *cur) {
-                        latest = Some((n, entry.path()));
-                    }
+                if entry.path().is_dir()
+                    && latest.as_ref().is_none_or(|(cur, _)| n > *cur)
+                {
+                    latest = Some((n, entry.path()));
                 }
             }
         }
