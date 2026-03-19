@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeSanitize from "rehype-sanitize"
 import { markdownComponents } from "@/components/markdown-link"
+import { SkillFrontmatterHeader } from "@/components/skill-frontmatter-header"
+import { parseFrontmatter } from "@/lib/frontmatter"
 import { Loader2 } from "lucide-react"
 import {
   Dialog,
@@ -60,6 +62,11 @@ export default function SkillPreviewDialog({
     }
   }, [open, skill])
 
+  const parsed = useMemo(() => {
+    if (!content) return null
+    return parseFrontmatter(content)
+  }, [content])
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
@@ -86,12 +93,15 @@ export default function SkillPreviewDialog({
             <div className="py-8 text-center text-sm text-destructive">
               Failed to load skill content: {error}
             </div>
-          ) : content ? (
-            <div className="markdown-body compact pr-3 overflow-x-hidden break-words">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={markdownComponents}>
-                {content}
-              </ReactMarkdown>
-            </div>
+          ) : parsed ? (
+            <>
+              {parsed.frontmatter && <SkillFrontmatterHeader frontmatter={parsed.frontmatter} />}
+              <div className="markdown-body compact pr-3 overflow-x-hidden break-words">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={markdownComponents}>
+                  {parsed.body}
+                </ReactMarkdown>
+              </div>
+            </>
           ) : (
             <div className="py-8 text-center text-sm text-muted-foreground">
               No content available.
