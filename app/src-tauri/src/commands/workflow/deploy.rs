@@ -461,29 +461,7 @@ pub(crate) fn copy_managed_plugins_to_claude_dir(
     Ok(())
 }
 
-// copy_directory_to and copy_md_files_recursive removed — no longer deploying
-// agents tree to workspace root (only .claude/agents/ is used).
-
-/// Recursively copy a directory and all its contents.
+/// Recursively copy a directory and all its contents (delegates to shared fs_utils).
 pub(crate) fn copy_directory_recursive(src: &Path, dest: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(dest)
-        .map_err(|e| format!("Failed to create dir {}: {}", dest.display(), e))?;
-
-    let entries = std::fs::read_dir(src)
-        .map_err(|e| format!("Failed to read dir {}: {}", src.display(), e))?;
-
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
-        let src_path = entry.path();
-        let dest_path = dest.join(entry.file_name());
-
-        if src_path.is_dir() {
-            copy_directory_recursive(&src_path, &dest_path)?;
-        } else {
-            std::fs::copy(&src_path, &dest_path)
-                .map_err(|e| format!("Failed to copy {}: {}", src_path.display(), e))?;
-        }
-    }
-
-    Ok(())
+    crate::fs_utils::copy_dir_recursive(src, dest)
 }

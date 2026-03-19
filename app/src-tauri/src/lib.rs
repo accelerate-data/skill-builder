@@ -2,6 +2,7 @@ mod agents;
 mod cleanup;
 mod commands;
 mod db;
+mod fs_utils;
 mod fs_validation;
 pub mod git;
 mod logging;
@@ -29,19 +30,8 @@ fn dir_is_empty(path: &Path) -> Result<bool, io::Error> {
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), io::Error> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-        let from = entry.path();
-        let to = dst.join(entry.file_name());
-        if file_type.is_dir() {
-            copy_dir_recursive(&from, &to)?;
-        } else if file_type.is_file() {
-            fs::copy(&from, &to)?;
-        }
-    }
-    Ok(())
+    crate::fs_utils::copy_dir_recursive(src, dst)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
 }
 
 /// One-time migration from historical app-local dir to the current bundle identifier path.

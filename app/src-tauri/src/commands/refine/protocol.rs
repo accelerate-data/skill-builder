@@ -101,37 +101,10 @@ pub(super) fn snapshot_skill_for_benchmark(
     Some(snapshot_str)
 }
 
-/// Recursively copy a directory. Skips symlinks to prevent infinite cycles.
+/// Recursively copy a directory. Delegates to the shared fs_utils implementation
+/// which skips symlinks to prevent infinite cycles.
 fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(dest)
-        .map_err(|e| format!("create_dir_all {}: {}", dest.display(), e))?;
-    for entry in std::fs::read_dir(src)
-        .map_err(|e| format!("read_dir {}: {}", src.display(), e))?
-    {
-        let entry = entry.map_err(|e| format!("dir entry: {}", e))?;
-        let src_path = entry.path();
-        let dest_path = dest.join(entry.file_name());
-        if src_path.is_symlink() {
-            log::debug!(
-                "[copy_dir_recursive] skipping symlink: {}",
-                src_path.display()
-            );
-            continue;
-        }
-        if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dest_path)?;
-        } else {
-            std::fs::copy(&src_path, &dest_path).map_err(|e| {
-                format!(
-                    "copy {} -> {}: {}",
-                    src_path.display(),
-                    dest_path.display(),
-                    e
-                )
-            })?;
-        }
-    }
-    Ok(())
+    crate::fs_utils::copy_dir_recursive(src, dest)
 }
 
 pub(super) fn ensure_skill_workspace_dir(workspace_path: &str, skill_name: &str) {
