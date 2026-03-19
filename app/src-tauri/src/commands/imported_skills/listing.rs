@@ -76,8 +76,8 @@ pub fn export_skill(skill_name: String, db: tauri::State<'_, Db>) -> Result<Stri
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
 
-    // Walk the skill directory and add files with skill name as root prefix
-    add_dir_to_zip(&mut writer, skill_dir, &skill_name, &options)?;
+    // Walk the skill directory and add files at the zip root (no prefix)
+    add_dir_to_zip(&mut writer, skill_dir, "", &options)?;
 
     writer
         .finish()

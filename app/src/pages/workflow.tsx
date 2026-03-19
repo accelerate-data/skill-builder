@@ -50,29 +50,14 @@ import { useWorkflowStateMachine } from "@/hooks/use-workflow-state-machine";
 interface WorkflowMainHeaderProps {
   skillName: string;
   currentStep: number;
-  isRunning: boolean;
-  isInitializing: boolean;
-  gateLoading: boolean;
   stepStatus: WorkflowStep["status"] | undefined;
 }
 
-function WorkflowMainHeader({ skillName, currentStep, isRunning, isInitializing, gateLoading, stepStatus }: WorkflowMainHeaderProps) {
-  const active = isRunning || isInitializing;
-
+function WorkflowMainHeader({ skillName, currentStep, stepStatus }: WorkflowMainHeaderProps) {
   let dotColor: string | undefined;
-  let dotStyle: React.CSSProperties | undefined;
-  let pulse = false;
   let label = "";
 
-  if (active) {
-    dotStyle = { backgroundColor: "var(--color-seafoam)" };
-    pulse = true;
-    label = "Running\u2026";
-  } else if (gateLoading) {
-    dotStyle = { backgroundColor: "var(--color-pacific)" };
-    pulse = true;
-    label = "Evaluating\u2026";
-  } else if (stepStatus === "waiting_for_user") {
+  if (stepStatus === "waiting_for_user") {
     dotColor = "bg-amber-600 dark:bg-amber-400";
     label = "Awaiting input";
   }
@@ -90,8 +75,7 @@ function WorkflowMainHeader({ skillName, currentStep, isRunning, isInitializing,
         {showStatus && (
           <div className="flex items-center gap-1.5">
             <div
-              className={cn("size-2.5 shrink-0 rounded-full", dotColor, pulse && "animate-dot-pulse")}
-              style={dotStyle}
+              className={cn("size-2.5 shrink-0 rounded-full", dotColor)}
             />
             <span className="font-mono text-[11px]" style={{ color: "var(--color-pacific)" }}>
               {label}
@@ -536,9 +520,6 @@ export default function WorkflowPage() {
         <WorkflowMainHeader
           skillName={skillName}
           currentStep={currentStep}
-          isRunning={isRunning}
-          isInitializing={isInitializing}
-          gateLoading={gateLoading}
           stepStatus={currentStepDef?.status}
         />
 
