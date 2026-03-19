@@ -155,7 +155,6 @@ export function SkillListPanel({
 }: SkillListPanelProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [redoTarget, setRedoTarget] = useState<string | null>(null);
@@ -164,6 +163,8 @@ export function SkillListPanel({
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const builderSkills = useSkillStore((s) => s.skills);
   const setSkills = useSkillStore((s) => s.setSkills);
+  const selectedSkill = useSkillStore((s) => s.activeSkill);
+  const setSelectedSkill = useSkillStore((s) => s.setActiveSkill);
   const importedSkills = useImportedSkillsStore((s) => s.skills);
   const fetchImportedSkills = useImportedSkillsStore((s) => s.fetchSkills);
   const runs = useAgentStore((s) => s.runs);
