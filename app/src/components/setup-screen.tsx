@@ -104,7 +104,7 @@ export function SetupScreen({ onComplete }: SetupScreenProps = {}) {
       <div className="relative z-10 flex w-full max-w-md flex-col gap-6 rounded-xl border bg-card p-10 shadow-lg">
         <div className="flex flex-col gap-1.5 text-center">
           <img src="/icon-dark-256.png" alt="Skill Builder" className="mx-auto mb-2 size-14 block dark:hidden" />
-          <img src="/icon-256.png" alt="Skill Builder" className="mx-auto mb-2 size-14 hidden dark:block" />
+          <img src="/icon-light-256.png" alt="Skill Builder" className="mx-auto mb-2 size-14 hidden dark:block" />
           <h1 className="text-2xl font-bold tracking-tight">Welcome to Skill Builder</h1>
           <p className="text-sm text-muted-foreground">
             Set up your API key and skills folder to get started.
