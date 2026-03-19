@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw, SendHorizontal, ShieldCheck, X } from "lucide-react";
+import { FlaskConical, RefreshCw, SendHorizontal, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ const COMMANDS: {
 }[] = [
   { value: "rewrite", label: "Rewrite skill", icon: RefreshCw },
   { value: "validate", label: "Validate skill", icon: ShieldCheck },
+  { value: "benchmark", label: "Benchmark skill", icon: FlaskConical },
 ];
 
 /** Cycle to the next/previous item in a list, wrapping around. */
@@ -262,7 +263,7 @@ export function ChatInputBar({
               className="gap-1.5"
             >
               <cmd.icon className="size-3.5" />
-              {cmd.value === "rewrite" ? "Rewrite" : "Validate"}
+              {cmd.value[0].toUpperCase() + cmd.value.slice(1)}
             </Button>
           );
         })}

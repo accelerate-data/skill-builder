@@ -264,12 +264,10 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           store.setGitDiff(finalized.diff);
           toast.info("Refinement complete");
 
-          // Offer benchmark when skill files actually changed and this wasn't
-          // already a benchmark or validation run.
+          // Offer benchmark only after an explicit /rewrite that changed files.
           const userMessages = store.messages.filter((m: RefineMessage) => m.role === "user");
           const lastMsg = userMessages.length > 0 ? userMessages[userMessages.length - 1] : undefined;
-          const wasEditCommand = !lastMsg?.command || lastMsg.command === "rewrite";
-          if (wasEditCommand && finalized.diff.files.length > 0) {
+          if (lastMsg?.command === "rewrite" && finalized.diff.files.length > 0) {
             store.addBenchmarkPrompt();
           }
         } catch {
@@ -367,7 +365,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   // --- Benchmark prompt callbacks ---
   const handleBenchmarkConfirm = useCallback(() => {
     console.log("[workspace-refine] benchmark confirmed");
-    void handleSend("Run benchmarks on the updated skill", undefined, "benchmark");
+    void handleSend("", undefined, "benchmark");
   }, [handleSend]);
 
   const handleBenchmarkSkip = useCallback(() => {

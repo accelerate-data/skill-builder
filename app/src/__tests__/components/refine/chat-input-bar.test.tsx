@@ -84,11 +84,13 @@ describe("ChatInputBar", () => {
     const sendBtn = screen.getByTestId("refine-send-button");
     const rewriteBtn = screen.getByTestId("refine-action-rewrite");
     const validateBtn = screen.getByTestId("refine-action-validate");
+    const benchmarkBtn = screen.getByTestId("refine-action-benchmark");
 
     expect(input).toBeDisabled();
     expect(sendBtn).toBeDisabled();
     expect(rewriteBtn).toBeDisabled();
     expect(validateBtn).toBeDisabled();
+    expect(benchmarkBtn).toBeDisabled();
   });
 
   it("disables send button when input is empty", () => {
@@ -111,7 +113,7 @@ describe("ChatInputBar", () => {
 
   // --- Slash command picker ---
 
-  it("shows visible rewrite and validate action buttons", () => {
+  it("shows visible rewrite, validate, and benchmark action buttons", () => {
     renderBar();
 
     expect(screen.getByTestId("refine-action-rewrite")).toHaveAccessibleName(
@@ -119,6 +121,9 @@ describe("ChatInputBar", () => {
     );
     expect(screen.getByTestId("refine-action-validate")).toHaveAccessibleName(
       "Validate skill",
+    );
+    expect(screen.getByTestId("refine-action-benchmark")).toHaveAccessibleName(
+      "Benchmark skill",
     );
   });
 
@@ -163,6 +168,9 @@ describe("ChatInputBar", () => {
       expect(
         screen.getByRole("option", { name: "Validate skill" }),
       ).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "Benchmark skill" }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -186,6 +194,17 @@ describe("ChatInputBar", () => {
         "/rewrite",
       );
     });
+  });
+
+  it("selects benchmark from the visible action button", async () => {
+    const user = userEvent.setup();
+    renderBar();
+
+    await user.click(screen.getByTestId("refine-action-benchmark"));
+
+    expect(screen.getByTestId("refine-command-badge")).toHaveTextContent(
+      "/benchmark",
+    );
   });
 
   it("sends with the active command", async () => {
@@ -441,8 +460,9 @@ describe("ChatInputBar", () => {
       ).toBeInTheDocument();
     });
 
-    // Two commands: rewrite (0), validate (1). Start at rewrite (0).
-    // ArrowDown → validate (1), ArrowDown → wraps to rewrite (0), Enter selects rewrite
+    // Three commands: rewrite (0), validate (1), benchmark (2). Start at rewrite (0).
+    // ArrowDown → validate (1), ArrowDown → benchmark (2), ArrowDown → wraps to rewrite (0), Enter selects rewrite
+    fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
