@@ -69,6 +69,8 @@ Do not ask permission for non-destructive work. Only confirm with user:
    - `In Progress`: continue (assign to me if missing).
    - `In Review`: move back to `In Progress`.
 4. Create or reuse worktree at `../worktrees/<branchName>`.
+   - If the branch is already checked out in the main worktree, detach main first (`git checkout --detach`) before creating the worktree.
+   - Never implement directly in the main worktree. If worktree creation fails, stop and report the error.
 
 ## Approach Selection
 
