@@ -15,7 +15,8 @@ const EXPECTED_AGENTS = [
 /** Plugin-hosted agents: agent name → plugin path relative to PLUGINS_DIR */
 const PLUGIN_AGENTS: Record<string, string> = {
   "generate-skill": "skill-creator/agents/generate-skill.md",
-  "refine-skill": "skill-creator/agents/refine-skill.md",
+  "rewrite-skill": "skill-creator/agents/rewrite-skill.md",
+  "benchmark-skill": "skill-creator/agents/benchmark-skill.md",
   "research-orchestrator": "skill-content-researcher/agents/research-orchestrator.md",
   "detailed-research": "skill-content-researcher/agents/detailed-research.md",
 };
@@ -231,10 +232,22 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     expect(content).toMatch(/Top-level keys|version.*metadata.*decisions/i);
   });
 
-  it("generate-skill returns generated status with benchmark_status", () => {
+  it("generate-skill returns generated status", () => {
     const content = fs.readFileSync(resolveAgentPath("generate-skill"), "utf8");
     expect(content).toMatch(/status.*generated/);
+    expect(content).toMatch(/call_trace/);
+  });
+
+  it("benchmark-skill returns benchmarked status with benchmark_status", () => {
+    const content = fs.readFileSync(resolveAgentPath("benchmark-skill"), "utf8");
+    expect(content).toMatch(/status.*benchmarked/);
     expect(content).toMatch(/benchmark_status/);
+  });
+
+  it("rewrite-skill returns rewritten status", () => {
+    const content = fs.readFileSync(resolveAgentPath("rewrite-skill"), "utf8");
+    expect(content).toMatch(/status.*rewritten/);
+    expect(content).toMatch(/call_trace/);
   });
 
   it("answer-evaluator returns verdict enum and per_question array", () => {
@@ -357,9 +370,9 @@ describe("skill-creator plugin structure", () => {
     const content = fs.readFileSync(skillPath, "utf8");
 
     // Aggregation + optimization scripts via python -m under scripts/
-    expect(content).toMatch(/python -m scripts\.aggregate_benchmark/);
-    expect(content).toMatch(/python -m scripts\.run_loop/);
-    expect(content).toMatch(/python -m scripts\.package_skill/);
+    expect(content).toMatch(/python3 -m scripts\.aggregate_benchmark/);
+    expect(content).toMatch(/python3 -m scripts\.run_loop/);
+    expect(content).toMatch(/python3 -m scripts\.package_skill/);
 
     // Eval viewer launched via generate_review.py (relative or with skill-creator-path placeholder)
     expect(content).toMatch(/generate_review\.py/);

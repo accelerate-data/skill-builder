@@ -34,21 +34,9 @@ pub(crate) fn generate_skill_id(skill_name: &str) -> String {
     format!("imp-{}-{}", skill_name, timestamp)
 }
 
-/// Recursively copy a directory's contents from src to dst.
+/// Recursively copy a directory's contents from src to dst (delegates to shared fs_utils).
 pub(crate) fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
-    for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-
-        if src_path.is_dir() {
-            fs::create_dir_all(&dst_path).map_err(|e| e.to_string())?;
-            copy_dir_recursive(&src_path, &dst_path)?;
-        } else {
-            fs::copy(&src_path, &dst_path).map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
+    crate::fs_utils::copy_dir_recursive(src, dst)
 }
 
 /// Find SKILL.md in the zip archive, either at the root or one level deep.

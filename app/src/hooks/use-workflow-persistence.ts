@@ -205,7 +205,7 @@ export function useWorkflowPersistence({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [steps, currentStep, skillName, purpose, hydrated]);
+  }, [steps, currentStep, skillName, purpose, hydrated, workspacePath]);
 
   return {
     errorHasArtifacts,

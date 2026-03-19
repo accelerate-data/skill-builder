@@ -200,13 +200,38 @@ pub async fn send_refine_message(
 
     if matches!(
         dispatch,
-        RefineDispatch::DirectValidate | RefineDispatch::DirectRewrite
+        RefineDispatch::DirectValidate | RefineDispatch::DirectRewrite | RefineDispatch::DirectBenchmark
     ) {
         let direct_agent_name = match dispatch {
             RefineDispatch::DirectValidate => VALIDATE_AGENT_NAME,
-            RefineDispatch::DirectRewrite => GENERATE_AGENT_NAME,
+            RefineDispatch::DirectRewrite => REWRITE_AGENT_NAME,
+            RefineDispatch::DirectBenchmark => BENCHMARK_AGENT_NAME,
             RefineDispatch::Stream => unreachable!(),
         };
+
+        // Snapshot the current skill before rewrite so benchmark can compare
+        if dispatch == RefineDispatch::DirectRewrite {
+            snapshot_skill_for_benchmark(&runtime.skills_path, &workspace_path, &skill_name);
+        }
+
+        let baseline_mode = match dispatch {
+            RefineDispatch::DirectBenchmark => Some("prior_version"),
+            _ => None,
+        };
+        // Resolve snapshot path for benchmark agent
+        let snapshot_dir = if dispatch == RefineDispatch::DirectBenchmark {
+            let snap = std::path::Path::new(&workspace_path)
+                .join(&skill_name)
+                .join("skill-snapshot");
+            if snap.join("SKILL.md").exists() {
+                Some(snap.to_string_lossy().replace('\\', "/"))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let prompt = build_direct_agent_prompt(
             direct_agent_name,
             &skill_name,
@@ -214,6 +239,8 @@ pub async fn send_refine_message(
             &runtime.skills_path,
             &user_message,
             target_files.as_deref(),
+            baseline_mode,
+            snapshot_dir.as_deref(),
         );
         log::debug!(
             "[send_refine_message] direct prompt ({} chars) for skill '{}' command={:?}",
@@ -247,6 +274,17 @@ pub async fn send_refine_message(
                 log::error!("[send_refine_message] Failed to send direct request: {}", e);
                 e
             })?;
+
+        // Direct-dispatch agents run outside the streaming session.
+        // Reset stream_started so a follow-up streaming message will
+        // correctly start a new stream instead of pushing into the
+        // (now-stale) previous streaming context.
+        {
+            let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
+            if let Some(session) = map.get_mut(&session_id) {
+                session.stream_started = false;
+            }
+        }
 
         return Ok(agent_id);
     }

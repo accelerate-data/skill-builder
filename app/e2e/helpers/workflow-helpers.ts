@@ -31,6 +31,10 @@ export const WORKFLOW_OVERRIDES: Record<string, unknown> = {
       current_step: null,
       status: null,
       last_modified: null,
+      tags: [],
+      author_login: null,
+      author_avatar: null,
+      intake_json: null,
     },
   ],
   get_workflow_state: { run: null, steps: [] },
@@ -76,7 +80,7 @@ export async function navigateToWorkflow(
   }, merged);
   await page.goto("/skill/test-skill");
   await waitForAppReady(page);
-  await page.getByText("Workflow Steps").waitFor({ timeout: 10_000 });
+  await page.getByText("STEPS").waitFor({ timeout: 10_000 });
 }
 
 /**

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WorkflowStep } from "@/stores/workflow-store";
+import { WORKFLOW_STEP_DEFINITIONS } from "@/lib/workflow-steps";
 
 function StepStatusIcon({ status, isDisabled }: { status: WorkflowStep["status"]; isDisabled?: boolean }) {
   if (isDisabled) {
@@ -77,7 +78,7 @@ export function WorkflowSidebar({
                       !isDisabled && isCurrent && "text-foreground"
                     )}
                   >
-                    {step.id + 1}. {step.name}
+                    {step.id + 1}. {WORKFLOW_STEP_DEFINITIONS.find((d) => d.id === step.id)?.name ?? step.name}
                   </span>
                   {isDisabled && (
                     <span className="text-xs text-muted-foreground/60">Skipped</span>

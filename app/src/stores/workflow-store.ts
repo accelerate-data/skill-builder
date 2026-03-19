@@ -38,7 +38,6 @@ interface WorkflowState {
   pendingNoReviewMode: boolean;
 
   initWorkflow: (skillName: string, purpose?: string, initialReviewMode?: boolean) => void;
-  setPurpose: (purpose: string | null) => void;
   setReviewMode: (mode: boolean) => void;
   setCurrentStep: (step: number) => void;
   updateStepStatus: (stepId: number, status: WorkflowStep["status"]) => void;
@@ -59,6 +58,7 @@ interface WorkflowState {
   clearRuntimeError: () => void;
   setGateLoading: (loading: boolean) => void;
   setPendingNoReviewMode: (mode: boolean) => void;
+  updateStepLabel: (stepId: number, name: string, description: string) => void;
   reset: () => void;
 }
 
@@ -98,11 +98,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       initProgressMessage: null,
       runtimeError: null,
       gateLoading: false,
-      hydrated: false,
+          hydrated: false,
       disabledSteps: [],
     }),
-
-  setPurpose: (purpose) => set({ purpose }),
 
   setReviewMode: (mode) => set({ reviewMode: mode }),
 
@@ -152,6 +150,13 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   setGateLoading: (loading) => set({ gateLoading: loading }),
   setPendingNoReviewMode: (mode) => set({ pendingNoReviewMode: mode }),
+
+  updateStepLabel: (stepId, name, description) =>
+    set((state) => ({
+      steps: state.steps.map((s) =>
+        s.id === stepId ? { ...s, name, description } : s
+      ),
+    })),
 
   resetToStep: (stepId) =>
     set((state) => ({
@@ -220,7 +225,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       initProgressMessage: null,
       runtimeError: null,
       gateLoading: false,
-      hydrated: false,
+          hydrated: false,
       disabledSteps: [],
     }),
 }));

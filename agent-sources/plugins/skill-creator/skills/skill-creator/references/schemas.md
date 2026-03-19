@@ -276,12 +276,7 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
     }
   },
 
-  "notes": [
-    "Assertion 'Output is a PDF file' passes 100% in both configurations - may not differentiate skill value",
-    "Eval 3 shows high variance (50% ± 40%) - may be flaky or model-dependent",
-    "Without-skill runs consistently fail on table extraction expectations",
-    "Skill adds 13s average execution time but improves pass rate by 50%"
-  ]
+  "notes": "## Analyst Observations\n\n| Eval | with_skill | without_skill | Δ |\n|---|---|---|---|\n| 1 | 100% | 43% | +57pp |\n\n- Eval 3 baseline is highest (67%) — general knowledge covers most of it\n- Skill adds 13s avg but improves pass rate by 50%"
 }
 ```
 
@@ -300,7 +295,7 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
 - `run_summary`: Statistical aggregates per configuration
   - `with_skill` / `without_skill`: Each contains `pass_rate`, `time_seconds`, `tokens` objects with `mean` and `stddev` fields
   - `delta`: Difference strings like `"+0.50"`, `"+13.0"`, `"+1700"`
-- `notes`: Freeform observations from the analyzer
+- `notes`: Markdown string with analyst observations (written by benchmark-skill Step 4 from `analyst-notes.md`)
 
 **Important:** The viewer reads these field names exactly. Using `config` instead of `configuration`, or putting `pass_rate` at the top level of a run instead of nested under `result`, will cause the viewer to show empty/zero values. Always reference this schema when generating benchmark.json manually.
 

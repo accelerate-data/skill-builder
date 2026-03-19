@@ -24,7 +24,7 @@ pub fn get_data_dir(data_dir: tauri::State<'_, crate::DataDir>) -> Result<String
 pub(crate) fn run_settings_startup_migrations(
     conn: &rusqlite::Connection,
 ) -> Result<(), String> {
-    let mut settings = crate::db::read_settings_hydrated(conn)?;
+    let mut settings = crate::db::read_settings(conn)?;
     let mut dirty = false;
 
     // Migrate legacy marketplace_url → marketplace_registries on first run
@@ -92,7 +92,7 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
         log::error!("[get_settings] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    let settings = crate::db::read_settings_hydrated(&conn)?;
+    let settings = crate::db::read_settings(&conn)?;
     Ok(settings)
 }
 
@@ -317,31 +317,9 @@ fn move_directory(src: &std::path::Path, dst: &std::path::Path) -> Result<(), St
     Ok(())
 }
 
-/// Recursively copy a directory.
+/// Recursively copy a directory (delegates to shared fs_utils).
 fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
-    fs::create_dir_all(dst).map_err(|e| format!("Failed to create {}: {}", dst.display(), e))?;
-
-    for entry in
-        fs::read_dir(src).map_err(|e| format!("Failed to read {}: {}", src.display(), e))?
-    {
-        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-
-        if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
-        } else {
-            fs::copy(&src_path, &dst_path).map_err(|e| {
-                format!(
-                    "Failed to copy {} to {}: {}",
-                    src_path.display(),
-                    dst_path.display(),
-                    e
-                )
-            })?;
-        }
-    }
-    Ok(())
+    crate::fs_utils::copy_dir_recursive(src, dst)
 }
 
 #[tauri::command]

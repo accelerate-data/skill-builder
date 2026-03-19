@@ -12,7 +12,7 @@ test.describe("Startup Error (agent-init-error)", { tag: "@setup" }, () => {
 
     await page.goto("/skill/test-skill");
     await waitForAppReady(page);
-    await page.getByText("Workflow Steps").waitFor({ timeout: 10_000 });
+    await page.getByText("STEPS").waitFor({ timeout: 10_000 });
 
     // Simulate the agent-init-error event firing (e.g. Node.js not found)
     await simulateAgentInitError(page, {
@@ -41,7 +41,7 @@ test.describe("Startup Error (agent-init-error)", { tag: "@setup" }, () => {
 
     await page.goto("/skill/test-skill");
     await waitForAppReady(page);
-    await page.getByText("Workflow Steps").waitFor({ timeout: 10_000 });
+    await page.getByText("STEPS").waitFor({ timeout: 10_000 });
 
     await simulateAgentInitError(page, {
       errorType: "spawn_failed",

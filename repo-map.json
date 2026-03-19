@@ -88,7 +88,7 @@
   "modules": {
     "frontend_components": {
       "path": "app/src/components/",
-      "description": "Reusable UI components. Sub-directories: agent-items/ (display item renderers: base, error, output, result, subagent, thinking, tool), layout/ (app-layout, sidebar/icon-rail), refine/ (chat panel, chat input, preview panel, git patch view), settings/ (general, github, marketplace, sdk, advanced, usage sections), ui/ (shadcn/ui primitives), workspace/ (workspace-shell, workspace-overview, workspace-refine — shown when a complete/imported/marketplace skill is selected in app-layout). Flat components include skill-list-panel (260px panel), skill cards, dialogs (delete, import, github, skill, feedback, reset, transition-gate), clarifications-editor, workflow-step-complete, agent panels, and more."
+      "description": "Reusable UI components. Sub-directories: agent-items/ (display item renderers: base, error, output, result, subagent, thinking, tool), layout/ (app-layout, sidebar/icon-rail), refine/ (chat panel, chat input, preview panel, git patch view, benchmark-prompt-inline), settings/ (general, github, marketplace, sdk, advanced, usage sections), ui/ (shadcn/ui primitives), workspace/ (workspace-shell, workspace-overview, workspace-refine — shown when a complete/imported/marketplace skill is selected in app-layout), step-complete/ (per-step completion views: research, detailed-research, decisions, benchmark, file-viewer + shared hooks use-step-files, use-benchmark-data). Flat components include skill-list-panel (260px panel), skill cards, dialogs (delete, import, github, skill, feedback, reset, transition-gate, benchmark-confirm), clarifications-editor, agent panels, and more."
     },
     "frontend_pages": {
       "path": "app/src/pages/",
@@ -96,7 +96,7 @@
     },
     "frontend_stores": {
       "path": "app/src/stores/",
-      "description": "Zustand state stores: agent, auth, imported-skills, refine, settings, skill, test, usage, workflow"
+      "description": "Zustand state stores: agent (+ agent-display-buffer), auth, imported-skills, refine, settings, skill, test, usage, workflow"
     },
     "frontend_hooks": {
       "path": "app/src/hooks/",
@@ -128,7 +128,7 @@
     },
     "sidecar_core": {
       "path": "app/sidecar/",
-      "description": "Supporting sidecar modules: persistent-mode.ts (message demultiplexer, routes one-shot vs streaming requests), run-agent.ts (executes a single agent request), stream-session.ts (async generator push pattern for multi-turn streaming), message-processor.ts (transforms SDK messages into DisplayItems and AgentEvents), message-classifier.ts (classifies SDK message types), run-metadata-accumulator.ts (accumulates run-level metadata), tool-summaries.ts (context-aware tool call summaries), display-types.ts (DisplayItem types), config.ts + options.ts (SDK config builders), error-labels.ts (user-facing error strings), research-tools.ts (research tool definitions), shutdown.ts (graceful shutdown handler)"
+      "description": "Supporting sidecar modules: persistent-mode.ts (message demultiplexer, routes one-shot vs streaming requests), run-agent.ts (executes a single agent request), stream-session.ts (async generator push pattern for multi-turn streaming), message-processor.ts (transforms SDK messages into DisplayItems and AgentEvents), message-classifier.ts (classifies SDK message types), run-metadata-accumulator.ts (accumulates run-level metadata), tool-summaries.ts (context-aware tool call summaries), display-types.ts (DisplayItem types), config.ts + options.ts (SDK config builders), error-labels.ts (user-facing error strings), shutdown.ts (graceful shutdown handler)"
     },
     "sidecar_mock": {
       "path": "app/sidecar/mock-agent.ts",
@@ -136,7 +136,7 @@
     },
     "agent_prompts": {
       "path": "agent-sources/agents/",
-      "description": "Flat directory of .md agent prompts: answer-evaluator, confirm-decisions, eval-skill, validate-quality, validate-skill. Plugin-hosted agents: generate-skill and refine-skill under agent-sources/plugins/skill-creator/agents/; research-orchestrator and detailed-research under agent-sources/plugins/skill-content-researcher/agents/"
+      "description": "Flat directory of .md agent prompts: answer-evaluator, confirm-decisions, eval-skill, validate-quality, validate-skill. Plugin-hosted agents: generate-skill, rewrite-skill, and benchmark-skill under agent-sources/plugins/skill-creator/agents/; research-orchestrator and detailed-research under agent-sources/plugins/skill-content-researcher/agents/"
     },
     "agent_plugins": {
       "path": "agent-sources/plugins/",
@@ -156,7 +156,7 @@
     },
     "rust_support": {
       "path": "app/src-tauri/src/",
-      "description": "Top-level Rust support modules (not commands or DB): cleanup.rs (future-step artifact cleanup), fs_validation.rs (detect_furthest_step, has_skill_output, path validation helpers), git.rs (git commit/init helpers for skill output repos), logging.rs (structured logging setup, log-level management)."
+      "description": "Top-level Rust support modules (not commands or DB): cleanup.rs (future-step artifact cleanup), fs_utils.rs (canonical copy_dir_recursive with symlink guard — single implementation used by all recursive directory copies), fs_validation.rs (detect_furthest_step, has_skill_output, path validation helpers), git.rs (git commit/init helpers for skill output repos), logging.rs (structured logging setup, log-level management)."
     },
     "frontend_test_utils": {
       "path": "app/src/test/",

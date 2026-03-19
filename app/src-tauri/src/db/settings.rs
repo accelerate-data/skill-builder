@@ -15,13 +15,6 @@ pub fn read_settings(conn: &Connection) -> Result<AppSettings, String> {
     }
 }
 
-/// Read settings (including secrets stored directly in SQLite).
-///
-/// Alias for `read_settings()` — kept for call-site compatibility.
-pub fn read_settings_hydrated(conn: &Connection) -> Result<AppSettings, String> {
-    read_settings(conn)
-}
-
 pub fn write_settings(conn: &Connection, settings: &AppSettings) -> Result<(), String> {
     let json = serde_json::to_string(settings).map_err(|e| e.to_string())?;
     conn.execute(
@@ -126,19 +119,4 @@ mod tests {
         assert_eq!(row_count, 1);
     }
 
-    #[test]
-    fn test_read_settings_hydrated_is_alias_for_read_settings() {
-        let conn = create_test_db_for_tests();
-
-        let settings = make_settings(Some("/my/path"), None);
-        write_settings(&conn, &settings).unwrap();
-
-        let via_read = read_settings(&conn).unwrap();
-        let via_hydrated = read_settings_hydrated(&conn).unwrap();
-
-        assert_eq!(
-            via_read.workspace_path, via_hydrated.workspace_path,
-            "read_settings_hydrated must return the same data as read_settings"
-        );
-    }
 }

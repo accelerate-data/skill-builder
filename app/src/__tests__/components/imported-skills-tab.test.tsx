@@ -135,7 +135,7 @@ describe("ImportedSkillsTab", () => {
     render(<ImportedSkillsTab />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Import" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Upload" })).toBeInTheDocument();
     });
   });
 
@@ -249,7 +249,7 @@ describe("ImportedSkillsTab", () => {
       expect(screen.getByText("No imported skills")).toBeInTheDocument();
     });
 
-    const importButton = screen.getByRole("button", { name: "Import" });
+    const importButton = screen.getByRole("button", { name: "Upload" });
     await user.click(importButton);
 
     await new Promise((r) => setTimeout(r, 50));

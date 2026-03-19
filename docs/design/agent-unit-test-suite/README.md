@@ -52,8 +52,8 @@ This keeps fast feedback cheap and continuous while preserving real behavior cov
 - `generate-skill-scope-guard`
 - `generate-skill-contradictory`
 - `generate-skill-revised`
-- `refine-skill`
-- `refine-skill-scope-guard`
+- `rewrite-skill`
+- `rewrite-skill-scope-guard`
 - `validate-skill-scope-guard`
 - `validate-skill-missing-skill-md`
 - `skill-test-contract`

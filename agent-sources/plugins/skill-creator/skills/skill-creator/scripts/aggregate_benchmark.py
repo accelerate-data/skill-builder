@@ -7,14 +7,14 @@ Reads grading.json files from run directories and produces:
 - delta between with_skill and without_skill configurations
 
 Usage:
-    python aggregate_benchmark.py <benchmark_dir>
+    python3 aggregate_benchmark.py <benchmark_dir>
 
 Example:
-    python aggregate_benchmark.py benchmarks/2026-01-15T10-30-00/
+    python3 aggregate_benchmark.py benchmarks/2026-01-15T10-30-00/
 
-The script supports two directory layouts:
+The script supports three directory layouts:
 
-    Workspace layout (from skill-creator iterations):
+    Multi-run layout (run-1/, run-2/, etc.):
     <benchmark_dir>/
     └── eval-N/
         ├── with_skill/
@@ -23,6 +23,14 @@ The script supports two directory layouts:
         └── without_skill/
             ├── run-1/grading.json
             └── run-2/grading.json
+
+    Flat layout (grading.json directly in config dir, treated as run-1):
+    <benchmark_dir>/
+    └── eval-N/
+        ├── with_skill/
+        │   └── grading.json
+        └── without_skill/
+            └── grading.json
 
     Legacy layout (with runs/ subdirectory):
     <benchmark_dir>/
@@ -64,6 +72,17 @@ def calculate_stats(values: list[float]) -> dict:
     }
 
 
+def _load_analyst_notes(benchmark_dir: Path) -> str:
+    """Read analyst-notes.md from the benchmark directory if it exists."""
+    notes_path = benchmark_dir / "analyst-notes.md"
+    if notes_path.exists():
+        try:
+            return notes_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
+    return ""
+
+
 def load_run_results(benchmark_dir: Path) -> dict:
     """
     Load all run results from a benchmark directory.
@@ -101,15 +120,26 @@ def load_run_results(benchmark_dir: Path) -> dict:
         for config_dir in sorted(eval_dir.iterdir()):
             if not config_dir.is_dir():
                 continue
+
+            has_runs = list(config_dir.glob("run-*"))
+            has_flat_grading = (config_dir / "grading.json").exists()
+
             # Skip non-config directories (inputs, outputs, etc.)
-            if not list(config_dir.glob("run-*")):
+            if not has_runs and not has_flat_grading:
                 continue
+
             config = config_dir.name
             if config not in results:
                 results[config] = []
 
-            for run_dir in sorted(config_dir.glob("run-*")):
-                run_number = int(run_dir.name.split("-")[1])
+            if has_runs:
+                # Multi-run layout: run-1/grading.json, run-2/grading.json, ...
+                run_dirs = [(rd, int(rd.name.split("-")[1])) for rd in sorted(config_dir.glob("run-*"))]
+            else:
+                # Flat layout: grading.json directly in config dir, treat as run-1
+                run_dirs = [(config_dir, 1)]
+
+            for run_dir, run_number in run_dirs:
                 grading_file = run_dir / "grading.json"
 
                 if not grading_file.exists():
@@ -123,18 +153,19 @@ def load_run_results(benchmark_dir: Path) -> dict:
                     print(f"Warning: Invalid JSON in {grading_file}: {e}")
                     continue
 
-                # Extract metrics
+                # Extract metrics (use `or` to guard against explicit null values)
+                summary = grading.get("summary") or {}
                 result = {
                     "eval_id": eval_id,
                     "run_number": run_number,
-                    "pass_rate": grading.get("summary", {}).get("pass_rate", 0.0),
-                    "passed": grading.get("summary", {}).get("passed", 0),
-                    "failed": grading.get("summary", {}).get("failed", 0),
-                    "total": grading.get("summary", {}).get("total", 0),
+                    "pass_rate": summary.get("pass_rate", 0.0),
+                    "passed": summary.get("passed", 0),
+                    "failed": summary.get("failed", 0),
+                    "total": summary.get("total", 0),
                 }
 
                 # Extract timing — check grading.json first, then sibling timing.json
-                timing = grading.get("timing", {})
+                timing = grading.get("timing") or {}
                 result["time_seconds"] = timing.get("total_duration_seconds", 0.0)
                 timing_file = run_dir / "timing.json"
                 if result["time_seconds"] == 0.0 and timing_file.exists():
@@ -147,21 +178,21 @@ def load_run_results(benchmark_dir: Path) -> dict:
                         pass
 
                 # Extract metrics if available
-                metrics = grading.get("execution_metrics", {})
+                metrics = grading.get("execution_metrics") or {}
                 result["tool_calls"] = metrics.get("total_tool_calls", 0)
                 if not result.get("tokens"):
                     result["tokens"] = metrics.get("output_chars", 0)
                 result["errors"] = metrics.get("errors_encountered", 0)
 
                 # Extract expectations — viewer requires fields: text, passed, evidence
-                raw_expectations = grading.get("expectations", [])
+                raw_expectations = grading.get("expectations") or []
                 for exp in raw_expectations:
                     if "text" not in exp or "passed" not in exp:
                         print(f"Warning: expectation in {grading_file} missing required fields (text, passed, evidence): {exp}")
                 result["expectations"] = raw_expectations
 
                 # Extract notes from user_notes_summary
-                notes_summary = grading.get("user_notes_summary", {})
+                notes_summary = grading.get("user_notes_summary") or {}
                 notes = []
                 notes.extend(notes_summary.get("uncertainties", []))
                 notes.extend(notes_summary.get("needs_review", []))
@@ -268,11 +299,14 @@ def generate_benchmark(benchmark_dir: Path, skill_name: str = "", skill_path: st
             "analyzer_model": "<model-name>",
             "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "evals_run": eval_ids,
-            "runs_per_configuration": 3
+            "runs_per_configuration": max(
+                (len(config_runs) for config_runs in results.values()),
+                default=1,
+            )
         },
         "runs": runs,
         "run_summary": run_summary,
-        "notes": []  # To be filled by analyzer
+        "notes": _load_analyst_notes(benchmark_dir)  # Markdown string from analyst-notes.md
     }
 
     return benchmark
@@ -323,14 +357,16 @@ def generate_markdown(benchmark: dict) -> str:
     lines.append(f"| Tokens | {a_tokens.get('mean', 0):.0f} ± {a_tokens.get('stddev', 0):.0f} | {b_tokens.get('mean', 0):.0f} ± {b_tokens.get('stddev', 0):.0f} | {delta.get('tokens', '—')} |")
 
     # Notes section
-    if benchmark.get("notes"):
-        lines.extend([
-            "",
-            "## Notes",
-            ""
-        ])
-        for note in benchmark["notes"]:
-            lines.append(f"- {note}")
+    notes = benchmark.get("notes", "")
+    if notes:
+        lines.extend(["", "## Notes", ""])
+        if isinstance(notes, list):
+            # Legacy array format
+            for note in notes:
+                lines.append(f"- {note}")
+        else:
+            # Markdown string format
+            lines.append(str(notes))
 
     return "\n".join(lines)
 

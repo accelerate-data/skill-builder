@@ -13,7 +13,7 @@ import { useSettingsStore } from "@/stores/settings-store";
 import { useSkillStore } from "@/stores/skill-store";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAuthStore } from "@/stores/auth-store";
-import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, checkMarketplaceUpdates, importMarketplaceToLibrary, checkSkillCustomized, listModels } from "@/lib/tauri";
+import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, checkMarketplaceUpdates, importMarketplaceToLibrary, checkSkillCustomized, listModels, listSkills } from "@/lib/tauri";
 import type { AppSettings, DiscoveredSkill, OrphanSkill, SkillUpdateInfo } from "@/lib/types";
 
 /** Filter out customized skills, returning only those safe to auto-update. */
@@ -276,7 +276,7 @@ export function AppLayout() {
       setSelectedWorkspaceSkillName(name);
       navigate({ to: "/", search: { tab: undefined } });
     },
-    [navigate],
+    [navigate, setSelectedWorkspaceSkillName],
   );
 
   const selectedBuilderSkill = builderSkills.find((s) => s.name === selectedWorkspaceSkillName);
@@ -376,6 +376,14 @@ export function AppLayout() {
               }
               if (applied.orphans.length > 0) {
                 setOrphans(applied.orphans);
+              }
+              // Refresh skill list so sidebar status dots and navigation reflect
+              // any workflow resets performed by reconciliation.
+              const wp = useSettingsStore.getState().workspacePath;
+              if (wp) {
+                listSkills(wp)
+                  .then((skills) => useSkillStore.getState().setSkills(skills))
+                  .catch((err) => console.warn("[app-layout] op=refresh_skills_after_recon status=failure err=%s", err));
               }
               setAckDone(true);
               setReconNotifications([]);

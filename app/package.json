@@ -78,5 +78,8 @@
     "typescript": "~5.8.3",
     "vite": "^7.0.4",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "fast-xml-parser": ">=5.5.6"
   }
 }

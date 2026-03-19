@@ -31,8 +31,8 @@ export function resolveStepTemplate(
   if (agentName === "skill-content-researcher:detailed-research") return "step1-detailed-research";
   if (agentName === "confirm-decisions") return "step2-confirm-decisions";
   if (agentName === "skill-creator:generate-skill") return "step3-generate-skill";
-  if (agentName === "skill-creator:refine-skill") return "refine";
-  if (agentName === "rewrite-skill") return "rewrite-skill";
+  if (agentName === "skill-creator:rewrite-skill") return "rewrite-skill";
+  if (agentName === "skill-creator:benchmark-skill") return "benchmark-skill";
   if (agentName === "answer-evaluator") return "gate-answer-evaluator";
 
   // Research orchestrator (plugin-qualified) and all sub-agents spawned by the research skill
@@ -54,11 +54,6 @@ export function resolveStepTemplate(
     return skillName && skillName !== "__test_baseline__" ? "test-plan-with" : "test-plan-without";
   }
 
-  // Legacy bare names kept for backward compatibility
-  if (agentName === "test-plan-with") return "test-plan-with";
-  if (agentName === "test-plan-without") return "test-plan-without";
-  if (agentName === "test-evaluator") return "test-evaluator";
-
   return null;
 }
 
@@ -69,8 +64,8 @@ function getOutputDir(stepTemplate: string): string {
     "step1-detailed-research": "step1",
     "step2-confirm-decisions": "step2",
     "step3-generate-skill": "step3",
-    "refine": "refine",
     "rewrite-skill": "refine",
+    "benchmark-skill": "benchmark",
     "gate-answer-evaluator": "gate-answer-evaluator",
   };
   return stepMap[stepTemplate] || "";
@@ -117,17 +112,6 @@ export function parsePromptPaths(prompt: string): {
   };
 }
 
-/**
- * Resolve all paths from the prompt. Paths are now inline in the prompt string.
- */
-export function resolvePromptPaths(prompt: string): {
-  workspaceDir: string | null;
-  contextDir: string | null;
-  skillOutputDir: string | null;
-  skillDir: string | null;
-} {
-  return parsePromptPaths(prompt);
-}
 
 /** Check if a path exists (async replacement for fs.existsSync). */
 async function pathExists(p: string): Promise<boolean> {
@@ -319,7 +303,7 @@ async function writeMockOutputFiles(
 
   if (!(await pathExists(srcDir))) return;
 
-  const paths = resolvePromptPaths(config.prompt);
+  const paths = parsePromptPaths(config.prompt);
 
   // Determine the destination root for this step's files.
   //
@@ -331,22 +315,12 @@ async function writeMockOutputFiles(
   if (stepTemplate === "gate-answer-evaluator") {
     // Gate: answer-evaluation.json is an internal file written to the workspace directory.
     destRoot = paths.workspaceDir ?? config.cwd;
-  } else if (stepTemplate === "refine-skill") {
-    // Refine: files go directly to cwd (the skill directory)
-    destRoot = config.cwd;
   } else if (stepTemplate === "step3-generate-skill") {
     // Step 3: files go to skill output dir (may differ from skill dir when skills_path is set)
     destRoot = paths.skillOutputDir ?? paths.skillDir ?? config.cwd;
-
-    // Also write mock benchmark.json to workspace dir for the frontend benchmark card
-    if (paths.workspaceDir) {
-      const benchDir = path.join(paths.workspaceDir, "evals", "workspace", "iteration-1");
-      await fs.mkdir(benchDir, { recursive: true });
-      const mockBenchmarkSrc = path.join(__dirname, "mock-templates", "outputs", "step3", "benchmark.json");
-      if (await pathExists(mockBenchmarkSrc)) {
-        await fs.copyFile(mockBenchmarkSrc, path.join(benchDir, "benchmark.json"));
-      }
-    }
+  } else if (stepTemplate === "benchmark-skill") {
+    // Benchmark: evals directory tree is relative to the workspace directory
+    destRoot = paths.workspaceDir ?? config.cwd;
   } else {
     // Steps 0, 1, 2: context files go under the skill directory.
     // The mock template has outputs/{stepN}/context/... so we strip the
@@ -485,6 +459,20 @@ export async function buildStructuredMockResult(
     if (!skillMd) return null;
     return {
       status: "generated",
+      call_trace: ["read-user-context", "write-skill", "write-evals"],
+    };
+  }
+
+  if (stepTemplate === "rewrite-skill") {
+    return {
+      status: "rewritten",
+      call_trace: ["read-user-context", "read-existing-skill", "rewrite-skill"],
+    };
+  }
+
+  if (stepTemplate === "benchmark-skill") {
+    return {
+      status: "benchmarked",
       benchmark_status: "complete",
       benchmark_path: "evals/workspace/iteration-1",
     };

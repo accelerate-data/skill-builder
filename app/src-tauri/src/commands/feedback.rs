@@ -28,7 +28,7 @@ pub async fn create_github_issue(
             log::error!("[create_github_issue] Failed to acquire DB lock: {}", e);
             e.to_string()
         })?;
-        let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
+        let settings = crate::db::read_settings(&conn).map_err(|e| {
             log::error!("[create_github_issue] Failed to read settings: {}", e);
             e.to_string()
         })?;
@@ -152,7 +152,7 @@ mod tests {
         // Directly test the token retrieval logic via a Tauri-less path:
         // read settings, confirm no token
         let inner_conn = db.0.lock().unwrap();
-        let settings = crate::db::read_settings_hydrated(&inner_conn).unwrap();
+        let settings = crate::db::read_settings(&inner_conn).unwrap();
         let result: Result<String, String> = settings
             .github_oauth_token
             .ok_or_else(|| "Not signed in to GitHub. Sign in with GitHub in Settings.".to_string());

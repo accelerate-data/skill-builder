@@ -29,7 +29,7 @@ import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { AgentInitializingIndicator } from "@/components/agent-initializing-indicator";
 import { RuntimeErrorDialog } from "@/components/runtime-error-dialog";
-import { WorkflowStepComplete } from "@/components/workflow-step-complete";
+import { WorkflowStepComplete } from "@/components/step-complete";
 import ResetStepDialog from "@/components/reset-step-dialog";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";

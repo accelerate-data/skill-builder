@@ -38,7 +38,7 @@ pub(crate) fn read_workflow_settings(
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
     // Read all settings in one pass
-    let settings = crate::db::read_settings_hydrated(&conn)?;
+    let settings = crate::db::read_settings(&conn)?;
     let skills_path = settings.skills_path.ok_or_else(|| {
         "Skills path not configured. Please set it in Settings before running workflow steps."
             .to_string()

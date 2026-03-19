@@ -42,7 +42,7 @@ pub async fn generate_suggestions(
             log::error!("[generate_suggestions] Failed to acquire DB lock: {}", e);
             e.to_string()
         })?;
-        let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
+        let settings = crate::db::read_settings(&conn).map_err(|e| {
             log::error!("[generate_suggestions] Failed to read settings: {}", e);
             e
         })?;

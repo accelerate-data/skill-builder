@@ -530,7 +530,7 @@ export function createFixtureDecisions(dir: string, skillName: string) {
   );
 }
 
-// refinable-skill: session.json + user-context.md + completed SKILL.md with full frontmatter — for refine-skill agent tests
+// refinable-skill: session.json + user-context.md + completed SKILL.md with full frontmatter — for rewrite-skill agent tests
 export function createFixtureRefinableSkill(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "refinement");
   writeUserContextMd(dir, skillName);

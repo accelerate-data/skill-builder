@@ -26,12 +26,6 @@ import { RESULT_ERROR_LABELS, ASSISTANT_ERROR_LABELS } from "./error-labels.js";
 import { RunMetadataAccumulator } from "./run-metadata-accumulator.js";
 import type { RequestContext } from "./run-metadata-accumulator.js";
 
-// Re-export extracted modules for backward compatibility
-export { truncate, computeToolSummary } from "./tool-summaries.js";
-export { RESULT_ERROR_LABELS, ASSISTANT_ERROR_LABELS } from "./error-labels.js";
-export { RunMetadataAccumulator } from "./run-metadata-accumulator.js";
-export type { RequestContext } from "./run-metadata-accumulator.js";
-
 // ---------------------------------------------------------------------------
 // Result markdown extraction
 // ---------------------------------------------------------------------------
@@ -93,7 +87,7 @@ export class MessageProcessor {
   /** Map from parent_tool_use_id → child display items (subagent grouping). */
   private subagentMap = new Map<string, DisplayItem[]>();
 
-  /** Map from toolUseId → subagent DisplayItem (Task tool calls). */
+  /** Map from toolUseId → subagent DisplayItem (Agent tool calls). */
   private subagentByToolUseId = new Map<string, DisplayItem>();
 
   /** Accumulates run-level state for run_result events. */
@@ -349,7 +343,7 @@ export class MessageProcessor {
             results.push(this.makeEnvelope(updatedItem));
           }
 
-          // If this was a subagent (Task), update its status
+          // If this was a subagent (Agent), update its status
           const subagentItem = this.subagentByToolUseId.get(toolUseId);
           if (subagentItem) {
             const childItems = this.subagentMap.get(toolUseId) ?? [];
@@ -536,7 +530,7 @@ export class MessageProcessor {
           });
           this.toolCallTimestamps.set(toolUseId, now);
 
-          // Count Task/Agent tool uses
+          // Count Agent tool uses
           this.accumulator.recordToolUse();
 
           process.stderr.write(

@@ -179,7 +179,6 @@ pub fn save_workflow_state(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::commands::test_utils::create_test_db;
     use crate::types::StepStatusUpdate;
 

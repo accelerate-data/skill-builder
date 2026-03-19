@@ -169,7 +169,7 @@ pub async fn run_workflow_step(
             &bundled_skills_dir,
             "skill-creator",
             "skill-building",
-        );
+        )?;
     }
 
     let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
@@ -207,17 +207,51 @@ pub async fn run_workflow_step(
         }
     }
 
-    // Step 0 fresh start — wipe the context directory and all artifacts so
-    // the agent doesn't see stale files from a previous workflow run.
-    // Context lives in workspace_path.
-    if step_id == 0 && context_dir.is_dir() {
+    // Clean stale artifacts before the agent runs so it starts from a
+    // known-clean state. Crash or re-run scenarios can leave partial output.
+    // Step 0 is a full reset — wipe context dir and all downstream artifacts
+    // (same scope as reset_workflow_step to step 0).
+    // Steps 1-3 clean only their own output.
+    // Rewrite mode goes through the refine command, not this path.
+    if step_id == 0 {
         log::debug!(
-            "[run_workflow_step] step={} step_id=0 wiping context dir {}",
-            workflow_step_log_name(0),
-            context_dir.display()
+            "[run_workflow_step] step=0 full cleanup for skill={}",
+            skill_name
         );
-        let _ = std::fs::remove_dir_all(&context_dir);
-        let _ = std::fs::create_dir_all(&context_dir);
+        if context_dir.is_dir() {
+            if let Err(e) = std::fs::remove_dir_all(&context_dir) {
+                log::warn!(
+                    "[run_workflow_step] step=0 failed to remove context dir {}: {}",
+                    context_dir.display(),
+                    e
+                );
+            }
+            if let Err(e) = std::fs::create_dir_all(&context_dir) {
+                log::warn!(
+                    "[run_workflow_step] step=0 failed to recreate context dir {}: {}",
+                    context_dir.display(),
+                    e
+                );
+            }
+        }
+        crate::cleanup::delete_step_output_files(
+            &workspace_path,
+            &skill_name,
+            0,
+            &settings.skills_path,
+        );
+    } else {
+        log::debug!(
+            "[run_workflow_step] step={} cleaning previous artifacts for skill={}",
+            step_id,
+            skill_name
+        );
+        crate::cleanup::clean_step_output(
+            &workspace_path,
+            &skill_name,
+            step_id,
+            &settings.skills_path,
+        );
     }
 
     run_workflow_step_inner(
@@ -242,6 +276,158 @@ pub async fn run_workflow_step(
     })
 }
 
+/// Run the benchmark-skill agent as a follow-up phase after generate-skill or
+/// rewrite-skill completes. The frontend calls this after receiving `agent-exit`
+/// with success from the writing phase.
+///
+/// `baseline_mode` is `"no_skill"` (after generate) or `"prior_version"` (after rewrite).
+#[tauri::command]
+pub async fn run_benchmark_phase(
+    app: tauri::AppHandle,
+    pool: tauri::State<'_, SidecarPool>,
+    db: tauri::State<'_, Db>,
+    skill_name: String,
+    workspace_path: String,
+    baseline_mode: String,
+    workflow_session_id: Option<String>,
+) -> Result<String, String> {
+    log::info!(
+        "[run_benchmark_phase] skill={} baseline_mode={}",
+        skill_name,
+        baseline_mode
+    );
+
+    // Ensure prompt files exist in workspace
+    ensure_workspace_prompts(&app, &workspace_path).await?;
+
+    // Deploy skill-creator plugin
+    {
+        let bundled_skills_dir = resolve_bundled_skills_dir(&app);
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        deploy_skill_for_workflow(
+            &conn,
+            &workspace_path,
+            &bundled_skills_dir,
+            "skill-creator",
+            "skill-building",
+        )?;
+    }
+
+    let settings = read_workflow_settings(&db, &skill_name, 3, &workspace_path)?;
+    let thinking_budget = if settings.extended_thinking {
+        Some(16_000u32)
+    } else {
+        None
+    };
+
+    // Write user-context.md so the benchmark agent can read it
+    write_user_context_file(
+        &workspace_path,
+        &skill_name,
+        &settings.tags,
+        settings.industry.as_deref(),
+        settings.function_role.as_deref(),
+        settings.intake_json.as_deref(),
+        settings.description.as_deref(),
+        Some(settings.purpose.as_str()),
+        settings.version.as_deref(),
+        settings.skill_model.as_deref(),
+        settings.argument_hint.as_deref(),
+        settings.user_invocable,
+        settings.disable_model_invocation,
+    );
+
+    let workspace_dir = Path::new(&workspace_path).join(&skill_name);
+    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let skill_output_dir = Path::new(&settings.skills_path).join(&skill_name);
+    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
+
+    let mut prompt = format!(
+        "The skill name is: {}. The workspace directory is: {}. \
+         The skill output directory (SKILL.md and references/) is: {}. \
+         Read user-context.md from the workspace directory. \
+         Derive context_dir as workspace_dir/context. \
+         All directories already exist — never create directories with mkdir or any other method.\n\n\
+         baseline_mode: {}",
+        skill_name, workspace_str, skill_output_str, baseline_mode,
+    );
+
+    // If prior_version mode, check for a snapshot created before the rewrite
+    if baseline_mode == "prior_version" {
+        let snap = workspace_dir.join("skill-snapshot");
+        if snap.join("SKILL.md").exists() {
+            prompt.push_str(&format!(
+                "\nprior_skill_snapshot_dir: {}",
+                snap.to_string_lossy().replace('\\', "/")
+            ));
+        }
+    }
+
+    let agent_name = "skill-creator:benchmark-skill";
+    let agent_id = make_agent_id(&skill_name, "benchmark");
+
+    log::info!(
+        "run_benchmark_phase: skill={} agent={} baseline_mode={}",
+        skill_name,
+        agent_name,
+        baseline_mode,
+    );
+
+    let config = SidecarConfig {
+        prompt,
+        model: None,
+        api_key: settings.api_key.clone(),
+        cwd: workspace_path.to_string(),
+        allowed_tools: Some(tools_for_agent(agent_name)),
+        max_turns: Some(200),
+        permission_mode: Some("bypassPermissions".to_string()),
+        betas: build_betas(
+            thinking_budget,
+            &settings.preferred_model,
+            settings.interleaved_thinking_beta,
+        ),
+        thinking: thinking_budget.map(|budget| {
+            serde_json::json!({
+                "type": "enabled",
+                "budgetTokens": budget
+            })
+        }),
+        fallback_model: settings.fallback_model.clone(),
+        effort: settings.sdk_effort.clone(),
+        output_format: workflow_output_format_for_agent(agent_name),
+        prompt_suggestions: None,
+        path_to_claude_code_executable: None,
+        agent_name: Some(agent_name.to_string()),
+        required_plugins: Some(vec!["skill-creator".to_string()]),
+        conversation_history: None,
+        skill_name: Some(skill_name.to_string()),
+        step_id: Some(3),
+        workflow_session_id,
+        usage_session_id: None,
+        run_source: Some("workflow".to_string()),
+    };
+
+    sidecar::spawn_sidecar(
+        agent_id.clone(),
+        config,
+        pool.inner().clone(),
+        app.clone(),
+        skill_name.to_string(),
+        None,
+    )
+    .await
+    .map_err(|e| {
+        log::error!(
+            "[run_benchmark_phase] skill={} failed: {}",
+            skill_name,
+            e
+        );
+        e
+    })?;
+
+    Ok(agent_id)
+}
+
 /// Run the answer-evaluator agent (Haiku) to assess clarification answer quality.
 /// Returns the agent ID for the frontend to subscribe to completion events.
 #[tauri::command]
@@ -261,7 +447,7 @@ pub async fn run_answer_evaluator(
     // step-specific validation (this is a gate, not a workflow step).
     let (api_key, skills_path, industry, function_role, intake_json, preferred_model) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
+        let settings = crate::db::read_settings(&conn).map_err(|e| {
             log::error!("run_answer_evaluator: failed to read settings: {}", e);
             e.to_string()
         })?;
@@ -364,10 +550,11 @@ pub async fn run_answer_evaluator(
 /// Log the user's gate decision so it appears in the backend log stream.
 #[tauri::command]
 pub fn log_gate_decision(skill_name: String, verdict: String, decision: String) {
+    let sanitize = |s: &str| s.replace('\n', "\\n").replace('\r', "\\r");
     log::info!(
         "gate_decision: skill={} verdict={} decision={}",
-        skill_name,
-        verdict,
-        decision
+        sanitize(&skill_name),
+        sanitize(&verdict),
+        sanitize(&decision)
     );
 }

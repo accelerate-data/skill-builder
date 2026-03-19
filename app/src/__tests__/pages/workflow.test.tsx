@@ -86,7 +86,7 @@ vi.mock("@/components/workflow-sidebar", () => ({
 vi.mock("@/components/agent-output-panel", () => ({
   AgentOutputPanel: () => <div data-testid="agent-output" />,
 }));
-vi.mock("@/components/workflow-step-complete", () => ({
+vi.mock("@/components/step-complete", () => ({
   WorkflowStepComplete: vi.fn(() => (
     <div data-testid="step-complete" />
   )),
@@ -115,7 +115,7 @@ import {
   verifyStepOutput,
 } from "@/lib/tauri";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
-import { WorkflowStepComplete } from "@/components/workflow-step-complete";
+import { WorkflowStepComplete } from "@/components/step-complete";
 import type { ClarificationsFile } from "@/lib/clarifications-types";
 
 // Bridge new domain context commands to existing read/write path-based assertions.
@@ -248,7 +248,6 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Running flag cleared
     expect(wf.isRunning).toBe(false);
 
-    expect(mockToast.success).toHaveBeenCalledWith("Step 1 completed");
   });
 
   it("marks step as error when agent fails — no cascade", async () => {
@@ -987,6 +986,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       useAgentStore.getState().completeRun("agent-step3-structured", true);
     });
 
+    // Step 3 generate-skill completes directly (no benchmark phase)
     await waitFor(() => {
       expect(vi.mocked(materializeWorkflowStepOutput)).toHaveBeenCalledWith(
         "test-skill",
@@ -2725,23 +2725,20 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
       useAgentStore.getState().completeRun("agent-build", true);
     });
 
+    // Step 3 completes directly (no benchmark phase)
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[3].status).toBe("completed");
     });
 
     const wf = useWorkflowStore.getState();
 
-    // Step 3 completed
-    expect(wf.steps[3].status).toBe("completed");
-
-    // Stays on step 3 completion screen — user clicks "Next Step" to proceed
+    // Stays on step 3 completion screen — user clicks "Done" or "Refine" to proceed
     expect(wf.currentStep).toBe(3);
 
     // Running flag cleared
     expect(wf.isRunning).toBe(false);
-
-    expect(mockToast.success).toHaveBeenCalledWith("Step 4 completed");
   });
+
 });
 
 // ---------------------------------------------------------------------------
@@ -2849,9 +2846,6 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     // handleGateSkip → skipToDecisions → step 1 completed, currentStep = 2
     expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
     expect(useWorkflowStore.getState().currentStep).toBe(2);
-    expect(mockToast.success).toHaveBeenCalledWith(
-      "Skipped detailed research — answers were sufficient",
-    );
   });
 
   it("handleGateResearch from clarifications context advances to next step normally", async () => {
@@ -2907,7 +2901,6 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     // handleGateContinueAnyway → advance to next step
     expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     expect(useWorkflowStore.getState().currentStep).toBe(1);
-    expect(mockToast.success).toHaveBeenCalledWith("Continuing with current answers");
   });
 
   it("handleGateSkip from refinements context advances to next step (not step 2)", async () => {
@@ -3512,7 +3505,6 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
 
     // Should not have attempted materialization
     expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
-    expect(mockToast.success).toHaveBeenCalledWith("Step 3 completed");
   });
 
   it("step 3 (requiresStructuredOutput) errors when structuredOutput is null", async () => {
@@ -3608,7 +3600,6 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     });
 
-    expect(mockToast.success).toHaveBeenCalledWith("Step 1 completed");
   });
 
   it("step 1 with requiresStructuredOutput errors when structured output is an array", async () => {

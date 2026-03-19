@@ -55,7 +55,7 @@ vi.mock("@/components/research-summary-card", () => ({
   ),
 }));
 
-import { WorkflowStepComplete } from "@/components/workflow-step-complete";
+import { WorkflowStepComplete } from "@/components/step-complete";
 
 function makeRun(totalCost: number): AgentRunRecord {
   return {

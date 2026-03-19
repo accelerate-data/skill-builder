@@ -829,7 +829,7 @@ resolveStepTemplate(agentName, skillName)
   ├── detailed-research     → step1-detailed-research.jsonl
   ├── confirm-decisions     → step2-confirm-decisions.jsonl
   ├── generate-skill        → step3-generate-skill.jsonl
-  ├── refine-skill          → refine.jsonl
+  ├── rewrite-skill         → rewrite-skill.jsonl
   └── answer-evaluator      → gate-answer-evaluator.jsonl
 
 For each line in template.jsonl:

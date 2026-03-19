@@ -6,7 +6,6 @@ import { fileURLToPath } from "url";
 import {
   buildStructuredMockResult,
   parsePromptPaths,
-  resolvePromptPaths,
   resolveStepTemplate,
   runMockAgent,
 } from "../mock-agent.js";
@@ -82,10 +81,10 @@ describe("resolveStepTemplate", () => {
     expect(resolveStepTemplate("data-product-builder")).toBe("test-plan-without");
   });
 
-  it("keeps backward-compat for legacy bare test-plan names", () => {
-    expect(resolveStepTemplate("test-plan-with")).toBe("test-plan-with");
-    expect(resolveStepTemplate("test-plan-without")).toBe("test-plan-without");
-    expect(resolveStepTemplate("test-evaluator")).toBe("test-evaluator");
+  it("returns null for unknown bare agent names", () => {
+    expect(resolveStepTemplate("test-plan-with")).toBeNull();
+    expect(resolveStepTemplate("test-plan-without")).toBeNull();
+    expect(resolveStepTemplate("test-evaluator")).toBeNull();
   });
 });
 
@@ -161,13 +160,13 @@ describe("parsePromptPaths", () => {
   });
 });
 
-describe("resolvePromptPaths", () => {
+describe("parsePromptPaths (inline)", () => {
   it("resolves skillOutputDir from inline prompt path", () => {
     const prompt =
       "The skill name is: x. The workspace directory is: /tmp/ws/x. " +
       "The skill output directory (SKILL.md and references/) is: /tmp/skills/x. " +
       "Read user-context.md from the workspace directory.";
-    const paths = resolvePromptPaths(prompt);
+    const paths = parsePromptPaths(prompt);
     expect(paths.workspaceDir).toBe("/tmp/ws/x");
     expect(paths.contextDir).toBe(path.join("/tmp/ws/x", "context"));
     expect(paths.skillOutputDir).toBe("/tmp/skills/x");

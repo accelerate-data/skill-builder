@@ -2,6 +2,7 @@ mod agents;
 mod cleanup;
 mod commands;
 mod db;
+mod fs_utils;
 mod fs_validation;
 pub mod git;
 mod logging;
@@ -29,19 +30,8 @@ fn dir_is_empty(path: &Path) -> Result<bool, io::Error> {
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), io::Error> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-        let from = entry.path();
-        let to = dst.join(entry.file_name());
-        if file_type.is_dir() {
-            copy_dir_recursive(&from, &to)?;
-        } else if file_type.is_file() {
-            fs::copy(&from, &to)?;
-        }
-    }
-    Ok(())
+    crate::fs_utils::copy_dir_recursive(src, dst)
+        .map_err(io::Error::other)
 }
 
 /// One-time migration from historical app-local dir to the current bundle identifier path.
@@ -307,6 +297,7 @@ pub fn run() {
             commands::files::read_file_as_base64,
             commands::files::write_base64_to_temp_file,
             commands::workflow::runtime::run_workflow_step,
+            commands::workflow::runtime::run_benchmark_phase,
             commands::workflow::output_format::materialize_workflow_step_output,
             commands::workflow::packaging::package_skill,
             commands::workflow::evaluation::reset_workflow_step,

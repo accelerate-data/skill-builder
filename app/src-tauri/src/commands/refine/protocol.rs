@@ -3,12 +3,13 @@ use std::path::Path;
 use crate::agents::sidecar::SidecarConfig;
 use crate::commands::agent::output_format_for_agent;
 use crate::commands::workflow::{resolve_model_id, tools_for_agent};
+use crate::commands::workflow::step_config::workflow_output_format_for_agent;
 use crate::db::{self, Db};
 use crate::types::SecretString;
 
-pub(super) const REFINE_AGENT_NAME: &str = "skill-creator:refine-skill";
 pub(super) const VALIDATE_AGENT_NAME: &str = "validate-skill";
-pub(super) const GENERATE_AGENT_NAME: &str = "skill-creator:generate-skill";
+pub(super) const REWRITE_AGENT_NAME: &str = "skill-creator:rewrite-skill";
+pub(super) const BENCHMARK_AGENT_NAME: &str = "skill-creator:benchmark-skill";
 
 /// Max agentic turns for the entire streaming session. Each user message may
 /// use multiple turns internally (tool calls, etc.). 400 covers ~20 messages
@@ -21,6 +22,7 @@ pub(super) enum RefineDispatch {
     Stream,
     DirectValidate,
     DirectRewrite,
+    DirectBenchmark,
 }
 
 pub(super) struct RefineRuntimeSettings {
@@ -41,12 +43,69 @@ pub(super) fn dispatch_for_refine_command(
     match command {
         Some("validate") => RefineDispatch::DirectValidate,
         Some("rewrite") => RefineDispatch::DirectRewrite,
+        Some("benchmark") => RefineDispatch::DirectBenchmark,
         _ => RefineDispatch::Stream,
     }
 }
 
 pub(super) fn new_refine_usage_session_id(skill_name: &str) -> String {
     format!("synthetic:refine:{}:{}", skill_name, uuid::Uuid::new_v4())
+}
+
+/// Snapshot the current skill directory to `{workspace_dir}/skill-snapshot/`
+/// so the benchmark agent can use it as the prior version baseline.
+/// Returns the snapshot directory path, or None if the skill doesn't exist.
+pub(super) fn snapshot_skill_for_benchmark(
+    skills_path: &str,
+    workspace_path: &str,
+    skill_name: &str,
+) -> Option<String> {
+    let src = Path::new(skills_path).join(skill_name);
+    if !src.join("SKILL.md").exists() {
+        log::debug!(
+            "[snapshot_skill] no SKILL.md at {} — skipping snapshot",
+            src.display()
+        );
+        return None;
+    }
+    let workspace_dir = Path::new(workspace_path).join(skill_name);
+    let dest = workspace_dir.join("skill-snapshot");
+
+    // Remove stale snapshot
+    if dest.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&dest) {
+            log::warn!(
+                "[snapshot_skill] failed to remove stale snapshot at {}: {}",
+                dest.display(),
+                e
+            );
+        }
+    }
+
+    // Copy skill directory tree
+    if let Err(e) = copy_dir_recursive(&src, &dest) {
+        log::warn!(
+            "[snapshot_skill] failed to snapshot {} to {}: {}",
+            src.display(),
+            dest.display(),
+            e
+        );
+        return None;
+    }
+
+    let snapshot_str = dest.to_string_lossy().replace('\\', "/");
+    log::info!(
+        "[snapshot_skill] created snapshot for skill={} at {}",
+        skill_name,
+        snapshot_str
+    );
+    Some(snapshot_str)
+}
+
+/// Recursively copy a directory. Delegates to the shared fs_utils implementation
+/// which skips symlinks to prevent infinite cycles.
+fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
+    crate::fs_utils::copy_dir_recursive(src, dest)
 }
 
 pub(super) fn ensure_skill_workspace_dir(workspace_path: &str, skill_name: &str) {
@@ -76,7 +135,7 @@ pub(super) fn load_refine_runtime_settings(
         log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    let settings = db::read_settings_hydrated(&conn).map_err(|e| {
+    let settings = db::read_settings(&conn).map_err(|e| {
         log::error!("[send_refine_message] Failed to read settings: {}", e);
         e
     })?;
@@ -158,7 +217,7 @@ pub(super) fn build_refine_config(
         model: None,
         api_key,
         cwd,
-        allowed_tools: Some(tools_for_agent(REFINE_AGENT_NAME)),
+        allowed_tools: Some(tools_for_agent(REWRITE_AGENT_NAME)),
         max_turns: Some(REFINE_STREAM_MAX_TURNS),
         permission_mode: None,
         thinking: thinking_budget.map(|budget| {
@@ -172,7 +231,7 @@ pub(super) fn build_refine_config(
         output_format: None,
         prompt_suggestions: Some(refine_prompt_suggestions),
         path_to_claude_code_executable: None,
-        agent_name: Some(REFINE_AGENT_NAME.to_string()),
+        agent_name: Some(REWRITE_AGENT_NAME.to_string()),
         required_plugins: Some(vec![
             "skill-content-researcher".to_string(),
             "skill-creator".to_string(),
@@ -211,7 +270,8 @@ pub(super) fn build_direct_refine_config(
     let allowed_tools = tools_for_agent(agent_name);
     let max_turns = match agent_name {
         VALIDATE_AGENT_NAME => 50,
-        GENERATE_AGENT_NAME => 80,
+        REWRITE_AGENT_NAME => 80,
+        BENCHMARK_AGENT_NAME => 200,
         _ => REFINE_STREAM_MAX_TURNS,
     };
 
@@ -236,7 +296,8 @@ pub(super) fn build_direct_refine_config(
         }),
         fallback_model,
         effort: sdk_effort,
-        output_format: output_format_for_agent(skill_name, Some(agent_name)),
+        output_format: workflow_output_format_for_agent(agent_name)
+            .or_else(|| output_format_for_agent(skill_name, Some(agent_name))),
         prompt_suggestions: Some(false),
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name.to_string()),
@@ -322,6 +383,7 @@ pub(super) fn build_refine_prompt(
     prompt
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn build_direct_agent_prompt(
     agent_name: &'static str,
     skill_name: &str,
@@ -329,6 +391,8 @@ pub(super) fn build_direct_agent_prompt(
     skills_path: &str,
     user_message: &str,
     target_files: Option<&[String]>,
+    baseline_mode: Option<&str>,
+    prior_skill_snapshot_dir: Option<&str>,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
@@ -345,8 +409,7 @@ pub(super) fn build_direct_agent_prompt(
         skill_name, workspace_str, skill_output_str,
     );
 
-    if agent_name == GENERATE_AGENT_NAME {
-        prompt.push_str("\n\nRun in /rewrite mode for this request.");
+    if agent_name == REWRITE_AGENT_NAME {
         if let Some(files) = target_files {
             if !files.is_empty() {
                 prompt.push_str(&format!(
@@ -354,6 +417,17 @@ pub(super) fn build_direct_agent_prompt(
                     files.join(", ")
                 ));
             }
+        }
+    }
+
+    if agent_name == BENCHMARK_AGENT_NAME {
+        let mode = baseline_mode.unwrap_or("no_skill");
+        prompt.push_str(&format!("\n\nbaseline_mode: {}", mode));
+        if let Some(snapshot_dir) = prior_skill_snapshot_dir {
+            prompt.push_str(&format!(
+                "\nprior_skill_snapshot_dir: {}",
+                snapshot_dir.replace('\\', "/")
+            ));
         }
     }
 

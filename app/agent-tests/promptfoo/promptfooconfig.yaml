@@ -235,14 +235,14 @@ tests:
         value: '"invocationPresence":true'
       - type: contains
         value: '"failures":[]'
-  - description: refine-skill-normal
+  - description: rewrite-skill-normal
     vars:
-      scenario: refine-skill
+      scenario: rewrite-skill
     assert:
       - type: contains
         value: '"ok":true'
       - type: contains
-        value: '"scenario":"refine-skill"'
+        value: '"scenario":"rewrite-skill"'
       - type: contains
         value: '"descriptionUpdated":true'
       - type: contains
@@ -251,9 +251,9 @@ tests:
         value: '"modifiedUpdated":true'
       - type: contains
         value: '"failures":[]'
-  - description: refine-skill-scope-guard
+  - description: rewrite-skill-scope-guard
     vars:
-      scenario: refine-skill-scope-guard
+      scenario: rewrite-skill-scope-guard
     assert:
       - type: contains
         value: '"ok":true'

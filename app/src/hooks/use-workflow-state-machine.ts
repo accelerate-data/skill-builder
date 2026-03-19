@@ -287,6 +287,7 @@ export function useWorkflowStateMachine({
               );
               return;
             }
+
           }
         }
 
@@ -333,7 +334,7 @@ export function useWorkflowStateMachine({
 
   // --- Step execution ---
 
-  const handleStartAgentStep = async () => {
+  const handleStartAgentStep = useCallback(async () => {
     if (!workspacePath) {
       toast.error("Missing workspace path", { duration: Infinity });
       return;
@@ -373,7 +374,7 @@ export function useWorkflowStateMachine({
         { duration: Infinity },
       );
     }
-  };
+  }, [workspacePath, skillName, currentStep, stepConfig?.model, gateLoading, gate, clearRuns, updateStepStatus, setRunning, setInitializing, clearInitializing, agentStartRun]);
 
   // --- Step reset ---
 
@@ -402,7 +403,6 @@ export function useWorkflowStateMachine({
     if (!disabled.includes(stepId)) {
       autoStartAfterReset(stepId);
     }
-    toast.success(`Reset to step ${stepId + 1}`);
   };
 
   return {

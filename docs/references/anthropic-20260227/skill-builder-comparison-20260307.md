@@ -20,7 +20,7 @@ A Tauri desktop app (Rust + React + SQLite + Claude SDK sidecars) that guides us
 | 3 | `generate-skill` | Write SKILL.md + references from decisions |
 | Post | `validate-skill` | Conformance + completeness + companion recommendations |
 | Post | `answer-evaluator` | Evaluates user answer quality (clear/vague/contradictory) |
-| Refine | `refine-skill` | Interactive streaming chat for targeted edits |
+| Refine | `rewrite-skill` | Interactive streaming chat for targeted edits and full rewrites |
 
 **Strengths**: Deep research phase, structured knowledge elicitation, scope guardrails, interactive refinement, full GUI, marketplace/distribution, domain-specific context (dbt/Fabric).
 

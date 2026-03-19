@@ -12,6 +12,16 @@ const BASE_OVERRIDES = {
   list_skills: [],
 };
 
+/**
+ * Navigate to the Usage section within the Settings page.
+ */
+async function navigateToUsageSection(page: import("@playwright/test").Page): Promise<void> {
+  await page.goto("/settings");
+  await waitForAppReady(page);
+  // Click the "Usage" section button in the settings sidebar
+  await page.getByRole("button", { name: "Usage" }).click();
+}
+
 test.describe("Usage Page Smoke", { tag: "@dashboard" }, () => {
   test("renders empty-state usage page without errors", async ({ page }) => {
     await page.addInitScript((overrides) => {
@@ -27,8 +37,7 @@ test.describe("Usage Page Smoke", { tag: "@dashboard" }, () => {
       get_workflow_skill_names: [],
     });
 
-    await page.goto("/usage");
-    await waitForAppReady(page);
+    await navigateToUsageSection(page);
 
     // Empty state is shown when there are no runs
     await expect(page.getByText("No usage data yet.")).toBeVisible({ timeout: 5_000 });
@@ -65,8 +74,7 @@ test.describe("Usage Page Smoke", { tag: "@dashboard" }, () => {
       get_workflow_skill_names: ["test-skill"],
     });
 
-    await page.goto("/usage");
-    await waitForAppReady(page);
+    await navigateToUsageSection(page);
 
     // Summary cards should be visible
     await expect(page.getByText("Total Spent (USD)")).toBeVisible({ timeout: 5_000 });

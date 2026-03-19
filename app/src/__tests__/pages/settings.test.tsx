@@ -235,7 +235,7 @@ describe("SettingsPage", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /back to dashboard/i }));
-    expect(mockNavigate).toHaveBeenCalledWith({ to: "/" });
+    expect(mockNavigate).toHaveBeenCalledWith({ to: "/", search: { tab: undefined } });
   });
 
   it("renders all 6 sections in left nav", async () => {

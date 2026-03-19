@@ -3,6 +3,10 @@
  *
  * Mirrors workflow-helpers.ts: provides mock overrides and navigation
  * utilities so refine specs share the same foundation.
+ *
+ * Post-VU-550: Refine lives inside WorkspaceShell as a tab. The old
+ * /refine route redirects to /?tab=refine. To show the refine UI we
+ * need a skill selected in the sidebar first.
  */
 import type { Page } from "@playwright/test";
 import { waitForAppReady } from "./app-helpers";
@@ -10,7 +14,7 @@ import { E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "./test-paths";
 
 /**
  * Common mock overrides for the refine page.
- * Configures settings, a couple of refinable skills, and skill file listing.
+ * Configures settings, skills in the sidebar, and skill file listing.
  */
 export const REFINE_OVERRIDES: Record<string, unknown> = {
   get_settings: {
@@ -18,22 +22,29 @@ export const REFINE_OVERRIDES: Record<string, unknown> = {
     workspace_path: E2E_WORKSPACE_PATH,
     skills_path: E2E_SKILLS_PATH,
   },
-  list_refinable_skills: [
+  check_workspace_path: true,
+  list_skills: [
     {
       name: "test-skill",
-      display_name: "Test Skill",
+      purpose: "domain",
       current_step: null,
       status: "completed",
       last_modified: null,
-      purpose: "domain",
+      tags: [],
+      author_login: null,
+      author_avatar: null,
+      intake_json: null,
     },
     {
       name: "analytics-skill",
-      display_name: "Analytics",
+      purpose: "source",
       current_step: null,
       status: "completed",
       last_modified: null,
-      purpose: "source",
+      tags: [],
+      author_login: null,
+      author_avatar: null,
+      intake_json: null,
     },
   ],
   get_skill_content_for_refine: [
@@ -47,11 +58,15 @@ export const REFINE_OVERRIDES: Record<string, unknown> = {
   },
   send_refine_message: "refine-test-skill-e2e-001",
   close_refine_session: undefined,
+  acquire_lock: undefined,
+  release_lock: undefined,
+  cleanup_skill_sidecar: undefined,
+  get_disabled_steps: [],
 };
 
 /**
  * Navigate to the refine page without a pre-selected skill.
- * Waits for splash → setup → skill picker to be visible.
+ * In the new UI, this goes to the dashboard with skills in the sidebar.
  */
 export async function navigateToRefine(
   page: Page,
@@ -61,15 +76,17 @@ export async function navigateToRefine(
   await page.addInitScript((o) => {
     (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = o;
   }, merged);
-  await page.goto("/refine");
+  await page.goto("/");
   await waitForAppReady(page);
-  // Wait for skill picker to finish loading
-  await page.getByRole("button", { name: /Select a skill/ }).waitFor({ timeout: 10_000 });
+  // Wait for skills to load in the sidebar
+  await page.getByText("test-skill").first().waitFor({ timeout: 10_000 });
 }
 
 /**
- * Navigate to the refine page with `?skill=test-skill` so the skill
- * is auto-selected and files are loaded on mount.
+ * Navigate to the refine page with test-skill selected.
+ * Clicks the skill in the sidebar to activate it (since it's "completed",
+ * it uses onSelectSkill which sets activeSkill and shows WorkspaceShell),
+ * then switches to the Refine tab.
  */
 export async function navigateToRefineWithSkill(
   page: Page,
@@ -79,8 +96,19 @@ export async function navigateToRefineWithSkill(
   await page.addInitScript((o) => {
     (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = o;
   }, merged);
-  await page.goto("/refine?skill=test-skill");
+  await page.goto("/");
   await waitForAppReady(page);
-  // Wait for the auto-selected skill name to appear in the picker
-  await page.getByRole("button", { name: /test-skill/i }).waitFor({ timeout: 10_000 });
+
+  // Wait for skills to load in the sidebar, then click test-skill to select it
+  const skillRow = page.getByText("test-skill").first();
+  await skillRow.waitFor({ timeout: 10_000 });
+  await skillRow.click();
+
+  // WorkspaceShell should appear — click the Refine tab
+  const refineTab = page.getByRole("tab", { name: "Refine" });
+  await refineTab.waitFor({ timeout: 10_000 });
+  await refineTab.click();
+
+  // Wait for the refine UI to hydrate (chat input visible)
+  await page.getByTestId("refine-chat-input").waitFor({ timeout: 10_000 });
 }

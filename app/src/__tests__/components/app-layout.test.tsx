@@ -300,6 +300,43 @@ describe("AppLayout", () => {
     });
   });
 
+  it("refreshes skill list after applying reconciliation", async () => {
+    const user = userEvent.setup();
+    const invokedCommands: string[] = [];
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      invokedCommands.push(cmd);
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup" && args?.apply === true) return Promise.resolve(emptyReconciliation);
+      if (cmd === "reconcile_startup") {
+        return Promise.resolve({
+          orphans: [],
+          notifications: ["'my-skill' was reset from step 3 to step 0"],
+          auto_cleaned: 0,
+          discovered_skills: [],
+        });
+      }
+      if (cmd === "list_skills") return Promise.resolve([]);
+      if (cmd === "list_models") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
+    });
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Startup Reconciliation")).toBeInTheDocument();
+    });
+
+    invokedCommands.length = 0;
+    await user.click(screen.getByRole("button", { name: /Apply Reconciliation/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("outlet")).toBeInTheDocument();
+    });
+
+    // list_skills must be called after apply to refresh the sidebar
+    expect(invokedCommands).toContain("list_skills");
+  });
+
   it("continues without changes when reconciliation is cancelled", async () => {
     const user = userEvent.setup();
     mockInvoke.mockImplementation((cmd: string) => {

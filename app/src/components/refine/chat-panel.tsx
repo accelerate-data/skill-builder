@@ -10,9 +10,11 @@ interface ChatPanelProps {
   hasSkill: boolean;
   availableFiles: string[];
   scopeBlocked?: boolean;
+  onBenchmarkConfirm?: () => void;
+  onBenchmarkSkip?: () => void;
 }
 
-export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles, scopeBlocked }: ChatPanelProps) {
+export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles, scopeBlocked, onBenchmarkConfirm, onBenchmarkSkip }: ChatPanelProps) {
   const messages = useRefineStore((s) => s.messages);
   const sessionExhausted = useRefineStore((s) => s.sessionExhausted);
   const pendingInitialMessage = useRefineStore((s) => s.pendingInitialMessage);
@@ -33,7 +35,11 @@ export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles, scopeBl
           Scope recommendation active — the skill scope is too broad. Refine and test are blocked until the scope is resolved.
         </div>
       )}
-      <ChatMessageList messages={messages} />
+      <ChatMessageList
+        messages={messages}
+        onBenchmarkConfirm={onBenchmarkConfirm}
+        onBenchmarkSkip={onBenchmarkSkip}
+      />
       {sessionExhausted && (
         <div className="border-t bg-muted px-3 py-2 text-center text-sm text-muted-foreground">
           This refine session has reached its limit. Select the skill again to start a new session.

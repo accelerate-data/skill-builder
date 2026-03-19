@@ -99,55 +99,142 @@ pub(crate) fn materialize_workflow_step_output_value(
             Ok(())
         }
         3 => {
-            let parsed =
-                serde_json::from_value::<GenerateSkillOutput>(structured_output.clone())
-                    .map_err(|e| format!("invalid generate skill output: {}", e))?;
+            // Step 3 can receive output from either generate-skill or benchmark-skill.
+            // generate-skill: { status: "generated", skipped?: true, call_trace: [...] }
+            // benchmark-skill: { status: "benchmarked", benchmark_status, benchmark_path, tag, ... }
+            let status = structured_output
+                .get("status")
+                .and_then(|s| s.as_str())
+                .unwrap_or("");
 
-            if parsed.status != "generated" {
-                return Err(format!(
-                    "structured_output.status must be 'generated' but got '{}'",
-                    parsed.status
-                ));
-            }
-
-            let valid_statuses = ["complete", "partial", "skipped"];
-            if !valid_statuses.contains(&parsed.benchmark_status.as_str()) {
-                return Err(format!(
-                    "structured_output.benchmark_status must be one of {:?} but got '{}'",
-                    valid_statuses, parsed.benchmark_status
-                ));
-            }
-
-            // When benchmark is complete or partial, verify benchmark.json exists on disk
-            if parsed.benchmark_status != "skipped" {
-                if let Some(ref bench_path) = parsed.benchmark_path {
-                    let benchmark_json = skill_root.join(bench_path).join("benchmark.json");
-                    if !benchmark_json.exists() {
-                        log::warn!(
-                            "benchmark_status='{}' but benchmark.json not found at '{}'",
-                            parsed.benchmark_status,
-                            benchmark_json.display()
-                        );
-                    }
+            match status {
+                "generated" => {
+                    // generate-skill output — write a pending benchmark-meta
+                    log::info!("generate-skill completed for skill={}, skipped={}", skill_root.display(),
+                        structured_output.get("skipped").and_then(|s| s.as_bool()).unwrap_or(false));
+                    let skipped = structured_output
+                        .get("skipped")
+                        .and_then(|s| s.as_bool())
+                        .unwrap_or(false);
+                    let benchmark_status = if skipped { "skipped" } else { "pending" };
+                    let meta = serde_json::json!({
+                        "benchmark_status": benchmark_status,
+                        "benchmark_path": null,
+                    });
+                    let meta_path = context_dir.join("benchmark-meta.json");
+                    std::fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap_or_default())
+                        .map_err(|e| {
+                            format!(
+                                "Failed to write benchmark-meta '{}': {}",
+                                meta_path.display(),
+                                e
+                            )
+                        })?;
+                    Ok(())
                 }
+                "rewritten" => {
+                    // rewrite-skill output — same handling as generate
+                    log::info!("rewrite-skill completed for skill={}, skipped={}", skill_root.display(),
+                        structured_output.get("skipped").and_then(|s| s.as_bool()).unwrap_or(false));
+                    let skipped = structured_output
+                        .get("skipped")
+                        .and_then(|s| s.as_bool())
+                        .unwrap_or(false);
+                    let benchmark_status = if skipped { "skipped" } else { "pending" };
+                    let meta = serde_json::json!({
+                        "benchmark_status": benchmark_status,
+                        "benchmark_path": null,
+                    });
+                    let meta_path = context_dir.join("benchmark-meta.json");
+                    std::fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap_or_default())
+                        .map_err(|e| {
+                            format!(
+                                "Failed to write benchmark-meta '{}': {}",
+                                meta_path.display(),
+                                e
+                            )
+                        })?;
+                    Ok(())
+                }
+                "benchmarked" => {
+                    // benchmark-skill output
+                    log::info!(
+                        "event=benchmark_skill_complete operation=materialize_output status=processing skill={}",
+                        skill_root.display()
+                    );
+                    let parsed =
+                        serde_json::from_value::<GenerateSkillOutput>(structured_output.clone())
+                            .map_err(|e| format!("invalid benchmark skill output: {}", e))?;
+
+                    let valid_statuses = ["complete", "partial", "skipped"];
+                    if !valid_statuses.contains(&parsed.benchmark_status.as_str()) {
+                        return Err(format!(
+                            "structured_output.benchmark_status must be one of {:?} but got '{}'",
+                            valid_statuses, parsed.benchmark_status
+                        ));
+                    }
+
+                    // If the agent emitted an intermediate "partial" StructuredOutput but the
+                    // run completed successfully, check whether benchmark.json actually landed
+                    // on disk. If it did, the benchmark finished — upgrade to "complete" so the
+                    // frontend doesn't treat the premature partial signal as a failure.
+                    let effective_status = if parsed.benchmark_status == "partial" {
+                        if let Some(ref bench_path) = parsed.benchmark_path {
+                            let benchmark_json = skill_root.join(bench_path).join("benchmark.json");
+                            if benchmark_json.exists() {
+                                log::info!(
+                                    "event=benchmark_partial_upgrade operation=materialize_output status=upgraded skill={} path={}",
+                                    skill_root.display(),
+                                    benchmark_json.display()
+                                );
+                                "complete".to_string()
+                            } else {
+                                log::info!(
+                                    "event=benchmark_partial_kept operation=materialize_output status=partial skill={} path={}",
+                                    skill_root.display(),
+                                    benchmark_json.display()
+                                );
+                                parsed.benchmark_status.clone()
+                            }
+                        } else {
+                            parsed.benchmark_status.clone()
+                        }
+                    } else {
+                        if let Some(ref bench_path) = parsed.benchmark_path {
+                            let benchmark_json = skill_root.join(bench_path).join("benchmark.json");
+                            if !benchmark_json.exists() {
+                                log::warn!(
+                                    "event=benchmark_file_missing operation=materialize_output status=warning skill={} benchmark_status={} path={}",
+                                    skill_root.display(),
+                                    parsed.benchmark_status,
+                                    benchmark_json.display()
+                                );
+                            }
+                        }
+                        parsed.benchmark_status.clone()
+                    };
+
+                    let meta = serde_json::json!({
+                        "benchmark_status": effective_status,
+                        "benchmark_path": parsed.benchmark_path,
+                    });
+                    let meta_path = context_dir.join("benchmark-meta.json");
+                    std::fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap_or_default())
+                        .map_err(|e| {
+                            format!(
+                                "Failed to write benchmark-meta '{}': {}",
+                                meta_path.display(),
+                                e
+                            )
+                        })?;
+
+                    Ok(())
+                }
+                _ => Err(format!(
+                    "structured_output.status must be 'generated', 'rewritten', or 'benchmarked' but got '{}'",
+                    status
+                )),
             }
-
-            // Write benchmark-meta.json so the frontend can distinguish skipped from missing
-            let meta = serde_json::json!({
-                "benchmark_status": parsed.benchmark_status,
-                "benchmark_path": parsed.benchmark_path,
-            });
-            let meta_path = context_dir.join("benchmark-meta.json");
-            std::fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap_or_default())
-                .map_err(|e| {
-                    format!(
-                        "Failed to write benchmark-meta '{}': {}",
-                        meta_path.display(),
-                        e
-                    )
-                })?;
-
-            Ok(())
         }
         _ => Err(format!(
             "materialize_workflow_step_output supports only steps 0-3; got {}",
@@ -181,7 +268,65 @@ pub fn materialize_workflow_step_output(
             e
         );
         e
-    })
+    })?;
+
+    // After successful generate materialization, commit and tag the skill.
+    // Benchmark output does not trigger a commit (benchmark data is in workspace, not git).
+    // Rewrite/refine commit+tag is handled by finalize_refine_run.
+    if step_id == 3 {
+        let status = structured_output
+            .get("status")
+            .and_then(|s| s.as_str())
+            .unwrap_or("");
+        let skipped = structured_output
+            .get("skipped")
+            .and_then(|s| s.as_bool())
+            .unwrap_or(false);
+
+        if status == "generated" && !skipped {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            let settings = crate::db::read_settings(&conn)?;
+            let skills_path = settings
+                .skills_path
+                .unwrap_or_else(|| workspace_path.clone());
+            drop(conn);
+
+            let skills_dir = Path::new(&skills_path);
+            let message = format!("{}: generate skill", skill_name);
+            match crate::git::commit_all(skills_dir, &message) {
+                Ok(Some(sha)) => {
+                    match crate::git::tag_next_skill_version(skills_dir, &skill_name) {
+                        Ok(tag) => {
+                            log::info!(
+                                "[materialize_workflow_step_output] committed and tagged skill={} tag={} sha={}",
+                                skill_name, tag, sha
+                            );
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "[materialize_workflow_step_output] commit ok but tag failed for skill={}: {}",
+                                skill_name, e
+                            );
+                        }
+                    }
+                }
+                Ok(None) => {
+                    log::debug!(
+                        "[materialize_workflow_step_output] no changes to commit for skill={}",
+                        skill_name
+                    );
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[materialize_workflow_step_output] commit failed for skill={}: {}",
+                        skill_name, e
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub(crate) fn answer_evaluator_output_format() -> serde_json::Value {

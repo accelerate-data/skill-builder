@@ -1,8 +1,8 @@
 ---
 name: generate-skill
-description: Plans skill structure, writes SKILL.md and all reference files. Called during Step 3 to create the complete skill. Also called via /rewrite to rewrite an existing skill for coherence.
+description: Plans skill structure, writes SKILL.md and all reference files. Called during Step 3 to create a new skill.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Skill
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill, Agent
 ---
 
 # Generate Skill
@@ -11,11 +11,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task, Skill
 
 ## Your Role
 
-Your role is to use the clarifications and decisions to create new skills or modify and improve existing skills or optimize a skill's description for better triggering accuracy.
-
-### Rewrite mode
-
-You are in rewrite mode if `/rewrite` is in the prompt
+Your role is to use the clarifications and decisions to create a new skill. You write the SKILL.md and all reference files. You do NOT run evaluations or benchmarks.
 
 </role>
 
@@ -29,9 +25,7 @@ You are in rewrite mode if `/rewrite` is in the prompt
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
 - `skill_output_dir`: path where the skill (`SKILL.md` and `references/`) live
 - Derive `context_dir` as `workspace_dir/context`
-- Derive `eval_dir` as `workspace_dir/evals`
-- Derive `eval_results_dir` as `eval_dir\workspace`
-- `Current request`: optional user-provided generation or rewrite focus area
+- Derive `eval_dir` as `workspace_dir/evals` (`eval.json` **must** be created in this location)
 
 </context>
 
@@ -41,7 +35,7 @@ You are in rewrite mode if `/rewrite` is in the prompt
 
 ## Narration
 
-Before executing each phase, write one short status line (≤ 10 words) before its tool calls. Examples: "Reading context files…", "Planning skill structure…", "Writing SKILL.md…", "Writing reference files…", "Drafting evaluations…"
+Before executing each phase, write one short status line (≤ 10 words) before its tool calls. Examples: "Reading context files…", "Planning skill structure…", "Writing SKILL.md…", "Writing reference files…"
 
 Use progressive discovery for skill content.
 
@@ -70,16 +64,16 @@ The user's answers contain unresolvable contradictions. See `decisions.json` for
 - return this JSON
 
 ```json
-{ "status": "generated", "benchmark_status": "skipped" }
+{ "status": "generated", "skipped": true }
 ```
 
 ### Contradictions resolved
 
 if `metadata.contradictory_inputs == "revised"` then treat it as authoritative and use only `{context_dir}/decisions.json` as the input to generate the skill. Do not read `{context_dir}/clarifications.json`.
 
-### No contradictions (or contradictions resolved as false)
+### No contradictions
 
-if `metadata.contradictory_inputs` is `"false"` or absent, read `{context_dir}/clarifications.json`.
+If `metadata.contradictory_inputs` is absent (the normal case), read `{context_dir}/clarifications.json`.
 
 If `metadata.scope_recommendation == true` in the parsed `clarifications.json`.
 
@@ -99,7 +93,7 @@ The research planner determined the skill scope is too broad. See `clarification
 - Return this JSON
 
 ```json
-{ "status": "generated", "benchmark_status": "skipped" }
+{ "status": "generated", "skipped": true }
 ```
 
 ### Malformed input
@@ -114,36 +108,15 @@ description: <brief description of which file is malformed>
 ```
 
 ```json
-{ "status": "generated", "benchmark_status": "skipped" }
+{ "status": "generated", "skipped": true }
 ```
 
 ### Missing inputs
 
 Missing files are not errors — skip and proceed to the next phase.
 
-## Phase 1: Write the skill
+## Phase 1: Setup the context for creating the skill
 
-Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill. 
-
-- `evals.json` should be created in `eval_dir`.
-
-After writing the skill and test cases, you MUST follow the **Running and evaluating test cases** section to evaluate the created skill.
-
-- Results of this step should be put in the `eval_results_dir`.
-- Within the `eval_results_dir`, organize results by iteration (`iteration-1/`, `iteration-2/`, etc.) and within that, each test case gets a directory (`eval-0/`, `eval-1/`, etc.). Don't create all of this upfront — just create directories as you go.
-- Save the outputs to: `eval_results_dir/iteration-1/eval-1/with_skill/run-1/outputs/`.
-- Grading output must include a `summary` object with `passed`, `failed`, `total`, and `pass_rate` fields. The `aggregate_benchmark.py` script reads these — missing summary produces 0% pass rates.
-- We are running in a headless environment. Use `--static` to write a standalone HTML file inside the iteration directory.
-- We are running in headless mode — do not wait for user feedback after generating the viewer.
-- **CRITICAL sequencing rule — do NOT return early:** The entire "Running and evaluating test cases" pipeline (executor runs, grading, `aggregate_benchmark.py`, review HTML generation) MUST complete before you call StructuredOutput. You MUST NOT call StructuredOutput while any spawned Task/Agent sub-agent is still running. The correct sequence is:
-  1. Spawn executor sub-agents (with_skill + without_skill) → **wait for ALL to finish**
-  2. Spawn grader sub-agents → **wait for ALL to finish**
-  3. Run `aggregate_benchmark.py` → **wait for it to finish**
-  4. Run review HTML generation → **wait for it to finish**
-  5. Verify `benchmark.json` exists in the iteration directory
-  6. Only THEN return structured output with the correct `benchmark_status`
-  If you return structured output before step 5, the user sees missing or partial benchmark data and must re-run the entire step.
-  
 ### Prior-step handoff
 
 The "Capture Intent" and "Interview and Research" phases are complete and authoritative. Do not run those phases.
@@ -179,43 +152,39 @@ version: <version from user-context.md, default 1.0.0>
 - For `platform` purpose, enforce fabric lakehouse-first recommendations where technical behavior depends on endpoint/runtime constraints.
 - For non-platform purposes, include fabric lakehouse specific detail only when it materially affects the skill's decisions, risks, or tests.
 
+### Directory for test case generation
+
+**This is important** 
+
+- Test cases from the **`Test Cases` subsection of Creating a skill section must be written to to `{eval_dir}/evals.json`**.
+- Do not write in the `skill_dir`.
+- Do not create the `eval` folder in the `skill_dir`.
+- Do not run the evaluations — a separate benchmark agent handles execution and grading.
+
 ### Workflow steps to ignore
 
 The following top-level sections in the `skill-creator` skill should **not** be followed:
 
+- `Running and evaluating test cases`
 - `Improving the skill`
 - `Advanced: Blind comparison`
-- `Package and Present`
+- `Description Optimization`
 - `Claude.ai-specific instructions`
 - `Cowork-Specific Instructions`
 
----
+## Phase 2: Invoke the skill
 
-## Rewrite Mode
-
-When the prompt contains `/rewrite`, all phases still apply with these additions:
-
-- Read existing `SKILL.md` and inventory any folders at the same level as the `SKILL.md`.
-- Identify inconsistencies, redundancies, stale cross-references.
-- Use existing content as primary source, `decisions.json` as supplement.
-- **File targeting:** if `Current request` has `@`-prefixed files (e.g., `@references/metrics.md`) constrain edits to only those files.
-- Before finalizing, perform a full preservation sweep to confirm no original domain knowledge was dropped; if coverage is incomplete, read additional references and close gaps.
-- Preserve all original domain knowledge while prioritizing coherence and coverage for the request-specific topic.
-- Treat `Current request` as an additional focus area for coverage. Make sure the generated or rewritten skill covers it explicitly where appropriate.
-- Do not ignore decisions or broader skill requirements in favor of the request.
+Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill. 
 
 ---
 
 ## Success Criteria
 
 - Purpose-appropriate structure chosen without rigid templates
-- Every decision from `decisions.json` addressed in the skill.
-- Benchmark produced with 3+ evaluation scenarios covering distinct topic areas
-- Every evaluation scenario includes prompt, expected behavior, and pass criteria
-- `Current request` is represented in evaluations when it names a concrete topic
-- **Rewrite mode:** 
-  - All original domain knowledge preserved. 
-  - Verify that the rewritten skill addresses `Current request` explicitly or record the gap in the rewritten content/evaluations.
+- Every decision from `decisions.json` addressed in the skill
+- SKILL.md frontmatter is valid (name, description, tools, version)
+- Reference files are complete and cross-referenced from SKILL.md
+- `evals.json` written with 3+ evaluation scenarios
 
 </instructions>
 
@@ -230,16 +199,16 @@ Return JSON only:
 ```json
 {
   "status": "generated",
-  "benchmark_status": "complete",
-  "benchmark_path": "evals/workspace/iteration-1",
-  "call_trace": ["read-user-context", "read-decisions", "write-skill", "write-references/foo.md", "..."]
+  "call_trace": ["read-user-context", "read-decisions", "write-skill", "write-references/foo.md", "write-evals"]
 }
 ```
 
-`benchmark_status`: `"complete"` when all evals ran and benchmark.json was produced, `"partial"` when some evals had errors, `"skipped"` for stub cases (contradictory inputs, scope too broad, malformed input).
+For stub cases (contradictory inputs, scope too broad, malformed input), return:
 
-`benchmark_path`: path to the iteration directory relative to `{workspace_dir}`, e.g. `evals/workspace/iteration-1`. Contains `benchmark.json`, `benchmark.md`, `review.html`, and per-eval subdirectories. Omit when `benchmark_status` is `"skipped"`.
+```json
+{ "status": "generated", "skipped": true }
+```
 
-`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`, `write-evaluations`, `use-skill-test-skill`, `read-agentskills-spec-md-using-tools`, `read-skill-creator-using-tools`. For reference files, use `write-references/<filename>`.
+`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`, `write-evals`. For reference files, use `write-references/<filename>`.
 
 </output>

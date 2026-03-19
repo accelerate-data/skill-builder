@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
-import type { RefineCommand, SkillFile } from "@/stores/refine-store";
+import type { RefineCommand, RefineMessage, SkillFile } from "@/stores/refine-store";
 import { useAgentStore } from "@/stores/agent-store";
 import {
   getSkillContentForRefine,
@@ -90,6 +90,11 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     activeAgentId ? s.runs[activeAgentId]?.totalCost : undefined,
   );
   const [lastTurnCost, setLastTurnCost] = useState<number | undefined>(undefined);
+
+  // Capture the skill that was active when the agent started, so the
+  // completion effect attributes output to the correct skill even if the
+  // user switches skills while an agent is running.
+  const runSkillRef = useRef<SkillSummary | null>(null);
 
   const scopeBlocked = useScopeBlocked(selectedSkill, "refine");
 
@@ -233,10 +238,15 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     const agentRun = useAgentStore.getState().runs[activeAgentId];
     setLastTurnCost(agentRun?.totalCost);
 
+    // Use the skill that was active when the agent started, not the
+    // current reactive selectedSkill, to avoid attributing output to
+    // the wrong skill if the user switches skills mid-flight.
+    const completionSkill = runSkillRef.current ?? selectedSkill;
+
     const complete = async () => {
       const store = useRefineStore.getState();
 
-      if (activeRunStatus === "completed" && workspacePath && selectedSkill) {
+      if (activeRunStatus === "completed" && workspacePath && completionSkill) {
         const structuredOutput = extractStructuredResultPayload(activeAgentId);
         const hasStructuredObject =
           !!structuredOutput &&
@@ -245,7 +255,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
         try {
           const finalized = await finalizeRefineRun(
-            selectedSkill.name,
+            completionSkill.name,
             workspacePath,
             hasStructuredObject ? structuredOutput : undefined,
           );
@@ -257,6 +267,15 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           );
           store.setGitDiff(finalized.diff);
           toast.info("Refinement complete");
+
+          // Offer benchmark when skill files actually changed and this wasn't
+          // already a benchmark or validation run.
+          const userMessages = store.messages.filter((m: RefineMessage) => m.role === "user");
+          const lastMsg = userMessages.length > 0 ? userMessages[userMessages.length - 1] : undefined;
+          const wasEditCommand = !lastMsg?.command || lastMsg.command === "rewrite";
+          if (wasEditCommand && finalized.diff.files.length > 0) {
+            store.addBenchmarkPrompt();
+          }
         } catch {
           try {
             if (
@@ -264,13 +283,13 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
               (structuredOutput as Record<string, unknown>).status === "validation_complete"
             ) {
               await materializeRefineValidationOutput(
-                selectedSkill.name,
+                completionSkill.name,
                 workspacePath,
                 structuredOutput,
               );
             }
 
-            const files = await loadSkillFiles(workspacePath, selectedSkill.name);
+            const files = await loadSkillFiles(workspacePath, completionSkill.name);
             if (files) {
               store.updateSkillFiles(files);
               store.setGitDiff(null);
@@ -282,8 +301,8 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
             );
           }
         }
-      } else if (workspacePath && selectedSkill) {
-        const files = await loadSkillFiles(workspacePath, selectedSkill.name);
+      } else if (workspacePath && completionSkill) {
+        const files = await loadSkillFiles(workspacePath, completionSkill.name);
         if (files) {
           store.updateSkillFiles(files);
           store.setGitDiff(null);
@@ -292,6 +311,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
       store.setRunning(false);
       store.setActiveAgentId(null);
+      runSkillRef.current = null;
     };
 
     void complete();
@@ -314,6 +334,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
       const model = preferredModel ?? "sonnet";
 
+      runSkillRef.current = selectedSkill;
       store.setGitDiff(null);
       store.addUserMessage(text, targetFiles, command);
       store.setRunning(true);
@@ -346,6 +367,16 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     },
     [selectedSkill, workspacePath, preferredModel, isRunning],
   );
+
+  // --- Benchmark prompt callbacks ---
+  const handleBenchmarkConfirm = useCallback(() => {
+    console.log("[workspace-refine] benchmark confirmed");
+    void handleSend("Run benchmarks on the updated skill", undefined, "benchmark");
+  }, [handleSend]);
+
+  const handleBenchmarkSkip = useCallback(() => {
+    console.log("[workspace-refine] benchmark skipped");
+  }, []);
 
   // --- Status bar ---
   const [elapsed, setElapsed] = useState(0);
@@ -409,6 +440,8 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
               hasSkill={!!selectedSkill}
               availableFiles={availableFiles}
               scopeBlocked={scopeBlocked}
+              onBenchmarkConfirm={handleBenchmarkConfirm}
+              onBenchmarkSkip={handleBenchmarkSkip}
             />
           }
           right={<PreviewPanel key={previewRevision} />}
