@@ -3,8 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import SkillDialog from "@/components/skill-dialog";
+import { BenchmarkOverviewCard } from "@/components/workspace/benchmark-overview-card";
 import { useSettingsStore } from "@/stores/settings-store";
-import { getSkillHistory } from "@/lib/tauri";
+import { getSkillHistory, readLatestBenchmark } from "@/lib/tauri";
+import type { BenchmarkData } from "@/components/benchmark-summary-card";
 import type { SkillSummary, ImportedSkill, Purpose, SkillCommit } from "@/lib/types";
 import { PURPOSE_LABELS } from "@/lib/types";
 
@@ -48,6 +50,8 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [commits, setCommits] = useState<SkillCommit[]>([]);
   const [showAllCommits, setShowAllCommits] = useState(false);
+  const [benchmarkData, setBenchmarkData] = useState<BenchmarkData | null>(null);
+  const [benchmarkIteration, setBenchmarkIteration] = useState<number | null>(null);
   const workspacePath = useSettingsStore((s) => s.workspacePath);
 
   const isBuilderSkill = "name" in skill;
@@ -61,6 +65,32 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
         console.warn("event=skill_history_fetch_failed skill=%s error=%s", skillName, err);
       });
   }, [workspacePath, skillName]);
+
+  useEffect(() => {
+    if (!isBuilderSkill || !workspacePath || !skillName) {
+      setBenchmarkData(null);
+      return;
+    }
+    let cancelled = false;
+    readLatestBenchmark(skillName, workspacePath)
+      .then((result) => {
+        if (cancelled) return;
+        if (result) {
+          setBenchmarkData(result.data);
+          setBenchmarkIteration(result.iteration);
+        } else {
+          setBenchmarkData(null);
+          setBenchmarkIteration(null);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn("event=benchmark_fetch_failed operation=readLatestBenchmark skill=%s error=%s", skillName, err);
+          setBenchmarkData(null);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [isBuilderSkill, workspacePath, skillName]);
 
   const purpose = skill.purpose;
   const description = isBuilderSkill ? skill.description : skill.description;
@@ -81,7 +111,7 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
 
   if (isLoading) {
     return (
-      <div className="mx-auto flex max-w-xl flex-col gap-4">
+      <div className="flex flex-col gap-4">
         <div className="rounded-lg border bg-card p-4 space-y-3">
           <Skeleton className="h-5 w-32" />
           <Skeleton className="h-4 w-full" />
@@ -97,10 +127,10 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
   }
 
   return (
-    <div className="mx-auto flex max-w-xl flex-col gap-4">
+    <div className="flex flex-col gap-4">
       {/* Skill Details card */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
-        <div className="flex items-center justify-between">
+      <div className="rounded-lg border bg-card p-4">
+        <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold">Skill Details</h3>
           {canEdit && (
             <Button
@@ -113,65 +143,72 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
           )}
         </div>
 
-        {purpose && (
-          <div className="space-y-0.5">
-            <p className="text-xs text-muted-foreground">Purpose</p>
-            <p className="text-sm">
-              {PURPOSE_LABELS[purpose as Purpose] ?? purpose}
-            </p>
-          </div>
-        )}
-
-        {description && (
-          <div className="space-y-0.5">
-            <p className="text-xs text-muted-foreground">Description</p>
-            <p className="text-sm">{description}</p>
-          </div>
-        )}
-
-        {tags.length > 0 && (
-          <div className="space-y-0.5">
-            <p className="text-xs text-muted-foreground">Tags</p>
-            <div className="flex flex-wrap gap-1">
-              {tags.map((tag) => (
-                <Badge key={tag} variant="secondary" className="rounded-full">
-                  {tag}
-                </Badge>
-              ))}
+        <div className="space-y-3">
+          {purpose && (
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Purpose</p>
+              <p className="text-sm">
+                {PURPOSE_LABELS[purpose as Purpose] ?? purpose}
+              </p>
             </div>
-          </div>
-        )}
-
-        <div className="space-y-0.5">
-          <p className="text-xs text-muted-foreground">Source</p>
-          {skillType === "marketplace" && marketplaceUrl ? (
-            <a
-              href={marketplaceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm break-all"
-              style={{ color: "var(--color-pacific)" }}
-            >
-              {marketplaceUrl}
-            </a>
-          ) : (
-            <p className="text-sm">{sourceValue}</p>
           )}
-        </div>
 
-        <div className="grid grid-cols-2 gap-3">
+          {description && (
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Description</p>
+              <p className="text-sm">{description}</p>
+            </div>
+          )}
+
+          {tags.length > 0 && (
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Tags</p>
+              <div className="flex flex-wrap gap-1">
+                {tags.map((tag) => (
+                  <Badge key={tag} variant="secondary" className="rounded-full">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-0.5">
-            <p className="text-xs text-muted-foreground">
-              {skillType === "imported" || skillType === "marketplace" ? "Imported" : "Created"}
-            </p>
-            <p className="text-sm">{formatRelativeDate(created)}</p>
+            <p className="text-xs text-muted-foreground">Source</p>
+            {skillType === "marketplace" && marketplaceUrl ? (
+              <a
+                href={marketplaceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm break-all"
+                style={{ color: "var(--color-pacific)" }}
+              >
+                {marketplaceUrl}
+              </a>
+            ) : (
+              <p className="text-sm">{sourceValue}</p>
+            )}
           </div>
-          <div className="space-y-0.5">
-            <p className="text-xs text-muted-foreground">Modified</p>
-            <p className="text-sm">{formatRelativeDate(modified)}</p>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">
+                {skillType === "imported" || skillType === "marketplace" ? "Imported" : "Created"}
+              </p>
+              <p className="text-sm">{formatRelativeDate(created)}</p>
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Modified</p>
+              <p className="text-sm">{formatRelativeDate(modified)}</p>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Benchmark Results card — full width */}
+      {benchmarkData && (
+        <BenchmarkOverviewCard benchmarkData={benchmarkData} iteration={benchmarkIteration} />
+      )}
 
       {/* Version History card */}
       <div className="rounded-lg border bg-card p-4">

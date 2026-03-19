@@ -667,3 +667,16 @@ export const checkStartupDeps = () =>
 export const getAllTags = () =>
   invoke<string[]>("get_all_tags");
 
+// --- Benchmark ---
+
+export interface LatestBenchmarkResult {
+  iteration: number;
+  data: import("@/components/benchmark-summary-card").BenchmarkData;
+}
+
+export const readLatestBenchmark = (skillName: string, workspacePath: string) =>
+  invoke<LatestBenchmarkResult | null>(
+    "read_latest_benchmark",
+    { skillName, workspacePath },
+  );
+
