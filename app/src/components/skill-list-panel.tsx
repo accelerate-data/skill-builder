@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSkillStore } from "@/stores/skill-store";
-import { Lock, MoreHorizontal, Plus, Search } from "lucide-react";
+import { Lock, MoreHorizontal, PanelLeftClose, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -47,6 +47,7 @@ interface UnifiedSkill {
 export interface SkillListPanelProps {
   onSelectSkill?: (name: string) => void;
   onCreateSkill?: () => void;
+  onCollapse?: () => void;
   className?: string;
 }
 
@@ -150,6 +151,7 @@ function mergeSkills(
 export function SkillListPanel({
   onSelectSkill,
   onCreateSkill,
+  onCollapse,
   className,
 }: SkillListPanelProps) {
   const [createOpen, setCreateOpen] = useState(false);
@@ -337,6 +339,17 @@ export function SkillListPanel({
         >
           <Plus className="size-4" />
         </Button>
+        {onCollapse && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="size-7"
+            onClick={onCollapse}
+            title="Collapse skill list"
+          >
+            <PanelLeftClose className="size-4" />
+          </Button>
+        )}
       </div>
 
       {/* Search */}
