@@ -465,7 +465,6 @@ pub(crate) fn copy_managed_plugins_to_claude_dir(
 // agents tree to workspace root (only .claude/agents/ is used).
 
 /// Recursively copy a directory and all its contents.
-#[allow(dead_code)]
 pub(crate) fn copy_directory_recursive(src: &Path, dest: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dest)
         .map_err(|e| format!("Failed to create dir {}: {}", dest.display(), e))?;

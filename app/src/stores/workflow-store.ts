@@ -41,7 +41,6 @@ interface WorkflowState {
   benchmarkPending: boolean;
 
   initWorkflow: (skillName: string, purpose?: string, initialReviewMode?: boolean) => void;
-  setPurpose: (purpose: string | null) => void;
   setReviewMode: (mode: boolean) => void;
   setCurrentStep: (step: number) => void;
   updateStepStatus: (stepId: number, status: WorkflowStep["status"]) => void;
@@ -108,8 +107,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       hydrated: false,
       disabledSteps: [],
     }),
-
-  setPurpose: (purpose) => set({ purpose }),
 
   setReviewMode: (mode) => set({ reviewMode: mode }),
 

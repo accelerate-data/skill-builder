@@ -26,12 +26,6 @@ import { RESULT_ERROR_LABELS, ASSISTANT_ERROR_LABELS } from "./error-labels.js";
 import { RunMetadataAccumulator } from "./run-metadata-accumulator.js";
 import type { RequestContext } from "./run-metadata-accumulator.js";
 
-// Re-export extracted modules for backward compatibility
-export { truncate, computeToolSummary } from "./tool-summaries.js";
-export { RESULT_ERROR_LABELS, ASSISTANT_ERROR_LABELS } from "./error-labels.js";
-export { RunMetadataAccumulator } from "./run-metadata-accumulator.js";
-export type { RequestContext } from "./run-metadata-accumulator.js";
-
 // ---------------------------------------------------------------------------
 // Result markdown extraction
 // ---------------------------------------------------------------------------

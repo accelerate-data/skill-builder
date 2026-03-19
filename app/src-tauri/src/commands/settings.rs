@@ -24,7 +24,7 @@ pub fn get_data_dir(data_dir: tauri::State<'_, crate::DataDir>) -> Result<String
 pub(crate) fn run_settings_startup_migrations(
     conn: &rusqlite::Connection,
 ) -> Result<(), String> {
-    let mut settings = crate::db::read_settings_hydrated(conn)?;
+    let mut settings = crate::db::read_settings(conn)?;
     let mut dirty = false;
 
     // Migrate legacy marketplace_url → marketplace_registries on first run
@@ -92,7 +92,7 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
         log::error!("[get_settings] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    let settings = crate::db::read_settings_hydrated(&conn)?;
+    let settings = crate::db::read_settings(&conn)?;
     Ok(settings)
 }
 

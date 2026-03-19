@@ -54,11 +54,6 @@ export function resolveStepTemplate(
     return skillName && skillName !== "__test_baseline__" ? "test-plan-with" : "test-plan-without";
   }
 
-  // Legacy bare names kept for backward compatibility
-  if (agentName === "test-plan-with") return "test-plan-with";
-  if (agentName === "test-plan-without") return "test-plan-without";
-  if (agentName === "test-evaluator") return "test-evaluator";
-
   return null;
 }
 
@@ -117,17 +112,6 @@ export function parsePromptPaths(prompt: string): {
   };
 }
 
-/**
- * Resolve all paths from the prompt. Paths are now inline in the prompt string.
- */
-export function resolvePromptPaths(prompt: string): {
-  workspaceDir: string | null;
-  contextDir: string | null;
-  skillOutputDir: string | null;
-  skillDir: string | null;
-} {
-  return parsePromptPaths(prompt);
-}
 
 /** Check if a path exists (async replacement for fs.existsSync). */
 async function pathExists(p: string): Promise<boolean> {
@@ -319,7 +303,7 @@ async function writeMockOutputFiles(
 
   if (!(await pathExists(srcDir))) return;
 
-  const paths = resolvePromptPaths(config.prompt);
+  const paths = parsePromptPaths(config.prompt);
 
   // Determine the destination root for this step's files.
   //

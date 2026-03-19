@@ -40,7 +40,7 @@ pub async fn check_marketplace_url(
             log::error!("[check_marketplace_url] failed to acquire DB lock: {}", e);
             e.to_string()
         })?;
-        let settings = crate::db::read_settings_hydrated(&conn)?;
+        let settings = crate::db::read_settings(&conn)?;
         settings.github_oauth_token.clone()
     };
     let client = build_github_client(token.as_deref());
@@ -150,7 +150,7 @@ pub async fn list_github_skills(
             log::error!("[list_github_skills] failed to acquire DB lock: {}", e);
             e.to_string()
         })?;
-        let settings = crate::db::read_settings_hydrated(&conn)?;
+        let settings = crate::db::read_settings(&conn)?;
         settings.github_oauth_token.clone()
     };
 
@@ -447,7 +447,7 @@ pub async fn import_marketplace_to_library(
             );
             e.to_string()
         })?;
-        let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
+        let settings = crate::db::read_settings(&conn).map_err(|e| {
             log::error!(
                 "[import_marketplace_to_library] failed to read settings: {}",
                 e
@@ -750,7 +750,7 @@ pub async fn check_marketplace_updates(
             );
             e.to_string()
         })?;
-        let settings = crate::db::read_settings_hydrated(&conn)?;
+        let settings = crate::db::read_settings(&conn)?;
         let enabled_sources: HashSet<String> = settings
             .marketplace_registries
             .into_iter()
@@ -877,7 +877,7 @@ pub fn check_skill_customized(
     // Validate disk_path is within expected roots (workspace skills dir or skills_path).
     // This guards against a tampered DB row pointing outside the app's data directories.
     {
-        let settings = crate::db::read_settings_hydrated(&conn)?;
+        let settings = crate::db::read_settings(&conn)?;
         let canonical_disk = match std::fs::canonicalize(&disk_path) {
             Ok(p) => p,
             Err(_) => {

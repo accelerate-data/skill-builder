@@ -447,7 +447,7 @@ pub async fn run_answer_evaluator(
     // step-specific validation (this is a gate, not a workflow step).
     let (api_key, skills_path, industry, function_role, intake_json, preferred_model) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
+        let settings = crate::db::read_settings(&conn).map_err(|e| {
             log::error!("run_answer_evaluator: failed to read settings: {}", e);
             e.to_string()
         })?;

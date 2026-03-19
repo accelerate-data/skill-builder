@@ -161,7 +161,7 @@ pub(super) fn load_refine_runtime_settings(
         log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    let settings = db::read_settings_hydrated(&conn).map_err(|e| {
+    let settings = db::read_settings(&conn).map_err(|e| {
         log::error!("[send_refine_message] Failed to read settings: {}", e);
         e
     })?;

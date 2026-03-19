@@ -18,11 +18,8 @@ fn suppress_same_fallback_model(
     }
 }
 
-fn required_plugins_for_run_source(run_source: Option<&str>) -> Option<Vec<String>> {
-    match run_source {
-        Some("test") => Some(vec!["vd-agent".to_string()]),
-        _ => Some(vec![]),
-    }
+fn required_plugins_for_run_source(_run_source: Option<&str>) -> Option<Vec<String>> {
+    Some(vec![])
 }
 
 pub(crate) fn output_format_for_agent(
@@ -160,7 +157,7 @@ pub async fn start_agent(
             log::error!("[start_agent] Failed to acquire DB lock: {}", e);
             e.to_string()
         })?;
-        let settings = crate::db::read_settings_hydrated(&conn)?;
+        let settings = crate::db::read_settings(&conn)?;
         let key = match settings.anthropic_api_key {
             Some(k) => crate::types::SecretString::new(k),
             None => return Err("Anthropic API key not configured".to_string()),
@@ -332,11 +329,8 @@ mod tests {
     }
 
     #[test]
-    fn test_required_plugins_for_test_run_source() {
-        assert_eq!(
-            required_plugins_for_run_source(Some("test")),
-            Some(vec!["vd-agent".to_string()])
-        );
+    fn test_required_plugins_for_run_source_always_empty() {
+        assert_eq!(required_plugins_for_run_source(Some("test")), Some(vec![]));
         assert_eq!(required_plugins_for_run_source(Some("workflow")), Some(vec![]));
         assert_eq!(required_plugins_for_run_source(None), Some(vec![]));
     }

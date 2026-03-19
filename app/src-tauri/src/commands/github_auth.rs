@@ -168,7 +168,7 @@ pub(crate) async fn github_poll_for_token_inner(
 pub(crate) fn github_get_user_impl(
     conn: &rusqlite::Connection,
 ) -> Result<Option<GitHubUser>, String> {
-    let settings = crate::db::read_settings_hydrated(conn)?;
+    let settings = crate::db::read_settings(conn)?;
     if settings.github_oauth_token.is_some() {
         let login = settings.github_user_login.unwrap_or_default();
         let avatar_url = settings.github_user_avatar.unwrap_or_default();
@@ -315,7 +315,7 @@ mod tests {
 
         github_logout_impl(&conn).unwrap();
 
-        let after = crate::db::read_settings_hydrated(&conn).unwrap();
+        let after = crate::db::read_settings(&conn).unwrap();
         assert!(after.github_oauth_token.is_none());
         assert!(after.github_user_login.is_none());
         assert!(after.github_user_avatar.is_none());
