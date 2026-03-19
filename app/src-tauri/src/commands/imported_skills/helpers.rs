@@ -193,7 +193,11 @@ pub(crate) fn add_dir_to_zip(
     for entry in fs::read_dir(dir).map_err(|e| format!("Failed to read dir: {}", e))? {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         let path = entry.path();
-        let name = format!("{}/{}", prefix, entry.file_name().to_string_lossy());
+        let name = if prefix.is_empty() {
+            entry.file_name().to_string_lossy().to_string()
+        } else {
+            format!("{}/{}", prefix, entry.file_name().to_string_lossy())
+        };
 
         if path.is_dir() {
             add_dir_to_zip(writer, &path, &name, options)?;
