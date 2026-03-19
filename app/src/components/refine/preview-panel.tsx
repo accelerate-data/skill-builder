@@ -1,9 +1,11 @@
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize from "rehype-sanitize";
 import { markdownComponents } from "@/components/markdown-link";
+import { SkillFrontmatterHeader } from "@/components/skill-frontmatter-header";
+import { isSkillFile, parseFrontmatter } from "@/lib/frontmatter";
 import { ChevronDown, FileText, GitCompare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -39,14 +41,22 @@ function getDiffFileTabNames(skillFiles: string[], gitDiffPaths: string[]): stri
   return Array.from(names);
 }
 
-/** Memoized markdown renderer — only re-renders when content changes. */
-const MarkdownPreview = memo(function MarkdownPreview({ content }: { content: string }) {
+/** Memoized markdown renderer — only re-renders when content or filename changes. */
+const MarkdownPreview = memo(function MarkdownPreview({ content, filename }: { content: string; filename: string }) {
+  const parsed = useMemo(() => {
+    if (isSkillFile(filename)) return parseFrontmatter(content);
+    return { frontmatter: null, body: content };
+  }, [content, filename]);
+
   return (
-    <div className="markdown-body compact max-w-none overflow-hidden p-4 pb-8">
-      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={markdownComponents}>
-        {content}
-      </ReactMarkdown>
-    </div>
+    <>
+      {parsed.frontmatter && <SkillFrontmatterHeader frontmatter={parsed.frontmatter} />}
+      <div className="markdown-body compact max-w-none overflow-hidden p-4 pb-8">
+        <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={markdownComponents}>
+          {parsed.body}
+        </ReactMarkdown>
+      </div>
+    </>
   );
 });
 
@@ -144,7 +154,7 @@ export function PreviewPanel() {
           </div>
         ) : activeFile ? (
           <ScrollArea className="h-full">
-            <MarkdownPreview content={activeFile.content} />
+            <MarkdownPreview content={activeFile.content} filename={activeFile.filename} />
           </ScrollArea>
         ) : (
           <div data-testid="refine-preview-missing-file" className="flex h-full items-center justify-center text-sm text-muted-foreground">
