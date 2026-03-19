@@ -62,6 +62,7 @@ export default function SkillPreviewDialog({
     }
   }, [open, skill])
 
+  // getSkillContent always returns SKILL.md content, so frontmatter parsing is unconditional
   const parsed = useMemo(() => {
     if (!content) return null
     return parseFrontmatter(content)

@@ -30,13 +30,13 @@ export function parseFrontmatter(content: string): ParsedSkillContent {
   }
 
   const afterFirst = trimmed.slice(3);
-  const endIdx = afterFirst.indexOf("\n---");
-  if (endIdx === -1) {
+  const endMatch = afterFirst.match(/\n---[ \t]*(\n|$)/);
+  if (!endMatch || endMatch.index === undefined) {
     return { frontmatter: null, body: content };
   }
 
-  const yamlBlock = afterFirst.slice(0, endIdx);
-  const body = afterFirst.slice(endIdx + 4).replace(/^\n+/, "");
+  const yamlBlock = afterFirst.slice(0, endMatch.index);
+  const body = afterFirst.slice(endMatch.index + endMatch[0].length).replace(/^\n+/, "");
 
   const frontmatter: SkillFrontmatter = {};
   let currentMultilineKey: string | null = null;
@@ -75,7 +75,11 @@ export function parseFrontmatter(content: string): ParsedSkillContent {
       currentMultilineKey = key;
       multilineBuf = "";
     } else {
-      const cleaned = rawVal.replace(/^["']|["']$/g, "");
+      const cleaned =
+        (rawVal.startsWith('"') && rawVal.endsWith('"')) ||
+        (rawVal.startsWith("'") && rawVal.endsWith("'"))
+          ? rawVal.slice(1, -1)
+          : rawVal;
       if (cleaned) frontmatter[key] = cleaned;
     }
   }
