@@ -468,6 +468,43 @@ describe("SkillListPanel", () => {
     expect(onSelectSkill).not.toHaveBeenCalled();
   });
 
+  it("locks other rows while a refine agent is running", () => {
+    const onSelectSkill = vi.fn();
+    const skillA = makeBuilderSkill({ name: "refine-skill", status: "completed" });
+    const skillB = makeBuilderSkill({ name: "other-skill", status: "completed" });
+    useSkillStore.setState({ skills: [skillA, skillB] });
+    useAgentStore.setState((state) => ({
+      runs: {
+        ...state.runs,
+        "agent-refine": {
+          agentId: "agent-refine",
+          model: "sonnet",
+          status: "running",
+          displayItems: [],
+          startTime: Date.now(),
+          contextHistory: [],
+          contextWindow: 200_000,
+          compactionEvents: [],
+          thinkingEnabled: false,
+          skillName: "refine-skill",
+          runSource: "refine",
+        },
+      },
+    }));
+
+    render(<SkillListPanel onSelectSkill={onSelectSkill} />);
+
+    // other-skill should be locked
+    const otherRow = screen.getByText("other-skill").closest('[role="button"]');
+    expect(otherRow?.className).toMatch(/opacity-\[0\.45\]/);
+    expect(otherRow?.className).toMatch(/cursor-not-allowed/);
+
+    // Click should be a no-op
+    fireEvent.click(otherRow!);
+    expect(onSelectSkill).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it("does not navigate when clicking the running skill itself", () => {
     const onSelectSkill = vi.fn();
     const skill = makeBuilderSkill({ name: "running-skill", current_step: "Step 2" });

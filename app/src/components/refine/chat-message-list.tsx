@@ -30,6 +30,7 @@ export function ChatMessageList({ messages, onBenchmarkConfirm, onBenchmarkSkip 
         <div className="flex flex-wrap justify-center gap-2 text-xs text-muted-foreground">
           <span className="rounded-md border px-2 py-1 font-mono">/rewrite</span>
           <span className="rounded-md border px-2 py-1 font-mono">/validate</span>
+          <span className="rounded-md border px-2 py-1 font-mono">/benchmark</span>
           <span className="rounded-md border px-2 py-1 font-mono">@SKILL.md</span>
         </div>
       </div>

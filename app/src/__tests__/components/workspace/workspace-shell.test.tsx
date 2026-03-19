@@ -20,18 +20,21 @@ vi.mock("@/stores/skill-store", () => ({
   useSkillStore: vi.fn((selector) => selector({ skills: [], lockedSkills: new Set() })),
 }));
 
+const refineState = vi.hoisted(() => ({
+  selectedSkill: null,
+  refinableSkills: [],
+  isLoadingSkills: false,
+  skillFiles: [],
+  previewRevision: 0,
+  isRunning: false,
+  activeAgentId: null,
+  sessionId: null,
+}));
+
 vi.mock("@/stores/refine-store", () => ({
-  useRefineStore: vi.fn((selector) =>
-    selector({
-      selectedSkill: null,
-      refinableSkills: [],
-      isLoadingSkills: false,
-      skillFiles: [],
-      previewRevision: 0,
-      isRunning: false,
-      activeAgentId: null,
-      sessionId: null,
-    }),
+  useRefineStore: Object.assign(
+    vi.fn((selector: (s: typeof refineState) => unknown) => selector(refineState)),
+    { getState: () => refineState },
   ),
 }));
 
@@ -60,6 +63,7 @@ vi.mock("@/lib/tauri", () => ({
   finalizeRefineRun: vi.fn().mockResolvedValue({ files: [], diff: null }),
   materializeRefineValidationOutput: vi.fn().mockResolvedValue(undefined),
   getSkillHistory: vi.fn().mockResolvedValue([]),
+  readLatestBenchmark: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/lib/agent-results", () => ({
@@ -128,17 +132,75 @@ describe("WorkspaceShell", () => {
     expect(descriptionTab).toBeDisabled();
   });
 
-  it('clicking "Open Refine" in WorkspaceOverview switches active tab to Refine', async () => {
+  it("shows dialog when switching away from Refine while agent is running", async () => {
     const user = userEvent.setup();
-    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" />);
+    refineState.isRunning = true;
 
-    // Overview is showing — find the "Open Refine" button
-    const openRefineBtn = screen.getByRole("button", { name: /Open Refine/i });
-    await user.click(openRefineBtn);
+    const { container } = render(
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="refine" />,
+    );
 
-    const refineTab = screen.getByRole("tab", { name: "Refine" });
-    expect(refineTab).toHaveAttribute("data-state", "active");
-    // WorkspaceRefine stub is rendered
-    expect(screen.getByTestId("workspace-refine")).toBeInTheDocument();
+    // Refine tab is active
+    const refineTab = container.querySelector('[role="tab"][data-state="active"]');
+    expect(refineTab?.textContent).toBe("Refine");
+
+    // Try to switch to Overview — click the first tab trigger
+    const overviewTab = container.querySelector('[role="tab"]');
+    await user.click(overviewTab!);
+
+    // Dialog should appear
+    expect(screen.getByText("Agent Running")).toBeInTheDocument();
+    expect(screen.getByText(/refine agent is still running/i)).toBeInTheDocument();
+
+    // Refine tab should still be active (check via container, not role query — dialog captures aria)
+    const stillActive = container.querySelector('[role="tab"][data-state="active"]');
+    expect(stillActive?.textContent).toBe("Refine");
+
+    refineState.isRunning = false;
+  });
+
+  it("switches tab after confirming Leave in the guard dialog", async () => {
+    const user = userEvent.setup();
+    refineState.isRunning = true;
+
+    const { container } = render(
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="refine" />,
+    );
+
+    const overviewTab = container.querySelector('[role="tab"]');
+    await user.click(overviewTab!);
+    expect(screen.getByText("Agent Running")).toBeInTheDocument();
+
+    // Click Leave
+    await user.click(screen.getByRole("button", { name: "Leave" }));
+
+    // Overview should now be active
+    const activeTab = container.querySelector('[role="tab"][data-state="active"]');
+    expect(activeTab?.textContent).toBe("Overview");
+
+    refineState.isRunning = false;
+  });
+
+  it("stays on Refine tab when clicking Stay in the guard dialog", async () => {
+    const user = userEvent.setup();
+    refineState.isRunning = true;
+
+    const { container } = render(
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="refine" />,
+    );
+
+    const overviewTab = container.querySelector('[role="tab"]');
+    await user.click(overviewTab!);
+    expect(screen.getByText("Agent Running")).toBeInTheDocument();
+
+    // Click Stay
+    await user.click(screen.getByRole("button", { name: "Stay" }));
+
+    // Dialog should close, Refine still active
+    expect(screen.queryByText("Agent Running")).not.toBeInTheDocument();
+    const activeTab = container.querySelector('[role="tab"][data-state="active"]');
+    expect(activeTab?.textContent).toBe("Refine");
+
+    refineState.isRunning = false;
   });
 });

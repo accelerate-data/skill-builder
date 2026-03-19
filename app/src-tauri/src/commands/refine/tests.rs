@@ -514,10 +514,9 @@ fn test_direct_validate_config_uses_validate_agent_contract() {
     let (config, _) = base_direct_config(VALIDATE_AGENT_NAME);
     assert_eq!(config.agent_name.as_deref(), Some(VALIDATE_AGENT_NAME));
     assert_eq!(config.max_turns, Some(50));
-    assert_eq!(
-        config.output_format.as_ref().unwrap()["schema"]["properties"]["status"]["const"],
-        "validation_complete"
-    );
+    // Refine direct agents do not use structured output — agents run to
+    // natural completion and write results to disk.
+    assert!(config.output_format.is_none());
     let tools = config.allowed_tools.unwrap();
     assert!(tools.contains(&"Read".to_string()));
     assert!(!tools.contains(&"Write".to_string()));
@@ -529,10 +528,7 @@ fn test_direct_rewrite_config_uses_rewrite_agent_contract() {
     let (config, _) = base_direct_config(REWRITE_AGENT_NAME);
     assert_eq!(config.agent_name.as_deref(), Some(REWRITE_AGENT_NAME));
     assert_eq!(config.max_turns, Some(80));
-    assert_eq!(
-        config.output_format.as_ref().unwrap()["schema"]["properties"]["status"]["const"],
-        "rewritten"
-    );
+    assert!(config.output_format.is_none());
     let tools = config.allowed_tools.unwrap();
     assert!(tools.contains(&"Write".to_string()));
     assert!(tools.contains(&"Skill".to_string()));
@@ -543,10 +539,7 @@ fn test_direct_benchmark_config_uses_benchmark_agent_contract() {
     let (config, _) = base_direct_config(BENCHMARK_AGENT_NAME);
     assert_eq!(config.agent_name.as_deref(), Some(BENCHMARK_AGENT_NAME));
     assert_eq!(config.max_turns, Some(200));
-    assert_eq!(
-        config.output_format.as_ref().unwrap()["schema"]["properties"]["status"]["const"],
-        "benchmarked"
-    );
+    assert!(config.output_format.is_none());
     let tools = config.allowed_tools.unwrap();
     assert!(tools.contains(&"Agent".to_string()));
     assert!(tools.contains(&"Skill".to_string()));
