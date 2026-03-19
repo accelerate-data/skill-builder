@@ -15,8 +15,8 @@ export function useBenchmarkData(
 ) {
   const [benchmarkData, setBenchmarkData] = useState<BenchmarkData | null>(null);
   const [benchmarkLoaded, setBenchmarkLoaded] = useState(false);
-  /** "skipped" = agent reported no evals (stub); "missing" = expected but not found; false = ok */
-  const [benchmarkStatus, setBenchmarkStatus] = useState<"skipped" | "missing" | false>(false);
+  /** "skipped" = agent reported no evals (stub); "missing" = expected but not found; "partial" = incomplete run, no auto-cleanup; false = ok */
+  const [benchmarkStatus, setBenchmarkStatus] = useState<"skipped" | "partial" | "missing" | false>(false);
 
   useEffect(() => {
     if (stepId !== 3 || !workspacePath || !skillName) {
@@ -60,9 +60,17 @@ export function useBenchmarkData(
         setBenchmarkStatus(false);
       } catch {
         if (cancelled) return;
-        console.log("[step-complete] benchmark.json not found — missing");
-        setBenchmarkData(null);
-        setBenchmarkStatus("missing");
+        if (agentStatus === "partial") {
+          // Agent explicitly said partial — benchmark may still be in flight or incomplete.
+          // Don't auto-cleanup; surface as a recoverable partial state.
+          console.warn("[step-complete] benchmark.json not found but agent reported partial — no cleanup");
+          setBenchmarkData(null);
+          setBenchmarkStatus("partial");
+        } else {
+          console.warn("[step-complete] benchmark.json not found — missing");
+          setBenchmarkData(null);
+          setBenchmarkStatus("missing");
+        }
       }
       setBenchmarkLoaded(true);
     })();
@@ -70,7 +78,7 @@ export function useBenchmarkData(
     return () => { cancelled = true; };
   }, [stepId, workspacePath, skillName]);
 
-  // Auto-cleanup step 3 files when benchmark is truly missing (not skipped)
+  // Auto-cleanup step 3 files when benchmark is truly missing (not skipped or partial)
   useEffect(() => {
     if (benchmarkStatus !== "missing" || stepId !== 3 || !workspacePath || !skillName || reviewMode) return;
     console.log("[step-complete] benchmark missing — cleaning up step 3 files");

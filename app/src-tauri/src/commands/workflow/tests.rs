@@ -780,6 +780,49 @@ fn test_materialize_step3_benchmark_complete() {
 }
 
 #[test]
+fn test_materialize_step3_partial_with_benchmark_json_upgrades_to_complete() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skill_root = tmp.path().join("my-skill");
+    let bench_dir = skill_root.join("evals/workspace/iteration-1");
+    std::fs::create_dir_all(&bench_dir).unwrap();
+    std::fs::write(bench_dir.join("benchmark.json"), "{}").unwrap();
+
+    let payload = serde_json::json!({
+        "status": "benchmarked",
+        "benchmark_status": "partial",
+        "benchmark_path": "evals/workspace/iteration-1"
+    });
+    materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
+
+    let meta: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(skill_root.join("context/benchmark-meta.json")).unwrap(),
+    )
+    .unwrap();
+    // benchmark.json exists on disk — should be upgraded to "complete"
+    assert_eq!(meta["benchmark_status"], "complete");
+    assert_eq!(meta["benchmark_path"], "evals/workspace/iteration-1");
+}
+
+#[test]
+fn test_materialize_step3_partial_without_benchmark_json_stays_partial() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skill_root = tmp.path().join("my-skill");
+    // No benchmark.json on disk — partial stays partial
+    let payload = serde_json::json!({
+        "status": "benchmarked",
+        "benchmark_status": "partial",
+        "benchmark_path": "evals/workspace/iteration-1"
+    });
+    materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
+
+    let meta: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(skill_root.join("context/benchmark-meta.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(meta["benchmark_status"], "partial");
+}
+
+#[test]
 fn test_materialize_step3_rejects_wrong_status() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
@@ -2327,10 +2370,12 @@ fn test_deploy_skill_for_workflow_uses_bundled_source_for_bundled_rows() {
     };
     crate::db::insert_imported_skill(&conn, &ws).unwrap();
 
+    let empty_plugins_dir = tempfile::tempdir().unwrap();
     super::deploy::deploy_skill_for_workflow(
         &conn,
         &workspace_path,
         bundled_skills_dir,
+        empty_plugins_dir.path(),
         "research",
         "research",
     ).unwrap();

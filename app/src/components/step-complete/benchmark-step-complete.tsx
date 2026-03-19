@@ -6,7 +6,7 @@ import type { StepCompleteBaseProps } from "./step-complete-types";
 
 type Props = StepCompleteBaseProps & {
   benchmarkData: BenchmarkData | null;
-  benchmarkStatus: "skipped" | "missing" | false;
+  benchmarkStatus: "skipped" | "partial" | "missing" | false;
 };
 
 export function BenchmarkStepComplete(props: Props) {

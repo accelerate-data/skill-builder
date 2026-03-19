@@ -32,7 +32,7 @@ interface BenchmarkRun {
   run_number: number;
   result: BenchmarkRunResult;
   expectations?: BenchmarkExpectation[];
-  notes?: string;
+  notes?: string | string[];
 }
 
 interface BenchmarkStat {
@@ -65,7 +65,7 @@ export interface BenchmarkData {
   metadata?: BenchmarkMetadata;
   runs?: BenchmarkRun[];
   run_summary?: Record<string, BenchmarkConfigSummary | BenchmarkDelta>;
-  notes?: string;
+  notes?: string | string[];
 }
 
 interface BenchmarkSummaryCardProps {
@@ -112,6 +112,27 @@ export function BenchmarkSummaryCard({ benchmarkData, status, duration, cost, on
     );
   }
 
+  // Partial = agent emitted an intermediate StructuredOutput before finishing — show warning, offer retry
+  // Only bail out early when there's no data; if benchmark data exists, fall through and show the inline banner.
+  if (status === "partial" && !benchmarkData) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-8">
+        <AlertTriangle className="size-8 text-amber-600 dark:text-amber-400" />
+        <div className="text-center">
+          <p className="font-medium text-amber-600 dark:text-amber-400">Benchmark partially completed</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            The evaluation run finished before all results were collected. You can re-run the step to get complete benchmark data.
+          </p>
+        </div>
+        {onResetStep && (
+          <Button variant="outline" size="sm" className="transition-colors duration-150" onClick={onResetStep}>
+            Re-run Step
+          </Button>
+        )}
+      </div>
+    );
+  }
+
   // Skipped = agent reported no evals (stub case) — show simple complete state
   if (status === "skipped" || !benchmarkData) {
     return (
@@ -130,7 +151,12 @@ export function BenchmarkSummaryCard({ benchmarkData, status, duration, cost, on
   const runs = benchmarkData.runs ?? [];
   const summary = benchmarkData.run_summary ?? {};
   const metadata = benchmarkData.metadata ?? {};
-  const notes = benchmarkData.notes ?? "";
+  const rawNotes = benchmarkData.notes;
+  const notes = typeof rawNotes === "string"
+    ? rawNotes
+    : Array.isArray(rawNotes)
+      ? rawNotes.join("\n\n")
+      : "";
 
   // Discover config names (everything except "delta")
   const configs = Object.keys(summary).filter((k) => k !== "delta");
@@ -236,7 +262,7 @@ export function BenchmarkSummaryCard({ benchmarkData, status, duration, cost, on
           </button>
           {notesExpanded && (
             <div className="border-t px-4 pb-4 pt-2">
-              <div className="prose prose-sm dark:prose-invert max-w-none [&_*]:text-sm [&_table]:text-xs [&_th]:text-xs [&_td]:text-xs">
+              <div className="markdown-body compact max-w-none">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={markdownComponents}>
                   {notes}
                 </ReactMarkdown>

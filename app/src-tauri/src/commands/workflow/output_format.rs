@@ -158,7 +158,10 @@ pub(crate) fn materialize_workflow_step_output_value(
                 }
                 "benchmarked" => {
                     // benchmark-skill output
-                    log::info!("benchmark-skill completed for skill={}", skill_root.display());
+                    log::info!(
+                        "event=benchmark_skill_complete operation=materialize_output status=processing skill={}",
+                        skill_root.display()
+                    );
                     let parsed =
                         serde_json::from_value::<GenerateSkillOutput>(structured_output.clone())
                             .map_err(|e| format!("invalid benchmark skill output: {}", e))?;
@@ -171,19 +174,48 @@ pub(crate) fn materialize_workflow_step_output_value(
                         ));
                     }
 
-                    if let Some(ref bench_path) = parsed.benchmark_path {
-                        let benchmark_json = skill_root.join(bench_path).join("benchmark.json");
-                        if !benchmark_json.exists() {
-                            log::warn!(
-                                "benchmark_status='{}' but benchmark.json not found at '{}'",
-                                parsed.benchmark_status,
-                                benchmark_json.display()
-                            );
+                    // If the agent emitted an intermediate "partial" StructuredOutput but the
+                    // run completed successfully, check whether benchmark.json actually landed
+                    // on disk. If it did, the benchmark finished — upgrade to "complete" so the
+                    // frontend doesn't treat the premature partial signal as a failure.
+                    let effective_status = if parsed.benchmark_status == "partial" {
+                        if let Some(ref bench_path) = parsed.benchmark_path {
+                            let benchmark_json = skill_root.join(bench_path).join("benchmark.json");
+                            if benchmark_json.exists() {
+                                log::info!(
+                                    "event=benchmark_partial_upgrade operation=materialize_output status=upgraded skill={} path={}",
+                                    skill_root.display(),
+                                    benchmark_json.display()
+                                );
+                                "complete".to_string()
+                            } else {
+                                log::info!(
+                                    "event=benchmark_partial_kept operation=materialize_output status=partial skill={} path={}",
+                                    skill_root.display(),
+                                    benchmark_json.display()
+                                );
+                                parsed.benchmark_status.clone()
+                            }
+                        } else {
+                            parsed.benchmark_status.clone()
                         }
-                    }
+                    } else {
+                        if let Some(ref bench_path) = parsed.benchmark_path {
+                            let benchmark_json = skill_root.join(bench_path).join("benchmark.json");
+                            if !benchmark_json.exists() {
+                                log::warn!(
+                                    "event=benchmark_file_missing operation=materialize_output status=warning skill={} benchmark_status={} path={}",
+                                    skill_root.display(),
+                                    parsed.benchmark_status,
+                                    benchmark_json.display()
+                                );
+                            }
+                        }
+                        parsed.benchmark_status.clone()
+                    };
 
                     let meta = serde_json::json!({
-                        "benchmark_status": parsed.benchmark_status,
+                        "benchmark_status": effective_status,
                         "benchmark_path": parsed.benchmark_path,
                     });
                     let meta_path = context_dir.join("benchmark-meta.json");
