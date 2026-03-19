@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useSkillStore } from "@/stores/skill-store";
 import { WorkspaceOverview } from "./workspace-overview";
@@ -22,27 +21,12 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
   }, [initialTab]);
 
   const skillName = "name" in skill ? skill.name : skill.skill_name;
-  const version = ("name" in skill ? skill.version : skill.version) ?? "1";
-  const versionLabel = version.startsWith("v") ? version : `v${version.split(".")[0]}`;
-
-  const sourceLabel =
-    skillType === "builder"
-      ? "Builder"
-      : skillType === "marketplace"
-        ? "Marketplace"
-        : "Uploaded";
 
   return (
     <div className="flex h-full flex-col">
       {/* 48px header */}
       <div className="flex h-12 shrink-0 items-center gap-2.5 border-b px-4">
         <span className="truncate text-sm font-semibold">{skillName}</span>
-        <Badge variant="outline" className="shrink-0 font-mono text-xs">
-          {versionLabel}
-        </Badge>
-        <Badge variant="outline" className="shrink-0 capitalize">
-          {sourceLabel}
-        </Badge>
       </div>
 
       {/* Tabs */}

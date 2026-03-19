@@ -52,8 +52,8 @@ pub struct DecisionsOutput {
 /// Structured output produced by the `generate-skill` agent (workflow step 3,
 /// writing phase) or the `benchmark-skill` agent (benchmark phase).
 ///
-/// generate-skill:  `{ status: "generated", skipped?: true, call_trace }`
-/// rewrite-skill:   `{ status: "rewritten", skipped?: true, call_trace }`
+/// generate-skill:  `{ status: "generated", skipped?: true, commit_summary?, version_bump?, call_trace }`
+/// rewrite-skill:   `{ status: "rewritten", skipped?: true, commit_summary?, version_bump?, call_trace }`
 /// benchmark-skill:  `{ status: "benchmarked", benchmark_status, benchmark_path, tag, ... }`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenerateSkillOutput {
@@ -64,6 +64,10 @@ pub struct GenerateSkillOutput {
     pub benchmark_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skipped: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit_summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version_bump: Option<String>,
 }
 
 // ─── Answer Evaluator ────────────────────────────────────────────────────────

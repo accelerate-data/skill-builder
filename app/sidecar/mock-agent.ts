@@ -459,6 +459,8 @@ export async function buildStructuredMockResult(
     if (!skillMd) return null;
     return {
       status: "generated",
+      commit_summary: "Create initial skill with SKILL.md and reference files",
+      version_bump: "minor",
       call_trace: ["read-user-context", "write-skill", "write-evals"],
     };
   }
@@ -466,6 +468,8 @@ export async function buildStructuredMockResult(
   if (stepTemplate === "rewrite-skill") {
     return {
       status: "rewritten",
+      commit_summary: "Improve error handling patterns and update testing references",
+      version_bump: "minor",
       call_trace: ["read-user-context", "read-existing-skill", "rewrite-skill"],
     };
   }

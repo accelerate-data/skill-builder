@@ -353,20 +353,56 @@ pub fn restore_version(repo_path: &Path, sha: &str, skill_name: &str) -> Result<
     Ok(())
 }
 
+// --- Semver helpers ---
+
+/// Parse a semver string "X.Y.Z" into (major, minor, patch).
+/// Returns (0, 0, 0) for unparseable strings.
+fn parse_semver(version: &str) -> (u32, u32, u32) {
+    let parts: Vec<&str> = version.split('.').collect();
+    if parts.len() != 3 {
+        return (0, 0, 0);
+    }
+    let major = parts[0].parse::<u32>().unwrap_or(0);
+    let minor = parts[1].parse::<u32>().unwrap_or(0);
+    let patch = parts[2].parse::<u32>().unwrap_or(0);
+    (major, minor, patch)
+}
+
+/// Apply a semver bump to the given version string.
+/// `bump` must be "major", "minor", or "patch"; defaults to "patch" if invalid.
+/// Returns the new version string (e.g. "1.2.0" → "1.3.0" for minor bump).
+/// If current is "0.0.0" (no prior version), returns "1.0.0" regardless of bump type.
+pub fn bump_semver(current: &str, bump: &str) -> Result<String, String> {
+    let (major, minor, patch) = parse_semver(current);
+    if major == 0 && minor == 0 && patch == 0 {
+        return Ok("1.0.0".to_string());
+    }
+    let (new_major, new_minor, new_patch) = match bump {
+        "major" => (major + 1, 0, 0),
+        "minor" => (major, minor + 1, 0),
+        "patch" => (major, minor, patch + 1),
+        _ => {
+            log::warn!("[git] invalid version_bump '{}', defaulting to patch", bump);
+            (major, minor, patch + 1)
+        }
+    };
+    Ok(format!("{}.{}.{}", new_major, new_minor, new_patch))
+}
+
 // --- Skill version tagging ---
 
-/// Find the highest existing version tag for a skill (`<skill-name>/v<N>`).
-/// Returns 0 if no tags exist yet.
-pub fn latest_skill_version(path: &Path, skill_name: &str) -> Result<u32, String> {
+/// Find the highest existing semver tag for a skill (`<skill-name>/vX.Y.Z`).
+/// Returns "0.0.0" if no valid semver tags exist.
+pub fn latest_skill_semver(path: &Path, skill_name: &str) -> Result<String, String> {
     log::debug!(
-        "[git] latest_skill_version: skill='{}' repo={}",
+        "[git] latest_skill_semver: skill='{}' repo={}",
         skill_name,
         path.display()
     );
     let repo = Repository::open(path)
         .map_err(|e| format!("Failed to open repo at {}: {}", path.display(), e))?;
     let prefix = format!("{}/v", skill_name);
-    let mut max_version: u32 = 0;
+    let mut best: (u32, u32, u32) = (0, 0, 0);
 
     repo.tag_names(Some(&format!("{}/*", skill_name)))
         .map_err(|e| format!("Failed to list tags: {}", e))?
@@ -374,23 +410,28 @@ pub fn latest_skill_version(path: &Path, skill_name: &str) -> Result<u32, String
         .flatten()
         .for_each(|tag_name| {
             if let Some(suffix) = tag_name.strip_prefix(&prefix) {
-                if let Ok(v) = suffix.parse::<u32>() {
-                    max_version = max_version.max(v);
+                let parsed = parse_semver(suffix);
+                // Only accept valid X.Y.Z (all three parts present)
+                if suffix.matches('.').count() == 2 {
+                    if parsed > best {
+                        best = parsed;
+                    }
                 }
             }
         });
 
+    let result = format!("{}.{}.{}", best.0, best.1, best.2);
     log::debug!(
-        "[git] latest_skill_version: skill='{}' result=v{}",
+        "[git] latest_skill_semver: skill='{}' result=v{}",
         skill_name,
-        max_version
+        result
     );
-    Ok(max_version)
+    Ok(result)
 }
 
-/// Create a lightweight tag `<skill-name>/v<version>` on HEAD.
+/// Create a lightweight tag `<skill-name>/v<semver>` on HEAD.
 /// Returns the tag name that was created.
-pub fn tag_skill_version(path: &Path, skill_name: &str, version: u32) -> Result<String, String> {
+pub fn tag_skill_semver(path: &Path, skill_name: &str, version: &str) -> Result<String, String> {
     let repo = Repository::open(path)
         .map_err(|e| format!("Failed to open repo at {}: {}", path.display(), e))?;
     let tag_name = format!("{}/v{}", skill_name, version);
@@ -409,17 +450,22 @@ pub fn tag_skill_version(path: &Path, skill_name: &str, version: u32) -> Result<
     Ok(tag_name)
 }
 
-/// Create the next incremental version tag for a skill.
-/// Returns the tag name (e.g. `my-skill/v1`).
-pub fn tag_next_skill_version(path: &Path, skill_name: &str) -> Result<String, String> {
+/// Read the latest semver tag, apply a bump, and create a new tag on HEAD.
+/// Returns the tag name (e.g. `my-skill/v1.1.0`).
+pub fn tag_bumped_skill_version(
+    path: &Path,
+    skill_name: &str,
+    bump: &str,
+) -> Result<String, String> {
     log::debug!(
-        "[git] tag_next_skill_version: skill='{}' repo={}",
+        "[git] tag_bumped_skill_version: skill='{}' bump='{}' repo={}",
         skill_name,
+        bump,
         path.display()
     );
-    let current = latest_skill_version(path, skill_name)?;
-    let next = current + 1;
-    tag_skill_version(path, skill_name, next)
+    let current = latest_skill_semver(path, skill_name)?;
+    let next = bump_semver(&current, bump)?;
+    tag_skill_semver(path, skill_name, &next)
 }
 
 // --- Helpers ---
@@ -786,8 +832,40 @@ mod tests {
         assert!(untracked.is_empty());
     }
 
+    // --- bump_semver ---
+
     #[test]
-    fn test_tag_skill_version_creates_first_tag() {
+    fn test_bump_semver_major() {
+        assert_eq!(bump_semver("1.2.3", "major").unwrap(), "2.0.0");
+    }
+
+    #[test]
+    fn test_bump_semver_minor() {
+        assert_eq!(bump_semver("1.2.3", "minor").unwrap(), "1.3.0");
+    }
+
+    #[test]
+    fn test_bump_semver_patch() {
+        assert_eq!(bump_semver("1.2.3", "patch").unwrap(), "1.2.4");
+    }
+
+    #[test]
+    fn test_bump_semver_from_zero() {
+        // "0.0.0" (no prior version) always returns "1.0.0"
+        assert_eq!(bump_semver("0.0.0", "major").unwrap(), "1.0.0");
+        assert_eq!(bump_semver("0.0.0", "minor").unwrap(), "1.0.0");
+        assert_eq!(bump_semver("0.0.0", "patch").unwrap(), "1.0.0");
+    }
+
+    #[test]
+    fn test_bump_semver_invalid_bump_defaults_to_patch() {
+        assert_eq!(bump_semver("1.0.0", "invalid").unwrap(), "1.0.1");
+    }
+
+    // --- tag_skill_semver ---
+
+    #[test]
+    fn test_tag_skill_semver_creates_first_tag() {
         let dir = tempdir().unwrap();
         ensure_repo(dir.path()).unwrap();
 
@@ -796,27 +874,29 @@ mod tests {
         std::fs::write(skill_dir.join("SKILL.md"), "# My Skill").unwrap();
         commit_all(dir.path(), "my-skill: generate-skill completed").unwrap();
 
-        let tag = tag_skill_version(dir.path(), "my-skill", 1).unwrap();
-        assert_eq!(tag, "my-skill/v1");
+        let tag = tag_skill_semver(dir.path(), "my-skill", "1.0.0").unwrap();
+        assert_eq!(tag, "my-skill/v1.0.0");
 
         // Verify the tag exists in the repo
         let repo = Repository::open(dir.path()).unwrap();
         let tags = repo.tag_names(Some("my-skill/*")).unwrap();
         let tag_list: Vec<&str> = tags.iter().flatten().collect();
-        assert_eq!(tag_list, vec!["my-skill/v1"]);
+        assert_eq!(tag_list, vec!["my-skill/v1.0.0"]);
     }
 
+    // --- latest_skill_semver ---
+
     #[test]
-    fn test_latest_skill_version_no_tags() {
+    fn test_latest_skill_semver_no_tags() {
         let dir = tempdir().unwrap();
         ensure_repo(dir.path()).unwrap();
 
-        let version = latest_skill_version(dir.path(), "my-skill").unwrap();
-        assert_eq!(version, 0);
+        let version = latest_skill_semver(dir.path(), "my-skill").unwrap();
+        assert_eq!(version, "0.0.0");
     }
 
     #[test]
-    fn test_latest_skill_version_with_tags() {
+    fn test_latest_skill_semver_with_tags() {
         let dir = tempdir().unwrap();
         ensure_repo(dir.path()).unwrap();
 
@@ -824,39 +904,61 @@ mod tests {
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        tag_skill_version(dir.path(), "my-skill", 1).unwrap();
+        tag_skill_semver(dir.path(), "my-skill", "1.0.0").unwrap();
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
         commit_all(dir.path(), "v2").unwrap();
-        tag_skill_version(dir.path(), "my-skill", 2).unwrap();
+        tag_skill_semver(dir.path(), "my-skill", "1.1.0").unwrap();
 
-        let version = latest_skill_version(dir.path(), "my-skill").unwrap();
-        assert_eq!(version, 2);
+        let version = latest_skill_semver(dir.path(), "my-skill").unwrap();
+        assert_eq!(version, "1.1.0");
     }
 
     #[test]
-    fn test_tag_next_skill_version_increments() {
+    fn test_latest_skill_semver_ignores_old_integer_tags() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
+        commit_all(dir.path(), "v1").unwrap();
+
+        // Create an old-style integer tag
+        let repo = Repository::open(dir.path()).unwrap();
+        let head = repo.head().unwrap().peel(git2::ObjectType::Commit).unwrap();
+        repo.tag_lightweight("my-skill/v1", &head, false).unwrap();
+
+        // Should return 0.0.0 since "1" is not valid semver
+        let version = latest_skill_semver(dir.path(), "my-skill").unwrap();
+        assert_eq!(version, "0.0.0");
+    }
+
+    // --- tag_bumped_skill_version ---
+
+    #[test]
+    fn test_tag_bumped_skill_version_increments() {
         let dir = tempdir().unwrap();
         ensure_repo(dir.path()).unwrap();
 
         let skill_dir = dir.path().join("my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
 
-        // First version
+        // First version (no tags yet, 0.0.0 → 1.0.0)
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        let tag1 = tag_next_skill_version(dir.path(), "my-skill").unwrap();
-        assert_eq!(tag1, "my-skill/v1");
+        let tag1 = tag_bumped_skill_version(dir.path(), "my-skill", "minor").unwrap();
+        assert_eq!(tag1, "my-skill/v1.0.0");
 
-        // Second version
+        // Second version (minor bump: 1.0.0 → 1.1.0)
         std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
         commit_all(dir.path(), "v2").unwrap();
-        let tag2 = tag_next_skill_version(dir.path(), "my-skill").unwrap();
-        assert_eq!(tag2, "my-skill/v2");
+        let tag2 = tag_bumped_skill_version(dir.path(), "my-skill", "minor").unwrap();
+        assert_eq!(tag2, "my-skill/v1.1.0");
 
         // Verify latest
-        let version = latest_skill_version(dir.path(), "my-skill").unwrap();
-        assert_eq!(version, 2);
+        let version = latest_skill_semver(dir.path(), "my-skill").unwrap();
+        assert_eq!(version, "1.1.0");
     }
 
     #[test]
@@ -864,7 +966,6 @@ mod tests {
         let dir = tempdir().unwrap();
         ensure_repo(dir.path()).unwrap();
 
-        // Create and tag two different skills
         let a_dir = dir.path().join("skill-a");
         let b_dir = dir.path().join("skill-b");
         std::fs::create_dir_all(&a_dir).unwrap();
@@ -874,24 +975,23 @@ mod tests {
         std::fs::write(b_dir.join("SKILL.md"), "# B").unwrap();
         commit_all(dir.path(), "both skills").unwrap();
 
-        tag_skill_version(dir.path(), "skill-a", 1).unwrap();
-        tag_skill_version(dir.path(), "skill-b", 1).unwrap();
+        tag_skill_semver(dir.path(), "skill-a", "1.0.0").unwrap();
+        tag_skill_semver(dir.path(), "skill-b", "1.0.0").unwrap();
 
-        // Each skill should report version 1 independently
-        assert_eq!(latest_skill_version(dir.path(), "skill-a").unwrap(), 1);
-        assert_eq!(latest_skill_version(dir.path(), "skill-b").unwrap(), 1);
+        assert_eq!(latest_skill_semver(dir.path(), "skill-a").unwrap(), "1.0.0");
+        assert_eq!(latest_skill_semver(dir.path(), "skill-b").unwrap(), "1.0.0");
 
         // Tag skill-a again — skill-b should be unaffected
         std::fs::write(a_dir.join("SKILL.md"), "# A v2").unwrap();
         commit_all(dir.path(), "skill-a v2").unwrap();
-        tag_skill_version(dir.path(), "skill-a", 2).unwrap();
+        tag_skill_semver(dir.path(), "skill-a", "2.0.0").unwrap();
 
-        assert_eq!(latest_skill_version(dir.path(), "skill-a").unwrap(), 2);
-        assert_eq!(latest_skill_version(dir.path(), "skill-b").unwrap(), 1);
+        assert_eq!(latest_skill_semver(dir.path(), "skill-a").unwrap(), "2.0.0");
+        assert_eq!(latest_skill_semver(dir.path(), "skill-b").unwrap(), "1.0.0");
     }
 
     #[test]
-    fn test_duplicate_tag_fails() {
+    fn test_duplicate_semver_tag_fails() {
         let dir = tempdir().unwrap();
         ensure_repo(dir.path()).unwrap();
 
@@ -900,8 +1000,8 @@ mod tests {
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
 
-        tag_skill_version(dir.path(), "my-skill", 1).unwrap();
-        let result = tag_skill_version(dir.path(), "my-skill", 1);
+        tag_skill_semver(dir.path(), "my-skill", "1.0.0").unwrap();
+        let result = tag_skill_semver(dir.path(), "my-skill", "1.0.0");
         assert!(result.is_err());
     }
 }

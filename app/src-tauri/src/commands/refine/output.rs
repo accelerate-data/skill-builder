@@ -117,12 +117,38 @@ pub(crate) fn finalize_refine_run_inner(
         }
     }
 
-    let commit_msg = format!("{}: refine", skill_name);
+    // Extract agent-provided commit summary and version bump from rewrite-skill output
+    let (agent_commit_summary, agent_version_bump) = structured_output
+        .and_then(|payload| {
+            let status = payload.get("status")?.as_str()?;
+            if status == "rewritten" {
+                let summary = payload
+                    .get("commit_summary")
+                    .and_then(|s| s.as_str())
+                    .filter(|s| !s.trim().is_empty())
+                    .map(|s| s.to_string());
+                let bump = payload
+                    .get("version_bump")
+                    .and_then(|s| s.as_str())
+                    .filter(|s| !s.trim().is_empty())
+                    .map(|s| s.to_string());
+                Some((summary, bump))
+            } else {
+                None
+            }
+        })
+        .unwrap_or((None, None));
+
+    let commit_msg = match &agent_commit_summary {
+        Some(summary) => format!("{}: {}", skill_name, summary),
+        None => format!("{}: refine", skill_name),
+    };
     let commit_sha = crate::git::commit_all(Path::new(skills_path), &commit_msg)?;
 
-    // Create a version tag after successful commit
+    // Create a semver tag after successful commit
     if commit_sha.is_some() {
-        match crate::git::tag_next_skill_version(Path::new(skills_path), skill_name) {
+        let bump = agent_version_bump.as_deref().unwrap_or("patch");
+        match crate::git::tag_bumped_skill_version(Path::new(skills_path), skill_name, bump) {
             Ok(tag) => {
                 log::info!(
                     "[finalize_refine_run] tagged skill={} tag={}",

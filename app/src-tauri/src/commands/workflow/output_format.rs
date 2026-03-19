@@ -292,10 +292,21 @@ pub fn materialize_workflow_step_output(
             drop(conn);
 
             let skills_dir = Path::new(&skills_path);
-            let message = format!("{}: generate skill", skill_name);
+
+            // Use agent-provided commit_summary if available, else generic message
+            let commit_summary = structured_output
+                .get("commit_summary")
+                .and_then(|s| s.as_str())
+                .filter(|s| !s.trim().is_empty());
+            let message = match commit_summary {
+                Some(summary) => format!("{}: {}", skill_name, summary),
+                None => format!("{}: generate skill", skill_name),
+            };
+
             match crate::git::commit_all(skills_dir, &message) {
                 Ok(Some(sha)) => {
-                    match crate::git::tag_next_skill_version(skills_dir, &skill_name) {
+                    // New skills always get v1.0.0
+                    match crate::git::tag_skill_semver(skills_dir, &skill_name, "1.0.0") {
                         Ok(tag) => {
                             log::info!(
                                 "[materialize_workflow_step_output] committed and tagged skill={} tag={} sha={}",

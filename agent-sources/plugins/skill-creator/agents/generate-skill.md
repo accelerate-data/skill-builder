@@ -142,7 +142,7 @@ Do not repeat intent capture or interviewing. Treat these artifacts as authorita
 name: <skill-name from coordinator prompt>
 description: <based on the Description Optimization section of the skill-creator skill>
 tools: <agent-determined from research: comma-separated list, e.g. Read, Write, Edit, Glob, Grep, Bash>
-version: <version from user-context.md, default 1.0.0>
+version: 1.0.0
 ---
 ```
 
@@ -154,7 +154,7 @@ version: <version from user-context.md, default 1.0.0>
 
 ### Directory for test case generation
 
-**This is important** 
+**This is important**
 
 - Test cases from the **`Test Cases` subsection of Creating a skill section must be written to to `{eval_dir}/evals.json`**.
 - Do not write in the `skill_dir`.
@@ -174,7 +174,7 @@ The following top-level sections in the `skill-creator` skill should **not** be 
 
 ## Phase 2: Invoke the skill
 
-Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill. 
+Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill.
 
 ---
 
@@ -199,6 +199,8 @@ Return JSON only:
 ```json
 {
   "status": "generated",
+  "commit_summary": "Create <skill-name> skill with SKILL.md and reference files",
+  "version_bump": "minor",
   "call_trace": ["read-user-context", "read-decisions", "write-skill", "write-references/foo.md", "write-evals"]
 }
 ```
@@ -209,6 +211,10 @@ For stub cases (contradictory inputs, scope too broad, malformed input), return:
 { "status": "generated", "skipped": true }
 ```
 
-`call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`, `write-evals`. For reference files, use `write-references/<filename>`.
+### Field definitions
+
+- `commit_summary` (required for non-stub): A concise one-line description of what was created, suitable as a git commit message. Focus on domain content (e.g. "Create Salesforce ETL pipeline skill with 12 reference documents"), not boilerplate.
+- `version_bump` (required for non-stub): Always `"minor"` for new skills.
+- `call_trace`: ordered list of logical steps performed. Use these canonical labels where applicable: `read-user-context`, `read-decisions`, `read-clarifications`, `use-skill-creator-skill`, `write-skill`, `write-references`, `write-evals`. For reference files, use `write-references/<filename>`.
 
 </output>

@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import SkillDialog from "@/components/skill-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
-import type { SkillSummary, ImportedSkill, Purpose } from "@/lib/types";
+import { getSkillHistory } from "@/lib/tauri";
+import type { SkillSummary, ImportedSkill, Purpose, SkillCommit } from "@/lib/types";
 import { PURPOSE_LABELS } from "@/lib/types";
 
 interface WorkspaceOverviewProps {
@@ -37,17 +38,46 @@ function formatRelativeDate(dateStr: string | null): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function formatCommitMessage(message: string): string {
+  // Strip the "skill-name: " prefix if present for cleaner display
+  const colonIdx = message.indexOf(": ");
+  return colonIdx > 0 ? message.slice(colonIdx + 2) : message;
+}
+
 export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOverviewProps) {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [commits, setCommits] = useState<SkillCommit[]>([]);
+  const [showAllCommits, setShowAllCommits] = useState(false);
   const workspacePath = useSettingsStore((s) => s.workspacePath);
 
   const isBuilderSkill = "name" in skill;
+  const skillName = isBuilderSkill ? skill.name : null;
+
+  useEffect(() => {
+    if (!workspacePath || !skillName) return;
+    getSkillHistory(workspacePath, skillName, 50)
+      .then(setCommits)
+      .catch((err) => {
+        console.warn("event=skill_history_fetch_failed skill=%s error=%s", skillName, err);
+      });
+  }, [workspacePath, skillName]);
+
   const purpose = skill.purpose;
   const description = isBuilderSkill ? skill.description : skill.description;
   const tags = isBuilderSkill ? skill.tags : [];
   const { created, modified } = getSkillDates(skill);
 
   const canEdit = isBuilderSkill && !!workspacePath;
+  const visibleCommits = showAllCommits ? commits : commits.slice(0, 5);
+
+  // Source display: Skill Builder for builder skills, marketplace URL, or "Uploaded"
+  const marketplaceUrl = !isBuilderSkill ? (skill as ImportedSkill).marketplace_source_url : null;
+  const sourceValue =
+    skillType === "builder"
+      ? "Skill Builder"
+      : skillType === "marketplace" && marketplaceUrl
+        ? marketplaceUrl
+        : "Uploaded";
 
   if (isLoading) {
     return (
@@ -112,6 +142,23 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
           </div>
         )}
 
+        <div className="space-y-0.5">
+          <p className="text-xs text-muted-foreground">Source</p>
+          {skillType === "marketplace" && marketplaceUrl ? (
+            <a
+              href={marketplaceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm break-all"
+              style={{ color: "var(--color-pacific)" }}
+            >
+              {marketplaceUrl}
+            </a>
+          ) : (
+            <p className="text-sm">{sourceValue}</p>
+          )}
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-0.5">
             <p className="text-xs text-muted-foreground">
@@ -127,18 +174,32 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
       </div>
 
       {/* Version History card */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
-        <h3 className="text-sm font-semibold">Version History</h3>
-        <div className="flex items-center gap-2 text-sm">
-          <span className="font-mono rounded-full bg-muted px-2 py-0.5 text-xs">v1</span>
-          <span className="text-muted-foreground">·</span>
-          <span>Initial</span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-muted-foreground">{formatRelativeDate(created)}</span>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Full history available in a future update
-        </p>
+      <div className="rounded-lg border bg-card p-4">
+        <h3 className="text-sm font-semibold mb-3">Version History</h3>
+        {commits.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No version history yet</p>
+        ) : (
+          <div className="space-y-2">
+            {visibleCommits.map((commit) => (
+              <div key={commit.sha} className="flex items-start gap-2 text-sm">
+                <span className="font-mono shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs">
+                  {commit.sha.slice(0, 7)}
+                </span>
+                <span className="min-w-0 truncate">{formatCommitMessage(commit.message)}</span>
+                <span className="shrink-0 text-muted-foreground">{formatRelativeDate(commit.timestamp)}</span>
+              </div>
+            ))}
+            {commits.length > 5 && !showAllCommits && (
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setShowAllCommits(true)}
+              >
+                Show {commits.length - 5} more
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {canEdit && editDialogOpen && (
