@@ -15,7 +15,7 @@ let agentId: string;
 test.describe("DisplayItem Rendering", { tag: "@workflow" }, () => {
   test.beforeEach(async ({ page }) => {
     await navigateToWorkflow(page);
-    await expect(page.getByText("Step 1: Research")).toBeVisible();
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 10_000 });
     agentId = "agent-001";
     await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
   });

@@ -38,7 +38,9 @@ async function waitForAgentId(page: import("@playwright/test").Page, pattern: st
   return agentId!;
 }
 
-test.describe("Skill Tester", { tag: "@skill-tester" }, () => {
+// VU-550: Skill Tester page (/test) was removed in the UI refactoring.
+// These tests are skipped until the feature is re-implemented.
+test.describe.skip("Skill Tester", { tag: "@skill-tester" }, () => {
   test("runs test with wrapped prompt and workspace preparation", async ({ page }) => {
     await page.addInitScript((o) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = o;

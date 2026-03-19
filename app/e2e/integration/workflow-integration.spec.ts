@@ -141,7 +141,7 @@ test.describe("Sidecar Integration — Generate Skill Step", { tag: "@integratio
       ...buildOverrides(bridge, skillName, agentId),
       // Override get_workflow_state so the page renders as if steps 0-2 are done.
       get_workflow_state: {
-        run: { step_id: 3, status: "in_progress", skill_name: skillName },
+        run: { current_step: 3, purpose: "domain" },
         steps: [
           { step_id: 0, status: "completed" },
           { step_id: 1, status: "completed" },

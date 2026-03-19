@@ -51,10 +51,10 @@ test.describe("Setup Screen", { tag: "@setup" }, () => {
     await page.getByLabel("Anthropic API Key").fill("sk-ant-test");
     await page.getByRole("button", { name: "Get Started" }).click();
 
-    // Setup screen should disappear, skill library page should load
+    // Setup screen should disappear, dashboard should load
     await expect(page.getByTestId("setup-screen")).not.toBeVisible({ timeout: 5_000 });
-    // Sidebar has "Dashboard" nav link.
-    await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
+    // Sidebar shows the Skills panel header.
+    await expect(page.getByText("Skills").first()).toBeVisible();
   });
 
 });

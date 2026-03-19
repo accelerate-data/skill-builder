@@ -75,8 +75,8 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     await page.getByRole("button", { name: "Back to Dashboard" }).click();
     await expect(page).toHaveURL("/", { timeout: 5_000 });
 
-    // Navigate back to settings using header button (client-side, preserves store)
-    await page.getByRole("button", { name: /Settings/ }).click();
+    // Navigate back to settings using the Settings icon in the sidebar rail (client-side, preserves store)
+    await page.locator("aside").getByTitle("Settings").click();
     await expect(page).toHaveURL("/settings", { timeout: 5_000 });
 
     // Verify the values persisted in the Zustand store (rendered from store state)

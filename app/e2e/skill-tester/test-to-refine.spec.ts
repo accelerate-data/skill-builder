@@ -104,7 +104,9 @@ const BASE_OVERRIDES = {
   get_disabled_steps: [],
 };
 
-test.describe("Test → Refine navigation", { tag: "@skill-tester" }, () => {
+// VU-550: Skill Tester page (/test) was removed in the UI refactoring.
+// These tests are skipped until the feature is re-implemented.
+test.describe.skip("Test → Refine navigation", { tag: "@skill-tester" }, () => {
   test("pre-fills recommendation from completed eval in refine chat input", async ({ page }) => {
     // Freeze Date.now() so agent IDs are predictable
     await page.addInitScript((opts) => {

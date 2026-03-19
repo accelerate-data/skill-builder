@@ -18,9 +18,9 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
   });
 
   test("shows empty state when workspace configured but no skills", async ({ page }) => {
-    await expect(page.getByText("No skills yet")).toBeVisible();
+    await expect(page.getByText("Select a skill")).toBeVisible();
     await expect(
-      page.getByText("Create your first skill to get started.")
+      page.getByText("Choose a skill from the list to open its workspace, or create a new one.")
     ).toBeVisible();
   });
 
@@ -44,10 +44,15 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
           current_step: null,
           status: null,
           last_modified: null,
+          tags: [],
+          author_login: null,
+          author_avatar: null,
+          intake_json: null,
         },
       ],
     });
 
+    // Click the skill in the sidebar
     await page.getByText("my-skill").click();
     await expect(page).toHaveURL(/\/skill\/my-skill/);
   });
@@ -92,22 +97,31 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
           current_step: null,
           status: null,
           last_modified: null,
+          tags: [],
+          author_login: null,
+          author_avatar: null,
+          intake_json: null,
         },
       ],
       delete_skill: undefined,
     });
 
-    // Open delete dialog
-    const deleteButton = page.locator("button").filter({ has: page.locator("svg.lucide-trash-2") });
-    await deleteButton.click();
+    // Hover over the skill row to reveal the dropdown trigger
+    const skillRow = page.getByText("delete-me").first();
+    await skillRow.hover();
 
-    // Confirm deletion
+    // Open the "More actions" dropdown menu
+    const moreButton = page.getByLabel("More actions");
+    await moreButton.click({ force: true });
+
+    // Click "Delete" in the dropdown menu
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+
+    // Confirm deletion in the dialog
     const confirmButton = page.getByRole("button", { name: "Delete" });
     await confirmButton.click();
 
     // Dialog should close after successful deletion
     await expect(page.getByRole("heading", { name: "Delete Skill" })).not.toBeVisible();
-    // Note: skill card may reappear because list_skills mock returns a static array.
-    // The delete flow is validated by the dialog closing without error.
   });
 });

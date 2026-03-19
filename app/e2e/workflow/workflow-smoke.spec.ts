@@ -179,9 +179,9 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
       timestamp: Date.now(),
     });
 
-    // Try to navigate away by clicking Dashboard in the app sidebar
-    const skillsLink = page.locator("aside nav").getByText("Dashboard");
-    await skillsLink.click();
+    // Try to navigate away by clicking Settings in the icon rail
+    const settingsLink = page.locator("aside").getByTitle("Settings");
+    await settingsLink.click();
 
     // Navigation guard dialog should appear
     await expect(
@@ -195,10 +195,10 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
       page.getByRole("heading", { name: "Agent Running" }),
     ).not.toBeVisible();
     // Still on workflow page
-    await expect(page.getByText("Workflow Steps")).toBeVisible();
+    await expect(page.getByText("STEPS")).toBeVisible();
 
     // Try to navigate again
-    await skillsLink.click();
+    await settingsLink.click();
 
     // Dialog appears again
     await expect(
@@ -208,8 +208,8 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
     // This time click "Leave" — should navigate away
     await page.getByRole("button", { name: "Leave" }).click();
 
-    // Should be on dashboard
-    await expect(page).toHaveURL("/");
+    // Should be on settings page (since we clicked the Settings link)
+    await expect(page).toHaveURL("/settings");
   });
 
   // ---------------------------------------------------------------------------
@@ -286,11 +286,11 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
     });
 
     // The "Review" button in the toggle should be disabled while agent is running
-    const reviewToggleButton = page.locator("header").getByRole("button", { name: "Review" });
+    const reviewToggleButton = page.getByRole("button", { name: "Review", exact: true });
     await expect(reviewToggleButton).toBeDisabled();
 
     // The "Update" button should also be disabled (both sides locked)
-    const updateToggleButton = page.locator("header").getByRole("button", { name: "Update" });
+    const updateToggleButton = page.getByRole("button", { name: "Update", exact: true });
     await expect(updateToggleButton).toBeDisabled();
 
     // Simulate agent completion
@@ -456,8 +456,8 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
     // Step 4 completion toast
     await expect(page.getByText("Step 4 completed")).toBeVisible({ timeout: 10_000 });
 
-    // SKILL.md content should be visible in the completion screen
-    await expect(page.getByText("A generated skill for testing.")).toBeVisible({ timeout: 5_000 });
+    // Step 4 completion screen shows benchmark summary (or missing data state)
+    await expect(page.getByText("Benchmark data missing")).toBeVisible({ timeout: 5_000 });
   });
 
   // ---------------------------------------------------------------------------

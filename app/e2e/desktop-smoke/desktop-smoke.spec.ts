@@ -34,8 +34,8 @@ test.describe("Desktop Smoke", { tag: "@desktop-smoke" }, () => {
     await page.goto("/");
     await waitForAppReady(page);
 
-    // Dashboard link must be visible in the sidebar nav
-    await expect(page.getByRole("link", { name: /dashboard/i })).toBeVisible();
+    // Skills panel header must be visible in the sidebar
+    await expect(page.getByText("Skills").first()).toBeVisible();
     // No crash — page should not show an error boundary
     await expect(page.getByText(/something went wrong/i)).not.toBeVisible();
   });
@@ -108,8 +108,8 @@ test.describe("Desktop Smoke", { tag: "@desktop-smoke" }, () => {
       // to return our bridge agent ID so event routing uses the real sidecar path.
       await navigateToRefineWithSkill(page, { send_refine_message: agentId });
 
-      // Skill should be pre-selected via the URL param
-      await expect(page.getByRole("button", { name: /test-skill/i })).toBeVisible({ timeout: 5_000 });
+      // Skill should be shown in the WorkspaceShell header
+      await expect(page.getByText("test-skill").first()).toBeVisible({ timeout: 5_000 });
 
       // Chat input must be visible and accepting text
       const input = page.getByTestId("refine-chat-input");
