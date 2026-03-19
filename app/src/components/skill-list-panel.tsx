@@ -5,7 +5,6 @@ import { useSkillStore } from "@/stores/skill-store";
 import { Lock, MoreHorizontal, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
@@ -326,9 +325,6 @@ export function SkillListPanel({
       {/* Topbar */}
       <div className="flex h-11 items-center gap-2 border-b px-3">
         <span className="flex-1 text-[15px] font-semibold">Skills</span>
-        <Badge variant="secondary" className="rounded-full px-1.5 py-px text-[13px]">
-          {filteredSkills.length}
-        </Badge>
         <Button
           variant="ghost"
           size="icon-sm"
