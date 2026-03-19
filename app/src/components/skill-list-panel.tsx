@@ -421,7 +421,7 @@ export function SkillListPanel({
                     <Button
                       variant="ghost"
                       size="icon-xs"
-                      className="size-5 shrink-0 opacity-0 group-hover:opacity-100"
+                      className="size-5 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
                       aria-label="More actions"
                       onClick={(e) => e.stopPropagation()}
                     >

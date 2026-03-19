@@ -81,7 +81,7 @@ export function ResizableSplitPane({
         aria-orientation="vertical"
         aria-label="Resize panels"
         tabIndex={0}
-        className="w-1 flex-shrink-0 cursor-col-resize bg-border hover:bg-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="relative w-1 flex-shrink-0 cursor-col-resize bg-border transition-colors duration-150 hover:bg-primary/30 before:absolute before:-left-1 before:-right-1 before:top-0 before:bottom-0 before:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onMouseDown={onMouseDown}
         onKeyDown={(e) => {
           const step = 2; // 2% per keypress

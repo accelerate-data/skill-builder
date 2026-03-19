@@ -69,8 +69,8 @@ export function PreviewPanel() {
 
   if (previewFileNames.length === 0 && !isLoadingFiles) {
     return (
-      <div data-testid="refine-preview-empty" className="flex h-full items-center justify-center text-muted-foreground">
-        Select a skill to preview its files
+      <div data-testid="refine-preview-empty" className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        Skill files will appear here after loading
       </div>
     );
   }

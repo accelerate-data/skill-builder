@@ -16,4 +16,5 @@
 | [agent-unit-test-suite/](agent-unit-test-suite/README.md) | Agent test stack and Promptfoo scenario operations: maintenance, single-scenario runs, and autonomous agent test policy |
 | [startup-recon/](startup-recon/README.md) | Startup reconciliation: three-pass state machine, discovery scenarios, ACK dialog |
 | [workflow-state/](workflow-state/README.md) | Workflow step state machine: transitions, file deletion cascade, reset vs navigate-back, disabled-step guards |
+| [workspace-ui-refinement/](workspace-ui-refinement/README.md) | Workspace UI polish: design review and improvement plan for Skills Overview, Refine, and Skill List Panel |
 | [write-eval-test-refine-loop/](write-eval-test-refine-loop/README.md) | Write → Eval → Test → Refine loop: one-shot skill generation, batch eval with with/without comparison, feedback capture, iterative improvement, description optimization |

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { useSkillStore } from "@/stores/skill-store";
 import { WorkspaceOverview } from "./workspace-overview";
 import { WorkspaceRefine } from "./workspace-refine";
 import type { SkillSummary, ImportedSkill } from "@/lib/types";
@@ -40,6 +41,7 @@ function getHeaderDot(
 
 export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellProps) {
   const [activeTab, setActiveTab] = useState(initialTab ?? "overview");
+  const isSkillStoreLoading = useSkillStore((s) => s.isLoading);
 
   // Sync tab when a navigation sets initialTab (e.g. "Refine" from the More menu)
   useEffect(() => {
@@ -95,6 +97,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
             skill={skill}
             skillType={skillType}
             onOpenRefine={() => setActiveTab("refine")}
+            isLoading={isSkillStoreLoading}
           />
         </TabsContent>
 

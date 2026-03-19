@@ -48,7 +48,7 @@ describe("PreviewPanel", () => {
     render(<PreviewPanel />);
 
     expect(screen.getByTestId("refine-preview-empty")).toBeInTheDocument();
-    expect(screen.getByText("Select a skill to preview its files")).toBeInTheDocument();
+    expect(screen.getByText("Skill files will appear here after loading")).toBeInTheDocument();
   });
 
   // --- Loading state ---
