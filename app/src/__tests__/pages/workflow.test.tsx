@@ -1007,6 +1007,59 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
   });
 
+  it("skipping benchmark writes benchmark-meta.json with status=skipped", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().updateStepStatus(2, "completed");
+    useWorkflowStore.getState().setCurrentStep(3);
+    useWorkflowStore.getState().updateStepStatus(3, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-skip-meta", "sonnet");
+
+    render(<WorkflowPage />);
+
+    const payload = {
+      status: "generated",
+      benchmark_status: "complete",
+      benchmark_path: "evals/workspace/iteration-1",
+    };
+
+    act(() => {
+      useAgentStore.getState().addDisplayItem("agent-skip-meta", {
+        id: "result-skip-meta",
+        type: "result",
+        timestamp: Date.now(),
+        outputText_result: "Agent completed",
+        structuredOutput: payload,
+        resultStatus: "success",
+      });
+      useAgentStore.getState().completeRun("agent-skip-meta", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().benchmarkPending).toBe(true);
+    });
+
+    vi.mocked(writeFile).mockClear();
+
+    const skipBtn = screen.getByRole("button", { name: /skip/i });
+    await act(async () => { skipBtn.click(); });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[3].status).toBe("completed");
+    });
+
+    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
+      ([path]) => typeof path === "string" && path.includes("benchmark-meta.json"),
+    );
+    expect(writeCalls).toHaveLength(1);
+    const written = JSON.parse(writeCalls[0][1] as string);
+    expect(written.benchmark_status).toBe("skipped");
+    expect(written.benchmark_path).toBeNull();
+  });
+
   it("step 3 errors when structured output payload is missing", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);

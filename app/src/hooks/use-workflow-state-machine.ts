@@ -11,7 +11,9 @@ import {
   materializeWorkflowStepOutput,
   resetWorkflowStep,
   endWorkflowSession,
+  writeFile,
 } from "@/lib/tauri";
+import { joinPath } from "@/lib/path-utils";
 import { resolveModelId } from "@/lib/models";
 import { type StepConfig } from "@/lib/workflow-step-configs";
 import { WORKFLOW_STEP_DEFINITIONS } from "@/lib/workflow-steps";
@@ -486,13 +488,26 @@ export function useWorkflowStateMachine({
     }
   }, [skillName, workspacePath, stepConfig, clearRuns, agentStartRun, updateStepStatus, setRunning]);
 
-  const skipBenchmark = useCallback(() => {
+  const skipBenchmark = useCallback(async () => {
     useWorkflowStore.getState().setBenchmarkPending(false);
     console.log("[workflow] User skipped benchmark for skill=%s", skillName);
+
+    // Write benchmark-meta.json as "skipped" so the completion screen shows the
+    // "Skill created" card instead of treating the missing benchmark.json as an
+    // error and auto-resetting step 3.
+    if (workspacePath) {
+      try {
+        const metaPath = joinPath(workspacePath, skillName, "context", "benchmark-meta.json");
+        await writeFile(metaPath, JSON.stringify({ benchmark_status: "skipped", benchmark_path: null }));
+      } catch (e) {
+        console.warn("[workflow] op=skip_benchmark event=write_meta status=failure skill=%s err=%s", skillName, e);
+      }
+    }
+
     // Complete step 3 without benchmarking — normal completion renders WorkflowStepComplete
     updateStepStatus(3, "completed");
     setRunning(false);
-  }, [skillName, updateStepStatus, setRunning]);
+  }, [skillName, workspacePath, updateStepStatus, setRunning]);
 
   return {
     // State
