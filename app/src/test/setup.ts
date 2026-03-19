@@ -1,6 +1,21 @@
 import "@testing-library/jest-dom/vitest";
 import { vi } from "vitest";
 
+// Polyfill localStorage for Node 25+ where the built-in localStorage
+// lacks standard methods (clear, key, length) when --localstorage-file is not set.
+if (typeof globalThis.localStorage !== "undefined" && typeof globalThis.localStorage.clear !== "function") {
+  const store = new Map<string, string>();
+  const localStoragePolyfill: Storage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => { store.set(key, String(value)); },
+    removeItem: (key: string) => { store.delete(key); },
+    clear: () => { store.clear(); },
+    key: (index: number) => [...store.keys()][index] ?? null,
+    get length() { return store.size; },
+  };
+  Object.defineProperty(globalThis, "localStorage", { value: localStoragePolyfill, writable: true, configurable: true });
+}
+
 // Polyfill ResizeObserver for jsdom (used by radix-ui ScrollArea)
 if (typeof globalThis.ResizeObserver === "undefined") {
   globalThis.ResizeObserver = class ResizeObserver {

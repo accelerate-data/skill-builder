@@ -14,7 +14,7 @@ describe("WorkflowSidebar", () => {
   it("renders workflow steps and highlights the current step", () => {
     render(<WorkflowSidebar steps={[...steps]} currentStep={1} />);
 
-    expect(screen.getByText("Workflow Steps")).toBeInTheDocument();
+    expect(screen.getByText("Steps")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /2\. Review/i })).toHaveClass("bg-accent");
   });
 

@@ -158,25 +158,24 @@ describe("SkillListPanel", () => {
 
   // ── Status dots ───────────────────────────────────────────────────────────
 
-  it("renders outlined dot for never-started skill", () => {
+  it("renders red dot for never-started skill", () => {
     const skill = makeBuilderSkill({ name: "new-skill" });
     useSkillStore.setState({ skills: [skill] });
 
     render(<SkillListPanel />);
 
     const dot = screen.getByLabelText("status-dot-new-skill");
-    expect(dot.className).toMatch(/border/);
-    expect(dot.className).toMatch(/bg-transparent/);
+    expect(dot.className).toMatch(/bg-destructive/);
   });
 
-  it("renders red dot for step-1 skill", () => {
+  it("renders amber dot for step-1 skill", () => {
     const skill = makeBuilderSkill({ name: "step1-skill", current_step: "Step 1" });
     useSkillStore.setState({ skills: [skill] });
 
     render(<SkillListPanel />);
 
     const dot = screen.getByLabelText("status-dot-step1-skill");
-    expect(dot.className).toMatch(/bg-destructive/);
+    expect(dot.className).toMatch(/bg-amber-/);
   });
 
   it("renders yellow dot for step-2 skill", () => {
