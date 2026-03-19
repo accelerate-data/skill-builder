@@ -1186,7 +1186,7 @@ fn test_skill_name_validation_rejects_traversal() {
 
 #[test]
 fn test_user_context_written_to_file() {
-    let ctx = crate::commands::workflow::format_user_context(
+    let ctx = crate::commands::workflow::user_context::format_user_context(
         None,
         &[],
         Some("Healthcare"),
@@ -1210,7 +1210,7 @@ fn test_user_context_written_to_file() {
 
 #[test]
 fn test_no_user_context_when_fields_empty() {
-    let ctx = crate::commands::workflow::format_user_context(
+    let ctx = crate::commands::workflow::user_context::format_user_context(
         None,
         &[],
         None,
