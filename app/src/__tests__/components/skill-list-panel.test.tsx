@@ -117,6 +117,25 @@ describe("SkillListPanel", () => {
     vi.clearAllMocks();
   });
 
+  // ── Collapse toggle ─────────────────────────────────────────────────────
+
+  it("renders collapse button when onCollapse is provided", () => {
+    render(<SkillListPanel onCollapse={() => {}} />);
+    expect(screen.getByTitle("Collapse skill list")).toBeInTheDocument();
+  });
+
+  it("does not render collapse button when onCollapse is omitted", () => {
+    render(<SkillListPanel />);
+    expect(screen.queryByTitle("Collapse skill list")).not.toBeInTheDocument();
+  });
+
+  it("calls onCollapse when collapse button is clicked", () => {
+    const onCollapse = vi.fn();
+    render(<SkillListPanel onCollapse={onCollapse} />);
+    fireEvent.click(screen.getByTitle("Collapse skill list"));
+    expect(onCollapse).toHaveBeenCalledOnce();
+  });
+
   // ── Merge & sort ──────────────────────────────────────────────────────────
 
   it("renders builder and imported skills in merged list sorted by lastModified desc", () => {

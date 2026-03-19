@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
+import { PanelRight } from "lucide-react";
 import { toast } from "@/lib/toast";
+import { Button } from "@/components/ui/button";
 import { IconRail } from "./sidebar";
 import { SkillListPanel } from "@/components/skill-list-panel";
 import { WorkspaceShell } from "@/components/workspace/workspace-shell";
@@ -265,6 +267,11 @@ export function AppLayout() {
         e.preventDefault();
         navigate({ to: "/", search: { tab: undefined } });
       }
+      // Cmd+B -> Toggle skill list panel
+      if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+        e.preventDefault();
+        setPanelCollapsed((prev) => !prev);
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -298,6 +305,7 @@ export function AppLayout() {
   const ready = settingsLoaded && reconciled && nodeReady && ackDone;
 
   const [skillPanelWidth, setSkillPanelWidth] = useState(260);
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(0);
 
@@ -322,13 +330,33 @@ export function AppLayout() {
     <div className="flex h-screen overflow-hidden">
       <IconRail />
       {pathname !== "/settings" && (
-        <div style={{ width: skillPanelWidth }} className="relative shrink-0">
-          <SkillListPanel onSelectSkill={handleSelectSkill} />
+        panelCollapsed ? (
+          <div className="flex shrink-0 flex-col items-center border-r bg-background pt-2">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="size-7"
+              onClick={() => setPanelCollapsed(false)}
+              title="Expand skill list"
+            >
+              <PanelRight className="size-4" />
+            </Button>
+          </div>
+        ) : (
           <div
-            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 transition-colors"
-            onMouseDown={handleResizeStart}
-          />
-        </div>
+            style={{ width: skillPanelWidth }}
+            className="relative shrink-0 transition-[width] duration-200"
+          >
+            <SkillListPanel
+              onSelectSkill={handleSelectSkill}
+              onCollapse={() => setPanelCollapsed(true)}
+            />
+            <div
+              className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 transition-colors"
+              onMouseDown={handleResizeStart}
+            />
+          </div>
+        )
       )}
       <main className="flex flex-1 flex-col overflow-hidden">
         {ready && isConfigured
