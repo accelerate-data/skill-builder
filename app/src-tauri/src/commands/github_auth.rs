@@ -219,12 +219,7 @@ pub fn github_logout(db: tauri::State<'_, Db>) -> Result<(), String> {
 }
 
 /// Fetch the authenticated user's profile from GitHub.
-#[allow(dead_code)]
-async fn fetch_github_user(client: &reqwest::Client, token: &str) -> Result<GitHubUser, String> {
-    fetch_github_user_inner(client, token, "https://api.github.com").await
-}
-
-/// Inner testable function: fetch GitHub user using the given base URL.
+/// Accepts a base_url parameter for testability.
 pub(crate) async fn fetch_github_user_inner(
     client: &reqwest::Client,
     token: &str,

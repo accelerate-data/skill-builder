@@ -44,8 +44,6 @@ export class RunMetadataAccumulator {
   private compactionCount = 0;
   private sessionId?: string;
   private model = "unknown";
-  private thinkingEnabled = false;
-  private agentName?: string;
 
   constructor(private context: RequestContext) {}
 
@@ -78,8 +76,6 @@ export class RunMetadataAccumulator {
   }
 
   recordConfig(thinkingEnabled: boolean, agentName?: string): void {
-    this.thinkingEnabled = thinkingEnabled;
-    if (agentName) this.agentName = agentName;
     process.stderr.write(
       `[accumulator] event=config thinking=${thinkingEnabled} agent=${agentName ?? "none"}\n`,
     );
