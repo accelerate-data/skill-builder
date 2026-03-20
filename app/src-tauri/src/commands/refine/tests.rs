@@ -552,6 +552,30 @@ fn test_direct_config_disables_prompt_suggestions() {
 }
 
 #[test]
+fn test_direct_config_agent_id_uses_agent_label() {
+    let (_, agent_id) = base_direct_config(BENCHMARK_AGENT_NAME);
+    assert!(
+        agent_id.starts_with("benchmark-skill-my-skill-"),
+        "expected agent_id to start with 'benchmark-skill-my-skill-', got: {}",
+        agent_id
+    );
+
+    let (_, agent_id) = base_direct_config(REWRITE_AGENT_NAME);
+    assert!(
+        agent_id.starts_with("rewrite-skill-my-skill-"),
+        "expected agent_id to start with 'rewrite-skill-my-skill-', got: {}",
+        agent_id
+    );
+
+    let (_, agent_id) = base_direct_config(VALIDATE_AGENT_NAME);
+    assert!(
+        agent_id.starts_with("validate-skill-my-skill-"),
+        "expected agent_id to start with 'validate-skill-my-skill-', got: {}",
+        agent_id
+    );
+}
+
+#[test]
 fn test_materialize_refine_validation_output_writes_context_files() {
     let tmp = tempdir().unwrap();
     let workspace_skill_root = tmp.path().join("my-skill");
