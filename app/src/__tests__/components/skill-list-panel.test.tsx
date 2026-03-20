@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useSkillStore } from "@/stores/skill-store";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
@@ -503,6 +504,51 @@ describe("SkillListPanel", () => {
     fireEvent.click(otherRow!);
     expect(onSelectSkill).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  // ── Review action ──────────────────────────────────────────────────────
+
+  it("shows Review menu item for completed builder skills and navigates to workflow in review mode", async () => {
+    const user = userEvent.setup();
+    const skill = makeBuilderSkill({ name: "review-skill", status: "completed" });
+    useSkillStore.setState({ skills: [skill] });
+
+    render(<SkillListPanel />);
+
+    // Open the dropdown via userEvent (Radix portals need proper pointer events)
+    const row = screen.getByText("review-skill").closest('[role="button"]')!;
+    const moreBtn = row.querySelector('[aria-label="More actions"]')!;
+    await user.click(moreBtn);
+
+    // Review item should be present
+    const reviewItem = await screen.findByRole("menuitem", { name: "Review" });
+    expect(reviewItem).toBeInTheDocument();
+
+    await user.click(reviewItem);
+
+    // Should navigate to workflow page WITHOUT autoStart (review mode)
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/skill/$skillName",
+      params: { skillName: "review-skill" },
+    });
+  });
+
+  it("does not show Review menu item for imported skills", async () => {
+    const user = userEvent.setup();
+    const skill = makeImportedSkill({ skill_name: "imported-no-review" });
+    useImportedSkillsStore.setState({ skills: [skill] });
+
+    render(<SkillListPanel />);
+
+    const row = screen.getByText("imported-no-review").closest('[role="button"]')!;
+    const moreBtn = row.querySelector('[aria-label="More actions"]')!;
+    await user.click(moreBtn);
+
+    // Wait for menu to render
+    await screen.findByRole("menuitem", { name: "Overview" });
+
+    // Review should NOT be present for imported skills
+    expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
   });
 
   it("does not navigate when clicking the running skill itself", () => {
