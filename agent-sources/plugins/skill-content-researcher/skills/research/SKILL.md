@@ -6,8 +6,8 @@ user_invocable: false
 
 # Research Skill needs
 
-Given a `purpose`, produce clarification questions which can be used for writing the skill. 
-The overall flow is as follows 
+Given a `purpose`, produce clarification questions which can be used for writing the skill.
+The overall flow is as follows
 
 - Resolve `purpose` to one dimension set from `references/dimension-sets.md`
 - Score all candidate dimensions using `references/scoring-rubric.md`
@@ -32,7 +32,7 @@ Use table below to resolve `purpose` to one dimension set from `references/dimen
 
 ## Step 2 — Score dimensions
 
-Use the `references/scoring-rubric.md` to produce scoring-only JSON for all candidate dimensions.
+Use `references/scoring-rubric.md` to score all candidate dimensions. Emit a markdown summary table of dimension scores (dimension, score, reason) as visible output, then construct the scoring JSON internally — do not print the JSON to the conversation.
 Use that scoring JSON to construct `metadata.research_plan` which is part of clarifications.json and schema defined in `references/schemas.md`.
 
 - Set `topic_relevance` from scoring JSON (`relevant|not_relevant`).
@@ -80,10 +80,11 @@ Read `references/dimensions/{name}.md`.
 
 Your output should be raw research text only (500-800 words).
 Frame your research such that user responses will answer:
+
 - What should this skill enable Claude to do?
 - When should this skill trigger?
-- What's the expected output ?
-- Who's the typical user? 
+- What's the expected output?
+- Who's the typical user?
 - Should we set up test cases?
 
 Proactively think about edge cases, input/output formats, example files, success criteria, and dependencies.
@@ -92,29 +93,29 @@ Proactively think about edge cases, input/output formats, example files, success
 
 ## Step 5 — Consolidate
 
-- Use `references/consolidation-handoff.md` to produce `clarifications_json`. 
-- Return the results as JSON only (no wrappers and no additional text). 
+- Use `references/consolidation-handoff.md` to produce `clarifications_json`.
+- Return the results as JSON only (no wrappers and no additional text).
 
   ```json
   {
-    "dimensions_selected": `metadata.research_plan.dimensions_selected` ,
-    "question_count": `metadata.question_count` from `clarifications_json`, 
-    "research_output" : { 
+    "dimensions_selected": "<metadata.research_plan.dimensions_selected>",
+    "question_count": "<metadata.question_count from clarifications_json>",
+    "research_output" : {
       "version": "1",
       "metadata": {
-        "question_count": `metadata.question_count` from `clarifications_json`,
-        "section_count": `metadata.section_count` from `clarifications_json`,
-        "refinement_count": `metadata.refinement_count` from `clarifications_json`,
-        "must_answer_count": `metadata.must_answer_count` from `clarifications_json`,
-        "priority_questions": `metadata.priority_questions` from `clarifications_json`,
-        "scope_recommendation": `metadata.scope_recommendation` from `clarifications_json`,
-        "scope_reason": `metadata.scope_reason` from `clarifications_json`,
-        "warning": {... : `metadata.warning` } , 
+        "question_count": "<metadata.question_count from clarifications_json>",
+        "section_count": "<metadata.section_count from clarifications_json>",
+        "refinement_count": "<metadata.refinement_count from clarifications_json>",
+        "must_answer_count": "<metadata.must_answer_count from clarifications_json>",
+        "priority_questions": "<metadata.priority_questions from clarifications_json>",
+        "scope_recommendation": "<metadata.scope_recommendation from clarifications_json>",
+        "scope_reason": "<metadata.scope_reason from clarifications_json>",
+        "warning": "<metadata.warning>",
         "error": null,
-        "research_plan" : `metadata.research_plan`
-      }
-      "sections": `sections` from `clarifications_json`,
-      "notes" : `notes` from `clarifications_json`,
+        "research_plan" : "<metadata.research_plan>"
+      },
+      "sections": "<sections from clarifications_json>",
+      "notes" : "<notes from clarifications_json>",
       "answer_evaluator_notes": []
     }
   }
@@ -122,18 +123,15 @@ Proactively think about edge cases, input/output formats, example files, success
 
 ### Output Contract
 
-1. `research_output` should follow the the canonical clarifications JSON object. 
+1. `research_output` should follow the the canonical clarifications JSON object.
 2. Before returning:
-
-- Validate against `references/schemas.md` exactly.
-- Ensure `metadata.research_plan` is present and schema-valid.
-- Ensure `metadata.research_plan.selected_dimensions` is present as `{ name, focus }` objects aligned to selected dimensions.
-- Preserve note separation (`notes` vs `answer_evaluator_notes`). Always emit `answer_evaluator_notes: []` — this field is populated by a downstream agent after user answers are evaluated, never during research.
-- Keep warning/error channels separate (`metadata.warning` and `metadata.error`).
-
-2. All-low-scores behavior:
-- If `topic_relevance` is `not_relevant`, emit the minimal scope-recommendation payload from `references/schemas.md` with `metadata.scope_recommendation: true` and no dimension fan-out.
-
-3. If the research task fails for a selected dimension 
-- Remove the dimension from `metadata.research_plan.selected_dimensions`.  
-- Update the score of that dimension in `metadata.research_plan.dimension_scores` as `1` with reason `Research task failed`. This is not an error. 
+   - Validate against `references/schemas.md` exactly.
+   - Ensure `metadata.research_plan` is present and schema-valid.
+   - Ensure `metadata.research_plan.selected_dimensions` is present as `{ name, focus }` objects aligned to selected dimensions.
+   - Preserve note separation (`notes` vs `answer_evaluator_notes`). Always emit `answer_evaluator_notes: []` — this field is populated by a downstream agent after user answers are evaluated, never during research.
+   - Keep warning/error channels separate (`metadata.warning` and `metadata.error`).
+3. All-low-scores behavior:
+   - If `topic_relevance` is `not_relevant`, emit the minimal scope-recommendation payload from `references/schemas.md` with `metadata.scope_recommendation: true` and no dimension fan-out.
+4. If the research task fails for a selected dimension:
+   - Remove the dimension from `metadata.research_plan.selected_dimensions`.
+   - Update the score of that dimension in `metadata.research_plan.dimension_scores` as `1` with reason `Research task failed`. This is not an error.
