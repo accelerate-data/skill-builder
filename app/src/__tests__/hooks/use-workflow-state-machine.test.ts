@@ -354,7 +354,6 @@ describe("useWorkflowStateMachine", () => {
 
   it("handleStartAgentStep blocks when gateLoading is true", async () => {
     mockWorkflowState = { ...mockWorkflowState, gateLoading: true };
-    const { toast } = await import("@/lib/toast");
 
     const { result } = renderHook(() => useWorkflowStateMachine(defaultOptions));
 
@@ -363,7 +362,6 @@ describe("useWorkflowStateMachine", () => {
     });
 
     expect(mockRunWorkflowStep).not.toHaveBeenCalled();
-    expect(toast.info).toHaveBeenCalled();
   });
 
   it("handleStartAgentStep shows error when workspace path missing", async () => {

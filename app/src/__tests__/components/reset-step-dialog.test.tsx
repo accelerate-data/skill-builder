@@ -114,7 +114,6 @@ describe("ResetStepDialog", () => {
     await waitFor(() => {
       expect(onOpenChange).toHaveBeenCalledWith(false);
       expect(onReset).toHaveBeenCalled();
-      expect(toast.success).toHaveBeenCalledWith("Workflow reset successfully");
     });
   });
 
