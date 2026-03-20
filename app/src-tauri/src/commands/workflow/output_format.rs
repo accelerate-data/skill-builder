@@ -291,45 +291,23 @@ pub fn materialize_workflow_step_output(
                 .unwrap_or_else(|| workspace_path.clone());
             drop(conn);
 
+            // Agent now handles commit+tag via shell git; read HEAD for logging
             let skills_dir = Path::new(&skills_path);
-
-            // Use agent-provided commit_summary if available, else generic message
-            let commit_summary = structured_output
-                .get("commit_summary")
-                .and_then(|s| s.as_str())
-                .filter(|s| !s.trim().is_empty());
-            let message = match commit_summary {
-                Some(summary) => format!("{}: {}", skill_name, summary),
-                None => format!("{}: generate skill", skill_name),
-            };
-
-            match crate::git::commit_all(skills_dir, &message) {
-                Ok(Some(sha)) => {
-                    // New skills always get v1.0.0
-                    match crate::git::tag_skill_semver(skills_dir, &skill_name, "1.0.0") {
-                        Ok(tag) => {
-                            log::info!(
-                                "[materialize_workflow_step_output] committed and tagged skill={} tag={} sha={}",
-                                skill_name, tag, sha
-                            );
-                        }
-                        Err(e) => {
-                            log::warn!(
-                                "[materialize_workflow_step_output] commit ok but tag failed for skill={}: {}",
-                                skill_name, e
-                            );
-                        }
+            match git2::Repository::open(skills_dir) {
+                Ok(repo) => {
+                    if let Some(sha) = repo.head().ok()
+                        .and_then(|h| h.peel_to_commit().ok())
+                        .map(|c| c.id().to_string())
+                    {
+                        log::info!(
+                            "[materialize_workflow_step_output] agent committed skill={} sha={}",
+                            skill_name, &sha[..8.min(sha.len())]
+                        );
                     }
-                }
-                Ok(None) => {
-                    log::debug!(
-                        "[materialize_workflow_step_output] no changes to commit for skill={}",
-                        skill_name
-                    );
                 }
                 Err(e) => {
                     log::warn!(
-                        "[materialize_workflow_step_output] commit failed for skill={}: {}",
+                        "[materialize_workflow_step_output] could not open repo for skill={}: {}",
                         skill_name, e
                     );
                 }

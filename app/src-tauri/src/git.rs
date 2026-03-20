@@ -368,27 +368,6 @@ fn parse_semver(version: &str) -> (u32, u32, u32) {
     (major, minor, patch)
 }
 
-/// Apply a semver bump to the given version string.
-/// `bump` must be "major", "minor", or "patch"; defaults to "patch" if invalid.
-/// Returns the new version string (e.g. "1.2.0" → "1.3.0" for minor bump).
-/// If current is "0.0.0" (no prior version), returns "1.0.0" regardless of bump type.
-pub fn bump_semver(current: &str, bump: &str) -> Result<String, String> {
-    let (major, minor, patch) = parse_semver(current);
-    if major == 0 && minor == 0 && patch == 0 {
-        return Ok("1.0.0".to_string());
-    }
-    let (new_major, new_minor, new_patch) = match bump {
-        "major" => (major + 1, 0, 0),
-        "minor" => (major, minor + 1, 0),
-        "patch" => (major, minor, patch + 1),
-        _ => {
-            log::warn!("[git] invalid version_bump '{}', defaulting to patch", bump);
-            (major, minor, patch + 1)
-        }
-    };
-    Ok(format!("{}.{}.{}", new_major, new_minor, new_patch))
-}
-
 // --- Skill version tagging ---
 
 /// Find the highest existing semver tag for a skill (`<skill-name>/vX.Y.Z`).
@@ -425,45 +404,6 @@ pub fn latest_skill_semver(path: &Path, skill_name: &str) -> Result<String, Stri
         result
     );
     Ok(result)
-}
-
-/// Create a lightweight tag `<skill-name>/v<semver>` on HEAD.
-/// Returns the tag name that was created.
-pub fn tag_skill_semver(path: &Path, skill_name: &str, version: &str) -> Result<String, String> {
-    let repo = Repository::open(path)
-        .map_err(|e| format!("Failed to open repo at {}: {}", path.display(), e))?;
-    let tag_name = format!("{}/v{}", skill_name, version);
-
-    let head = repo
-        .head()
-        .map_err(|e| format!("Failed to get HEAD: {}", e))?;
-    let target = head
-        .peel(git2::ObjectType::Commit)
-        .map_err(|e| format!("Failed to peel HEAD to commit: {}", e))?;
-
-    repo.tag_lightweight(&tag_name, &target, false)
-        .map_err(|e| format!("Failed to create tag '{}': {}", tag_name, e))?;
-
-    log::info!("[git] Created tag '{}' on HEAD", tag_name);
-    Ok(tag_name)
-}
-
-/// Read the latest semver tag, apply a bump, and create a new tag on HEAD.
-/// Returns the tag name (e.g. `my-skill/v1.1.0`).
-pub fn tag_bumped_skill_version(
-    path: &Path,
-    skill_name: &str,
-    bump: &str,
-) -> Result<String, String> {
-    log::debug!(
-        "[git] tag_bumped_skill_version: skill='{}' bump='{}' repo={}",
-        skill_name,
-        bump,
-        path.display()
-    );
-    let current = latest_skill_semver(path, skill_name)?;
-    let next = bump_semver(&current, bump)?;
-    tag_skill_semver(path, skill_name, &next)
 }
 
 // --- Helpers ---

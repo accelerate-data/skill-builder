@@ -117,53 +117,21 @@ pub(crate) fn finalize_refine_run_inner(
         }
     }
 
-    // Extract agent-provided commit summary and version bump from rewrite-skill output
-    let (agent_commit_summary, agent_version_bump) = structured_output
-        .and_then(|payload| {
-            let status = payload.get("status")?.as_str()?;
-            if status == "rewritten" {
-                let summary = payload
-                    .get("commit_summary")
-                    .and_then(|s| s.as_str())
-                    .filter(|s| !s.trim().is_empty())
-                    .map(|s| s.to_string());
-                let bump = payload
-                    .get("version_bump")
-                    .and_then(|s| s.as_str())
-                    .filter(|s| !s.trim().is_empty())
-                    .map(|s| s.to_string());
-                Some((summary, bump))
-            } else {
-                None
-            }
-        })
-        .unwrap_or((None, None));
-
-    let commit_msg = match &agent_commit_summary {
-        Some(summary) => format!("{}: {}", skill_name, summary),
-        None => format!("{}: refine", skill_name),
+    // Agent now handles commit+tag via shell git; read HEAD for the commit SHA
+    let commit_sha = {
+        let repo = git2::Repository::open(Path::new(skills_path))
+            .map_err(|e| format!("Failed to open repo: {}", e))?;
+        repo.head()
+            .ok()
+            .and_then(|h| h.peel_to_commit().ok())
+            .map(|c| c.id().to_string())
     };
-    let commit_sha = crate::git::commit_all(Path::new(skills_path), &commit_msg)?;
-
-    // Create a semver tag after successful commit
-    if commit_sha.is_some() {
-        let bump = agent_version_bump.as_deref().unwrap_or("patch");
-        match crate::git::tag_bumped_skill_version(Path::new(skills_path), skill_name, bump) {
-            Ok(tag) => {
-                log::info!(
-                    "[finalize_refine_run] tagged skill={} tag={}",
-                    skill_name,
-                    tag
-                );
-            }
-            Err(e) => {
-                log::warn!(
-                    "[finalize_refine_run] tagging failed for skill={}: {}",
-                    skill_name,
-                    e
-                );
-            }
-        }
+    if let Some(ref sha) = commit_sha {
+        log::info!(
+            "[finalize_refine_run] agent committed skill={} sha={}",
+            skill_name,
+            &sha[..8.min(sha.len())]
+        );
     }
 
     let diff = if let Some(sha) = commit_sha.as_ref() {
