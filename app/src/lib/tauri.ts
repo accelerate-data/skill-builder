@@ -599,9 +599,6 @@ export const saveExportTo = (src: string, dest: string) =>
 export const listModels = (apiKey: string) =>
   invoke<ModelInfo[]>("list_models", { apiKey });
 
-export const toggleSkillActive = (skillName: string, active: boolean) =>
-  invoke<void>("toggle_skill_active", { skillName, active });
-
 export const createSkill = (params: {
   workspacePath: string;
   name: string;
