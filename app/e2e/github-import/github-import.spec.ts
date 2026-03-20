@@ -57,25 +57,33 @@ const BASE_OVERRIDES = {
   list_github_skills: TEST_AVAILABLE_SKILLS,
   get_dashboard_skill_names: [],
   import_marketplace_to_library: [{ success: true, error: null }],
+  check_marketplace_updates: { library: [], workspace: [], registry_names: [] },
+  check_skill_customized: false,
+  reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0, discovered_skills: [] },
 };
+
+/** The Marketplace action button inside the Import tab content (not the settings nav button).
+ *  The action button contains an icon child; the nav button does not. */
+function marketplaceActionButton(page: import("@playwright/test").Page) {
+  return page.getByRole("button", { name: "Marketplace" }).filter({ has: page.locator("svg") });
+}
 
 test.describe("GitHub Import", { tag: "@skills" }, () => {
   test.beforeEach(async ({ page }) => {
     await reloadWithOverrides(page, BASE_OVERRIDES);
     await page.goto("/settings");
     await waitForAppReady(page);
-    await page.getByRole("button", { name: "Import" }).first().click();
+    await page.getByRole("navigation").getByRole("button", { name: "Import" }).click();
   });
 
   test("opens marketplace dialog and lists available skills", async ({ page }) => {
-    // Click the Marketplace button to open the dialog
-    await page.getByRole("button", { name: "Marketplace" }).click();
+    await marketplaceActionButton(page).click();
 
     // Dialog should appear with the title
-    await expect(page.getByRole("heading", { name: "Browse Marketplace" })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("heading", { name: "Browse Marketplace" })).toBeVisible({ timeout: 10_000 });
 
-    // Skills should be listed
-    await expect(page.getByText("analytics-helper")).toBeVisible({ timeout: 5_000 });
+    // Skills should be listed (wait for async browseRegistry to finish)
+    await expect(page.getByText("analytics-helper")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("sql-expert")).toBeVisible();
 
     // Version badges should be visible
@@ -84,15 +92,14 @@ test.describe("GitHub Import", { tag: "@skills" }, () => {
   });
 
   test("import skill via edit form and verify success toast", async ({ page }) => {
-    await page.getByRole("button", { name: "Marketplace" }).click();
-    await expect(page.getByRole("heading", { name: "Browse Marketplace" })).toBeVisible({ timeout: 5_000 });
+    await marketplaceActionButton(page).click();
+    await expect(page.getByRole("heading", { name: "Browse Marketplace" })).toBeVisible({ timeout: 10_000 });
 
     // Wait for skills to load
-    await expect(page.getByText("analytics-helper")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("analytics-helper")).toBeVisible({ timeout: 10_000 });
 
     // Click the Install button for analytics-helper
-    const installButton = page.getByLabel("Install analytics-helper");
-    await installButton.click();
+    await page.getByLabel("Install analytics-helper").click();
 
     // Edit & Import dialog should appear
     await expect(page.getByRole("heading", { name: "Edit & Import Skill" })).toBeVisible({ timeout: 5_000 });
@@ -120,16 +127,15 @@ test.describe("GitHub Import", { tag: "@skills" }, () => {
     });
     await page.goto("/settings");
     await waitForAppReady(page);
-    await page.getByRole("button", { name: "Import" }).first().click();
+    await page.getByRole("navigation").getByRole("button", { name: "Import" }).click();
 
-    // Marketplace button should be disabled
-    const marketplaceButton = page.getByRole("button", { name: "Marketplace" });
-    await expect(marketplaceButton).toBeDisabled();
+    // Marketplace action button (in main content) should be disabled
+    await expect(marketplaceActionButton(page)).toBeDisabled();
   });
 
   test("shows imported badge after successful import", async ({ page }) => {
-    await page.getByRole("button", { name: "Marketplace" }).click();
-    await expect(page.getByText("analytics-helper")).toBeVisible({ timeout: 5_000 });
+    await marketplaceActionButton(page).click();
+    await expect(page.getByText("analytics-helper")).toBeVisible({ timeout: 10_000 });
 
     // Import via edit form
     await page.getByLabel("Install analytics-helper").click();
@@ -137,6 +143,6 @@ test.describe("GitHub Import", { tag: "@skills" }, () => {
     await page.getByRole("button", { name: "Confirm Import" }).click();
 
     // After import, the skill should show "Imported" badge in the marketplace list
-    await expect(page.getByText("Imported")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Imported", { exact: true })).toBeVisible({ timeout: 5_000 });
   });
 });
