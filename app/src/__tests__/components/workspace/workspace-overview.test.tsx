@@ -11,6 +11,7 @@ vi.mock("@/stores/settings-store", () => ({
 
 vi.mock("@/lib/tauri", () => ({
   getSkillHistory: vi.fn().mockResolvedValue([]),
+  readLatestBenchmark: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/components/skill-dialog", () => ({
