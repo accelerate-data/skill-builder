@@ -986,6 +986,91 @@ describe("MessageProcessor", () => {
     });
 
     // =========================================================================
+    // Orphaned items in shutdown paths (VU-673)
+    // =========================================================================
+
+    it("buildShutdownSummary marks pending tool calls as orphaned and returns them", () => {
+      // Create a pending tool call by processing an assistant message with a tool_use
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "tu_1", name: "Read", input: { path: "/tmp/test.ts" } },
+          ],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      });
+
+      expect(processor.pendingToolCallCount).toBe(1);
+
+      const { summary, orphanedItems } = processor.buildShutdownSummary();
+      expect(summary.status).toBe("shutdown");
+      expect(orphanedItems).toHaveLength(1);
+
+      const orphanedItem = (orphanedItems[0] as Record<string, unknown>).item as Record<string, unknown>;
+      expect(orphanedItem.toolStatus).toBe("orphaned");
+      expect(orphanedItem.toolUseId).toBe("tu_1");
+      expect(processor.pendingToolCallCount).toBe(0);
+    });
+
+    it("buildExecutionErrorSummary marks pending tool calls as orphaned and returns them", () => {
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "tu_2", name: "Bash", input: { command: "ls" } },
+            { type: "tool_use", id: "tu_3", name: "Write", input: { path: "/tmp/f.ts", content: "x" } },
+          ],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      });
+
+      expect(processor.pendingToolCallCount).toBe(2);
+
+      const { summary, orphanedItems } = processor.buildExecutionErrorSummary("connection lost");
+      expect(summary.status).toBe("error");
+      expect(orphanedItems).toHaveLength(2);
+
+      const statuses = orphanedItems.map(
+        (item) => ((item as Record<string, unknown>).item as Record<string, unknown>).toolStatus,
+      );
+      expect(statuses).toEqual(["orphaned", "orphaned"]);
+      expect(processor.pendingToolCallCount).toBe(0);
+    });
+
+    it("buildShutdownSummary returns empty orphanedItems when no pending tool calls", () => {
+      const { orphanedItems } = processor.buildShutdownSummary();
+      expect(orphanedItems).toHaveLength(0);
+    });
+
+    it("activeSubagentCount reflects running sub-agents", () => {
+      expect(processor.activeSubagentCount).toBe(0);
+
+      // Process an Agent tool call to create an active sub-agent
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "tu_agent_1", name: "Agent", input: { prompt: "do stuff" } },
+          ],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      });
+
+      expect(processor.activeSubagentCount).toBe(1);
+
+      // Complete the sub-agent by processing a tool result
+      processor.process({
+        type: "user",
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "tu_agent_1", content: "done", is_error: false }],
+        },
+      });
+
+      expect(processor.activeSubagentCount).toBe(0);
+    });
+
+    // =========================================================================
     // Assistant message error field (VU-531)
     // =========================================================================
 

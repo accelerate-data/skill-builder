@@ -523,6 +523,96 @@ describe("runAgentRequest — abort via external signal", () => {
   });
 });
 
+// VU-673: Stop hook prevents premature termination when sub-agents are running
+describe("runAgentRequest — stop hook integration", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("passes a Stop hook in SDK options that prevents termination while sub-agents are active", async () => {
+    async function* fakeConversation() {
+      yield { type: "result", subtype: "success", usage: { input_tokens: 10, output_tokens: 5 }, total_cost_usd: 0.001 };
+    }
+    mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
+
+    await runAgentRequest(baseConfig(), vi.fn());
+
+    const callArgs = mockQuery.mock.calls[0][0];
+    const opts = callArgs.options as Record<string, unknown>;
+    expect(opts).toHaveProperty("hooks");
+    const hooks = opts.hooks as Record<string, unknown>;
+    expect(hooks).toHaveProperty("Stop");
+  });
+
+  it("emits orphaned tool call display items alongside shutdown run_result on abort", async () => {
+    const externalController = new AbortController();
+
+    async function* fakeConversation() {
+      // Yield an assistant with a pending tool call, then abort
+      yield {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "tu_orphan", name: "Bash", input: { command: "sleep 10" } },
+          ],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      };
+      externalController.abort();
+      yield { type: "result", subtype: "success", usage: { input_tokens: 10, output_tokens: 5 }, total_cost_usd: 0.001 };
+    }
+    mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
+
+    const messages: Record<string, unknown>[] = [];
+    await runAgentRequest(baseConfig(), (msg) => messages.push(msg), externalController.signal);
+
+    // Should have an orphaned tool call display item
+    const orphanedItems = messages.filter(
+      (m) =>
+        m.type === "display_item" &&
+        ((m as Record<string, unknown>).item as Record<string, unknown>)?.toolStatus === "orphaned",
+    );
+    expect(orphanedItems.length).toBeGreaterThanOrEqual(1);
+
+    // Should also have a run_result
+    const runResult = findRunResult(messages);
+    expect(runResult).toBeDefined();
+    const data = runResult!.event as Record<string, unknown>;
+    expect(data.status).toBe("shutdown");
+  });
+
+  it("emits orphaned tool call display items alongside error run_result on stream failure", async () => {
+    async function* failingConversation() {
+      yield {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "tu_fail", name: "Read", input: { path: "/tmp/x.ts" } },
+          ],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      };
+      throw new Error("stream crashed");
+    }
+    mockQuery.mockReturnValue(failingConversation() as ReturnType<typeof query>);
+
+    const messages: Record<string, unknown>[] = [];
+    await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
+
+    const orphanedItems = messages.filter(
+      (m) =>
+        m.type === "display_item" &&
+        ((m as Record<string, unknown>).item as Record<string, unknown>)?.toolStatus === "orphaned",
+    );
+    expect(orphanedItems.length).toBeGreaterThanOrEqual(1);
+
+    const runResult = findRunResult(messages);
+    expect(runResult).toBeDefined();
+    const data = runResult!.event as Record<string, unknown>;
+    expect(data.status).toBe("error");
+  });
+});
+
 // TS-08: discoverInstalledPlugins swallowed error
 describe("discoverInstalledPlugins — error handling", () => {
   beforeEach(() => {
