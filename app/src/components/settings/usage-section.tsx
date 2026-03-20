@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { Loader2, DollarSign, RotateCcw } from "lucide-react"
 import { toast } from "@/lib/toast"
 import { Button } from "@/components/ui/button"
@@ -22,6 +22,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { useUsageStore } from "@/stores/usage-store"
+import type { SortCol } from "./usage/usage-helpers"
 import {
   CostOverTimeChart,
   UsageBreakdownTables,
@@ -40,6 +41,18 @@ export function UsageSection() {
     modelFamilyFilter, setModelFamilyFilter,
   } = useUsageStore()
   const [resetting, setResetting] = useState(false)
+  const [stepFilter, setStepFilter] = useState<number | "all">("all")
+  const [sortCol, setSortCol] = useState<SortCol>("date")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
+
+  const handleSort = useCallback((col: SortCol) => {
+    if (sortCol === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"))
+    } else {
+      setSortCol(col)
+      setSortDir("desc")
+    }
+  }, [sortCol])
 
   useEffect(() => {
     fetchUsage()
@@ -84,7 +97,7 @@ export function UsageSection() {
   if (isEmpty) {
     return (
       <div className="flex flex-col gap-6 p-6">
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-end gap-2">
           <UsageFilters
             skillNames={skillNames} skillFilter={skillFilter} setSkillFilter={setSkillFilter}
             dateRange={dateRange} setDateRange={setDateRange}
@@ -162,6 +175,11 @@ export function UsageSection() {
         byModel={byModel}
         modelFamilyFilter={modelFamilyFilter}
         setModelFamilyFilter={setModelFamilyFilter}
+        stepFilter={stepFilter}
+        setStepFilter={setStepFilter}
+        sortCol={sortCol}
+        sortDir={sortDir}
+        onSort={handleSort}
       />
     </div>
   )

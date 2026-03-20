@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useMemo } from "react"
 import { ChevronUp, ChevronDown, CheckCircle2, XCircle } from "lucide-react"
 import type { AgentRunRecord, UsageByModel } from "@/lib/types"
 import {
@@ -30,21 +30,17 @@ interface SessionHistoryProps {
   byModel: UsageByModel[]
   modelFamilyFilter: string | null
   setModelFamilyFilter: (v: string | null) => void
+  stepFilter: number | "all"
+  setStepFilter: (v: number | "all") => void
+  sortCol: SortCol
+  sortDir: "asc" | "desc"
+  onSort: (col: SortCol) => void
 }
 
-export function SessionHistory({ agentRuns, byModel, modelFamilyFilter, setModelFamilyFilter }: SessionHistoryProps) {
-  const [stepFilter, setStepFilter] = useState<number | "all">("all")
-  const [sortCol, setSortCol] = useState<SortCol>("date")
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
-
-  const handleSort = (col: SortCol) => {
-    if (sortCol === col) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"))
-    } else {
-      setSortCol(col)
-      setSortDir("desc")
-    }
-  }
+export function SessionHistory({
+  agentRuns, byModel, modelFamilyFilter, setModelFamilyFilter,
+  stepFilter, setStepFilter, sortCol, sortDir, onSort,
+}: SessionHistoryProps) {
 
   const availableModels = useMemo(() => byModel.map((m) => m.model).sort(), [byModel])
 
@@ -120,7 +116,7 @@ export function SessionHistory({ agentRuns, byModel, modelFamilyFilter, setModel
                   <th key={col} scope="col" className="pl-4 py-2 text-left text-xs font-medium text-muted-foreground border-b border-border">
                     <button
                       type="button"
-                      onClick={() => handleSort(col)}
+                      onClick={() => onSort(col)}
                       className="flex items-center gap-1 hover:text-foreground transition-colors capitalize"
                     >
                       {col}
@@ -135,7 +131,7 @@ export function SessionHistory({ agentRuns, byModel, modelFamilyFilter, setModel
                   <th key={col} scope="col" className="pr-4 py-2 text-right text-xs font-medium text-muted-foreground border-b border-border">
                     <button
                       type="button"
-                      onClick={() => handleSort(col)}
+                      onClick={() => onSort(col)}
                       className="flex items-center gap-1 ml-auto hover:text-foreground transition-colors capitalize"
                     >
                       {col}
