@@ -38,11 +38,11 @@ After scoring all dimensions, emit a **markdown summary table** as your visible 
 
 | Dimension | Score | Reason |
 | --------- | ----- | ------ |
-| `<slug>` | `<1-5>` | `<one-sentence reason>` |
+| <slug> | <1-5> | <one-sentence reason> |
 
 Include one row per evaluated dimension. This table is the only scoring output the user should see.
 
-Then construct the scoring JSON object internally using the canonical format in the Scoring Output Format section below. **Do not print the JSON to the conversation.** The JSON is consumed programmatically by downstream steps, not displayed to the user.
+Then construct the scoring JSON object internally using the canonical format in the Scoring Output Format section below. **Do not emit the JSON as visible text output.** The JSON is consumed programmatically by downstream steps, not displayed to the user.
 
 ---
 

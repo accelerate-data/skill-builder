@@ -32,7 +32,7 @@ Use table below to resolve `purpose` to one dimension set from `references/dimen
 
 ## Step 2 — Score dimensions
 
-Use `references/scoring-rubric.md` to score all candidate dimensions. Emit a markdown summary table of dimension scores (dimension, score, reason) as visible output, then construct the scoring JSON internally — do not print the JSON to the conversation.
+Use `references/scoring-rubric.md` to score all candidate dimensions. Emit a markdown summary table of dimension scores (dimension, score, reason) as visible output, then construct the scoring JSON internally — do not emit the JSON as visible text output.
 Use that scoring JSON to construct `metadata.research_plan` which is part of clarifications.json and schema defined in `references/schemas.md`.
 
 - Set `topic_relevance` from scoring JSON (`relevant|not_relevant`).
