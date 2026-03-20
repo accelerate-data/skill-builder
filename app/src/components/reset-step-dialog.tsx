@@ -74,7 +74,6 @@ export default function ResetStepDialog({
       } else {
         await resetWorkflowStep(workspacePath, skillName, effectiveDeleteFrom)
       }
-      toast.success("Workflow reset successfully")
       onOpenChange(false)
       onReset()
     } catch (err) {

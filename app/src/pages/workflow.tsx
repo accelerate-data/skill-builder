@@ -252,7 +252,7 @@ export default function WorkflowPage() {
         stepId={currentStep}
         outputFiles={stepConfig?.outputFiles ?? []}
         onNextStep={async () => {
-          if (editorDirty) await handleSave(true);
+          if (editorDirty) await handleSave();
           handleReviewContinue();
         }}
         onClose={handleClose}
@@ -268,7 +268,7 @@ export default function WorkflowPage() {
         clarificationsData={clarificationsData}
         onClarificationsChange={handleClarificationsChange}
         onClarificationsContinue={async () => {
-          if (editorDirty) await handleSave(true);
+          if (editorDirty) await handleSave();
           handleReviewContinue();
         }}
         onReset={!reviewMode && stepConfig?.clarificationsEditable ? () => setResetTarget(currentStep === 1 ? 0 : currentStep) : undefined}
