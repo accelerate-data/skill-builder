@@ -335,7 +335,6 @@ export function useWorkflowStateMachine({
       return;
     }
     if (gateLoading || gate.gateAgentIdRef.current) {
-      toast.info("Answer analysis is in progress. Please wait for results.", { duration: 5000 });
       return;
     }
 

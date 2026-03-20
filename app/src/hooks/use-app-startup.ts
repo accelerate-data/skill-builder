@@ -154,7 +154,8 @@ export function useAppStartup(): UseAppStartupReturn {
       const applied = await reconcileStartup(true);
       if (applied.auto_cleaned > 0) {
         toast.info(
-          `Cleaned up ${applied.auto_cleaned} incomplete skill${applied.auto_cleaned !== 1 ? "s" : ""}`
+          `Cleaned up ${applied.auto_cleaned} incomplete skill${applied.auto_cleaned !== 1 ? "s" : ""}`,
+          { duration: Infinity },
         );
       }
       if (applied.orphans.length > 0) {
@@ -185,7 +186,6 @@ export function useAppStartup(): UseAppStartupReturn {
   const handleCancelReconciliation = () => {
     recordReconciliationCancel(reconNotifications.length, reconDiscovered.length)
       .catch(() => undefined);
-    toast.info("Startup reconciliation skipped. No automatic changes were applied.");
     setAckDone(true);
     setReconNotifications([]);
     setReconDiscovered([]);

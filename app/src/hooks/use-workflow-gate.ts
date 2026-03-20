@@ -44,7 +44,7 @@ export interface UseWorkflowGateReturn {
   runGateOrAdvance: () => void;
   handleReviewContinue: () => void;
   closeGateDialog: () => void;
-  skipToDecisions: (message: string) => void;
+  skipToDecisions: () => void;
   handleGateSkip: () => void;
   handleGateResearch: () => void;
   handleGateContinueAnyway: () => void;
@@ -68,7 +68,7 @@ export function useWorkflowGate({
   currentStep,
   disabledSteps,
   purpose,
-  clarificationsData,
+  clarificationsData: _clarificationsData,
   onClarificationsUpdated,
   advanceToNextStep,
 }: UseWorkflowGateOptions): UseWorkflowGateReturn {
@@ -176,7 +176,7 @@ export function useWorkflowGate({
     setGateEvaluation(null);
   }, []);
 
-  const skipToDecisions = useCallback((message: string) => {
+  const skipToDecisions = useCallback(() => {
     closeGateDialog();
     if (gateContext === "refinements") {
       updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
@@ -192,7 +192,6 @@ export function useWorkflowGate({
     saveWorkflowState(skillName, s.currentStep, runStatus, stepStatuses, purpose ?? undefined).catch(
       (err) => console.error("skipToDecisions: failed to persist state:", err),
     );
-    toast.success(message);
   }, [gateContext, skillName, purpose, closeGateDialog, updateStepStatus, advanceToNextStep, setCurrentStep]);
 
   const logGateAction = useCallback((decision: string) => {
@@ -205,9 +204,9 @@ export function useWorkflowGate({
   const handleGateSkip = useCallback(() => {
     logGateAction("skip");
     if (gateContext === "refinements") {
-      skipToDecisions("Refinement answers verified — continuing to decisions");
+      skipToDecisions();
     } else {
-      skipToDecisions("Skipped detailed research — answers were sufficient");
+      skipToDecisions();
     }
   }, [gateContext, logGateAction, skipToDecisions]);
 
@@ -223,7 +222,6 @@ export function useWorkflowGate({
     closeGateDialog();
     updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
     advanceToNextStep();
-    toast.info("Continuing with current answers");
   }, [logGateAction, closeGateDialog, updateStepStatus, advanceToNextStep]);
 
   const handleGateLetMeAnswer = useCallback(() => {
@@ -236,7 +234,6 @@ export function useWorkflowGate({
       return;
     }
 
-    const prevNoteCount = clarificationsData?.answer_evaluator_notes?.length ?? 0;
     getClarificationsContent(skillName, workspacePath)
       .then((content) => {
         const parsed = parseClarifications(content ?? null);
@@ -247,17 +244,12 @@ export function useWorkflowGate({
 
         onClarificationsUpdated?.(parsed, content ?? "");
 
-        const addedNotes = Math.max(0, (parsed.answer_evaluator_notes?.length ?? 0) - prevNoteCount);
-        if (addedNotes > 0) {
-          toast.success(`Loaded ${addedNotes} feedback note${addedNotes === 1 ? "" : "s"} for review.`, { id: loadingId });
-        } else {
-          toast.success("Feedback refreshed. You can update your answers now.", { id: loadingId });
-        }
+        toast.success("Feedback refreshed. You can update your answers now.", { id: loadingId });
       })
       .catch(() => {
         toast.warning("Could not refresh feedback from disk. You can still answer manually.", { id: loadingId, duration: Infinity });
       });
-  }, [logGateAction, closeGateDialog, workspacePath, skillName, clarificationsData, onClarificationsUpdated]);
+  }, [logGateAction, closeGateDialog, workspacePath, skillName, onClarificationsUpdated]);
 
   // --- Routing ---
 
