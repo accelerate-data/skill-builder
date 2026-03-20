@@ -704,7 +704,12 @@ fn test_finalize_refine_validation_writes_workspace_context_without_skill_diff()
     let skill_dir = skills_dir.path().join("my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
-    crate::git::commit_all(skills_dir.path(), "initial").unwrap();
+    // First commit adds the skill (simulates generate step)
+    crate::git::commit_all(skills_dir.path(), "generate skill").unwrap();
+    // Second commit touches an unrelated file so HEAD's diff vs parent
+    // does not include skill files (simulates agent refine with no skill changes)
+    std::fs::write(skills_dir.path().join("other.txt"), "unrelated\n").unwrap();
+    crate::git::commit_all(skills_dir.path(), "refine: validation only").unwrap();
 
     let payload = serde_json::json!({
         "status": "validation_complete",
@@ -720,7 +725,8 @@ fn test_finalize_refine_validation_writes_workspace_context_without_skill_diff()
     )
     .unwrap();
 
-    assert!(result.commit_sha.is_none());
+    // HEAD always exists, so commit_sha is always Some
+    assert!(result.commit_sha.is_some());
     assert!(result.diff.files.is_empty());
     assert_eq!(result.files.len(), 1);
     assert_eq!(result.files[0].path, "SKILL.md");

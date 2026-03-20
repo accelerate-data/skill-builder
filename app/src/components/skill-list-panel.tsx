@@ -548,7 +548,7 @@ export function SkillListPanel({
         <RestoreVersionDialog
           skillName={restoreTarget}
           workspacePath={workspacePath}
-          open={restoreTarget !== null}
+          open={!!restoreTarget}
           onOpenChange={(open) => { if (!open) setRestoreTarget(null); }}
           onRestored={() => {
             setRestoreTarget(null);
