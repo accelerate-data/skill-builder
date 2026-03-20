@@ -1366,4 +1366,152 @@ describe("MessageProcessor", () => {
       expect(processor.pendingBackgroundTaskCount).toBe(0);
     });
   });
+
+  // =========================================================================
+  // Task event → DisplayItem updates (VU-674)
+  // =========================================================================
+
+  describe("task event display items", () => {
+    /** Helper: launch a background agent and return the agentId. */
+    function launchBackgroundAgent(toolUseId: string, agentId: string, description = "Eval"): void {
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: toolUseId,
+              name: "Agent",
+              input: { description },
+            },
+          ],
+        },
+      });
+      processor.process({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: toolUseId,
+              content: `Async agent launched successfully.\nagentId: ${agentId}`,
+            },
+          ],
+        },
+      });
+    }
+
+    it("task_started re-activates subagent with running status", () => {
+      launchBackgroundAgent("tu-ts-1", "agent-ts-1", "Benchmark eval");
+
+      const out = processor.process({
+        type: "system",
+        subtype: "task_started",
+        task_id: "agent-ts-1",
+        description: "Running benchmark eval",
+      });
+
+      const items = extractDisplayItems(out);
+      expect(items).toHaveLength(1);
+      expect(items[0].type).toBe("subagent");
+      expect(items[0].subagentStatus).toBe("running");
+      expect(items[0].subagentDescription).toBe("Running benchmark eval");
+    });
+
+    it("task_progress updates subagent metrics and lastToolName", () => {
+      launchBackgroundAgent("tu-tp-1", "agent-tp-1");
+
+      const out = processor.process({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "agent-tp-1",
+        description: "Evaluating test case 3",
+        usage: { total_tokens: 5000, tool_uses: 12, duration_ms: 30000 },
+        last_tool_name: "Read",
+      });
+
+      const items = extractDisplayItems(out);
+      expect(items).toHaveLength(1);
+      expect(items[0].type).toBe("subagent");
+      expect(items[0].subagentStatus).toBe("running");
+      expect(items[0].subagentMetrics).toEqual({ outputTokens: 5000, turns: 12 });
+      expect(items[0].lastToolName).toBe("Read");
+      expect(items[0].subagentDescription).toBe("Evaluating test case 3");
+    });
+
+    it("task_notification with completed transitions subagent to complete", () => {
+      launchBackgroundAgent("tu-tn-1", "agent-tn-1");
+
+      const out = processor.process({
+        type: "system",
+        subtype: "task_notification",
+        task_id: "agent-tn-1",
+        status: "completed",
+        summary: "All evals passed",
+        usage: { total_tokens: 10000, tool_uses: 25, duration_ms: 60000 },
+      });
+
+      const items = extractDisplayItems(out);
+      expect(items).toHaveLength(1);
+      expect(items[0].type).toBe("subagent");
+      expect(items[0].subagentStatus).toBe("complete");
+      expect(items[0].subagentMetrics).toEqual({ outputTokens: 10000, turns: 25 });
+      expect(items[0].lastToolName).toBeUndefined(); // Cleared on completion
+      expect(processor.pendingBackgroundTaskCount).toBe(0);
+    });
+
+    it("task_notification with failed transitions subagent to error", () => {
+      launchBackgroundAgent("tu-tn-2", "agent-tn-2");
+
+      const out = processor.process({
+        type: "system",
+        subtype: "task_notification",
+        task_id: "agent-tn-2",
+        status: "failed",
+        summary: "Eval crashed",
+      });
+
+      const items = extractDisplayItems(out);
+      expect(items).toHaveLength(1);
+      expect(items[0].subagentStatus).toBe("error");
+      expect(processor.pendingBackgroundTaskCount).toBe(0);
+    });
+
+    it("task_progress accumulates metrics across multiple events", () => {
+      launchBackgroundAgent("tu-acc-1", "agent-acc-1");
+
+      // First progress
+      processor.process({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "agent-acc-1",
+        usage: { total_tokens: 2000, tool_uses: 5 },
+        last_tool_name: "Bash",
+      });
+
+      // Second progress
+      const out = processor.process({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "agent-acc-1",
+        usage: { total_tokens: 8000, tool_uses: 15 },
+        last_tool_name: "Write",
+      });
+
+      const items = extractDisplayItems(out);
+      expect(items[0].subagentMetrics).toEqual({ outputTokens: 8000, turns: 15 });
+      expect(items[0].lastToolName).toBe("Write");
+    });
+
+    it("task events for untracked taskId produce no output", () => {
+      const out = processor.process({
+        type: "system",
+        subtype: "task_started",
+        task_id: "unknown-agent",
+        description: "Mystery",
+      });
+      expect(extractDisplayItems(out)).toHaveLength(0);
+    });
+  });
 });

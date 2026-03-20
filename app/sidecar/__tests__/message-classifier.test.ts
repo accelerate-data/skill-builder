@@ -84,6 +84,25 @@ describe("classifyRawMessage", () => {
     ).toBe("system");
   });
 
+  // --- task events ---
+  it("classifies task_started as task", () => {
+    expect(
+      classifyRawMessage({ type: "system", subtype: "task_started", task_id: "t-1", description: "Eval" }),
+    ).toBe("task");
+  });
+
+  it("classifies task_progress as task", () => {
+    expect(
+      classifyRawMessage({ type: "system", subtype: "task_progress", task_id: "t-1", usage: {} }),
+    ).toBe("task");
+  });
+
+  it("classifies task_notification as task", () => {
+    expect(
+      classifyRawMessage({ type: "system", subtype: "task_notification", task_id: "t-1", status: "completed" }),
+    ).toBe("task");
+  });
+
   // --- user ---
   it("classifies user messages as user", () => {
     expect(

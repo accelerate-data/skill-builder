@@ -98,6 +98,13 @@ export class MessageProcessor {
    */
   private pendingBackgroundTasks = new Map<string, string>();
 
+  /**
+   * Map from background task/agent ID → subagent DisplayItem snapshot.
+   * Used to re-emit subagent updates when task_started/task_progress/task_notification
+   * events arrive for background agents.
+   */
+  private backgroundTaskSubagents = new Map<string, DisplayItem>();
+
   /** Accumulates run-level state for run_result events. */
   private accumulator: RunMetadataAccumulator;
 
@@ -157,6 +164,9 @@ export class MessageProcessor {
 
       case "ai":
         return this.processAiMessage(raw, now);
+
+      case "task":
+        return this.processTaskEvent(raw, now);
 
       default:
         return [];
@@ -881,31 +891,181 @@ export class MessageProcessor {
    * Detect whether a tool_result indicates a background agent launch.
    * The SDK returns "Async agent launched successfully.\nagentId: <id>"
    * for `run_in_background: true` Agent calls. Extract the ID and track it.
+   * Also snapshots the subagent DisplayItem so task events can re-emit updates.
    */
   private detectBackgroundAgentLaunch(toolUseId: string, resultContent: string): void {
     const match = resultContent.match(/agentId:\s*(\S+)/);
     if (match) {
       const agentId = match[1];
       this.pendingBackgroundTasks.set(agentId, toolUseId);
+
+      // Snapshot the subagent DisplayItem for task event updates
+      const subagentItem = this.subagentByToolUseId.get(toolUseId);
+      if (subagentItem) {
+        this.backgroundTaskSubagents.set(agentId, { ...subagentItem });
+      }
+
       process.stderr.write(
-        `[message-processor] event=track_background_agent agent_id=${agentId} tool_use_id=${toolUseId}\n`,
+        `[message-processor] event=track_background_agent agent_id=${agentId} tool_use_id=${toolUseId} has_subagent=${!!subagentItem}\n`,
       );
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Task events (background agent lifecycle)
+  // -------------------------------------------------------------------------
+
   /**
-   * Process a task_notification event from the SDK stream.
-   * When a background agent completes, remove it from the pending set.
+   * Process a task lifecycle event (task_started, task_progress, task_notification).
+   * Emits subagent DisplayItem updates so the frontend shows live progress.
+   */
+  private processTaskEvent(raw: Record<string, unknown>, now: number): ProcessedMessage[] {
+    const subtype = raw.subtype as string | undefined;
+    const taskId = raw.task_id as string | undefined;
+    if (!taskId) return [];
+
+    switch (subtype) {
+      case "task_started":
+        return this.processTaskStarted(taskId, raw, now);
+      case "task_progress":
+        return this.processTaskProgress(taskId, raw, now);
+      case "task_notification":
+        return this.processTaskCompleted(taskId, raw, now);
+      default:
+        return [];
+    }
+  }
+
+  /**
+   * Handle task_started: re-activate the subagent DisplayItem with "running" status.
+   */
+  private processTaskStarted(
+    taskId: string,
+    raw: Record<string, unknown>,
+    now: number,
+  ): ProcessedMessage[] {
+    const subagent = this.backgroundTaskSubagents.get(taskId);
+    if (!subagent) {
+      process.stderr.write(
+        `[message-processor] event=task_started task_id=${taskId} status=untracked\n`,
+      );
+      return [];
+    }
+
+    const description = raw.description as string | undefined;
+    const updated: DisplayItem = {
+      ...subagent,
+      subagentStatus: "running",
+      ...(description && { subagentDescription: description }),
+      timestamp: now,
+    };
+    this.backgroundTaskSubagents.set(taskId, updated);
+
+    process.stderr.write(
+      `[message-processor] event=task_started task_id=${taskId} status=tracked\n`,
+    );
+
+    return [this.makeEnvelope(updated)];
+  }
+
+  /**
+   * Handle task_progress: update subagent metrics and lastToolName.
+   */
+  private processTaskProgress(
+    taskId: string,
+    raw: Record<string, unknown>,
+    now: number,
+  ): ProcessedMessage[] {
+    const subagent = this.backgroundTaskSubagents.get(taskId);
+    if (!subagent) {
+      process.stderr.write(
+        `[message-processor] event=task_progress task_id=${taskId} status=untracked\n`,
+      );
+      return [];
+    }
+
+    const usage = raw.usage as { total_tokens?: number; tool_uses?: number; duration_ms?: number } | undefined;
+    const lastToolName = raw.last_tool_name as string | undefined;
+    const description = raw.description as string | undefined;
+
+    const updated: DisplayItem = {
+      ...subagent,
+      subagentStatus: "running",
+      ...(usage && {
+        subagentMetrics: {
+          outputTokens: usage.total_tokens ?? subagent.subagentMetrics?.outputTokens ?? 0,
+          turns: usage.tool_uses ?? subagent.subagentMetrics?.turns ?? 0,
+        },
+      }),
+      ...(lastToolName && { lastToolName }),
+      ...(description && { subagentDescription: description }),
+      timestamp: now,
+    };
+    this.backgroundTaskSubagents.set(taskId, updated);
+
+    process.stderr.write(
+      `[message-processor] event=task_progress task_id=${taskId} tokens=${usage?.total_tokens ?? 0} tool=${lastToolName ?? "none"}\n`,
+    );
+
+    return [this.makeEnvelope(updated)];
+  }
+
+  /**
+   * Handle task_notification: finalize the subagent with completion/error status
+   * and remove from pending tracking.
+   */
+  private processTaskCompleted(
+    taskId: string,
+    raw: Record<string, unknown>,
+    now: number,
+  ): ProcessedMessage[] {
+    const status = raw.status as string | undefined;
+    const usage = raw.usage as { total_tokens?: number; tool_uses?: number; duration_ms?: number } | undefined;
+
+    // Remove from pending tracking (Stop hook)
+    const wasTracked = this.pendingBackgroundTasks.delete(taskId);
+    process.stderr.write(
+      `[message-processor] event=task_notification task_id=${taskId} status=${status ?? "unknown"} was_tracked=${wasTracked} remaining=${this.pendingBackgroundTasks.size}\n`,
+    );
+
+    // Emit subagent DisplayItem update if we have a snapshot
+    const subagent = this.backgroundTaskSubagents.get(taskId);
+    if (!subagent) return [];
+
+    const isError = status === "failed" || status === "stopped";
+    const updated: DisplayItem = {
+      ...subagent,
+      subagentStatus: isError ? "error" : "complete",
+      lastToolName: undefined, // Clear — agent is done
+      ...(usage && {
+        subagentMetrics: {
+          outputTokens: usage.total_tokens ?? subagent.subagentMetrics?.outputTokens ?? 0,
+          turns: usage.tool_uses ?? subagent.subagentMetrics?.turns ?? 0,
+        },
+      }),
+      timestamp: now,
+    };
+    this.backgroundTaskSubagents.delete(taskId);
+
+    return [this.makeEnvelope(updated)];
+  }
+
+  /**
+   * Process a task_notification event from the SDK stream (public API).
+   * Called directly from run-agent.ts and stream-session.ts for events
+   * that arrive with `type: "task_notification"` (top-level type, not subtype).
+   * Delegates to processTaskCompleted for state tracking.
    */
   processTaskNotification(event: Record<string, unknown>): void {
     const taskId = event.agent_id as string | undefined
       ?? event.task_id as string | undefined;
     const status = event.status as string | undefined;
 
-    if (taskId && (status === "completed" || status === "error")) {
-      const wasTracked = this.pendingBackgroundTasks.delete(taskId);
+    if (taskId && (status === "completed" || status === "error" || status === "failed" || status === "stopped")) {
+      this.pendingBackgroundTasks.delete(taskId);
+      this.backgroundTaskSubagents.delete(taskId);
       process.stderr.write(
-        `[message-processor] event=task_notification task_id=${taskId} status=${status} was_tracked=${wasTracked} remaining=${this.pendingBackgroundTasks.size}\n`,
+        `[message-processor] event=task_notification_direct task_id=${taskId} status=${status} remaining=${this.pendingBackgroundTasks.size}\n`,
       );
     }
   }
@@ -939,6 +1099,7 @@ export class MessageProcessor {
       );
     }
     this.pendingBackgroundTasks.clear();
+    this.backgroundTaskSubagents.clear();
 
     return orphanedUpdates;
   }
@@ -967,6 +1128,7 @@ export class MessageProcessor {
     this.subagentMap.clear();
     this.subagentByToolUseId.clear();
     this.pendingBackgroundTasks.clear();
+    this.backgroundTaskSubagents.clear();
     this.accumulator = new RunMetadataAccumulator(this.accumulator.getContext());
   }
 

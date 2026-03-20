@@ -248,7 +248,10 @@ export class StreamSession {
 
         const msg = message as Record<string, unknown>;
 
-        // Track background agent completion via task_notification events
+        // Track background agent completion via task_notification events.
+        // Events with top-level type "task_notification" (older SDK) are handled
+        // here; events with type "system" + subtype "task_notification" are
+        // handled by the classifier → processTaskEvent path.
         if (msg.type === "task_notification") {
           processor.processTaskNotification(msg);
         }
