@@ -2320,66 +2320,6 @@ fn test_generate_skills_section_no_trigger_no_path() {
     );
 }
 
-#[test]
-fn test_deploy_skill_for_workflow_uses_bundled_source_for_bundled_rows() {
-    let conn = super::super::test_utils::create_test_db();
-    let workspace_tmp = tempfile::tempdir().unwrap();
-    let bundled_tmp = tempfile::tempdir().unwrap();
-
-    let workspace_path = workspace_tmp.path().to_string_lossy().to_string();
-    let bundled_skills_dir = bundled_tmp.path();
-
-    let bundled_research_dir = bundled_skills_dir.join("research");
-    std::fs::create_dir_all(&bundled_research_dir).unwrap();
-    std::fs::write(
-        bundled_research_dir.join("SKILL.md"),
-        "---\nname: research\ndescription: bundled\n---\n# Bundled Research",
-    )
-    .unwrap();
-
-    let deployed_research_dir = workspace_tmp
-        .path()
-        .join(".claude")
-        .join("skills")
-        .join("research");
-    std::fs::create_dir_all(&deployed_research_dir).unwrap();
-    std::fs::write(
-        deployed_research_dir.join("SKILL.md"),
-        "---\nname: research\ndescription: stale\n---\n# Stale Research",
-    )
-    .unwrap();
-
-    let ws = crate::types::ImportedSkill {
-        skill_id: "bundled-research".to_string(),
-        skill_name: "research".to_string(),
-        is_active: true,
-        disk_path: deployed_research_dir.to_string_lossy().to_string(),
-        imported_at: "2000-01-01T00:00:00Z".to_string(),
-        is_bundled: true,
-        description: Some("research".to_string()),
-        version: Some("1.0.0".to_string()),
-        model: None,
-        argument_hint: None,
-        user_invocable: None,
-        disable_model_invocation: None,
-        purpose: Some("research".to_string()),
-        marketplace_source_url: None,
-    };
-    crate::db::insert_imported_skill(&conn, &ws).unwrap();
-
-    super::deploy::deploy_skill_for_workflow(
-        &conn,
-        &workspace_path,
-        bundled_skills_dir,
-        "research",
-        "research",
-    ).unwrap();
-
-    let content = std::fs::read_to_string(deployed_research_dir.join("SKILL.md")).unwrap();
-    assert!(content.contains("Bundled Research"));
-    assert!(!content.contains("Stale Research"));
-}
-
 // =============================================================================
 // CG-R1: format_user_context (workflow/runtime.rs)
 // =============================================================================

@@ -4,9 +4,7 @@ use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
 
-use super::deploy::{
-    deploy_skill_for_workflow, ensure_workspace_prompts, resolve_bundled_skills_dir,
-};
+use super::deploy::ensure_workspace_prompts;
 use super::evaluation::workflow_step_log_name;
 use super::guards::{
     make_agent_id, parse_decisions_guard, parse_scope_recommendation,
@@ -155,22 +153,9 @@ pub async fn run_workflow_step(
         step_id,
         &workspace_path,
     )?;
-    // Ensure prompt files exist in workspace before running
+    // Ensure prompt files exist in workspace before running.
+    // This deploys agents to .claude/agents/ and plugins to .claude/plugins/.
     ensure_workspace_prompts(&app, &workspace_path).await?;
-
-    // Deploy purpose-resolved bundled skills.
-    // Research is plugin-owned; validate-skill is agent-only (no SKILL.md to deploy).
-    {
-        let bundled_skills_dir = resolve_bundled_skills_dir(&app);
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        deploy_skill_for_workflow(
-            &conn,
-            &workspace_path,
-            &bundled_skills_dir,
-            "skill-creator",
-            "skill-building",
-        )?;
-    }
 
     let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
     log::info!(
@@ -297,21 +282,9 @@ pub async fn run_benchmark_phase(
         baseline_mode
     );
 
-    // Ensure prompt files exist in workspace
+    // Ensure prompt files exist in workspace.
+    // This deploys agents to .claude/agents/ and plugins to .claude/plugins/.
     ensure_workspace_prompts(&app, &workspace_path).await?;
-
-    // Deploy skill-creator plugin
-    {
-        let bundled_skills_dir = resolve_bundled_skills_dir(&app);
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        deploy_skill_for_workflow(
-            &conn,
-            &workspace_path,
-            &bundled_skills_dir,
-            "skill-creator",
-            "skill-building",
-        )?;
-    }
 
     let settings = read_workflow_settings(&db, &skill_name, 3, &workspace_path)?;
     let thinking_budget = if settings.extended_thinking {
