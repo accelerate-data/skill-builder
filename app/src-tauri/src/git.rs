@@ -423,6 +423,107 @@ pub fn latest_skill_semver(path: &Path, skill_name: &str) -> Result<String, Stri
     Ok(result)
 }
 
+/// Return the second-highest semver tag for a skill (the version before the latest).
+/// Returns `None` if fewer than 2 valid tags exist.
+pub fn prior_skill_tag(path: &Path, skill_name: &str) -> Option<String> {
+    let repo = Repository::open(path).ok()?;
+    let prefix = format!("{}/v", skill_name);
+    let mut versions: Vec<(u32, u32, u32, String)> = Vec::new();
+
+    if let Ok(tags) = repo.tag_names(Some(&format!("{}/*", skill_name))) {
+        for tag_name in tags.iter().flatten() {
+            if let Some(suffix) = tag_name.strip_prefix(&prefix) {
+                if suffix.matches('.').count() == 2 {
+                    let parsed = parse_semver(suffix);
+                    if parsed != (0, 0, 0) {
+                        versions.push((parsed.0, parsed.1, parsed.2, tag_name.to_string()));
+                    }
+                }
+            }
+        }
+    }
+
+    versions.sort_by(|a, b| (b.0, b.1, b.2).cmp(&(a.0, a.1, a.2)));
+    if versions.len() >= 2 {
+        Some(versions[1].3.clone())
+    } else {
+        None
+    }
+}
+
+/// Extract a skill's files at a given tag into `dest_dir`.
+/// Uses git2 tree walk to read blobs without touching the working directory.
+pub fn extract_skill_at_tag(
+    repo_path: &Path,
+    skill_name: &str,
+    tag_name: &str,
+    dest_dir: &Path,
+) -> Result<(), String> {
+    log::debug!(
+        "[git] extract_skill_at_tag: skill='{}' tag='{}' dest={}",
+        skill_name,
+        tag_name,
+        dest_dir.display()
+    );
+    let repo = Repository::open(repo_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+
+    let reference = repo
+        .find_reference(&format!("refs/tags/{}", tag_name))
+        .map_err(|e| format!("Tag '{}' not found: {}", tag_name, e))?;
+    let commit = reference
+        .peel(git2::ObjectType::Commit)
+        .map_err(|e| format!("Failed to peel tag '{}' to commit: {}", tag_name, e))?;
+    let tree = commit
+        .as_commit()
+        .ok_or_else(|| format!("Tag '{}' does not point to a commit", tag_name))?
+        .tree()
+        .map_err(|e| format!("Failed to get tree for tag '{}': {}", tag_name, e))?;
+
+    let prefix = format!("{}/", skill_name);
+
+    // Remove stale destination
+    if dest_dir.exists() {
+        std::fs::remove_dir_all(dest_dir)
+            .map_err(|e| format!("Failed to clean dest dir: {}", e))?;
+    }
+
+    tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
+        let full_path = if dir.is_empty() {
+            entry.name().unwrap_or("").to_string()
+        } else {
+            format!("{}{}", dir, entry.name().unwrap_or(""))
+        };
+
+        if !full_path.starts_with(&prefix) {
+            return git2::TreeWalkResult::Ok;
+        }
+
+        if let Some(git2::ObjectType::Blob) = entry.kind() {
+            if let Ok(blob) = repo.find_blob(entry.id()) {
+                // Strip the skill_name/ prefix for the destination path
+                let relative = &full_path[prefix.len()..];
+                let file_path = dest_dir.join(relative);
+                if let Some(parent) = file_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(&file_path, blob.content());
+            }
+        }
+
+        git2::TreeWalkResult::Ok
+    })
+    .map_err(|e| format!("Failed to walk tree: {}", e))?;
+
+    log::info!(
+        "[git] Extracted '{}' at tag '{}' to {}",
+        skill_name,
+        tag_name,
+        dest_dir.display()
+    );
+    Ok(())
+}
+
 // --- Helpers ---
 
 fn default_signature(repo: &Repository) -> Result<Signature<'static>, String> {

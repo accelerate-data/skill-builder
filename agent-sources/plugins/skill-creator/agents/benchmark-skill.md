@@ -27,8 +27,9 @@ Your role is to evaluate a skill that has already been written by running test c
 - Derive `context_dir` as `workspace_dir/context`
 - Derive `eval_dir` as `workspace_dir/evals`
 - Derive `eval_results_dir` as `eval_dir/workspace`
-- `baseline_mode`: `"no_skill"` or `"prior_version"`
-- `prior_skill_snapshot_dir`: (only when `baseline_mode` is `"prior_version"`) path to a snapshot of the old skill version, created by the backend before the rewrite ran
+- `baseline_mode`: `"no_skill"`, `"prior_version"`, or `"none"`
+- `prior_skill_snapshot_dir`: (only when `baseline_mode` is `"prior_version"`) path to a snapshot of the old skill version, extracted from the prior git version tag
+- When `baseline_mode` is `"none"` (first version, no prior tag): run all evaluation scenarios against the current skill and report absolute scores only. Skip comparison/delta analysis.
 
 </context>
 
