@@ -102,17 +102,7 @@ Key inputs for the eval pipeline:
 
 ## Step 3: Execute the test cases and generate the benchmark
 
-Use the **Skill** tool to invoke `skill-creator:skill-creator` — do NOT read SKILL.md manually with the Read tool. Follow the **Running and evaluating test cases** section. Execute the sub-steps in order — each depends on the previous one completing:
-
-**3a. Spawn all runs** — for each test case, spawn with-skill and baseline runs in the same turn. As each sub-agent returns, capture timing data (`total_tokens`, `duration_ms`) into `timing.json` in the run directory.
-
-**3b. Grade each run** — follow the grading instructions in the skill. Confirm `grading.json` exists in every eval directory (both `with_skill/` and the baseline directory — `without_skill/` for `no_skill` mode, `old_skill/` for `prior_version` mode) before proceeding.
-
-**3c. Aggregate into benchmark** — run `aggregate_benchmark.py`. Confirm `{eval_results_dir}/{iteration}/benchmark.json` exists before proceeding.
-
-**3d. Analyst pass** — follow SKILL.md Step 4.3: read benchmark data, write observations to `{eval_results_dir}/{iteration}/analyst-notes.md`, embed the markdown into the `"notes"` field of `benchmark.json`. Confirm `notes` is non-empty before proceeding.
-
-**3e. Generate review HTML** — run `generate_review.py` with `--static {eval_results_dir}/{iteration}/review.html`.
+Use the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill to run the test cases and generate the benchmark.
 
 ## Step 4: Verify benchmark.json
 
