@@ -334,7 +334,10 @@ export class MessageProcessor {
           // with a pattern like "Async agent launched successfully.\nagentId: <id>"
           // when run_in_background is true. Track these so the Stop hook
           // knows work is still pending.
-          this.detectBackgroundAgentLaunch(toolUseId, resultContent);
+          const wasBackground = (pendingItem.toolInput as Record<string, unknown> | undefined)?.run_in_background === true;
+          if (wasBackground) {
+            this.detectBackgroundAgentLaunch(toolUseId, resultContent);
+          }
 
           // If this was a subagent (Agent), update its status
           const subagentItem = this.subagentByToolUseId.get(toolUseId);
