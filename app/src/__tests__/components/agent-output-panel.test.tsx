@@ -89,7 +89,7 @@ describe("AgentOutputPanel", () => {
     expect(screen.getByText("error")).toBeInTheDocument();
   });
 
-  it("renders thinking display item", () => {
+  it("renders thinking display item inside tool activity group", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
     addDisplayItems("test-agent", [
       makeDisplayItem({
@@ -98,7 +98,8 @@ describe("AgentOutputPanel", () => {
       }),
     ]);
     render(<AgentOutputPanel agentId="test-agent" />);
-    expect(screen.getByText("Thinking")).toBeInTheDocument();
+    expect(screen.getByTestId("tool-activity-group")).toBeInTheDocument();
+    expect(screen.getByText("Tool Activity")).toBeInTheDocument();
   });
 
   it("renders output display item with text", () => {
@@ -114,7 +115,7 @@ describe("AgentOutputPanel", () => {
     expect(screen.getAllByText("Here is the analysis of the domain.").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders tool_call display item with tool name and summary", () => {
+  it("renders tool_call display item inside tool activity group", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
     addDisplayItems("test-agent", [
       makeDisplayItem({
@@ -126,7 +127,8 @@ describe("AgentOutputPanel", () => {
       }),
     ]);
     render(<AgentOutputPanel agentId="test-agent" />);
-    expect(screen.getByText("Reading test.md")).toBeInTheDocument();
+    expect(screen.getByTestId("tool-activity-group")).toBeInTheDocument();
+    expect(screen.getByText("1 tool (1 Read)")).toBeInTheDocument();
   });
 
   it("renders result display item", () => {
@@ -180,9 +182,10 @@ describe("AgentOutputPanel", () => {
       }),
     ]);
     render(<AgentOutputPanel agentId="test-agent" />);
-    // Should only have one item, not two
-    const items = screen.getAllByText(/Running: npm test/);
-    expect(items).toHaveLength(1);
+    // Should only have one tool activity group (one underlying item, not two)
+    const groups = screen.getAllByTestId("tool-activity-group");
+    expect(groups).toHaveLength(1);
+    expect(screen.getByText("1 tool (1 Bash)")).toBeInTheDocument();
   });
 
   it("shows token usage and cost in footer when run is completed", () => {
@@ -227,9 +230,12 @@ describe("AgentOutputPanel", () => {
       }),
     ]);
     render(<AgentOutputPanel agentId="test-agent" />);
-    expect(screen.getByText("Thinking")).toBeInTheDocument();
-    // Output text appears in both summary and expanded body
+    // thinking (di-1) forms first tool-activity group, tool_call (di-3) forms second
+    const groups = screen.getAllByTestId("tool-activity-group");
+    expect(groups).toHaveLength(2);
+    // Output text renders as bare markdown
     expect(screen.getAllByText("Here is the plan.").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("Reading a.ts")).toBeInTheDocument();
+    // Second group shows tool count
+    expect(screen.getByText("1 tool (1 Read)")).toBeInTheDocument();
   });
 });

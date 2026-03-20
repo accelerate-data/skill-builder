@@ -3,13 +3,14 @@ import { render } from "@testing-library/react";
 import type { DisplayItem } from "@/lib/display-types";
 
 // Track render counts for each item component
-const outputRenderCount = vi.fn();
+const bareOutputRenderCount = vi.fn();
 const thinkingRenderCount = vi.fn();
 const toolRenderCount = vi.fn();
+const toolActivityGroupRenderCount = vi.fn();
 
-vi.mock("@/components/agent-items/output-item", () => ({
-  OutputItem: ({ item }: { item: DisplayItem }) => {
-    outputRenderCount(item.id);
+vi.mock("@/components/agent-items/bare-output", () => ({
+  BareOutput: ({ item }: { item: DisplayItem }) => {
+    bareOutputRenderCount(item.id);
     return <div data-testid={`output-${item.id}`}>output</div>;
   },
 }));
@@ -25,6 +26,13 @@ vi.mock("@/components/agent-items/tool-item", () => ({
   ToolItem: ({ item }: { item: DisplayItem }) => {
     toolRenderCount(item.id);
     return <div data-testid={`tool-${item.id}`}>tool</div>;
+  },
+}));
+
+vi.mock("@/components/agent-items/tool-activity-group", () => ({
+  ToolActivityGroupView: ({ items }: { items: DisplayItem[] }) => {
+    toolActivityGroupRenderCount(items.map((i) => i.id).join(","));
+    return <div data-testid="tool-group">group ({items.length})</div>;
   },
 }));
 
@@ -47,40 +55,32 @@ describe("DisplayItemList memoization", () => {
 
     const { rerender } = render(<DisplayItemList items={items} />);
 
-    expect(outputRenderCount).toHaveBeenCalledTimes(1);
-    expect(thinkingRenderCount).toHaveBeenCalledTimes(1);
-    expect(toolRenderCount).toHaveBeenCalledTimes(1);
+    // Output renders as bare-output; thinking+tool grouped into tool-activity
+    expect(bareOutputRenderCount).toHaveBeenCalledTimes(1);
+    expect(toolActivityGroupRenderCount).toHaveBeenCalledTimes(1);
 
     // Re-render with the same items array — memo should prevent child re-renders
     rerender(<DisplayItemList items={items} />);
 
-    expect(outputRenderCount).toHaveBeenCalledTimes(1);
-    expect(thinkingRenderCount).toHaveBeenCalledTimes(1);
-    expect(toolRenderCount).toHaveBeenCalledTimes(1);
+    expect(bareOutputRenderCount).toHaveBeenCalledTimes(1);
+    expect(toolActivityGroupRenderCount).toHaveBeenCalledTimes(1);
   });
 
-  it("only re-renders the item that changed when a single item is updated", () => {
+  it("re-renders children when items array reference changes", () => {
+    // When the items array is a new reference, groupDisplayItems recomputes
+    // and produces new group wrappers, so children re-render
     const items: DisplayItem[] = [
       makeItem({ id: "o-1", type: "output", outputText: "hello" }),
-      makeItem({ id: "t-1", type: "thinking", thinkingText: "hmm" }),
+      makeItem({ id: "o-2", type: "output", outputText: "world" }),
     ];
 
-    outputRenderCount.mockClear();
-    thinkingRenderCount.mockClear();
+    bareOutputRenderCount.mockClear();
 
     const { rerender } = render(<DisplayItemList items={items} />);
+    expect(bareOutputRenderCount).toHaveBeenCalledTimes(2);
 
-    expect(outputRenderCount).toHaveBeenCalledTimes(1);
-    expect(thinkingRenderCount).toHaveBeenCalledTimes(1);
-
-    // Update only the output item — thinking should not re-render
-    const updatedItems = [
-      makeItem({ id: "o-1", type: "output", outputText: "hello updated" }),
-      items[1],
-    ];
-    rerender(<DisplayItemList items={updatedItems} />);
-
-    expect(outputRenderCount).toHaveBeenCalledTimes(2);
-    expect(thinkingRenderCount).toHaveBeenCalledTimes(1);
+    // New array reference (even with same content) triggers re-render
+    rerender(<DisplayItemList items={[...items]} />);
+    expect(bareOutputRenderCount).toHaveBeenCalledTimes(4);
   });
 });
