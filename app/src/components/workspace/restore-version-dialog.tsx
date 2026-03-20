@@ -62,7 +62,7 @@ export default function RestoreVersionDialog({
       })
       .catch((err) => {
         console.error("event=restore_dialog_fetch_failed skill=%s error=%s", skillName, err);
-        toast.error("Failed to load version history");
+        toast.error("Failed to load version history", { duration: Infinity });
       })
       .finally(() => setLoading(false));
   }, [open, workspacePath, skillName]);
@@ -76,7 +76,7 @@ export default function RestoreVersionDialog({
       onRestored?.();
     } catch (err) {
       console.error("event=restore_version_failed skill=%s sha=%s error=%s", skillName, commit.sha, err);
-      toast.error("Failed to restore version");
+      toast.error("Failed to restore version", { duration: Infinity });
     } finally {
       setRestoring(null);
     }

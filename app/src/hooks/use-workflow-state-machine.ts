@@ -312,7 +312,6 @@ export function useWorkflowStateMachine({
 
         updateStepStatus(step, "completed");
         setRunning(false);
-        toast.success(`Step ${step + 1} completed`);
       };
 
       finish();
