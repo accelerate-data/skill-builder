@@ -603,16 +603,17 @@ async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
             // for this skill so partial runs don't hide valid benchmarks.
             if outcome == TerminalOutcome::Error || outcome == TerminalOutcome::Shutdown {
                 use tauri::Manager;
-                if let Some(db) = ctx.app_handle.try_state::<crate::db::Db>() {
-                    if let Some(workspace_path) = db.0.lock().ok()
-                        .and_then(|conn| crate::db::read_settings(&conn).ok())
-                        .and_then(|s| s.workspace_path)
-                    {
-                        crate::commands::workflow::evaluation::clean_incomplete_iterations(
-                            &workspace_path,
-                            &ctx.skill_name,
-                        );
-                    }
+                // Scope the DB lock tightly — release before filesystem work.
+                let workspace_path = ctx.app_handle.try_state::<crate::db::Db>()
+                    .and_then(|db| {
+                        let conn = db.0.lock().ok()?;
+                        crate::db::read_settings(&conn).ok()?.workspace_path
+                    });
+                if let Some(wp) = workspace_path {
+                    crate::commands::workflow::evaluation::clean_incomplete_iterations(
+                        &wp,
+                        &ctx.skill_name,
+                    );
                 }
             }
 

@@ -358,9 +358,10 @@ export interface DecisionsOutput {
   decisions: unknown[]
 }
 
-/** Structured output for workflow step 3 (generate-skill or benchmark-skill agent). */
+/** Structured output for workflow step 3 (generate-skill, rewrite-skill, or benchmark-skill agent). */
 export type GenerateSkillOutput =
   | { status: "generated"; skipped?: boolean; benchmark_path?: string }
+  | { status: "rewritten"; skipped?: boolean; benchmark_path?: string }
   | { status: "complete" | "partial" | "skipped"; benchmark_path?: string }
 
 /** Discriminated union narrowing `structuredOutput` per workflow step index. */
