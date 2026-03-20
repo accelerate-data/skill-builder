@@ -9,7 +9,7 @@ type Props = StepCompleteBaseProps & ClarificationsEditableProps & Pick<StepFile
 export function DetailedResearchStepComplete(props: Props) {
   const {
     fileContents, agentRuns, reviewMode,
-    isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onRefine,
+    isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onEval,
     clarificationsEditable, clarificationsData: controlledClarData,
     onClarificationsChange, onClarificationsContinue, onReset, saveStatus, evaluating,
   } = props;
@@ -41,7 +41,7 @@ export function DetailedResearchStepComplete(props: Props) {
           <div className="rounded-lg border shadow-sm min-h-0 flex-1" style={{ height: "min(600px, 60vh)" }}>
             <ClarificationsEditor data={clarData} onChange={() => {}} readOnly />
           </div>
-          <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onRefine={onRefine} onClose={onClose} onNextStep={onNextStep} />
+          <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onEval={onEval} onClose={onClose} onNextStep={onNextStep} />
         </>
       )}
     </div>

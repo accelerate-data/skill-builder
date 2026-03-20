@@ -19,7 +19,7 @@ export function FileViewerStepComplete(props: Props) {
   const {
     stepName, fileContents, resolvedFiles, selectedFile, setSelectedFile,
     agentRuns, reviewMode, duration,
-    isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onRefine, onResetStep,
+    isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onEval, onResetStep,
   } = props;
 
   const visibleFiles = resolvedFiles.filter((f) => !f.endsWith("/"));
@@ -88,7 +88,7 @@ export function FileViewerStepComplete(props: Props) {
           )}
         </div>
       </ScrollArea>
-      <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onRefine={onRefine} onClose={onClose} onNextStep={onNextStep} />
+      <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onEval={onEval} onClose={onClose} onNextStep={onNextStep} />
     </div>
   );
 }

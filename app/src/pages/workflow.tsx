@@ -240,9 +240,9 @@ export default function WorkflowPage() {
     const showDecisionConflictResolution = currentStep === 2 && nextStepBlocked;
     const isLastStep = isTerminalStep || (nextStepBlocked && !showDecisionConflictResolution);
     const handleClose = () => navigate({ to: "/", search: { tab: undefined } });
-    const handleRefine = () => {
+    const handleEval = () => {
       useSkillStore.getState().setActiveSkill(skillName);
-      navigate({ to: "/", search: { tab: "refine" } });
+      navigate({ to: "/", search: { tab: "evals" } });
     };
     const nextStepLabel = !isTerminalStep ? steps[nextStep]?.name ?? "Next Step" : undefined;
 
@@ -256,7 +256,7 @@ export default function WorkflowPage() {
           handleReviewContinue();
         }}
         onClose={handleClose}
-        onRefine={disabledSteps.length > 0 ? undefined : handleRefine}
+        onEval={disabledSteps.length > 0 ? undefined : handleEval}
         isLastStep={isLastStep}
         nextStepBlocked={showDecisionConflictResolution}
         nextStepLabel={nextStepLabel}
