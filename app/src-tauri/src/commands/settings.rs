@@ -491,23 +491,6 @@ pub fn update_user_settings(
     Ok(())
 }
 
-/// Update only the dashboard view mode, preserving all other settings.
-#[tauri::command]
-pub fn update_dashboard_view_mode(
-    db: tauri::State<'_, Db>,
-    mode: Option<String>,
-) -> Result<(), String> {
-    log::info!("[update_dashboard_view_mode] mode={:?}", mode);
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[update_dashboard_view_mode] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    let mut settings = crate::db::read_settings(&conn)?;
-    settings.dashboard_view_mode = mode;
-    crate::db::write_settings(&conn, &settings)?;
-    Ok(())
-}
-
 /// Update GitHub identity fields (login, avatar, email, token).
 ///
 /// Pass `None` for any field to clear it (logout flow). This is the only

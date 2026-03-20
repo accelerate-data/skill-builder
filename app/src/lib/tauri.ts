@@ -18,10 +18,6 @@ export const saveSettings = (settings: AppSettings) =>
 export const updateUserSettings = (settings: AppSettings) =>
   invoke<void>("update_user_settings", { settings });
 
-/** Update only the dashboard view mode. Pass null to clear. */
-export const updateDashboardViewMode = (mode: string | null) =>
-  invoke<void>("update_dashboard_view_mode", { mode });
-
 /** Update GitHub identity fields. Pass null values to clear (logout). */
 export const updateGithubIdentity = (
   login: string | null,
@@ -577,21 +573,6 @@ export const prepareSkillTest = (workspacePath: string, skillName: string) =>
 export const cleanupSkillTest = (testId: string) =>
   invoke<void>("cleanup_skill_test", { testId })
 
-export const buildTestPlanPrompt = (userPrompt: string) =>
-  invoke<string>("build_test_plan_prompt", { userPrompt })
-
-export const buildTestEvaluatorPrompt = (
-  userPrompt: string,
-  skillName: string,
-  withPlanText: string,
-  withoutPlanText: string,
-) => invoke<string>("build_test_evaluator_prompt", {
-  userPrompt,
-  skillName,
-  withPlanText,
-  withoutPlanText,
-})
-
 // --- File Import ---
 
 export const parseSkillFile = (filePath: string): Promise<SkillFileMeta> =>
@@ -635,9 +616,6 @@ export const listModels = (apiKey: string) =>
 
 export const toggleSkillActive = (skillName: string, active: boolean) =>
   invoke<void>("toggle_skill_active", { skillName, active });
-
-export const deleteWorkspaceSkill = (skillName: string) =>
-  invoke<void>("delete_workspace_skill", { skillName });
 
 export const createSkill = (params: {
   workspacePath: string;

@@ -20,17 +20,6 @@ pub fn cancel_session(conn: &Connection, session_id: &str) -> Result<(), String>
     crate::db::end_workflow_session(conn, session_id)
 }
 
-#[allow(dead_code)]
-pub fn resume_session(
-    conn: &Connection,
-    session_id: &str,
-    skill_name: &str,
-    pid: u32,
-) -> Result<(), String> {
-    validate_session_start(session_id, skill_name, pid)?;
-    crate::db::create_workflow_session(conn, session_id, skill_name, pid)
-}
-
 pub fn shutdown_sessions_for_pid(conn: &Connection, pid: u32) -> Result<u32, String> {
     if pid == 0 {
         return Err("PID must be greater than zero".to_string());
@@ -120,22 +109,6 @@ mod tests {
         let conn = create_test_db();
         let err = cancel_session(&conn, "").unwrap_err();
         assert!(err.contains("Session ID is required"));
-    }
-
-    #[test]
-    fn test_resume_session_happy_path() {
-        let conn = create_test_db();
-        start_session(&conn, "session-initial", "my-skill", 4000).unwrap();
-        cancel_session(&conn, "session-initial").unwrap();
-        let result = resume_session(&conn, "session-resume", "my-skill", 4000);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_resume_session_failure_path_requires_skill_name() {
-        let conn = create_test_db();
-        let err = resume_session(&conn, "session-resume", "", 4000).unwrap_err();
-        assert!(err.contains("Skill name is required"));
     }
 
     #[test]
