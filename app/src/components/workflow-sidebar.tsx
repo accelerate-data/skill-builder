@@ -50,6 +50,7 @@ export function WorkflowSidebar({
         {steps.map((step) => {
           const isCurrent = step.id === currentStep;
           const isDisabled = disabledSteps?.includes(step.id) ?? false;
+          const isFutureLocked = step.id > currentStep && step.status !== "completed" && !isDisabled;
           const isClickable =
             !isDisabled && step.status === "completed" && onStepClick !== undefined;
 
@@ -62,10 +63,12 @@ export function WorkflowSidebar({
                 className={cn(
                   "flex w-full items-start gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors",
                   isDisabled && "opacity-40 cursor-not-allowed",
+                  isFutureLocked && "opacity-50 cursor-not-allowed",
                   !isDisabled && isCurrent && "bg-accent text-accent-foreground",
-                  !isDisabled && !isCurrent && "text-muted-foreground hover:text-foreground",
+                  !isDisabled && !isCurrent && !isFutureLocked && "text-muted-foreground hover:text-foreground",
+                  !isDisabled && !isCurrent && isFutureLocked && "text-muted-foreground",
                   !isDisabled && isClickable && "cursor-pointer",
-                  !isDisabled && !isClickable && "cursor-default"
+                  !isDisabled && !isFutureLocked && !isClickable && "cursor-default"
                 )}
               >
                 <span className="mt-0.5 shrink-0">
