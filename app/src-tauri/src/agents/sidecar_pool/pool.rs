@@ -13,7 +13,7 @@ use super::process::{PersistentSidecar, RequestLogFile};
 pub const DEFAULT_SHUTDOWN_TIMEOUT_SECS: u64 = 5;
 
 /// Default idle timeout in seconds. Sidecars inactive for this long are shut down.
-pub const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 600; // 10 minutes
+pub(super) const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 600; // 10 minutes
 
 /// How often the idle cleanup task checks for idle sidecars, in seconds.
 pub(super) const IDLE_CHECK_INTERVAL_SECS: u64 = 60;

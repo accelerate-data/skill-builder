@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 use std::io::Write as _;
-use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
-use futures::FutureExt;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::process::Child;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -500,6 +498,8 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::panic::AssertUnwindSafe;
+    use futures::FutureExt;
 
     #[tokio::test]
     async fn test_cleanup_aborts_heartbeat() {

@@ -4,7 +4,7 @@ mod pool;
 mod dispatch;
 
 pub use startup_error::SidecarStartupError;
-pub use pool::{SidecarPool, DEFAULT_SHUTDOWN_TIMEOUT_SECS, DEFAULT_IDLE_TIMEOUT_SECS};
+pub use pool::{SidecarPool, DEFAULT_SHUTDOWN_TIMEOUT_SECS};
 
 // Re-export public items so existing `use crate::agents::sidecar_pool::*` paths keep working.
 pub use super::node_resolver::resolve_node_binary;
