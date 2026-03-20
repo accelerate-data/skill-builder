@@ -209,43 +209,16 @@ pub async fn send_refine_message(
             RefineDispatch::Stream => unreachable!(),
         };
 
-        // For benchmark: extract prior version from git tag instead of file-copy snapshot
-        let (baseline_mode, snapshot_dir) = if dispatch == RefineDispatch::DirectBenchmark {
+        // For benchmark: auto-detect baseline from git tags
+        let (baseline_mode_owned, snapshot_dir) = if dispatch == RefineDispatch::DirectBenchmark {
             let skills_dir = std::path::Path::new(&runtime.skills_path);
-            match crate::git::prior_skill_tag(skills_dir, &skill_name) {
-                Some(tag) => {
-                    let dest = std::path::Path::new(&workspace_path)
-                        .join(&skill_name)
-                        .join("skill-snapshot");
-                    match crate::git::extract_skill_at_tag(skills_dir, &skill_name, &tag, &dest) {
-                        Ok(()) => {
-                            let snapshot_str = dest.to_string_lossy().replace('\\', "/");
-                            log::info!(
-                                "[send_refine_message] extracted prior version tag={} for skill={} to {}",
-                                tag, skill_name, snapshot_str
-                            );
-                            (Some("prior_version"), Some(snapshot_str))
-                        }
-                        Err(e) => {
-                            log::warn!(
-                                "[send_refine_message] failed to extract prior version for skill={}: {}",
-                                skill_name, e
-                            );
-                            (Some("none"), None)
-                        }
-                    }
-                }
-                None => {
-                    log::info!(
-                        "[send_refine_message] no prior tag for skill={}, benchmark runs absolute only",
-                        skill_name
-                    );
-                    (Some("none"), None)
-                }
-            }
+            let workspace_dir = std::path::Path::new(&workspace_path).join(&skill_name);
+            let baseline = crate::git::resolve_benchmark_baseline(skills_dir, &skill_name, &workspace_dir);
+            (Some(baseline.mode), baseline.snapshot_dir)
         } else {
             (None, None)
         };
+        let baseline_mode = baseline_mode_owned.as_deref();
 
         let prompt = build_direct_agent_prompt(
             direct_agent_name,

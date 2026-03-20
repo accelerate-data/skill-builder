@@ -292,7 +292,6 @@ pub fn run() {
             commands::files::copy_file,
             commands::files::save_export_to,
             commands::workflow::runtime::run_workflow_step,
-            commands::workflow::runtime::run_benchmark_phase,
             commands::workflow::output_format::materialize_workflow_step_output,
             commands::workflow::packaging::package_skill,
             commands::workflow::evaluation::reset_workflow_step,
