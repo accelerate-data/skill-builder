@@ -377,43 +377,6 @@ pub fn delete_imported_skill_by_skill_id(conn: &Connection, skill_id: &str) -> R
     Ok(())
 }
 
-/// Look up an active imported skill by its purpose tag.
-/// Returns the first active skill with the given purpose, or None if not found.
-pub fn get_imported_skill_by_purpose(
-    conn: &Connection,
-    purpose: &str,
-) -> rusqlite::Result<Option<ImportedSkill>> {
-    let mut stmt = conn.prepare(
-        "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
-                purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
-         FROM imported_skills WHERE purpose = ?1 AND is_active = 1
-         ORDER BY imported_at DESC, skill_name ASC LIMIT 1"
-    )?;
-    let result = stmt.query_row(rusqlite::params![purpose], |row| {
-        Ok(ImportedSkill {
-            skill_id: row.get(0)?,
-            skill_name: row.get(1)?,
-            is_active: row.get::<_, i32>(2)? != 0,
-            disk_path: row.get(3)?,
-            imported_at: row.get(4)?,
-            is_bundled: row.get::<_, i32>(5)? != 0,
-            description: None,
-            purpose: row.get(6)?,
-            version: row.get(7)?,
-            model: row.get(8)?,
-            argument_hint: row.get(9)?,
-            user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
-            disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-            marketplace_source_url: row.get(12)?,
-        })
-    });
-    match result {
-
-        Ok(skill) => Ok(Some(skill)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(e),
-    }
-}
 
 /// Update the content_hash for an imported skill row identified by skill_name.
 pub fn set_imported_skill_content_hash(

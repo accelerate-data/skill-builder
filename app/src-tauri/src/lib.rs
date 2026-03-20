@@ -357,8 +357,6 @@ pub fn run() {
             commands::refine::output::materialize_refine_validation_output,
             commands::refine::output::finalize_refine_run,
             commands::workflow::evaluation::read_latest_benchmark,
-            commands::skill_test::prepare_skill_test,
-            commands::skill_test::cleanup_skill_test,
             commands::imported_skills::upload::parse_skill_file,
             commands::imported_skills::upload::import_skill_from_file,
         ])
