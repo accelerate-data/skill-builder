@@ -30,7 +30,7 @@ const RESEARCH_PLAN_CONTENT = `# Research Plan
 - Scope this skill around domain workflows.
 `;
 
-const WORKSPACE_EVAL_PATH = `${E2E_WORKSPACE_PATH}/test-skill/answer-evaluation.json`;
+const WORKSPACE_EVAL_PATH = path.join(E2E_WORKSPACE_PATH, "test-skill", "answer-evaluation.json");
 const SKILLS_CLARIFICATIONS_PATH = skillContextPath(E2E_SKILLS_PATH, "test-skill", "clarifications.json");
 const SKILLS_RESEARCH_PLAN_PATH = skillContextPath(E2E_SKILLS_PATH, "test-skill", "research-plan.md");
 

@@ -26,23 +26,25 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | Rust Source | Cargo Test Filter | E2E Tag |
 |---|---|---|
 | `src-tauri/src/commands/workflow.rs` | `commands::workflow` | `@workflow` |
+| `src-tauri/src/commands/workflow/guards.rs` | `commands::workflow::guards` | `@workflow` |
 | `src-tauri/src/commands/workspace.rs` | `commands::workspace` | `@dashboard` |
 | `src-tauri/src/commands/skill.rs` | `commands::skill` | `@dashboard` |
 | `src-tauri/src/commands/files.rs` | `commands::files` | `@workflow` |
 | `src-tauri/src/commands/settings.rs` | `commands::settings` | `@settings` |
 | `src-tauri/src/commands/clarification.rs` | `commands::clarification` | `@workflow` |
 | `src-tauri/src/commands/github_auth.rs` | `commands::github_auth` | `@settings` |
-| `src-tauri/src/commands/imported_skills.rs` (`parse_skill_file`, `import_skill_from_file`) | `commands::imported_skills` | -- |
-| `src-tauri/src/commands/imported_skills.rs` | `commands::imported_skills` | -- |
-| `src-tauri/src/commands/github_import.rs` | `commands::github_import` | -- |
-| `src-tauri/src/commands/github_import.rs` (`check_marketplace_updates`) | `commands::github_import` | -- |
-| `src-tauri/src/commands/github_import.rs` (`check_skill_customized`) | `commands::github_import` | -- |
-| `src-tauri/src/commands/usage.rs` | `commands::usage` | -- |
+| `src-tauri/src/commands/imported_skills.rs` (`parse_skill_file`, `import_skill_from_file`) | `commands::imported_skills` | `@skills` |
+| `src-tauri/src/commands/imported_skills/frontmatter.rs` | `commands::imported_skills::frontmatter` | `@skills` |
+| `src-tauri/src/commands/imported_skills.rs` | `commands::imported_skills` | `@skills` |
+| `src-tauri/src/commands/github_import.rs` | `commands::github_import` | `@skills` |
+| `src-tauri/src/commands/github_import.rs` (`check_marketplace_updates`) | `commands::github_import` | `@skills` |
+| `src-tauri/src/commands/github_import.rs` (`check_skill_customized`) | `commands::github_import` | `@skills` |
+| `src-tauri/src/commands/usage.rs` | `commands::usage` | `@dashboard` |
 | `src-tauri/src/commands/agent.rs` | -- | `@workflow` |
-| `src-tauri/src/commands/sidecar_lifecycle.rs` | -- | `@workflow` |
+| `src-tauri/src/commands/sidecar_lifecycle.rs` | -- | `@workflow`, `@setup` |
 | `src-tauri/src/commands/workflow_lifecycle.rs` | `commands::workflow_lifecycle` | `@workflow` |
 | `src-tauri/src/commands/refine.rs` | `commands::refine` | `@refine` |
-| `src-tauri/src/commands/skill_test.rs` | `commands::skill_test` | `@skill-tester` |
+| `src-tauri/src/commands/skill_test.rs` | `commands::skill_test` | -- (Rust-only; no E2E spec) |
 | `src-tauri/src/commands/git.rs` | -- | `@dashboard` |
 | `src-tauri/src/commands/lifecycle.rs` | -- | -- |
 | `src-tauri/src/commands/feedback.rs` | -- | -- |
@@ -54,6 +56,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `src-tauri/src/cleanup.rs` | `cleanup` | -- |
 | `src-tauri/src/fs_validation.rs` | `fs_validation` | -- |
 | `src-tauri/src/reconciliation.rs` | `reconciliation` | `@dashboard` |
+| `src-tauri/src/reconciliation/` | `reconciliation` | `@dashboard` |
 
 ## Agents
 
@@ -67,14 +70,17 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | Spec | Tag |
 |---|---|
 | `e2e/dashboard/dashboard-smoke.spec.ts` | `@dashboard` |
-| `e2e/setup/setup-screen.spec.ts` | `@workflow` |
+| `e2e/dashboard/reconciliation.spec.ts` | `@dashboard` |
+| `e2e/setup/setup-screen.spec.ts` | `@setup` |
+| `e2e/setup/startup-error.spec.ts` | `@setup` |
 | `e2e/settings/settings.spec.ts` | `@settings` |
 | `e2e/workflow/workflow-smoke.spec.ts` | `@workflow` |
 | `e2e/workflow/workflow-gate.spec.ts` | `@workflow` |
-| `e2e/workflow/display-items.spec.ts` | `@workflow-agent` |
+| `e2e/workflow/display-items.spec.ts` | `@workflow` |
 | `e2e/refine/refine.spec.ts` | `@refine` |
-| `e2e/skill-tester/skill-tester.spec.ts` | `@skill-tester` |
-| `e2e/skill-tester/test-to-refine.spec.ts` | `@skill-tester` |
+| `e2e/skills-library/skills-library.spec.ts` | `@skills` |
+| `e2e/github-import/github-import.spec.ts` | `@skills` |
+| `e2e/usage/usage-smoke.spec.ts` | `@dashboard` |
 | `e2e/integration/workflow-integration.spec.ts` | `@integration` |
 | `e2e/desktop-smoke/desktop-smoke.spec.ts` | `@desktop-smoke` |
 

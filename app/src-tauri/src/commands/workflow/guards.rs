@@ -54,6 +54,107 @@ pub(crate) fn workflow_step_runtime_label(step: &crate::types::StepConfig) -> St
     step.name.to_ascii_lowercase().replace(' ', "-")
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    // ── parse_scope_recommendation ──────────────────────────────────────
+
+    #[test]
+    fn scope_recommendation_true() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(f, r#"{{"metadata":{{"scope_recommendation":true}}}}"#).unwrap();
+        assert!(parse_scope_recommendation(f.path()));
+    }
+
+    #[test]
+    fn scope_recommendation_false() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(f, r#"{{"metadata":{{"scope_recommendation":false}}}}"#).unwrap();
+        assert!(!parse_scope_recommendation(f.path()));
+    }
+
+    #[test]
+    fn scope_recommendation_missing_field() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(f, r#"{{"metadata":{{"other":1}}}}"#).unwrap();
+        assert!(!parse_scope_recommendation(f.path()));
+    }
+
+    #[test]
+    fn scope_recommendation_malformed_json() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(f, "not json at all").unwrap();
+        assert!(!parse_scope_recommendation(f.path()));
+    }
+
+    #[test]
+    fn scope_recommendation_missing_file() {
+        let p = Path::new("/tmp/nonexistent-scope-rec-test.json");
+        assert!(!parse_scope_recommendation(p));
+    }
+
+    // ── parse_decisions_guard ───────────────────────────────────────────
+
+    #[test]
+    fn decisions_guard_zero_count() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(
+            f,
+            r#"{{"metadata":{{"decision_count":0,"contradictory_inputs":false}}}}"#
+        )
+        .unwrap();
+        assert!(parse_decisions_guard(f.path()));
+    }
+
+    #[test]
+    fn decisions_guard_contradictory() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(
+            f,
+            r#"{{"metadata":{{"decision_count":5,"contradictory_inputs":true}}}}"#
+        )
+        .unwrap();
+        assert!(parse_decisions_guard(f.path()));
+    }
+
+    #[test]
+    fn decisions_guard_contradictory_revised() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(
+            f,
+            r#"{{"metadata":{{"decision_count":5,"contradictory_inputs":"revised"}}}}"#
+        )
+        .unwrap();
+        assert!(!parse_decisions_guard(f.path()));
+    }
+
+    #[test]
+    fn decisions_guard_normal() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(
+            f,
+            r#"{{"metadata":{{"decision_count":3,"contradictory_inputs":false}}}}"#
+        )
+        .unwrap();
+        assert!(!parse_decisions_guard(f.path()));
+    }
+
+    #[test]
+    fn decisions_guard_malformed_json() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(f, "{{broken").unwrap();
+        assert!(!parse_decisions_guard(f.path()));
+    }
+
+    #[test]
+    fn decisions_guard_missing_file() {
+        let p = Path::new("/tmp/nonexistent-decisions-guard-test.json");
+        assert!(!parse_decisions_guard(p));
+    }
+}
+
 /// Core logic for validating decisions.json existence — testable without tauri::State.
 /// Checks in order: skill output dir (skillsPath), workspace dir.
 /// Returns Ok(()) if found, Err with a clear message if missing.

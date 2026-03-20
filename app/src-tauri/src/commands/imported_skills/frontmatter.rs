@@ -120,3 +120,78 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
         disable_model_invocation,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_frontmatter() {
+        let content = "---\nname: My Skill\ndescription: A useful skill\nversion: 1.0\n---\nBody content here.\n";
+        let fm = parse_frontmatter_full(content);
+        assert_eq!(fm.name.as_deref(), Some("My Skill"));
+        assert_eq!(fm.description.as_deref(), Some("A useful skill"));
+        assert_eq!(fm.version.as_deref(), Some("1.0"));
+    }
+
+    #[test]
+    fn missing_frontmatter() {
+        let content = "No frontmatter markers here.\nJust plain text.\n";
+        let fm = parse_frontmatter_full(content);
+        assert!(fm.name.is_none());
+        assert!(fm.description.is_none());
+        assert!(fm.version.is_none());
+        assert!(fm.model.is_none());
+        assert!(fm.user_invocable.is_none());
+    }
+
+    #[test]
+    fn crlf_endings() {
+        let content = "---\r\nname: CRLF Skill\r\ndescription: Works with Windows line endings\r\n---\r\nBody.\r\n";
+        let fm = parse_frontmatter_full(content);
+        assert_eq!(fm.name.as_deref(), Some("CRLF Skill"));
+        assert_eq!(fm.description.as_deref(), Some("Works with Windows line endings"));
+    }
+
+    #[test]
+    fn folded_scalar() {
+        let content = "---\nname: Folded\ndescription: >\n  This is a long\n  description that spans\n  multiple lines.\n---\n";
+        let fm = parse_frontmatter_full(content);
+        assert_eq!(fm.name.as_deref(), Some("Folded"));
+        assert_eq!(
+            fm.description.as_deref(),
+            Some("This is a long description that spans multiple lines.")
+        );
+    }
+
+    #[test]
+    fn boolean_field_parsing() {
+        // true
+        let content = "---\nname: Bool Test\nuser-invocable: true\n---\n";
+        let fm = parse_frontmatter_full(content);
+        assert_eq!(fm.user_invocable, Some(true));
+
+        // yes
+        let content = "---\nname: Bool Test\nuser-invocable: yes\n---\n";
+        let fm = parse_frontmatter_full(content);
+        assert_eq!(fm.user_invocable, Some(true));
+
+        // 1
+        let content = "---\nname: Bool Test\nuser-invocable: 1\n---\n";
+        let fm = parse_frontmatter_full(content);
+        assert_eq!(fm.user_invocable, Some(true));
+
+        // false
+        let content = "---\nname: Bool Test\nuser-invocable: false\n---\n";
+        let fm = parse_frontmatter_full(content);
+        assert_eq!(fm.user_invocable, Some(false));
+    }
+
+    #[test]
+    fn missing_closing_markers() {
+        let content = "---\nname: Unclosed\ndescription: No closing markers\n";
+        let fm = parse_frontmatter_full(content);
+        assert!(fm.name.is_none());
+        assert!(fm.description.is_none());
+    }
+}

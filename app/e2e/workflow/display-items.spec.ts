@@ -1,8 +1,12 @@
 /**
  * E2E tests for DisplayItem rendering in the workflow agent output panel.
  *
- * Validates that the new DisplayItem pipeline (sidecar → Rust → frontend)
+ * Validates that the DisplayItem pipeline (sidecar → Rust → frontend)
  * renders thinking, output, tool_call, result, and error items correctly.
+ *
+ * VU-658 changed the rendering model:
+ * - Output items render as bare markdown (no "Output" header)
+ * - Tool calls are grouped into a "Tool Activity" summary row
  */
 import { test, expect } from "@playwright/test";
 import { emitTauriEvent } from "../helpers/agent-simulator";
@@ -35,11 +39,11 @@ test.describe("DisplayItem Rendering", { tag: "@workflow" }, () => {
       },
     });
 
-    // The thinking item should show "Thinking" label
-    await expect(page.getByText("Thinking")).toBeVisible({ timeout: 5000 });
+    // Thinking items are grouped into Tool Activity — look for the group summary
+    await expect(page.getByTestId("tool-activity-group")).toBeVisible({ timeout: 5000 });
   });
 
-  test("renders output items with markdown content", async ({ page }) => {
+  test("renders output items as bare markdown content", async ({ page }) => {
     await emitTauriEvent(page, "agent-message", {
       agent_id: agentId,
       message: {
@@ -53,10 +57,11 @@ test.describe("DisplayItem Rendering", { tag: "@workflow" }, () => {
       },
     });
 
-    await expect(page.getByText("Output")).toBeVisible({ timeout: 5000 });
+    // Output items render as bare markdown (no "Output" label since VU-658)
+    await expect(page.getByText("Here is the analysis of the domain.")).toBeVisible({ timeout: 5000 });
   });
 
-  test("renders tool call items with tool name and summary", async ({ page }) => {
+  test("renders tool call items in a Tool Activity group", async ({ page }) => {
     await emitTauriEvent(page, "agent-message", {
       agent_id: agentId,
       message: {
@@ -73,7 +78,11 @@ test.describe("DisplayItem Rendering", { tag: "@workflow" }, () => {
       },
     });
 
-    await expect(page.getByRole("button", { name: /Read — Reading main\.ts/i })).toBeVisible({ timeout: 5000 });
+    // Tool calls are grouped into a "Tool Activity" summary row
+    const group = page.getByTestId("tool-activity-group");
+    await expect(group).toBeVisible({ timeout: 5000 });
+    await expect(group.getByText("Tool Activity")).toBeVisible();
+    await expect(group.getByText(/1 Read/)).toBeVisible();
   });
 
   test("renders result item on agent completion", async ({ page }) => {
@@ -129,7 +138,10 @@ test.describe("DisplayItem Rendering", { tag: "@workflow" }, () => {
       },
     });
 
-    await expect(page.getByRole("button", { name: /Bash — Running: npm test/i })).toBeVisible({ timeout: 5000 });
+    // Tool Activity group should show with pending status
+    const group = page.getByTestId("tool-activity-group");
+    await expect(group).toBeVisible({ timeout: 5000 });
+    await expect(group.getByText(/1 Bash/)).toBeVisible();
 
     // Update same item with ok status (update-by-id)
     await emitTauriEvent(page, "agent-message", {
@@ -150,7 +162,7 @@ test.describe("DisplayItem Rendering", { tag: "@workflow" }, () => {
       },
     });
 
-    // Should still show one Bash item (updated, not duplicated)
-    await expect(page.getByRole("button", { name: /Bash — Running: npm test/i })).toBeVisible({ timeout: 5000 });
+    // Group should still show one Bash item (updated, not duplicated)
+    await expect(group.getByText(/1 Bash/)).toBeVisible({ timeout: 5000 });
   });
 });
