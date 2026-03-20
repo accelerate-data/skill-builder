@@ -100,7 +100,7 @@
     },
     "frontend_hooks": {
       "path": "app/src/hooks/",
-      "description": "Custom React hooks: agent streaming, workflow state machine, workflow session/persistence/autosave, test orchestration, settings form, scope blocking, marketplace registries, node validation, leave guard"
+      "description": "Custom React hooks: agent streaming, workflow state machine, workflow session/persistence/autosave, test orchestration, settings form, scope blocking, marketplace registries, marketplace updates, app startup, node validation, leave guard"
     },
     "frontend_lib": {
       "path": "app/src/lib/",
