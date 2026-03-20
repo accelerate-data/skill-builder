@@ -16,7 +16,7 @@ type Props = StepCompleteBaseProps & Pick<StepFileProps, "fileContents"> & {
 export function DecisionsStepComplete(props: Props) {
   const {
     stepName, fileContents, agentRuns, reviewMode, duration,
-    isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onRefine, onResetStep,
+    isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onEval, onResetStep,
     skillName, workspacePath,
   } = props;
 
@@ -98,7 +98,7 @@ export function DecisionsStepComplete(props: Props) {
           </span>
         </div>
       )}
-      <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onRefine={onRefine} onClose={onClose} onNextStep={onNextStep} />
+      <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onEval={onEval} onClose={onClose} onNextStep={onNextStep} />
     </div>
   );
 }

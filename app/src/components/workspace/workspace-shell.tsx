@@ -72,9 +72,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
         <TabsList variant="line" className="shrink-0 border-b px-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="refine">Refine</TabsTrigger>
-          <TabsTrigger value="evals" disabled>
-            Evals
-          </TabsTrigger>
+          <TabsTrigger value="evals">Evals</TabsTrigger>
           <TabsTrigger value="description" disabled>
             Description
           </TabsTrigger>
@@ -96,6 +94,12 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
               Refine is not available for imported skills.
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="evals" className="flex-1 overflow-y-auto p-6">
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            Evals coming soon.
+          </div>
         </TabsContent>
       </Tabs>
 

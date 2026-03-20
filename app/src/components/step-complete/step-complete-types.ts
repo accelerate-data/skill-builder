@@ -10,7 +10,7 @@ export interface StepCompleteBaseProps {
   nextStepLabel?: string;
   onNextStep?: () => void;
   onClose?: () => void;
-  onRefine?: () => void;
+  onEval?: () => void;
   onResetStep?: () => void;
   agentRuns: AgentRunRecord[];
   duration?: number;

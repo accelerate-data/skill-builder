@@ -18,7 +18,7 @@ interface WorkflowStepCompleteProps {
   duration?: number;
   onNextStep?: () => void;
   onClose?: () => void;
-  onRefine?: () => void;
+  onEval?: () => void;
   isLastStep?: boolean;
   reviewMode?: boolean;
   skillName?: string;
@@ -43,7 +43,7 @@ export function WorkflowStepComplete({
   duration,
   onNextStep,
   onClose,
-  onRefine,
+  onEval,
   isLastStep = false,
   reviewMode,
   skillName,
@@ -88,7 +88,7 @@ export function WorkflowStepComplete({
   // Shared base props for step components
   const baseProps = {
     stepName, isLastStep, reviewMode, nextStepBlocked, nextStepLabel,
-    onNextStep, onClose, onRefine, onResetStep, agentRuns, duration,
+    onNextStep, onClose, onEval, onResetStep, agentRuns, duration,
   };
 
   const clarProps = {
@@ -159,7 +159,7 @@ export function WorkflowStepComplete({
           )}
         </div>
       </div>
-      <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onRefine={onRefine} onClose={onClose} onNextStep={onNextStep} />
+      <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onEval={onEval} onClose={onClose} onNextStep={onNextStep} />
     </div>
   );
 }

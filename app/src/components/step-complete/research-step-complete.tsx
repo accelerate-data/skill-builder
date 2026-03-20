@@ -12,7 +12,7 @@ type Props = StepCompleteBaseProps & ClarificationsEditableProps & Pick<StepFile
 export function ResearchStepComplete(props: Props) {
   const {
     fileContents, agentRuns, reviewMode, duration,
-    isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onRefine, onResetStep,
+    isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onEval, onResetStep,
     clarificationsEditable, clarificationsData: controlledClarData,
     onClarificationsChange, onClarificationsContinue, onReset, saveStatus, evaluating,
   } = props;
@@ -52,7 +52,7 @@ export function ResearchStepComplete(props: Props) {
             <p className="mt-1 text-sm">The agent wrote a file that is not valid JSON. Reset and re-run the step.</p>
           </div>
         </div>
-        <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onRefine={onRefine} onClose={onClose} onNextStep={onNextStep} />
+        <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onEval={onEval} onClose={onClose} onNextStep={onNextStep} />
       </div>
     );
   }
@@ -87,7 +87,7 @@ export function ResearchStepComplete(props: Props) {
               />
             </div>
           </ScrollArea>
-          <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onRefine={onRefine} onClose={onClose} onNextStep={onNextStep} />
+          <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onEval={onEval} onClose={onClose} onNextStep={onNextStep} />
         </>
       )}
     </div>

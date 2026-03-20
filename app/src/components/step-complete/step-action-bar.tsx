@@ -1,4 +1,4 @@
-import { CheckCircle2, ArrowRight, MessageSquare } from "lucide-react";
+import { CheckCircle2, ArrowRight, FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface StepActionBarProps {
@@ -6,18 +6,18 @@ interface StepActionBarProps {
   nextStepBlocked?: boolean;
   nextStepLabel?: string;
   reviewMode?: boolean;
-  onRefine?: () => void;
+  onEval?: () => void;
   onClose?: () => void;
   onNextStep?: () => void;
 }
 
-/** Shared action bar: Refine/Done on last step, Next Step otherwise. Hidden in review mode. */
+/** Shared action bar: Eval/Done on last step, Next Step otherwise. Hidden in review mode. */
 export function StepActionBar({
   isLastStep,
   nextStepBlocked,
   nextStepLabel,
   reviewMode,
-  onRefine,
+  onEval,
   onClose,
   onNextStep,
 }: StepActionBarProps) {
@@ -38,10 +38,10 @@ export function StepActionBar({
     <div className="flex items-center justify-end gap-2 border-t pt-4">
       {isLastStep ? (
         <>
-          {onRefine && (
-            <Button size="sm" variant="outline" onClick={onRefine}>
-              <MessageSquare className="size-3.5" />
-              Refine
+          {onEval && (
+            <Button size="sm" variant="outline" onClick={onEval}>
+              <FlaskConical className="size-3.5" />
+              Eval
             </Button>
           )}
           {onClose && (
