@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { MessageProcessor, extractResultMarkdown, tryParseJsonFromText } from "../message-processor.js";
+import { MessageProcessor } from "../message-processor.js";
+import { extractResultMarkdown, tryParseJsonFromText } from "../lib/result-extraction.js";
 import type { DisplayItem, DisplayItemEnvelope } from "../display-types.js";
 import type { AgentEventEnvelope } from "../agent-events.js";
 
