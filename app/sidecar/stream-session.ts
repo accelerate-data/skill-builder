@@ -79,7 +79,10 @@ export class StreamSession {
   close(): void {
     this.closed = true;
     if (this.mockMode && this.mockProcessor && !this.mockProcessor.hasEmittedResult() && this.mockOnMessage) {
-      const summary = this.mockProcessor.buildShutdownSummary();
+      const [summary, orphaned] = this.mockProcessor.buildShutdownSummary();
+      for (const item of orphaned) {
+        this.mockOnMessage(this.currentRequestId, item as Record<string, unknown>);
+      }
       this.mockOnMessage(this.currentRequestId, {
         type: "agent_event",
         event: summary,
@@ -135,6 +138,9 @@ export class StreamSession {
       });
     };
 
+    // Ref for the Stop hook — assigned after processor creation.
+    const processorRef: { current: MessageProcessor | null } = { current: null };
+
     // Hoist processor so the setup-error catch block can emit a run_result.
     const processor = new MessageProcessor({
       skillName: config.skillName,
@@ -144,6 +150,7 @@ export class StreamSession {
       runSource: config.runSource,
       streaming: true,
     });
+    processorRef.current = processor;
 
     let discoveredPluginPaths: string[];
     let pluginPaths: string[];
@@ -154,12 +161,15 @@ export class StreamSession {
       const errorMessage = err instanceof Error ? err.message : String(err);
       process.stderr.write(`[stream-session] Setup error for session ${this.sessionId}: ${errorMessage}\n`);
       onMessage(this.currentRequestId, { type: "error", message: errorMessage });
-      const errorSummary = processor.buildExecutionErrorSummary(errorMessage);
+      const [errorSummary, orphanedSetup] = processor.buildExecutionErrorSummary(errorMessage);
+      for (const item of orphanedSetup) {
+        onMessage(this.currentRequestId, item as Record<string, unknown>);
+      }
       onMessage(this.currentRequestId, { type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
       return;
     }
 
-    const options = buildQueryOptions(config, state.abortController, pluginPaths, stderrHandler);
+    const options = buildQueryOptions(config, state.abortController, pluginPaths, stderrHandler, processorRef);
 
     // Build the async generator that feeds messages to the SDK
     const self = this;
@@ -252,7 +262,10 @@ export class StreamSession {
       // the SDK itself emitted a result before the abort was processed).
       if (state.abortController.signal.aborted && !processor.hasEmittedResult()) {
         process.stderr.write(`[stream-session] Session ${this.sessionId} aborted — emitting shutdown run_result\n`);
-        const shutdownSummary = processor.buildShutdownSummary();
+        const [shutdownSummary, orphanedAbort] = processor.buildShutdownSummary();
+        for (const item of orphanedAbort) {
+          onMessage(this.currentRequestId, item as Record<string, unknown>);
+        }
         onMessage(this.currentRequestId, { type: "agent_event", event: shutdownSummary, timestamp: Date.now() } as Record<string, unknown>);
       }
     } catch (err) {
@@ -266,7 +279,10 @@ export class StreamSession {
       // failures are distinguishable from user-initiated shutdowns.
       if (!processor.hasEmittedResult()) {
         process.stderr.write(`[stream-session] Emitting error run_result for session ${this.sessionId}\n`);
-        const errorSummary = processor.buildExecutionErrorSummary(errorMessage);
+        const [errorSummary, orphanedErr] = processor.buildExecutionErrorSummary(errorMessage);
+        for (const item of orphanedErr) {
+          onMessage(this.currentRequestId, item as Record<string, unknown>);
+        }
         onMessage(this.currentRequestId, { type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
       }
     }
@@ -279,7 +295,10 @@ export class StreamSession {
       process.stderr.write(
         `[stream-session] Session ${this.sessionId} ended without run_result — emitting shutdown summary\n`,
       );
-      const exhaustionSummary = processor.buildShutdownSummary();
+      const [exhaustionSummary, orphanedExhaust] = processor.buildShutdownSummary();
+      for (const item of orphanedExhaust) {
+        onMessage(this.currentRequestId, item as Record<string, unknown>);
+      }
       onMessage(this.currentRequestId, {
         type: "agent_event",
         event: exhaustionSummary,

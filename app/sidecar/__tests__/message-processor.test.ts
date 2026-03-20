@@ -927,7 +927,7 @@ describe("MessageProcessor", () => {
     // =========================================================================
 
     it("buildExecutionErrorSummary produces status=error with error message", () => {
-      const summary = processor.buildExecutionErrorSummary("connection reset");
+      const [summary] = processor.buildExecutionErrorSummary("connection reset");
       expect(summary.status).toBe("error");
       expect(summary.resultSubtype).toBe("error_during_execution");
       expect(summary.resultErrors).toEqual(["connection reset"]);
@@ -935,7 +935,7 @@ describe("MessageProcessor", () => {
     });
 
     it("buildShutdownSummary produces status=shutdown with zeroed tokens", () => {
-      const summary = processor.buildShutdownSummary();
+      const [summary] = processor.buildShutdownSummary();
       expect(summary.status).toBe("shutdown");
       expect(summary.inputTokens).toBe(0);
       expect(summary.outputTokens).toBe(0);
@@ -943,8 +943,8 @@ describe("MessageProcessor", () => {
     });
 
     it("buildExecutionErrorSummary and buildShutdownSummary are distinct", () => {
-      const err = processor.buildExecutionErrorSummary("boom");
-      const shutdown = processor.buildShutdownSummary();
+      const [err] = processor.buildExecutionErrorSummary("boom");
+      const [shutdown] = processor.buildShutdownSummary();
       expect(err.status).not.toBe(shutdown.status);
       expect(err.resultSubtype).toBeDefined();
       expect(shutdown.resultSubtype).toBeUndefined();
@@ -959,8 +959,30 @@ describe("MessageProcessor", () => {
           usage: { input_tokens: 10, output_tokens: 5 },
         },
       });
-      const summary = processor.buildExecutionErrorSummary("crash");
+      const [summary] = processor.buildExecutionErrorSummary("crash");
       expect(summary.numTurns).toBeGreaterThanOrEqual(1);
+    });
+
+    it("buildShutdownSummary returns orphaned items when there are pending tool calls", () => {
+      // Create a pending tool call
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "tu-shutdown-orphan", name: "Read", input: { file_path: "/foo.ts" } },
+          ],
+        },
+      });
+      expect(processor.pendingToolCallCount).toBe(1);
+
+      const [summary, orphaned] = processor.buildShutdownSummary();
+      expect(summary.status).toBe("shutdown");
+      expect(orphaned).toHaveLength(1);
+
+      const orphanedItem = (orphaned[0] as { type: string; item: Record<string, unknown> }).item;
+      expect(orphanedItem.toolStatus).toBe("orphaned");
+      expect(orphanedItem.toolUseId).toBe("tu-shutdown-orphan");
+      expect(processor.pendingToolCallCount).toBe(0);
     });
 
     // =========================================================================

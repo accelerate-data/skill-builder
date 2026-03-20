@@ -913,16 +913,18 @@ export class MessageProcessor {
     this.accumulator = new RunMetadataAccumulator(this.accumulator.getContext());
   }
 
-  /** Build a shutdown run_result for aborted/cancelled runs. */
-  buildShutdownSummary(): RunResultEvent {
+  /** Build a shutdown run_result for aborted/cancelled runs. Also marks orphaned tool calls. */
+  buildShutdownSummary(): [RunResultEvent, ProcessedMessage[]] {
     this.resultEmitted = true;
-    return this.accumulator.buildShutdownSummary();
+    const orphaned = this.markOrphanedToolCalls(Date.now());
+    return [this.accumulator.buildShutdownSummary(), orphaned];
   }
 
-  /** Build an error run_result for iterator failures after SDK startup. */
-  buildExecutionErrorSummary(errorMessage: string): RunResultEvent {
+  /** Build an error run_result for iterator failures after SDK startup. Also marks orphaned tool calls. */
+  buildExecutionErrorSummary(errorMessage: string): [RunResultEvent, ProcessedMessage[]] {
     this.resultEmitted = true;
-    return this.accumulator.buildExecutionErrorSummary(errorMessage);
+    const orphaned = this.markOrphanedToolCalls(Date.now());
+    return [this.accumulator.buildExecutionErrorSummary(errorMessage), orphaned];
   }
 
   /** Build an error run_result for assistant-level errors (auth, billing, etc.). */

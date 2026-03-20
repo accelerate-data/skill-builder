@@ -1,5 +1,6 @@
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
+import type { MessageProcessor } from "./message-processor.js";
 
 /**
  * Environment variables safe to forward to the SDK child process.
@@ -51,6 +52,7 @@ export function buildQueryOptions(
   abortController: AbortController,
   pluginPaths: string[],
   stderr?: (data: string) => void,
+  processorRef?: { current: MessageProcessor | null },
 ) {
   // --- agent / model resolution ---
   const hasAgent = typeof config.agentName === "string" && config.agentName.length > 0;
@@ -103,5 +105,18 @@ export function buildQueryOptions(
       ? { promptSuggestions: config.promptSuggestions }
       : {}),
     ...(stderr ? { stderr } : {}),
+    ...(processorRef ? {
+      hooks: {
+        Stop: [{
+          hooks: [async () => {
+            const count = processorRef.current?.activeSubagentCount ?? 0;
+            if (count > 0) {
+              return { continue: false, reason: `${count} sub-agent(s) still running — do not stop yet` };
+            }
+            return { continue: true };
+          }],
+        }],
+      },
+    } : {}),
   };
 }
