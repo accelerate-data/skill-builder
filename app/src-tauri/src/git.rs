@@ -169,6 +169,7 @@ pub fn get_untracked_dirs(path: &Path) -> Result<Vec<String>, String> {
 }
 
 /// Get commit history for a specific skill (filtered by path prefix).
+/// Populates `version` on commits that have a `{skill_name}/vX.Y.Z` tag.
 pub fn get_history(
     repo_path: &Path,
     skill_name: &str,
@@ -176,6 +177,21 @@ pub fn get_history(
 ) -> Result<Vec<SkillCommit>, String> {
     log::debug!("[git] get_history for '{}' (limit {})", skill_name, limit);
     let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
+
+    // Build tag→commit lookup for this skill's version tags
+    let tag_prefix = format!("{}/v", skill_name);
+    let mut tag_map = std::collections::HashMap::new();
+    if let Ok(tags) = repo.tag_names(Some(&format!("{}/*", skill_name))) {
+        for tag_name in tags.iter().flatten() {
+            if let Some(version) = tag_name.strip_prefix(&tag_prefix) {
+                if let Ok(reference) = repo.find_reference(&format!("refs/tags/{}", tag_name)) {
+                    if let Ok(target) = reference.peel(git2::ObjectType::Commit) {
+                        tag_map.insert(target.id(), version.to_string());
+                    }
+                }
+            }
+        }
+    }
 
     let mut revwalk = repo
         .revwalk()
@@ -207,6 +223,7 @@ pub fn get_history(
                 sha: oid.to_string(),
                 message: commit.message().unwrap_or("").to_string(),
                 timestamp,
+                version: tag_map.get(&oid).cloned(),
             });
         }
     }

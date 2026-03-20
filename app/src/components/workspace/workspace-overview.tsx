@@ -222,6 +222,17 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
                 <span className="font-mono shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs">
                   {commit.sha.slice(0, 7)}
                 </span>
+                {commit.version && (
+                  <span
+                    className="shrink-0 rounded-full text-xs font-medium px-2 py-0.5"
+                    style={{
+                      color: "var(--color-seafoam)",
+                      background: "color-mix(in oklch, var(--color-seafoam), transparent 85%)",
+                    }}
+                  >
+                    v{commit.version}
+                  </span>
+                )}
                 <span className="min-w-0 truncate">{formatCommitMessage(commit.message)}</span>
                 <span className="shrink-0 text-muted-foreground">{formatRelativeDate(commit.timestamp)}</span>
               </div>

@@ -154,6 +154,8 @@ pub struct SkillCommit {
     pub sha: String,
     pub message: String,
     pub timestamp: String,
+    /// Semver version (e.g. "1.0.0") if this commit is tagged, None otherwise.
+    pub version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
