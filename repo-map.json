@@ -108,7 +108,7 @@
     },
     "rust_commands": {
       "path": "app/src-tauri/src/commands/",
-      "description": "Tauri command handlers. Flat files: agent, feedback, files, git, github_auth, lifecycle, node, settings, sidecar_lifecycle, skill_test, test_utils, usage, workflow_artifacts, workflow_lifecycle, workspace. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, packaging, runtime, evaluation, tests), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands), skill/ (crud, metadata, suggestions, tests), refine/ (content, diff, output, protocol, tests)"
+      "description": "Tauri command handlers. Flat files: agent, api_validation, feedback, files, git, github_auth, lifecycle, node, settings, sidecar_lifecycle, skill_test, test_utils, usage, workflow_artifacts, workflow_lifecycle, workspace. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, packaging, runtime, evaluation, tests), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands), skill/ (crud, metadata, suggestions, tests), refine/ (content, diff, output, protocol, tests)"
     },
     "rust_db": {
       "path": "app/src-tauri/src/db/",

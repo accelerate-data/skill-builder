@@ -36,7 +36,7 @@ describe("AboutDialog", () => {
     const imgs = screen.getAllByAltText("Skill Builder");
     expect(imgs).toHaveLength(2);
     expect(imgs[0]).toHaveAttribute("src", "/icon-dark-256.png");
-    expect(imgs[1]).toHaveAttribute("src", "/icon-256.png");
+    expect(imgs[1]).toHaveAttribute("src", "/icon-light-256.png");
   });
 
   it("shows Powered by Claude from Anthropic", () => {

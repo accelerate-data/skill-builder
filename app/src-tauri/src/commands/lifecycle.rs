@@ -1,4 +1,17 @@
-// Lifecycle commands — window close guard and shutdown orchestration.
+// Lifecycle commands — window close guard, shutdown orchestration, and runtime config.
 // has_running_agents was removed in VU-470: the close guard now uses
 // in-memory state (workflow isRunning/gateLoading, refine/test isRunning)
 // instead of querying the agent_runs table, so no Tauri command is needed.
+
+#[tauri::command]
+pub fn set_log_level(level: String) -> Result<(), String> {
+    log::info!("[set_log_level] level={}", level);
+    crate::logging::set_log_level(&level);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_log_file_path(app: tauri::AppHandle) -> Result<String, String> {
+    log::info!("[get_log_file_path]");
+    crate::logging::get_log_file_path(&app)
+}
