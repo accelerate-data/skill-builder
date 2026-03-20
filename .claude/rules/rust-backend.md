@@ -70,7 +70,7 @@ cargo test --manifest-path app/src-tauri/Cargo.toml db  # module filter
 | File | Purpose |
 |---|---|
 | `src/commands/` | One file per command group (workflow, workspace, skill, settings, …) |
-| `src/agents/sidecar_pool.rs` | Persistent sidecar lifecycle and stream dispatch |
+| `src/agents/sidecar_pool/` | Persistent sidecar lifecycle and stream dispatch (pool.rs, dispatch.rs, process.rs, startup_error.rs) |
 | `src/db/` | SQLite via rusqlite — schema in `docs/design/backend-design/database.md` |
 | `src/reconciliation/` | Startup state machine — see `docs/design/startup-recon/` |
 | `src/types/` | Shared Rust types |

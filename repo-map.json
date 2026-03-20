@@ -116,7 +116,7 @@
     },
     "rust_agents": {
       "path": "app/src-tauri/src/agents/",
-      "description": "Agent runtime. Files: sidecar_pool.rs (persistent sidecar lifecycle, stream dispatch, multi-turn sessions), events.rs (routes agent_event subtypes, persists run_result, emits Tauri frontend events), sidecar.rs (sidecar process spawning), sidecar_path.rs (resolves sidecar binary path), node_resolver.rs (Node.js binary resolution with platform-specific logic)."
+      "description": "Agent runtime. Files: sidecar_pool/ (directory module — pool.rs: SidecarPool struct + idle cleanup, dispatch.rs: request dispatch + streaming + shutdown, process.rs: process primitives + heartbeat + stdout handler, startup_error.rs: SidecarStartupError + terminal status), events.rs (routes agent_event subtypes, persists run_result, emits Tauri frontend events), sidecar.rs (sidecar process spawning), sidecar_path.rs (resolves sidecar binary path), node_resolver.rs (Node.js binary resolution with platform-specific logic)."
     },
     "sidecar_runner": {
       "path": "app/sidecar/agent-runner.ts",

@@ -54,7 +54,7 @@ Communicates with the Rust backend via stdin/stdout, one JSON object per line:
 | `app/sidecar/mock-agent.ts` | Mock mode — replays `mock-templates/` without API calls (`MOCK_AGENTS=true`) |
 | `app/src-tauri/src/commands/agent.rs` | Rust: spawns sidecar, reads stdout, emits Tauri events |
 | `app/src-tauri/src/agents/events.rs` | Rust: routes `agent_event` subtypes, persists `run_result`, emits frontend events |
-| `app/src-tauri/src/agents/sidecar_pool.rs` | Rust: persistent sidecar lifecycle + stream methods |
+| `app/src-tauri/src/agents/sidecar_pool/` | Rust: persistent sidecar lifecycle + stream methods (pool.rs, dispatch.rs, process.rs, startup_error.rs) |
 
 ## Operation Modes
 
