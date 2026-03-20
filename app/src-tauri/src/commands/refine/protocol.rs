@@ -204,8 +204,10 @@ pub(super) fn build_direct_refine_config(
     agent_name: &'static str,
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
+    let agent_label = agent_name.rsplit(':').next().unwrap_or(agent_name);
     let agent_id = format!(
-        "refine-{}-{}",
+        "{}-{}-{}",
+        agent_label,
         skill_name,
         chrono::Utc::now().timestamp_millis()
     );

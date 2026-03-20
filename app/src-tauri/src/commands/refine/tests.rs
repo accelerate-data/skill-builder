@@ -390,6 +390,12 @@ fn test_refine_config_agent_id_format() {
 }
 
 #[test]
+fn test_direct_refine_config_agent_id_uses_agent_label() {
+    let (_, agent_id) = base_direct_config(BENCHMARK_AGENT_NAME);
+    assert!(agent_id.starts_with("benchmark-skill-my-skill-"));
+}
+
+#[test]
 fn test_refine_config_omits_model_for_named_agent() {
     let (config, _) = base_refine_config("test");
     assert!(config.model.is_none());
