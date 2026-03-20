@@ -12,6 +12,7 @@ export const SubagentItem = memo(function SubagentItem({ item, depth = 0 }: { it
   const description = item.subagentDescription ?? "Sub-agent";
   const subagentType = item.subagentType;
   const childItems = item.subagentItems ?? [];
+  const lastToolName = item.lastToolName;
 
   return (
     <BaseItem
@@ -32,7 +33,9 @@ export const SubagentItem = memo(function SubagentItem({ item, depth = 0 }: { it
         </div>
       ) : (
         <div className="text-xs text-muted-foreground italic">
-          {item.subagentStatus === "running" ? "Running..." : "No output captured"}
+          {item.subagentStatus === "running"
+            ? (lastToolName ? `Running: ${lastToolName}` : "Running...")
+            : "No output captured"}
         </div>
       )}
     </BaseItem>

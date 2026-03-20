@@ -209,27 +209,42 @@ pub async fn send_refine_message(
             RefineDispatch::Stream => unreachable!(),
         };
 
-        // Snapshot the current skill before rewrite so benchmark can compare
-        if dispatch == RefineDispatch::DirectRewrite {
-            snapshot_skill_for_benchmark(&runtime.skills_path, &workspace_path, &skill_name);
-        }
-
-        let baseline_mode = match dispatch {
-            RefineDispatch::DirectBenchmark => Some("prior_version"),
-            _ => None,
-        };
-        // Resolve snapshot path for benchmark agent
-        let snapshot_dir = if dispatch == RefineDispatch::DirectBenchmark {
-            let snap = std::path::Path::new(&workspace_path)
-                .join(&skill_name)
-                .join("skill-snapshot");
-            if snap.join("SKILL.md").exists() {
-                Some(snap.to_string_lossy().replace('\\', "/"))
-            } else {
-                None
+        // For benchmark: extract prior version from git tag instead of file-copy snapshot
+        let (baseline_mode, snapshot_dir) = if dispatch == RefineDispatch::DirectBenchmark {
+            let skills_dir = std::path::Path::new(&runtime.skills_path);
+            match crate::git::prior_skill_tag(skills_dir, &skill_name) {
+                Some(tag) => {
+                    let dest = std::path::Path::new(&workspace_path)
+                        .join(&skill_name)
+                        .join("skill-snapshot");
+                    match crate::git::extract_skill_at_tag(skills_dir, &skill_name, &tag, &dest) {
+                        Ok(()) => {
+                            let snapshot_str = dest.to_string_lossy().replace('\\', "/");
+                            log::info!(
+                                "[send_refine_message] extracted prior version tag={} for skill={} to {}",
+                                tag, skill_name, snapshot_str
+                            );
+                            (Some("prior_version"), Some(snapshot_str))
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "[send_refine_message] failed to extract prior version for skill={}: {}",
+                                skill_name, e
+                            );
+                            (Some("none"), None)
+                        }
+                    }
+                }
+                None => {
+                    log::info!(
+                        "[send_refine_message] no prior tag for skill={}, benchmark runs absolute only",
+                        skill_name
+                    );
+                    (Some("none"), None)
+                }
             }
         } else {
-            None
+            (None, None)
         };
 
         let prompt = build_direct_agent_prompt(

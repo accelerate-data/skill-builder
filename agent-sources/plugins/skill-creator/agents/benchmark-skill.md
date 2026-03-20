@@ -27,8 +27,9 @@ Your role is to evaluate a skill that has already been written by running test c
 - Derive `context_dir` as `workspace_dir/context`
 - Derive `eval_dir` as `workspace_dir/evals`
 - Derive `eval_results_dir` as `eval_dir/workspace`
-- `baseline_mode`: `"no_skill"` or `"prior_version"`
-- `prior_skill_snapshot_dir`: (only when `baseline_mode` is `"prior_version"`) path to a snapshot of the old skill version, created by the backend before the rewrite ran
+- `baseline_mode`: `"no_skill"`, `"prior_version"`, or `"none"`
+- `prior_skill_snapshot_dir`: (only when `baseline_mode` is `"prior_version"`) path to a snapshot of the old skill version, extracted from the prior git version tag
+- When `baseline_mode` is `"none"` (first version, no prior tag): run all evaluation scenarios against the current skill and report absolute scores only. Skip comparison/delta analysis.
 
 </context>
 
@@ -43,12 +44,10 @@ Before executing each step, write one short status line (≤ 10 words) before it
 ## Overall Flow
 
 0. **Validate inputs** — confirm SKILL.md, evals.json, user-context.md exist; handle stubs/missing files.
-1. **Determine iteration number** — scan for existing `iteration-*` dirs, pick the next one.
+1. **Determine iteration number** — scan for existing `iteration-*` dirs in `{eval_results_dir}`, pick the next one.
 2. **Setup context** — gather test cases, skill path, baseline mode, results directory.
 3. **Execute** — spawn runs → grade → aggregate → analyst pass → generate review HTML. Each sub-step gates on the previous. The analyst pass writes `analyst-notes.md` and embeds it into `benchmark.json` `notes` field.
 4. **Verify** — confirm `benchmark.json` has valid `run_summary` and non-empty `notes`.
-
-Do not stop, return or produce structuredOutput in the middle.
 
 ## Step 0: Validate inputs
 
@@ -95,8 +94,8 @@ Key inputs for the eval pipeline:
   - `"no_skill"`: same prompt, no skill at all. Save to `without_skill/` directories.
   - `"prior_version"`: point the baseline subagent at `{prior_skill_snapshot_dir}`. Save to `old_skill/` directories.
 - **Results directory**: `{eval_results_dir}/{iteration}/`
-- **Environment**: 
-  - The skill is running in headless mode and environment has no display. 
+- **Environment**:
+  - The skill is running in headless mode and environment has no display.
   - When executing Step 4 of the Running and evaluating test cases section, use `--static {eval_results_dir}/{iteration}/review.html` instead of starting a server. Do not open a browser.
   - Do not wait for user feedback.
 - The `skill-creator` skill references files like `references/schemas.md` and `agents/grader.md` — these are internal to the `skill creator` skill and is present in `plugins/skill-creator/skills/skill-creator`.
@@ -105,7 +104,7 @@ Key inputs for the eval pipeline:
 
 Follow the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill. Execute the sub-steps in order — each depends on the previous one completing:
 
-**3a. Spawn all runs** — for each test case, spawn with-skill and baseline runs in the same turn. As each sub-agent returns, capture timing data (`total_tokens`, `duration_ms`) into `timing.json` in the run directory. Wait for **all** run subagents to finish before proceeding.
+**3a. Spawn all runs** — for each test case, spawn with-skill and baseline runs in the same turn. As each sub-agent returns, capture timing data (`total_tokens`, `duration_ms`) into `timing.json` in the run directory.
 
 **3b. Grade each run** — follow the grading instructions in the skill. Confirm `grading.json` exists in every eval directory (both `with_skill/` and the baseline directory — `without_skill/` for `no_skill` mode, `old_skill/` for `prior_version` mode) before proceeding.
 
@@ -132,7 +131,6 @@ All non-skipped returns must include `"benchmark_path": "evals/workspace/{iterat
 - All test cases from `evals.json` executed with both configurations
 - `benchmark.json` exists and contains a valid `run_summary`
 - `benchmark.json` top-level `notes` array is populated with analyst observations
-- No sub-agents are still running when returning
 
 </instructions>
 
@@ -144,8 +142,7 @@ All non-skipped returns must include `"benchmark_path": "evals/workspace/{iterat
 
 **Gate — do NOT return until:**
 
-1. Step 3 has finished (including analyst pass) and no sub-agents are still running
-2. You have verified `benchmark.json` exists, contains a valid `run_summary`, and has a non-empty `notes` array
+You have verified `benchmark.json` exists, contains a valid `run_summary`, and has a non-empty `notes` array
 
 Return JSON only:
 

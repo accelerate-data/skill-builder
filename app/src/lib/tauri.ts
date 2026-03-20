@@ -495,6 +495,16 @@ export const getSkillHistory = (
   limit: limit ?? null,
 })
 
+export const restoreSkillVersion = (
+  workspacePath: string,
+  skillName: string,
+  sha: string,
+) => invoke<void>("restore_skill_version", {
+  workspacePath,
+  skillName,
+  sha,
+})
+
 // --- Answer Evaluation (Transition Gate) ---
 
 /** @deprecated Use {@link PerQuestionEntry} from `@/lib/types` instead. */

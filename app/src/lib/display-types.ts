@@ -63,6 +63,8 @@ export interface DisplayItem {
   subagentItems?: DisplayItem[];
   subagentMetrics?: SubagentMetrics;
   subagentStatus?: SubagentStatus;
+  /** Name of the last tool invoked by a background sub-agent (from task_progress). */
+  lastToolName?: string;
 
   // result (completion/error display)
   outputText_result?: string;
@@ -81,7 +83,7 @@ export interface DisplayItem {
 // Message classification categories
 // ---------------------------------------------------------------------------
 
-export type MessageCategory = "hardNoise" | "compact" | "system" | "user" | "ai";
+export type MessageCategory = "hardNoise" | "compact" | "system" | "user" | "ai" | "task";
 
 // ---------------------------------------------------------------------------
 // JSONL protocol envelope for display items
@@ -96,4 +98,4 @@ export interface DisplayItemEnvelope {
 // Version tag for structural sync tests
 // ---------------------------------------------------------------------------
 
-export const DISPLAY_TYPES_VERSION = 2;
+export const DISPLAY_TYPES_VERSION = 3;

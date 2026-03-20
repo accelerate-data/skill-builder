@@ -117,6 +117,7 @@ export interface SkillCommit {
   sha: string
   message: string
   timestamp: string
+  version?: string
 }
 
 export interface SkillFileContent {
