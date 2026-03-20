@@ -171,7 +171,6 @@ describe("SkillDialog (edit mode)", () => {
 
     await user.click(screen.getByRole("button", { name: /Next/i }));
 
-    expect(screen.getByLabelText(/^Version/)).toBeDisabled();
     expect(screen.getByLabelText(/^Argument Hint/)).toBeEnabled();
   });
 
@@ -213,13 +212,13 @@ describe("SkillDialog (edit mode)", () => {
       ["analytics"],
       JSON.stringify({ context: "Original context" }),
       "Updated description",
-      "1.2.3",
+      null,
       null,
       "[org-url]",
       true,
       false,
     );
-    expect(toast.success).toHaveBeenCalledWith("Skill updated");
+    expect(toast.success).toHaveBeenCalledWith('Skill "sales-pipeline-renamed" updated');
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onSaved).toHaveBeenCalledTimes(1);
   }, 15000);

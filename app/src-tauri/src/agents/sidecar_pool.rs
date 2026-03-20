@@ -599,6 +599,24 @@ async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
                     *s.last_activity.lock().await = tokio::time::Instant::now();
                 }
             }
+            // On error/shutdown, clean up any incomplete benchmark iterations
+            // for this skill so partial runs don't hide valid benchmarks.
+            if outcome == TerminalOutcome::Error || outcome == TerminalOutcome::Shutdown {
+                use tauri::Manager;
+                // Scope the DB lock tightly — release before filesystem work.
+                let workspace_path = ctx.app_handle.try_state::<crate::db::Db>()
+                    .and_then(|db| {
+                        let conn = db.0.lock().ok()?;
+                        crate::db::read_settings(&conn).ok()?.workspace_path
+                    });
+                if let Some(wp) = workspace_path {
+                    crate::commands::workflow::evaluation::clean_incomplete_iterations(
+                        &wp,
+                        &ctx.skill_name,
+                    );
+                }
+            }
+
             // Dispatch based on outcome: shutdown uses handle_agent_shutdown
             // so the frontend calls shutdownRun() instead of completeRun(false).
             if outcome == TerminalOutcome::Shutdown {

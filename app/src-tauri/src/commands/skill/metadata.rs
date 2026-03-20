@@ -99,32 +99,6 @@ pub fn get_externally_locked_skills(
     Ok(external)
 }
 
-#[tauri::command]
-pub fn check_lock(
-    skill_name: String,
-    instance: tauri::State<'_, crate::InstanceInfo>,
-    db: tauri::State<'_, Db>,
-) -> Result<bool, String> {
-    log::info!("[check_lock] skill={}", skill_name);
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[check_lock] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    match crate::db::get_skill_lock(&conn, &skill_name)? {
-        Some(lock) => {
-            if lock.instance_id == instance.id {
-                Ok(false) // Locked by us, not locked from our perspective
-            } else if !crate::db::check_pid_alive(lock.pid) {
-                // Dead process — reclaim
-                crate::db::release_skill_lock(&conn, &skill_name, &lock.instance_id)?;
-                Ok(false)
-            } else {
-                Ok(true) // Locked by another live instance
-            }
-        }
-        None => Ok(false),
-    }
-}
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]

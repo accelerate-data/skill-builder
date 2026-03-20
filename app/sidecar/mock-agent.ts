@@ -476,8 +476,7 @@ export async function buildStructuredMockResult(
 
   if (stepTemplate === "benchmark-skill") {
     return {
-      status: "benchmarked",
-      benchmark_status: "complete",
+      status: "complete",
       benchmark_path: "evals/workspace/iteration-1",
     };
   }

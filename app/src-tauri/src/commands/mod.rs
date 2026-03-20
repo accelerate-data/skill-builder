@@ -1,5 +1,5 @@
 pub mod agent;
-pub mod clarification;
+pub mod api_validation;
 pub mod feedback;
 pub mod files;
 pub mod git;
@@ -8,15 +8,16 @@ pub mod github_import;
 pub mod imported_skills;
 pub mod lifecycle;
 pub mod node;
+pub mod reconciliation;
 pub mod refine;
 pub mod settings;
 pub mod sidecar_lifecycle;
 pub mod skill;
-pub mod skill_test;
 #[cfg(test)]
 pub mod test_utils;
 pub mod usage;
 pub mod workflow;
 pub mod workflow_artifacts;
 pub mod workflow_lifecycle;
+pub mod workflow_session;
 pub mod workspace;

@@ -4,7 +4,7 @@ import { useWorkflowStateMachine } from "@/hooks/use-workflow-state-machine";
 import { STEP_CONFIGS } from "@/lib/workflow-step-configs";
 
 vi.mock("@/lib/toast", () => ({
-  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn(), loading: vi.fn(() => "loading-toast-id") },
 }));
 
 const mockRunWorkflowStep = vi.fn((..._args: unknown[]) => Promise.resolve("agent-id-1"));

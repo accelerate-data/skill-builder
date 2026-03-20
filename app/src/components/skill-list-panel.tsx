@@ -25,6 +25,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { toast } from "@/lib/toast";
 import SkillDialog from "@/components/skill-dialog";
 import DeleteSkillDialog from "@/components/delete-skill-dialog";
+import RestoreVersionDialog from "@/components/workspace/restore-version-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
@@ -159,6 +160,7 @@ export function SkillListPanel({
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [redoTarget, setRedoTarget] = useState<string | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
   const [externalLockedSkills, setExternalLockedSkills] = useState<Set<string>>(new Set());
 
   const workspacePath = useSettingsStore((s) => s.workspacePath);
@@ -462,6 +464,11 @@ export function SkillListPanel({
                           </DropdownMenuItem>
                         )}
                         {skill.source === "builder" && (
+                          <DropdownMenuItem onSelect={() => setRestoreTarget(skill.name)}>
+                            Restore Version
+                          </DropdownMenuItem>
+                        )}
+                        {skill.source === "builder" && (
                           <DropdownMenuItem onSelect={() => handleRedo(skill.name)}>
                             Redo
                           </DropdownMenuItem>
@@ -536,6 +543,19 @@ export function SkillListPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {restoreTarget && workspacePath && (
+        <RestoreVersionDialog
+          skillName={restoreTarget}
+          workspacePath={workspacePath}
+          open={!!restoreTarget}
+          onOpenChange={(open) => { if (!open) setRestoreTarget(null); }}
+          onRestored={() => {
+            setRestoreTarget(null);
+            if (workspacePath) listSkills(workspacePath).then(setSkills).catch(() => {});
+          }}
+        />
+      )}
     </div>
   );
 }

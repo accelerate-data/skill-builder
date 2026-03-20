@@ -233,6 +233,7 @@ pub fn get_workflow_skill_names(conn: &Connection) -> Result<Vec<String>, String
         .map_err(|e| e.to_string())
 }
 
+#[cfg(test)]
 pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRecord>, String> {
     let mut stmt = conn
         .prepare(

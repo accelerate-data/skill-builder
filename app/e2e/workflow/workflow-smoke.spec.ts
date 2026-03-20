@@ -390,11 +390,8 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
       result: "Decision analysis complete.",
     });
 
-    // Step 2 completion toast
-    await expect(page.getByText("Step 3 completed")).toBeVisible({ timeout: 10_000 });
-
     // DecisionsSummaryCard should render with the decision title
-    await expect(page.getByText("Primary framework")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Primary framework")).toBeVisible({ timeout: 10_000 });
   });
 
   // ---------------------------------------------------------------------------
@@ -453,11 +450,8 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
       result: "Skill generation complete.",
     });
 
-    // Step 4 completion toast
-    await expect(page.getByText("Step 4 completed")).toBeVisible({ timeout: 10_000 });
-
-    // Step 4 completion screen shows the generated skill output
-    await expect(page.getByText("Generate Skill Complete")).toBeVisible({ timeout: 5_000 });
+    // Step completion screen shows the generated skill output
+    await expect(page.getByText("Generate Skill Complete")).toBeVisible({ timeout: 10_000 });
   });
 
   // ---------------------------------------------------------------------------

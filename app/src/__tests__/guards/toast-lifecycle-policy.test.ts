@@ -60,7 +60,6 @@ describe("toast lifecycle policy guard", () => {
     // These are fire-and-forget catch blocks where Infinity duration is not yet wired.
     const knownExceptions = new Set([
       "components/skill-list-panel.tsx",
-      "components/workspace/workspace-overview.tsx",
       "hooks/use-workflow-session.ts",
     ]);
 
@@ -123,13 +122,13 @@ describe("toast lifecycle policy guard", () => {
       { file: "components/layout/app-layout.tsx", severities: ["info", "error"] },
       // workflow.tsx delegates all toast calls to use-workflow-state-machine.ts (listed below)
       { file: "hooks/use-agent-stream.ts", severities: ["info"] },
-      { file: "hooks/use-workflow-state-machine.ts", severities: ["info", "warning", "error"] },
+      { file: "hooks/use-workflow-state-machine.ts", severities: ["info", "error"] },
       { file: "components/feedback-dialog.tsx", severities: ["error"] },
       { file: "hooks/use-settings-form.ts", severities: ["error"] },
       { file: "components/settings/sdk-section.tsx", severities: ["error"] },
       { file: "components/imported-skills-tab.tsx", severities: ["error"] },
       { file: "components/skill-list-panel.tsx", severities: ["error"] },
-      { file: "components/workspace/workspace-overview.tsx", severities: ["error"] },
+      { file: "hooks/use-workflow-gate.ts", severities: ["info", "warning"] },
       { file: "hooks/use-workflow-session.ts", severities: ["error"] },
     ];
 

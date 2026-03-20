@@ -245,13 +245,95 @@ describe("buildQueryOptions", () => {
     expect(plugins[1]).toEqual({ type: "local", path: "/workspace/.claude/plugins/skill-creator" });
   });
 
-  it("does not include hooks", () => {
+  it("does not include hooks when processorRef is not provided", () => {
     const opts = buildQueryOptions(
       makeConfig({ agentName: "skill-creator:generate-skill" }),
       new AbortController(),
       []
     );
     expect(opts).not.toHaveProperty("hooks");
+  });
+
+  it("includes Stop hook when processorRef is provided", () => {
+    const processorRef = { current: null };
+    const opts = buildQueryOptions(
+      makeConfig(),
+      new AbortController(),
+      [],
+      undefined,
+      processorRef,
+    );
+    expect(opts).toHaveProperty("hooks");
+    const hooks = (opts as Record<string, unknown>).hooks as Record<string, unknown>;
+    expect(hooks).toHaveProperty("Stop");
+  });
+
+  it("Stop hook returns continue:false when activeSubagentCount > 0", async () => {
+    const fakeProcessor = { activeSubagentCount: 2, pendingBackgroundTaskCount: 0 };
+    const processorRef = { current: fakeProcessor as never };
+    const opts = buildQueryOptions(
+      makeConfig(),
+      new AbortController(),
+      [],
+      undefined,
+      processorRef,
+    );
+    const hooks = (opts as Record<string, unknown>).hooks as Record<string, unknown>;
+    const stopMatchers = hooks.Stop as Array<{ hooks: Array<(...args: unknown[]) => Promise<unknown>> }>;
+    const hookFn = stopMatchers[0].hooks[0];
+    const result = await hookFn();
+    expect(result).toEqual({ continue: false, reason: "2 agent(s) still running" });
+  });
+
+  it("Stop hook returns continue:false when pendingBackgroundTaskCount > 0", async () => {
+    const fakeProcessor = { activeSubagentCount: 0, pendingBackgroundTaskCount: 3 };
+    const processorRef = { current: fakeProcessor as never };
+    const opts = buildQueryOptions(
+      makeConfig(),
+      new AbortController(),
+      [],
+      undefined,
+      processorRef,
+    );
+    const hooks = (opts as Record<string, unknown>).hooks as Record<string, unknown>;
+    const stopMatchers = hooks.Stop as Array<{ hooks: Array<(...args: unknown[]) => Promise<unknown>> }>;
+    const hookFn = stopMatchers[0].hooks[0];
+    const result = await hookFn();
+    expect(result).toEqual({ continue: false, reason: "3 agent(s) still running" });
+  });
+
+  it("Stop hook sums both active subagents and background tasks", async () => {
+    const fakeProcessor = { activeSubagentCount: 1, pendingBackgroundTaskCount: 2 };
+    const processorRef = { current: fakeProcessor as never };
+    const opts = buildQueryOptions(
+      makeConfig(),
+      new AbortController(),
+      [],
+      undefined,
+      processorRef,
+    );
+    const hooks = (opts as Record<string, unknown>).hooks as Record<string, unknown>;
+    const stopMatchers = hooks.Stop as Array<{ hooks: Array<(...args: unknown[]) => Promise<unknown>> }>;
+    const hookFn = stopMatchers[0].hooks[0];
+    const result = await hookFn();
+    expect(result).toEqual({ continue: false, reason: "3 agent(s) still running" });
+  });
+
+  it("Stop hook returns continue:true when both counts are 0", async () => {
+    const fakeProcessor = { activeSubagentCount: 0, pendingBackgroundTaskCount: 0 };
+    const processorRef = { current: fakeProcessor as never };
+    const opts = buildQueryOptions(
+      makeConfig(),
+      new AbortController(),
+      [],
+      undefined,
+      processorRef,
+    );
+    const hooks = (opts as Record<string, unknown>).hooks as Record<string, unknown>;
+    const stopMatchers = hooks.Stop as Array<{ hooks: Array<(...args: unknown[]) => Promise<unknown>> }>;
+    const hookFn = stopMatchers[0].hooks[0];
+    const result = await hookFn();
+    expect(result).toEqual({ continue: true });
   });
 
   it("env contains only allowlisted vars plus ANTHROPIC_API_KEY", () => {

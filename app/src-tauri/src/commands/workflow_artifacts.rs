@@ -54,12 +54,10 @@ pub struct DecisionsOutput {
 ///
 /// generate-skill:  `{ status: "generated", skipped?: true, commit_summary?, version_bump?, call_trace }`
 /// rewrite-skill:   `{ status: "rewritten", skipped?: true, commit_summary?, version_bump?, call_trace }`
-/// benchmark-skill:  `{ status: "benchmarked", benchmark_status, benchmark_path, tag, ... }`
+/// benchmark-skill:  `{ status: "complete"|"partial"|"skipped", benchmark_path?, call_trace }`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenerateSkillOutput {
     pub status: String,
-    #[serde(default)]
-    pub benchmark_status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub benchmark_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -259,15 +257,13 @@ mod tests {
     #[test]
     fn test_benchmark_skill_output_round_trip() {
         let json = serde_json::json!({
-            "status": "benchmarked",
-            "benchmark_status": "complete",
+            "status": "complete",
             "benchmark_path": "evals/workspace/iteration-1"
         });
 
         let parsed: GenerateSkillOutput =
             serde_json::from_value(json).expect("deserialize GenerateSkillOutput");
-        assert_eq!(parsed.status, "benchmarked");
-        assert_eq!(parsed.benchmark_status, "complete");
+        assert_eq!(parsed.status, "complete");
         assert_eq!(parsed.benchmark_path.as_deref(), Some("evals/workspace/iteration-1"));
     }
 
@@ -281,7 +277,6 @@ mod tests {
         let parsed: GenerateSkillOutput =
             serde_json::from_value(json).expect("deserialize GenerateSkillOutput");
         assert_eq!(parsed.status, "generated");
-        assert_eq!(parsed.benchmark_status, ""); // defaults to empty
         assert!(parsed.benchmark_path.is_none());
         assert!(parsed.skipped.is_none());
     }
@@ -302,20 +297,10 @@ mod tests {
     #[test]
     fn test_generate_skill_output_rejects_missing_status() {
         let json = serde_json::json!({
-            "benchmark_status": "complete"
+            "benchmark_path": "evals/workspace/iteration-1"
         });
         let result = serde_json::from_value::<GenerateSkillOutput>(json);
         assert!(result.is_err(), "should reject missing status");
-    }
-
-    #[test]
-    fn test_generate_skill_output_defaults_missing_benchmark_status() {
-        let json = serde_json::json!({
-            "status": "generated"
-        });
-        let parsed: GenerateSkillOutput =
-            serde_json::from_value(json).expect("should accept missing benchmark_status");
-        assert_eq!(parsed.benchmark_status, "");
     }
 
     // ── AnswerEvaluationOutput ────────────────────────────────────────────

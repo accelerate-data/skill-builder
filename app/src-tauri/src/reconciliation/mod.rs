@@ -35,6 +35,10 @@ pub fn reconcile_on_startup(
     skills_path: &str,
 ) -> Result<ReconciliationResult, String> {
     let mut notifications = Vec::new();
+
+    // ── Pass 0: Clean up incomplete benchmark iterations across all skills ──
+    crate::commands::workflow::evaluation::clean_all_incomplete_iterations(workspace_path);
+
     // ── Pass 1: DB-driven — loop over skills master, branch on skill_source ──
 
     let all_skills = crate::db::list_all_skills(conn)?;

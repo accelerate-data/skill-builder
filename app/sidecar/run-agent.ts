@@ -92,7 +92,21 @@ export async function runAgentRequest(
     onMessage({ type: "system", subtype: "sdk_stderr", data: data.trimEnd(), timestamp: Date.now() });
   };
 
-  const options = buildQueryOptions(config, state.abortController, pluginPaths, stderrHandler);
+  // Ref for the Stop hook — assigned after processor creation.
+  const processorRef: { current: MessageProcessor | null } = { current: null };
+
+
+  // Process raw SDK messages through MessageProcessor for structured display items
+  const processor = new MessageProcessor({
+    skillName: config.skillName,
+    stepId: config.stepId,
+    workflowSessionId: config.workflowSessionId,
+    usageSessionId: config.usageSessionId,
+    runSource: config.runSource,
+  });
+  processorRef.current = processor;
+
+  const options = buildQueryOptions(config, state.abortController, pluginPaths, stderrHandler, processorRef);
 
   // Emit plugins passed to the SDK as a system event so it appears in the JSONL transcript.
   const pluginsToLog = (options as Record<string, unknown>).plugins as unknown[] | undefined;
@@ -105,15 +119,6 @@ export async function runAgentRequest(
 
   // Notify the UI that we're about to initialize the SDK
   emitSystemEvent(onMessage, "init_start");
-
-  // Process raw SDK messages through MessageProcessor for structured display items
-  const processor = new MessageProcessor({
-    skillName: config.skillName,
-    stepId: config.stepId,
-    workflowSessionId: config.workflowSessionId,
-    usageSessionId: config.usageSessionId,
-    runSource: config.runSource,
-  });
 
   try {
     process.stderr.write("[sidecar] Starting SDK query\n");
@@ -134,9 +139,10 @@ export async function runAgentRequest(
       }
 
       const raw = message as Record<string, unknown>;
-      // Log raw message to transcript (debugging) — the raw message is still
-      // captured by persistent-mode's writeLine wrapping, so no separate log needed.
+
       // Process into display items + pass-through messages
+      // Task events (task_started/task_progress/task_notification) are routed
+      // through the "task" classifier category → processTaskEvent.
       const items = processor.process(raw);
       for (const item of items) {
         onMessage(item as Record<string, unknown>);
@@ -157,7 +163,10 @@ export async function runAgentRequest(
         onMessage(item as Record<string, unknown>);
       }
 
-      const errorSummary = processor.buildExecutionErrorSummary(errorMessage);
+      const [errorSummary, orphanedErr] = processor.buildExecutionErrorSummary(errorMessage);
+      for (const item of orphanedErr) {
+        onMessage(item as Record<string, unknown>);
+      }
       onMessage({ type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
       return;
     }
@@ -166,7 +175,10 @@ export async function runAgentRequest(
   // Emit a shutdown run_result for aborted runs so Rust can persist partial data
   if (state.abortController.signal.aborted) {
     process.stderr.write("[sidecar] Run aborted — emitting shutdown run_result\n");
-    const shutdownSummary = processor.buildShutdownSummary();
+    const [shutdownSummary, orphanedAbort] = processor.buildShutdownSummary();
+    for (const item of orphanedAbort) {
+      onMessage(item as Record<string, unknown>);
+    }
     onMessage({ type: "agent_event", event: shutdownSummary, timestamp: Date.now() } as Record<string, unknown>);
   }
 
@@ -176,9 +188,12 @@ export async function runAgentRequest(
   // the frontend transitions out of "Running" state.
   if (!processor.hasEmittedResult() && !state.abortController.signal.aborted) {
     process.stderr.write("[sidecar] SDK completed without result — emitting error run_result\n");
-    const errorSummary = processor.buildExecutionErrorSummary(
+    const [errorSummary, orphanedNoResult] = processor.buildExecutionErrorSummary(
       "Agent ended without producing a result",
     );
+    for (const item of orphanedNoResult) {
+      onMessage(item as Record<string, unknown>);
+    }
     onMessage({ type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
   }
 }

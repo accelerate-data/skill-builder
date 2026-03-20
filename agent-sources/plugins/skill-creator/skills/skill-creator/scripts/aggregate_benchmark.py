@@ -104,10 +104,13 @@ def load_run_results(benchmark_dir: Path) -> dict:
 
     for eval_idx, eval_dir in enumerate(sorted(search_dir.glob("eval-*"))):
         metadata_path = eval_dir / "eval_metadata.json"
+        eval_name = None
         if metadata_path.exists():
             try:
                 with open(metadata_path) as mf:
-                    eval_id = json.load(mf).get("eval_id", eval_idx)
+                    meta = json.load(mf)
+                    eval_id = meta.get("eval_id", eval_idx)
+                    eval_name = meta.get("eval_name")
             except (json.JSONDecodeError, OSError):
                 eval_id = eval_idx
         else:
@@ -157,6 +160,7 @@ def load_run_results(benchmark_dir: Path) -> dict:
                 summary = grading.get("summary") or {}
                 result = {
                     "eval_id": eval_id,
+                    "eval_name": eval_name,
                     "run_number": run_number,
                     "pass_rate": summary.get("pass_rate", 0.0),
                     "passed": summary.get("passed", 0),
@@ -266,7 +270,7 @@ def generate_benchmark(benchmark_dir: Path, skill_name: str = "", skill_path: st
     runs = []
     for config in results:
         for result in results[config]:
-            runs.append({
+            run_entry = {
                 "eval_id": result["eval_id"],
                 "configuration": config,
                 "run_number": result["run_number"],
@@ -282,7 +286,10 @@ def generate_benchmark(benchmark_dir: Path, skill_name: str = "", skill_path: st
                 },
                 "expectations": result["expectations"],
                 "notes": result["notes"]
-            })
+            }
+            if result.get("eval_name"):
+                run_entry["eval_name"] = result["eval_name"]
+            runs.append(run_entry)
 
     # Determine eval IDs from results
     eval_ids = sorted(set(

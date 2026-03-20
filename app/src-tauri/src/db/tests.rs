@@ -3207,56 +3207,6 @@ fn test_delete_imported_skill_by_skill_id() {
     assert!(get_imported_skill_by_id(&conn, "imp-test-del").unwrap().is_none());
 }
 
-#[test]
-fn test_get_imported_skill_by_purpose() {
-    let conn = create_test_db();
-    let skill = ImportedSkill {
-        skill_id: "imp-purpose-test".to_string(),
-        skill_name: "purpose-skill".to_string(),
-        is_active: true,
-        disk_path: std::env::temp_dir().join("purpose-skill").to_string_lossy().to_string(),
-        imported_at: "2025-01-01T00:00:00Z".to_string(),
-        is_bundled: false,
-        description: None,
-        purpose: Some("research".to_string()),
-        version: None,
-        model: None,
-        argument_hint: None,
-        user_invocable: None,
-        disable_model_invocation: None,
-        marketplace_source_url: None,
-    };
-    insert_imported_skill(&conn, &skill).unwrap();
-
-    let found = get_imported_skill_by_purpose(&conn, "research").unwrap();
-    assert!(found.is_some());
-    assert_eq!(found.unwrap().skill_name, "purpose-skill");
-
-    let not_found = get_imported_skill_by_purpose(&conn, "nonexistent").unwrap();
-    assert!(not_found.is_none());
-
-    // Inactive should not match
-    let inactive = ImportedSkill {
-        skill_id: "imp-inactive".to_string(),
-        skill_name: "inactive-skill".to_string(),
-        is_active: false,
-        disk_path: "/tmp/inactive".to_string(),
-        imported_at: "2025-01-01T00:00:00Z".to_string(),
-        is_bundled: false,
-        description: None,
-        purpose: Some("validate".to_string()),
-        version: None,
-        model: None,
-        argument_hint: None,
-        user_invocable: None,
-        disable_model_invocation: None,
-        marketplace_source_url: None,
-    };
-    insert_imported_skill(&conn, &inactive).unwrap();
-    let inactive_found = get_imported_skill_by_purpose(&conn, "validate").unwrap();
-    assert!(inactive_found.is_none(), "inactive skill should not match");
-}
-
 
 #[test]
 fn test_get_imported_skill_by_name_and_source_respects_source_filter() {

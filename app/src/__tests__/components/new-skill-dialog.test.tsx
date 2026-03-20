@@ -268,7 +268,6 @@ describe("SkillDialog (create mode)", () => {
     await fillStep1AndAdvance(user);
 
     expect(screen.getByText("Step 2 of 2")).toBeInTheDocument();
-    expect(screen.getByLabelText("Version")).toBeInTheDocument();
     expect(screen.queryByLabelText("Model")).not.toBeInTheDocument();
   });
 
@@ -320,7 +319,7 @@ describe("SkillDialog (create mode)", () => {
         purpose: "domain",
         intakeJson: null,
         description: "A sales pipeline skill",
-        version: "1.0.0",
+        version: null,
         model: null,
         argumentHint: null,
         userInvocable: true,

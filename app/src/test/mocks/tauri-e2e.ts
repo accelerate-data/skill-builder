@@ -94,7 +94,6 @@ const mockResponses: Record<string, unknown> = {
   acquire_lock: undefined,
   release_lock: undefined,
   get_locked_skills: [],
-  check_lock: false,
   // Refine page
   start_refine_session: {
     session_id: "e2e-refine-session-001",
@@ -148,10 +147,7 @@ const mockResponses: Record<string, unknown> = {
     imported_at: new Date().toISOString(),
     is_bundled: false,
   },
-  toggle_skill_active: undefined,
   delete_imported_skill: undefined,
-  delete_workspace_skill: undefined,
-
   export_skill: `${E2E_ROOT}/export/test-skill.zip`,
   get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\nFollow these steps...",
   // GitHub import
@@ -208,6 +204,7 @@ const mockResponses: Record<string, unknown> = {
   preview_step_reset: [],
   get_step_agent_runs: [],
   verify_step_output: true,
+  read_latest_benchmark: null,
 };
 
 /** Normalize path separators to forward slashes for OS-agnostic comparison. */

@@ -390,6 +390,12 @@ fn test_refine_config_agent_id_format() {
 }
 
 #[test]
+fn test_direct_refine_config_agent_id_uses_agent_label() {
+    let (_, agent_id) = base_direct_config(BENCHMARK_AGENT_NAME);
+    assert!(agent_id.starts_with("benchmark-skill-my-skill-"));
+}
+
+#[test]
 fn test_refine_config_omits_model_for_named_agent() {
     let (config, _) = base_refine_config("test");
     assert!(config.model.is_none());
@@ -552,6 +558,30 @@ fn test_direct_config_disables_prompt_suggestions() {
 }
 
 #[test]
+fn test_direct_config_agent_id_uses_agent_label() {
+    let (_, agent_id) = base_direct_config(BENCHMARK_AGENT_NAME);
+    assert!(
+        agent_id.starts_with("benchmark-skill-my-skill-"),
+        "expected agent_id to start with 'benchmark-skill-my-skill-', got: {}",
+        agent_id
+    );
+
+    let (_, agent_id) = base_direct_config(REWRITE_AGENT_NAME);
+    assert!(
+        agent_id.starts_with("rewrite-skill-my-skill-"),
+        "expected agent_id to start with 'rewrite-skill-my-skill-', got: {}",
+        agent_id
+    );
+
+    let (_, agent_id) = base_direct_config(VALIDATE_AGENT_NAME);
+    assert!(
+        agent_id.starts_with("validate-skill-my-skill-"),
+        "expected agent_id to start with 'validate-skill-my-skill-', got: {}",
+        agent_id
+    );
+}
+
+#[test]
 fn test_materialize_refine_validation_output_writes_context_files() {
     let tmp = tempdir().unwrap();
     let workspace_skill_root = tmp.path().join("my-skill");
@@ -618,7 +648,7 @@ fn test_materialize_refine_validation_output_rejects_empty_markdown_fields() {
 }
 
 #[test]
-fn test_finalize_refine_run_commits_and_returns_git_diff_for_new_file() {
+fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
     crate::git::ensure_repo(dir.path()).unwrap();
@@ -628,9 +658,11 @@ fn test_finalize_refine_run_commits_and_returns_git_diff_for_new_file() {
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
     crate::git::commit_all(dir.path(), "initial").unwrap();
 
+    // Simulate agent adding a new file and committing
     let refs_dir = skill_dir.join("references");
     std::fs::create_dir_all(&refs_dir).unwrap();
     std::fs::write(refs_dir.join("glossary.md"), "# Glossary\n").unwrap();
+    crate::git::commit_all(dir.path(), "my-skill: add glossary").unwrap();
 
     let result = finalize_refine_run_inner(
         "my-skill",
@@ -649,7 +681,7 @@ fn test_finalize_refine_run_commits_and_returns_git_diff_for_new_file() {
 }
 
 #[test]
-fn test_finalize_refine_run_returns_no_commit_when_nothing_changed() {
+fn test_finalize_refine_run_returns_head_sha_even_when_no_new_changes() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
     crate::git::ensure_repo(dir.path()).unwrap();
@@ -667,9 +699,8 @@ fn test_finalize_refine_run_returns_no_commit_when_nothing_changed() {
     )
     .unwrap();
 
-    assert!(result.commit_sha.is_none());
-    assert_eq!(result.diff.stat, "no changes");
-    assert!(result.diff.files.is_empty());
+    // HEAD always exists, so commit_sha is always Some
+    assert!(result.commit_sha.is_some());
 }
 
 #[test]
@@ -697,7 +728,12 @@ fn test_finalize_refine_validation_writes_workspace_context_without_skill_diff()
     let skill_dir = skills_dir.path().join("my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
-    crate::git::commit_all(skills_dir.path(), "initial").unwrap();
+    // First commit adds the skill (simulates generate step)
+    crate::git::commit_all(skills_dir.path(), "generate skill").unwrap();
+    // Second commit touches an unrelated file so HEAD's diff vs parent
+    // does not include skill files (simulates agent refine with no skill changes)
+    std::fs::write(skills_dir.path().join("other.txt"), "unrelated\n").unwrap();
+    crate::git::commit_all(skills_dir.path(), "refine: validation only").unwrap();
 
     let payload = serde_json::json!({
         "status": "validation_complete",
@@ -713,7 +749,8 @@ fn test_finalize_refine_validation_writes_workspace_context_without_skill_diff()
     )
     .unwrap();
 
-    assert!(result.commit_sha.is_none());
+    // HEAD always exists, so commit_sha is always Some
+    assert!(result.commit_sha.is_some());
     assert!(result.diff.files.is_empty());
     assert_eq!(result.files.len(), 1);
     assert_eq!(result.files[0].path, "SKILL.md");

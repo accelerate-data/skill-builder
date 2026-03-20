@@ -50,62 +50,6 @@ pub(super) fn new_refine_usage_session_id(skill_name: &str) -> String {
     format!("synthetic:refine:{}:{}", skill_name, uuid::Uuid::new_v4())
 }
 
-/// Snapshot the current skill directory to `{workspace_dir}/skill-snapshot/`
-/// so the benchmark agent can use it as the prior version baseline.
-/// Returns the snapshot directory path, or None if the skill doesn't exist.
-pub(super) fn snapshot_skill_for_benchmark(
-    skills_path: &str,
-    workspace_path: &str,
-    skill_name: &str,
-) -> Option<String> {
-    let src = Path::new(skills_path).join(skill_name);
-    if !src.join("SKILL.md").exists() {
-        log::debug!(
-            "[snapshot_skill] no SKILL.md at {} — skipping snapshot",
-            src.display()
-        );
-        return None;
-    }
-    let workspace_dir = Path::new(workspace_path).join(skill_name);
-    let dest = workspace_dir.join("skill-snapshot");
-
-    // Remove stale snapshot
-    if dest.exists() {
-        if let Err(e) = std::fs::remove_dir_all(&dest) {
-            log::warn!(
-                "[snapshot_skill] failed to remove stale snapshot at {}: {}",
-                dest.display(),
-                e
-            );
-        }
-    }
-
-    // Copy skill directory tree
-    if let Err(e) = copy_dir_recursive(&src, &dest) {
-        log::warn!(
-            "[snapshot_skill] failed to snapshot {} to {}: {}",
-            src.display(),
-            dest.display(),
-            e
-        );
-        return None;
-    }
-
-    let snapshot_str = dest.to_string_lossy().replace('\\', "/");
-    log::info!(
-        "[snapshot_skill] created snapshot for skill={} at {}",
-        skill_name,
-        snapshot_str
-    );
-    Some(snapshot_str)
-}
-
-/// Recursively copy a directory. Delegates to the shared fs_utils implementation
-/// which skips symlinks to prevent infinite cycles.
-fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
-    crate::fs_utils::copy_dir_recursive(src, dest)
-}
-
 pub(super) fn ensure_skill_workspace_dir(workspace_path: &str, skill_name: &str) {
     let skill_workspace_dir = Path::new(workspace_path).join(skill_name);
     if !skill_workspace_dir.exists() {
@@ -260,8 +204,10 @@ pub(super) fn build_direct_refine_config(
     agent_name: &'static str,
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
+    let agent_label = agent_name.rsplit(':').next().unwrap_or(agent_name);
     let agent_id = format!(
-        "refine-{}-{}",
+        "{}-{}-{}",
+        agent_label,
         skill_name,
         chrono::Utc::now().timestamp_millis()
     );

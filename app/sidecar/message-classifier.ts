@@ -25,6 +25,13 @@ const INIT_PROGRESS_SUBTYPES = new Set([
   "sdk_ready",
 ]);
 
+/** System subtypes for background task lifecycle events. */
+const TASK_SUBTYPES = new Set([
+  "task_started",
+  "task_progress",
+  "task_notification",
+]);
+
 /**
  * Classify a raw SDK message into one of 5 categories.
  *
@@ -47,6 +54,7 @@ export function classifyRawMessage(raw: Record<string, unknown>): MessageCategor
 
     if (HARD_NOISE_SUBTYPES.has(subtype)) return "hardNoise";
     if (subtype === "compact_boundary") return "compact";
+    if (TASK_SUBTYPES.has(subtype)) return "task";
     if (INIT_PROGRESS_SUBTYPES.has(subtype)) return "system";
 
     // init subtype carries session_id and model — forward as system

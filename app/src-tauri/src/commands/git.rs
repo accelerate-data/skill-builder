@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::db::Db;
-use crate::types::{SkillCommit, SkillDiff};
+use crate::types::SkillCommit;
 
 /// Resolve the skill output root: skills_path if configured, else workspace_path.
 fn resolve_output_root(db: &Db, workspace_path: &str) -> Result<String, String> {
@@ -26,24 +26,6 @@ pub fn get_skill_history(
         return Ok(Vec::new());
     }
     crate::git::get_history(root, &skill_name, limit.unwrap_or(100))
-}
-
-#[tauri::command]
-pub fn get_skill_diff(
-    workspace_path: String,
-    skill_name: String,
-    sha_a: String,
-    sha_b: String,
-    db: tauri::State<'_, Db>,
-) -> Result<SkillDiff, String> {
-    log::info!(
-        "[get_skill_diff] skill={} sha_a={} sha_b={}",
-        skill_name,
-        sha_a,
-        sha_b
-    );
-    let output_root = resolve_output_root(&db, &workspace_path)?;
-    crate::git::get_diff(Path::new(&output_root), &sha_a, &sha_b, &skill_name)
 }
 
 #[tauri::command]
@@ -158,33 +140,6 @@ mod tests {
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
         let _ = db; // keep db alive
-    }
-
-    // --- get_skill_diff (via crate::git::get_diff) ---
-
-    #[test]
-    fn test_get_skill_diff_returns_diff_between_two_commits() {
-        let dir = tempdir().unwrap();
-        let repo_path = dir.path();
-
-        let sha_a = init_skill_repo(repo_path, "diff-skill", "# Version 1");
-
-        std::fs::write(repo_path.join("diff-skill").join("SKILL.md"), "# Version 2").unwrap();
-        let sha_b = crate::git::commit_all(repo_path, "diff-skill: v2")
-            .unwrap()
-            .unwrap();
-
-        let diff = crate::git::get_diff(repo_path, &sha_a, &sha_b, "diff-skill").unwrap();
-        assert!(!diff.files.is_empty(), "diff should contain at least one file");
-
-        let skill_file = diff
-            .files
-            .iter()
-            .find(|f| f.path.contains("SKILL.md"))
-            .expect("SKILL.md should be in the diff");
-        assert_eq!(skill_file.status, "modified");
-        assert_eq!(skill_file.old_content.as_deref(), Some("# Version 1"));
-        assert_eq!(skill_file.new_content.as_deref(), Some("# Version 2"));
     }
 
     // --- restore_skill_version (via crate::git::restore_version) ---

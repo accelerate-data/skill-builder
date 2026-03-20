@@ -63,6 +63,63 @@ describe("WorkflowSidebar", () => {
     expect(onStepClick).not.toHaveBeenCalled();
   });
 
+  it("future steps are visually locked when preceding step has not completed", () => {
+    const pendingSteps = [
+      { id: 0, name: "Research", description: "", status: "completed" },
+      { id: 1, name: "Detailed Research", description: "", status: "in_progress" },
+      { id: 2, name: "Confirm Decisions", description: "", status: "pending" },
+      { id: 3, name: "Generate Skill", description: "", status: "pending" },
+    ] as const;
+
+    render(<WorkflowSidebar steps={[...pendingSteps]} currentStep={1} />);
+
+    const step3 = screen.getByRole("button", { name: /3\. Confirm Decisions/i });
+    const step4 = screen.getByRole("button", { name: /4\. Generate Skill/i });
+
+    expect(step3).toHaveClass("opacity-50");
+    expect(step3).toHaveClass("cursor-not-allowed");
+    expect(step4).toHaveClass("opacity-50");
+    expect(step4).toHaveClass("cursor-not-allowed");
+  });
+
+  it("future locked steps do not fire onStepClick when clicked", async () => {
+    const user = userEvent.setup({ delay: null });
+    const onStepClick = vi.fn();
+
+    const pendingSteps = [
+      { id: 0, name: "Research", description: "", status: "completed" },
+      { id: 1, name: "Detailed Research", description: "", status: "in_progress" },
+      { id: 2, name: "Confirm Decisions", description: "", status: "pending" },
+      { id: 3, name: "Generate Skill", description: "", status: "pending" },
+    ] as const;
+
+    render(<WorkflowSidebar steps={[...pendingSteps]} currentStep={1} onStepClick={onStepClick} />);
+
+    const futureStep = screen.getByRole("button", { name: /3\. Confirm Decisions/i });
+    await user.click(futureStep);
+
+    expect(onStepClick).not.toHaveBeenCalled();
+  });
+
+  it("keeps downstream steps locked when current step has failed", () => {
+    const failedSteps = [
+      { id: 0, name: "Research", description: "", status: "completed" },
+      { id: 1, name: "Detailed Research", description: "", status: "error" },
+      { id: 2, name: "Confirm Decisions", description: "", status: "pending" },
+      { id: 3, name: "Generate Skill", description: "", status: "pending" },
+    ] as const;
+
+    render(<WorkflowSidebar steps={[...failedSteps]} currentStep={1} />);
+
+    const step3 = screen.getByRole("button", { name: /3\. Confirm Decisions/i });
+    const step4 = screen.getByRole("button", { name: /4\. Generate Skill/i });
+
+    expect(step3).toHaveClass("opacity-50");
+    expect(step3).toHaveClass("cursor-not-allowed");
+    expect(step4).toHaveClass("opacity-50");
+    expect(step4).toHaveClass("cursor-not-allowed");
+  });
+
   it("shows canonical step name even when store step.name has been mutated (benchmark phase)", () => {
     // Simulate what happens when updateStepLabel(3, "Benchmark Skill", ...) is called:
     // the store step.name becomes "Benchmark Skill", but the sidebar must still show "Generate Skill".

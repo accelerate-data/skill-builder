@@ -170,8 +170,6 @@ describe("SkillDialog (edit mode)", () => {
     // Go to step 2
     await user.click(screen.getByRole("button", { name: /Next/i }));
     expect(screen.getByText("Step 2 of 2")).toBeInTheDocument();
-    expect(screen.getByLabelText("Version")).toBeInTheDocument();
-
     // Go back to step 1
     await user.click(screen.getByRole("button", { name: /Back/i }));
     expect(screen.getByText("Step 1 of 2")).toBeInTheDocument();
@@ -204,7 +202,7 @@ describe("SkillDialog (edit mode)", () => {
         tags: ["analytics", "crm"],
         intakeJson: null,
         description: "A skill for managing sales pipelines",
-        version: "1.0.0",
+        version: null,
         model: null,
         argumentHint: null,
         userInvocable: true,
@@ -216,7 +214,7 @@ describe("SkillDialog (edit mode)", () => {
       expect(onOpenChange).toHaveBeenCalledWith(false);
     });
     expect(onSaved).toHaveBeenCalled();
-    expect(toast.success).toHaveBeenCalledWith("Skill updated");
+    expect(toast.success).toHaveBeenCalledWith('Skill "sales-pipeline" updated');
   });
 
   it("shows error toast on failed save", async () => {

@@ -117,6 +117,7 @@ export interface SkillCommit {
   sha: string
   message: string
   timestamp: string
+  version?: string
 }
 
 export interface SkillFileContent {
@@ -307,14 +308,6 @@ export interface SkillMetadataOverride {
   disable_model_invocation?: boolean | null
 }
 
-export const PURPOSE_OPTIONS = [
-  { value: "general-purpose", label: "General Purpose" },
-  { value: "test-context", label: "Skill Test" },
-  { value: "research", label: "Research" },
-  { value: "validate", label: "Validate" },
-  { value: "skill-building", label: "Skill Standards" },
-] as const
-
 export interface MarketplaceImportResult {
   skill_name: string
   success: boolean
@@ -365,12 +358,11 @@ export interface DecisionsOutput {
   decisions: unknown[]
 }
 
-/** Structured output for workflow step 3 (generate-skill agent). */
-export interface GenerateSkillOutput {
-  status: "generated"
-  benchmark_status: "complete" | "partial" | "skipped"
-  benchmark_path?: string
-}
+/** Structured output for workflow step 3 (generate-skill, rewrite-skill, or benchmark-skill agent). */
+export type GenerateSkillOutput =
+  | { status: "generated"; skipped?: boolean; benchmark_path?: string }
+  | { status: "rewritten"; skipped?: boolean; benchmark_path?: string }
+  | { status: "complete" | "partial" | "skipped"; benchmark_path?: string }
 
 /** Discriminated union narrowing `structuredOutput` per workflow step index. */
 export type WorkflowStepStructuredOutput =

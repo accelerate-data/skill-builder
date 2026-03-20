@@ -223,16 +223,16 @@ export function useWorkflowGate({
     closeGateDialog();
     updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
     advanceToNextStep();
-    toast.success("Continuing with current answers");
+    toast.info("Continuing with current answers");
   }, [logGateAction, closeGateDialog, updateStepStatus, advanceToNextStep]);
 
   const handleGateLetMeAnswer = useCallback(() => {
     logGateAction("let_me_answer");
     closeGateDialog();
-    toast.info("Refreshing evaluator feedback...", { duration: 5000 });
+    const loadingId = toast.loading("Refreshing evaluator feedback...");
 
     if (!workspacePath) {
-      toast.warning("Workspace path is missing in settings. Could not refresh feedback from disk.", { duration: Infinity });
+      toast.warning("Workspace path is missing in settings. Could not refresh feedback from disk.", { id: loadingId, duration: Infinity });
       return;
     }
 
@@ -241,7 +241,7 @@ export function useWorkflowGate({
       .then((content) => {
         const parsed = parseClarifications(content ?? null);
         if (!parsed) {
-          toast.warning("Feedback file could not be parsed. You can still answer manually.", { duration: Infinity });
+          toast.warning("Feedback file could not be parsed. You can still answer manually.", { id: loadingId, duration: Infinity });
           return;
         }
 
@@ -249,13 +249,13 @@ export function useWorkflowGate({
 
         const addedNotes = Math.max(0, (parsed.answer_evaluator_notes?.length ?? 0) - prevNoteCount);
         if (addedNotes > 0) {
-          toast.success(`Loaded ${addedNotes} feedback note${addedNotes === 1 ? "" : "s"} for review.`);
+          toast.success(`Loaded ${addedNotes} feedback note${addedNotes === 1 ? "" : "s"} for review.`, { id: loadingId });
         } else {
-          toast.success("Feedback refreshed. You can update your answers now.");
+          toast.success("Feedback refreshed. You can update your answers now.", { id: loadingId });
         }
       })
       .catch(() => {
-        toast.warning("Could not refresh feedback from disk. You can still answer manually.", { duration: Infinity });
+        toast.warning("Could not refresh feedback from disk. You can still answer manually.", { id: loadingId, duration: Infinity });
       });
   }, [logGateAction, closeGateDialog, workspacePath, skillName, clarificationsData, onClarificationsUpdated]);
 
