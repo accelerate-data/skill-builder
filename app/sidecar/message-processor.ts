@@ -1051,19 +1051,6 @@ export class MessageProcessor {
     return [this.makeEnvelope(updated)];
   }
 
-  /**
-   * Process a task_notification event from the SDK stream (public API).
-   * Called directly from run-agent.ts and stream-session.ts for events
-   * that arrive with top-level `type: "task_notification"` (older SDK format).
-   * Returns display items so callers can emit them.
-   */
-  processTaskNotification(event: Record<string, unknown>): ProcessedMessage[] {
-    const taskId = event.agent_id as string | undefined
-      ?? event.task_id as string | undefined;
-    if (!taskId) return [];
-
-    return this.processTaskCompleted(taskId, event, Date.now());
-  }
 
   /**
    * Mark all remaining pending tool calls as orphaned.

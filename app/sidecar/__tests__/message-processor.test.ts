@@ -1179,7 +1179,7 @@ describe("MessageProcessor", () => {
       expect(processor.pendingBackgroundTaskCount).toBe(1);
     });
 
-    it("processTaskNotification removes completed background task", () => {
+    it("task_notification via process() removes completed background task", () => {
       // Launch background agent
       processor.process({
         type: "assistant",
@@ -1209,20 +1209,20 @@ describe("MessageProcessor", () => {
       });
       expect(processor.pendingBackgroundTaskCount).toBe(1);
 
-      // Task notification: completed (returns display items)
-      const out = processor.processTaskNotification({
-        type: "task_notification",
-        agent_id: "agent-xyz",
+      // Task notification via classifier → processTaskEvent → processTaskCompleted
+      const out = processor.process({
+        type: "system",
+        subtype: "task_notification",
+        task_id: "agent-xyz",
         status: "completed",
       });
       expect(processor.pendingBackgroundTaskCount).toBe(0);
-      // Should emit a subagent display item update
       const items = extractDisplayItems(out);
       expect(items).toHaveLength(1);
       expect(items[0].subagentStatus).toBe("complete");
     });
 
-    it("processTaskNotification removes failed background task", () => {
+    it("task_notification via process() removes failed background task", () => {
       processor.process({
         type: "assistant",
         message: {
@@ -1251,9 +1251,10 @@ describe("MessageProcessor", () => {
       });
       expect(processor.pendingBackgroundTaskCount).toBe(1);
 
-      const out = processor.processTaskNotification({
-        type: "task_notification",
-        agent_id: "agent-fail",
+      const out = processor.process({
+        type: "system",
+        subtype: "task_notification",
+        task_id: "agent-fail",
         status: "failed",
       });
       expect(processor.pendingBackgroundTaskCount).toBe(0);
@@ -1292,18 +1293,19 @@ describe("MessageProcessor", () => {
       }
       expect(processor.pendingBackgroundTaskCount).toBe(3);
 
-      // Complete one (processTaskNotification now returns display items)
-      const out1 = processor.processTaskNotification({
-        type: "task_notification",
-        agent_id: "agent-2",
+      // Complete one
+      const out1 = processor.process({
+        type: "system",
+        subtype: "task_notification",
+        task_id: "agent-2",
         status: "completed",
       });
       expect(extractDisplayItems(out1)).toHaveLength(1);
       expect(processor.pendingBackgroundTaskCount).toBe(2);
 
       // Complete remaining
-      processor.processTaskNotification({ type: "task_notification", agent_id: "agent-1", status: "completed" });
-      processor.processTaskNotification({ type: "task_notification", agent_id: "agent-3", status: "completed" });
+      processor.process({ type: "system", subtype: "task_notification", task_id: "agent-1", status: "completed" });
+      processor.process({ type: "system", subtype: "task_notification", task_id: "agent-3", status: "completed" });
       expect(processor.pendingBackgroundTaskCount).toBe(0);
     });
 

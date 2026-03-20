@@ -139,18 +139,9 @@ export async function runAgentRequest(
 
       const raw = message as Record<string, unknown>;
 
-      // Track background agent completion via task_notification events.
-      // Events with top-level type "task_notification" (older SDK) are handled
-      // here; events with type "system" + subtype "task_notification" are
-      // handled by the classifier → processTaskEvent path.
-      if (raw.type === "task_notification") {
-        const taskItems = processor.processTaskNotification(raw);
-        for (const item of taskItems) {
-          onMessage(item as Record<string, unknown>);
-        }
-      }
-
       // Process into display items + pass-through messages
+      // Task events (task_started/task_progress/task_notification) are routed
+      // through the "task" classifier category → processTaskEvent.
       const items = processor.process(raw);
       for (const item of items) {
         onMessage(item as Record<string, unknown>);
