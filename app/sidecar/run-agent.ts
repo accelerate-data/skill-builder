@@ -144,7 +144,10 @@ export async function runAgentRequest(
       // here; events with type "system" + subtype "task_notification" are
       // handled by the classifier → processTaskEvent path.
       if (raw.type === "task_notification") {
-        processor.processTaskNotification(raw);
+        const taskItems = processor.processTaskNotification(raw);
+        for (const item of taskItems) {
+          onMessage(item as Record<string, unknown>);
+        }
       }
 
       // Process into display items + pass-through messages

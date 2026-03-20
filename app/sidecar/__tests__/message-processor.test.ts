@@ -1209,16 +1209,20 @@ describe("MessageProcessor", () => {
       });
       expect(processor.pendingBackgroundTaskCount).toBe(1);
 
-      // Task notification: completed
-      processor.processTaskNotification({
+      // Task notification: completed (returns display items)
+      const out = processor.processTaskNotification({
         type: "task_notification",
         agent_id: "agent-xyz",
         status: "completed",
       });
       expect(processor.pendingBackgroundTaskCount).toBe(0);
+      // Should emit a subagent display item update
+      const items = extractDisplayItems(out);
+      expect(items).toHaveLength(1);
+      expect(items[0].subagentStatus).toBe("complete");
     });
 
-    it("processTaskNotification removes errored background task", () => {
+    it("processTaskNotification removes failed background task", () => {
       processor.process({
         type: "assistant",
         message: {
@@ -1247,12 +1251,13 @@ describe("MessageProcessor", () => {
       });
       expect(processor.pendingBackgroundTaskCount).toBe(1);
 
-      processor.processTaskNotification({
+      const out = processor.processTaskNotification({
         type: "task_notification",
         agent_id: "agent-fail",
-        status: "error",
+        status: "failed",
       });
       expect(processor.pendingBackgroundTaskCount).toBe(0);
+      expect(extractDisplayItems(out)[0].subagentStatus).toBe("error");
     });
 
     it("tracks multiple background agents and decrements individually", () => {
@@ -1287,12 +1292,13 @@ describe("MessageProcessor", () => {
       }
       expect(processor.pendingBackgroundTaskCount).toBe(3);
 
-      // Complete one
-      processor.processTaskNotification({
+      // Complete one (processTaskNotification now returns display items)
+      const out1 = processor.processTaskNotification({
         type: "task_notification",
         agent_id: "agent-2",
         status: "completed",
       });
+      expect(extractDisplayItems(out1)).toHaveLength(1);
       expect(processor.pendingBackgroundTaskCount).toBe(2);
 
       // Complete remaining
@@ -1301,7 +1307,7 @@ describe("MessageProcessor", () => {
       expect(processor.pendingBackgroundTaskCount).toBe(0);
     });
 
-    it("buildShutdownSummary orphans remaining background tasks", () => {
+    it("buildShutdownSummary orphans remaining background tasks with error display items", () => {
       // Launch a background agent
       processor.process({
         type: "assistant",
@@ -1331,9 +1337,14 @@ describe("MessageProcessor", () => {
       });
       expect(processor.pendingBackgroundTaskCount).toBe(1);
 
-      // Shutdown clears pending background tasks
-      processor.buildShutdownSummary();
+      // Shutdown clears pending background tasks and emits error display items
+      const [, orphaned] = processor.buildShutdownSummary();
       expect(processor.pendingBackgroundTaskCount).toBe(0);
+
+      // Should include an error-status subagent display item for the orphaned bg task
+      const items = extractDisplayItems(orphaned);
+      const bgOrphans = items.filter((i) => i.type === "subagent" && i.subagentStatus === "error");
+      expect(bgOrphans).toHaveLength(1);
     });
 
     it("does not track non-background Agent tool results", () => {

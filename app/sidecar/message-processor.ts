@@ -1032,7 +1032,8 @@ export class MessageProcessor {
     const subagent = this.backgroundTaskSubagents.get(taskId);
     if (!subagent) return [];
 
-    const isError = status === "failed" || status === "stopped";
+    // "failed" is an error; "stopped" is user-initiated cancellation (not a failure)
+    const isError = status === "failed";
     const updated: DisplayItem = {
       ...subagent,
       subagentStatus: isError ? "error" : "complete",
@@ -1053,21 +1054,15 @@ export class MessageProcessor {
   /**
    * Process a task_notification event from the SDK stream (public API).
    * Called directly from run-agent.ts and stream-session.ts for events
-   * that arrive with `type: "task_notification"` (top-level type, not subtype).
-   * Delegates to processTaskCompleted for state tracking.
+   * that arrive with top-level `type: "task_notification"` (older SDK format).
+   * Returns display items so callers can emit them.
    */
-  processTaskNotification(event: Record<string, unknown>): void {
+  processTaskNotification(event: Record<string, unknown>): ProcessedMessage[] {
     const taskId = event.agent_id as string | undefined
       ?? event.task_id as string | undefined;
-    const status = event.status as string | undefined;
+    if (!taskId) return [];
 
-    if (taskId && (status === "completed" || status === "error" || status === "failed" || status === "stopped")) {
-      this.pendingBackgroundTasks.delete(taskId);
-      this.backgroundTaskSubagents.delete(taskId);
-      process.stderr.write(
-        `[message-processor] event=task_notification_direct task_id=${taskId} status=${status} remaining=${this.pendingBackgroundTasks.size}\n`,
-      );
-    }
+    return this.processTaskCompleted(taskId, event, Date.now());
   }
 
   /**
@@ -1092,11 +1087,19 @@ export class MessageProcessor {
     this.toolCallMap.clear();
     this.toolCallTimestamps.clear();
 
-    // Also log orphaned background tasks
-    for (const [agentId, toolUseId] of this.pendingBackgroundTasks) {
+    // Emit error status for orphaned background agents so the frontend
+    // transitions them out of "running" state.
+    for (const [agentId, subagent] of this.backgroundTaskSubagents) {
+      const toolUseId = this.pendingBackgroundTasks.get(agentId);
       process.stderr.write(
-        `[message-processor] event=orphan_background_task agent_id=${agentId} tool_use_id=${toolUseId}\n`,
+        `[message-processor] event=orphan_background_task agent_id=${agentId} tool_use_id=${toolUseId ?? "unknown"}\n`,
       );
+      orphanedUpdates.push(this.makeEnvelope({
+        ...subagent,
+        subagentStatus: "error",
+        lastToolName: undefined,
+        timestamp: now,
+      }));
     }
     this.pendingBackgroundTasks.clear();
     this.backgroundTaskSubagents.clear();

@@ -253,7 +253,10 @@ export class StreamSession {
         // here; events with type "system" + subtype "task_notification" are
         // handled by the classifier → processTaskEvent path.
         if (msg.type === "task_notification") {
-          processor.processTaskNotification(msg);
+          const taskItems = processor.processTaskNotification(msg);
+          for (const item of taskItems) {
+            onMessage(this.currentRequestId, item as Record<string, unknown>);
+          }
         }
 
         // Process into display items + pass-through messages
