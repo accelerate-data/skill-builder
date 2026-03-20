@@ -158,16 +158,3 @@ pub struct SkillCommit {
     pub version: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkillDiff {
-    pub files: Vec<FileDiff>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileDiff {
-    pub path: String,
-    /// One of "added", "modified", "deleted"
-    pub status: String,
-    pub old_content: Option<String>,
-    pub new_content: Option<String>,
-}

@@ -95,6 +95,7 @@ export async function runAgentRequest(
   // Ref for the Stop hook — assigned after processor creation.
   const processorRef: { current: MessageProcessor | null } = { current: null };
 
+
   // Process raw SDK messages through MessageProcessor for structured display items
   const processor = new MessageProcessor({
     skillName: config.skillName,

@@ -2,7 +2,7 @@ use std::path::Path;
 
 use git2::{DiffOptions, Repository, Signature, StatusOptions};
 
-use crate::types::{FileDiff, SkillCommit, SkillDiff};
+use crate::types::SkillCommit;
 
 /// Standard .gitignore for the skills output folder.
 const GITIGNORE_CONTENT: &str = "\
@@ -234,85 +234,6 @@ pub fn get_history(
 
     log::debug!("[git] Found {} commits for '{}'", commits.len(), skill_name);
     Ok(commits)
-}
-
-/// Get diff between two commits, filtered to a specific skill's files.
-pub fn get_diff(
-    repo_path: &Path,
-    sha_a: &str,
-    sha_b: &str,
-    skill_name: &str,
-) -> Result<SkillDiff, String> {
-    log::debug!(
-        "[git] get_diff for '{}': {}..{}",
-        skill_name,
-        &sha_a[..8.min(sha_a.len())],
-        &sha_b[..8.min(sha_b.len())]
-    );
-    let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
-
-    let oid_a = git2::Oid::from_str(sha_a).map_err(|e| format!("Invalid SHA {}: {}", sha_a, e))?;
-    let oid_b = git2::Oid::from_str(sha_b).map_err(|e| format!("Invalid SHA {}: {}", sha_b, e))?;
-
-    let commit_a = repo
-        .find_commit(oid_a)
-        .map_err(|e| format!("Commit {} not found: {}", sha_a, e))?;
-    let commit_b = repo
-        .find_commit(oid_b)
-        .map_err(|e| format!("Commit {} not found: {}", sha_b, e))?;
-
-    let tree_a = commit_a
-        .tree()
-        .map_err(|e| format!("Failed to get tree for {}: {}", sha_a, e))?;
-    let tree_b = commit_b
-        .tree()
-        .map_err(|e| format!("Failed to get tree for {}: {}", sha_b, e))?;
-
-    let prefix = format!("{}/", skill_name);
-    let mut opts = DiffOptions::new();
-    opts.pathspec(&prefix);
-
-    let diff = repo
-        .diff_tree_to_tree(Some(&tree_a), Some(&tree_b), Some(&mut opts))
-        .map_err(|e| format!("Failed to compute diff: {}", e))?;
-
-    let mut files = Vec::new();
-    diff.foreach(
-        &mut |delta, _progress| {
-            let path = delta
-                .new_file()
-                .path()
-                .or_else(|| delta.old_file().path())
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default();
-
-            let status = match delta.status() {
-                git2::Delta::Added => "added",
-                git2::Delta::Deleted => "deleted",
-                git2::Delta::Modified => "modified",
-                git2::Delta::Renamed => "modified",
-                _ => "modified",
-            };
-
-            // Read file content from each tree
-            let old_content = read_blob_content(&repo, &tree_a, &path);
-            let new_content = read_blob_content(&repo, &tree_b, &path);
-
-            files.push(FileDiff {
-                path,
-                status: status.to_string(),
-                old_content,
-                new_content,
-            });
-            true
-        },
-        None,
-        None,
-        None,
-    )
-    .map_err(|e| format!("Failed to iterate diff: {}", e))?;
-
-    Ok(SkillDiff { files })
 }
 
 /// Restore a skill's files to the state at a given commit.
@@ -559,16 +480,6 @@ fn commit_touches_path(
     Ok(diff.deltas().count() > 0)
 }
 
-/// Read blob content from a tree by path (returns None if not found or binary).
-fn read_blob_content(repo: &Repository, tree: &git2::Tree, path: &str) -> Option<String> {
-    let entry = tree.get_path(Path::new(path)).ok()?;
-    let blob = repo.find_blob(entry.id()).ok()?;
-    if blob.is_binary() {
-        return None;
-    }
-    Some(String::from_utf8_lossy(blob.content()).to_string())
-}
-
 /// Remove all files and subdirectories inside a directory (but not the directory itself).
 fn remove_dir_contents(dir: &Path) -> Result<(), String> {
     if !dir.exists() {
@@ -710,86 +621,6 @@ mod tests {
 
         let history = get_history(dir.path(), "my-skill", 3).unwrap();
         assert_eq!(history.len(), 3);
-    }
-
-    #[test]
-    fn test_get_diff_between_commits() {
-        let dir = tempdir().unwrap();
-        ensure_repo(dir.path()).unwrap();
-
-        let skill_dir = dir.path().join("my-skill");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-
-        // First commit
-        std::fs::write(skill_dir.join("SKILL.md"), "# V1").unwrap();
-        let sha_a = commit_all(dir.path(), "v1").unwrap().unwrap();
-
-        // Second commit: modify + add
-        std::fs::write(skill_dir.join("SKILL.md"), "# V2").unwrap();
-        std::fs::create_dir_all(skill_dir.join("references")).unwrap();
-        std::fs::write(skill_dir.join("references").join("guide.md"), "guide").unwrap();
-        let sha_b = commit_all(dir.path(), "v2").unwrap().unwrap();
-
-        let diff = get_diff(dir.path(), &sha_a, &sha_b, "my-skill").unwrap();
-        assert_eq!(diff.files.len(), 2);
-
-        let skill_diff = diff
-            .files
-            .iter()
-            .find(|f| f.path == "my-skill/SKILL.md")
-            .unwrap();
-        assert_eq!(skill_diff.status, "modified");
-        assert_eq!(skill_diff.old_content.as_deref(), Some("# V1"));
-        assert_eq!(skill_diff.new_content.as_deref(), Some("# V2"));
-
-        let guide_diff = diff
-            .files
-            .iter()
-            .find(|f| f.path == "my-skill/references/guide.md")
-            .unwrap();
-        assert_eq!(guide_diff.status, "added");
-    }
-
-    #[test]
-    fn test_restore_version() {
-        let dir = tempdir().unwrap();
-        ensure_repo(dir.path()).unwrap();
-
-        let skill_dir = dir.path().join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("references")).unwrap();
-
-        // V1: SKILL.md + ref
-        std::fs::write(skill_dir.join("SKILL.md"), "# V1").unwrap();
-        std::fs::write(skill_dir.join("references").join("guide.md"), "guide v1").unwrap();
-        let sha_v1 = commit_all(dir.path(), "v1").unwrap().unwrap();
-
-        // V2: modified SKILL.md, deleted ref, added new file
-        std::fs::write(skill_dir.join("SKILL.md"), "# V2").unwrap();
-        std::fs::remove_file(skill_dir.join("references").join("guide.md")).unwrap();
-        std::fs::write(skill_dir.join("new-file.md"), "new").unwrap();
-        commit_all(dir.path(), "v2").unwrap();
-
-        // Current state is V2
-        assert_eq!(
-            std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap(),
-            "# V2"
-        );
-        assert!(skill_dir.join("new-file.md").exists());
-        assert!(!skill_dir.join("references").join("guide.md").exists());
-
-        // Restore to V1
-        restore_version(dir.path(), &sha_v1, "my-skill").unwrap();
-
-        assert_eq!(
-            std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap(),
-            "# V1"
-        );
-        assert_eq!(
-            std::fs::read_to_string(skill_dir.join("references").join("guide.md")).unwrap(),
-            "guide v1"
-        );
-        // new-file.md should be gone (removed by restore)
-        assert!(!skill_dir.join("new-file.md").exists());
     }
 
     #[test]

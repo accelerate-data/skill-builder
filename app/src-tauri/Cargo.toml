@@ -29,7 +29,6 @@ futures = "0.3"
 thiserror = "2"
 log = "0.4"
 dirs = "6"
-base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }
 git2 = "0.20"
 semver = "1"

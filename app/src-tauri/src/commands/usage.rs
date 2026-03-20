@@ -42,19 +42,6 @@ pub fn get_workflow_skill_names(db: tauri::State<'_, Db>) -> Result<Vec<String>,
 }
 
 #[tauri::command]
-pub fn get_recent_runs(
-    db: tauri::State<'_, Db>,
-    limit: usize,
-) -> Result<Vec<AgentRunRecord>, String> {
-    log::info!("[get_recent_runs] limit={}", limit);
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[get_recent_runs] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    crate::db::get_recent_runs(&conn, limit)
-}
-
-#[tauri::command]
 pub fn get_usage_by_step(
     db: tauri::State<'_, Db>,
     hide_cancelled: bool,
