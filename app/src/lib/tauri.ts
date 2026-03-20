@@ -145,18 +145,6 @@ export const runWorkflowStep = (
   workflowSessionId?: string,
 ) => invoke<string>("run_workflow_step", { skillName, stepId, workspacePath, workflowSessionId: workflowSessionId ?? null });
 
-export const runBenchmarkPhase = (
-  skillName: string,
-  workspacePath: string,
-  baselineMode: "no_skill" | "prior_version",
-  workflowSessionId?: string,
-) => invoke<string>("run_benchmark_phase", {
-  skillName,
-  workspacePath,
-  baselineMode,
-  workflowSessionId: workflowSessionId ?? null,
-});
-
 export const materializeWorkflowStepOutput = (
   skillName: string,
   stepId: 0 | 1 | 2 | 3,

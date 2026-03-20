@@ -449,6 +449,63 @@ pub fn extract_skill_at_tag(
     Ok(())
 }
 
+/// Result of auto-detecting the benchmark baseline from git tags.
+pub struct BenchmarkBaseline {
+    /// `"prior_version"` or `"no_skill"`
+    pub mode: String,
+    /// Path to extracted snapshot directory (set when mode == `"prior_version"`)
+    pub snapshot_dir: Option<String>,
+}
+
+/// Determine the benchmark baseline by checking git for a prior version tag.
+///
+/// If a prior tag exists and extraction succeeds → `prior_version` with snapshot.
+/// Otherwise → `no_skill` (benchmark skill vs no-skill baseline).
+pub fn resolve_benchmark_baseline(
+    skills_repo_path: &Path,
+    skill_name: &str,
+    workspace_dir: &Path,
+) -> BenchmarkBaseline {
+    match prior_skill_tag(skills_repo_path, skill_name) {
+        Some(tag) => {
+            let dest = workspace_dir.join("skill-snapshot");
+            match extract_skill_at_tag(skills_repo_path, skill_name, &tag, &dest) {
+                Ok(()) => {
+                    let snapshot_str = dest.to_string_lossy().replace('\\', "/");
+                    log::info!(
+                        "[git] resolve_benchmark_baseline: skill='{}' tag='{}' snapshot={}",
+                        skill_name, tag, snapshot_str
+                    );
+                    BenchmarkBaseline {
+                        mode: "prior_version".to_string(),
+                        snapshot_dir: Some(snapshot_str),
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[git] resolve_benchmark_baseline: skill='{}' extraction failed: {}",
+                        skill_name, e
+                    );
+                    BenchmarkBaseline {
+                        mode: "no_skill".to_string(),
+                        snapshot_dir: None,
+                    }
+                }
+            }
+        }
+        None => {
+            log::info!(
+                "[git] resolve_benchmark_baseline: skill='{}' no prior tag, using no_skill baseline",
+                skill_name
+            );
+            BenchmarkBaseline {
+                mode: "no_skill".to_string(),
+                snapshot_dir: None,
+            }
+        }
+    }
+}
+
 // --- Helpers ---
 
 fn default_signature(repo: &Repository) -> Result<Signature<'static>, String> {

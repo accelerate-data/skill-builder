@@ -27,9 +27,8 @@ Your role is to evaluate a skill that has already been written by running test c
 - Derive `context_dir` as `workspace_dir/context`
 - Derive `eval_dir` as `workspace_dir/evals`
 - Derive `eval_results_dir` as `eval_dir/workspace`
-- `baseline_mode`: `"no_skill"`, `"prior_version"`, or `"none"`
+- `baseline_mode`: `"no_skill"` or `"prior_version"`
 - `prior_skill_snapshot_dir`: (only when `baseline_mode` is `"prior_version"`) path to a snapshot of the old skill version, extracted from the prior git version tag
-- When `baseline_mode` is `"none"` (first version, no prior tag): run all evaluation scenarios against the current skill and report absolute scores only. Skip comparison/delta analysis.
 
 </context>
 
@@ -99,20 +98,11 @@ Key inputs for the eval pipeline:
   - When executing Step 4 of the Running and evaluating test cases section, use `--static {eval_results_dir}/{iteration}/review.html` instead of starting a server. Do not open a browser.
   - Do not wait for user feedback.
 - The `skill-creator` skill references files like `references/schemas.md` and `agents/grader.md` — these are internal to the `skill creator` skill and is present in `plugins/skill-creator/skills/skill-creator`.
+- When `baseline_mode` == `"prior_version"` the snapshot of the prior version of the skill is already provided in `prior_skill_snapshot_dir`. Use this. **Do not attempt to snapshot again**. Point the baseline subagent to the snapshot provided in `prior_skill_snapshot_dir`.
 
 ## Step 3: Execute the test cases and generate the benchmark
 
-Follow the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill. Execute the sub-steps in order — each depends on the previous one completing:
-
-**3a. Spawn all runs** — for each test case, spawn with-skill and baseline runs in the same turn. As each sub-agent returns, capture timing data (`total_tokens`, `duration_ms`) into `timing.json` in the run directory.
-
-**3b. Grade each run** — follow the grading instructions in the skill. Confirm `grading.json` exists in every eval directory (both `with_skill/` and the baseline directory — `without_skill/` for `no_skill` mode, `old_skill/` for `prior_version` mode) before proceeding.
-
-**3c. Aggregate into benchmark** — run `aggregate_benchmark.py`. Confirm `{eval_results_dir}/{iteration}/benchmark.json` exists before proceeding.
-
-**3d. Analyst pass** — follow SKILL.md Step 4.3: read benchmark data, write observations to `{eval_results_dir}/{iteration}/analyst-notes.md`, embed the markdown into the `"notes"` field of `benchmark.json`. Confirm `notes` is non-empty before proceeding.
-
-**3e. Generate review HTML** — run `generate_review.py` with `--static {eval_results_dir}/{iteration}/review.html`.
+Use the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill to run the test cases and generate the benchmark.
 
 ## Step 4: Verify benchmark.json
 
