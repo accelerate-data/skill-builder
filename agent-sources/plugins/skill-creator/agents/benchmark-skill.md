@@ -56,13 +56,13 @@ Read and verify that the required inputs exist before proceeding:
 - Read `{skill_output_dir}/SKILL.md` — this is the skill being benchmarked. If it does not exist or is a stub (contains `contradictory_inputs: true` or `scope_recommendation: true` in frontmatter), return immediately:
 
 ```json
-{ "status": "benchmarked", "benchmark_status": "skipped", "call_trace": ["validate-inputs-stub"] }
+{ "status": "skipped", "call_trace": ["validate-inputs-stub"] }
 ```
 
 - Read `{eval_dir}/evals.json` — this file is required and contains the test case definitions. If it does not exist, return immediately:
 
 ```json
-{ "status": "benchmarked", "benchmark_status": "skipped", "call_trace": ["validate-inputs-missing-evals"] }
+{ "status": "skipped", "call_trace": ["validate-inputs-missing-evals"] }
 ```
 
 - If `baseline_mode` is `"prior_version"`:
@@ -71,7 +71,7 @@ Read and verify that the required inputs exist before proceeding:
 - Read `{workspace_dir}/user-context.md` for skill metadata (name, purpose, description). If it does not exist, return immediately:
 
 ```json
-{ "status": "benchmarked", "benchmark_status": "skipped", "call_trace": ["validate-inputs-missing-user-context"] }
+{ "status": "skipped", "call_trace": ["validate-inputs-missing-user-context"] }
 ```
 
 ## Step 1: Determine iteration number
@@ -118,9 +118,9 @@ Follow the **Running and evaluating test cases** section in `skill-creator:skill
 
 Read `{eval_results_dir}/{iteration}/benchmark.json`.
 
-- If it exists and contains a valid `run_summary` with per-configuration statistics, return `benchmark_status: "complete"`.
-- If it exists but is missing some configurations or some evals had errors, return `benchmark_status: "partial"`.
-- If it does not exist after Step 3 completed (aggregation script failed), return `benchmark_status: "partial"`.
+- If it exists and contains a valid `run_summary` with per-configuration statistics, return `status: "complete"`.
+- If it exists but is missing some configurations or some evals had errors, return `status: "partial"`.
+- If it does not exist after Step 3 completed (aggregation script failed), return `status: "partial"`.
 
 All non-skipped returns must include `"benchmark_path": "evals/workspace/{iteration}"`.
 
@@ -148,8 +148,7 @@ Return JSON only:
 
 ```json
 {
-  "status": "benchmarked",
-  "benchmark_status": "complete",
+  "status": "complete",
   "benchmark_path": "evals/workspace/{iteration}",
   "call_trace": ["validate-inputs", "determine-iteration", "run-evals", "verify-benchmark"]
 }
@@ -158,12 +157,12 @@ Return JSON only:
 For stub/skipped cases, return:
 
 ```json
-{ "status": "benchmarked", "benchmark_status": "skipped", "call_trace": ["validate-inputs-stub"] }
+{ "status": "skipped", "call_trace": ["validate-inputs-stub"] }
 ```
 
-`benchmark_status`: `"complete"` when all evals ran and benchmark.json was produced, `"partial"` when some evals had errors, `"skipped"` when a required input is missing or the skill is a stub.
+`status`: `"complete"` when all evals ran and benchmark.json was produced, `"partial"` when some evals had errors, `"skipped"` when a required input is missing or the skill is a stub.
 
-`benchmark_path`: relative path from `{workspace_dir}` to the iteration directory, always in the form `evals/workspace/{iteration}` — do not return an absolute path. Omit when `benchmark_status` is `"skipped"`.
+`benchmark_path`: relative path from `{workspace_dir}` to the iteration directory, always in the form `evals/workspace/{iteration}` — do not return an absolute path. Omit when `status` is `"skipped"`.
 
 `call_trace`: ordered list of logical steps performed.
 
