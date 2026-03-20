@@ -204,6 +204,7 @@ const mockResponses: Record<string, unknown> = {
   preview_step_reset: [],
   get_step_agent_runs: [],
   verify_step_output: true,
+  read_latest_benchmark: null,
 };
 
 /** Normalize path separators to forward slashes for OS-agnostic comparison. */
