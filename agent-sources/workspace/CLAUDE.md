@@ -31,6 +31,8 @@ This workspace generates skills for **dbt on Microsoft Fabric/Azure**. Every age
 
 **Glob does not work on paths containing spaces.** Directory paths may contain spaces (e.g. `Application Support` on macOS, or user-selected skill output folders). Always use `ls` via Bash instead of Glob when the path is an absolute path from a variable (`workspace_dir`, `eval_results_dir`, `skill_output_dir`, etc.). Glob is only safe for relative patterns within the current working directory.
 
+- **Always use `python3`**, never bare `python`, when invoking Python scripts or modules. macOS and many Linux distributions do not provide an unversioned `python` binary.
+
 ## Customization
 
 Add your workspace-specific instructions below. This section is preserved across app updates and skill changes.
