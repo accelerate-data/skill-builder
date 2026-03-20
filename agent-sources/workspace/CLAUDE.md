@@ -27,6 +27,10 @@ This workspace generates skills for **dbt on Microsoft Fabric/Azure**. Every age
 
 **Documentation source**: [Context7](https://context7.com) provides up-to-date docs and code examples for all libraries in this stack as well as any systems the user wants to ingest in bronze. Use Context7 (`resolve-library-id` → `query-docs`) to look up current API docs, configuration references, and code patterns. Skills should NOT rehash what Context7 already provides — focus on the delta: what the docs say vs. what Fabric/Azure actually does in the user's environment, what breaks in practice, and what's missing from official documentation.
 
+## Tool Constraints
+
+**Glob does not work on paths containing spaces.** The workspace directory path may contain spaces (e.g. `Application Support` on macOS). When scanning directories under `workspace_dir`, `eval_results_dir`, or any path that may contain spaces, use `ls` via Bash instead of Glob. Glob is safe for paths you control that are guaranteed space-free (e.g. `skill_output_dir`, relative paths within the skill).
+
 ## Customization
 
 Add your workspace-specific instructions below. This section is preserved across app updates and skill changes.

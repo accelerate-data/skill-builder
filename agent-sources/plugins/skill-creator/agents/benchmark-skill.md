@@ -44,7 +44,7 @@ Before executing each step, write one short status line (≤ 10 words) before it
 ## Overall Flow
 
 0. **Validate inputs** — confirm SKILL.md, evals.json, user-context.md exist; handle stubs/missing files.
-1. **Determine iteration number** — use `ls` via Bash (not Glob — Glob fails on paths with spaces) to scan for existing `iteration-*` dirs in `{eval_results_dir}`, pick the next one.
+1. **Determine iteration number** — scan for existing `iteration-*` dirs in `{eval_results_dir}`, pick the next one.
 2. **Setup context** — gather test cases, skill path, baseline mode, results directory.
 3. **Execute** — spawn runs → grade → aggregate → analyst pass → generate review HTML. Each sub-step gates on the previous. The analyst pass writes `analyst-notes.md` and embeds it into `benchmark.json` `notes` field.
 4. **Verify** — confirm `benchmark.json` has valid `run_summary` and non-empty `notes`.
