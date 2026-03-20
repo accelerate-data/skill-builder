@@ -1,11 +1,8 @@
 use crate::db::Db;
 use crate::types::SkillFileEntry;
-use base64::Engine;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-/// Maximum file size for base64 reading and writing (5 MB).
-const MAX_BASE64_FILE_SIZE: u64 = 5_242_880;
 /// Maximum recursion depth for collect_entries to prevent symlink cycles.
 const MAX_COLLECT_DEPTH: u32 = 20;
 const ATTACHMENTS_DIR_NAME: &str = "skill-builder-attachments";
@@ -342,30 +339,6 @@ fn copy_file_with_roots(src: &str, dest: &str, allowed_roots: &[PathBuf]) -> Res
         })
 }
 
-fn read_file_as_base64_with_roots(
-    file_path: &str,
-    allowed_roots: &[PathBuf],
-) -> Result<String, String> {
-    let input = Path::new(file_path);
-    reject_traversal(input)?;
-    let canonical_path = fs::canonicalize(input)
-        .map_err(|e| format!("Failed to canonicalize '{}': {}", input.display(), e))?;
-    if !is_within_allowed_roots(&canonical_path, allowed_roots) {
-        return Err(format!(
-            "Read rejected: '{}' is outside allowed roots",
-            canonical_path.display()
-        ));
-    }
-    let metadata = fs::metadata(&canonical_path)
-        .map_err(|e| format!("Cannot read file '{}': {}", canonical_path.display(), e))?;
-    if metadata.len() > MAX_BASE64_FILE_SIZE {
-        return Err("File exceeds 5 MB limit".to_string());
-    }
-    let bytes = fs::read(&canonical_path)
-        .map_err(|e| format!("Failed to read file '{}': {}", canonical_path.display(), e))?;
-    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
-}
-
 #[tauri::command]
 pub fn read_file(file_path: String, db: tauri::State<'_, Db>) -> Result<String, String> {
     log::info!("[read_file] path={}", file_path);
@@ -483,55 +456,6 @@ fn save_export_to_impl(src: &str, dest: &str, allowed_roots: &[PathBuf]) -> Resu
             log::error!("[save_export_to] copy failed: {}", e);
             format!("Failed to save export: {}", e)
         })
-}
-
-#[tauri::command]
-pub fn read_file_as_base64(file_path: String, db: tauri::State<'_, Db>) -> Result<String, String> {
-    log::info!("[read_file_as_base64] path={}", file_path);
-    let allowed_roots = get_allowed_roots(&db)?;
-    read_file_as_base64_with_roots(&file_path, &allowed_roots)
-}
-
-#[tauri::command]
-pub fn write_base64_to_temp_file(
-    file_name: String,
-    base64_content: String,
-) -> Result<String, String> {
-    log::info!("[write_base64_to_temp_file] file_name={}", file_name);
-
-    // Reject path traversal attempts: no separators, no "..", no leading "."
-    if file_name.contains('/')
-        || file_name.contains('\\')
-        || file_name.contains("..")
-        || file_name.starts_with('.')
-    {
-        log::error!(
-            "[write_base64_to_temp_file] Rejected invalid file name: {}",
-            file_name
-        );
-        return Err("Invalid file name: path traversal not allowed".to_string());
-    }
-
-    // Reject payloads that would decode to more than MAX_BASE64_FILE_SIZE.
-    // Base64 encodes 3 bytes as 4 chars, so decoded_len ≈ base64_len * 3/4.
-    let estimated_decoded_len = (base64_content.len() as u64) * 3 / 4;
-    if estimated_decoded_len > MAX_BASE64_FILE_SIZE {
-        return Err(format!(
-            "Base64 payload too large: estimated {} bytes exceeds {} byte limit",
-            estimated_decoded_len, MAX_BASE64_FILE_SIZE
-        ));
-    }
-
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(&base64_content)
-        .map_err(|e| format!("Invalid base64: {e}"))?;
-    let temp_dir = attachment_temp_dir();
-    std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Cannot create temp dir: {e}"))?;
-    let dest = temp_dir.join(&file_name);
-    std::fs::write(&dest, &bytes).map_err(|e| format!("Cannot write file: {e}"))?;
-    dest.to_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| "Invalid path".to_string())
 }
 
 #[cfg(test)]
@@ -782,54 +706,6 @@ mod tests {
     }
 
     #[test]
-    fn test_read_file_as_base64_success() {
-        let dir = tempdir().unwrap();
-        let file = dir.path().join("test.bin");
-        fs::write(&file, b"hello world").unwrap();
-
-        let roots = vec![fs::canonicalize(dir.path()).unwrap()];
-        let result = read_file_as_base64_with_roots(file.to_str().unwrap(), &roots).unwrap();
-        // "hello world" in base64
-        assert_eq!(result, "aGVsbG8gd29ybGQ=");
-    }
-
-    #[test]
-    fn test_read_file_as_base64_not_found() {
-        let tmp = std::env::temp_dir();
-        let roots = vec![fs::canonicalize(&tmp).unwrap()];
-        let nonexistent = tmp.join("nonexistent-base64-file-xyz");
-        let result = read_file_as_base64_with_roots(nonexistent.to_str().unwrap(), &roots);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_read_file_as_base64_exceeds_size_limit() {
-        let dir = tempdir().unwrap();
-        let file = dir.path().join("large.bin");
-        // Create a file just over the 5 MB limit
-        let data = vec![0u8; 5_242_881];
-        fs::write(&file, &data).unwrap();
-
-        let roots = vec![fs::canonicalize(dir.path()).unwrap()];
-        let result = read_file_as_base64_with_roots(file.to_str().unwrap(), &roots);
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "File exceeds 5 MB limit");
-    }
-
-    #[test]
-    fn test_read_file_as_base64_at_size_limit() {
-        let dir = tempdir().unwrap();
-        let file = dir.path().join("exact.bin");
-        // Exactly 5 MB — should succeed
-        let data = vec![0u8; 5_242_880];
-        fs::write(&file, &data).unwrap();
-
-        let roots = vec![fs::canonicalize(dir.path()).unwrap()];
-        let result = read_file_as_base64_with_roots(file.to_str().unwrap(), &roots);
-        assert!(result.is_ok());
-    }
-
-    #[test]
     fn test_write_file_rejects_outside_allowed_roots() {
         let dir = tempdir().unwrap();
         let outside = tempdir().unwrap();
@@ -863,54 +739,6 @@ mod tests {
         let result = copy_file_with_roots(src.to_str().unwrap(), dest.to_str().unwrap(), &roots);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("outside allowed roots"));
-    }
-
-    #[test]
-    fn test_write_base64_to_temp_file_success() {
-        // "hello world" in base64
-        let result =
-            write_base64_to_temp_file("test-att.txt".to_string(), "aGVsbG8gd29ybGQ=".to_string());
-        assert!(result.is_ok());
-        let path = result.unwrap();
-        assert!(path.ends_with("test-att.txt"));
-        let content = fs::read_to_string(&path).unwrap();
-        assert_eq!(content, "hello world");
-        // Cleanup
-        let _ = fs::remove_file(&path);
-    }
-
-    #[test]
-    fn test_write_base64_to_temp_file_invalid_base64() {
-        let result =
-            write_base64_to_temp_file("bad.txt".to_string(), "!!!not-base64!!!".to_string());
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Invalid base64"));
-    }
-
-    #[test]
-    fn test_write_base64_rejects_path_traversal() {
-        let result = write_base64_to_temp_file("../../etc/passwd".into(), "aGVsbG8=".into());
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("path traversal"));
-    }
-
-    #[test]
-    fn test_write_base64_rejects_nested_path() {
-        let result = write_base64_to_temp_file("subdir/evil.txt".into(), "aGVsbG8=".into());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_write_base64_rejects_absolute_path() {
-        let result = write_base64_to_temp_file("/etc/passwd".into(), "aGVsbG8=".into());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_write_base64_rejects_leading_dot() {
-        let result = write_base64_to_temp_file(".hidden".into(), "aGVsbG8=".into());
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("path traversal"));
     }
 
     // --- Text file size limit tests (S-08) ---

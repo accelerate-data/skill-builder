@@ -225,7 +225,7 @@ type StopReason =
   | "refusal"
   | "model_context_window_exceeded";
 
-export interface ModelUsageBreakdown {
+interface ModelUsageBreakdown {
   model: string;
   inputTokens: number;
   outputTokens: number;

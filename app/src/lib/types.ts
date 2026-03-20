@@ -308,14 +308,6 @@ export interface SkillMetadataOverride {
   disable_model_invocation?: boolean | null
 }
 
-export const PURPOSE_OPTIONS = [
-  { value: "general-purpose", label: "General Purpose" },
-  { value: "test-context", label: "Skill Test" },
-  { value: "research", label: "Research" },
-  { value: "validate", label: "Validate" },
-  { value: "skill-building", label: "Skill Standards" },
-] as const
-
 export interface MarketplaceImportResult {
   skill_name: string
   success: boolean
