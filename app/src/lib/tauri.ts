@@ -558,21 +558,6 @@ export const logGateDecision = (
   decision: string,
 ) => invoke<void>("log_gate_decision", { skillName, verdict, decision });
 
-// --- Skill Test ---
-
-export interface PrepareTestResult {
-  test_id: string;
-  baseline_cwd: string;
-  with_skill_cwd: string;
-  transcript_log_dir: string;
-}
-
-export const prepareSkillTest = (workspacePath: string, skillName: string) =>
-  invoke<PrepareTestResult>("prepare_skill_test", { workspacePath, skillName })
-
-export const cleanupSkillTest = (testId: string) =>
-  invoke<void>("cleanup_skill_test", { testId })
-
 // --- File Import ---
 
 export const parseSkillFile = (filePath: string): Promise<SkillFileMeta> =>
