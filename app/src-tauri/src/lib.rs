@@ -347,6 +347,7 @@ pub fn run() {
             commands::usage::get_usage_by_day,
             commands::usage::get_workflow_skill_names,
             commands::git::get_skill_history,
+            commands::git::restore_skill_version,
             commands::skill::list_refinable_skills,
             commands::refine::content::get_skill_content_for_refine,
             commands::refine::diff::get_refine_diff,

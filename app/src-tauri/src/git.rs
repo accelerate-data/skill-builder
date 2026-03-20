@@ -236,6 +236,65 @@ pub fn get_history(
     Ok(commits)
 }
 
+/// Restore a skill's files to the state at a given commit.
+pub fn restore_version(repo_path: &Path, sha: &str, skill_name: &str) -> Result<(), String> {
+    log::info!(
+        "[git] Restoring '{}' to commit {}",
+        skill_name,
+        &sha[..8.min(sha.len())]
+    );
+    let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
+
+    let oid = git2::Oid::from_str(sha).map_err(|e| format!("Invalid SHA {}: {}", sha, e))?;
+    let commit = repo
+        .find_commit(oid)
+        .map_err(|e| format!("Commit {} not found: {}", sha, e))?;
+    let tree = commit
+        .tree()
+        .map_err(|e| format!("Failed to get tree for {}: {}", sha, e))?;
+
+    let prefix = format!("{}/", skill_name);
+    let skill_dir = repo_path.join(skill_name);
+
+    // First, remove current skill files (except .git-related)
+    if skill_dir.exists() {
+        remove_dir_contents(&skill_dir)?;
+    }
+
+    // Then restore files from the commit's tree
+    tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
+        let full_path = if dir.is_empty() {
+            entry.name().unwrap_or("").to_string()
+        } else {
+            format!("{}{}", dir, entry.name().unwrap_or(""))
+        };
+
+        if !full_path.starts_with(&prefix) {
+            return git2::TreeWalkResult::Ok;
+        }
+
+        if let Some(git2::ObjectType::Blob) = entry.kind() {
+            if let Ok(blob) = repo.find_blob(entry.id()) {
+                let file_path = repo_path.join(&full_path);
+                if let Some(parent) = file_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(&file_path, blob.content());
+            }
+        }
+
+        git2::TreeWalkResult::Ok
+    })
+    .map_err(|e| format!("Failed to walk tree: {}", e))?;
+
+    log::info!(
+        "[git] Restored '{}' to {}",
+        skill_name,
+        &sha[..8.min(sha.len())]
+    );
+    Ok(())
+}
+
 // --- Semver helpers ---
 
 /// Parse a semver string "X.Y.Z" into (major, minor, patch).
@@ -419,6 +478,25 @@ fn commit_touches_path(
         .map_err(|e| format!("Failed to compute diff: {}", e))?;
 
     Ok(diff.deltas().count() > 0)
+}
+
+/// Remove all files and subdirectories inside a directory (but not the directory itself).
+fn remove_dir_contents(dir: &Path) -> Result<(), String> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(dir).map_err(|e| format!("Failed to read dir: {}", e))? {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
+        if path.is_dir() {
+            std::fs::remove_dir_all(&path)
+                .map_err(|e| format!("Failed to remove dir {}: {}", path.display(), e))?;
+        } else {
+            std::fs::remove_file(&path)
+                .map_err(|e| format!("Failed to remove file {}: {}", path.display(), e))?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
