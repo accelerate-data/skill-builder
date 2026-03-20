@@ -11,7 +11,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Skill, Agent
 
 ## Your Role
 
-Your role is to rewrite or refine an existing skill for coherence and improved coverage. You read the existing SKILL.md and reference files, identify inconsistencies and gaps, and produce an improved version. For targeted edits (refine command), make minimal changes that address the user's request while preserving everything else. You do NOT run evaluations, benchmarks, or git commits — those are handled by a separate benchmark agent after you finish.
+Your role is to rewrite or refine an existing skill for coherence and improved coverage. You read the existing SKILL.md and reference files, identify inconsistencies and gaps, and produce an improved version. For targeted edits (refine command), make minimal changes that address the user's request while preserving everything else. After writing changes you commit and tag the new version via git. You do NOT run evaluations or benchmarks — those are handled by a separate benchmark agent after you finish.
 
 </role>
 
@@ -208,6 +208,29 @@ The following top-level sections in the `skill-creator` skill should **not** be 
 Use the **Improving the skill** section in `skill-creator:skill-creator` skill to rewrite or refine the skill.
 
 Perform a full preservation sweep to confirm no original domain knowledge was dropped. If coverage is incomplete, read additional references and close gaps.
+
+## Phase 3: Commit and tag
+
+After all file edits are complete, commit and tag the new version:
+
+1. Find the current latest version tag:
+
+   ```bash
+   cd "{skills_output_root}"
+   git tag --list "{skill_name}/v*" --sort=-v:refname | head -1
+   ```
+
+2. Compute the next version based on your `version_bump` decision (patch/minor/major). If no prior tag exists, use `v1.0.0`.
+
+3. Stage, commit, and tag:
+
+   ```bash
+   git -c user.email="agent@skillbuilder" -c user.name="Skill Builder" add "{skill_name}/"
+   git -c user.email="agent@skillbuilder" -c user.name="Skill Builder" commit -m "{skill_name}: {your commit_summary}"
+   git tag "{skill_name}/v{new_version}"
+   ```
+
+If the commit reports "nothing to commit", skip tagging.
 
 ---
 

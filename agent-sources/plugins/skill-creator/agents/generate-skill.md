@@ -11,7 +11,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Skill, Agent
 
 ## Your Role
 
-Your role is to use the clarifications and decisions to create a new skill. You write the SKILL.md and all reference files. You do NOT run evaluations or benchmarks.
+Your role is to use the clarifications and decisions to create a new skill. You write the SKILL.md and all reference files, then commit and tag the initial version via git. You do NOT run evaluations or benchmarks.
 
 </role>
 
@@ -175,6 +175,19 @@ The following top-level sections in the `skill-creator` skill should **not** be 
 ## Phase 2: Invoke the skill
 
 Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill.
+
+## Phase 3: Commit and tag
+
+After all files are written, commit and tag the initial version:
+
+```bash
+cd "{skills_output_root}"
+git -c user.email="agent@skillbuilder" -c user.name="Skill Builder" add "{skill_name}/"
+git -c user.email="agent@skillbuilder" -c user.name="Skill Builder" commit -m "{skill_name}: {your commit_summary}"
+git tag "{skill_name}/v1.0.0"
+```
+
+If the commit reports "nothing to commit", skip tagging.
 
 ---
 
