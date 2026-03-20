@@ -128,43 +128,6 @@ pub fn upsert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result
     Ok(())
 }
 
-#[allow(dead_code)]
-pub fn update_imported_skill_active(
-    conn: &Connection,
-    skill_name: &str,
-    is_active: bool,
-    new_disk_path: &str,
-) -> Result<(), String> {
-    let s_id = get_skill_master_id(conn, skill_name)?
-        .ok_or_else(|| format!("Skill '{}' not found in skills master", skill_name))?;
-
-    let rows = conn
-        .execute(
-            "UPDATE imported_skills SET is_active = ?1, disk_path = ?2 WHERE skill_master_id = ?3",
-            rusqlite::params![is_active as i32, new_disk_path, s_id],
-        )
-        .map_err(|e| e.to_string())?;
-
-    if rows == 0 {
-        return Err(format!("Imported skill '{}' not found", skill_name));
-    }
-    Ok(())
-}
-
-#[allow(dead_code)]
-pub fn delete_imported_skill(conn: &Connection, skill_name: &str) -> Result<(), String> {
-    let s_id = match get_skill_master_id(conn, skill_name)? {
-        Some(id) => id,
-        None => return Ok(()), // Skill not in library — nothing to delete
-    };
-    conn.execute(
-        "DELETE FROM imported_skills WHERE skill_master_id = ?1",
-        rusqlite::params![s_id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
 pub fn delete_imported_skill_by_name(conn: &Connection, name: &str) -> Result<(), String> {
     log::debug!("delete_imported_skill_by_name: name={}", name);
     let s_id = match get_skill_master_id(conn, name)? {
