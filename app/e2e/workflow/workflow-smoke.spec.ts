@@ -422,7 +422,7 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
       ],
       read_file: {
         ...WORKFLOW_OVERRIDES.read_file as Record<string, string>,
-        [`${E2E_SKILLS_PATH}/test-skill/SKILL.md`]: SKILL_MD,
+        [path.join(E2E_SKILLS_PATH, "test-skill", "SKILL.md")]: SKILL_MD,
       },
     };
 
