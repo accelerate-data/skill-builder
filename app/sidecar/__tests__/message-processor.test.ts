@@ -1118,7 +1118,7 @@ describe("MessageProcessor", () => {
       });
     });
 
-    it("reset clears all state", () => {
+    it("reset clears all state including pendingBackgroundTasks", () => {
       processor.process({
         type: "assistant",
         message: {
@@ -1132,6 +1132,238 @@ describe("MessageProcessor", () => {
       processor.reset();
       expect(processor.pendingToolCallCount).toBe(0);
       expect(processor.activeSubagentCount).toBe(0);
+      expect(processor.pendingBackgroundTaskCount).toBe(0);
+    });
+  });
+
+  // =========================================================================
+  // Background agent tracking (run_in_background)
+  // =========================================================================
+
+  describe("background agent tracking", () => {
+    it("detects background Agent launch from tool_result and tracks it", () => {
+      // Step 1: Agent tool_use
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tu-bg-1",
+              name: "Agent",
+              input: { description: "Eval agent", run_in_background: true },
+            },
+          ],
+        },
+      });
+      expect(processor.activeSubagentCount).toBe(1);
+      expect(processor.pendingBackgroundTaskCount).toBe(0);
+
+      // Step 2: Tool result with background agent pattern
+      processor.process({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tu-bg-1",
+              content: "Async agent launched successfully.\nagentId: agent-abc-123",
+            },
+          ],
+        },
+      });
+
+      // Subagent completed (tool_result arrived), but background task is tracked
+      expect(processor.activeSubagentCount).toBe(0);
+      expect(processor.pendingBackgroundTaskCount).toBe(1);
+    });
+
+    it("processTaskNotification removes completed background task", () => {
+      // Launch background agent
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tu-bg-2",
+              name: "Agent",
+              input: { description: "Eval" },
+            },
+          ],
+        },
+      });
+      processor.process({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tu-bg-2",
+              content: "Async agent launched successfully.\nagentId: agent-xyz",
+            },
+          ],
+        },
+      });
+      expect(processor.pendingBackgroundTaskCount).toBe(1);
+
+      // Task notification: completed
+      processor.processTaskNotification({
+        type: "task_notification",
+        agent_id: "agent-xyz",
+        status: "completed",
+      });
+      expect(processor.pendingBackgroundTaskCount).toBe(0);
+    });
+
+    it("processTaskNotification removes errored background task", () => {
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tu-bg-err",
+              name: "Agent",
+              input: { description: "Eval" },
+            },
+          ],
+        },
+      });
+      processor.process({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tu-bg-err",
+              content: "Async agent launched successfully.\nagentId: agent-fail",
+            },
+          ],
+        },
+      });
+      expect(processor.pendingBackgroundTaskCount).toBe(1);
+
+      processor.processTaskNotification({
+        type: "task_notification",
+        agent_id: "agent-fail",
+        status: "error",
+      });
+      expect(processor.pendingBackgroundTaskCount).toBe(0);
+    });
+
+    it("tracks multiple background agents and decrements individually", () => {
+      // Launch 3 background agents
+      for (let i = 1; i <= 3; i++) {
+        processor.process({
+          type: "assistant",
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: `tu-multi-${i}`,
+                name: "Agent",
+                input: { description: `Eval ${i}` },
+              },
+            ],
+          },
+        });
+        processor.process({
+          type: "user",
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: `tu-multi-${i}`,
+                content: `Async agent launched successfully.\nagentId: agent-${i}`,
+              },
+            ],
+          },
+        });
+      }
+      expect(processor.pendingBackgroundTaskCount).toBe(3);
+
+      // Complete one
+      processor.processTaskNotification({
+        type: "task_notification",
+        agent_id: "agent-2",
+        status: "completed",
+      });
+      expect(processor.pendingBackgroundTaskCount).toBe(2);
+
+      // Complete remaining
+      processor.processTaskNotification({ type: "task_notification", agent_id: "agent-1", status: "completed" });
+      processor.processTaskNotification({ type: "task_notification", agent_id: "agent-3", status: "completed" });
+      expect(processor.pendingBackgroundTaskCount).toBe(0);
+    });
+
+    it("buildShutdownSummary orphans remaining background tasks", () => {
+      // Launch a background agent
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tu-shutdown-bg",
+              name: "Agent",
+              input: { description: "Eval" },
+            },
+          ],
+        },
+      });
+      processor.process({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tu-shutdown-bg",
+              content: "Async agent launched successfully.\nagentId: agent-orphan",
+            },
+          ],
+        },
+      });
+      expect(processor.pendingBackgroundTaskCount).toBe(1);
+
+      // Shutdown clears pending background tasks
+      processor.buildShutdownSummary();
+      expect(processor.pendingBackgroundTaskCount).toBe(0);
+    });
+
+    it("does not track non-background Agent tool results", () => {
+      processor.process({
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tu-normal",
+              name: "Agent",
+              input: { description: "Normal agent" },
+            },
+          ],
+        },
+      });
+      processor.process({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tu-normal",
+              content: "Agent completed with result: all good",
+            },
+          ],
+        },
+      });
+      expect(processor.pendingBackgroundTaskCount).toBe(0);
     });
   });
 });

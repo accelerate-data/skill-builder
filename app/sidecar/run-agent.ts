@@ -138,8 +138,12 @@ export async function runAgentRequest(
       }
 
       const raw = message as Record<string, unknown>;
-      // Log raw message to transcript (debugging) — the raw message is still
-      // captured by persistent-mode's writeLine wrapping, so no separate log needed.
+
+      // Track background agent completion via task_notification events
+      if (raw.type === "task_notification") {
+        processor.processTaskNotification(raw);
+      }
+
       // Process into display items + pass-through messages
       const items = processor.process(raw);
       for (const item of items) {

@@ -90,6 +90,14 @@ export class MessageProcessor {
   /** Map from toolUseId → subagent DisplayItem (Agent tool calls). */
   private subagentByToolUseId = new Map<string, DisplayItem>();
 
+  /**
+   * Map from background task/agent ID → toolUseId.
+   * Tracks agents launched with `run_in_background: true` whose tool_result
+   * returns immediately but whose work continues asynchronously via
+   * task_notification events.
+   */
+  private pendingBackgroundTasks = new Map<string, string>();
+
   /** Accumulates run-level state for run_result events. */
   private accumulator: RunMetadataAccumulator;
 
@@ -342,6 +350,12 @@ export class MessageProcessor {
           } else {
             results.push(this.makeEnvelope(updatedItem));
           }
+
+          // Detect background agent launches — the SDK returns immediately
+          // with a pattern like "Async agent launched successfully.\nagentId: <id>"
+          // when run_in_background is true. Track these so the Stop hook
+          // knows work is still pending.
+          this.detectBackgroundAgentLaunch(toolUseId, resultContent);
 
           // If this was a subagent (Agent), update its status
           const subagentItem = this.subagentByToolUseId.get(toolUseId);
@@ -864,6 +878,39 @@ export class MessageProcessor {
   }
 
   /**
+   * Detect whether a tool_result indicates a background agent launch.
+   * The SDK returns "Async agent launched successfully.\nagentId: <id>"
+   * for `run_in_background: true` Agent calls. Extract the ID and track it.
+   */
+  private detectBackgroundAgentLaunch(toolUseId: string, resultContent: string): void {
+    const match = resultContent.match(/agentId:\s*(\S+)/);
+    if (match) {
+      const agentId = match[1];
+      this.pendingBackgroundTasks.set(agentId, toolUseId);
+      process.stderr.write(
+        `[message-processor] event=track_background_agent agent_id=${agentId} tool_use_id=${toolUseId}\n`,
+      );
+    }
+  }
+
+  /**
+   * Process a task_notification event from the SDK stream.
+   * When a background agent completes, remove it from the pending set.
+   */
+  processTaskNotification(event: Record<string, unknown>): void {
+    const taskId = event.agent_id as string | undefined
+      ?? event.task_id as string | undefined;
+    const status = event.status as string | undefined;
+
+    if (taskId && (status === "completed" || status === "error")) {
+      const wasTracked = this.pendingBackgroundTasks.delete(taskId);
+      process.stderr.write(
+        `[message-processor] event=task_notification task_id=${taskId} status=${status} was_tracked=${wasTracked} remaining=${this.pendingBackgroundTasks.size}\n`,
+      );
+    }
+  }
+
+  /**
    * Mark all remaining pending tool calls as orphaned.
    * Called when result message arrives — any tool calls still pending
    * will never receive a result.
@@ -884,6 +931,15 @@ export class MessageProcessor {
     }
     this.toolCallMap.clear();
     this.toolCallTimestamps.clear();
+
+    // Also log orphaned background tasks
+    for (const [agentId, toolUseId] of this.pendingBackgroundTasks) {
+      process.stderr.write(
+        `[message-processor] event=orphan_background_task agent_id=${agentId} tool_use_id=${toolUseId}\n`,
+      );
+    }
+    this.pendingBackgroundTasks.clear();
+
     return orphanedUpdates;
   }
 
@@ -910,6 +966,7 @@ export class MessageProcessor {
     this.toolCallTimestamps.clear();
     this.subagentMap.clear();
     this.subagentByToolUseId.clear();
+    this.pendingBackgroundTasks.clear();
     this.accumulator = new RunMetadataAccumulator(this.accumulator.getContext());
   }
 
@@ -946,5 +1003,10 @@ export class MessageProcessor {
   /** Get count of active subagent groups. For testing. */
   get activeSubagentCount(): number {
     return this.subagentByToolUseId.size;
+  }
+
+  /** Get count of pending background tasks (run_in_background agents). */
+  get pendingBackgroundTaskCount(): number {
+    return this.pendingBackgroundTasks.size;
   }
 }

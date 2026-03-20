@@ -269,7 +269,7 @@ describe("buildQueryOptions", () => {
   });
 
   it("Stop hook returns continue:false when activeSubagentCount > 0", async () => {
-    const fakeProcessor = { activeSubagentCount: 2 };
+    const fakeProcessor = { activeSubagentCount: 2, pendingBackgroundTaskCount: 0 };
     const processorRef = { current: fakeProcessor as never };
     const opts = buildQueryOptions(
       makeConfig(),
@@ -282,11 +282,45 @@ describe("buildQueryOptions", () => {
     const stopMatchers = hooks.Stop as Array<{ hooks: Array<(...args: unknown[]) => Promise<unknown>> }>;
     const hookFn = stopMatchers[0].hooks[0];
     const result = await hookFn();
-    expect(result).toEqual({ continue: false, reason: "2 sub-agent(s) still running — do not stop yet" });
+    expect(result).toEqual({ continue: false, reason: "2 agent(s) still running" });
   });
 
-  it("Stop hook returns continue:true when activeSubagentCount is 0", async () => {
-    const fakeProcessor = { activeSubagentCount: 0 };
+  it("Stop hook returns continue:false when pendingBackgroundTaskCount > 0", async () => {
+    const fakeProcessor = { activeSubagentCount: 0, pendingBackgroundTaskCount: 3 };
+    const processorRef = { current: fakeProcessor as never };
+    const opts = buildQueryOptions(
+      makeConfig(),
+      new AbortController(),
+      [],
+      undefined,
+      processorRef,
+    );
+    const hooks = (opts as Record<string, unknown>).hooks as Record<string, unknown>;
+    const stopMatchers = hooks.Stop as Array<{ hooks: Array<(...args: unknown[]) => Promise<unknown>> }>;
+    const hookFn = stopMatchers[0].hooks[0];
+    const result = await hookFn();
+    expect(result).toEqual({ continue: false, reason: "3 agent(s) still running" });
+  });
+
+  it("Stop hook sums both active subagents and background tasks", async () => {
+    const fakeProcessor = { activeSubagentCount: 1, pendingBackgroundTaskCount: 2 };
+    const processorRef = { current: fakeProcessor as never };
+    const opts = buildQueryOptions(
+      makeConfig(),
+      new AbortController(),
+      [],
+      undefined,
+      processorRef,
+    );
+    const hooks = (opts as Record<string, unknown>).hooks as Record<string, unknown>;
+    const stopMatchers = hooks.Stop as Array<{ hooks: Array<(...args: unknown[]) => Promise<unknown>> }>;
+    const hookFn = stopMatchers[0].hooks[0];
+    const result = await hookFn();
+    expect(result).toEqual({ continue: false, reason: "3 agent(s) still running" });
+  });
+
+  it("Stop hook returns continue:true when both counts are 0", async () => {
+    const fakeProcessor = { activeSubagentCount: 0, pendingBackgroundTaskCount: 0 };
     const processorRef = { current: fakeProcessor as never };
     const opts = buildQueryOptions(
       makeConfig(),

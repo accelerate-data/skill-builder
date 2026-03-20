@@ -49,8 +49,6 @@ Before executing each step, write one short status line (≤ 10 words) before it
 3. **Execute** — spawn runs → grade → aggregate → analyst pass → generate review HTML. Each sub-step gates on the previous. The analyst pass writes `analyst-notes.md` and embeds it into `benchmark.json` `notes` field.
 4. **Verify** — confirm `benchmark.json` has valid `run_summary` and non-empty `notes`.
 
-Do not stop, return or produce structuredOutput in the middle.
-
 ## Step 0: Validate inputs
 
 Read and verify that the required inputs exist before proceeding:
@@ -106,7 +104,7 @@ Key inputs for the eval pipeline:
 
 Follow the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill. Execute the sub-steps in order — each depends on the previous one completing:
 
-**3a. Spawn all runs** — for each test case, spawn with-skill and baseline runs in the same turn. As each sub-agent returns, capture timing data (`total_tokens`, `duration_ms`) into `timing.json` in the run directory. Wait for **all** run subagents to finish before proceeding.
+**3a. Spawn all runs** — for each test case, spawn with-skill and baseline runs in the same turn. As each sub-agent returns, capture timing data (`total_tokens`, `duration_ms`) into `timing.json` in the run directory.
 
 **3b. Grade each run** — follow the grading instructions in the skill. Confirm `grading.json` exists in every eval directory (both `with_skill/` and the baseline directory — `without_skill/` for `no_skill` mode, `old_skill/` for `prior_version` mode) before proceeding.
 
@@ -133,7 +131,6 @@ All non-skipped returns must include `"benchmark_path": "evals/workspace/{iterat
 - All test cases from `evals.json` executed with both configurations
 - `benchmark.json` exists and contains a valid `run_summary`
 - `benchmark.json` top-level `notes` array is populated with analyst observations
-- No sub-agents are still running when returning
 
 </instructions>
 
@@ -145,8 +142,7 @@ All non-skipped returns must include `"benchmark_path": "evals/workspace/{iterat
 
 **Gate — do NOT return until:**
 
-1. Step 3 has finished (including analyst pass) and no sub-agents are still running
-2. You have verified `benchmark.json` exists, contains a valid `run_summary`, and has a non-empty `notes` array
+You have verified `benchmark.json` exists, contains a valid `run_summary`, and has a non-empty `notes` array
 
 Return JSON only:
 

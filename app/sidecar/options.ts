@@ -109,9 +109,11 @@ export function buildQueryOptions(
       hooks: {
         Stop: [{
           hooks: [async () => {
-            const count = processorRef.current?.activeSubagentCount ?? 0;
-            if (count > 0) {
-              return { continue: false, reason: `${count} sub-agent(s) still running — do not stop yet` };
+            const subagents = processorRef.current?.activeSubagentCount ?? 0;
+            const bgTasks = processorRef.current?.pendingBackgroundTaskCount ?? 0;
+            const total = subagents + bgTasks;
+            if (total > 0) {
+              return { continue: false, reason: `${total} agent(s) still running` };
             }
             return { continue: true };
           }],

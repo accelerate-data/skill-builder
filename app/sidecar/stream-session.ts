@@ -248,6 +248,11 @@ export class StreamSession {
 
         const msg = message as Record<string, unknown>;
 
+        // Track background agent completion via task_notification events
+        if (msg.type === "task_notification") {
+          processor.processTaskNotification(msg);
+        }
+
         // Process into display items + pass-through messages
         const items = processor.process(msg);
         for (const item of items) {
