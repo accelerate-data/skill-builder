@@ -96,8 +96,8 @@ Key inputs for the eval pipeline:
   - `"no_skill"`: same prompt, no skill at all. Save to `without_skill/` directories.
   - `"prior_version"`: point the baseline subagent at `{prior_skill_snapshot_dir}`. Save to `old_skill/` directories.
 - **Results directory**: `{eval_results_dir}/{iteration}/`
-- **Environment**: 
-  - The skill is running in headless mode and environment has no display. 
+- **Environment**:
+  - The skill is running in headless mode and environment has no display.
   - When executing Step 4 of the Running and evaluating test cases section, use `--static {eval_results_dir}/{iteration}/review.html` instead of starting a server. Do not open a browser.
   - Do not wait for user feedback.
 - The `skill-creator` skill references files like `references/schemas.md` and `agents/grader.md` — these are internal to the `skill creator` skill and is present in `plugins/skill-creator/skills/skill-creator`.

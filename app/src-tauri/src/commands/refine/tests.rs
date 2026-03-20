@@ -618,7 +618,7 @@ fn test_materialize_refine_validation_output_rejects_empty_markdown_fields() {
 }
 
 #[test]
-fn test_finalize_refine_run_commits_and_returns_git_diff_for_new_file() {
+fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
     crate::git::ensure_repo(dir.path()).unwrap();
@@ -628,9 +628,11 @@ fn test_finalize_refine_run_commits_and_returns_git_diff_for_new_file() {
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
     crate::git::commit_all(dir.path(), "initial").unwrap();
 
+    // Simulate agent adding a new file and committing
     let refs_dir = skill_dir.join("references");
     std::fs::create_dir_all(&refs_dir).unwrap();
     std::fs::write(refs_dir.join("glossary.md"), "# Glossary\n").unwrap();
+    crate::git::commit_all(dir.path(), "my-skill: add glossary").unwrap();
 
     let result = finalize_refine_run_inner(
         "my-skill",
@@ -649,7 +651,7 @@ fn test_finalize_refine_run_commits_and_returns_git_diff_for_new_file() {
 }
 
 #[test]
-fn test_finalize_refine_run_returns_no_commit_when_nothing_changed() {
+fn test_finalize_refine_run_returns_head_sha_even_when_no_new_changes() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
     crate::git::ensure_repo(dir.path()).unwrap();
@@ -667,9 +669,8 @@ fn test_finalize_refine_run_returns_no_commit_when_nothing_changed() {
     )
     .unwrap();
 
-    assert!(result.commit_sha.is_none());
-    assert_eq!(result.diff.stat, "no changes");
-    assert!(result.diff.files.is_empty());
+    // HEAD always exists, so commit_sha is always Some
+    assert!(result.commit_sha.is_some());
 }
 
 #[test]

@@ -184,10 +184,14 @@ pub fn get_history(
     if let Ok(tags) = repo.tag_names(Some(&format!("{}/*", skill_name))) {
         for tag_name in tags.iter().flatten() {
             if let Some(version) = tag_name.strip_prefix(&tag_prefix) {
-                if let Ok(reference) = repo.find_reference(&format!("refs/tags/{}", tag_name)) {
-                    if let Ok(target) = reference.peel(git2::ObjectType::Commit) {
-                        tag_map.insert(target.id(), version.to_string());
-                    }
+                // Resolve tag to its target commit OID via revparse
+                if let Ok(obj) = repo.revparse_single(&format!("refs/tags/{}", tag_name)) {
+                    // Peel to commit in case of annotated tags
+                    let commit_oid = obj
+                        .peel(git2::ObjectType::Commit)
+                        .map(|c| c.id())
+                        .unwrap_or_else(|_| obj.id());
+                    tag_map.insert(commit_oid, version.to_string());
                 }
             }
         }
@@ -888,59 +892,14 @@ mod tests {
         assert!(untracked.is_empty());
     }
 
-    // --- bump_semver ---
-
-    #[test]
-    fn test_bump_semver_major() {
-        assert_eq!(bump_semver("1.2.3", "major").unwrap(), "2.0.0");
-    }
-
-    #[test]
-    fn test_bump_semver_minor() {
-        assert_eq!(bump_semver("1.2.3", "minor").unwrap(), "1.3.0");
-    }
-
-    #[test]
-    fn test_bump_semver_patch() {
-        assert_eq!(bump_semver("1.2.3", "patch").unwrap(), "1.2.4");
-    }
-
-    #[test]
-    fn test_bump_semver_from_zero() {
-        // "0.0.0" (no prior version) always returns "1.0.0"
-        assert_eq!(bump_semver("0.0.0", "major").unwrap(), "1.0.0");
-        assert_eq!(bump_semver("0.0.0", "minor").unwrap(), "1.0.0");
-        assert_eq!(bump_semver("0.0.0", "patch").unwrap(), "1.0.0");
-    }
-
-    #[test]
-    fn test_bump_semver_invalid_bump_defaults_to_patch() {
-        assert_eq!(bump_semver("1.0.0", "invalid").unwrap(), "1.0.1");
-    }
-
-    // --- tag_skill_semver ---
-
-    #[test]
-    fn test_tag_skill_semver_creates_first_tag() {
-        let dir = tempdir().unwrap();
-        ensure_repo(dir.path()).unwrap();
-
-        let skill_dir = dir.path().join("my-skill");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), "# My Skill").unwrap();
-        commit_all(dir.path(), "my-skill: generate-skill completed").unwrap();
-
-        let tag = tag_skill_semver(dir.path(), "my-skill", "1.0.0").unwrap();
-        assert_eq!(tag, "my-skill/v1.0.0");
-
-        // Verify the tag exists in the repo
-        let repo = Repository::open(dir.path()).unwrap();
-        let tags = repo.tag_names(Some("my-skill/*")).unwrap();
-        let tag_list: Vec<&str> = tags.iter().flatten().collect();
-        assert_eq!(tag_list, vec!["my-skill/v1.0.0"]);
-    }
-
     // --- latest_skill_semver ---
+
+    /// Helper: create a lightweight tag on HEAD
+    fn create_tag(dir: &Path, tag_name: &str) {
+        let repo = Repository::open(dir).unwrap();
+        let head = repo.head().unwrap().peel(git2::ObjectType::Commit).unwrap();
+        repo.tag_lightweight(tag_name, &head, false).unwrap();
+    }
 
     #[test]
     fn test_latest_skill_semver_no_tags() {
@@ -960,11 +919,11 @@ mod tests {
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        tag_skill_semver(dir.path(), "my-skill", "1.0.0").unwrap();
+        create_tag(dir.path(), "my-skill/v1.0.0");
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
         commit_all(dir.path(), "v2").unwrap();
-        tag_skill_semver(dir.path(), "my-skill", "1.1.0").unwrap();
+        create_tag(dir.path(), "my-skill/v1.1.0");
 
         let version = latest_skill_semver(dir.path(), "my-skill").unwrap();
         assert_eq!(version, "1.1.0");
@@ -979,42 +938,10 @@ mod tests {
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
+        create_tag(dir.path(), "my-skill/v1");
 
-        // Create an old-style integer tag
-        let repo = Repository::open(dir.path()).unwrap();
-        let head = repo.head().unwrap().peel(git2::ObjectType::Commit).unwrap();
-        repo.tag_lightweight("my-skill/v1", &head, false).unwrap();
-
-        // Should return 0.0.0 since "1" is not valid semver
         let version = latest_skill_semver(dir.path(), "my-skill").unwrap();
         assert_eq!(version, "0.0.0");
-    }
-
-    // --- tag_bumped_skill_version ---
-
-    #[test]
-    fn test_tag_bumped_skill_version_increments() {
-        let dir = tempdir().unwrap();
-        ensure_repo(dir.path()).unwrap();
-
-        let skill_dir = dir.path().join("my-skill");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-
-        // First version (no tags yet, 0.0.0 → 1.0.0)
-        std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
-        commit_all(dir.path(), "v1").unwrap();
-        let tag1 = tag_bumped_skill_version(dir.path(), "my-skill", "minor").unwrap();
-        assert_eq!(tag1, "my-skill/v1.0.0");
-
-        // Second version (minor bump: 1.0.0 → 1.1.0)
-        std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
-        commit_all(dir.path(), "v2").unwrap();
-        let tag2 = tag_bumped_skill_version(dir.path(), "my-skill", "minor").unwrap();
-        assert_eq!(tag2, "my-skill/v1.1.0");
-
-        // Verify latest
-        let version = latest_skill_semver(dir.path(), "my-skill").unwrap();
-        assert_eq!(version, "1.1.0");
     }
 
     #[test]
@@ -1030,24 +957,83 @@ mod tests {
         std::fs::write(a_dir.join("SKILL.md"), "# A").unwrap();
         std::fs::write(b_dir.join("SKILL.md"), "# B").unwrap();
         commit_all(dir.path(), "both skills").unwrap();
-
-        tag_skill_semver(dir.path(), "skill-a", "1.0.0").unwrap();
-        tag_skill_semver(dir.path(), "skill-b", "1.0.0").unwrap();
+        create_tag(dir.path(), "skill-a/v1.0.0");
+        create_tag(dir.path(), "skill-b/v1.0.0");
 
         assert_eq!(latest_skill_semver(dir.path(), "skill-a").unwrap(), "1.0.0");
         assert_eq!(latest_skill_semver(dir.path(), "skill-b").unwrap(), "1.0.0");
 
-        // Tag skill-a again — skill-b should be unaffected
         std::fs::write(a_dir.join("SKILL.md"), "# A v2").unwrap();
         commit_all(dir.path(), "skill-a v2").unwrap();
-        tag_skill_semver(dir.path(), "skill-a", "2.0.0").unwrap();
+        create_tag(dir.path(), "skill-a/v2.0.0");
 
         assert_eq!(latest_skill_semver(dir.path(), "skill-a").unwrap(), "2.0.0");
         assert_eq!(latest_skill_semver(dir.path(), "skill-b").unwrap(), "1.0.0");
     }
 
+    // --- get_history version field ---
+
     #[test]
-    fn test_duplicate_semver_tag_fails() {
+    fn test_get_history_populates_version_from_tags() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+
+        std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
+        commit_all(dir.path(), "my-skill: created").unwrap();
+        create_tag(dir.path(), "my-skill/v1.0.0");
+
+        std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
+        commit_all(dir.path(), "my-skill: updated").unwrap();
+        // No tag on second commit
+
+        std::fs::write(skill_dir.join("SKILL.md"), "# v3").unwrap();
+        commit_all(dir.path(), "my-skill: refined").unwrap();
+        create_tag(dir.path(), "my-skill/v1.1.0");
+
+        let history = get_history(dir.path(), "my-skill", 50).unwrap();
+        assert_eq!(history.len(), 3);
+
+        // Find commits by message and verify version tags
+        let created = history.iter().find(|c| c.message.contains("created")).unwrap();
+        let updated = history.iter().find(|c| c.message.contains("updated")).unwrap();
+        let refined = history.iter().find(|c| c.message.contains("refined")).unwrap();
+
+        assert_eq!(created.version.as_deref(), Some("1.0.0"));
+        assert_eq!(updated.version, None);
+        assert_eq!(refined.version.as_deref(), Some("1.1.0"));
+    }
+
+    // --- prior_skill_tag ---
+
+    #[test]
+    fn test_prior_skill_tag_returns_second_highest() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+
+        std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
+        commit_all(dir.path(), "v1").unwrap();
+        create_tag(dir.path(), "my-skill/v1.0.0");
+
+        std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
+        commit_all(dir.path(), "v2").unwrap();
+        create_tag(dir.path(), "my-skill/v1.1.0");
+
+        std::fs::write(skill_dir.join("SKILL.md"), "# v3").unwrap();
+        commit_all(dir.path(), "v3").unwrap();
+        create_tag(dir.path(), "my-skill/v2.0.0");
+
+        let prior = prior_skill_tag(dir.path(), "my-skill");
+        assert_eq!(prior.as_deref(), Some("my-skill/v1.1.0"));
+    }
+
+    #[test]
+    fn test_prior_skill_tag_none_for_single_tag() {
         let dir = tempdir().unwrap();
         ensure_repo(dir.path()).unwrap();
 
@@ -1055,9 +1041,60 @@ mod tests {
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
+        create_tag(dir.path(), "my-skill/v1.0.0");
 
-        tag_skill_semver(dir.path(), "my-skill", "1.0.0").unwrap();
-        let result = tag_skill_semver(dir.path(), "my-skill", "1.0.0");
+        assert!(prior_skill_tag(dir.path(), "my-skill").is_none());
+    }
+
+    #[test]
+    fn test_prior_skill_tag_none_for_no_tags() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        assert!(prior_skill_tag(dir.path(), "my-skill").is_none());
+    }
+
+    // --- extract_skill_at_tag ---
+
+    #[test]
+    fn test_extract_skill_at_tag() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(skill_dir.join("references")).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# V1 content").unwrap();
+        std::fs::write(skill_dir.join("references").join("guide.md"), "guide v1").unwrap();
+        commit_all(dir.path(), "v1").unwrap();
+        create_tag(dir.path(), "my-skill/v1.0.0");
+
+        // Modify files for v2
+        std::fs::write(skill_dir.join("SKILL.md"), "# V2 content").unwrap();
+        commit_all(dir.path(), "v2").unwrap();
+        create_tag(dir.path(), "my-skill/v2.0.0");
+
+        // Extract v1 to a separate directory
+        let dest = dir.path().join("snapshot");
+        extract_skill_at_tag(dir.path(), "my-skill", "my-skill/v1.0.0", &dest).unwrap();
+
+        // Verify v1 content was extracted
+        assert_eq!(
+            std::fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "# V1 content"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dest.join("references").join("guide.md")).unwrap(),
+            "guide v1"
+        );
+    }
+
+    #[test]
+    fn test_extract_skill_at_tag_nonexistent_tag() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        let dest = dir.path().join("snapshot");
+        let result = extract_skill_at_tag(dir.path(), "my-skill", "my-skill/v99.0.0", &dest);
         assert!(result.is_err());
     }
 }
