@@ -68,7 +68,7 @@ export function useWorkflowAutosave({
 
   // Save clarifications content via backend command
   const handleSave = useCallback(
-    async (silent = false): Promise<boolean> => {
+    async (): Promise<boolean> => {
       if (!clarificationsEditable || !workspacePath) return false;
 
       setSaveStatus("saving");
@@ -86,7 +86,6 @@ export function useWorkflowAutosave({
         if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
         savedTimerRef.current = setTimeout(() => setSaveStatus("idle"), 2000);
 
-        if (!silent) toast.success("Saved");
         return true;
       } catch (err) {
         setSaveStatus("dirty"); // Revert to dirty on failure
@@ -107,7 +106,7 @@ export function useWorkflowAutosave({
     if (!clarificationsEditable || currentStepStatus !== "completed" || !editorDirty) return;
 
     const timer = setTimeout(() => {
-      handleSave(true);
+      handleSave();
     }, 1500);
 
     return () => clearTimeout(timer);

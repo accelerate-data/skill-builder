@@ -100,7 +100,7 @@ export function showManualUpdateToasts(
     toast.info(
       `Dashboard: update available for ${library.length} skill${library.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
       {
-        duration: 5000,
+        duration: Infinity,
         action: {
           label: "Upgrade",
           onClick: () => {

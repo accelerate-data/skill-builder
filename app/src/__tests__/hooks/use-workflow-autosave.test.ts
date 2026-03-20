@@ -88,7 +88,7 @@ describe("useWorkflowAutosave", () => {
     });
 
     await act(async () => {
-      await result.current.handleSave(true);
+      await result.current.handleSave();
     });
 
     expect(saveClarificationsContent).toHaveBeenCalled();
@@ -128,7 +128,7 @@ describe("useWorkflowAutosave", () => {
     });
 
     await act(async () => {
-      await result.current.handleSave(false);
+      await result.current.handleSave();
     });
 
     const { toast } = await import("@/lib/toast");
@@ -159,48 +159,6 @@ describe("useWorkflowAutosave", () => {
     // Advance the remaining 700ms to complete the 1500ms window from the second edit
     await act(async () => { vi.advanceTimersByTime(700); });
     expect(saveClarificationsContent).toHaveBeenCalledTimes(1);
-  });
-
-  it("handleSave(false) calls toast.success on successful save", async () => {
-    vi.useRealTimers();
-    vi.mocked(saveClarificationsContent).mockResolvedValue(undefined);
-
-    const { result } = renderHook(() =>
-      useWorkflowAutosave({ ...defaultOptions, currentStepStatus: "pending" })
-    );
-
-    act(() => {
-      result.current.handleClarificationsChange({ questions: [{ id: "q1", text: "content" }] } as any);
-    });
-
-    await act(async () => {
-      await result.current.handleSave(false);
-    });
-
-    const { toast } = await import("@/lib/toast");
-    expect(vi.mocked(toast.success)).toHaveBeenCalledWith("Saved");
-    expect(result.current.editorDirty).toBe(false);
-    expect(result.current.saveStatus).toBe("saved");
-  });
-
-  it("handleSave(true) does NOT call toast.success", async () => {
-    vi.useRealTimers();
-    vi.mocked(saveClarificationsContent).mockResolvedValue(undefined);
-
-    const { result } = renderHook(() =>
-      useWorkflowAutosave({ ...defaultOptions, currentStepStatus: "pending" })
-    );
-
-    act(() => {
-      result.current.handleClarificationsChange({ questions: [] } as any);
-    });
-
-    await act(async () => {
-      await result.current.handleSave(true);
-    });
-
-    const { toast } = await import("@/lib/toast");
-    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
   });
 
   it("updateClarificationsState updates data without marking dirty", () => {

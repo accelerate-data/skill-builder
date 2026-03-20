@@ -262,8 +262,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
             })),
           );
           store.setGitDiff(finalized.diff);
-          toast.info("Refinement complete");
-
           // Offer benchmark only after an explicit /rewrite that changed files.
           const userMessages = store.messages.filter((m: RefineMessage) => m.role === "user");
           const lastMsg = userMessages.length > 0 ? userMessages[userMessages.length - 1] : undefined;

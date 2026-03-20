@@ -200,7 +200,7 @@ describe("AppLayout", () => {
     });
     await user.click(screen.getByRole("button", { name: /Apply Reconciliation/i }));
     await waitFor(() => {
-      expect(toast.info).toHaveBeenCalledWith("Cleaned up 3 incomplete skills");
+      expect(toast.info).toHaveBeenCalledWith("Cleaned up 3 incomplete skills", { duration: Infinity });
     });
   });
 
@@ -234,7 +234,7 @@ describe("AppLayout", () => {
     });
     await user.click(screen.getByRole("button", { name: /Apply Reconciliation/i }));
     await waitFor(() => {
-      expect(toast.info).toHaveBeenCalledWith("Cleaned up 1 incomplete skill");
+      expect(toast.info).toHaveBeenCalledWith("Cleaned up 1 incomplete skill", { duration: Infinity });
     });
   });
 
@@ -363,7 +363,7 @@ describe("AppLayout", () => {
     await waitFor(() => {
       expect(screen.getByTestId("outlet")).toBeInTheDocument();
     });
-    expect(toast.info).toHaveBeenCalledWith(
+    expect(toast.info).not.toHaveBeenCalledWith(
       "Startup reconciliation skipped. No automatic changes were applied."
     );
   });
@@ -492,7 +492,7 @@ describe("AppLayout", () => {
       await waitFor(() => {
         expect(toast.info).toHaveBeenCalledWith(
           "Dashboard: update available for 1 skill: sales-skill",
-          expect.objectContaining({ duration: 5000 })
+          expect.objectContaining({ duration: Infinity })
         );
       });
     });
