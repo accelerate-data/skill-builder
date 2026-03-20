@@ -98,10 +98,11 @@ Key inputs for the eval pipeline:
   - When executing Step 4 of the Running and evaluating test cases section, use `--static {eval_results_dir}/{iteration}/review.html` instead of starting a server. Do not open a browser.
   - Do not wait for user feedback.
 - The `skill-creator` skill references files like `references/schemas.md` and `agents/grader.md` — these are internal to the `skill creator` skill and is present in `plugins/skill-creator/skills/skill-creator`.
+- When `baseline_mode` == `"prior_version"` the snapshot of the prior version of the skill is already provided in `prior_skill_snapshot_dir`. Use this. **Do not attempt to snapshot again**. Point the baseline subagent to the snapshot provided in `prior_skill_snapshot_dir`.
 
 ## Step 3: Execute the test cases and generate the benchmark
 
-Follow the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill. Execute the sub-steps in order — each depends on the previous one completing:
+Use the **Skill** tool to invoke `skill-creator:skill-creator` — do NOT read SKILL.md manually with the Read tool. Follow the **Running and evaluating test cases** section. Execute the sub-steps in order — each depends on the previous one completing:
 
 **3a. Spawn all runs** — for each test case, spawn with-skill and baseline runs in the same turn. As each sub-agent returns, capture timing data (`total_tokens`, `duration_ms`) into `timing.json` in the run directory.
 
