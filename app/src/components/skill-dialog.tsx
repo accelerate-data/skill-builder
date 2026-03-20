@@ -308,7 +308,7 @@ export default function SkillDialog(props: SkillDialogProps) {
           disableModelInvocation,
         )
         console.log(`[skill] Updated skill "${skillName}"`)
-        toast.success("Skill updated")
+        toast.success(`Skill "${skillName}" updated`)
         handleOpenChange(false)
         editOnSaved?.()
       } else {
