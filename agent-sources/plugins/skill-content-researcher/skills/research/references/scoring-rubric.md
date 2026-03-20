@@ -32,9 +32,17 @@ For each of the candidate dimensions from the type-scoped set:
 2. Write a one-sentence reason grounded in the domain
 3. Write a tailored focus line (see Tailored Focus Line guidelines below)
 
-### 2. Return scoring JSON
+### 2. Emit summary table and construct scoring JSON internally
 
-Build a JSON object using the canonical format in the Scoring Output Format section below.
+After scoring all dimensions, emit a **markdown summary table** as your visible text output so the user sees a scannable overview:
+
+| Dimension | Score | Reason |
+| --------- | ----- | ------ |
+| <slug> | <1-5> | <one-sentence reason> |
+
+Include one row per evaluated dimension. This table is the only scoring output the user should see.
+
+Then construct the scoring JSON object internally using the canonical format in the Scoring Output Format section below. **Do not emit the JSON as visible text output.** The JSON is consumed programmatically by downstream steps, not displayed to the user.
 
 ---
 
@@ -55,9 +63,9 @@ Build a JSON object using the canonical format in the Scoring Output Format sect
 
 ---
 
-## Scoring Output Format
+## Scoring Output Format (internal construction only — do not emit as text output)
 
-Canonical scoring JSON object:
+Canonical scoring JSON object — construct this internally for downstream consumption:
 
 ```json
 {
