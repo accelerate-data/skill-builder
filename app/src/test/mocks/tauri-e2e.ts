@@ -134,6 +134,9 @@ const mockResponses: Record<string, unknown> = {
   // Imported skills (Skills Library page)
   list_imported_skills: [],
   list_workspace_skills: [],
+  // Skill history (WorkspaceOverview version history)
+  get_skill_history: [],
+  get_externally_locked_skills: [],
   upload_skill: {
     skill_id: "skill-001",
     skill_name: "test-skill",

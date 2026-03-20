@@ -456,8 +456,8 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
     // Step 4 completion toast
     await expect(page.getByText("Step 4 completed")).toBeVisible({ timeout: 10_000 });
 
-    // Step 4 completion screen shows benchmark summary (or missing data state)
-    await expect(page.getByText("Benchmark data missing")).toBeVisible({ timeout: 5_000 });
+    // Step 4 completion screen shows the generated skill output
+    await expect(page.getByText("Generate Skill Complete")).toBeVisible({ timeout: 5_000 });
   });
 
   // ---------------------------------------------------------------------------

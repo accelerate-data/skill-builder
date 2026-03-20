@@ -60,7 +60,7 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
   useEffect(() => {
     if (!workspacePath || !skillName) return;
     getSkillHistory(workspacePath, skillName, 50)
-      .then(setCommits)
+      .then((result) => setCommits(result ?? []))
       .catch((err) => {
         console.warn("event=skill_history_fetch_failed skill=%s error=%s", skillName, err);
       });
