@@ -1003,7 +1003,7 @@ describe("MessageProcessor", () => {
 
       expect(processor.pendingToolCallCount).toBe(1);
 
-      const { summary, orphanedItems } = processor.buildShutdownSummary();
+      const [summary, orphanedItems] = processor.buildShutdownSummary();
       expect(summary.status).toBe("shutdown");
       expect(orphanedItems).toHaveLength(1);
 
@@ -1027,7 +1027,7 @@ describe("MessageProcessor", () => {
 
       expect(processor.pendingToolCallCount).toBe(2);
 
-      const { summary, orphanedItems } = processor.buildExecutionErrorSummary("connection lost");
+      const [summary, orphanedItems] = processor.buildExecutionErrorSummary("connection lost");
       expect(summary.status).toBe("error");
       expect(orphanedItems).toHaveLength(2);
 
@@ -1039,7 +1039,7 @@ describe("MessageProcessor", () => {
     });
 
     it("buildShutdownSummary returns empty orphanedItems when no pending tool calls", () => {
-      const { orphanedItems } = processor.buildShutdownSummary();
+      const [, orphanedItems] = processor.buildShutdownSummary();
       expect(orphanedItems).toHaveLength(0);
     });
 
